@@ -227,7 +227,7 @@ public class TransportMemoryPoolTests
     }
 
     [Test]
-    public void Sustained_demand_stops_allocating_after_warm_up()
+    public void Sustained_demand_stops_allocating_buffer_arrays_after_warm_up()
     {
         const int demand = 100;
         using TransportMemoryPool pool = new();
@@ -243,9 +243,39 @@ public class TransportMemoryPoolTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(pool.Large.BlocksAllocated, Is.EqualTo(LargeCap), "blocks are reused once the pool has warmed up");
-            Assert.That(pool.Small.BlocksAllocated, Is.EqualTo(demand - LargeCap), "blocks are reused once the pool has warmed up");
+            Assert.That(pool.Large.BlocksAllocated, Is.EqualTo(LargeCap), "buffer arrays are reused once the pool has warmed up");
+            Assert.That(pool.Small.BlocksAllocated, Is.EqualTo(demand - LargeCap), "buffer arrays are reused once the pool has warmed up");
             Assert.That(pool.Large.BlocksReleased + pool.Small.BlocksReleased, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Warm_rents_stay_within_the_owner_allocation_budget([Values] bool largeBlocksOut)
+    {
+        const int iterations = 100_000;
+        // A rent allocates only its owner, 56 B on a 64-bit runtime; the array it lends is reused.
+        const int maxBytesPerRent = 64;
+        using TransportMemoryPool pool = new();
+        // Held outside the measurement, so that every rent in it is served from a small block.
+        List<IMemoryOwner<byte>> large = largeBlocksOut ? RentBlocks(pool, LargeCap) : [];
+
+        for (int i = 0; i < 10_000; i++) pool.Rent().Dispose();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < iterations; i++) pool.Rent().Dispose();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        IMemoryOwner<byte> probe = pool.Rent();
+        int length = probe.Memory.Length;
+        probe.Dispose();
+        ReturnBlocks(large);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(length, Is.EqualTo(largeBlocksOut ? TransportMemoryPool.SmallBlockSize : TransportMemoryPool.BlockSize));
+            Assert.That(allocated, Is.LessThanOrEqualTo((long)iterations * maxBytesPerRent), $"{(double)allocated / iterations:F1} B per rent");
+            Assert.That(pool.Large.BlocksAllocated, Is.EqualTo(largeBlocksOut ? LargeCap : 1));
+            Assert.That(pool.Small.BlocksAllocated, Is.EqualTo(largeBlocksOut ? 1 : 0));
         }
     }
 
@@ -326,13 +356,16 @@ public class TransportMemoryPoolTests
 
     [Test]
     [CancelAfter(60_000)]
-    public void Concurrent_rents_and_returns_of_both_sizes_keep_blocks_exclusive_and_counts_consistent()
+    public void Concurrent_rents_and_returns_of_both_sizes_keep_blocks_exclusive_and_counts_consistent([Values] bool exhaustLargeBlocks)
     {
         const int workers = 16;
         const int rounds = 3_000;
         const int maxHeld = 8;
         int[] sizes = [-1, TransportMemoryPool.SmallBlockSize, 2 * TransportMemoryPool.SmallBlockSize, TransportMemoryPool.BlockSize];
         using TransportMemoryPool pool = new();
+        // Small blocks and shared arrays come into play only once the large blocks are all out, which the workers alone
+        // reach only when enough of them run at once; reserving the large blocks makes that phase independent of it.
+        List<IMemoryOwner<byte>> reserved = exhaustLargeBlocks ? RentBlocks(pool, LargeCap) : [];
         using CancellationTokenSource trimming = new();
         int clashes = 0;
         int shortBlocks = 0;
@@ -348,54 +381,73 @@ public class TransportMemoryPoolTests
             }
         }, TaskCreationOptions.LongRunning);
 
-        Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, worker =>
+        try
         {
-            Random random = new(worker);
-            List<IMemoryOwner<byte>> owners = [];
-            for (int round = 0; round < rounds; round++)
+            Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, worker =>
             {
-                long stamp = ((long)worker << 32) | (uint)round;
-                int count = random.Next(1, maxHeld + 1);
-                for (int i = 0; i < count; i++)
+                Random random = new(worker);
+                List<IMemoryOwner<byte>> owners = [];
+                for (int round = 0; round < rounds; round++)
                 {
-                    int size = sizes[random.Next(sizes.Length)];
-                    IMemoryOwner<byte> owner = pool.Rent(size);
-                    Span<byte> span = owner.Memory.Span;
-                    if (span.Length < Math.Max(size, TransportMemoryPool.SmallBlockSize)) Interlocked.Increment(ref shortBlocks);
-                    if (span.Length == TransportMemoryPool.BlockSize) Interlocked.Increment(ref largeBlocksSeen);
-                    if (span.Length == TransportMemoryPool.SmallBlockSize) Interlocked.Increment(ref smallBlocksSeen);
-                    MemoryMarshal.Write(span, in stamp);
-                    MemoryMarshal.Write(span[^sizeof(long)..], in stamp);
-                    owners.Add(owner);
-                }
-
-                Thread.Yield();
-                foreach (IMemoryOwner<byte> owner in owners)
-                {
-                    Span<byte> span = owner.Memory.Span;
-                    if (MemoryMarshal.Read<long>(span) != stamp || MemoryMarshal.Read<long>(span[^sizeof(long)..]) != stamp)
+                    long stamp = ((long)worker << 32) | (uint)round;
+                    int count = random.Next(1, maxHeld + 1);
+                    for (int i = 0; i < count; i++)
                     {
-                        Interlocked.Increment(ref clashes);
+                        int size = sizes[random.Next(sizes.Length)];
+                        IMemoryOwner<byte> owner = pool.Rent(size);
+                        Span<byte> span = owner.Memory.Span;
+                        if (span.Length < Math.Max(size, TransportMemoryPool.SmallBlockSize)) Interlocked.Increment(ref shortBlocks);
+                        if (span.Length == TransportMemoryPool.BlockSize) Interlocked.Increment(ref largeBlocksSeen);
+                        if (span.Length == TransportMemoryPool.SmallBlockSize) Interlocked.Increment(ref smallBlocksSeen);
+                        MemoryMarshal.Write(span, in stamp);
+                        MemoryMarshal.Write(span[^sizeof(long)..], in stamp);
+                        owners.Add(owner);
                     }
 
-                    owner.Dispose();
-                    // A late second return must not put the block back twice.
-                    if (round % 7 == 0) owner.Dispose();
+                    Thread.Yield();
+                    foreach (IMemoryOwner<byte> owner in owners)
+                    {
+                        Span<byte> span = owner.Memory.Span;
+                        if (MemoryMarshal.Read<long>(span) != stamp || MemoryMarshal.Read<long>(span[^sizeof(long)..]) != stamp)
+                        {
+                            Interlocked.Increment(ref clashes);
+                        }
+
+                        owner.Dispose();
+                        // A late second return must not put the block back twice.
+                        if (round % 7 == 0) owner.Dispose();
+                    }
+
+                    owners.Clear();
                 }
-
-                owners.Clear();
+            });
+        }
+        finally
+        {
+            try
+            {
+                trimming.Cancel();
+                trimmer.Wait();
             }
-        });
-
-        trimming.Cancel();
-        trimmer.Wait();
+            finally
+            {
+                ReturnBlocks(reserved);
+            }
+        }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(clashes, Is.Zero, "a block was handed to two owners at once");
             Assert.That(shortBlocks, Is.Zero, "a block was smaller than asked for");
-            Assert.That(largeBlocksSeen, Is.GreaterThan(0));
-            Assert.That(smallBlocksSeen, Is.GreaterThan(0), "the large blocks never ran out; the test needs more held at once");
+            if (exhaustLargeBlocks)
+            {
+                Assert.That(smallBlocksSeen, Is.GreaterThan(0));
+            }
+            else
+            {
+                Assert.That(largeBlocksSeen, Is.GreaterThan(0));
+            }
+
             foreach (TransportMemoryPool.BlockList list in new[] { pool.Large, pool.Small })
             {
                 Assert.That(list.BlocksInUse, Is.Zero);

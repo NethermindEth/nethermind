@@ -136,8 +136,10 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
 /// </para>
 /// <para>
 /// Each size keeps its returned blocks and releases them only when recent demand no longer needs them, the way
-/// Kestrel's own pool does, so under steady load a pool stops allocating; pinned blocks dropped while still wanted
-/// would only come back as fresh pinned allocations that just gen2 reclaims. Demand is the most blocks of that size
+/// Kestrel's own pool does, so under steady load a pool stops allocating buffer arrays; pinned blocks dropped while
+/// still wanted would only come back as fresh pinned allocations that just gen2 reclaims. Each rent still allocates a
+/// small owner, a fresh lease, so that a late repeated dispose of an old owner cannot return a block that has since
+/// been rented again. Demand is the most blocks of that size
 /// out at once over the last <see cref="DemandWindows"/> calls of <see cref="Trim"/>, a minute at the factory's
 /// <see cref="TrimInterval"/>. Each call keeps enough blocks to meet that peak again and releases at most a twentieth
 /// of the rest, but at least <see cref="MinReleasePerTrim"/>, which is the rate Kestrel's pool sheds blocks when idle;
@@ -316,6 +318,7 @@ internal sealed class TransportMemoryPool : MemoryPool<byte>
         }
     }
 
+    /// <summary>One lease of an array, never reused, so a repeated dispose cannot reach a later lease of the same array.</summary>
     private sealed class Block : IMemoryOwner<byte>
     {
         private readonly BlockList? _list;
