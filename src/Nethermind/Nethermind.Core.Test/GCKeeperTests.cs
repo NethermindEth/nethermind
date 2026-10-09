@@ -456,26 +456,32 @@ public class GCKeeperTests
         IDisposable? lease = null;
         try
         {
-            Assert.That(recommitting.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
-            lease = keeper.TryStartNoGCRegion();
-            Assert.That(queued, Has.Count.EqualTo(1), "the re-commit holds no slot, so the payload is admitted");
-            worker = Task.Run(queued[0].Execute);
-            await Task.Delay(100);
-            Assert.That(worker.IsCompleted, Is.False, "the entry waits for the throwaway region to end");
+            try
+            {
+                Assert.That(recommitting.Wait(TimeSpan.FromSeconds(5)), Is.True);
+                strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+                lease = keeper.TryStartNoGCRegion();
+                Assert.That(queued, Has.Count.EqualTo(1), "the re-commit holds no slot, so the payload is admitted");
+                worker = Task.Run(queued[0].Execute);
+                await Task.Delay(100);
+                Assert.That(worker.IsCompleted, Is.False, "the entry waits for the throwaway region to end");
+            }
+            finally
+            {
+                proceed.Set();
+                await Task.WhenAll(collection, worker).WaitAsync(TimeSpan.FromSeconds(5));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "start", "end", "start" }));
+                Assert.That(runtime.IsActive, Is.True, "the payload's region is not ended by the re-commit");
+            }
         }
         finally
         {
-            proceed.Set();
-            await Task.WhenAll(collection, worker).WaitAsync(TimeSpan.FromSeconds(5));
+            lease?.Dispose();
         }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "start", "end", "start" }));
-            Assert.That(runtime.IsActive, Is.True, "the payload's region is not ended by the re-commit");
-        }
-        lease!.Dispose();
     }
 
     // The throwaway entry replaces gen0's budget with the region's as any entry does, so the guard has to see it.
