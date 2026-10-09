@@ -28,7 +28,7 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 public sealed class KademliaAdapter(
     Lazy<IKademlia<PublicKey, Node>> kademlia, // Cyclic dependency: Kademlia uses this adapter as its message sender.
     IRoutingTable<Node, ValueHash256> routingTable, // Direct hash lookup also works before a packet's public key is authenticated.
-    NettyDiscoveryV5Handler discoveryHandler,
+    DiscoveryV5Transport transport,
     PacketCodec packetCodec,
     INodeRecordProvider nodeRecordProvider,
     IDiscoveryConfig discoveryConfig,
@@ -164,7 +164,7 @@ public sealed class KademliaAdapter(
     {
         try
         {
-            await foreach (PooledUdpReceiveResult result in discoveryHandler.ReadMessagesAsync(token))
+            await foreach (PooledUdpReceiveResult result in transport.ReadMessagesAsync(token))
             {
                 try
                 {
@@ -310,7 +310,7 @@ public sealed class KademliaAdapter(
         try
         {
             if (Logger.IsTrace) Logger.Trace($"Sending discv5 ordinary {message.MessageType} {message.RequestId} to {receiver:s} {(hasSession ? "with existing session" : "without session")}, bytes: {packet.Length}.");
-            await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+            await transport.SendAsync(packet, receiver.DiscoveryAddress, token);
             RecordSent(message);
             return pendingNonceKey;
         }
@@ -329,7 +329,7 @@ public sealed class KademliaAdapter(
         }
 
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 response {message.MessageType} {message.RequestId} to {receiver:s}, bytes: {packet.Length}.");
-        await discoveryHandler.SendAsync(packet, receiver.DiscoveryAddress, token);
+        await transport.SendAsync(packet, receiver.DiscoveryAddress, token);
         RecordSent(message);
     }
 
@@ -413,7 +413,7 @@ public sealed class KademliaAdapter(
 
         SetSession(new SessionKey(pendingRequest.Receiver.Id.Hash.ValueHash256, endpoint), session);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 HANDSHAKE for {pendingRequest.Message.MessageType} {pendingRequest.Message.RequestId} to {endpoint}, bytes: {handshakePacket.Length}, requested ENR seq: {requestedEnrSequence}.");
-        await discoveryHandler.SendAsync(handshakePacket, endpoint, token);
+        await transport.SendAsync(handshakePacket, endpoint, token);
         RecordSent("Handshake");
     }
 
@@ -512,7 +512,7 @@ public sealed class KademliaAdapter(
         if (_sentChallenges.TryGet(challengeKey, out SentChallenge existingChallenge) && !IsExpired(existingChallenge, now))
         {
             if (Logger.IsTrace) Logger.Trace($"Resending discv5 WHOAREYOU challenge to {endpoint}.");
-            await discoveryHandler.SendAsync(existingChallenge.Packet, endpoint, token);
+            await transport.SendAsync(existingChallenge.Packet, endpoint, token);
             RecordSent("WhoAreYou");
             return;
         }
@@ -527,7 +527,7 @@ public sealed class KademliaAdapter(
         byte[] packet = packetCodec.EncodeWhoAreYou(nodeId.Bytes, requestPacket.Nonce.Span, enrSequence);
         SetSentChallenge(challengeKey, packet);
         if (Logger.IsTrace) Logger.Trace($"Sending discv5 WHOAREYOU challenge to {endpoint}, known ENR seq: {enrSequence}, bytes: {packet.Length}.");
-        await discoveryHandler.SendAsync(packet, endpoint, token);
+        await transport.SendAsync(packet, endpoint, token);
         RecordSent("WhoAreYou");
     }
 
