@@ -301,11 +301,13 @@ public class BlockAccessListsSyncFeedTests
             Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.OK));
         }
 
-        Assert.That(await _feed.PrepareRequest(), Is.Null);
-        Assert.That(await _feed.PrepareRequest(), Is.Null);
-        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        BlockAccessListsSyncBatch? firstFinishedRequest = await _feed.PrepareRequest();
+        BlockAccessListsSyncBatch? secondFinishedRequest = await _feed.PrepareRequest();
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(firstFinishedRequest, Is.Null);
+            Assert.That(secondFinishedRequest, Is.Null);
+            Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
             Assert.That(progress.TargetValue, Is.EqualTo(pivot - activation + 1));
             Assert.That(progress.CurrentValue, Is.EqualTo(progress.TargetValue));
         }

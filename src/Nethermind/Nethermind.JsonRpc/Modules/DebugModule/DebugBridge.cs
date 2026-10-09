@@ -149,10 +149,17 @@ public class DebugBridge : IDebugBridge
         if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
             return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
+        bool replacesPreForkAccessListProgress = target is not null &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber >= startNumber &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber <= endNumber &&
+            LowestRequiredBlockAccessListNumber is null;
         int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
         // Completed history remains contiguous from its retained floors to target, below the deleted range.
         // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
         if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        // Deletion removes the header proving this floor predates EIP-7928; retain that proof at the new head.
+        if (deleted > 0 && replacesPreForkAccessListProgress)
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber = target!.Number;
         return ResultWrapper<int>.Success(deleted);
 
         static ResultWrapper<int> NotDrained() =>

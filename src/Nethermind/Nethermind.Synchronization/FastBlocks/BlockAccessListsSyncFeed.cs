@@ -122,30 +122,19 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             return barrier;
         }
 
-        switch (IsBlockAccessListsEnabled(barrier))
-        {
-            case true:
-                return barrier;
-            case null:
-                return KeepConfiguredBarrier(barrier, barrier, logFallback);
-        }
+        if (!TryGetBlockAccessListsEnabled(barrier, out bool enabled))
+            return KeepConfiguredBarrier(barrier, barrier, logFallback);
+        if (enabled) return barrier;
 
         ulong lastBeforeActivation = barrier;
         ulong firstAfterActivation = pivotNumber;
         while (firstAfterActivation - lastBeforeActivation > 1)
         {
             ulong middle = lastBeforeActivation + (firstAfterActivation - lastBeforeActivation) / 2;
-            switch (IsBlockAccessListsEnabled(middle))
-            {
-                case true:
-                    firstAfterActivation = middle;
-                    break;
-                case false:
-                    lastBeforeActivation = middle;
-                    break;
-                default:
-                    return KeepConfiguredBarrier(barrier, middle, logFallback);
-            }
+            if (!TryGetBlockAccessListsEnabled(middle, out enabled))
+                return KeepConfiguredBarrier(barrier, middle, logFallback);
+            if (enabled) firstAfterActivation = middle;
+            else lastBeforeActivation = middle;
         }
 
         return lastBeforeActivation;
@@ -161,11 +150,15 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         return barrier;
     }
 
-    private bool? IsBlockAccessListsEnabled(ulong blockNumber) =>
-        _blockTree.FindCanonicalBlockInfo(blockNumber) is { } blockInfo &&
-        _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockNumber) is { } header
-            ? _specProvider.GetSpec(header).BlockLevelAccessListsEnabled
-            : null;
+    private bool TryGetBlockAccessListsEnabled(ulong blockNumber, out bool enabled)
+    {
+        enabled = false;
+        if (_blockTree.FindCanonicalBlockInfo(blockNumber) is not { } blockInfo ||
+            _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockNumber) is not { } header)
+            return false;
+        enabled = _specProvider.GetSpec(header).BlockLevelAccessListsEnabled;
+        return true;
+    }
 
     private void ResetSyncStatusList() =>
         _syncStatusList = new SyncStatusList(
