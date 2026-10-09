@@ -464,13 +464,14 @@ public static partial class EvmInstructions
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037, Eip8038, Eip2929, Eip8279>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
         where TEip8037 : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         vm.MetricsCounters.IncrementSStore();
 
@@ -499,6 +500,10 @@ public static partial class EvmInstructions
         // Charge gas based on whether this is a cold or warm storage access before reading
         // the slot; BAL records the read only once the access cost is covered.
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
+            goto OutOfGas;
+
+        // EIP-8279: the slot enters the block access list on the transaction's first access.
+        if (Eip8279.IsActive && !vm.TryMeterBalStorageKey(in storageCell))
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
@@ -545,6 +550,12 @@ public static partial class EvmInstructions
                             vm.TxTracer.ReportRefund(sClearRefunds);
                     }
                 }
+
+                // EIP-8279: the block access list holds one post value per changed slot, so its bytes are metered,
+                // after the write is charged, each time the slot leaves its pre-transaction value. A write restoring
+                // it gives nothing back, since it may sit in a frame that later reverts.
+                if (Eip8279.IsActive && !vm.TryMeterBalData(Eip8279Constants.StorageValueBytes))
+                    goto OutOfGas;
             }
             else
             {
@@ -695,11 +706,12 @@ public static partial class EvmInstructions
     /// <returns>An <see cref="EvmExceptionType"/> indicating the result of the operation.</returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    internal static EvmExceptionType InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
 
@@ -719,6 +731,10 @@ public static partial class EvmInstructions
 
         // Charge additional gas based on whether the storage cell is hot or cold.
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
+            goto OutOfGas;
+
+        // EIP-8279: the slot enters the block access list on the transaction's first access, metered after its charge.
+        if (Eip8279.IsActive && !vm.TryMeterBalStorageKey(in storageCell))
             goto OutOfGas;
 
         vm.WorldState.Get(in storageCell, out value);

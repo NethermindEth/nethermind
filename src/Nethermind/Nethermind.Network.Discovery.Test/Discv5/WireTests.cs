@@ -2,17 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Embedded;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -27,7 +20,6 @@ using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -526,11 +518,9 @@ public class WireTests
             });
         }
 
-        NettyDiscoveryV5Handler handler = new(new TestLogManager());
-        EmbeddedChannel channel = new();
-        OutboundDatagramCapture outbound = new();
-        channel.Pipeline.AddLast(outbound);
-        handler.InitializeChannel(channel);
+        DiscoveryV5Transport transport = new(new TestLogManager());
+        RecordingDatagramSocket outbound = new();
+        transport.BindSocket(outbound);
 
         TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence, recordIp);
         PacketCodec packetCodec = new(
@@ -550,7 +540,7 @@ public class WireTests
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
             routingTable,
-            handler,
+            transport,
             packetCodec,
             nodeRecordProvider,
             new DiscoveryConfig { PingTimeout = pingTimeout },
@@ -560,7 +550,7 @@ public class WireTests
             LimboLogs.Instance,
             listenerState);
 
-        return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
+        return new TestPeer(adapter, transport, outbound, packetCodec, table, nodeRecordProvider, endpoint);
     }
 
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
@@ -681,18 +671,9 @@ public class WireTests
 
     private static void Pump(TestPeer from, TestPeer to)
     {
-        while (from.Outbound.TryDequeue(out DatagramPacket? packet))
+        while (from.Outbound.Sent.TryDequeue(out (byte[] Data, IPEndPoint Destination) datagram))
         {
-            try
-            {
-                byte[] data = packet.Content.ReadAllBytesAsArray();
-                IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-                to.Handler.ChannelRead(context, new DatagramPacket(Unpooled.WrappedBuffer(data), from.Endpoint, to.Endpoint));
-            }
-            finally
-            {
-                ReferenceCountUtil.Release(packet);
-            }
+            to.Transport.Receive(PooledUdpReceiveResult.Copy(datagram.Data, from.Endpoint));
         }
     }
 
@@ -906,9 +887,8 @@ public class WireTests
 
     private sealed record TestPeer(
         KademliaAdapter Adapter,
-        NettyDiscoveryV5Handler Handler,
-        EmbeddedChannel Channel,
-        OutboundDatagramCapture Outbound,
+        DiscoveryV5Transport Transport,
+        RecordingDatagramSocket Outbound,
         PacketCodec PacketCodec,
         IKademlia<PublicKey, Node> Kademlia,
         TestNodeRecordProvider NodeRecordProvider,
@@ -924,46 +904,12 @@ public class WireTests
             {
                 try
                 {
-                    Outbound.ReleaseAll();
-                    Channel.FinishAndReleaseAll();
+                    Transport.Close();
                 }
                 finally
                 {
                     PacketCodec.Dispose();
                 }
-            }
-        }
-    }
-
-    /// <summary>Captures outbound datagrams into a thread-safe queue, bypassing the embedded channel's non-thread-safe <c>ChannelOutboundBuffer</c> so packet workers can send concurrently with the test thread's pumping and disposal.</summary>
-    private sealed class OutboundDatagramCapture : ChannelHandlerAdapter
-    {
-        private readonly ConcurrentQueue<DatagramPacket> _queue = new();
-
-        public override Task WriteAsync(IChannelHandlerContext context, object message)
-        {
-            // discv5 only writes DatagramPackets; anything else would reach the suppressed-flush buffer and re-introduce the race.
-            if (message is not DatagramPacket packet)
-            {
-                throw new NotSupportedException($"Unexpected outbound message type: {message?.GetType()}.");
-            }
-
-            _queue.Enqueue(packet);
-            return Task.CompletedTask;
-        }
-
-        public override void Flush(IChannelHandlerContext context)
-        {
-            // Datagrams are captured in WriteAsync; there is nothing to flush to the embedded buffer.
-        }
-
-        public bool TryDequeue([NotNullWhen(true)] out DatagramPacket? packet) => _queue.TryDequeue(out packet);
-
-        public void ReleaseAll()
-        {
-            while (_queue.TryDequeue(out DatagramPacket? packet))
-            {
-                ReferenceCountUtil.Release(packet);
             }
         }
     }

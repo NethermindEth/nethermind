@@ -44,6 +44,21 @@ namespace Nethermind.State.Proofs
 
         internal ValueHash256 HashedAddress => Pack(_fullAccountPath);
 
+        internal List<byte[]> AccountProofItems => _accountProofItems;
+
+        internal List<byte[]> StorageProofItems(int index) => _storageProofItems[index];
+
+        internal void SetStorageValue(int index, byte[] value) => _accountProof.StorageProofs[index].Value = value;
+
+        internal void SetAccount(in AccountStruct account)
+        {
+            _accountExists = true;
+            _accountProof.Nonce = account.Nonce;
+            _accountProof.Balance = account.Balance;
+            _accountProof.StorageRoot = account.StorageRoot.ToCommitment();
+            _accountProof.CodeHash = account.CodeHash.ToCommitment();
+        }
+
         internal ValueHash256[] GetHashedStorageKeys()
         {
             ValueHash256[] keys = new ValueHash256[_fullStoragePaths.Length];
@@ -292,13 +307,7 @@ namespace Nethermind.State.Proofs
         public void VisitAccount(in TreePathContextWithStorage ctx, TrieNode node, in AccountStruct account)
         {
             // ctx.Path here already includes the leaf's key (it's leafContext, not nodeContext).
-            if (!IsFullPathMatch(_fullAccountPath, ctx.Path)) return;
-
-            _accountExists = true;
-            _accountProof.Nonce = account.Nonce;
-            _accountProof.Balance = account.Balance;
-            _accountProof.StorageRoot = account.StorageRoot.ToCommitment();
-            _accountProof.CodeHash = account.CodeHash.ToCommitment();
+            if (IsFullPathMatch(_fullAccountPath, ctx.Path)) SetAccount(account);
         }
 
         private void AddProofItem(TrieNode node, in TreePathContextWithStorage ctx)

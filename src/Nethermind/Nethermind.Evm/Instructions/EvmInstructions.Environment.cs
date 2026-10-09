@@ -557,6 +557,9 @@ public static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
 
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
+
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         return PushBalance<TTracingInst, OnFlag>(ref stack, in result);
         // Jump forward to be unpredicted by the branch predictor.
@@ -626,6 +629,8 @@ public static partial class EvmInstructions
         if (address is null) goto StackUnderflow;
         // Check if enough gas for account access and charge accordingly.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
 
