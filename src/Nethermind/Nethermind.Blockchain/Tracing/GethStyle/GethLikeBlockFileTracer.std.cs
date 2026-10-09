@@ -23,6 +23,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     private readonly Block _block;
     private Stream? _file;
+    private GethLikeTxFileTracer? _txTracer;
     private readonly string _fileNameFormat;
     private readonly List<string> _fileNames = [];
     private readonly IFileSystem _fileSystem;
@@ -71,9 +72,13 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        TypeInfoJsonSerializer.Serialize(_jsonWriter,
-            new TxTraceSummary(trace.ReturnValue.ToHexString(true), $"0x{trace.Gas:x}"),
-            _serializerOptions);
+        if (!LimitReached)
+        {
+            TypeInfoJsonSerializer.Serialize(_jsonWriter,
+                new TxTraceSummary(trace.ReturnValue.ToHexString(false), $"0x{trace.Gas:x}"),
+                _serializerOptions);
+            GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
+        }
 
         DisposeFileStreamIfAny();
 
@@ -91,7 +96,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = new(_file);
 
         ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
-        return new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
+        return _txTracer = new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
 
     private void DisposeFileStreamIfAny()
@@ -99,11 +104,19 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter?.Dispose();
         _file?.Dispose();
 
+        _txTracer = null;
         _file = null;
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry) => TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    private bool LimitReached => _options.Limit != 0 && _file is not null && _file.Position > _options.Limit;
+
+    private void DumpTraceEntry(GethTxFileTraceEntry entry)
+    {
+        if (!LimitReached)
+            TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+        if (LimitReached) _txTracer?.StopCapture();
+    }
 
     private string GetFileName(Hash256 txHash)
     {

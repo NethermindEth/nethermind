@@ -4,6 +4,7 @@
 #nullable enable annotations
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -18,6 +19,14 @@ namespace Nethermind.KeyStore
         (ProtectedPrivateKey? PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password);
         (KeyStoreItem? KeyData, Result Result) GetKeyData(Address address);
         (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses();
+
+        /// <summary>Whether the lookup that unlocks <paramref name="address"/> finds a key for it.</summary>
+        bool HasKey(Address address)
+        {
+            (IReadOnlyCollection<Address> addresses, Result result) = GetKeyAddresses();
+            return result.ResultType == ResultType.Success && addresses.Contains(address);
+        }
+
         (PrivateKey? PrivateKey, Result Result) GenerateKey(SecureString password);
         (ProtectedPrivateKey? PrivateKey, Result Result) GenerateProtectedKey(SecureString password);
         Result StoreKey(Address address, KeyStoreItem keyStoreItem);
