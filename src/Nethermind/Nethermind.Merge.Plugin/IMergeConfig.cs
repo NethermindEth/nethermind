@@ -41,8 +41,11 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The URL of a builder relay. If specified, blocks are sent to the relay.", DefaultValue = "null")]
     string? BuilderRelayUrl { get; set; }
 
-    [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]
+    [ConfigItem(Description = $"Whether to reduce block latency by managing garbage collection around `engine_newPayload`: a collection after each block (see `{nameof(SweepMemory)}`), periodic decommit (see `{nameof(CollectionsPerDecommit)}`) and, if `{nameof(EnterNoGcRegionOnNewPayload)}` is set, a no-GC region during block processing. None of them runs while syncing or when this is `false`.", DefaultValue = "true")]
     public bool PrioritizeBlockLatency { get; set; }
+
+    [ConfigItem(Description = $"Whether `engine_newPayload` enters a no-GC region for block processing. Entering pauses every thread on the payload's path and collects nothing; the collection after each block keeps the next block's allocation budget fresh without it. Has no effect unless `{nameof(PrioritizeBlockLatency)}` is `true`.", DefaultValue = "false")]
+    public bool EnterNoGcRegionOnNewPayload { get; set; }
 
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }

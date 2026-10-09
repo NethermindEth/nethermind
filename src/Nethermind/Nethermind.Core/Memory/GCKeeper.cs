@@ -93,6 +93,10 @@ public class GCKeeper : IDisposable
     }
 
     /// <summary>Queues no-GC-region entry without waiting for the runtime; disposing the lease ends its protection.</summary>
+    /// <remarks>
+    /// Unless <see cref="IGCStrategy.EnterNoGCRegion"/> is set, nothing is entered: the payload runs without a region and
+    /// disposing the lease still schedules the post-block collection and counts towards decommit.
+    /// </remarks>
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
@@ -106,6 +110,12 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
+            if (!_gcStrategy.EnterNoGCRegion)
+            {
+                // Entering suspends every thread on the payload's path and collects nothing; the collection this lease
+                // schedules when it ends is what keeps gen0 fresh for the next payload, so that stays.
+                return new PayloadWithoutRegion(region, _runtime);
+            }
             if (_region is not null)
             {
                 // A payload that starts while the previous one is still inside its region shares that region rather
@@ -284,6 +294,21 @@ public class GCKeeper : IDisposable
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             shared.Release();
+            own.Dispose();
+        }
+    }
+
+    /// <summary>A payload processed without a region; counts it when the runtime collected while it was processed.</summary>
+    /// <param name="own">This payload's region, never admitted, carrying its scheduler pause and its collection.</param>
+    private sealed class PayloadWithoutRegion(NoGCRegion own, IGcRegionRuntime runtime) : IDisposable
+    {
+        private readonly int _collections = runtime.CollectionCount;
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            if (runtime.CollectionCount != _collections) Interlocked.Increment(ref Metrics.NewPayloadsWithCollection);
             own.Dispose();
         }
     }

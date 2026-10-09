@@ -117,6 +117,7 @@ public class GCKeeperTests
         List<IThreadPoolWorkItem> queued = [];
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
         using IDisposable lease = keeper.TryStartNoGCRegion();
@@ -173,6 +174,7 @@ public class GCKeeperTests
         RegionRuntime runtime = new() { EndFailure = failure };
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(true);
         List<IThreadPoolWorkItem> queued = [];
         using GCKeeper keeper = new(strategy, new OneLoggerLogManager(new ILogger(logger)), runtime, queued.Add);
         using (keeper.TryStartNoGCRegion()) queued[0].Execute();
@@ -212,10 +214,11 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Decommit_interval_preserves_sentinels([Values(-1, 0, 50)] int interval)
+    public async Task Decommit_interval_preserves_sentinels([Values(-1, 0, 50)] int interval, [Values] bool enterRegion)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(enterRegion);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(interval);
         RegionRuntime runtime = new();
@@ -328,6 +331,7 @@ public class GCKeeperTests
         RegionRuntime runtime = new() { Refuse = refuse };
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
         using IDisposable lease = keeper.TryStartNoGCRegion();
@@ -354,6 +358,62 @@ public class GCKeeperTests
         CountPayload(keeper, strategy);
         await keeper.ScheduleGCInternal(throttle: false);
         Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
+    }
+
+    // Entering the region is a stop-the-world on the payload's path that collects nothing, so by default a payload
+    // runs without one; the collection after it is what keeps gen0 fresh for the next payload, and that stays.
+    [Test]
+    public async Task Payload_enters_the_region_only_when_the_strategy_asks_and_is_collected_after_either_way([Values] bool enterRegion)
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        TaskCompletionSource collected = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RegionRuntime runtime = new() { BeforeCollect = () => collected.TrySetResult() };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(enterRegion);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+
+        IDisposable lease = keeper.TryStartNoGCRegion();
+        if (enterRegion) queued[0].Execute();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(enterRegion ? 1 : 0));
+            Assert.That(runtime.IsActive, Is.EqualTo(enterRegion));
+            Assert.That(runtime.Collections, Is.Empty, "nothing is collected while the payload is processed");
+        }
+
+        lease.Dispose();
+        await collected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Starts, Is.EqualTo(enterRegion ? 1 : 0));
+            Assert.That(runtime.Ends, Is.EqualTo(enterRegion ? 1 : 0));
+            Assert.That(runtime.IsActive, Is.False);
+            Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
+        }
+    }
+
+    [Test]
+    public void Payload_without_region_counts_a_collection_that_ran_while_it_was_processed([Values] bool collectedInside, [Values] bool enterRegion)
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new() { CollectionCount = 7 };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(enterRegion);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
+        long before = Metrics.NewPayloadsWithCollection;
+
+        IDisposable lease = keeper.TryStartNoGCRegion();
+        if (collectedInside) runtime.CollectionCount++;
+        lease.Dispose();
+        lease.Dispose();
+
+        // With a region, a collection inside it means the runtime left the region; only payloads without one count.
+        Assert.That(Metrics.NewPayloadsWithCollection - before, Is.EqualTo(collectedInside && !enterRegion ? 1 : 0));
     }
 
     // A payload can start while the previous one is still inside its region: newPayload answers before its block
@@ -467,6 +527,7 @@ public class GCKeeperTests
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
+        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         return new GCKeeper(strategy, NullLogManager.Instance, runtime, queue);
     }
@@ -490,6 +551,7 @@ public class GCKeeperTests
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
+        public int CollectionCount { get; set; }
         public bool TryStart(long totalSize, long lohSize)
         {
             BeforeStart?.Invoke();

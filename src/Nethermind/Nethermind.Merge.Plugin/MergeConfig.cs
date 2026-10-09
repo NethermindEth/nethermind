@@ -25,6 +25,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool PrioritizeBlockLatency { get; set; } = true;
 
+        public bool EnterNoGcRegionOnNewPayload { get; set; }
+
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.No;

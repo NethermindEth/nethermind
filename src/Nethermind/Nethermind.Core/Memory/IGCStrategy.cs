@@ -14,7 +14,13 @@ public interface IGCStrategy
     /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>
+    /// <remarks>
+    /// Also gates the post-payload collection and the decommit count: a payload disallowed here schedules neither,
+    /// whether or not <see cref="EnterNoGCRegion"/> is set.
+    /// </remarks>
     bool CanStartNoGCRegion();
+    /// <summary>Gets whether a permitted payload enters the no-GC region; when not, it runs without one and still schedules the post-payload collection.</summary>
+    bool EnterNoGCRegion { get; }
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
 }

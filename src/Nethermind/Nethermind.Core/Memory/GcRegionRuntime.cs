@@ -12,6 +12,8 @@ internal interface IGcRegionRuntime
     bool TryStart(long totalSize, long lohSize);
     void End();
     bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting);
+    /// <summary>Collections the runtime has run so far, of any generation; a region entry also counts as one.</summary>
+    int CollectionCount { get; }
 }
 
 internal sealed class GcRegionRuntime : IGcRegionRuntime
@@ -28,4 +30,5 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
         GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No,
             compacting: compacting > GcCompaction.No, trimNativeMemory: true,
             compactLoh: mode != GCCollectionMode.Aggressive && generation == GcLevel.Gen2 && compacting == GcCompaction.Full);
+    public int CollectionCount => System.GC.CollectionCount(0);
 }
