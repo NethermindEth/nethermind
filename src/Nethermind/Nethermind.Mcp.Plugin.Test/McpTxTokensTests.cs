@@ -264,7 +264,8 @@ public class McpTxTokensTests
     public async Task Activity_metadata_note_distinguishes_budget_and_missing_decimals([Values] bool spent)
     {
         Address weth = new("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
-        await using McpTestNode node = await McpTestNode.Create(c => c.ToolTimeout = 2000, b => b
+        using ManualResetEventSlim releaseMetadata = new(false);
+        await using McpTestNode node = await McpTestNode.Create(c => c.ToolTimeout = 10_000, b => b
             .AddScoped<IGenesisPostProcessor, FeedGenesis>()
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new McpPriceIsolationTests.PriceRpcProvider(inner)));
         await McpPriceIsolationTests.Deposit(node);
@@ -278,17 +279,26 @@ public class McpTxTokensTests
         }
         else ((McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).BeforeCall = (method, args) =>
         {
-            if (method == nameof(IEthRpcModule.eth_getCode) && args[0] is Address address && address == weth) Thread.Sleep(1500);
+            // Keep metadata pending until the tool returns, without racing its overall deadline.
+            if (method == nameof(IEthRpcModule.eth_getCode) && args[0] is Address address && address == weth)
+                releaseMetadata.Wait(TimeSpan.FromSeconds(20));
         };
         await using McpClient client = await node.CreateClient();
         string block = node.Chain.BlockTree.Head!.Number.ToString();
-        CallToolResult call = await McpToolCalls.Call(client, "address_activity",
-            [("address", TestItem.AddressB.ToString()), ("token", weth.ToString()), ("fromBlock", block), ("toBlock", block), ("includeUsd", true)]);
-        JsonElement result = McpAssert.Success(call);
-        Assert.That(result.GetProperty("usdNotes").GetRawText(),
-            Does.Contain(spent ? "metadata not read within the time budget" : "decimals() not available"));
-        Assert.That(result.TryGetProperty("tokenMetadataOmitted", out _), Is.EqualTo(spent));
-        await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
+        try
+        {
+            CallToolResult call = await McpToolCalls.Call(client, "address_activity",
+                [("address", TestItem.AddressB.ToString()), ("token", weth.ToString()), ("fromBlock", block), ("toBlock", block), ("includeUsd", true)]);
+            JsonElement result = McpAssert.Success(call);
+            Assert.That(result.GetProperty("usdNotes").GetRawText(),
+                Does.Contain(spent ? "metadata not read within the time budget" : "decimals() not available"));
+            Assert.That(result.TryGetProperty("tokenMetadataOmitted", out _), Is.EqualTo(spent));
+            await McpToolCalls.AssertConformsToOutputSchema(client, "address_activity", call);
+        }
+        finally
+        {
+            releaseMetadata.Set();
+        }
     }
 
     [Test]
