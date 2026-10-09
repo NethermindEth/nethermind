@@ -19,6 +19,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
 

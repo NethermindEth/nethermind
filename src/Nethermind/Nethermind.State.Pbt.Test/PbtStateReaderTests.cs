@@ -18,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;

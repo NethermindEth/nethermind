@@ -15,7 +15,7 @@ using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>A writable flat branch over sealed local snapshots and a shared read-only base.</summary>
 public sealed class PbtSnapshotBundle(

@@ -4,7 +4,7 @@
 using System.Collections;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>
 /// An owned, pool-backed list of leased <see cref="PbtSnapshot"/> layers.

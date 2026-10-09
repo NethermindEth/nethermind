@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;

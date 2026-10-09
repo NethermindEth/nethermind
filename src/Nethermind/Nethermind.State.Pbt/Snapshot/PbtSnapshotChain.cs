@@ -7,7 +7,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 internal sealed class PbtRetainedPublicationGate
 {

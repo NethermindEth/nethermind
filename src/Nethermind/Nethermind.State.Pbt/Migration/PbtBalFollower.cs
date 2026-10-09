@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.State.Pbt.Migration;

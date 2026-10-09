@@ -22,6 +22,7 @@ using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Sync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;

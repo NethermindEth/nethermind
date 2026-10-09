@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.Test;
 

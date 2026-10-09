@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 

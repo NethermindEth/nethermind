@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt;

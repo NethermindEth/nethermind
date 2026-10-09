@@ -16,7 +16,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
 public sealed class PbtReadOnlySnapshotBundle(

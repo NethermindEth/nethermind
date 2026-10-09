@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt;
 

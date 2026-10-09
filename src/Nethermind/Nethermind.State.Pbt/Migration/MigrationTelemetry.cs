@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.Migration;
 

@@ -13,7 +13,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>Merges consecutive canonical snapshot diffs without changing newest-write precedence.</summary>
 public class PbtSnapshotCompactor(

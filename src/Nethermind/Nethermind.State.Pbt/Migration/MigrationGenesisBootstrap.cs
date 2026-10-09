@@ -18,7 +18,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Snapshot = Nethermind.State.Flat.Snapshot;
+using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -102,7 +102,7 @@ internal sealed class MigrationGenesisBootstrap(
         }
     }
 
-    public void AddSnapshot(Snapshot snapshot, TransientResource transientResource)
+    public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource)
     {
         try
         {
@@ -120,7 +120,7 @@ internal sealed class MigrationGenesisBootstrap(
         }
     }
 
-    private static void Persist(IPersistence target, Snapshot snapshot)
+    private static void Persist(IPersistence target, FlatSnapshot snapshot)
     {
         using IPersistence.IWriteBatch batch = target.CreateWriteBatch(snapshot.From, snapshot.To);
         foreach ((HashedKey<Address> address, bool isNew) in snapshot.SelfDestructedStorageAddresses)

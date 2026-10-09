@@ -41,8 +41,10 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Api.Steps;
+using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -1702,7 +1704,7 @@ public class PbtDbManagerTests
                 content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
                 PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
                 if (compacted) pbtRepository.TryAddCompacted(pbtSnapshot); else pbtRepository.TryAdd(pbtSnapshot);
-                Snapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+                FlatSnapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
                 flatSnapshot.Content.Accounts[TestItem.AddressA] = new Account(to.BlockNumber, 100);
                 flatRepository.TryAdd(flatSnapshot, compacted ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
                 flatRepository.AddStateId(to);
@@ -1728,7 +1730,7 @@ public class PbtDbManagerTests
         MethodInfo method = coordinator.GetType().GetMethod("DetermineSnapshotAction", BindingFlags.NonPublic | BindingFlags.Instance)!;
         ITuple action = (ITuple)method.Invoke(coordinator, [state])!;
         using PersistedSnapshot? retained = action[0] as PersistedSnapshot;
-        using Snapshot? memory = action[1] as Snapshot;
+        using FlatSnapshot? memory = action[1] as FlatSnapshot;
         object? conversion = action[2];
         if (retained is not null)
         {
@@ -1738,9 +1740,9 @@ public class PbtDbManagerTests
         if (memory is not null) return new("persist", memory.From, memory.To,
             memory.To.BlockNumber - memory.From.BlockNumber > 1 ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
         if (conversion is null) return default;
-        using Snapshot? compacted = conversion.GetType().GetProperty("Compacted")!.GetValue(conversion) as Snapshot;
-        using Snapshot? single = conversion.GetType().GetProperty("Base")!.GetValue(conversion) as Snapshot;
-        Snapshot selected = compacted ?? single!;
+        using FlatSnapshot? compacted = conversion.GetType().GetProperty("Compacted")!.GetValue(conversion) as FlatSnapshot;
+        using FlatSnapshot? single = conversion.GetType().GetProperty("Base")!.GetValue(conversion) as FlatSnapshot;
+        FlatSnapshot selected = compacted ?? single!;
         return new(compacted is not null ? "convert-range" : "convert", selected.From, selected.To,
             compacted is not null ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
     }

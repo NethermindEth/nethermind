@@ -32,6 +32,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;

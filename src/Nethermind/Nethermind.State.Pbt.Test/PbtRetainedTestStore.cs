@@ -12,6 +12,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.Test;
 

@@ -12,7 +12,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>
 /// Holds the in-memory diff layers keyed by their <see cref="PbtSnapshot.To"/> state, including

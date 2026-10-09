@@ -24,6 +24,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;

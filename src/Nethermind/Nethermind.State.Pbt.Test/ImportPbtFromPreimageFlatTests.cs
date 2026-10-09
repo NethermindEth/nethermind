@@ -27,6 +27,7 @@ using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State.Pbt.Steps;
 using NUnit.Framework;
 using NSubstitute;

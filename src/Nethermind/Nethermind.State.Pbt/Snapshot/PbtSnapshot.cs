@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>A sealed canonical EIP-8297 diff covering <see cref="From"/> to <see cref="To"/>.</summary>
 public class PbtSnapshot(

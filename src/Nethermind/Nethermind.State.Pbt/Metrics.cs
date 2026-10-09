@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 using NonBlocking;
 
 namespace Nethermind.State.Pbt;

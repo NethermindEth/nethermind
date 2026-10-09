@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;

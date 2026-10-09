@@ -7,6 +7,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;

@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Buffers;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt;
 

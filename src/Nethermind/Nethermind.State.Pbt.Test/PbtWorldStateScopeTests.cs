@@ -22,6 +22,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 using RefCountingMemoryMetrics = Nethermind.Core.Memory.Metrics.Metrics;
 using NSubstitute;

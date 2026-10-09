@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;

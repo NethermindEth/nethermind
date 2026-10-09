@@ -19,6 +19,7 @@ using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Monitoring.Config;
+using Nethermind.State.Pbt.Snapshot;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 

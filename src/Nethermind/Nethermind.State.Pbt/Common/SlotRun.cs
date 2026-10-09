@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Snapshot;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt.Common;

@@ -12,6 +12,7 @@ using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;

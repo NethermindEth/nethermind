@@ -10,7 +10,7 @@ using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>Adapts a writable snapshot bundle to the canonical <see cref="TrieUpdater"/> store contract.</summary>
 /// <remarks>

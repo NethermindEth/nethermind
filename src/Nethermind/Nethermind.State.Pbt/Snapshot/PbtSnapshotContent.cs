@@ -13,7 +13,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Common;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>One immutable-at-seal diff layer of flat values and canonical node groups.</summary>
 /// <remarks>

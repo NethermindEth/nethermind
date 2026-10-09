@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using NUnit.Framework;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.Test;
 
