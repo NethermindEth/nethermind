@@ -115,6 +115,16 @@ namespace Nethermind.TxPool
         bool IsKnown(Hash256 hash);
         /// <summary>Checks whether a transaction hash is already known.</summary>
         bool IsKnown(in ValueHash256 hash);
+
+        /// <summary>
+        /// Whether <paramref name="nonce"/> is below the head-state nonce of <paramref name="sender"/>, so the pool
+        /// would reject a transaction using it as an old nonce.
+        /// </summary>
+        /// <remarks>
+        /// Answers only from senders whose account the pool has already cached and never reads state, so it is cheap
+        /// enough to call per announced transaction. <see langword="false"/> means unknown, not fresh.
+        /// </remarks>
+        bool IsNonceStale(Address sender, ulong nonce) => false;
         bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction);
 
         /// <summary>

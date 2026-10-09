@@ -205,6 +205,37 @@ public class Eth73ProtocolHandlerTests
         }
     }
 
+    [TestCase(TxType.EIP1559, false, true, TestName = "Fresh nonce: requested")]
+    [TestCase(TxType.EIP1559, true, false, TestName = "Stale nonce: not requested")]
+    [TestCase(TxType.FrameTx, true, true, TestName = "Frame tx: requested, nonce not judged")]
+    public void should_skip_announcements_with_stale_nonce(TxType txType, bool stale, bool requested)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.IsNonceStale(TestItem.AddressA, 5UL).Returns(stale);
+        ValueHash256 hash = Keccak.Compute("tx").ValueHash256;
+        long skippedBefore = Nethermind.Network.Metrics.StaleNonceAnnouncementsSkipped;
+
+        using NewPooledTransactionHashesMessage73 announcement = new(
+            [(byte)txType],
+            [100],
+            [hash],
+            BlobCellMask.Empty.ToBytes(),
+            [TestItem.AddressA],
+            [5UL]);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetPooledTransactionsMessage>().Any(m => m.EthMessage.Hashes.Contains(hash)), Is.EqualTo(requested));
+            _transactionPool.Received(requested ? 1 : 0).NotifyAboutTx(Arg.Is<ValueHash256>(h => h == hash), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+            _transactionPool.Received(txType == TxType.FrameTx ? 0 : 1).IsNonceStale(TestItem.AddressA, 5UL);
+            Assert.That(Nethermind.Network.Metrics.StaleNonceAnnouncementsSkipped - skippedBefore, Is.EqualTo(requested ? 0 : 1));
+        }
+    }
+
     [TestCase(false, TestName = "Sparse blob tx with matching source: not disconnected")]
     [TestCase(true, TestName = "Sparse blob tx with wrong source: disconnected after sampling validation")]
     public void should_check_sparse_blob_tx_against_announced_source(bool wrongSource)

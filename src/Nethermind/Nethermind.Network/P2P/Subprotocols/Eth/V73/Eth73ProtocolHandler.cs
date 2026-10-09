@@ -60,6 +60,33 @@ public class Eth73ProtocolHandler(
     protected override NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
         Deserialize<NewPooledTransactionHashesMessage73>(content);
 
+    /// <remarks>
+    /// Skips only what the pool would reject as an old nonce, judged from the pool's cached sender accounts so an
+    /// announcement never costs a state read. A frame transaction's nonce may be a keyed nonce sequence unrelated to
+    /// the account nonce, so it is never judged.
+    /// </remarks>
+    protected override bool ShouldSkipAnnouncedTransaction(NewPooledTransactionHashesMessage72 message, int index, TxType txType)
+    {
+        if (txType is not (TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode))
+        {
+            return false;
+        }
+
+        NewPooledTransactionHashesMessage73 announcement = (NewPooledTransactionHashesMessage73)message;
+        if (!_txPool.IsNonceStale(announcement.Sources[index], announcement.Nonces[index]))
+        {
+            return false;
+        }
+
+        // Known hashes, typically just-included transactions, would not have been fetched anyway.
+        if (!_txPool.IsKnown(announcement.Hashes[index]))
+        {
+            Interlocked.Increment(ref Metrics.StaleNonceAnnouncementsSkipped);
+        }
+
+        return true;
+    }
+
     protected override void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
     {
         NewPooledTransactionHashesMessage73 announcement = (NewPooledTransactionHashesMessage73)message;
