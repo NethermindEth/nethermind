@@ -36,6 +36,52 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
+    public async Task Canonical_head_stays_known_when_it_advances_during_level_recalculation([Values] bool advanceHead)
+    {
+        ILogManager manager = Substitute.For<ILogManager>();
+        manager.GetLogger(Arg.Any<string>()).Returns(LimboLogs.Instance.GetLogger("PointerControl"));
+        InterfaceLogger underlying = Substitute.For<InterfaceLogger>();
+        underlying.IsInfo.Returns(true);
+        ILogger blockTreeLogger = new(underlying);
+        manager.GetClassLogger<Nethermind.Blockchain.BlockTree>().Returns(blockTreeLogger);
+        using MergeTestBlockchain chain = await CreateBlockchain(configurer: builder => builder.AddSingleton<ILogManager>(manager));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        ExecutionPayload next = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), Address.Zero);
+        bool armed = advanceHead;
+        underlying.When(logger => logger.Info(Arg.Is<string>(message => message.StartsWith("Numbers resolved,", StringComparison.Ordinal))))
+            .Do(_ =>
+            {
+                if (!armed) return;
+                armed = false;
+                PayloadStatusV1 payload = rpc.engine_newPayloadV1(next).GetAwaiter().GetResult().Data;
+                Assert.That(payload.Status, Is.EqualTo(PayloadStatus.Valid));
+                ForkchoiceUpdatedV1Result forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(next.BlockHash, Keccak.Zero, Keccak.Zero)).GetAwaiter().GetResult().Data;
+                Assert.That(forkchoice.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            });
+        chain.BlockTree.RecalculateTreeLevels();
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        TestContext.Out.WriteLine($"Canonical head={head.Number}, BestKnownNumber={chain.BlockTree.BestKnownNumber}, known={chain.BlockTree.IsKnownBlock(head.Number, head.Hash!)}");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.Number, Is.EqualTo(advanceHead ? 3 : 2));
+            Assert.That(chain.BlockTree.BestKnownNumber, Is.EqualTo(2));
+            Assert.That(chain.BlockTree.IsKnownBlock(head.Number, head.Hash!), Is.True, "a current canonical head remains a usable producer parent after concurrent recalculation");
+        }
+        ForkchoiceUpdatedV1Result build = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head.Hash!, Keccak.Zero, Keccak.Zero), new Nethermind.Consensus.Producers.PayloadAttributes
+        {
+            Timestamp = head.Timestamp + 12,
+            PrevRandao = TestItem.KeccakB,
+            SuggestedFeeRecipient = Address.Zero
+        })).Data;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(build.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(build.PayloadId, Is.Not.Null);
+        }
+    }
+
+    [Test]
     public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
