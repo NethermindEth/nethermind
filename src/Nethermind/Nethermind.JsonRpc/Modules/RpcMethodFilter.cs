@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Runner.Test")]
 [assembly: InternalsVisibleTo("nethermind")]
 
