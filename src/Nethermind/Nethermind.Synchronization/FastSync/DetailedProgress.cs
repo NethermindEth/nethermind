@@ -49,11 +49,11 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IChainEstimations _chainEstimations;
         private readonly bool _isSnapHealing;
 
-        /// <param name="chainId">The chain whose estimated state size is used for the full state percentage.</param>
-        /// <param name="serializedInitialState">Progress persisted by a previous run, or <c>null</c>.</param>
+        /// <param name="chainId">Chain used to look up the full state size estimate.</param>
+        /// <param name="serializedInitialState">Progress persisted by a previous run, if any.</param>
         /// <param name="isSnapHealing">
-        /// Whether this state sync heals a snap-synced state. Most of the state then arrives through snap ranges,
-        /// so the bytes counted here are not comparable to the full state size and no percentage is reported.
+        /// <see langword="true"/> when tree sync heals a state populated by snap ranges. The report then omits the
+        /// full state size percentage, as the healed bytes are a small and unpredictable fraction of the state.
         /// </param>
         public DetailedProgress(ulong chainId, byte[]? serializedInitialState, bool isSnapHealing = false)
         {
@@ -90,10 +90,10 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (logger.IsInfo)
                 {
-                    string label = _isSnapHealing ? "State Sync (Phase 2 of 2, healing)" : "State Sync ";
+                    string phase = _isSnapHealing ? "State Sync (Phase 2 of 2, healing)" : "State Sync ";
                     string stateSyncReport = logger.IsDebug ?
-                        $"{label} {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
-                        $"{label} {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
+                        $"{phase} {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
+                        $"{phase} {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
                     if (_lastStateSyncReport != stateSyncReport)
                     {
                         _lastStateSyncReport = stateSyncReport;

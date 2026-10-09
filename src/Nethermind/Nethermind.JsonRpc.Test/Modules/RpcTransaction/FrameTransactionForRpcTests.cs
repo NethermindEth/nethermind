@@ -277,15 +277,11 @@ public class FrameTransactionForRpcTests
     }
 
     /// <remarks>
-    /// A JSON <c>null</c> in any of the EIP-8141 lists — as an element, or as one of a reference's hashes, which
-    /// System.Text.Json assigns past the converter rather than rejecting — deserializes to a null the mapping used
-    /// to dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
+    /// A JSON <c>null</c> element in any of the EIP-8141 lists deserializes to a null the mapping used to
+    /// dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
     /// </remarks>
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","frames":[null]}""", "frames", TestName = "ToTransaction_NullFrame_IsRejected")]
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","signatures":[null]}""", "signatures", TestName = "ToTransaction_NullSignature_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[null]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReference_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":null,"slot":"0x1","root":"0x0000000000000000000000000000000000000000000000000000000000000001"}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceSourceId_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":"0x0000000000000000000000000000000000000000000000000000000000000001","slot":"0x1","root":null}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceRoot_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
         TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json)!;

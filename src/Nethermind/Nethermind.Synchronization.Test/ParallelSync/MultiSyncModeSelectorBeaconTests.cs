@@ -403,6 +403,16 @@ public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSy
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
 
     [Test]
+    public void When_node_has_been_offline_for_long_time_and_the_pivot_moves_up_to_its_state_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+            .WhenInBeaconSyncMode(_mode)
+            .IfThisNodeHasBeenOfflineForLongTime()
+            .AndPeersMovedForward()
+            .When_FastSync_NoSnapSync_Configured()
+            .WhenSnapSyncIsConfigured()
+            .AndThenThePivotMovesTo(Scenario.ChainHead.Number - Scenario.LargeDistanceBehindHead, GetBeaconSyncExpectations(SyncMode.Full))
+            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
+
+    [Test]
     public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()

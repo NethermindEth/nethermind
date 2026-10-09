@@ -1,14 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
+using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Synchronization.FastSync;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -100,14 +101,17 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void State_sync_report_labels_snap_healing_without_full_state_percentage([Values] bool snapSync)
+        public void State_sync_report_labels_snap_healing_without_full_state_percentage([Values] bool snapSync, [Values] bool debug)
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.NetworkId.Returns(BlockchainIds.Mainnet);
-            TreeSync treeSync = new(new MemDb(), Substitute.For<ITreeSyncStore>(), blockTree, Substitute.For<IStateSyncPivot>(), new SyncConfig { SnapSync = snapSync }, LimboLogs.Instance);
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new SyncConfig { SnapSync = snapSync }))
+                .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                .Build();
+            TreeSync treeSync = container.Resolve<TreeSync>();
             DetailedProgress data = treeSync.GetDetailedProgress();
             data.DataSize = 5_000_000;
-            TestLogger logger = new() { IsDebug = false, IsTrace = false };
+            data.LastReportTime.full = System.DateTime.UtcNow;
+            TestLogger logger = new() { IsDebug = debug, IsTrace = false };
 
             data.DisplayProgressReport(0, new BranchProgress(7, LimboTraceLogger.Instance), new ILogger(logger));
 
