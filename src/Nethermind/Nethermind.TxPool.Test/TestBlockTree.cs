@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool.Test;
 
@@ -30,8 +31,12 @@ internal class TestBlockTree : BlockTreeTestDouble
 
     private readonly Dictionary<Hash256AsKey, Block> _removedBlocks = [];
 
+    /// <summary>A block whose lookup throws, as a corrupt or unreadable one does.</summary>
+    public Hash256? UnreadableBlockHash { get; set; }
+
     public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
-        _removedBlocks.TryGetValue(blockHash, out Block? block) ? block : base.FindBlock(blockHash, options, blockNumber);
+        blockHash == UnreadableBlockHash ? throw new RlpException("unreadable block")
+        : _removedBlocks.TryGetValue(blockHash, out Block? block) ? block : base.FindBlock(blockHash, options, blockNumber);
 
     /// <summary>Takes <paramref name="block"/> off the main chain, as a head moving back below it does.</summary>
     public void RaiseBlockRemovedFromMain(Block block)

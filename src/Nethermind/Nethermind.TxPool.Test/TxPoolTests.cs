@@ -7527,6 +7527,43 @@ namespace Nethermind.TxPool.Test
             Assert.That(readded, Is.EqualTo(new[] { a0.Hash, a1.Hash }));
         }
 
+        /// <summary>A removed block that cannot be read is skipped: the others are re-added and later heads still apply.</summary>
+        [Test]
+        public async Task should_skip_unreadable_block_the_head_moved_back_past()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction b0 = GetTransaction(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(b0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block first = Build.A.Block.WithParent(ancestor).WithTransactions(a0).TestObject;
+            Block second = Build.A.Block.WithParent(first).WithTransactions(b0).TestObject;
+            await RaiseCanonicalHeadAndWait(first);
+            await RaiseCanonicalHeadAndWait(second);
+
+            _blockTree.UnreadableBlockHash = second.Hash;
+            _blockTree.RaiseBlockRemovedFromMain(second);
+            _blockTree.RaiseBlockRemovedFromMain(first);
+            // Bounded: a failed load used to skip the head, so the wait would never end.
+            await RaiseCanonicalHeadAndWait(ancestor).WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(a0.Hash!, out _), Is.True, "the readable block's tx is re-added");
+                Assert.That(_txPool.TryGetPendingTransaction(b0.Hash!, out _), Is.False, "the unreadable block's tx is skipped");
+            }
+
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithParent(ancestor).WithTransactions(a0).WithExtraData([1]).TestObject)
+                .WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a later head still removes the txs it includes");
+        }
+
         /// <summary>A rewind deeper than <see cref="Reorganization.MaxDepth"/> re-adds only the lowest blocks of it, also
         /// when the head completing it is skipped while syncing and a later head re-adds them instead.</summary>
         [Test]

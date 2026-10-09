@@ -1098,21 +1098,42 @@ namespace Nethermind.TxPool
 
             // At most Reorganization.MaxDepth bodies, as the pending headers are capped.
             List<Block> blocks = new(_rewoundHeaders.Count);
-            foreach (BlockHeader header in _rewoundHeaders)
+            try
+            {
+                foreach (BlockHeader header in _rewoundHeaders)
+                {
+                    if (TryFindRemovedBlock(header) is { } block)
+                    {
+                        blocks.Add(block);
+                    }
+                }
+            }
+            finally
+            {
+                // Cleared whatever happens, so a block that cannot be read never holds up later heads.
+                _rewoundHeaders.Clear();
+            }
+
+            return blocks;
+        }
+
+        private Block? TryFindRemovedBlock(BlockHeader header)
+        {
+            try
             {
                 Block? block = _headInfo.FindRemovedBlock(header);
-                if (block is not null)
-                {
-                    blocks.Add(block);
-                }
-                else if (_logger.IsDebug)
+                if (block is null && _logger.IsDebug)
                 {
                     _logger.Debug($"Removed block {header.ToString(BlockHeader.Format.FullHashAndNumber)} not found, its transactions are not re-added.");
                 }
-            }
 
-            _rewoundHeaders.Clear();
-            return blocks;
+                return block;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Couldn't load removed block {header.ToString(BlockHeader.Format.FullHashAndNumber)}, its transactions are not re-added. {e}");
+                return null;
+            }
         }
 
         private void ReAddRewoundTransactions(List<Block>? rewound)
