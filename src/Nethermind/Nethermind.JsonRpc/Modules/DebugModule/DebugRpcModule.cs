@@ -480,6 +480,17 @@ public class DebugRpcModule(
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            if (resolvedBlock.Transactions.Length != 0)
+            {
+                try
+                {
+                    _ = effective.Timeout;
+                }
+                catch (FormatException exception)
+                {
+                    return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+                }
+            }
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
@@ -502,6 +513,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
+        }
+        catch (FormatException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
     }
 

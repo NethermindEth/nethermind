@@ -70,10 +70,24 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         return ParseOrThrow(stackBuf[..reader.CopyString(stackBuf)]);
     }
 
-    private static TimeSpan ParseOrThrow(ReadOnlySpan<char> s)
+    private static TimeSpan ParseOrThrow(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(s, out TimeSpan result) || TimeSpan.TryParse(s, CultureInfo.InvariantCulture, out result)) return result;
-        throw new JsonException($"Cannot parse '{s}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
+        try
+        {
+            return Parse(value);
+        }
+        catch (FormatException exception)
+        {
+            throw new JsonException(exception.Message, exception);
+        }
+    }
+
+    internal static TimeSpan Parse(string value) => Parse(value.AsSpan());
+
+    private static TimeSpan Parse(ReadOnlySpan<char> value)
+    {
+        if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return result;
+        throw new FormatException($"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
