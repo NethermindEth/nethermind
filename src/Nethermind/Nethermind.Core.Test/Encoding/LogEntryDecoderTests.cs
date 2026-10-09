@@ -74,7 +74,6 @@ public class LogEntryDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
             Assert.That(Bytes.AreEqual(logEntry.Data, destination), "full log data must copy unchanged");
             Assert.That(logEntry.Address == decoded.Address, "address");
         }
@@ -100,23 +99,18 @@ public class LogEntryDecoderTests
         CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
         Span<byte> destination = stackalloc byte[80];
         destination.Fill(0xcc);
-        LogEntryStructRef warmup = decoded;
-        warmup.CopyDataTo(destination);
+        decoded.CopyDataTo(destination);
         destination.Fill(0xcc);
         long before = GC.GetAllocatedBytesForCurrentThread();
         decoded.CopyDataTo(destination);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        ReadOnlySpan<byte> first = decoded.Data;
-        ReadOnlySpan<byte> second = decoded.Data;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Bytes.AreEqual(data, first), "leading zeros must be restored before publishing data");
             Assert.That(decoded.DataLength, Is.EqualTo(data.Length));
             Assert.That(Bytes.AreEqual(data, destination[..data.Length]), "the caller's buffer must contain the complete data");
             Assert.That(destination[data.Length..].IndexOfAnyExcept((byte)0xcc), Is.EqualTo(-1), "copying must leave excess destination bytes untouched");
             Assert.That(allocated, Is.Zero, "copying compact data must not allocate an intermediate array");
-            Assert.That(first.Overlaps(second), "repeated access must reuse the materialized data");
             Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
             Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
         }
@@ -136,7 +130,6 @@ public class LogEntryDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.Data.Length, Is.Zero);
             Assert.That(decoded.DataLength, Is.Zero);
             Assert.That(destination[0], Is.EqualTo(0xcc), "empty data must not modify the destination");
             Assert.That(reader.Position, Is.EqualTo(encoded.Length));
@@ -294,7 +287,7 @@ public class LogEntryDecoderTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
-                Assert.That(logEntry.Data.Length, Is.Zero);
+                Assert.That(logEntry.DataLength, Is.Zero);
                 Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
             }
         }
