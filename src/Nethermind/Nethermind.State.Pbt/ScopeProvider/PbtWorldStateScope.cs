@@ -116,9 +116,20 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             reads =>
             {
                 keys = BalKeys.Create(bal, sink is not null);
-                PrefetchBal(Bundle, keys, sink, reads);
+                try
+                {
+                    PrefetchBal(Bundle, keys, sink, reads);
+                }
+                catch
+                {
+                    keys.Dispose();
+                    throw;
+                }
             },
-            cancellation => PrefetchNodeGroups(Bundle, keys!, cancellation));
+            cancellation =>
+            {
+                using (keys) PrefetchNodeGroups(Bundle, keys!, cancellation);
+            });
     }
 
     /// <summary>Buffers the accounts and slot runs the keys of a block access list write, forwarding every account and slot it names to <paramref name="sink"/>.</summary>
@@ -128,7 +139,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// </remarks>
     internal static void PrefetchBal(PbtSnapshotBundle bundle, BalKeys keys, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads)
     {
-        ParallelUnbalancedWork.For(0, keys.Accounts.Length, (bundle, keys, sink, reads), static (position, state) =>
+        ParallelUnbalancedWork.For(0, keys.Accounts.Count, (bundle, keys, sink, reads), static (position, state) =>
         {
             if (state.reads.IsCancellationRequested) return state;
             int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
@@ -145,12 +156,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ReadSlotsToSink(bundle, keys, keys.StorageReads, sink, reads);
     }
 
-    private static void BufferSlots<TKey>(PbtSnapshotBundle bundle, BalKeys keys, PbtWriteOperation<TKey>[] slots,
+    private static void BufferSlots<TKey>(PbtSnapshotBundle bundle, BalKeys keys, ArrayPoolList<PbtWriteOperation<TKey>> slots,
         IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
-        ParallelUnbalancedWork.For(0, (slots.Length + SlotChunkLength - 1) / SlotChunkLength, (bundle, keys, slots, sink, reads), static (chunk, state) =>
+        ParallelUnbalancedWork.For(0, (slots.Count + SlotChunkLength - 1) / SlotChunkLength, (bundle, keys, slots, sink, reads), static (chunk, state) =>
         {
             TKey? bufferedRun = null;
-            for (int position = chunk * SlotChunkLength; position < Math.Min(state.slots.Length, (chunk + 1) * SlotChunkLength); position++)
+            for (int position = chunk * SlotChunkLength; position < Math.Min(state.slots.Count, (chunk + 1) * SlotChunkLength); position++)
             {
                 if (state.reads.IsCancellationRequested) return state;
                 TKey key = state.slots[position].Key;
@@ -169,9 +180,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             return state;
         });
 
-    private static void ReadSlotsToSink<TKey>(PbtSnapshotBundle bundle, BalKeys keys, PbtWriteOperation<TKey>[] slots,
+    private static void ReadSlotsToSink<TKey>(PbtSnapshotBundle bundle, BalKeys keys, ArrayPoolList<PbtWriteOperation<TKey>> slots,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
-        ParallelUnbalancedWork.For(0, slots.Length, (bundle, keys, slots, sink, reads), static (position, state) =>
+        ParallelUnbalancedWork.For(0, slots.Count, (bundle, keys, slots, sink, reads), static (position, state) =>
         {
             if (state.reads.IsCancellationRequested) return state;
             TKey key = state.slots[position].Key;
@@ -204,12 +215,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (!keys.WritesNothing(PbtStateKey.StorageAddress(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
         }
         PbtStorageNodePath[] accountGroupPaths = [.. accountGroups];
-        List<Range> storageAccounts = keys.StorageAccounts();
+        using ArrayPoolList<Range> storageAccounts = keys.StorageAccounts();
         ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
         {
             if (state.cancellation.IsCancellationRequested) return state;
             if (item < state.accountGroupPaths.Length) ((IDisposable?)ReadNodeGroup(state.bundle, state.accountGroupPaths[item]))?.Dispose();
-            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan(state.storageAccounts[item - state.accountGroupPaths.Length]), state.cancellation);
+            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan()[state.storageAccounts[item - state.accountGroupPaths.Length]], state.cancellation);
             return state;
         });
     }
@@ -429,7 +440,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     /// <summary>The keys a block access list names, as EIP-8297 paths sorted per list, so the slots of one run, stem or group are adjacent.</summary>
-    internal sealed class BalKeys
+    internal sealed class BalKeys : IDisposable
     {
         private readonly Dictionary<ValueHash256, int> _accountIndexes = [];
 
@@ -437,24 +448,25 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             Bal = bal;
             Missing = new bool[bal.AccountChanges.Count];
+            Accounts = new(bal.AccountChanges.Count);
         }
 
         public ReadOnlyBlockAccessList Bal { get; }
 
         /// <summary>The basic-data key of each account to read, with its index in <see cref="Bal"/> as the value.</summary>
-        public PbtWriteOperation<PbtPath>[] Accounts { get; private set; } = [];
+        public ArrayPoolList<PbtWriteOperation<PbtPath>> Accounts { get; }
 
         /// <summary>The written header slots, with the slot as the value.</summary>
-        public PbtWriteOperation<PbtPath>[] HeaderWrites { get; private set; } = [];
+        public ArrayPoolList<PbtWriteOperation<PbtPath>> HeaderWrites { get; } = new(0);
 
         /// <summary>The written storage-zone slots, with the slot as the value.</summary>
-        public PbtWriteOperation<PbtStoragePath>[] StorageWrites { get; private set; } = [];
+        public ArrayPoolList<PbtWriteOperation<PbtStoragePath>> StorageWrites { get; } = new(0);
 
         /// <summary>The header slots only read, with the slot as the value.</summary>
-        public PbtWriteOperation<PbtPath>[] HeaderReads { get; private set; } = [];
+        public ArrayPoolList<PbtWriteOperation<PbtPath>> HeaderReads { get; } = new(0);
 
         /// <summary>The storage-zone slots only read, with the slot as the value.</summary>
-        public PbtWriteOperation<PbtStoragePath>[] StorageReads { get; private set; } = [];
+        public ArrayPoolList<PbtWriteOperation<PbtStoragePath>> StorageReads { get; } = new(0);
 
         /// <summary>Per account in <see cref="Bal"/>, whether reading it found it missing.</summary>
         public bool[] Missing { get; }
@@ -463,11 +475,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public static BalKeys Create(ReadOnlyBlockAccessList bal, bool withReads)
         {
             BalKeys keys = new(bal);
-            List<PbtWriteOperation<PbtPath>> accounts = [];
-            List<PbtWriteOperation<PbtPath>> headerWrites = [];
-            List<PbtWriteOperation<PbtStoragePath>> storageWrites = [];
-            List<PbtWriteOperation<PbtPath>> headerReads = [];
-            List<PbtWriteOperation<PbtStoragePath>> storageReads = [];
             ReadOnlySpan<ReadOnlyAccountChanges> accountChanges = bal.AccountChanges.AsSpan();
             for (int index = 0; index < accountChanges.Length; index++)
             {
@@ -475,26 +482,20 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 if (!changes.HasStateChanges && !withReads) continue;
                 ValueHash256 addressHash = PbtStateKey.AddressKeyHash(changes.Address);
                 keys._accountIndexes[addressHash] = index;
-                accounts.Add(new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
+                keys.Accounts.Add(new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
                 StemKeys writes = new(changes.Address, addressHash);
                 foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
-                    if (slotChanges.Changes.Length != 0) writes.Add(slotChanges.Key, headerWrites, storageWrites);
+                    if (slotChanges.Changes.Length != 0) writes.Add(slotChanges.Key, keys.HeaderWrites, keys.StorageWrites);
                 if (!withReads) continue;
                 StemKeys readKeys = new(changes.Address, addressHash);
-                foreach (UInt256 slot in changes.StorageReads) readKeys.Add(slot, headerReads, storageReads);
+                foreach (UInt256 slot in changes.StorageReads) readKeys.Add(slot, keys.HeaderReads, keys.StorageReads);
             }
-            keys.Accounts = Sorted(accounts);
-            keys.HeaderWrites = Sorted(headerWrites);
-            keys.StorageWrites = Sorted(storageWrites);
-            keys.HeaderReads = Sorted(headerReads);
-            keys.StorageReads = Sorted(storageReads);
+            PbtOperationSort.Sort(keys.Accounts.AsSpan());
+            PbtOperationSort.Sort(keys.HeaderWrites.AsSpan());
+            PbtOperationSort.Sort(keys.StorageWrites.AsSpan());
+            PbtOperationSort.Sort(keys.HeaderReads.AsSpan());
+            PbtOperationSort.Sort(keys.StorageReads.AsSpan());
             return keys;
-        }
-
-        private static PbtWriteOperation<TKey>[] Sorted<TKey>(List<PbtWriteOperation<TKey>> operations) where TKey : unmanaged, IPbtKey<TKey>
-        {
-            PbtOperationSort.Sort(CollectionsMarshal.AsSpan(operations));
-            return [.. operations];
         }
 
         public int AccountIndex(in ValueHash256 addressHash) => _accountIndexes[addressHash];
@@ -507,16 +508,25 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
 
         /// <summary>The ranges of <see cref="StorageWrites"/> that each hold one account's slots, leaving out accounts <see cref="WritesNothing"/> holds for.</summary>
-        public List<Range> StorageAccounts()
+        public ArrayPoolList<Range> StorageAccounts()
         {
-            List<Range> ranges = [];
-            for (int start = 0, end; start < StorageWrites.Length; start = end)
+            ArrayPoolList<Range> ranges = new(0);
+            for (int start = 0, end; start < StorageWrites.Count; start = end)
             {
                 ValueHash256 addressHash = PbtStateKey.StorageAddress(StorageWrites[start].Key);
-                for (end = start + 1; end < StorageWrites.Length && PbtStateKey.StorageAddress(StorageWrites[end].Key) == addressHash; end++) { }
+                for (end = start + 1; end < StorageWrites.Count && PbtStateKey.StorageAddress(StorageWrites[end].Key) == addressHash; end++) { }
                 if (!WritesNothing(addressHash, out _)) ranges.Add(start..end);
             }
             return ranges;
+        }
+
+        public void Dispose()
+        {
+            Accounts.Dispose();
+            HeaderWrites.Dispose();
+            StorageWrites.Dispose();
+            HeaderReads.Dispose();
+            StorageReads.Dispose();
         }
 
         /// <summary>Derives the keys of one account's slots, given in ascending order, deriving each stem's hash once.</summary>
@@ -526,7 +536,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             private UInt256? _stemSlot;
             private PbtStoragePath _stemKey;
 
-            public void Add(in UInt256 slot, List<PbtWriteOperation<PbtPath>> headerKeys, List<PbtWriteOperation<PbtStoragePath>> storageKeys)
+            public void Add(in UInt256 slot, ArrayPoolList<PbtWriteOperation<PbtPath>> headerKeys, ArrayPoolList<PbtWriteOperation<PbtStoragePath>> storageKeys)
             {
                 if (PbtStateKey.IsHeaderSlot(slot))
                 {

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
@@ -35,7 +36,7 @@ public class PbtNodeGroupPrefetchTests
             Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject,
             Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(5).TestObject).TestObject;
 
-        PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, withReads);
+        using PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, withReads);
 
         Address[] accounts = withReads ? [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC] : [TestItem.AddressA, TestItem.AddressB];
         using (Assert.EnterMultipleScope())
@@ -55,7 +56,7 @@ public class PbtNodeGroupPrefetchTests
                 if (accountChanges[index].Address == address) return index;
         }
 
-        static (string Key, UInt256 Value)[] Entries<TKey>(PbtWriteOperation<TKey>[] operations) where TKey : struct, IPbtKey<TKey> =>
+        static (string Key, UInt256 Value)[] Entries<TKey>(ArrayPoolList<PbtWriteOperation<TKey>> operations) where TKey : struct, IPbtKey<TKey> =>
             [.. operations.Select(static operation =>
             {
                 TKey key = operation.Key;
@@ -252,7 +253,7 @@ public class PbtNodeGroupPrefetchTests
 
     private static void Prefetch(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken reads, CancellationToken cancellation)
     {
-        PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, false);
+        using PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, false);
         PbtWorldStateScope.PrefetchBal(bundle, keys, null, reads);
         PbtWorldStateScope.PrefetchNodeGroups(bundle, keys, cancellation);
     }
