@@ -5,21 +5,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
@@ -67,6 +69,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
     private OverridableReleaseSpec _spec = null!;
     private ISpecProvider _specProvider = null!;
     private TracedAccessWorldState _tracedState = null!;
+    private IContainer _container = null!;
+    private ILifetimeScope? _processingScope;
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.BogotaBlockTimestamp;
@@ -80,7 +84,19 @@ public class Eip8151Tests : VirtualMachineTestsBase
         _specProvider = new TestSpecProvider(_spec);
         base.Setup();
         _spec.IsEip8151Enabled = true;
+        _container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(SpecProvider)
+            .Build();
         CreateProcessor(parallel: false);
+    }
+
+    [TearDown]
+    public override void TearDown()
+    {
+        _processingScope?.Dispose();
+        _container.Dispose();
+        base.TearDown();
     }
 
     private static IEnumerable<TestCaseData> RecoveredAccountCases()
@@ -324,8 +340,8 @@ public class Eip8151Tests : VirtualMachineTestsBase
     public void Ecrecover_leaves_the_inline_static_call_path_only_under_eip8151([Values] bool eip8151Enabled)
     {
         _spec.IsEip8151Enabled = eip8151Enabled;
-        InlinePathProbe probe = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
-        CreateProcessor(parallel: false, machine: probe);
+        CreateProcessor(parallel: false, probeInlinePath: true);
+        InlinePathProbe probe = (InlinePathProbe)_processingScope!.Resolve<IVirtualMachine>();
 
         Run(MeasureEcRecover(Prepare.EvmCode, 0, Instruction.STATICCALL, PrecompileGasLimit, ValidInput).Done);
 
@@ -384,22 +400,36 @@ public class Eip8151Tests : VirtualMachineTestsBase
         }
     }
 
-    private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null, IVirtualMachine? machine = null)
+    /// <summary>Resolves the processor as main block processing does, recording the BAL over the state the test seeds.</summary>
+    private void CreateProcessor(bool parallel, (Address From, Address To)? movedPrecompile = null, bool probeInlinePath = false)
     {
-        _tracedState = new TracedAccessWorldState(TestState, parallel);
+        _processingScope?.Dispose();
+        _processingScope = _container.BeginLifetimeScope(builder =>
+        {
+            builder
+                .AddSingleton(TestState)
+                .AddDecorator<IWorldState>((_, inner) => new TracedAccessWorldState(inner, parallel))
+                // Brings the precompile result cache in front of the code repository.
+                .AddModule(_container.Resolve<IMainProcessingModule[]>());
+            if (movedPrecompile is not null)
+            {
+                // As the eth_call / eth_simulateV1 envs wire state overrides.
+                builder
+                    .AddScoped<CodeOverrideStore>()
+                    .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>();
+            }
+
+            if (probeInlinePath) builder.AddScoped<IVirtualMachine, InlinePathProbe>();
+        });
+
+        _tracedState = (TracedAccessWorldState)_processingScope.Resolve<IWorldState>();
         _tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumPrecompileProvider precompileProvider = new();
-        PrecompileCaches precompileCaches = new(precompileProvider, new PreBlockCachesConfig(), new BlocksConfig());
-        ICodeInfoRepository codeInfoRepository = new PrecompileCachedCodeInfoRepository(
-            _tracedState, precompileProvider, new EthereumCodeInfoRepository(_tracedState), precompileCaches);
         if (movedPrecompile is var (from, to))
         {
-            OverridableCodeInfoRepository overridable = new(codeInfoRepository, _tracedState);
-            overridable.MovePrecompile(_spec, from, to);
-            codeInfoRepository = overridable;
+            ((OverridableCodeInfoRepository)_processingScope.Resolve<ICodeInfoRepository>()).MovePrecompile(_spec, from, to);
         }
 
-        _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, _tracedState, machine ?? Machine, codeInfoRepository, LimboLogs.Instance);
+        _processor = _processingScope.Resolve<ITransactionProcessor>();
     }
 
     private void DeploySigner(byte[]? code)
