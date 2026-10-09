@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -356,7 +357,7 @@ public class TransportMemoryPoolTests
 
     [Test]
     [CancelAfter(60_000)]
-    public void Concurrent_rents_and_returns_of_both_sizes_keep_blocks_exclusive_and_counts_consistent([Values] bool exhaustLargeBlocks)
+    public void Concurrent_rents_and_returns_of_both_sizes_keep_blocks_exclusive_and_counts_consistent([Values] bool exhaustLargeBlocks, CancellationToken token)
     {
         const int workers = 16;
         const int rounds = 3_000;
@@ -383,12 +384,13 @@ public class TransportMemoryPoolTests
 
         try
         {
-            Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, worker =>
+            Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers, CancellationToken = token }, worker =>
             {
                 Random random = new(worker);
                 List<IMemoryOwner<byte>> owners = [];
                 for (int round = 0; round < rounds; round++)
                 {
+                    token.ThrowIfCancellationRequested();
                     long stamp = ((long)worker << 32) | (uint)round;
                     int count = random.Next(1, maxHeld + 1);
                     for (int i = 0; i < count; i++)
@@ -490,6 +492,88 @@ public class TransportMemoryPoolTests
     }
 
     [Test]
+    [CancelAfter(120_000)]
+    public void Concurrent_creates_and_disposals_keep_the_timer_running_exactly_while_pools_are_live([Values(2, 8)] int workers, CancellationToken token)
+    {
+        // In every round each worker creates a pool or disposes the one it holds, and only worker 0 starts with one, so
+        // the rounds alternate between disposing the last pool while others create and creating one while others dispose
+        // the rest. Halfway through a factory's rounds one worker also disposes the factory.
+        const int rounds = 200_000;
+        const int roundsPerFactory = 4;
+        const int disposeRound = roundsPerFactory / 2;
+        CountingTimeProvider time = new();
+        TransportMemoryPoolFactory factory = new(time);
+        MemoryPool<byte>[] held = new MemoryPool<byte>[workers];
+        TransportMemoryPoolFactory[] heldFrom = new TransportMemoryPoolFactory[workers];
+        ConcurrentQueue<Exception> errors = new();
+        int violations = 0;
+        string firstViolation = null;
+
+        // Runs on the last worker to arrive while the others wait, so the factory is quiescent.
+        using Barrier barrier = new(workers, b =>
+        {
+            int round = (int)b.CurrentPhaseNumber;
+            bool disposed = round % roundsPerFactory >= disposeRound;
+            int expectedLive = disposed ? 0 : Enumerable.Range(0, workers).Count(w => held[w] is not null && heldFrom[w] == factory);
+            int live = factory.LivePools;
+            bool trimming = factory.IsTrimming;
+            if (trimming != live > 0 || live != expectedLive || time.ActiveTimers != (trimming ? 1 : 0))
+            {
+                violations++;
+                firstViolation ??= $"round {round}: {live} live pools, {expectedLive} expected, trimming {trimming}, {time.ActiveTimers} timers";
+            }
+
+            if (round % roundsPerFactory == roundsPerFactory - 1)
+            {
+                time = new CountingTimeProvider();
+                factory = new TransportMemoryPoolFactory(time);
+            }
+        });
+
+        Thread[] threads = Enumerable.Range(0, workers).Select(worker => new Thread(() =>
+        {
+            try
+            {
+                Random random = new(worker);
+                for (int round = 0; round < rounds; round++)
+                {
+                    Thread.SpinWait(random.Next(32));
+                    if (round % roundsPerFactory == disposeRound && round % workers == worker) factory.Dispose();
+                    if (held[worker] is { } pool)
+                    {
+                        pool.Dispose();
+                        held[worker] = null;
+                    }
+                    else
+                    {
+                        held[worker] = factory.Create();
+                        heldFrom[worker] = factory;
+                    }
+
+                    barrier.SignalAndWait(token);
+                }
+            }
+            catch (Exception e)
+            {
+                errors.Enqueue(e);
+            }
+        })).ToArray();
+        held[0] = factory.Create();
+        heldFrom[0] = factory;
+        foreach (Thread thread in threads) thread.Start();
+        foreach (Thread thread in threads) thread.Join();
+        foreach (MemoryPool<byte> pool in held) pool?.Dispose();
+        factory.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errors, Is.Empty);
+            Assert.That(violations, Is.Zero, firstViolation);
+            Assert.That(factory.IsTrimming, Is.False);
+        }
+    }
+
+    [Test]
     public void A_disposed_factory_stops_trimming_its_pools()
     {
         ManualTimeProvider time = new();
@@ -532,22 +616,21 @@ public class TransportMemoryPoolTests
     [Test]
     [NonParallelizable]
     [CancelAfter(60_000)]
-    public async Task Startup_gives_kestrel_the_pool_and_large_bodies_cross_it_intact()
+    public async Task Startup_gives_kestrel_the_pool_and_large_bodies_cross_it_intact(CancellationToken token)
     {
         using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
-        WebApplication app = BuildHost(gcKeeper, endpoints: 1, ioQueues: null, EchoAsync);
-        await app.StartAsync();
+        await using WebApplication app = BuildHost(gcKeeper, endpoints: 1, ioQueues: null, EchoAsync);
+        await app.StartAsync(token);
         TransportMemoryPoolFactory ours = app.Services.GetRequiredService<IMemoryPoolFactory<byte>>() as TransportMemoryPoolFactory;
         bool trimmingWhileServing = ours?.IsTrimming ?? false;
 
         byte[] sent = RandomBody(5 * TransportMemoryPool.BlockSize + 123, 42);
         using HttpClient client = new();
-        using HttpResponseMessage response = await client.PostAsync(Addresses(app)[0], new ByteArrayContent(sent));
-        byte[] received = await response.Content.ReadAsByteArrayAsync();
+        using HttpResponseMessage response = await client.PostAsync(Addresses(app)[0], new ByteArrayContent(sent), token);
+        byte[] received = await response.Content.ReadAsByteArrayAsync(token);
         await app.StopAsync();
         // Kestrel disposes its pools when it stops, and the last one stops the timer.
         bool trimmingAfterStop = ours?.IsTrimming ?? true;
-        await app.DisposeAsync();
 
         using (Assert.EnterMultipleScope())
         {
@@ -563,7 +646,7 @@ public class TransportMemoryPoolTests
     [Test]
     [NonParallelizable]
     [CancelAfter(120_000)]
-    public async Task A_busy_endpoint_cannot_take_the_large_blocks_of_another()
+    public async Task A_busy_endpoint_cannot_take_the_large_blocks_of_another(CancellationToken token)
     {
         const int ioQueues = 2;
         // More connections per I/O queue than a pool has large blocks, each leaving its body unread.
@@ -571,58 +654,65 @@ public class TransportMemoryPoolTests
         using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int busyPort = 0;
-        WebApplication app = BuildHost(gcKeeper, endpoints: 2, ioQueues, async ctx =>
+        await using WebApplication app = BuildHost(gcKeeper, endpoints: 2, ioQueues, async ctx =>
         {
             if (ctx.Connection.LocalPort == Volatile.Read(ref busyPort)) await release.Task;
             await EchoAsync(ctx);
         });
-        await app.StartAsync();
+        await app.StartAsync(token);
         TransportMemoryPoolFactory factory = (TransportMemoryPoolFactory)app.Services.GetRequiredService<IMemoryPoolFactory<byte>>();
         Uri[] addresses = Addresses(app);
         Volatile.Write(ref busyPort, addresses[0].Port);
 
         using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(90) };
-        byte[][] busyBodies = Enumerable.Range(0, busyConnections).Select(static i => RandomBody(2 * TransportMemoryPool.BlockSize + i, i)).ToArray();
-        Task<byte[]>[] busy = busyBodies.Select(body => PostAsync(client, addresses[0], body)).ToArray();
-
-        // Wait until the busy endpoint's pools have every large block out and have moved on to small ones.
-        TransportMemoryPool[] busyPools = [];
-        DateTime deadline = DateTime.UtcNow.AddSeconds(30);
-        while (busyPools.Length < ioQueues && DateTime.UtcNow < deadline)
+        try
         {
-            await Task.Delay(10);
-            busyPools = factory.Pools.Where(static p => p.Large.BlocksInUse == LargeCap && p.Small.BlocksInUse > 0).ToArray();
+            byte[][] busyBodies = Enumerable.Range(0, busyConnections).Select(static i => RandomBody(2 * TransportMemoryPool.BlockSize + i, i)).ToArray();
+            Task<byte[]>[] busy = busyBodies.Select(body => PostAsync(client, addresses[0], body, token)).ToArray();
+
+            // Wait until the busy endpoint's pools have every large block out and have moved on to small ones.
+            TransportMemoryPool[] busyPools = [];
+            DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+            while (busyPools.Length < ioQueues && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(10, token);
+                busyPools = factory.Pools.Where(static p => p.Large.BlocksInUse == LargeCap && p.Small.BlocksInUse > 0).ToArray();
+            }
+
+            TransportMemoryPool[] quietPools = factory.Pools.Except(busyPools).ToArray();
+            long quietSmallBefore = quietPools.Sum(static p => p.Small.BlocksAllocated);
+            long quietLargeBefore = quietPools.Sum(static p => p.Large.BlocksAllocated);
+
+            byte[] payload = RandomBody(5 * TransportMemoryPool.BlockSize + 123, 7);
+            byte[] payloadEcho = await PostAsync(client, addresses[1], payload, token);
+            bool busyStillFull = busyPools.All(static p => p.Large.BlocksInUse == LargeCap);
+            long quietSmallAfter = quietPools.Sum(static p => p.Small.BlocksAllocated);
+            long quietLargeAfter = quietPools.Sum(static p => p.Large.BlocksAllocated);
+
+            release.SetResult();
+            byte[][] busyEchoes = await Task.WhenAll(busy);
+            long busySmallAllocated = busyPools.Sum(static p => p.Small.BlocksAllocated);
+            int poolsCreated = factory.PoolsCreated;
+            await app.StopAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(poolsCreated, Is.EqualTo(2 * ioQueues), "Kestrel gives each endpoint pools of its own");
+                Assert.That(busyPools, Has.Length.EqualTo(ioQueues), "the busy endpoint's pools did not run out of large blocks");
+                Assert.That(busyStillFull, Is.True);
+                Assert.That(quietPools, Has.Length.EqualTo(ioQueues));
+                Assert.That(quietSmallBefore, Is.Zero);
+                Assert.That(quietSmallAfter, Is.Zero, "the payload was received in small blocks");
+                Assert.That(quietLargeAfter, Is.GreaterThan(quietLargeBefore), "the payload was received in the quiet endpoint's large blocks");
+                Assert.That(busySmallAllocated, Is.GreaterThan(0));
+                Assert.That(payloadEcho, Is.EqualTo(payload));
+                for (int i = 0; i < busyConnections; i++) Assert.That(busyEchoes[i], Is.EqualTo(busyBodies[i]), $"busy body {i}");
+            }
         }
-
-        TransportMemoryPool[] quietPools = factory.Pools.Except(busyPools).ToArray();
-        long quietSmallBefore = quietPools.Sum(static p => p.Small.BlocksAllocated);
-        long quietLargeBefore = quietPools.Sum(static p => p.Large.BlocksAllocated);
-
-        byte[] payload = RandomBody(5 * TransportMemoryPool.BlockSize + 123, 7);
-        byte[] payloadEcho = await PostAsync(client, addresses[1], payload);
-        bool busyStillFull = busyPools.All(static p => p.Large.BlocksInUse == LargeCap);
-        long quietSmallAfter = quietPools.Sum(static p => p.Small.BlocksAllocated);
-        long quietLargeAfter = quietPools.Sum(static p => p.Large.BlocksAllocated);
-
-        release.SetResult();
-        byte[][] busyEchoes = await Task.WhenAll(busy);
-        long busySmallAllocated = busyPools.Sum(static p => p.Small.BlocksAllocated);
-        int poolsCreated = factory.PoolsCreated;
-        await app.StopAsync();
-        await app.DisposeAsync();
-
-        using (Assert.EnterMultipleScope())
+        finally
         {
-            Assert.That(poolsCreated, Is.EqualTo(2 * ioQueues), "Kestrel gives each endpoint pools of its own");
-            Assert.That(busyPools, Has.Length.EqualTo(ioQueues), "the busy endpoint's pools did not run out of large blocks");
-            Assert.That(busyStillFull, Is.True);
-            Assert.That(quietPools, Has.Length.EqualTo(ioQueues));
-            Assert.That(quietSmallBefore, Is.Zero);
-            Assert.That(quietSmallAfter, Is.Zero, "the payload was received in small blocks");
-            Assert.That(quietLargeAfter, Is.GreaterThan(quietLargeBefore), "the payload was received in the quiet endpoint's large blocks");
-            Assert.That(busySmallAllocated, Is.GreaterThan(0));
-            Assert.That(payloadEcho, Is.EqualTo(payload));
-            for (int i = 0; i < busyConnections; i++) Assert.That(busyEchoes[i], Is.EqualTo(busyBodies[i]), $"busy body {i}");
+            // A failure before the release must not leave the busy handlers blocked; disposing the host then stops them.
+            release.TrySetResult();
         }
     }
 
@@ -677,11 +767,11 @@ public class TransportMemoryPoolTests
     private static Uri[] Addresses(WebApplication app) =>
         app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Select(static a => new Uri(a)).ToArray();
 
-    private static async Task<byte[]> PostAsync(HttpClient client, Uri address, byte[] body)
+    private static async Task<byte[]> PostAsync(HttpClient client, Uri address, byte[] body, CancellationToken token)
     {
-        using HttpResponseMessage response = await client.PostAsync(address, new ByteArrayContent(body));
+        using HttpResponseMessage response = await client.PostAsync(address, new ByteArrayContent(body), token);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsByteArrayAsync();
+        return await response.Content.ReadAsByteArrayAsync(token);
     }
 
     private static byte[] RandomBody(int length, int seed)
@@ -701,6 +791,38 @@ public class TransportMemoryPoolTests
     private static void ReturnBlocks(List<IMemoryOwner<byte>> owners)
     {
         foreach (IMemoryOwner<byte> owner in owners) owner.Dispose();
+    }
+
+    /// <summary>Counts the timers created and not yet disposed, and never fires them.</summary>
+    private sealed class CountingTimeProvider : TimeProvider
+    {
+        private int _activeTimers;
+
+        public int ActiveTimers => Volatile.Read(ref _activeTimers);
+
+        public override ITimer CreateTimer(TimerCallback callback, object state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref _activeTimers);
+            return new CountedTimer(this);
+        }
+
+        private sealed class CountedTimer(CountingTimeProvider owner) : ITimer
+        {
+            private int _disposed;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period) => Volatile.Read(ref _disposed) == 0;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0) Interlocked.Decrement(ref owner._activeTimers);
+            }
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
     }
 
     /// <summary>Fires timers only when the test advances the clock, in due order, on the test's thread.</summary>

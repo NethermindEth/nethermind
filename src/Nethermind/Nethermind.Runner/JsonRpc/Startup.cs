@@ -102,7 +102,6 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
-        // Larger transport blocks so a large request body is received in a few reads; see TransportMemoryPoolFactory.
         services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
         services.Configure<KestrelServerOptions>(options =>
         {

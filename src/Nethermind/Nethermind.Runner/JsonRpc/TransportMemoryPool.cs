@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.AspNetCore.Connections;
@@ -51,15 +52,7 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
     internal int LivePools => _pools.Count;
 
     /// <summary>The pools handed out and not yet disposed.</summary>
-    internal List<TransportMemoryPool> Pools
-    {
-        get
-        {
-            List<TransportMemoryPool> pools = new(_pools.Count);
-            foreach (KeyValuePair<TransportMemoryPool, byte> pool in _pools) pools.Add(pool.Key);
-            return pools;
-        }
-    }
+    internal List<TransportMemoryPool> Pools => _pools.Select(static pool => pool.Key).ToList();
 
     /// <summary>Whether the trim timer is running.</summary>
     internal bool IsTrimming
@@ -74,19 +67,8 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
     {
         Interlocked.Increment(ref _poolsCreated);
         TransportMemoryPool pool = new(this);
-        lock (_lock)
-        {
-            if (!_disposed)
-            {
-                _pools.TryAdd(pool, 0);
-                _timer ??= _timeProvider.CreateTimer(
-                    static state => ((TransportMemoryPoolFactory)state!).TrimPools(),
-                    this,
-                    TransportMemoryPool.TrimInterval,
-                    TransportMemoryPool.TrimInterval);
-            }
-        }
-
+        _pools.TryAdd(pool, 0);
+        EnsureTimer();
         return pool;
     }
 
@@ -96,16 +78,13 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
         {
             _disposed = true;
             _pools.Clear();
-            StopTimer();
+            DisposeTimer();
         }
     }
 
     internal void OnPoolDisposed(TransportMemoryPool pool)
     {
-        lock (_lock)
-        {
-            if (_pools.TryRemove(pool, out _) && _pools.IsEmpty) StopTimer();
-        }
+        if (_pools.TryRemove(pool, out _) && _pools.IsEmpty) StopTimerIfIdle();
     }
 
     private void TrimPools()
@@ -113,7 +92,34 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
         foreach (KeyValuePair<TransportMemoryPool, byte> pool in _pools) pool.Key.Trim();
     }
 
-    private void StopTimer()
+    // The timer helpers decide from the pools as they are under the lock, not as the caller saw them: a pool created
+    // between the last pool's removal and the stop would otherwise be left without a timer.
+    private void EnsureTimer()
+    {
+        lock (_lock)
+        {
+            // A pool added after Dispose cleared the set is dropped, so a disposed factory holds no pools.
+            if (_disposed) _pools.Clear();
+            else if (!_pools.IsEmpty)
+            {
+                _timer ??= _timeProvider.CreateTimer(
+                    static state => ((TransportMemoryPoolFactory)state!).TrimPools(),
+                    this,
+                    TransportMemoryPool.TrimInterval,
+                    TransportMemoryPool.TrimInterval);
+            }
+        }
+    }
+
+    private void StopTimerIfIdle()
+    {
+        lock (_lock)
+        {
+            if (_pools.IsEmpty) DisposeTimer();
+        }
+    }
+
+    private void DisposeTimer()
     {
         _timer?.Dispose();
         _timer = null;
