@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -35,6 +36,15 @@ internal sealed class TransactionFootprint(
     /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
     public bool Refreshed { get; init; }
 
+    /// <summary>Whether the mempool pass recorded the run, on the block's parent.</summary>
+    public bool FromMempool { get; init; }
+
+    /// <summary>The block context fields the run read through an opcode.</summary>
+    public BlockContextReads ContextReads { get; init; }
+
+    /// <summary>The storage writes replay makes, one per slot.</summary>
+    public int StorageWrites { get; } = CountStorageWrites(effects);
+
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
     public ref readonly TransactionResult Result => ref _result;
@@ -42,11 +52,19 @@ internal sealed class TransactionFootprint(
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
 
+    /// <summary>The accounts the run depended on, at the values it depended on.</summary>
+    public ReadOnlySpan<AccountPrecondition> Accounts => accounts;
+
     /// <summary>The slots the run read, at the values it read.</summary>
     public ReadOnlySpan<SlotPrecondition> Slots => slots;
 
     public ReadOnlySpan<StateEffect> Effects => effects;
 
+    /// <summary>This mempool run as the run of the block's <paramref name="tx"/>, with <paramref name="replacedEffects"/> in place of its effects.</summary>
+    public TransactionFootprint For(Transaction tx, StateEffect[] replacedEffects) =>
+        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true };
+
+    [SkipLocalsInit]
     public bool Matches(IWorldState state)
     {
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
@@ -61,6 +79,17 @@ internal sealed class TransactionFootprint(
         }
 
         return true;
+    }
+
+    private static int CountStorageWrites(StateEffect[] effects)
+    {
+        int count = 0;
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage) count++;
+        }
+
+        return count;
     }
 
     public void Replay(IWorldState state, IReleaseSpec spec)
@@ -151,22 +180,40 @@ internal enum EffectKind : byte
     InsertCode
 }
 
+/// <remarks>
+/// Laid out in 88 bytes rather than two cache lines: replay reads every effect from the core that recorded it. A
+/// nonce has the slot index of an account effect, and a code hash the value of code being inserted.
+/// </remarks>
 internal struct StateEffect
 {
-    public EffectKind Kind;
-    public Address Address;
-    public UInt256 Index;
+    // The account, and for a storage write the slot, in the form the write takes, so replaying it builds no cell.
+    public StorageCell Cell;
     public UInt256 Value;
-    public ulong Nonce;
-    public ValueHash256 CodeHash;
     public byte[]? Code;
+    public EffectKind Kind;
 
+    public readonly Address Address => Cell.Address;
+
+    public ulong Nonce
+    {
+        readonly get => Cell.Index.u0;
+        set => Cell = new StorageCell(Cell.Address, value);
+    }
+
+    public ValueHash256 CodeHash
+    {
+        readonly get => Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in Value));
+        set => Value = Unsafe.As<ValueHash256, UInt256>(ref value);
+    }
+
+    // The balance and nonce a change leaves are discarded; clearing them first would cost every effect replayed.
+    [SkipLocalsInit]
     public readonly void Replay(IWorldState state, IReleaseSpec spec)
     {
         switch (Kind)
         {
             case EffectKind.SetStorage:
-                state.Set(new StorageCell(Address, in Index), in Value);
+                state.Set(in Cell, in Value);
                 break;
             case EffectKind.ClearStorage:
                 state.ClearStorage(Address);
@@ -202,8 +249,12 @@ internal struct StateEffect
                 state.DeleteAccount(Address);
                 break;
             case EffectKind.InsertCode:
-                state.InsertCode(Address, in CodeHash, Code, spec);
+                InsertCode(state, spec);
                 break;
         }
     }
+
+    // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, CodeHash, Code, spec);
 }
