@@ -427,7 +427,9 @@ public static partial class EvmInstructions
             if (vmState.IsTransientCreateContext
                 && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original)
                 && !vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in result, UInt256.Zero))
+            {
                 goto OutOfGas;
+            }
 
             if (vmState.AccessTracker.IsTransientCreate(state, inheritor, out original))
             {

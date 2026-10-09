@@ -332,7 +332,7 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.NoInlining)]
 #endif
     [SkipLocalsInit]
-    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, TEip8360>(
+    private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst, Eip8360>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -351,7 +351,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
-        where TEip8360 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
         IWorldState state = vm.WorldState;
         // Take a snapshot of the state for potential rollback.
@@ -385,7 +385,7 @@ public static partial class EvmInstructions
         // Precompiles run no bytecode: handle them inline, skipping the child
         // frame's round trip through the ExecuteTransaction dispatch loop.
         // EIP-8360 transfers take the full frame so its entry prices the TCREATE balance change.
-        if (codeInfo.IsPrecompile && (!TEip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
+        if (codeInfo.IsPrecompile && (!Eip8360.IsActive || callValue.IsZero || vm.VmState.AccessTracker.TransientCreates is null))
         {
             return vm.InlinePrecompileCall<TTracingInst>(
                 callEnv,

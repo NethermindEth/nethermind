@@ -1611,7 +1611,9 @@ public partial class EngineModuleTests
                 .SignedAndResolved(producer.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
         ];
         foreach (Transaction tx in txs)
+        {
             Assert.That(producer.TxPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
 
         Hash256 head = producer.BlockTree.HeadHash;
         Task improved = producer.WaitForImprovedBlock(head, minTransactions: txs.Length);
