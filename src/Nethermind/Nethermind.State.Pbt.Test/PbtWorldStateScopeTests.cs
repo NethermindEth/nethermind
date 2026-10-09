@@ -553,10 +553,19 @@ public class PbtWorldStateScopeTests
             .Select(call => (PbtStorageNodePath)call.GetArguments()[0]!).ToArray();
         PbtStorageNodePath[][] batches = reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroups))
             .Select(call => (PbtStorageNodePath[])call.GetArguments()[0]!).ToArray();
+        reader.ClearReceivedCalls();
+        foreach (PbtStorageNodePath path in expected)
+        {
+            using RefCountingMemory? kept = bundle.GetNodeGroup(path, default);
+            using RefCountingMemory? persisted = ReadPayload(path);
+            Assert.That(kept?.GetSpan().ToArray(), Is.EqualTo(persisted?.GetSpan().ToArray()));
+        }
+        bool reread = reader.ReceivedCalls().Any();
         bundle.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(singles.Concat(batches.SelectMany(paths => paths)), Is.EquivalentTo(expected));
+            Assert.That(reread, Is.False, "the fold must read prefetched groups from the bundle");
             Assert.That(batches, Has.Length.EqualTo(multiGet && !cancelled ? 1 : 0));
             Assert.That(batches.SelectMany(paths => paths).All(path => path.BitDepth is 32 or 264), Is.True);
             Assert.That(!multiGet || singles.All(path => path.BitDepth > 264), Is.True);
@@ -625,6 +634,7 @@ public class PbtWorldStateScopeTests
             await prefetch.WaitAsync(TimeSpan.FromSeconds(10));
         }
         PbtStorageNodePath[] singles = LifecycleSingleReads(reader);
+        bundle.Dispose();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroups))
@@ -652,6 +662,7 @@ public class PbtWorldStateScopeTests
         using Nethermind.Core.Threading.ParallelUnbalancedWork.WorkerScope workers = Nethermind.Core.Threading.ParallelUnbalancedWork.BeginWorkerScope(1);
 
         Exception? error = Assert.Catch(() => PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None, multiGet: false));
+        bundle.Dispose();
 
         using (Assert.EnterMultipleScope())
         {

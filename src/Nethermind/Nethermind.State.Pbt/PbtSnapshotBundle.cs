@@ -34,6 +34,8 @@ public sealed class PbtSnapshotBundle(
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
+    // Persisted groups, and null for absent ones, that the node group prefetch read for the block in the write buffer.
+    private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _prefetchedNodeGroups = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
@@ -113,6 +115,11 @@ public sealed class PbtSnapshotBundle(
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
         if (trieNodeCache.TryGet(groupHash, groupKey, out payload)) return payload;
+        if (_prefetchedNodeGroups.TryGetValue(groupKey, out payload))
+        {
+            payload?.AcquireLease();
+            return payload;
+        }
         return readOnlyBundle.GetNodeGroup(groupKey);
     }
 
@@ -125,9 +132,34 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
     }
 
-    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) => readOnlyBundle.GetPersistedNodeGroup(groupKey);
+    /// <summary>Reads a persisted group for the prefetch and keeps it for <see cref="GetNodeGroup"/> until the write buffer is sealed.</summary>
+    /// <remarks>Only a group that <see cref="TryGetSnapshotNodeGroup"/> did not find may be read, as the kept group is served ahead of the read-only base's snapshots.</remarks>
+    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
+    {
+        RefCountingMemory? payload = readOnlyBundle.GetPersistedNodeGroup(groupKey);
+        KeepPrefetchedNodeGroup(groupKey, payload);
+        return payload;
+    }
 
-    internal RefCountingMemory?[] GetPersistedNodeGroups(PbtStorageNodePath[] groupKeys) => readOnlyBundle.GetPersistedNodeGroups(groupKeys);
+    /// <inheritdoc cref="GetPersistedNodeGroup"/>
+    internal RefCountingMemory?[] GetPersistedNodeGroups(PbtStorageNodePath[] groupKeys)
+    {
+        RefCountingMemory?[] payloads = readOnlyBundle.GetPersistedNodeGroups(groupKeys);
+        for (int index = 0; index < groupKeys.Length; index++) KeepPrefetchedNodeGroup(groupKeys[index], payloads[index]);
+        return payloads;
+    }
+
+    private void KeepPrefetchedNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload)
+    {
+        payload?.AcquireLease();
+        if (!_prefetchedNodeGroups.TryAdd(groupKey, payload)) ((IDisposable?)payload)?.Dispose();
+    }
+
+    private void ReleasePrefetchedNodeGroups()
+    {
+        foreach (KeyValuePair<PbtStorageNodePath, RefCountingMemory?> entry in _prefetchedNodeGroups) ((IDisposable?)entry.Value)?.Dispose();
+        _prefetchedNodeGroups.Clear();
+    }
 
     internal static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
     {
@@ -348,6 +380,7 @@ public sealed class PbtSnapshotBundle(
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();
+        ReleasePrefetchedNodeGroups();
         ReturnReplacedRuns();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         retired = _transientResource;
@@ -366,6 +399,7 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
         _hintedAccounts.Clear();
+        ReleasePrefetchedNodeGroups();
         ReturnReplacedRuns();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;

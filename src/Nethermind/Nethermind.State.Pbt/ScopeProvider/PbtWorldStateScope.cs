@@ -176,7 +176,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
     /// <remarks>
     /// Each storage leaf then also prefetches the groups below its first storage group, as deep as its estimated remaining group levels.
-    /// The reads only warm the store; <see cref="UpdateRootHash"/> stops them before it returns.
+    /// The bundle keeps the persisted groups read for the fold; <see cref="UpdateRootHash"/> stops the reads before it returns.
     /// </remarks>
     private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
     {
