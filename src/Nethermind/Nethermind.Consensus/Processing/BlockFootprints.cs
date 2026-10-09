@@ -33,8 +33,9 @@ internal sealed class BlockFootprints(Block block)
     /// <summary>Refreshes one block may run.</summary>
     internal const int MaxRefreshesPerBlock = 128;
 
-    // Past it, block processing wakes the refresh worker for its writes without comparing them with the prediction.
-    private const int MaxComparedWrites = 16;
+    // Writes times effects past which block processing wakes the refresh worker rather than compare: comparing would
+    // cost more than the wake.
+    private const int MaxComparisons = 256;
 
     private readonly Hash256? _blockHash = block.Hash;
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
@@ -231,9 +232,9 @@ internal sealed class BlockFootprints(Block block)
         int count = writes.Length;
         if ((footprint?.StorageWrites ?? 0) != count) return false;
         if (count == 0) return true;
-        if (count > MaxComparedWrites) return false;
-        // A footprint writes each slot once, and a commit reports each slot once.
         ReadOnlySpan<StateEffect> effects = footprint!.Effects;
+        if (count * effects.Length > MaxComparisons) return false;
+        // A footprint writes each slot once, and a commit reports each slot once.
         foreach ((StorageCell cell, UInt256 value) in writes.Span)
         {
             if (!Writes(effects, in cell, in value)) return false;

@@ -673,7 +673,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         int read = 0;
         int wrong = 0;
-        while (read < transactions)
+        // Ends once every report is read, or once the reporting has stopped and nothing is left to read.
+        while (read < transactions && !(reporting.IsCompleted && reports.IsEmpty))
         {
             if (!reports.TryDequeue(out (ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction) report)) continue;
             read++;
@@ -686,7 +687,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
 
         reporting.Wait();
-        Assert.That(wrong, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(read, Is.EqualTo(transactions));
+            Assert.That(wrong, Is.Zero);
+        }
     }
 
     [Test]
@@ -720,6 +725,24 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
         Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void A_report_against_a_footprint_too_large_to_compare_wakes_the_refresh_worker()
+    {
+        // Comparing a write with each of many effects would cost block processing more than the wake it saves.
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        StateEffect[] effects =
+        [
+            new StateEffect { Kind = EffectKind.SetStorage, Address = cell.Address, Index = cell.Index, Value = 0x4e4d },
+            .. Enumerable.Repeat(new StateEffect { Kind = EffectKind.AddToBalance, Address = TestItem.AddressD, Value = 1 }, 300)
+        ];
+        footprints.Store(0, new TransactionFootprint(txs[0], [], [], effects, default, default, default));
+
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)0x4e4d) });
+
+        Assert.That(footprints.PendingWakes, Is.GreaterThan(0));
     }
 
     public enum Report { AsPredicted, OtherValue, OtherSlot, Subset, Restored, NoneWithoutFootprint, SomeWithoutFootprint }
@@ -1039,7 +1062,6 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             {
                 Assert.That(State(), Is.EqualTo(recorded));
                 Assert.That(footprint.Effects.Length, Is.EqualTo(compacted));
-
             }
         }
 
@@ -1085,6 +1107,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             return Processed(BuildBlock(), worldState.StateRoot);
         }
     }
+
     [Test]
     public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made([Values] bool minimumNotedFirst)
     {
