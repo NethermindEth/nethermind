@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -38,13 +39,54 @@ public class GCKeeper : IDisposable
     // Held across a payload's region entry, and across the re-commit's entry and end, so the two never overlap.
     private readonly Lock _runtimeLock = new();
 
+    // TEST BRANCH ONLY (bench/gc-guard-recommit), not for master: the BENCH_GC_RECOMMIT switch and the entry-cost
+    // diagnostics below exist to measure the guard and the re-commit together on live nodes.
+    private readonly BenchRecommit _recommit;
+    // What happened since the last payload entry the runtime made, read and reset by that entry.
+    private long _diagPayloads;
+    private long _diagSkipped;
+    private int _diagDecommit;
+    private int _diagRecommit;
+
+    /// <summary>Which post-block collections the throwaway re-commit follows. TEST BRANCH ONLY, not for master.</summary>
+    public enum BenchRecommit
+    {
+        /// <summary>None: no re-commit at all.</summary>
+        Off,
+        /// <summary>The aggressive decommit collection only, the re-commit PR's behaviour.</summary>
+        Decommit,
+        /// <summary>Every post-block collection the keeper runs, with the same safety checks.</summary>
+        Always,
+    }
+
+    // TEST BRANCH ONLY, not for master: read once from the environment; unset means the PR behaviour (decommit).
+    private static readonly string? _benchRecommitRaw = Environment.GetEnvironmentVariable("BENCH_GC_RECOMMIT");
+    internal static readonly BenchRecommit BenchRecommitSetting = ParseBenchRecommit(_benchRecommitRaw, out _);
+
+    /// <returns>The setting <paramref name="value"/> names; <see cref="BenchRecommit.Decommit"/> when unset or unrecognised.</returns>
+    internal static BenchRecommit ParseBenchRecommit(string? value, out bool recognised)
+    {
+        recognised = true;
+        switch (value?.Trim().ToLowerInvariant())
+        {
+            case null or "" or "decommit": return BenchRecommit.Decommit;
+            case "off": return BenchRecommit.Off;
+            case "always": return BenchRecommit.Always;
+            default:
+                recognised = false;
+                return BenchRecommit.Decommit;
+        }
+    }
+
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
-        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null)
+        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null,
+        BenchRecommit? recommit = null)
     {
         _gcStrategy = gcStrategy;
+        _recommit = recommit ?? BenchRecommitSetting;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
@@ -54,6 +96,13 @@ public class GCKeeper : IDisposable
         if (gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard && !runtime.CanReadGen0Budget && _logger.IsWarn)
         {
             _logger.Warn("No-GC region guard unavailable: the runtime does not expose gen0's allocation budget, so engine_newPayload enters the no-GC region every time, as with Merge.NoGcRegionOnNewPayload=Always.");
+        }
+        if (_logger.IsInfo)
+        {
+            ParseBenchRecommit(_benchRecommitRaw, out bool recognised);
+            string raw = _benchRecommitRaw ?? "unset";
+            string note = recognised ? "" : ", not recognised";
+            _logger.Info($"GC keeper (test build bench/gc-guard-recommit): no-GC region mode {gcStrategy.NoGCRegionMode}, guard {gcStrategy.NoGCRegionGuardBytes / 1.MB} MB, re-commit {_recommit} (BENCH_GC_RECOMMIT={raw}{note}), decommit every {gcStrategy.CollectionsPerDecommit} payloads.");
         }
     }
 
@@ -110,24 +159,26 @@ public class GCKeeper : IDisposable
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
-        if (!eligible) return StartPayloadRegion(eligible, enter: false, out _);
+        if (!eligible) return StartPayloadRegion(eligible, enter: false, Gen0BudgetTracker.Unknown, out _);
 
         // Sampled before the entry is queued, so a collection the entry has to wait for counts as one in processing.
         ProcessingSample start = SampleProcessing();
         NoGcRegionMode mode = _gcStrategy.NoGCRegionMode;
+        long estimatedLeft = Gen0BudgetTracker.Unknown;
         bool enter = mode switch
         {
             NoGcRegionMode.Never => false,
-            NoGcRegionMode.Guard => !BudgetCoversBlock(),
+            NoGcRegionMode.Guard => !BudgetCoversBlock(out estimatedLeft),
             _ => true,
         };
-        IDisposable lease = StartPayloadRegion(eligible, enter, out bool skipped);
+        IDisposable lease = StartPayloadRegion(eligible, enter, estimatedLeft, out bool skipped);
         return new ProcessingWindow(this, lease, start, skippedByGuard: skipped && mode == NoGcRegionMode.Guard);
     }
 
     /// <param name="enter"><c>false</c> to run the payload without a region of its own.</param>
+    /// <param name="estimatedLeft">The guard's gen0 budget estimate, for the entry's diagnostics only.</param>
     /// <param name="skipped">Whether the payload runs without any region because <paramref name="enter"/> was <c>false</c>.</param>
-    private IDisposable StartPayloadRegion(bool eligible, bool enter, out bool skipped)
+    private IDisposable StartPayloadRegion(bool eligible, bool enter, long estimatedLeft, out bool skipped)
     {
         skipped = false;
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
@@ -140,6 +191,7 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
+            Interlocked.Increment(ref _diagPayloads);
             if (_region is not null)
             {
                 // A payload that starts while the previous one is still inside its region shares that region rather
@@ -153,8 +205,10 @@ public class GCKeeper : IDisposable
             {
                 skipped = true;
                 Interlocked.Increment(ref Metrics.NoGcRegionSkips);
+                Interlocked.Increment(ref _diagSkipped);
                 return region;
             }
+            region.EstimatedLeft = estimatedLeft;
             _region = region;
             _pendingEntries++;
         }
@@ -177,9 +231,9 @@ public class GCKeeper : IDisposable
     /// <see cref="IGCStrategy.NoGCRegionGuardBytes"/>, so the block is expected to run without a gen0 collection.
     /// </summary>
     /// <remarks>An unknown budget never covers the block, so the region is entered as it always was.</remarks>
-    private bool BudgetCoversBlock()
+    private bool BudgetCoversBlock(out long left)
     {
-        long left = _budget.EstimateLeft(_runtime.AllocatedBytes, _runtime.LastGcIndex, _runtime.Gen0Budget);
+        left = _budget.EstimateLeft(_runtime.AllocatedBytes, _runtime.LastGcIndex, _runtime.Gen0Budget);
         return left != Gen0BudgetTracker.Unknown && left >= _gcStrategy.NoGCRegionGuardBytes;
     }
 
@@ -189,6 +243,58 @@ public class GCKeeper : IDisposable
         Interlocked.Increment(ref Metrics.NoGcRegionEntries);
         Interlocked.Increment(ref _ownEntries);
         if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
+    }
+
+    /// <summary>The throwaway re-commit region was entered.</summary>
+    /// <remarks>
+    /// Not a payload's entry, so <see cref="Metrics.NoGcRegionEntries"/> leaves it out. It moves GC.CollectionCount as
+    /// any entry does, so it counts as an own entry, which keeps a payload in processing from taking it for a runtime
+    /// collection; and it hands the heaps the region's budget as any entry does, so the guard's estimate follows it.
+    /// </remarks>
+    private void OnRecommitEntered()
+    {
+        Interlocked.Increment(ref Metrics.NoGcRegionRecommits);
+        Interlocked.Increment(ref _ownEntries);
+        if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
+        Volatile.Write(ref _diagRecommit, 1);
+    }
+
+    // TEST BRANCH ONLY, not for master: what a payload's entry cost, and what came before it.
+    private void RecordPayloadEntry(TimeSpan elapsed, long estimatedLeft)
+    {
+        long payloads = Interlocked.Exchange(ref _diagPayloads, 0);
+        long skipped = Interlocked.Exchange(ref _diagSkipped, 0);
+        bool decommit = Interlocked.Exchange(ref _diagDecommit, 0) != 0;
+        bool recommit = Interlocked.Exchange(ref _diagRecommit, 0) != 0;
+        double ms = elapsed.TotalMilliseconds;
+        RecordEntryTime(Metrics.EntryContextAll, ms);
+        RecordEntryTime(decommit ? Metrics.EntryContextAfterDecommit : Metrics.EntryContextNotAfterDecommit, ms);
+        RecordEntryTime(skipped > 0 ? Metrics.EntryContextAfterSkip : Metrics.EntryContextAfterEntry, ms);
+        if (ms >= 1 && _logger.IsInfo)
+        {
+            string left = estimatedLeft == Gen0BudgetTracker.Unknown ? "n/a" : $"{estimatedLeft / 1.MB} MB";
+            string decommitSince = decommit ? "y" : "n";
+            string recommitSince = recommit ? "y" : "n";
+            _logger.Info($"No-GC region entry took {ms:F3} ms: {payloads} payloads since the last own entry (this one included), {skipped} skipped since, decommit since: {decommitSince}, re-commit since: {recommitSince}, gen0 budget left estimate: {left}.");
+        }
+    }
+
+    private static void RecordEntryTime(string context, double ms)
+    {
+        Metrics.NoGcRegionEntryCount.AddOrUpdate(context, 1, static (_, count) => count + 1);
+        Metrics.NoGcRegionEntryMsSum.AddOrUpdate(context, static (_, add) => add, static (_, sum, add) => sum + add, ms);
+        Metrics.NoGcRegionEntryMsMax.AddOrUpdate(context, static (_, add) => add, static (_, max, add) => Math.Max(max, add), ms);
+        Metrics.NoGcRegionEntryMsBuckets.AddOrUpdate((context, Metrics.EntryBucket(ms)), 1, static (_, count) => count + 1);
+    }
+
+    // TEST BRANCH ONLY, not for master.
+    private static void RecordRecommit(bool afterDecommit, TimeSpan elapsed)
+    {
+        string after = afterDecommit ? Metrics.RecommitAfterDecommit : Metrics.RecommitAfterCollection;
+        double ms = elapsed.TotalMilliseconds;
+        Metrics.NoGcRegionRecommitCount.AddOrUpdate(after, 1, static (_, count) => count + 1);
+        Metrics.NoGcRegionRecommitMsSum.AddOrUpdate(after, static (_, add) => add, static (_, sum, add) => sum + add, ms);
+        Metrics.NoGcRegionRecommitMsMax.AddOrUpdate(after, static (_, add) => add, static (_, max, add) => Math.Max(max, add), ms);
     }
 
     /// <summary>Collections the runtime has counted, and this keeper's region entries among them, where a payload starts or ends.</summary>
@@ -322,6 +428,9 @@ public class GCKeeper : IDisposable
         private int _leases = 1;
         private bool _ownerReleased;
 
+        /// <summary>The guard's gen0 budget estimate when the payload was admitted, for diagnostics only.</summary>
+        public long EstimatedLeft { get; set; } = Gen0BudgetTracker.Unknown;
+
         /// <summary>Takes a lease for a payload that starts while the payload that admitted this region is inside it.</summary>
         /// <remarks>
         /// Refused once that payload has let go, which bounds the chain at two: the budget is entered once and sized
@@ -369,12 +478,16 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
+                // Waits for a re-commit after decommit to end its region (see RecommitAfterCollection).
+                TimeSpan elapsed;
                 lock (keeper._runtimeLock)
                 {
+                    long entryStart = Stopwatch.GetTimestamp();
                     started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                    elapsed = Stopwatch.GetElapsedTime(entryStart);
                     if (started) keeper.OnRegionEntered();
                 }
+                if (started) keeper.RecordPayloadEntry(elapsed, EstimatedLeft);
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
@@ -488,12 +601,15 @@ public class GCKeeper : IDisposable
     /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
     /// grow until they are allocated in. The decommit still returns everything else.</para>
     /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
-    /// when the strategy disallows regions, and on shutdown. A payload admitted meanwhile queues its entry, which waits
-    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// when the strategy disallows regions or its mode is <see cref="NoGcRegionMode.Never"/>, and on shutdown. A
+    /// payload admitted meanwhile queues its entry, which waits on <see cref="_runtimeLock"/> until the throwaway
+    /// region has ended.</para>
+    /// <para>TEST BRANCH: with BENCH_GC_RECOMMIT=always it follows every post-block collection, not only the decommit.</para>
     /// </remarks>
-    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    private void RecommitAfterCollection(CancellationTokenSource pendingGcCts, bool afterDecommit)
     {
-        bool allowed = _gcStrategy.CanStartNoGCRegion();
+        // Never keeps the runtime out of regions altogether, a throwaway one included.
+        bool allowed = _gcStrategy.NoGCRegionMode != NoGcRegionMode.Never && _gcStrategy.CanStartNoGCRegion();
         lock (_lock)
         {
             if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
@@ -502,9 +618,23 @@ public class GCKeeper : IDisposable
             _runtimeLock.Enter();
         }
 
+        bool started = false;
+        TimeSpan elapsed = TimeSpan.Zero;
         try
         {
-            if (_runtime.TryStart(_defaultSize, _lohSize) && _runtime.IsActive) _runtime.End();
+            long entryStart = Stopwatch.GetTimestamp();
+            started = _runtime.TryStart(_defaultSize, _lohSize);
+            elapsed = Stopwatch.GetElapsedTime(entryStart);
+            if (started)
+            {
+                OnRecommitEntered();
+                if (_runtime.IsActive)
+                {
+                    long endStart = Stopwatch.GetTimestamp();
+                    _runtime.End();
+                    elapsed += Stopwatch.GetElapsedTime(endStart);
+                }
+            }
         }
         catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
         {
@@ -518,6 +648,7 @@ public class GCKeeper : IDisposable
         {
             _runtimeLock.Exit();
         }
+        if (started) RecordRecommit(afterDecommit, elapsed);
     }
 
     private void ScheduleGC()
@@ -581,6 +712,8 @@ public class GCKeeper : IDisposable
                         generation = GcLevel.Gen2;
                         compacting = GcCompaction.Full;
                     }
+                    // TEST BRANCH ONLY: BENCH_GC_RECOMMIT picks the collections the re-commit follows.
+                    bool recommit = _recommit == BenchRecommit.Always || (_recommit == BenchRecommit.Decommit && decommit);
 
                     // Claim only after all cancellable waits; never hold the gate during runtime collection.
                     lock (_lock)
@@ -597,8 +730,8 @@ public class GCKeeper : IDisposable
                             _lastGcTimeMs = timeStamp;
                         }
 
-                        // A decommit stays cancellable through its collection: the next payload still calls off the re-commit.
-                        if (!decommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+                        // A collection the re-commit follows stays cancellable through it: the next payload still calls off the re-commit.
+                        if (!recommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
@@ -611,8 +744,9 @@ public class GCKeeper : IDisposable
                     if (collected && decommit)
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
-                        RecommitAfterDecommit(pendingGcCts);
+                        Volatile.Write(ref _diagDecommit, 1);
                     }
+                    if (collected && recommit) RecommitAfterCollection(pendingGcCts, decommit);
                 }
             }
             finally

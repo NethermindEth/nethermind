@@ -384,15 +384,16 @@ public class GCKeeperTests
         }
     }
 
-    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, Disallowed }
+    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, Disallowed, NeverMode }
 
+    /// <param name="afterDecommit">Whether the re-commit follows the decommit, or (BENCH_GC_RECOMMIT=always) an ordinary collection.</param>
     [Test]
-    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason)
+    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason, [Values] bool afterDecommit)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
-        strategy.CollectionsPerDecommit.Returns(0);
+        strategy.CollectionsPerDecommit.Returns(afterDecommit ? 0 : -1);
         GCKeeper? keeper = null;
         IDisposable? held = null;
         RegionRuntime runtime = new()
@@ -405,17 +406,19 @@ public class GCKeeperTests
                     case RecommitSkip.Shutdown: keeper!.Dispose(); break;
                     case RecommitSkip.RegionHeld: held = keeper!.TryStartNoGCRegion(); break;
                     case RecommitSkip.Disallowed: strategy.CanStartNoGCRegion().Returns(false); break;
+                    case RecommitSkip.NeverMode: strategy.NoGCRegionMode.Returns(NoGcRegionMode.Never); break;
                 }
             }
         };
         List<IThreadPoolWorkItem> queued = [];
-        using (keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true)))
+        GCKeeper.BenchRecommit recommit = afterDecommit ? GCKeeper.BenchRecommit.Decommit : GCKeeper.BenchRecommit.Always;
+        using (keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true), recommit))
         {
             await keeper.ScheduleGCInternal(throttle: false);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(runtime.Collections, Has.Count.EqualTo(1), "the decommit itself is claimed before the payload arrives");
+                Assert.That(runtime.Collections, Has.Count.EqualTo(1), "the collection itself is claimed before the payload arrives");
                 Assert.That(runtime.Starts, Is.Zero);
             }
 
@@ -472,6 +475,137 @@ public class GCKeeperTests
         }
         lease!.Dispose();
     }
+
+    // TEST BRANCH (bench/gc-guard-recommit): BENCH_GC_RECOMMIT picks the collections the re-commit follows.
+    [Test]
+    public async Task Recommit_follows_the_collections_the_bench_switch_picks([Values] GCKeeper.BenchRecommit recommit, [Values] bool decommit)
+    {
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, level: GcLevel.Gen1, collectionsPerDecommit: decommit ? 0 : -1);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true), recommit);
+        long recommits = Interlocked.Read(ref Metrics.NoGcRegionRecommits);
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        bool recommitted = recommit == GCKeeper.BenchRecommit.Always || (recommit == GCKeeper.BenchRecommit.Decommit && decommit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections[0].Item2, Is.EqualTo(decommit ? GCCollectionMode.Aggressive : GCCollectionMode.Forced));
+            Assert.That(runtime.Operations, Is.EqualTo(recommitted ? new[] { "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRecommits) - recommits, Is.EqualTo(recommitted ? 1 : 0));
+        }
+    }
+
+    [TestCase(null, GCKeeper.BenchRecommit.Decommit, true)]
+    [TestCase("", GCKeeper.BenchRecommit.Decommit, true)]
+    [TestCase("off", GCKeeper.BenchRecommit.Off, true)]
+    [TestCase(" Decommit ", GCKeeper.BenchRecommit.Decommit, true)]
+    [TestCase("ALWAYS", GCKeeper.BenchRecommit.Always, true)]
+    [TestCase("sometimes", GCKeeper.BenchRecommit.Decommit, false)]
+    public void Bench_recommit_switch_defaults_to_the_pr_behaviour(string? value, GCKeeper.BenchRecommit expected, bool recognised)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GCKeeper.ParseBenchRecommit(value, out bool parsed), Is.EqualTo(expected));
+            Assert.That(parsed, Is.EqualTo(recognised));
+        }
+    }
+
+    // The throwaway entry replaces gen0's budget with the region's as any entry does, so the guard has to see it.
+    [Test]
+    public async Task Guard_estimate_follows_the_recommit_region()
+    {
+        RegionRuntime runtime = BudgetRuntime(4_000);
+        List<IThreadPoolWorkItem> queued = [];
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb, level: GcLevel.Gen1, collectionsPerDecommit: 0);
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        long entries = Interlocked.Read(ref Metrics.NoGcRegionEntries);
+        long recommits = Interlocked.Read(ref Metrics.NoGcRegionRecommits);
+
+        await keeper.ScheduleGCInternal(throttle: false);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "start", "end" }));
+
+        // 50 MB of the region's budget left, against nearly all of the runtime's 4000 MB.
+        runtime.AllocatedBytes += GCKeeper.Gen0BudgetTracker.RegionSohBudget - 50 * Mb;
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(1), "the guard counts from the throwaway entry");
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionRecommits) - recommits, Is.EqualTo(1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.Zero, "a re-commit is not a payload's entry");
+        }
+    }
+
+    // The throwaway entry moves the runtime's collection count as any entry does; a payload in processing meanwhile
+    // must not take it for a collection.
+    [Test]
+    public async Task Recommit_during_processing_is_not_a_collection()
+    {
+        IDisposable? lease = null;
+        GCKeeper? keeper = null;
+        RegionRuntime runtime = BudgetRuntimeWith(4_000, () => lease ??= keeper!.TryStartNoGCRegion());
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb, level: GcLevel.Gen1, collectionsPerDecommit: 0);
+        List<IThreadPoolWorkItem> queued = [];
+        keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        using (keeper)
+        {
+            long withCollection = Interlocked.Read(ref Metrics.NewPayloadsWithCollection);
+            long misses = Interlocked.Read(ref Metrics.NoGcRegionGuardMisses);
+
+            await keeper.ScheduleGCInternal(throttle: false);
+            strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            Assert.That(lease, Is.Not.Null, "the payload started as the re-commit entered");
+            Assert.That(queued, Is.Empty, "the guard skipped the payload's own region");
+            lease!.Dispose();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Interlocked.Read(ref Metrics.NewPayloadsWithCollection) - withCollection, Is.Zero);
+                Assert.That(Interlocked.Read(ref Metrics.NoGcRegionGuardMisses) - misses, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Payload_entries_are_timed_by_what_came_before_them()
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb, collectionsPerDecommit: 0);
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true),
+            GCKeeper.BenchRecommit.Off);
+        Dictionary<string, long> before = new(Metrics.NoGcRegionEntryCount);
+        long Delta(string context) => Metrics.NoGcRegionEntryCount[context] - before[context];
+
+        // Covered: skipped. Then the decommit, then a payload the budget no longer covers enters.
+        keeper.TryStartNoGCRegion().Dispose();
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        runtime.AllocatedBytes += 950 * Mb;
+        using (keeper.TryStartNoGCRegion()) queued[^1].Execute();
+        // Right after that entry: the region's own budget, nearly spent, does not cover it either.
+        runtime.AllocatedBytes += GCKeeper.Gen0BudgetTracker.RegionSohBudget;
+        using (keeper.TryStartNoGCRegion()) queued[^1].Execute();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(2));
+            Assert.That(Delta(Metrics.EntryContextAll), Is.EqualTo(2));
+            Assert.That(Delta(Metrics.EntryContextAfterDecommit), Is.EqualTo(1));
+            Assert.That(Delta(Metrics.EntryContextNotAfterDecommit), Is.EqualTo(1));
+            Assert.That(Delta(Metrics.EntryContextAfterSkip), Is.EqualTo(1));
+            Assert.That(Delta(Metrics.EntryContextAfterEntry), Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(0.1, "lt_0.25")]
+    [TestCase(0.25, "0.25_0.5")]
+    [TestCase(0.75, "0.5_1")]
+    [TestCase(1, "1_2")]
+    [TestCase(2, "ge_2")]
+    public void Entry_times_fall_into_their_buckets(double ms, string bucket) => Assert.That(Metrics.EntryBucket(ms), Is.EqualTo(bucket));
 
     private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
     {
@@ -530,9 +664,11 @@ public class GCKeeperTests
     }
 
     /// <summary>A runtime with a gen0 budget of <paramref name="budgetMb"/> whose last collection had nothing allocated before it.</summary>
-    private static RegionRuntime BudgetRuntime(long budgetMb)
+    private static RegionRuntime BudgetRuntime(long budgetMb) => BudgetRuntimeWith(budgetMb, null);
+
+    private static RegionRuntime BudgetRuntimeWith(long budgetMb, Action? beforeStart)
     {
-        RegionRuntime runtime = new() { Gen0Budget = budgetMb * Mb };
+        RegionRuntime runtime = new() { Gen0Budget = budgetMb * Mb, BeforeStart = beforeStart };
         runtime.RunGC();
         return runtime;
     }
