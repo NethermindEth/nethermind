@@ -20,10 +20,8 @@ public static class EraManifestGenerator
     /// Writes the accumulator and checksum manifests for the given era1 files to <paramref name="outputDirectory"/>.
     /// </summary>
     /// <param name="eraPath">A single era1 file, or a directory whose top-level era1 files of <paramref name="network"/> are processed.</param>
-    /// <param name="network">The network name that prefixes the era1 file names.</param>
+    /// <param name="network">The era1 filename prefix.</param>
     /// <param name="outputDirectory">The directory to write the manifests to. Existing manifests are overwritten.</param>
-    /// <param name="fileSystem">The file system used to list era1 files and write the manifests.</param>
-    /// <param name="cancellation">The cancellation token.</param>
     /// <exception cref="EraException">
     /// No era1 files were found, the files do not cover contiguous epochs, a file cannot be read,
     /// or a file's stored accumulator does not match its content or its name.
@@ -43,10 +41,6 @@ public static class EraManifestGenerator
     /// <summary>
     /// Checks that the manifests in <paramref name="directory"/> list the accumulator and checksum of each era1 file of <paramref name="network"/>, one line per epoch in epoch order.
     /// </summary>
-    /// <param name="directory">The directory containing the era1 files and their manifests.</param>
-    /// <param name="network">The network name that prefixes the era1 file names.</param>
-    /// <param name="fileSystem">The file system used to list era1 files and read the manifests.</param>
-    /// <param name="cancellation">The cancellation token.</param>
     /// <returns>A description of each missing, extra or mismatched manifest line; empty when the manifests match.</returns>
     /// <remarks>
     /// Lines are compared by position because <see cref="EraStore"/> looks up the checksum of an epoch by its offset from the first epoch.
