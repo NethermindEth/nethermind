@@ -1075,7 +1075,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Core": "[2.2.0-preview, )",
-          "Nethermind.Numerics.Int256": "[1.10.0, )"
+          "Nethermind.Numerics.Int256": "[1.11.0, )"
         }
       },
       "nethermind.portfolioviewer.plugin": {
