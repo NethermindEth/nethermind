@@ -71,15 +71,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
             DeserializeTxs(ref ctx, long.MaxValue, out _);
 
+        internal static int ReadTransactionCount(ref RlpReader ctx, out int checkPosition)
+        {
+            checkPosition = ctx.ReadSequenceLength() + ctx.Position;
+            int count = ctx.PeekNumberOfItemsRemaining(checkPosition, RlpLimit.Limit + 1);
+            ctx.GuardLimit(count, RlpLimit);
+            return count;
+        }
+
         /// <summary>Decodes the wire-form transaction list, skipping any item whose pre-decode size exceeds <paramref name="maxTxSize"/>.</summary>
         /// <remarks>Avoids the RLP-decode cost of an attacker-sized item - see <see cref="IsOverSizeLimit"/> for the measure.</remarks>
         /// <param name="maxTxSize">The size cap, or <see cref="long.MaxValue"/> to decode every item without measuring it.</param>
         /// <param name="skippedCount">The number of items skipped for exceeding the cap.</param>
         private static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx, long maxTxSize, out int skippedCount)
         {
-            int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
-            int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
-            ctx.GuardLimit(length, RlpLimit);
+            int length = ReadTransactionCount(ref ctx, out int checkPosition);
 
             bool isSizeGuarded = maxTxSize != long.MaxValue;
             int skipped = 0;

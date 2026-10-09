@@ -180,6 +180,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
 
         AssertCurrentStorageValue(in storageCell, in currentValue);
+        if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
+            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
         _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
         State.Set(in storageCell, in newValue, in currentValue);
     }
