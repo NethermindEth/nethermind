@@ -41,6 +41,8 @@ namespace Nethermind.Wallet
             return addresses.ToArray();
         }
 
+        public bool HasKey(Address address) => IsUnlocked(address) || _keyStore.HasKey(address);
+
         public Address NewAccount(SecureString passphrase)
         {
             (PrivateKey privateKey, Result result) = _keyStore.GenerateKey(passphrase);
