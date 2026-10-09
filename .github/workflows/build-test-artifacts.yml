@@ -28,6 +28,9 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
+        # Restore does not read the fixtures, so the fetch overlaps setup and restore.
+        id: submodules
+        background: true
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -54,6 +57,9 @@ jobs:
         run: |
           dotnet restore src/Nethermind/Nethermind.slnx
           dotnet restore src/Nethermind/EthereumTests.slnx
+
+      - name: Wait for submodules
+        wait: submodules
 
       - name: Build
         # Skip analyzers (run in code-lint); source generators still run, so binaries are identical.

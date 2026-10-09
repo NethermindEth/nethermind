@@ -161,9 +161,11 @@ jobs:
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+            run_tests=(dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -171,12 +173,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+          "${run_tests[@]}" "${test_args[@]}" $flags
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -189,7 +191,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+            "${run_tests[@]}" "${test_args[@]}" $flags
           fi
 
       - name: Upload dumps
@@ -208,7 +210,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*.cobertura.xml
+          if-no-files-found: error
           retention-days: 1
 
 
@@ -290,6 +293,8 @@ jobs:
 
       - name: Fetch submodules
         if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
+        id: submodules
+        background: true
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -303,6 +308,9 @@ jobs:
         with:
           variant: release
 
+      - name: Wait for submodules
+        wait-all:
+
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -310,9 +318,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+            run_tests=(dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -320,12 +330,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          "${run_tests[@]}" "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -338,7 +348,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+            "${run_tests[@]}" "${test_args[@]}"
           fi
 
       - name: Upload dumps
@@ -381,6 +391,8 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
+        id: submodules
+        background: true
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -394,6 +406,9 @@ jobs:
         with:
           variant: release
 
+      - name: Wait for submodules
+        wait-all:
+
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
         working-directory: src/Nethermind/${{ matrix.test.project }}
@@ -401,9 +416,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.test.project }}.csproj
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.test.project }}/release/${{ matrix.test.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.test.project }}.csproj -c release
+            run_tests=(dotnet test --project ${{ matrix.test.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -411,12 +428,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+          "${run_tests[@]}" "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -429,7 +446,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+            "${run_tests[@]}" "${test_args[@]}"
           fi
 
       - name: Upload dumps
