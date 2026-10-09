@@ -192,7 +192,7 @@ public class BlockchainBridgeTests
     public void Call_computes_the_hash_of_other_types()
     {
         // Stands in for a plugin's decoder: core registers none for deposit transactions.
-        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(TxType.DepositTx, new EIP1559TxDecoder());
         try
         {
             Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).TestObject;

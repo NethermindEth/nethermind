@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Steps;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -24,8 +24,8 @@ public class InitializeBlockchainOptimism(
     {
         await base.InitBlockchain();
 
-        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new LegacyTxDecoder(allowEmptySignature: true), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
     }
 
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider) =>

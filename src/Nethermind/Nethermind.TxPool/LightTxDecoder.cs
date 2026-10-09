@@ -144,7 +144,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         UInt256 gasPrice = ctx.DecodeUInt256();
         UInt256 maxFeePerGas = ctx.DecodeUInt256();
         UInt256 maxFeePerBlobGas = ctx.DecodeUInt256();
-        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder<Transaction>.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        byte[][] blobVersionHashes = ctx.DecodeByteArrays(BlobTxDecoder.BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
         ulong poolIndex = ctx.DecodeULong();
         int size = ctx.DecodePositiveInt();
 

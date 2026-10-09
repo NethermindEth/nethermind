@@ -22,7 +22,7 @@ public class OptimismBlockForRpcWireFormatTests
     public void SetUp()
     {
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
     }
 
     [Test]
