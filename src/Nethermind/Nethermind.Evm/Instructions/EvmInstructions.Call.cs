@@ -344,12 +344,20 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
             goto OutOfGas;
 
+        // EIP-8279: the target enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(target)) goto OutOfGas;
+
         // EIP-7928: the target is accessed once the state-independent charges pass, even for a zero value.
         state.AddAccountRead(target);
         bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
         if (chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)) goto OutOfGas;
 
+        // EIP-8279: as for a value CALL, a payment to another account puts both post balances in the block access
+        // list, metered even if the payment then fails on balance.
         Address executingAccount = vmState.Env.ExecutingAccount;
+        if (TSpec.IsEip8279Enabled && hasValueTransfer && target != executingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
         if (hasValueTransfer && state.GetBalance(executingAccount) < value)
         {
             if (chargesNewAccount)

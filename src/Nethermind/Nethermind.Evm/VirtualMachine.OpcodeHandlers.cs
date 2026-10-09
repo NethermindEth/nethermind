@@ -499,12 +499,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where TCancelable : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip2780 : struct, IFlag =>
+        SpecFlags.Eip8279(spec)
+            ? GetPayHandler<TTracingInst, TCancelable, Eip8038, Eip2780, OnFlag>(spec)
+            : GetPayHandler<TTracingInst, TCancelable, Eip8038, Eip2780, OffFlag>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
+        GetPayHandler<TTracingInst, TCancelable, Eip8038, Eip2780, Eip8279>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
+        where Eip2780 : struct, IFlag
+        where Eip8279 : struct, IFlag =>
         (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
         {
-            (true, true) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
-            (true, false) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
-            (false, true) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
-            (false, false) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038>>, TTracingInst, TCancelable>(),
+            (true, true) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
+            (true, false) => OpcodeHandler<PayOpcode<TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
+            (false, true) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
+            (false, false) => OpcodeHandler<PayOpcode<TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<OnFlag, OnFlag, OnFlag, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
         };
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
