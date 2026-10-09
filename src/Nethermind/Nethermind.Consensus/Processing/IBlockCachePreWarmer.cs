@@ -54,4 +54,11 @@ public interface IBlockCachePreWarmer : IDisposable
 
     /// <summary>Ends warming <see cref="StartEarly"/> started for <paramref name="block"/>, unless block processing took it over.</summary>
     void DiscardEarly(Block block) { }
+
+    /// <summary>
+    /// Warms the addresses a block reads whatever its transactions: the system-contract slots, the fee recipient and the
+    /// withdrawal recipients, from <paramref name="provisional"/>, a block of the payload's header and withdrawals that
+    /// needs no decoded transaction. A <see cref="StartEarly"/> for the same block hash keeps it running beside its own.
+    /// </summary>
+    void StartEarlyAddresses(Block provisional, BlockHeader parent, IReleaseSpec spec) { }
 }

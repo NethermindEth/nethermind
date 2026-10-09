@@ -42,7 +42,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private const int MinTransactionsForReactiveWarming = 1;
 
     /// <summary>The most transactions a block may have for its warming to start from the newPayload request.</summary>
-    internal const int MaxTransactionsForEarlyWarming = 50;
+    public const int MaxTransactionsForEarlyWarming = 50;
 
     /// <summary>How long a warmup pass spins for the next sender before falling back to sleeping.</summary>
     private static readonly TimeSpan SenderArrivalWindow = TimeSpan.FromMilliseconds(1);
@@ -217,8 +217,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         lock (_speculativeLock)
         {
-            DisposeEarlyLocked();
-            if (_preBlockCaches.ConsumerScopeOpen) return;
+            // The address warm the request started for this block, before its transactions were decoded, goes on.
+            EarlySession? addresses = _early is { AddressesOnly: true } early && early.Block.Hash == block.Hash && early.ParentStateRoot == parent.StateRoot
+                ? early
+                : null;
+            if (addresses is not null) _early = null;
+            else DisposeEarlyLocked();
+
+            if (_preBlockCaches.ConsumerScopeOpen)
+            {
+                addresses?.Dispose();
+                return;
+            }
 
             CancellationTokenSource cancellation = new();
             IDisposable? session = null;
@@ -231,7 +241,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 if (session is null) cancellation.Dispose();
             }
 
-            if (session is not null) _early = new EarlySession(block, parent.StateRoot, session, cancellation);
+            _early = session is not null ? new EarlySession(block, parent.StateRoot, session, cancellation, addresses) : addresses;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void StartEarlyAddresses(Block provisional, BlockHeader parent, IReleaseSpec spec)
+    {
+        if (_preBlockCaches is null || parent.StateRoot is null || provisional.Hash is null || provisional.Transactions.Length != 0) return;
+
+        lock (_speculativeLock)
+        {
+            DisposeEarlyLocked();
+            if (_preBlockCaches.ConsumerScopeOpen) return;
+
+            CancellationTokenSource cancellation = new();
+            IDisposable? session = null;
+            try
+            {
+                // The mempool pass's marker is the block's own session's to take.
+                session = StartWarmingLocked(provisional, parent, spec, cancellation.Token, consumeWarmMarker: false);
+            }
+            finally
+            {
+                if (session is null) cancellation.Dispose();
+            }
+
+            if (session is not null) _early = new EarlySession(provisional, parent.StateRoot, session, cancellation) { AddressesOnly = true };
         }
     }
 
@@ -240,7 +276,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         lock (_speculativeLock)
         {
-            if (_early is { } early && ReferenceEquals(early.Block, block)) DisposeEarlyLocked();
+            // By hash: an address warm started for the block holds a provisional block of its header and withdrawals.
+            if (_early is { } early && (ReferenceEquals(early.Block, block) || (block.Hash is not null && early.Block.Hash == block.Hash))) DisposeEarlyLocked();
         }
     }
 
@@ -266,16 +303,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private EarlySession? _early;
 
     /// <summary>A session <see cref="StartEarly"/> started, until block processing takes it over or it is discarded.</summary>
-    private sealed class EarlySession(Block block, Hash256 parentStateRoot, IDisposable session, CancellationTokenSource cancellation) : IDisposable
+    private sealed class EarlySession(Block block, Hash256 parentStateRoot, IDisposable session, CancellationTokenSource cancellation, EarlySession? addresses = null) : IDisposable
     {
         public readonly Block Block = block;
         public readonly Hash256 ParentStateRoot = parentStateRoot;
         private CancellationTokenRegistration _link;
         private bool _disposed;
 
+        /// <summary>Whether this is the address warm a request starts before its block's transactions are decoded.</summary>
+        public bool AddressesOnly { get; init; }
+
         /// <summary>From here on the session ends with block processing's warming, as one it started would.</summary>
-        public void Adopt(CancellationToken token) =>
+        public void Adopt(CancellationToken token)
+        {
             _link = token.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), cancellation);
+            addresses?.Adopt(token);
+        }
 
         public void Dispose()
         {
@@ -290,11 +333,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             finally
             {
                 cancellation.Dispose();
+                addresses?.Dispose();
             }
         }
     }
 
-    private IDisposable? StartWarmingLocked(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    private IDisposable? StartWarmingLocked(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken,
+        bool consumeWarmMarker = true)
     {
         Volatile.Write(ref _footprints, null);
         CancelAndJoinSpeculativeLocked();
@@ -308,7 +353,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         bool addressesOnly = ShouldSkipReactiveWarming(suggestedBlock, spec);
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
-            TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
+            consumeWarmMarker && TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
         if (speculativelyWarmed is not null)
         {
             // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.

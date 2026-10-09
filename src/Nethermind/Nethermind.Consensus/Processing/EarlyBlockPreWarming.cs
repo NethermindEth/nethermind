@@ -24,6 +24,10 @@ public sealed class EarlyBlockPreWarming
     /// <inheritdoc cref="IBlockCachePreWarmer.StartEarly"/>
     public void Start(Block block, BlockHeader parent, IReleaseSpec spec) => Volatile.Read(ref _preWarmer)?.StartEarly(block, parent, spec);
 
+    /// <inheritdoc cref="IBlockCachePreWarmer.StartEarlyAddresses"/>
+    public void StartAddresses(Block provisional, BlockHeader parent, IReleaseSpec spec) =>
+        Volatile.Read(ref _preWarmer)?.StartEarlyAddresses(provisional, parent, spec);
+
     /// <inheritdoc cref="IBlockCachePreWarmer.DiscardEarly"/>
     public void Discard(Block block) => Volatile.Read(ref _preWarmer)?.DiscardEarly(block);
 }

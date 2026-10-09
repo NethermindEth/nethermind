@@ -130,6 +130,56 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
+        Block? provisional = StartEarlyAddresses(request);
+        try
+        {
+            return await HandleCoreAsync(request);
+        }
+        finally
+        {
+            if (provisional is not null) _earlyPreWarming!.Discard(provisional);
+        }
+    }
+
+    /// <summary>
+    /// Starts warming the addresses the payload's block reads whatever its transactions - the system-contract slots, the
+    /// fee recipient and the withdrawal recipients - as soon as its parent is known to be committed, before any
+    /// transaction is decoded. On a block of a few transactions block processing reads them all within a fraction of a
+    /// millisecond of its start.
+    /// </summary>
+    /// <returns>The provisional block the warm was started for, or null.</returns>
+    private Block? StartEarlyAddresses(ExecutionPayload request)
+    {
+        if (_earlyPreWarming is null || request.Transactions.Length > BlockCachePreWarmer.MaxTransactionsForEarlyWarming) return null;
+        try
+        {
+            if (request.BlockNumber > (_blockTree.Head?.Number ?? 0) + NearHeadRecoveryDistance) return null;
+            BlockHeader? parent = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (parent?.Hash is null || _blockTree.GetInfo(parent.Number, parent.Hash).Info is not { WasProcessed: true }) return null;
+
+            // Only what the system-contract hints and the address warm read; the block is validated later as a whole.
+            BlockHeader header = new(request.ParentHash, Keccak.OfAnEmptySequenceRlp, request.FeeRecipient, UInt256.Zero,
+                request.BlockNumber, request.GasLimit, request.Timestamp, request.ExtraData)
+            {
+                Hash = request.BlockHash,
+                ParentBeaconBlockRoot = request.ParentBeaconBlockRoot,
+                BaseFeePerGas = request.BaseFeePerGas,
+                Author = request.FeeRecipient,
+                IsPostMerge = true,
+            };
+            Block provisional = new(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), request.Withdrawals);
+            _earlyPreWarming.StartAddresses(provisional, parent, _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp)));
+            return provisional;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Early address warm failed to start for block {request.BlockNumber}: {e}");
+            return null;
+        }
+    }
+
+    private async Task<ResultWrapper<PayloadStatusV1>> HandleCoreAsync(ExecutionPayload request)
+    {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 

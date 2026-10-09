@@ -403,11 +403,100 @@ public class BlockCachePreWarmerTests
         {
             Block block = BuildReactiveWarmBlock();
             preWarmer.StartEarly(block, BuildParentHeader(), Osaka.Instance);
-            preWarmer.DiscardEarly(BuildReactiveWarmBlock());
+            preWarmer.DiscardEarly(BuildTwoSenderBlock());
             Assert.That(preWarmer.HasEarlySession, Is.True, "another block's discard leaves the session running");
             preWarmer.DiscardEarly(block);
             Assert.That(preWarmer.HasEarlySession, Is.False);
         }
+    }
+
+    private static (Block Real, Block Provisional) BuildWithdrawalBlockAndItsProvisional(Address recipient)
+    {
+        Block real = Build.A.Block.WithNumber(1)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(recipient).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+        return (real, new Block(real.Header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), real.Withdrawals));
+    }
+
+    [Test]
+    public void StartEarlyAddresses_WarmsTheWithdrawalRecipients()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Address recipient = PackedLoopCopy(2);
+        (_, Block provisional) = BuildWithdrawalBlockAndItsProvisional(recipient);
+
+        using (preWarmer)
+        {
+            preWarmer.StartEarlyAddresses(provisional, BuildParentHeader(), Osaka.Instance);
+            Assert.That(SpinWait.SpinUntil(() => preBlockCaches.StateCache.TryGetValue(recipient, out _), TimeSpan.FromSeconds(10)), Is.True,
+                "the recipient is warmed before any transaction is decoded");
+            preWarmer.DiscardEarly(provisional);
+        }
+    }
+
+    [Test]
+    public void StartEarlyAddresses_KeepsRunningBesideTheBlocksOwnSessionThatProcessingTakesOver()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        BlockHeader parent = BuildParentHeader();
+        (Block real, Block provisional) = BuildWithdrawalBlockAndItsProvisional(PackedLoopCopy(3));
+        using (preWarmer)
+        {
+            preWarmer.StartEarlyAddresses(provisional, parent, Osaka.Instance);
+            preWarmer.StartEarly(real, parent, Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.True);
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                using IDisposable? session = preWarmer.PreWarmCaches(real, parent, Osaka.Instance);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(session, Is.Not.Null.And.Not.TypeOf<PrewarmingSession>(), "block processing takes over the block's own session");
+                    Assert.That(preWarmer.HasEarlySession, Is.False);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void DiscardEarly_EndsTheAddressWarmOfTheBlockByHash()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        (Block real, Block provisional) = BuildWithdrawalBlockAndItsProvisional(PackedLoopCopy(4));
+        using (preWarmer)
+        {
+            preWarmer.StartEarlyAddresses(provisional, BuildParentHeader(), Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.True, "precondition: the address warm started");
+            preWarmer.DiscardEarly(real);
+            Assert.That(preWarmer.HasEarlySession, Is.False, "the decoded block ends the warm started for its header");
+        }
+    }
+
+    [Test]
+    public void StartEarlyAddresses_ABlockWithTransactions_StartsNothing()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            preWarmer.StartEarlyAddresses(BuildReactiveWarmBlock(), BuildParentHeader(), Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.False, "only a block of the payload's header and withdrawals is warmed this way");
+        }
+    }
+
+    [Test]
+    public void EarlyBlockPreWarming_StartsTheAddressWarmOfTheMainProcessingPreWarmer()
+    {
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)_processingScope.Resolve<IBlockCachePreWarmer>();
+        EarlyBlockPreWarming early = _container.Resolve<EarlyBlockPreWarming>();
+        (_, Block provisional) = BuildWithdrawalBlockAndItsProvisional(PackedLoopCopy(5));
+
+        early.StartAddresses(provisional, BuildParentHeader(), Osaka.Instance);
+        Assert.That(preWarmer.HasEarlySession, Is.True);
+        early.Discard(provisional);
+        Assert.That(preWarmer.HasEarlySession, Is.False);
     }
 
     [Test]
