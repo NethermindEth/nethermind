@@ -25,7 +25,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
     private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
-    private const long LargeStoragePrefetchBytes = 512 * 1024;
+    private const long AverageNodeGroupBytes = 1024;
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
@@ -173,7 +173,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
     /// <remarks>
-    /// Storage groups with more than 512 KiB in their descendant-byte statistics also prefetch one additional path byte.
+    /// Each storage leaf then also prefetches the groups below its first storage group, as deep as its estimated remaining group levels.
     /// The reads only warm the store; <see cref="UpdateRootHash"/> stops them before it returns.
     /// </remarks>
     private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
@@ -188,46 +188,58 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
     {
-        PbtStorageNodePath[] paths = [.. NodeGroupPrefetchPaths(bal)];
-        bool[] largeStorageGroups = new bool[paths.Length];
-        ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, largeStorageGroups, cancellation), static (index, state) =>
+        PbtStorageNodePath[] groups = [.. NodeGroupPrefetchPaths(bal)];
+        long[] descendantBytes = new long[groups.Length * PbtFourLevelGroupGeometry.BoundarySlots];
+        ParallelUnbalancedWork.For(0, groups.Length, (bundle, groups, descendantBytes, cancellation), static (index, state) =>
         {
             if (state.cancellation.IsCancellationRequested) return state;
-            long descendantBytes = state.bundle.PrefetchNodeGroup(state.paths[index]);
-            state.largeStorageGroups[index] = state.paths[index].BitDepth == StorageGroupDepth && descendantBytes > LargeStoragePrefetchBytes;
+            Span<long> slotBytes = state.groups[index].BitDepth == StorageGroupDepth
+                ? state.descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots)
+                : [];
+            state.bundle.PrefetchNodeGroup(state.groups[index], slotBytes);
             return state;
         });
         if (cancellation.IsCancellationRequested) return;
 
-        HashSet<PbtStorageNodePath> largePaths = [];
-        for (int index = 0; index < paths.Length; index++)
-            if (largeStorageGroups[index]) largePaths.Add(paths[index]);
-        if (largePaths.Count == 0) return;
-
-        paths = [.. StorageNodeGroupPrefetchPaths(bal, largePaths)];
+        PbtStorageNodePath[] paths = [.. DeeperStorageNodeGroupPaths(bal, groups, descendantBytes)];
         ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, cancellation), static (index, state) =>
         {
-            if (!state.cancellation.IsCancellationRequested) state.bundle.PrefetchNodeGroup(state.paths[index]);
+            if (!state.cancellation.IsCancellationRequested) state.bundle.PrefetchNodeGroup(state.paths[index], []);
             return state;
         });
     }
 
-    private static HashSet<PbtStorageNodePath> StorageNodeGroupPrefetchPaths(ReadOnlyBlockAccessList bal, HashSet<PbtStorageNodePath> largeGroups)
+    /// <summary>The distinct groups below the first storage groups along the storage leaves <paramref name="bal"/> writes.</summary>
+    /// <remarks>
+    /// A leaf's boundary slot in its first storage group holds about <c>descendantBytes / 1 KiB</c> groups,
+    /// so its remaining depth is about <c>log16</c> of that many group levels.
+    /// </remarks>
+    private static HashSet<PbtStorageNodePath> DeeperStorageNodeGroupPaths(ReadOnlyBlockAccessList bal, PbtStorageNodePath[] groups, long[] descendantBytes)
     {
+        Dictionary<PbtStorageNodePath, int> groupIndexes = [];
+        for (int index = 0; index < groups.Length; index++) groupIndexes[groups[index]] = index;
+
         HashSet<PbtStorageNodePath> paths = [];
-        Span<byte> groupBytes = stackalloc byte[StorageGroupDepth / 8];
-        groupBytes[0] = Eip8297KeyDerivation.StorageZone;
+        Span<byte> pathBytes = stackalloc byte[PbtStoragePath.KeyLength];
         foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
             ValueHash256 addressHash = PbtStateKey.AddressKeyHash(accountChanges.Address);
-            addressHash.Bytes.CopyTo(groupBytes[1..]);
-            if (!largeGroups.Contains(new PbtStorageNodePath(groupBytes, StorageGroupDepth))) continue;
-
             foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
                 if (slotChanges.Changes.Length == 0 || PbtStateKey.IsHeaderSlot(slotChanges.Key)) continue;
                 PbtStoragePath storagePath = PbtStateKey.Storage(accountChanges.Address, addressHash, slotChanges.Key);
-                paths.Add(new PbtStorageNodePath(storagePath.Bytes[..(StorageGroupDepth / 8 + 1)], StorageGroupDepth + 8));
+                int groupIndex = groupIndexes[new PbtStorageNodePath(storagePath.Bytes[..(StorageGroupDepth / 8)], StorageGroupDepth)];
+                int slot = storagePath.Bytes[StorageGroupDepth / 8] >> 4;
+                long subtreeBytes = descendantBytes[groupIndex * PbtFourLevelGroupGeometry.BoundarySlots + slot];
+                int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
+                for (int level = 1; level <= levels; level++)
+                {
+                    int depth = StorageGroupDepth + level * PbtFourLevelGroupGeometry.LevelsPerGroup;
+                    Span<byte> path = pathBytes[..((depth + 7) / 8)];
+                    storagePath.Bytes[..path.Length].CopyTo(path);
+                    if (depth % 8 != 0) path[^1] &= 0xF0;
+                    paths.Add(new PbtStorageNodePath(path, depth));
+                }
             }
         }
         return paths;

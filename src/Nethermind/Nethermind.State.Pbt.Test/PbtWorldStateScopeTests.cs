@@ -471,9 +471,15 @@ public class PbtWorldStateScopeTests
         Assert.That(PbtWorldStateScope.NodeGroupPrefetchPaths(bal), Is.EquivalentTo(expected));
     }
 
-    [Test]
-    public void NodeGroupPrefetch_reads_one_extra_storage_path_byte_only_above_512_KiB(
-        [Values(-1L, 0L, 512 * 1024 - 1L, 512 * 1024L, 512 * 1024 + 1L)] long descendantBytes, [Values] bool cancelled)
+    [TestCase(-1L, 0, false, TestName = "missing storage group")]
+    [TestCase(0L, 0, false)]
+    [TestCase(1024L, 0, false)]
+    [TestCase(1025L, 1, false)]
+    [TestCase(16 * 1024L, 1, false)]
+    [TestCase(16 * 1024 + 1L, 2, false)]
+    [TestCase(1024 * 1024L, 3, false)]
+    [TestCase(1024 * 1024L, 0, true, TestName = "cancelled")]
+    public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(long descendantBytes, int levels, bool cancelled)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
@@ -492,10 +498,8 @@ public class PbtWorldStateScopeTests
         {
             PbtStorageNodePath path = call.Arg<PbtStorageNodePath>();
             if (descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup)) return null;
-            long size = path.BitDepth == 272 ? 1024 * 1024 : descendantBytes;
             long[] sizes = new long[PbtFourLevelGroupGeometry.BoundarySlots];
-            sizes[0] = size / 2;
-            sizes[^1] = size - sizes[0];
+            Array.Fill(sizes, descendantBytes);
             byte[] branch = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
             byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), branch)], sizes);
             RefCountingMemory payload = memory.Rent(encoding.Length);
@@ -507,12 +511,16 @@ public class PbtWorldStateScopeTests
         PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, new CancellationToken(cancelled));
 
         HashSet<PbtStorageNodePath> expected = cancelled ? [] : PbtWorldStateScope.NodeGroupPrefetchPaths(bal);
-        if (!cancelled && descendantBytes > 512 * 1024)
-            foreach (UInt256 slot in new UInt256[] { 1000, 2000 })
+        foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
+        {
+            PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
+            for (int depth = 268; depth <= 264 + 4 * levels; depth += 4)
             {
-                PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
-                expected.Add(new PbtStorageNodePath(key.Bytes[..34], 272));
+                byte[] path = key.Bytes[..((depth + 7) / 8)].ToArray();
+                if (depth % 8 != 0) path[^1] &= 0xF0;
+                expected.Add(new PbtStorageNodePath(path, depth));
             }
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroup))
