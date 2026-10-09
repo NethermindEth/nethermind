@@ -52,7 +52,7 @@ public class PbtSnapshotBundleTests
         repository.TryAdd(memory);
         Reader reader = new(default, null);
         PbtSnapshotChain chain = repository.TryLeaseReadChain(new StateId(1, default), StateId.PreGenesis)!;
-        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false);
+        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false, slotFilterBitsPerKey: 0);
         Assert.That(bundle.TryLease(), Is.True);
         repository.RemoveMemoryState(new StateId(1, default));
         repository.RemoveRetainedExact(retained.To, 1, SnapshotTier.PersistedBase);
@@ -85,7 +85,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -345,8 +345,8 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
-        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false);
-        using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0);
+        using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         int readsBeforeDirectRead = reader.GroupReadCount;
         for (int read = 0; read < 2; read++)
@@ -824,7 +824,7 @@ public class PbtSnapshotBundleTests
             using RefCountingMemory cached = Memory(shared, memoryProvider);
             cache.Add(TestItem.KeccakA.ValueHash256, groupKey, cached);
         }
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
         if (newestTier == 3)
         {
             using RefCountingMemory? payload = tombstone ? null : Memory(write, memoryProvider);
@@ -875,7 +875,7 @@ public class PbtSnapshotBundleTests
         }
         Reader reader = new(default, null) { GroupPayload = retainedEncoding };
         PbtSnapshotChain chain = repository.TryLeaseReadChain(head, StateId.PreGenesis)!;
-        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false);
+        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false, slotFilterBitsPerKey: 0);
         bool found = bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? payload);
         using (payload)
         {

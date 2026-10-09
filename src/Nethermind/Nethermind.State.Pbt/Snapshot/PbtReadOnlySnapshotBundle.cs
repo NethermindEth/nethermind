@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -13,17 +14,29 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>An immutable canonical state view composed from snapshot diffs over one persistence snapshot.</summary>
+/// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
+/// in-memory layers' slot runs; 0 never builds one.</param>
 public sealed class PbtReadOnlySnapshotBundle(
     PbtSnapshotPooledList snapshots,
     IPbtPersistence.IReader reader,
-    bool recordDetailedMetrics) : RefCountingDisposable
+    bool recordDetailedMetrics,
+    double slotFilterBitsPerKey) : RefCountingDisposable
 {
+    private const int SlotFilterNotBuilt = 0;
+    private const int SlotFilterBuilding = 1;
+    private const int SlotFilterReady = 2;
+    private const int SlotFilterSkipped = 3;
+
+    // With one in-memory layer the loop is already a single dictionary probe, which the filter would not beat.
+    private const int MinMemoryLayersForSlotFilter = 2;
+
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
@@ -46,8 +59,22 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     private bool _isDisposed;
     private readonly PbtSnapshotChain? _chain;
-    internal PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics)
-        : this(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics) => _chain = chain;
+
+    // Negative filter over the run keys and cleared addresses of all in-memory layers, for RentRunFiltered. Built
+    // lazily by the first filtered read, so bundles that only serve block processing never pay for it.
+    private BloomFilter? _slotFilter;
+    private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, snapshots.Count);
+
+    internal PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics, double slotFilterBitsPerKey)
+        : this(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics, slotFilterBitsPerKey)
+    {
+        _chain = chain;
+        _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, chain.Layers.Count(static layer => layer.Memory is not null));
+    }
+
+    private static int InitialSlotFilterState(double bitsPerKey, int memoryLayers) =>
+        bitsPerKey > 0 && memoryLayers >= MinMemoryLayersForSlotFilter ? SlotFilterNotBuilt : SlotFilterSkipped;
+
     private int LayerCount => _chain?.Layers.Count ?? snapshots.Count;
     private PbtSnapshot? MemoryLayer(int index) => _chain is null ? snapshots[index] : _chain.Layers[index].Memory;
     private PersistedSnapshots.PbtRetainedSnapshot? RetainedLayer(int index) => _chain?.Layers[index].Retained;
@@ -202,14 +229,39 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>A caller-owned copy of the whole run keyed by <paramref name="runKey"/> as this view sees it.</summary>
-    internal PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
+    internal PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+        RentRun(runKey, addressHash, skipMemoryLayers: false);
+
+    /// <summary>
+    /// Returns exactly what <see cref="RentRun{TKey}(in HashedKey{TKey}, in ValueHash256)"/> returns, but asks a
+    /// negative filter over the in-memory layers first, so a run none of them holds or clears - nearly every run an
+    /// <c>eth_call</c> reads - costs two filter probes instead of one dictionary probe per in-memory layer.
+    /// </summary>
+    /// <remarks>
+    /// For read-only execution only. The first call builds the filter inline, once per bundle; reads racing that
+    /// build take the plain loop instead of waiting. Retained layers keep their own bloom filters and are still
+    /// probed on a definite miss.
+    /// </remarks>
+    internal PackedSlotRun RentRunFiltered<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
+    {
+        GuardDispose();
+        BloomFilter? filter = Volatile.Read(ref _slotFilter)
+            ?? (Volatile.Read(ref _slotFilterState) == SlotFilterNotBuilt ? TryBuildSlotFilter() : null);
+        bool mayBeInMemory = filter is null
+            || filter.MightContain(PbtSnapshotContent.SlotFilterKey(runKey))
+            || filter.MightContain(PbtSnapshotContent.SlotFilterKey(addressHash));
+        return RentRun(runKey, addressHash, skipMemoryLayers: !mayBeInMemory);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash, bool skipMemoryLayers) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
         for (int layer = LayerCount - 1; layer >= 0; layer--)
         {
-            if (TryRentRun(layer, runKey, addressHash, out PackedSlotRun? run))
+            if ((!skipMemoryLayers || MemoryLayer(layer) is null) && TryRentRun(layer, runKey, addressHash, out PackedSlotRun? run))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readRunSnapshotLabels[labelIndex]);
                 return run!;
@@ -239,6 +291,60 @@ public sealed class PbtReadOnlySnapshotBundle(
         return result;
     }
 
+    // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
+    // layers it walks nor the filter it publishes can be cleaned up under it.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private BloomFilter? TryBuildSlotFilter()
+    {
+        if (Interlocked.CompareExchange(ref _slotFilterState, SlotFilterBuilding, SlotFilterNotBuilt) != SlotFilterNotBuilt) return null;
+
+        long start = Stopwatch.GetTimestamp();
+        BloomFilter? filter = null;
+        try
+        {
+            // A key held by several layers is counted once per layer, which only lowers the false-positive rate.
+            long capacity = 0;
+            for (int layer = 0; layer < LayerCount; layer++) capacity += MemoryLayer(layer)?.Content.SlotFilterKeyCount ?? 0;
+
+            // Layers that hold no run still get a filter: every read then skips them.
+            filter = new BloomFilter(Math.Max(capacity, 1), slotFilterBitsPerKey);
+            for (int layer = 0; layer < LayerCount; layer++) MemoryLayer(layer)?.Content.AddSlotFilterKeysTo(filter);
+        }
+        catch (Exception)
+        {
+            // The plain loop is always right, so a filter that cannot be built is just not used. That deliberately
+            // includes OutOfMemoryException: the one large allocation here is the filter's native block, and a read
+            // must not fail because an optional filter did not fit.
+            filter?.Dispose();
+            Volatile.Write(ref _slotFilterState, SlotFilterSkipped);
+            Metrics.RecordPbtInMemorySlotFilterBuildFailed();
+            return null;
+        }
+
+        Volatile.Write(ref _slotFilter, filter);
+        Volatile.Write(ref _slotFilterState, SlotFilterReady);
+        Metrics.RecordPbtInMemorySlotFilterBuilt(filter.DataBytes, Stopwatch.GetTimestamp() - start);
+        return filter;
+    }
+
+    /// <summary>The published slot filter, or <c>null</c> while none is built.</summary>
+    internal BloomFilter? SlotFilter => Volatile.Read(ref _slotFilter);
+
+    /// <summary>
+    /// <c>false</c> when <see cref="RentRunFiltered"/> can only fall back to the plain loop: no bits per key, fewer than
+    /// two in-memory layers, or a build that failed.
+    /// </summary>
+    internal bool MayFilterSlots => Volatile.Read(ref _slotFilterState) != SlotFilterSkipped;
+
+    private void ReleaseSlotFilter()
+    {
+        BloomFilter? filter = Interlocked.Exchange(ref _slotFilter, null);
+        if (filter is null) return;
+
+        Metrics.RecordPbtInMemorySlotFilterReleased(filter.DataBytes);
+        filter.Dispose();
+    }
+
     public bool TryLease() => TryAcquireLease();
 
     protected override void CleanUp()
@@ -246,6 +352,8 @@ public sealed class PbtReadOnlySnapshotBundle(
         _isDisposed = true;
         try
         {
+            // Before the layers, whose keys the filter was built from.
+            ReleaseSlotFilter();
             _chain?.Dispose();
             snapshots.Dispose();
         }

@@ -19,12 +19,15 @@ using Nethermind.State.Pbt.ScopeProvider;
 namespace Nethermind.State.Pbt.Snapshot;
 
 /// <summary>A writable flat branch over sealed local snapshots and a shared read-only base.</summary>
+/// <param name="filterInMemorySlotReads">Serve run reads that reach the read-only base with
+/// <see cref="PbtReadOnlySnapshotBundle.RentRunFiltered"/>; for read-only execution only.</param>
 public sealed class PbtSnapshotBundle(
     PbtSnapshotPooledList snapshots,
     PbtReadOnlySnapshotBundle readOnlyBundle,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
-    IPbtTrieNodeCache trieNodeCache) : IDisposable
+    IPbtTrieNodeCache trieNodeCache,
+    bool filterInMemorySlotReads) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
     private readonly PbtPartitionBatchesBuilder _leafChanges = new(
@@ -43,6 +46,8 @@ public sealed class PbtSnapshotBundle(
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
     private readonly ConcurrentQueue<PackedSlotRun> _replacedRuns = new();
     private bool _isDisposed;
+    // A base that can never have a filter would only pay RentRunFiltered's extra checks on every read.
+    private readonly bool _filterInMemorySlotReads = filterInMemorySlotReads && readOnlyBundle.MayFilterSlots;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
 
@@ -183,7 +188,8 @@ public sealed class PbtSnapshotBundle(
         PackedSlotRun? run;
         while (!writeBuffer.TryGetSlotRun(runKey, out run))
         {
-            run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
+            run = FindLocalRun(runKey, addressHash)?.Clone()
+                ?? (_filterInMemorySlotReads ? readOnlyBundle.RentRunFiltered(runKey, addressHash) : readOnlyBundle.RentRun(runKey, addressHash));
             if (writeBuffer.TryAddRun(runKey, run)) return run;
             SlotRun.Return(run);
         }

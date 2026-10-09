@@ -159,8 +159,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Retained snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
 
-    /// <summary>In-memory snapshot bloom bits per key; zero disables filtering. Defaults to 14.0.</summary>
-    [ConfigItem(Description = "In-memory snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14.0")]
+    /// <summary>Gets or sets the bits per key in the in-memory snapshot slot filter used by read-only execution.</summary>
+    /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
+    [ConfigItem(Description = "Bits per key for the negative filter over the slot runs held or cleared by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution, and lets those reads skip the per-snapshot lookups for a run no in-memory snapshot holds. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
     double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]

@@ -136,6 +136,40 @@ public static class Metrics
         ["node_group_storage_persistence"] = 0,
     };
 
+    private static long _pbtInMemorySlotFilterMemory;
+
+    [GaugeMetric]
+    [Description("Memory held by the negative filters over the pbt in-memory snapshots' slot runs in bytes; one filter per read-only snapshot bundle that served a read-only execution slot read")]
+    public static long PbtInMemorySlotFilterMemory => Volatile.Read(ref _pbtInMemorySlotFilterMemory);
+
+    private static long _pbtInMemorySlotFilterBuilds;
+
+    [CounterMetric]
+    [Description("Negative filters built over the pbt in-memory snapshots' slot runs")]
+    public static long PbtInMemorySlotFilterBuilds => Volatile.Read(ref _pbtInMemorySlotFilterBuilds);
+
+    private static long _pbtInMemorySlotFilterBuildFailures;
+
+    [CounterMetric]
+    [Description("Negative filters over the pbt in-memory snapshots' slot runs that failed to build; their bundles read slots without a filter")]
+    public static long PbtInMemorySlotFilterBuildFailures => Volatile.Read(ref _pbtInMemorySlotFilterBuildFailures);
+
+    [DetailedMetric]
+    [Description("Time to build the negative filter over the pbt in-memory snapshots' slot runs (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
+    public static IMetricObserver PbtInMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
+
+    internal static void RecordPbtInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    {
+        Interlocked.Add(ref _pbtInMemorySlotFilterMemory, bytes);
+        Interlocked.Increment(ref _pbtInMemorySlotFilterBuilds);
+        PbtInMemorySlotFilterBuildTime.Observe(elapsedTicks);
+    }
+
+    internal static void RecordPbtInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _pbtInMemorySlotFilterBuildFailures);
+
+    internal static void RecordPbtInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _pbtInMemorySlotFilterMemory, -bytes);
+
     [GaugeMetric]
     [DetailedMetric]
     [Description("Retained payload bytes in pbt base snapshots, by value type, excluding tombstones and data-structure overhead")]

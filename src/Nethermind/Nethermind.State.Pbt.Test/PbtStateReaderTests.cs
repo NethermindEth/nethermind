@@ -48,7 +48,7 @@ public class PbtStateReaderTests
             _ => null
         };
         manager.TryGatherReadOnlyBundle(stateId).Returns(_ => cause is null ? null : throw cause);
-        manager.TryGatherBundle(stateId, Arg.Any<PbtSnapshotPooledList>(), Arg.Any<PbtResourcePool.Usage>()).Returns(_ => cause is null ? null : throw cause);
+        manager.TryGatherBundle(stateId, Arg.Any<PbtSnapshotPooledList>(), Arg.Any<PbtResourcePool.Usage>(), Arg.Any<bool>()).Returns(_ => cause is null ? null : throw cause);
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => Read(reader, header, storage));
 

@@ -243,8 +243,8 @@ public class PbtNodeGroupPrefetchTests
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetNodeGroup(paths[0], payload);
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false),
-            pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance))
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
+            pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false))
         {
             Exception? error = Assert.Catch(() => Prefetch(bundle, bal, new CancellationToken(true), CancellationToken.None));
             Assert.That(error!.ToString(), Does.Contain("prefetch read failed"));
