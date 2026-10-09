@@ -22,8 +22,8 @@ public interface IGCStrategy
     /// <summary>Gets when a permitted payload enters a region of its own; one that does not still schedules the post-payload collection.</summary>
     NoGcRegionMode NoGCRegionMode { get; }
     /// <summary>
-    /// Gets the gen0 allocation budget, in bytes, that has to be left for <see cref="NoGcRegionMode.Guard"/> to skip the
-    /// region, or 0 to derive it from gen0's budget and what payloads allocate (<see cref="GCKeeper.GuardThreshold"/>).
+    /// Gets the most bytes that may be allocated after the region's budget was re-armed for a payload to skip its own
+    /// entry with <see cref="NoGcRegionMode.Guard"/>, or 0 for the default (<see cref="GCKeeper.DefaultGuardSlack"/>).
     /// </summary>
     long NoGCRegionGuardBytes { get; }
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
@@ -46,7 +46,7 @@ public enum NoGcRegionMode
 {
     [Description("Enters the no-GC region on every `engine_newPayload`.")]
     Always,
-    [Description("Enters the no-GC region only when the estimated gen0 allocation budget left is below the guard.")]
+    [Description("Re-arms the no-GC region's budget right after the block on a quiet node and skips the entry while it is still armed.")]
     Guard,
     [Description("Never enters the no-GC region.")]
     Never

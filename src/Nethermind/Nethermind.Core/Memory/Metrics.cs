@@ -28,19 +28,15 @@ public static class Metrics
     [Description("Number of throwaway no-GC regions entered and ended at once right after a decommit collection, to keep the region's budget committed for the next engine_newPayload; not counted in no_gc_region_entries.")]
     public static long NoGcRegionRecommits;
 
-    [GaugeMetric]
-    [Description("Gen0 allocation budget left that the no-GC region guard requires to skip the region, at its last decision.")]
-    public static long NoGcRegionGuardThresholdBytes { get; set; }
+    [CounterMetric]
+    [Description("Number of throwaway no-GC regions entered and ended at once right after an ordinary post-block collection on a quiet node with the region set to Guard, so that the next engine_newPayload finds the region's allocation budget armed and can skip its own entry; not counted in no_gc_region_entries or no_gc_region_recommits.")]
+    public static long NoGcRegionRearms;
 
-    [GaugeMetric]
-    [Description("Estimated gen0 allocation budget left at the no-GC region guard's last decision; 0 when unknown.")]
-    public static long NoGcRegionGuardBudgetLeftBytes { get; set; }
+    [CounterMetric]
+    [Description("Number of ordinary post-block collections with the region set to Guard after which the region's budget was not re-armed because the node allocated faster than 8 MB/s since the last engine_newPayload ended, or none had ended yet.")]
+    public static long NoGcRegionRearmsSkippedBusy;
 
-    [GaugeMetric]
-    [Description("Gen0 allocation budget the no-GC region guard's last estimate started from; 0 when unknown.")]
-    public static long NoGcRegionGuardGen0BudgetBytes { get; set; }
-
-    [GaugeMetric]
-    [Description("Most bytes allocated during one engine_newPayload over the last 300-600 payloads, as the no-GC region guard uses it.")]
-    public static long NoGcRegionGuardBlockAllocationBytes { get; set; }
+    [CounterMetric]
+    [Description("Number of no-GC region re-arms that took more than 2 ms or during which the runtime collected, each pausing re-arms for the next 25 engine_newPayload calls.")]
+    public static long NoGcRegionRearmBackoffs;
 }
