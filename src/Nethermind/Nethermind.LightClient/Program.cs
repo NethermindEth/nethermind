@@ -51,11 +51,8 @@ BeaconChainSpec spec = network switch
 };
 Hash256 checkpoint = new(builder.Configuration["checkpoint"] ?? throw new ArgumentException("--checkpoint is required."));
 string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
-ConsoleColor originalColor = Console.ForegroundColor;
 bool redirected = Console.IsOutputRedirected;
-if (!redirected) Console.ForegroundColor = ConsoleColor.Cyan;
 Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected));
-if (!redirected) Console.ForegroundColor = originalColor;
 builder.WebHost.UseUrls(rpcUrl);
 builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = RpcEndpoint.MaxRequestBodySize);
 await using WebApplication app = builder.Build();

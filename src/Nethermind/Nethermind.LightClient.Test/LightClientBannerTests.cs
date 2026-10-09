@@ -12,9 +12,20 @@ public class LightClientBannerTests
         string banner = LightClientBanner.Render("mainnet", "http://127.0.0.1:8545", checkpoint, redirected: true);
 
         Assert.That(banner.All(char.IsAscii), Is.True);
-        Assert.That(banner, Does.Contain("N E T H E R M I N D"));
+        Assert.That(banner, Does.StartWith("_____   __   ______  ___   ______     _________"));
+        Assert.That(banner, Does.Not.Contain("\u001b"));
         Assert.That(banner, Does.Contain("MAINNET | Beacon + execution P2P | Local verification"));
         Assert.That(banner, Does.Contain("RPC http://127.0.0.1:8545 | P2P :9050 / :30307"));
         Assert.That(banner, Does.Contain(checkpoint));
+    }
+
+    [Test]
+    public void Interactive_banner_uses_blue_and_orange_logo()
+    {
+        string banner = LightClientBanner.Render("mainnet", "http://127.0.0.1:8545", "0x01", redirected: false);
+
+        Assert.That(banner, Does.StartWith("\u001b[1;38;2;0;179;255m_____   __   ______  ___   " +
+            "\u001b[1;38;2;255;153;0m______     _________"));
+        Assert.That(banner, Does.Contain("/_____/    \\____/\u001b[0m"));
     }
 }

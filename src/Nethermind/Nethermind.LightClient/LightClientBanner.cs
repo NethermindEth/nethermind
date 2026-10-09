@@ -7,23 +7,16 @@ internal static class LightClientBanner
 {
     internal static string Render(string network, string rpcUrl, string checkpoint, bool redirected)
     {
-        string[] logo = redirected
-            ? [
-                "          *",
-                "         / \\",
-                "        *---*       N E T H E R M I N D",
-                "         \\ /        L I G H T   C L I E N T",
-                "          *",
-                "    -------------------------------------------",
-            ]
-            : [
-                "          ◆",
-                "         ╱ ╲",
-                "        ◆ ─ ◆       N E T H E R M I N D",
-                "         ╲ ╱        L I G H T   C L I E N T",
-                "          ◆",
-                "    ───────────────────────────────────────────",
-            ];
+        string blue = redirected ? "" : "\u001b[1;38;2;0;179;255m";
+        string orange = redirected ? "" : "\u001b[1;38;2;255;153;0m";
+        string reset = redirected ? "" : "\u001b[0m";
+        string[] logo = [
+            $"{blue}_____   __   ______  ___   {orange}______     _________",
+            $"{blue}___  | / /   ___   |/  /   {orange}___  /     __  ____/",
+            $"{blue}__   |/ /    __  /|_/ /    {orange}__  /      _  /",
+            $"{blue}_  /|  /     _  /  / /     {orange}_  /___    / /___",
+            $"{blue}/_/ |_/      /_/  /_/      {orange}/_____/    \\____/{reset}",
+        ];
         string separator = redirected ? " | " : "  ·  ";
         return string.Join(Environment.NewLine, logo) + Environment.NewLine +
             $"    {network.ToUpperInvariant()}{separator}Beacon + execution P2P{separator}Local verification{Environment.NewLine}" +
