@@ -1580,7 +1580,7 @@ public partial class EngineModuleTests
     /// second node in the fixture's execution mode, and its witness re-executes statelessly to the same state root.
     /// </summary>
     [Test]
-    public async Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness()
+    public virtual async Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness()
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true };
         using MergeTestBlockchain producer = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });

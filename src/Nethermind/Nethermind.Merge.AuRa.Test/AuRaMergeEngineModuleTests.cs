@@ -135,6 +135,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input) =>
         base.Can_apply_withdrawals_correctly(input);
 
+    [Ignore("Stateless re-execution follows Ethereum block processing, not AuRa's, so no AuRa block matches its root")]
+    public override Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness() =>
+        base.Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness();
+
     [Test]
     [Category("Flaky"), Retry(3)]
     [NonParallelizable]
