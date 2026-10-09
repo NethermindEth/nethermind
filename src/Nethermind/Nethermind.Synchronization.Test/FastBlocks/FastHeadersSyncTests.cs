@@ -783,7 +783,7 @@ public class FastHeadersSyncTests
         RespondWithChainHeaders(scenario, scenario.FirstBatch);
 
         feed.ThrowOnInsert = new OperationCanceledException();
-        Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
+        await Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
         Assert.That(feed.Pending, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
@@ -1457,7 +1457,7 @@ public class FastHeadersSyncTests
         using CancellationTokenSource cancellation = new();
         cancellation.Cancel();
 
-        Assert.ThrowsAsync<OperationCanceledException>(async () => await feed.PrepareRequest(cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await feed.PrepareRequest(cancellation.Token));
         Assert.DoesNotThrow(() => response.AsSpan(), "cancellation must leave the retained response queued");
         Assert.That(await feed.PrepareRequest(), Is.Null);
         using (Assert.EnterMultipleScope())
@@ -1493,7 +1493,7 @@ public class FastHeadersSyncTests
         GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse")(batch);
         feed.ThrowOnInsert = new OperationCanceledException();
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
+        await Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
         Assert.That(feed.Pending.Single().Response, Is.Null);
         Assert.Throws<ObjectDisposedException>(() => response.AsSpan());
         feed.ThrowOnInsert = null;

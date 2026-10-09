@@ -121,7 +121,7 @@ public class BalFetcherTests
 
         if (outcome == FetchOutcome.Cancellation)
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
         }
         else
         {
