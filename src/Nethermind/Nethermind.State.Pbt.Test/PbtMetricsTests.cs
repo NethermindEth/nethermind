@@ -168,7 +168,7 @@ public class PbtMetricsTests
         snapshots.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(0, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
         using PbtSnapshotContent emptyContent = new();
         snapshots.Add(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, emptyContent, pool, PbtResourcePool.Usage.MainBlockProcessing));
-        using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
+        using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot<PbtPath>(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));

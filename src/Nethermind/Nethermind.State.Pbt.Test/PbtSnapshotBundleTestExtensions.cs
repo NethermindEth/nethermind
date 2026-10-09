@@ -38,8 +38,8 @@ internal static class PbtSnapshotBundleTestExtensions
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtTrieNodeCache cache) => new(
         new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false),
-        pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
+        pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
     public static ValueHash256 Fold(this PbtSnapshotBundle bundle, ValueHash256 root)

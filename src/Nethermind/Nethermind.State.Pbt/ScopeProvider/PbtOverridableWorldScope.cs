@@ -100,7 +100,10 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         }
 
         localChain.Reverse();
-        return _manager.TryGatherBundle(current, localChain, PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        // Everything this scope executes is read-only (calls, simulations, traces, proofs, Flashbots block validation,
+        // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
+        // snapshots' negative filter.
+        return _manager.TryGatherBundle(current, localChain, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true);
     }
 
     private class OverridableScopeProvider(PbtOverridableWorldScope outer, IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider

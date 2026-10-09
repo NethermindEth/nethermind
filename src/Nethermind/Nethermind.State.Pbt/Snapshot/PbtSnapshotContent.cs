@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
@@ -10,6 +11,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -52,6 +54,31 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         foreach ((HashedKey<TKey> key, _) in runs)
             if (Eip8297KeyDerivation.AddressHashOf(key.Key) == addressHash && runs.TryRemove(key, out PackedSlotRun? removed)) SlotRun.Return(removed);
+    }
+
+    /// <summary>The key a run key is filed under in a slot filter built by <see cref="AddSlotFilterKeysTo"/>.</summary>
+    /// <remarks>The hash the run dictionaries already bucket on, so a probe hashes nothing new.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong SlotFilterKey<TKey>(in HashedKey<TKey> runKey) where TKey : struct, IPbtKey<TKey> => (uint)runKey.GetHashCode();
+
+    /// <summary>The key a cleared address is filed under in a slot filter built by <see cref="AddSlotFilterKeysTo"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong SlotFilterKey(in ValueHash256 addressHash) => (uint)addressHash.GetHashCode();
+
+    /// <summary>How many keys <see cref="AddSlotFilterKeysTo"/> adds.</summary>
+    internal long SlotFilterKeyCount => HeaderStorages.Count + Storages.Count + SelfDestructedStorageAddresses.Count;
+
+    /// <summary>Adds every run key and cleared address of this layer to <paramref name="filter"/> under <see cref="SlotFilterKey{TKey}"/> and <see cref="SlotFilterKey(in ValueHash256)"/>.</summary>
+    /// <remarks>
+    /// Both kinds of entry answer a run read in this layer, so a filter that holds neither for a read proves the
+    /// layer cannot answer it. Requires sealed content: a run or clear added afterwards would be missing from a filter
+    /// already built.
+    /// </remarks>
+    internal void AddSlotFilterKeysTo(BloomFilter filter)
+    {
+        foreach ((HashedKey<PbtPath> runKey, _) in HeaderStorages) filter.AddUnsynchronized(SlotFilterKey(runKey));
+        foreach ((HashedKey<PbtStoragePath> runKey, _) in Storages) filter.AddUnsynchronized(SlotFilterKey(runKey));
+        foreach ((ValueHash256 addressHash, _) in SelfDestructedStorageAddresses) filter.AddUnsynchronized(SlotFilterKey(addressHash));
     }
 
     /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>

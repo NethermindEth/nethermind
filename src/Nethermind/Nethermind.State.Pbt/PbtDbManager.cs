@@ -41,6 +41,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly bool _inlineCompaction;
     private readonly CancellationToken _processExitToken;
     private readonly bool _recordDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
     private int _isDisposed;
 
     private readonly Task _persistenceWorker;
@@ -93,6 +94,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _processExitToken = processExitSource.Token;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _inlineCompaction = persistenceManager.Configuration.InlineCompaction;
+        _inMemorySlotFilterBitsPerKey = persistenceManager.Configuration.InMemorySnapshotBloomBitsPerKey;
         _persistenceJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
         _compactionJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
         _stopSource = new CancellationTokenSource();
@@ -110,7 +112,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
-        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
+        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, slotFilterBitsPerKey: 0);
         long started = 0;
         int attempt = 0;
         while (true)
@@ -140,7 +142,8 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 Metrics.PbtSnapshotBundleSize = chain.Layers.Count;
                 Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(chain.Layers.Count > 0
                     ? chain.Layers[^1].To.BlockNumber - chain.Layers[0].From.BlockNumber : 0);
-                bundle = new(chain, reader, _recordDetailedMetrics);
+                // Nothing is built here: the first filtered read builds the filter.
+                bundle = new(chain, reader, _recordDetailedMetrics, _inMemorySlotFilterBitsPerKey);
             }
             catch { chain.Dispose(); reader.Dispose(); throw; }
             bundle.TryLease();
@@ -166,7 +169,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
-    public PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage)
+    public PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         PbtReadOnlySnapshotBundle? readOnlyBundle = null;
         try
@@ -179,7 +182,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             }
 
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(localSnapshots, readOnlyBundle, _resourcePool, usage, _trieNodeCache);
+            return new PbtSnapshotBundle(localSnapshots, readOnlyBundle, _resourcePool, usage, _trieNodeCache, filterInMemorySlotReads);
         }
         catch
         {

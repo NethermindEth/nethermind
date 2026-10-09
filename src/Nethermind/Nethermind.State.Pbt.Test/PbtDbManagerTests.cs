@@ -72,7 +72,7 @@ public class PbtDbManagerTests
                     Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
                     Assert.That(repository.Count, Is.EqualTo(1));
                     using (PbtReadOnlySnapshotBundle held = new(repository.TryLeaseReadChain(state, StateId.PreGenesis)!,
-                        container.Resolve<IPbtPersistence>().CreateReader(), false))
+                        container.Resolve<IPbtPersistence>().CreateReader(), false, slotFilterBitsPerKey: 0))
                     {
                         repository.RemoveMemoryState(state);
                         Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
