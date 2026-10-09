@@ -206,6 +206,29 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
+    public void Unrecognized_engine_is_named_in_the_error()
+    {
+        string json = """
+            {
+                "name": "Test",
+                "engine": { "clique": { "params": { "period": 15, "epoch": 30000 } } },
+                "params": { "networkID": "1" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+
+        Assert.That(() => loader.Load(stream),
+            Throws.TypeOf<InvalidDataException>().With.Message.Contains("unrecognized engine(s): clique"));
+    }
+
+    [Test]
     public void All_ChainSpecParamsJson_properties_should_be_mapped_in_loader()
     {
         // Properties excluded due to ChainSpecLoader.ValidateParams constraints:

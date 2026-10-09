@@ -45,8 +45,7 @@ namespace Nethermind.Runner.Test
         // the handful Nethermind.Specs.Test names one by one. It lives here because TypeDiscovery resolves plugin
         // types through the reference closure - loaded assemblies plus what they reference - and referencing
         // Nethermind.Runner is what pulls every plugin assembly into it. Without that reference the plugin chains'
-        // engine parameters do not resolve at all and Taiko, Linea, JOC and Surge fail with "No seal engine in
-        // chain spec".
+        // engine parameters do not resolve at all and Taiko and Surge fail with "No seal engine in chain spec".
         [TestCaseSource(nameof(ShippedChainSpecs))]
         public void Every_shipped_chainspec_builds_a_spec_provider(string chainSpecPath)
         {

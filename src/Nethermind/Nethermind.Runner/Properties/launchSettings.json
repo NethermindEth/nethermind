@@ -28,20 +28,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "JOC Mainnet": {
-      "commandName": "Project",
-      "commandLineArgs": "-c joc-mainnet --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "JOC Testnet": {
-      "commandName": "Project",
-      "commandLineArgs": "-c joc-testnet --data-dir .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Mainnet": {
       "commandName": "Project",
       "commandLineArgs": "-c mainnet --data-dir .data",
