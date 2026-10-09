@@ -385,8 +385,7 @@ public sealed class FrameTxValidationTracer(
                 case >= Instruction.PUSH1 and <= Instruction.PUSH32:
                     i += opcode - Instruction.PUSH0;
                     break;
-                case Instruction.DUPN or Instruction.SWAPN when eip8024 && i + 1 < code.Length && (uint)(code[i + 1] - 0x5B) > 0x24:
-                case Instruction.EXCHANGE when eip8024 && i + 1 < code.Length && (uint)(code[i + 1] - 0x52) > 0x2D:
+                case Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE when eip8024 && HasEip8024Immediate(code, i):
                     i++;
                     break;
             }
@@ -394,6 +393,12 @@ public sealed class FrameTxValidationTracer(
 
         return mutability;
     }
+
+    /// <summary>Whether the byte after the DUPN/SWAPN/EXCHANGE at <paramref name="i"/> is its valid EIP-8024 immediate, and so not an instruction.</summary>
+    private static bool HasEip8024Immediate(ReadOnlySpan<byte> code, int i) =>
+        i + 1 < code.Length && ((Instruction)code[i] == Instruction.EXCHANGE
+            ? EvmInstructions.IsValidEip8024PairImmediate(code[i + 1])
+            : EvmInstructions.IsValidEip8024SingleImmediate(code[i + 1]));
 
     /// <summary>EIP-8272: <c>RECENT_ROOT_CODE</c> may read the keys its own frame's tuples derive, and nothing else.</summary>
     private bool IsRecentRootKeyRead(Address address, in UInt256 storageIndex) =>
