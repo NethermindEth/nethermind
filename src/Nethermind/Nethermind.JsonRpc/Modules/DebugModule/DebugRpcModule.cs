@@ -480,7 +480,10 @@ public class DebugRpcModule(
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            if (resolvedBlock.Transactions.Length != 0)
+            bool hasTransactionToTrace = effective.TxHash is { } txHash
+                ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
+                : resolvedBlock.Transactions.Length != 0;
+            if (hasTransactionToTrace)
             {
                 try
                 {

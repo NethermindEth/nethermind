@@ -117,11 +117,14 @@ public partial class DebugRpcModuleTests
     [TestCase("empty-native", false)]
     [TestCase("empty-opcode", true)]
     [TestCase("empty-javascript", false)]
+    [TestCase("unmatched-opcode", false)]
+    [TestCase("unmatched-opcode", true)]
     [TestCase("javascript-valid", false)]
     public async Task Debug_traceBlockByNumber_defers_timeout_per_transaction_without_changing_routes(string scenario, bool streamMode)
     {
         using Context context = await Context.Create();
         bool empty = scenario.StartsWith("empty", StringComparison.Ordinal);
+        bool unmatched = scenario.StartsWith("unmatched", StringComparison.Ordinal);
         Block block = empty
             ? await context.Blockchain.AddBlock()
             : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
@@ -131,18 +134,19 @@ public partial class DebugRpcModuleTests
             ["timeout"] = valid ? "5s" : "bad",
             ["streamMode"] = streamMode
         };
+        if (unmatched) options["txHash"] = TestItem.KeccakD;
         if (scenario.Contains("native", StringComparison.Ordinal)) options["tracer"] = NativeNoopTracer.NoopTracer;
         if (scenario.Contains("javascript", StringComparison.Ordinal))
             options["tracer"] = "{fault:function(){},result:function(){return {};}}";
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
         JToken json = JToken.Parse(response);
-        if (empty)
+        if (empty || unmatched)
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(json["error"], Is.Null, response);
-                Assert.That((JArray)json["result"]!, Is.Empty, response);
+                Assert.That((json["result"] as JArray)?.Count, Is.Zero, response);
             }
         }
         else if (scenario == "javascript")
