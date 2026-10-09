@@ -20,18 +20,6 @@ namespace Nethermind.Consensus.Test;
 
 public class PredeployInstallerTests
 {
-    [Test]
-    public void Eip8272_activation_does_not_write_the_recent_root_contract([Values] bool noncanonicalPrestate)
-    {
-        (_, _, IWorldState writeState) = Install(
-            static spec => spec.IsEip8272Enabled.Returns(true),
-            Eip8272Constants.RecentRootAddress,
-            nonce: noncanonicalPrestate ? 7UL : 0UL,
-            code: noncanonicalPrestate ? [0x00] : []);
-
-        Assert.That(writeState.ReceivedCalls(), Is.Empty);
-    }
-
     [TestCase(0UL, 1UL)]
     [TestCase(5UL, 5UL)]
     public void Nonce_manager_predeploy_installs_its_code_at_the_higher_of_its_nonce_and_one(ulong existingNonce, ulong expectedNonce)
@@ -45,11 +33,14 @@ public class PredeployInstallerTests
     }
 
     [Test]
-    public void Eip8141_activation_does_not_write_the_expiry_verifier([Values] bool noncanonicalPrestate)
+    public void Activation_does_not_write_a_contract_deployed_by_transaction(
+        [Values] bool recentRoot, [Values] bool noncanonicalPrestate)
     {
         (_, _, IWorldState writeState) = Install(
-            static spec => spec.IsEip8141Enabled.Returns(true),
-            Eip8141Constants.ExpiryVerifierAddress,
+            recentRoot
+                ? static spec => spec.IsEip8272Enabled.Returns(true)
+                : static spec => spec.IsEip8141Enabled.Returns(true),
+            recentRoot ? Eip8272Constants.RecentRootAddress : Eip8141Constants.ExpiryVerifierAddress,
             nonce: noncanonicalPrestate ? 7UL : 0UL,
             code: noncanonicalPrestate ? [0x00] : []);
 

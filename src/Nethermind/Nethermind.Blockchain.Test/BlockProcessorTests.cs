@@ -2014,12 +2014,15 @@ public partial class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Eip8272_activation_leaves_the_recent_root_contract_untouched_and_out_of_the_bal([Values] bool existingAccount)
+    public void Activation_leaves_a_contract_deployed_by_transaction_untouched_and_out_of_the_bal(
+        [Values] bool recentRoot, [Values] bool existingAccount)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true });
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(recentRoot
+            ? new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }
+            : Eip8141Prototype.Instance);
         (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
         IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-        Address recentRoot = Eip8272Constants.RecentRootAddress;
+        Address contract = recentRoot ? Eip8272Constants.RecentRootAddress : Eip8141Constants.ExpiryVerifierAddress;
         byte[] code = existingAccount ? [0x00] : [];
         ulong nonce = existingAccount ? 7UL : 0UL;
         UInt256 balance = existingAccount ? 3UL : 0UL;
@@ -2028,8 +2031,8 @@ public partial class BlockProcessorTests
         InstallExecutionRequestPredeploys(stateProvider, spec);
         if (existingAccount)
         {
-            stateProvider.CreateAccount(recentRoot, balance, nonce);
-            stateProvider.InsertCode(recentRoot, code, spec);
+            stateProvider.CreateAccount(contract, balance, nonce);
+            stateProvider.InsertCode(contract, code, spec);
         }
 
         stateProvider.Commit(spec);
@@ -2040,46 +2043,11 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateProvider.AccountExists(recentRoot), Is.EqualTo(existingAccount));
-            Assert.That(stateProvider.GetCode(recentRoot), Is.SequenceEqualTo(code));
-            Assert.That(stateProvider.GetNonce(recentRoot), Is.EqualTo(nonce));
-            Assert.That(stateProvider.GetBalance(recentRoot), Is.EqualTo(balance));
-            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(recentRoot), Is.Null);
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal([Values] bool existingAccount)
-    {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
-        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
-        byte[] code = existingAccount ? [0x00] : [];
-        ulong nonce = existingAccount ? 7UL : 0UL;
-        UInt256 balance = existingAccount ? 3UL : 0UL;
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        InstallExecutionRequestPredeploys(stateProvider, spec);
-        if (existingAccount)
-        {
-            stateProvider.CreateAccount(verifier, balance, nonce);
-            stateProvider.InsertCode(verifier, code, spec);
-        }
-
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        Block block = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed, _) = processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stateProvider.AccountExists(verifier), Is.EqualTo(existingAccount));
-            Assert.That(stateProvider.GetCode(verifier), Is.SequenceEqualTo(code));
-            Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(nonce));
-            Assert.That(stateProvider.GetBalance(verifier), Is.EqualTo(balance));
-            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null);
+            Assert.That(stateProvider.AccountExists(contract), Is.EqualTo(existingAccount));
+            Assert.That(stateProvider.GetCode(contract), Is.SequenceEqualTo(code));
+            Assert.That(stateProvider.GetNonce(contract), Is.EqualTo(nonce));
+            Assert.That(stateProvider.GetBalance(contract), Is.EqualTo(balance));
+            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(contract), Is.Null);
         }
     }
 
