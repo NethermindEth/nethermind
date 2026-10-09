@@ -267,6 +267,12 @@ public class BlockchainBridgeTests
         }
     }
 
+    [Test]
+    public void Override_routing_cases_cover_all_block_fields() =>
+        Assert.That(Enum.GetNames<OverrideInput>(), Is.SupersetOf(typeof(BlockOverride).GetProperties()
+            .Where(static property => property.CanWrite)
+            .Select(static property => property.Name)));
+
     [TestCaseSource(nameof(OverrideRoutingCases))]
     public void Override_processing_uses_exclusive_source_only_when_fields_are_supplied(OverrideCall call, OverrideInput input)
     {
@@ -1426,6 +1432,7 @@ public class BlockchainBridgeTests
             Assert.That(omittedGas.GasLimit, Is.Zero);
         }
     }
+
     private static IEnumerable<TestCaseData> OverrideRoutingCases()
     {
         foreach (OverrideCall call in Enum.GetValues<OverrideCall>())
