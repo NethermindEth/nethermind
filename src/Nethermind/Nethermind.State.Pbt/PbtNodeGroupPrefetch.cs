@@ -20,7 +20,7 @@ internal static class PbtNodeGroupPrefetch
     /// <summary>Reads the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
     /// <remarks>
     /// Each storage leaf then also prefetches the groups below its first storage group, as deep as its estimated remaining group levels.
-    /// A group the fold has already read is skipped.
+    /// A persisted group the fold or the prefetch has already read is served from the bundle rather than read again.
     /// The bundle keeps the persisted groups read for the fold until its write buffer is sealed.
     /// </remarks>
     internal static void Prefetch(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
@@ -55,12 +55,10 @@ internal static class PbtNodeGroupPrefetch
         }
     }
 
-    /// <summary>Reads a group the fold has not read yet from the snapshots, or else from persistence.</summary>
-    /// <returns>A caller-owned group lease, or null when the group is skipped or absent.</returns>
+    /// <summary>Reads a group from the snapshots, or else from persistence.</summary>
+    /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
     private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
-        !bundle.ShouldPrefetchNodeGroup(path) ? null
-        : bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot
-        : bundle.GetPersistedNodeGroup(path);
+        bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
 
     private static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
     {

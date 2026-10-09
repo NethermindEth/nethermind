@@ -76,7 +76,7 @@ public class PbtNodeGroupPrefetchTests
     [Test]
     public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(
         [Values(-1L, 0L, 1024L, 1025L, 16 * 1024L, 16 * 1024 + 1L, 1024 * 1024L)] long descendantBytes,
-        [Values] bool cancelled, [Values] bool snapshotBacked)
+        [Values] bool cancelled, [Values] bool snapshotBacked, [Values] bool readByFold)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
@@ -113,10 +113,12 @@ public class PbtNodeGroupPrefetchTests
             using RefCountingMemory? deeperPayload = ReadPayload(deeperSnapshot);
             bundle.SetNodeGroup(deeperSnapshot, default, deeperPayload);
         }
+        if (readByFold)
+            foreach (PbtStorageNodePath path in PbtNodeGroupPrefetch.FirstGroupPaths(bal)) ((IDisposable?)bundle.GetNodeGroup(path, default))?.Dispose();
 
         PbtNodeGroupPrefetch.Prefetch(bundle, bal, new CancellationToken(cancelled));
 
-        HashSet<PbtStorageNodePath> expected = cancelled ? [] : PbtNodeGroupPrefetch.FirstGroupPaths(bal);
+        HashSet<PbtStorageNodePath> expected = cancelled && !readByFold ? [] : PbtNodeGroupPrefetch.FirstGroupPaths(bal);
         int levels = cancelled ? 0 : descendantBytes switch { <= 1024 => 0, <= 16 * 1024 => 1, <= 256 * 1024 => 2, _ => 3 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {

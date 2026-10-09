@@ -110,20 +110,10 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         GuardDispose();
-        for (int index = LayerCount - 1; index >= 0; index--)
-            if (TryGroup(index, groupKey, out payload)) return true;
-        payload = null;
-        return false;
-    }
-
-    /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
-    internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
-    {
-        GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int index = LayerCount - 1; index >= 0; index--)
         {
-            if (TryGroup(index, groupKey, out RefCountingMemory? payload))
+            if (TryGroup(index, groupKey, out payload))
             {
                 if (recordDetailedMetrics)
                 {
@@ -131,11 +121,16 @@ public sealed class PbtReadOnlySnapshotBundle(
                     Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (payload is null ? _readNodeGroupSnapshotNullLabels : _readNodeGroupSnapshotLabels)[partition]);
                     if (payload is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupSnapshotSizeKeys[partition], payload.GetSpan().Length);
                 }
-                return payload;
+                return true;
             }
         }
-        return GetPersistedNodeGroup(groupKey);
+        payload = null;
+        return false;
     }
+
+    /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
+    internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey) =>
+        TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : GetPersistedNodeGroup(groupKey);
 
     internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
     {

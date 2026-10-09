@@ -34,8 +34,8 @@ public sealed class PbtSnapshotBundle(
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     // Accounts the layer above read past this bundle for the block in the write buffer, so a write never re-reads them.
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
-    // Persisted groups, and null for absent ones, that the node group prefetch read for the block in the write buffer.
-    private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _prefetchedNodeGroups = new();
+    // Persisted groups, and null for absent ones, that the fold or the node group prefetch read for the block in the write buffer.
+    private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _persistedNodeGroups = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
@@ -111,21 +111,13 @@ public sealed class PbtSnapshotBundle(
 
     internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
     {
-        _transientResource.TryClaimNodeGroupRead(groupKey);
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
         if (trieNodeCache.TryGet(groupHash, groupKey, out payload)) return payload;
-        if (_prefetchedNodeGroups.TryGetValue(groupKey, out payload))
-        {
-            payload?.AcquireLease();
-            return payload;
-        }
-        return readOnlyBundle.GetNodeGroup(groupKey);
+        if (TryGetKeptNodeGroup(groupKey, out payload)) return payload;
+        return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload) ? payload : ReadPersistedNodeGroup(groupKey);
     }
-
-    /// <summary>Whether the node group prefetch should read <paramref name="groupKey"/>: neither the fold nor the prefetch has read it for the block in the write buffer.</summary>
-    internal bool ShouldPrefetchNodeGroup(PbtStorageNodePath groupKey) => _transientResource.TryClaimNodeGroupRead(groupKey);
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
     internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
@@ -136,25 +128,30 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload);
     }
 
-    /// <summary>Reads a persisted group for the prefetch and keeps it for <see cref="GetNodeGroup"/> until the write buffer is sealed.</summary>
+    /// <summary>Returns a persisted group already kept for the block, or else reads it and keeps it for <see cref="GetNodeGroup"/> until the write buffer is sealed.</summary>
     /// <remarks>Only a group that <see cref="TryGetSnapshotNodeGroup"/> did not find may be read, as the kept group is served ahead of the read-only base's snapshots.</remarks>
-    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
+    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
+        TryGetKeptNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : ReadPersistedNodeGroup(groupKey);
+
+    private bool TryGetKeptNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    {
+        if (!_persistedNodeGroups.TryGetValue(groupKey, out payload)) return false;
+        payload?.AcquireLease();
+        return true;
+    }
+
+    private RefCountingMemory? ReadPersistedNodeGroup(PbtStorageNodePath groupKey)
     {
         RefCountingMemory? payload = readOnlyBundle.GetPersistedNodeGroup(groupKey);
-        KeepPrefetchedNodeGroup(groupKey, payload);
+        payload?.AcquireLease();
+        if (!_persistedNodeGroups.TryAdd(groupKey, payload)) ((IDisposable?)payload)?.Dispose();
         return payload;
     }
 
-    private void KeepPrefetchedNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload)
+    private void ReleasePersistedNodeGroups()
     {
-        payload?.AcquireLease();
-        if (!_prefetchedNodeGroups.TryAdd(groupKey, payload)) ((IDisposable?)payload)?.Dispose();
-    }
-
-    private void ReleasePrefetchedNodeGroups()
-    {
-        foreach (KeyValuePair<PbtStorageNodePath, RefCountingMemory?> entry in _prefetchedNodeGroups) ((IDisposable?)entry.Value)?.Dispose();
-        _prefetchedNodeGroups.Clear();
+        foreach (KeyValuePair<PbtStorageNodePath, RefCountingMemory?> entry in _persistedNodeGroups) ((IDisposable?)entry.Value)?.Dispose();
+        _persistedNodeGroups.Clear();
     }
 
     public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
@@ -366,7 +363,7 @@ public sealed class PbtSnapshotBundle(
         snapshot.TryLease();
         snapshots.Add(snapshot);
         _hintedAccounts.Clear();
-        ReleasePrefetchedNodeGroups();
+        ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
         retired = _transientResource;
@@ -385,7 +382,7 @@ public sealed class PbtSnapshotBundle(
         _accountsAwaitingCode.Clear();
         _codeMemo.Clear();
         _hintedAccounts.Clear();
-        ReleasePrefetchedNodeGroups();
+        ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
         PbtSnapshotContent? buffer = _writeBuffer;
         _writeBuffer = null;
