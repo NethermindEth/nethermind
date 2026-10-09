@@ -96,9 +96,10 @@ jobs:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           $releaseInfo = curl -sL $env:ASSETS_URL | ConvertFrom-Json
-          $releaseUrl = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
+          $arm64Url = $releaseInfo | Where-Object -Property name -like '*windows-arm64.zip' | Select-Object -ExpandProperty browser_download_url
+          $x64Url = $releaseInfo | Where-Object -Property name -like '*windows-x64.zip' | Select-Object -ExpandProperty browser_download_url
           curl -sL https://aka.ms/wingetcreate/latest -o wingetcreate.exe
-          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u $releaseUrl
+          ./wingetcreate update Nethermind.Nethermind -s -v $env:TAG_NAME -u "$arm64Url|arm64" "$x64Url|x64"
 
   publish-homebrew:
     name: Publish on Homebrew

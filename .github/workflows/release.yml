@@ -60,7 +60,7 @@ jobs:
         run: |
           printf '%s' "$GPG_SECRET_KEY" | base64 --decode | gpg --import --no-tty --batch --yes
 
-          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-x64"; do
+          for rid in "linux-arm64" "linux-x64" "macos-arm64" "macos-x64" "windows-arm64" "windows-x64"; do
             file_name=$(basename *$rid*)
             gpg --no-tty --batch --yes --pinentry-mode loopback \
               --passphrase-file <(printf '%s' "$GPG_PASSPHRASE") \
@@ -93,6 +93,13 @@ jobs:
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
+          retention-days: ${{ env.PACKAGE_RETENTION }}
+
+      - name: Upload Nethermind Windows arm64 package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.PACKAGE_PREFIX }}-windows-arm64-package
+          path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
 
       - name: Upload Nethermind Windows x64 package

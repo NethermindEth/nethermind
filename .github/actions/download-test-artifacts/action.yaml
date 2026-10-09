@@ -25,6 +25,7 @@ runs:
           Linux-X64)   rid=linux-x64 ;;
           Linux-ARM64) rid=linux-arm64 ;;
           Windows-X64) rid=win-x64 ;;
+          Windows-ARM64) rid=win-arm64 ;;
           macOS-ARM64) rid=osx-arm64 ;;
           *) echo "::error::no artifact RID mapping for runner ${{ runner.os }}-${{ runner.arch }}"; exit 1 ;;
         esac
