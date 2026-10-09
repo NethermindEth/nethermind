@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -11,6 +13,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
@@ -18,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
@@ -323,6 +327,24 @@ public class RpcModuleProviderTests
         Assert.That(RpcPayloadTypeInfo<FallbackPayload>.Get(EthereumJsonSerializer.JsonOptions), Is.Not.Null);
 
         Assert.That(firstGeneratedLookup, Is.SameAs(secondGeneratedLookup));
+    }
+
+    [Test]
+    public void Runtime_collection_payload_serializes_through_covered_interface([Values] bool canonicalOptions)
+    {
+        ParityLikeTxTrace[] traces = [new() { Output = [1] }];
+        IEnumerable<ParityTxTraceFromReplay> payload = traces.Select(static trace => new ParityTxTraceFromReplay(trace));
+        JsonSerializerOptions options = canonicalOptions
+            ? EthereumJsonSerializer.JsonOptions
+            : new(EthereumJsonSerializer.JsonOptions);
+        using ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> response = ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(payload);
+        response.Id = 67;
+        ArrayBufferWriter<byte> buffer = new();
+
+        JsonRpcResponseWriter.Write(buffer, response, options);
+
+        Assert.That(Encoding.UTF8.GetString(buffer.WrittenSpan), Is.EqualTo(
+            """{"jsonrpc":"2.0","result":[{"output":"0x01","stateDiff":null,"trace":[],"vmTrace":null}],"id":67}"""));
     }
 
     [Test]
