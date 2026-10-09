@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Crypto;
@@ -112,20 +113,12 @@ public sealed partial class KeccakHash
         Span<ulong> state = stateBuffer;
         ref ulong lane = ref MemoryMarshal.GetReference(state);
 
-        Unsafe.Add(ref lane, 17) = 0;
-        Unsafe.Add(ref lane, 18) = 0;
-        Unsafe.Add(ref lane, 19) = 0;
-        Unsafe.Add(ref lane, 20) = 0;
-        Unsafe.Add(ref lane, 21) = 0;
-        Unsafe.Add(ref lane, 22) = 0;
-        Unsafe.Add(ref lane, 23) = 0;
-        Unsafe.Add(ref lane, 24) = 0;
-
         if (length == Hash532InputLength)
         {
             // A full branch node, the most common input of both the witness load and the trie commit:
             // spelled out, it skips the block loop, and its constant tail folds the lane dispatch away.
-            AbsorbBlock(ref lane, data, intoZeroState: true);
+            ZeroCapacity(ref lane);
+            CopyFirstBlock(ref lane, data);
             KeccakF(state);
             AbsorbBlock(ref lane, data + HASH_DATA_AREA, intoZeroState: false);
             KeccakF(state);
@@ -135,7 +128,8 @@ public sealed partial class KeccakHash
         }
         else if (length >= HASH_DATA_AREA)
         {
-            AbsorbBlock(ref lane, data, intoZeroState: true);
+            ZeroCapacity(ref lane);
+            CopyFirstBlock(ref lane, data);
             KeccakF(state);
             data += HASH_DATA_AREA;
             length -= HASH_DATA_AREA;
@@ -164,23 +158,7 @@ public sealed partial class KeccakHash
         }
         else
         {
-            Unsafe.Add(ref lane, 0) = 0;
-            Unsafe.Add(ref lane, 1) = 0;
-            Unsafe.Add(ref lane, 2) = 0;
-            Unsafe.Add(ref lane, 3) = 0;
-            Unsafe.Add(ref lane, 4) = 0;
-            Unsafe.Add(ref lane, 5) = 0;
-            Unsafe.Add(ref lane, 6) = 0;
-            Unsafe.Add(ref lane, 7) = 0;
-            Unsafe.Add(ref lane, 8) = 0;
-            Unsafe.Add(ref lane, 9) = 0;
-            Unsafe.Add(ref lane, 10) = 0;
-            Unsafe.Add(ref lane, 11) = 0;
-            Unsafe.Add(ref lane, 12) = 0;
-            Unsafe.Add(ref lane, 13) = 0;
-            Unsafe.Add(ref lane, 14) = 0;
-            Unsafe.Add(ref lane, 15) = 0;
-            Unsafe.Add(ref lane, 16) = 0;
+            ZeroState(ref lane);
 
             AbsorbLanes(ref lane, data, length >> 3, intoZeroState: true);
             Unsafe.Add(ref lane, length >> 3) = length >= sizeof(ulong)
@@ -430,37 +408,69 @@ public sealed partial class KeccakHash
         Unsafe.Add(ref lane, 24) = Unsafe.Add(ref source, 24);
     }
 
-    /// <summary>Writes every rate lane of a state from a sub-rate message and its 0x01 pad byte.</summary>
-    /// <param name="length">A constant from 8 to 135: each lane then folds to one store of an input word,
-    /// the padded last word or zero, rather than a zeroing pass and a lane dispatch.</param>
+    /// <summary>Zeroes a state and writes a sub-rate message and its 0x01 pad byte into it.</summary>
+    /// <param name="length">A constant from 8 to 135: each lane up to the padded last word then folds to one
+    /// store, and the lanes past it to nothing.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static unsafe void AbsorbShortFixed(ref ulong lane, byte* data, nuint length)
     {
+        ZeroState(ref lane);
         Unsafe.Add(ref lane, 0) = ShortMessageLane(data, length, 0);
-        Unsafe.Add(ref lane, 1) = ShortMessageLane(data, length, 1);
-        Unsafe.Add(ref lane, 2) = ShortMessageLane(data, length, 2);
-        Unsafe.Add(ref lane, 3) = ShortMessageLane(data, length, 3);
-        Unsafe.Add(ref lane, 4) = ShortMessageLane(data, length, 4);
-        Unsafe.Add(ref lane, 5) = ShortMessageLane(data, length, 5);
-        Unsafe.Add(ref lane, 6) = ShortMessageLane(data, length, 6);
-        Unsafe.Add(ref lane, 7) = ShortMessageLane(data, length, 7);
-        Unsafe.Add(ref lane, 8) = ShortMessageLane(data, length, 8);
-        Unsafe.Add(ref lane, 9) = ShortMessageLane(data, length, 9);
-        Unsafe.Add(ref lane, 10) = ShortMessageLane(data, length, 10);
-        Unsafe.Add(ref lane, 11) = ShortMessageLane(data, length, 11);
-        Unsafe.Add(ref lane, 12) = ShortMessageLane(data, length, 12);
-        Unsafe.Add(ref lane, 13) = ShortMessageLane(data, length, 13);
-        Unsafe.Add(ref lane, 14) = ShortMessageLane(data, length, 14);
-        Unsafe.Add(ref lane, 15) = ShortMessageLane(data, length, 15);
-        Unsafe.Add(ref lane, 16) = ShortMessageLane(data, length, 16);
+        if (1 <= length >> 3) Unsafe.Add(ref lane, 1) = ShortMessageLane(data, length, 1);
+        if (2 <= length >> 3) Unsafe.Add(ref lane, 2) = ShortMessageLane(data, length, 2);
+        if (3 <= length >> 3) Unsafe.Add(ref lane, 3) = ShortMessageLane(data, length, 3);
+        if (4 <= length >> 3) Unsafe.Add(ref lane, 4) = ShortMessageLane(data, length, 4);
+        if (5 <= length >> 3) Unsafe.Add(ref lane, 5) = ShortMessageLane(data, length, 5);
+        if (6 <= length >> 3) Unsafe.Add(ref lane, 6) = ShortMessageLane(data, length, 6);
+        if (7 <= length >> 3) Unsafe.Add(ref lane, 7) = ShortMessageLane(data, length, 7);
+        if (8 <= length >> 3) Unsafe.Add(ref lane, 8) = ShortMessageLane(data, length, 8);
+        if (9 <= length >> 3) Unsafe.Add(ref lane, 9) = ShortMessageLane(data, length, 9);
+        if (10 <= length >> 3) Unsafe.Add(ref lane, 10) = ShortMessageLane(data, length, 10);
+        if (11 <= length >> 3) Unsafe.Add(ref lane, 11) = ShortMessageLane(data, length, 11);
+        if (12 <= length >> 3) Unsafe.Add(ref lane, 12) = ShortMessageLane(data, length, 12);
+        if (13 <= length >> 3) Unsafe.Add(ref lane, 13) = ShortMessageLane(data, length, 13);
+        if (14 <= length >> 3) Unsafe.Add(ref lane, 14) = ShortMessageLane(data, length, 14);
+        if (15 <= length >> 3) Unsafe.Add(ref lane, 15) = ShortMessageLane(data, length, 15);
+        if (16 <= length >> 3) Unsafe.Add(ref lane, 16) = ShortMessageLane(data, length, 16);
     }
 
-    /// <summary>Rate lane <paramref name="index"/> of a sub-rate message of at least eight bytes followed by the 0x01 pad byte.</summary>
+    /// <summary>Rate lane <paramref name="index"/>, at most the one holding the 0x01 pad byte, of a sub-rate message
+    /// of at least eight bytes followed by that pad byte.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe ulong ShortMessageLane(byte* data, nuint length, nuint index) =>
         index < length >> 3 ? Unsafe.ReadUnaligned<ulong>(data + index * sizeof(ulong))
-        : index == length >> 3 ? PaddedLastWord(data + length, length & 7)
-        : 0;
+        : PaddedLastWord(data + length, length & 7);
+
+    /// <summary>Zeroes all twenty-five lanes of a state.</summary>
+    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void ZeroState(ref ulong lane)
+    {
+        if (ZiskMemmoveFlag.IsActive)
+        {
+            Bytes.Memset(Unsafe.AsPointer(ref lane), 0, STATE_LANES * sizeof(ulong));
+            return;
+        }
+
+        Unsafe.Add(ref lane, 0) = 0;
+        Unsafe.Add(ref lane, 1) = 0;
+        Unsafe.Add(ref lane, 2) = 0;
+        Unsafe.Add(ref lane, 3) = 0;
+        Unsafe.Add(ref lane, 4) = 0;
+        Unsafe.Add(ref lane, 5) = 0;
+        Unsafe.Add(ref lane, 6) = 0;
+        Unsafe.Add(ref lane, 7) = 0;
+        Unsafe.Add(ref lane, 8) = 0;
+        Unsafe.Add(ref lane, 9) = 0;
+        Unsafe.Add(ref lane, 10) = 0;
+        Unsafe.Add(ref lane, 11) = 0;
+        Unsafe.Add(ref lane, 12) = 0;
+        Unsafe.Add(ref lane, 13) = 0;
+        Unsafe.Add(ref lane, 14) = 0;
+        Unsafe.Add(ref lane, 15) = 0;
+        Unsafe.Add(ref lane, 16) = 0;
+        ZeroCapacity(ref lane);
+    }
 
     /// <summary>XORs a sub-rate tail of <paramref name="length"/> bytes and the 0x01 pad byte after it into the state.</summary>
     /// <remarks>A whole block must precede the tail, which keeps the word ending the message in bounds.</remarks>
@@ -472,11 +482,35 @@ public sealed partial class KeccakHash
         last = last ^ PaddedLastWord(tail + length, length & 7);
     }
 
+    /// <summary>Absorbs the first rate block of <paramref name="data"/> into a state whose rate lanes are uninitialized.</summary>
+    /// <remarks>Into an all-zero state an XOR is a copy, so where <see cref="ZiskMemmoveFlag"/> is on the block goes
+    /// through the zkVM's DMA <c>memmove</c>: one call instead of seventeen load/store pairs.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void CopyFirstBlock(ref ulong lane, byte* data)
+    {
+        if (ZiskMemmoveFlag.IsActive)
+        {
+            Bytes.Memmove(Unsafe.AsPointer(ref lane), data, HASH_DATA_AREA);
+            return;
+        }
+
+        AbsorbBlock(ref lane, data, intoZeroState: true);
+    }
+
     /// <summary>Absorbs a whole rate block of <paramref name="data"/>.</summary>
     /// <param name="intoZeroState">Whether the state's rate lanes are still zero, so the block is written rather than XORed.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void AbsorbBlock(ref ulong lane, byte* data, bool intoZeroState)
     {
+        if (intoZeroState)
+        {
+            // A whole rate block written into zero lanes is a plain 136-byte copy: past the inline copy
+            // threshold the guest's Memmove is the ZisK DMA idiom (a few executed instructions), where
+            // seventeen explicit lane writes cost a load and a store each.
+            Unsafe.CopyBlockUnaligned(ref Unsafe.As<ulong, byte>(ref lane), ref *data, HASH_DATA_AREA);
+            return;
+        }
+
         AbsorbLane(ref lane, data, 0, intoZeroState);
         AbsorbLane(ref lane, data, 1, intoZeroState);
         AbsorbLane(ref lane, data, 2, intoZeroState);
@@ -577,24 +611,7 @@ public sealed partial class KeccakHash
             return;
         }
 
-        ref ulong st = ref Unsafe.As<byte, ulong>(ref MemoryMarshal.GetReference(state));
-        ref byte inRef = ref MemoryMarshal.GetReference(block);
-        st = Unsafe.ReadUnaligned<ulong>(ref inRef);
-        Unsafe.Add(ref st, 1) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 1 * sizeof(ulong)));
-        Unsafe.Add(ref st, 2) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 2 * sizeof(ulong)));
-        Unsafe.Add(ref st, 3) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 3 * sizeof(ulong)));
-        Unsafe.Add(ref st, 4) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 4 * sizeof(ulong)));
-        Unsafe.Add(ref st, 5) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 5 * sizeof(ulong)));
-        Unsafe.Add(ref st, 6) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 6 * sizeof(ulong)));
-        Unsafe.Add(ref st, 7) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 7 * sizeof(ulong)));
-        Unsafe.Add(ref st, 8) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 8 * sizeof(ulong)));
-        Unsafe.Add(ref st, 9) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 9 * sizeof(ulong)));
-        Unsafe.Add(ref st, 10) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 10 * sizeof(ulong)));
-        Unsafe.Add(ref st, 11) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 11 * sizeof(ulong)));
-        Unsafe.Add(ref st, 12) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 12 * sizeof(ulong)));
-        Unsafe.Add(ref st, 13) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 13 * sizeof(ulong)));
-        Unsafe.Add(ref st, 14) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 14 * sizeof(ulong)));
-        Unsafe.Add(ref st, 15) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 15 * sizeof(ulong)));
-        Unsafe.Add(ref st, 16) = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref inRef, 16 * sizeof(ulong)));
+        // See AbsorbBlock: one DMA-backed copy instead of seventeen lane writes.
+        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(block), HASH_DATA_AREA);
     }
 }

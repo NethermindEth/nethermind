@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -130,7 +129,7 @@ public class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -263,8 +262,8 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -421,7 +420,8 @@ public class TrieStoreScopeProvider(
         private const int MinWritesToHashInParallel = 64;
 
         /// <summary>Estimated entries above which the writes are applied together through <see cref="PatriciaTree.BulkSet"/>.</summary>
-        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there.</remarks>
+        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there. The guest's
+        /// <c>PatriciaTree.IsUnchangedPendingLevel</c> relies on its writes going one at a time.</remarks>
 #if ZK_EVM
         private const int BulkWriteThreshold = int.MaxValue;
 #else

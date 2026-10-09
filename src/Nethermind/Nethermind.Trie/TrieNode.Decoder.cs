@@ -173,6 +173,11 @@ namespace Nethermind.Trie
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
 
+                if (TryEncodeLeafWithStoredKey(node, pool, out CappedArray<byte> reencoded))
+                {
+                    return reencoded;
+                }
+
                 if (node.Key is null)
                 {
                     ThrowNullKey(node);

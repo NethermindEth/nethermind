@@ -188,6 +188,7 @@ public class XdcTestBlockchain : TestBlockchain
                     new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
+                    ctx.Resolve<FrameTxWidthLedger>(),
                     ctx.Resolve<ITxGossipPolicy>(),
                     [
                         new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),

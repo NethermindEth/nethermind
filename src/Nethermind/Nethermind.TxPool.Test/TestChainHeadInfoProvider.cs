@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -19,10 +20,17 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
 {
     public IChainHeadSpecProvider SpecProvider { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyStateProvider { get; set; } = null!;
+    public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
+    {
+        head = null;
+        state = null;
+        return false;
+    }
     public ulong HeadNumber { get; set; }
     public ulong HeadTimestamp { get; set; }
     public ulong? BlockGasLimit { get; set; } = 30_000_000;
     public UInt256 CurrentBaseFee { get; set; }
+    public UInt256 NextBaseFee { get; set; }
     public UInt256 CurrentFeePerBlobGas { get; set; }
     public ProofVersion CurrentProofVersion { get; set; }
     public bool IsSyncing { get; set; }

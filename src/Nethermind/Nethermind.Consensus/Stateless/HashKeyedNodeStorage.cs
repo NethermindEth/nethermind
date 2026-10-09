@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
@@ -37,15 +37,17 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 {
     private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
 
-    private readonly Dictionary<NodeKey, byte[]?> _nodes = [];
-    private readonly Dictionary<NodeKey, byte[]> _overflow = [];
+    // Created by the first write, so a probe tests a reference rather than the map's count, two narrow loads in the guest.
+    private OptimizedDictionary<NodeKey, byte[]?>? _nodes;
+    private readonly OptimizedDictionary<NodeKey, byte[]> _overflow = [];
     private readonly NodeKey[] _keys;
     private readonly byte[][] _values;
+    // The heads, links and mask are word-sized: the guest pays several times an aligned load for a narrow one.
     // Per bucket, one past its newest entry's index: 0 when empty, Overflowed once it outgrew MaxBucketLength.
-    private readonly int[] _heads;
+    private readonly nint[] _heads;
     // Per entry, one past the index of the next older entry in its bucket: 0 at the end of the chain.
-    private readonly int[] _next;
-    private readonly int _bucketMask;
+    private readonly nint[] _next;
+    private readonly nint _bucketMask;
     private const int MaxBucketLength = 8;
     private const int Overflowed = -1;
 
@@ -55,9 +57,9 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         int count = state.Length + 1;
         int bucketCount = (int)BitOperations.RoundUpToPowerOf2((uint)count);
         // Locals rather than the fields, which the loop would reload after every call out of it.
-        int bucketMask = _bucketMask = bucketCount - 1;
-        int[] heads = _heads = new int[bucketCount];
-        int[] next = _next = new int[count];
+        nint bucketMask = _bucketMask = bucketCount - 1;
+        nint[] heads = _heads = new nint[bucketCount];
+        nint[] next = _next = new nint[count];
         NodeKey[] keys = _keys = new NodeKey[count];
         byte[][] values = _values = new byte[count][];
         state.CopyTo(values);
@@ -66,12 +68,12 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         // Hashed in a method of its own so the bucketing loop keeps its locals in registers.
         HashNodes(values, state.Length, keys);
 
-        int[] lengths = new int[bucketCount];
+        nint[] lengths = new nint[bucketCount];
         for (int i = 0; i < count; i++)
         {
             ref readonly NodeKey key = ref keys[i];
-            int bucket = key.Bucket(bucketMask);
-            int head = heads[bucket];
+            nint bucket = key.Bucket(bucketMask);
+            nint head = heads[bucket];
             if (head != Overflowed && ++lengths[bucket] <= MaxBucketLength)
             {
                 next[i] = head;
@@ -81,7 +83,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
 
             _overflow[key] = values[i];
             if (head == Overflowed) continue;
-            for (int entry = head; entry != 0; entry = next[entry - 1])
+            for (nint entry = head; entry != 0; entry = next[entry - 1])
                 _overflow[keys[entry - 1]] = values[entry - 1];
             heads[bucket] = Overflowed;
         }
@@ -120,14 +122,15 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[]? Find(in NodeKey key)
     {
-        if (_nodes.Count != 0 && _nodes.TryGetValue(key, out byte[]? value)) return value;
-        int entry = _heads[key.Bucket(_bucketMask)];
-        if (entry == Overflowed) return _overflow.GetValueOrDefault(key);
-        for (; entry != 0; entry = _next[entry - 1])
-            if (_keys[entry - 1].Equals(key))
+        if (_nodes is not null && _nodes.TryGetValue(key, out byte[]? value)) return value;
+        // Buckets are masked into the heads and chains only link stored entries, so the arrays are read unchecked.
+        nint entry = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_heads), key.Bucket(_bucketMask));
+        if (entry == Overflowed) return _overflow.TryGetValue(key, out byte[]? overflowed) ? overflowed : null;
+        for (; entry != 0; entry = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_next), entry - 1))
+            if (Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_keys), entry - 1).Equals(key))
             {
                 KeccakHash.NoteWitnessNodeLoaded(entry);
-                return _values[entry - 1];
+                return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_values), entry - 1);
             }
         return null;
     }
@@ -147,6 +150,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
             return;
         }
 
+        _nodes ??= [];
         if (data.IsNull())
         {
             _nodes[key] = null;
@@ -202,7 +206,7 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
     {
         private readonly ValueHash256 _hash = hash;
 
-        internal int Bucket(int mask) => (int)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
+        internal nint Bucket(nint mask) => (nint)Unsafe.ReadUnaligned<ulong>(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash))) & mask;
 
         public bool Equals(NodeKey other)
         {

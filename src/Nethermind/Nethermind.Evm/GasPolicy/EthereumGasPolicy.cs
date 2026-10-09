@@ -715,8 +715,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         {
             Value = childExecutionGas,
             StateReservoir = childStateReservoir,
-            StateGasUsed = 0,
-            StateGasSpill = 0,
             IndependentStatePool = parentGas.IndependentStatePool,
         };
     }

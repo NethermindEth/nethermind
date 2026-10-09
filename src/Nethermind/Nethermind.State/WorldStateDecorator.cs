@@ -110,6 +110,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void ClearStorage(Address address)
         => State.ClearStorage(address);
 
+    public virtual bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        => State.TryGetStorageBeforeClear(in storageCell, out value);
+
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
 
@@ -166,6 +169,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
+
+    public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
+        => State.NoteMinimumBalance(address, in minimum);
 
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();

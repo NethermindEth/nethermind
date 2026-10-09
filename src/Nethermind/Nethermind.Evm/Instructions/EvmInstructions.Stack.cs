@@ -111,15 +111,17 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         nint fusedOpCodeCount = 0;
-        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, ref vm, ref programCounter, ref fusedOpCodeCount);
     }
 
+    /// <typeparam name="TCallSub">Whether an untraced EIP-7979 <c>CALLSUB</c> after the push runs fused with it.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TCallSub>(ref EvmStack stack, ref TGasPolicy gas, ref VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseVmCounter : struct, IFlag
+        where TCallSub : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
@@ -136,8 +138,12 @@ public static partial class EvmInstructions
             return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
-            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
-                is Instruction.JUMP or Instruction.JUMPI))
+            (TCallSub.IsActive
+                // Non-short-circuit so the common unfused case takes one branch. The flag-off arm stays short-circuit,
+                // which the JIT compiles to tighter code there.
+                ? ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI)
+                    | nextInstruction == Instruction.CALLSUB
+                : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
@@ -152,12 +158,21 @@ public static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+            }
+            else if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
+            {
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
+                if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+                // The return address is the instruction after CALLSUB.
+                programCounter += Size + 1;
+                return CallSubTo<TGasPolicy, OnFlag, TUseVmCounter>(
+                    ref stack, ref gas, vm, JumpDestination((int)destination, ref stack), ref programCounter, ref fusedOpCodeCount);
             }
             else
             {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -175,7 +190,7 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
@@ -210,7 +225,7 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
+    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TUseVmCounter : struct, IFlag
     {
@@ -1080,6 +1095,14 @@ public static partial class EvmInstructions
             : stack.Exchange<TTracingInst>(n, m);
     }
 
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>DUPN</c>/<c>SWAPN</c> immediate; 0x5b-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024SingleImmediate(byte immediate) => (uint)(immediate - 0x5B) > 0x24;
+
+    /// <summary>Whether <paramref name="immediate"/> is a valid EIP-8024 <c>EXCHANGE</c> immediate; 0x52-0x7f are disallowed.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidEip8024PairImmediate(byte immediate) => (uint)(immediate - 0x52) > 0x2D;
+
     // EIP-8024 specifies that a missing immediate beyond end of code evaluates to zero.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ReadEip8024ImmediateOrZero(ref byte code, nint codeLength, nint programCounter)
@@ -1100,7 +1123,7 @@ public static partial class EvmInstructions
         byte imm = ReadEip8024ImmediateOrZero(ref stack.Code, stack.CodeLength, programCounter);
         depth = (imm + 145) & 0xFF;
 
-        if ((uint)(imm - 0x5B) <= 0x24)
+        if (!IsValidEip8024SingleImmediate(imm))
             return false;
 
         programCounter++;
@@ -1133,7 +1156,7 @@ public static partial class EvmInstructions
         n = ((q & mask) | (r & ~mask)) + 2;
         m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
 
-        if ((uint)(imm - 0x52) <= 0x2D)
+        if (!IsValidEip8024PairImmediate(imm))
             return false;
 
         programCounter++;

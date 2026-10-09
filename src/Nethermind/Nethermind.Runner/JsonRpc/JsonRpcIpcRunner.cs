@@ -120,7 +120,7 @@ namespace Nethermind.Runner.JsonRpc
                 _jsonRpcLocalStats,
                 _jsonSerializer,
                 maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
-                concurrency: _jsonRpcConfig.IpcProcessingConcurrency);
+                concurrency: JsonRpcProcessingConcurrency.ForModules(_jsonRpcConfig.EnabledModules, _jsonRpcConfig.IpcProcessingConcurrency));
 
             try
             {

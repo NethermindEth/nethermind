@@ -140,6 +140,7 @@ public static partial class EvmInstructions
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
@@ -167,6 +168,9 @@ public static partial class EvmInstructions
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
         if (TSpec.UseHotAndColdStorage)
         {
+            // EIP-8279: the new address enters the block access list on the transaction's first touch.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
+                goto OutOfGas;
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
@@ -182,6 +186,10 @@ public static partial class EvmInstructions
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
+            goto OutOfGas;
+
+        // EIP-8279: the creating account's nonce advances whether or not the creation goes ahead.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData(Eip8279Constants.NonceBytes))
             goto OutOfGas;
 
         // Increment the nonce of the executing account to reflect the contract creation.
@@ -212,6 +220,12 @@ public static partial class EvmInstructions
 
             return pushResult;
         }
+
+        // EIP-8279: the new contract's nonce, and both balances when endowed, join the block access list.
+        if (TSpec.IsEip8279Enabled
+            && (!vm.TryMeterBalData(Eip8279Constants.NonceBytes)
+                || (!value.IsZero && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))))
+            goto OutOfGas;
 
         state.ClearStorage(contractAddress);
 

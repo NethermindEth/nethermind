@@ -126,6 +126,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Reads the value a slot held before its contract's storage was cleared in the current transaction (EIP-7906).</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared.</returns>
+    bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
     /// <summary>Only valid where no revert can follow AND the round is committed before any further
     /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
     void MarkStorageDestroyed(Address address) => ClearStorage(address);
@@ -188,6 +196,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     public void RecordAccountAccess(Address address) { }
 
     public void RecordBytecodeAccess(Address address) { }
+
+    /// <summary>The balance just read for <paramref name="address"/> was only compared with <paramref name="minimum"/>.</summary>
+    public void NoteMinimumBalance(Address address, in UInt256 minimum) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 

@@ -10,6 +10,8 @@ namespace Nethermind.Core.Extensions;
 /// <see cref="IsActive"/> is <see langword="false"/> as written; the ZisK guest's <c>substitutions.xml</c> stubs it
 /// to <see langword="true"/> at link time. ILC then folds the check, so the other guests and the zkEVM test hosts
 /// keep corelib's copy and never reference the import.
+/// The direct calls pass unpinned pointers into managed memory, which is sound only in a single-threaded guest
+/// whose GC cannot relocate objects between taking a pointer and the call returning.
 /// </remarks>
 internal readonly struct ZiskMemmoveFlag : IFlag
 {

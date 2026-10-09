@@ -29,7 +29,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed class WorldState : IWorldState
+    public sealed partial class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -133,6 +133,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _persistentStorageProvider.GetPureRead(in cell, out value);
+        }
+
+        public bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.TryGetBeforeClear(in storageCell, out value);
         }
 
         /// <summary>Reads a parent-state account without recording a journal entry.</summary>
@@ -398,12 +404,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
-        }
-
-        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCode(in codeHash);
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)

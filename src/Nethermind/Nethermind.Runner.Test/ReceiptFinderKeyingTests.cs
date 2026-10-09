@@ -43,6 +43,7 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
         "Nethermind.Shutter.ShutterApi",
         "Nethermind.Shutter.ShutterBlockHandler",
+        "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
     ];
 
     /// <summary>

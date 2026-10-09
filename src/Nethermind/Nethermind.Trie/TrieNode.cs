@@ -177,6 +177,7 @@ namespace Nethermind.Trie
 
                 node.Key = value;
                 Keccak = null;
+                OnKeyChanged();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey() => throw new InvalidOperationException(
@@ -944,13 +945,6 @@ namespace Nethermind.Trie
                 trieNode.InitClonedRlp(rlp, this);
             }
 
-            return trieNode;
-        }
-
-        public TrieNode CloneWithChangedValue(CappedArray<byte> changedValue)
-        {
-            TrieNode trieNode = Clone();
-            trieNode.Value = changedValue;
             return trieNode;
         }
 

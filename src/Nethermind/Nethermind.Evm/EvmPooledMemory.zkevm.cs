@@ -88,6 +88,51 @@ public partial struct EvmPooledMemory
         return ref word;
     }
 
+    /// <summary>
+    /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> ready to be overwritten when
+    /// they need no new backing and leave a gap of at most two words below them, charging the expansion they need to
+    /// <paramref name="gas"/>; a null reference, with nothing charged or changed, when they do not or the gas does not
+    /// cover the expansion.
+    /// </summary>
+    /// <param name="offset">The start of the range, below 2^32.</param>
+    /// <param name="length">The length of the range, from 1 to 2^32 - 1.</param>
+    /// <param name="gas">The remaining execution gas.</param>
+    /// <remarks>
+    /// <see cref="TryPrepareWordOverwrite"/> for any length; the caller must write every byte of the range. The same
+    /// caveat as <see cref="Load32BytesAfterGas"/> applies to the returned ref.
+    /// </remarks>
+    internal ref byte TryPrepareRangeOverwrite(ulong offset, ulong length, ref ulong gas)
+    {
+        Debug.Assert(offset <= uint.MaxValue && length is > 0 and <= uint.MaxValue);
+        ulong end = offset + length;
+        ulong initializedSize = _initializedSize;
+        if (end > initializedSize && (offset > initializedSize + MaxClearedGap || end > GetBackingCapacity()))
+            return ref Unsafe.NullRef<byte>();
+
+        Debug.Assert(end <= MaxMemorySize, "The backing never reaches past the largest addressable size.");
+        ulong size = Size;
+        if (end > size)
+        {
+            ulong newWords = (end + (WordSize - 1UL)) >> 5;
+            ulong words = size >> 5;
+            ulong cost = newWords * GasCostOf.Memory + ((newWords * newWords) >> 9) - words * GasCostOf.Memory - ((words * words) >> 9);
+            if (gas < cost) return ref Unsafe.NullRef<byte>();
+
+            gas -= cost;
+            Size = newWords << 5;
+        }
+
+        ref byte start = ref Unsafe.Add(ref GetBackingReference(), (nint)offset);
+        if (end > initializedSize)
+        {
+            _initializedSize = end;
+            if (offset > initializedSize)
+                Unsafe.InitBlockUnaligned(ref Unsafe.Subtract(ref start, (nint)(offset - initializedSize)), 0, (uint)(offset - initializedSize));
+        }
+
+        return ref start;
+    }
+
     /// <summary>The widest gap below a word <see cref="TryPrepareWordOverwrite"/> clears.</summary>
     private const ulong MaxClearedGap = 2 * WordSize;
 

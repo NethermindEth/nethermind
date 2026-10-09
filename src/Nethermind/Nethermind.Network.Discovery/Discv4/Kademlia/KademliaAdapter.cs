@@ -495,7 +495,18 @@ public class KademliaAdapter(
             return;
         }
 
+        bool hasUsableSignedPing = signedPing is
+        {
+            Mdc: not null,
+            FarPublicKey: not null,
+            FarAddress: not null,
+            SourceTcpPort: > 0
+        } ping &&
+            ping.FarPublicKey.Equals(node.Id) &&
+            ping.FarAddress.Equals(discoveryEndpoint);
+
         Node? enrNode = null;
+        Node? verifiedEnrNode = null;
         NodeRecord? record = node.Enr;
         if (record is { Signature: not null } &&
             record.EnrSequence >= node.HighestObservedEnrSequence &&
@@ -505,29 +516,33 @@ public class KademliaAdapter(
                 record,
                 DiscoveryAddressSupport.GetFamily(discoveryEndpoint.Address),
                 out Node? candidate) &&
-            candidate.Id.Equals(node.Id) &&
-            candidate.HasDiscoveryEndpoint &&
-            candidate.DiscoveryAddress.Equals(discoveryEndpoint))
+            candidate.Id.Equals(node.Id))
         {
-            candidate.SetVerifiedEnr(record);
-            enrNode = candidate;
+            bool endpointMatchesEnr = candidate.HasDiscoveryEndpoint && candidate.DiscoveryAddress.Equals(discoveryEndpoint);
+            if (endpointMatchesEnr || hasUsableSignedPing)
+            {
+                candidate.SetVerifiedEnr(record);
+                if (endpointMatchesEnr)
+                {
+                    enrNode = candidate;
+                }
+                else
+                {
+                    verifiedEnrNode = candidate;
+                }
+            }
         }
 
-        bool useSignedPing = signedPing is
-        {
-            Mdc: not null,
-            FarPublicKey: not null,
-            FarAddress: not null,
-            SourceTcpPort: > 0
-        } ping &&
-            ping.FarPublicKey.Equals(node.Id) &&
-            ping.FarAddress.Equals(discoveryEndpoint) &&
-            enrNode is null;
+        bool useSignedPing = hasUsableSignedPing && enrNode is null;
         Node peerCandidate;
         if (useSignedPing)
         {
             peerCandidate = new Node(node.Id, node.Address, node.DiscoveryPort);
             peerCandidate.ObserveEnrSequence(node.HighestObservedEnrSequence);
+            if (verifiedEnrNode is not null)
+            {
+                peerCandidate.MergeEnrStateFrom(verifiedEnrNode);
+            }
         }
         else if (enrNode is not null)
         {

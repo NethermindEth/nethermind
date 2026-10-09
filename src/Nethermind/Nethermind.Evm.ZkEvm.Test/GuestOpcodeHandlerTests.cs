@@ -44,6 +44,15 @@ public class GuestOpcodeHandlerTests
     private const byte EQ = (byte)Instruction.EQ;
     private const byte SHL = (byte)Instruction.SHL;
     private const byte SHR = (byte)Instruction.SHR;
+    private const byte SAR = (byte)Instruction.SAR;
+    private const byte BYTE = (byte)Instruction.BYTE;
+    private const byte SIGNEXTEND = (byte)Instruction.SIGNEXTEND;
+    private const byte NOT = (byte)Instruction.NOT;
+    private const byte ADDMOD = (byte)Instruction.ADDMOD;
+    private const byte MULMOD = (byte)Instruction.MULMOD;
+    private const byte MSTORE8 = (byte)Instruction.MSTORE8;
+    private const byte GAS = (byte)Instruction.GAS;
+    private const byte RETURNDATASIZE = (byte)Instruction.RETURNDATASIZE;
     private const byte ISZERO = (byte)Instruction.ISZERO;
     private const byte MLOAD = (byte)Instruction.MLOAD;
     private const byte MSTORE = (byte)Instruction.MSTORE;
@@ -81,6 +90,12 @@ public class GuestOpcodeHandlerTests
     private static IEnumerable<TestCaseData> Successes()
     {
         yield return Succeeds("JUMP onto a JUMPDEST", Code(PUSH1, 4, JUMP, INVALID, JUMPDEST, STOP), 3 + 8 + 1);
+        yield return Succeeds("PUSH2 JUMP onto an unanalyzed JUMPDEST", Code(PUSH2, 0, 5, JUMP, INVALID, JUMPDEST, STOP), 3 + 8 + 1);
+        yield return Succeeds("PUSH2 JUMPI onto an unanalyzed JUMPDEST", Code(PUSH1, 1, PUSH2, 0, 7, JUMPI, INVALID, JUMPDEST, STOP), 3 + 3 + 10 + 1);
+        yield return Succeeds("LT PUSH2 JUMPI taken onto an unanalyzed JUMPDEST",
+            Code(PUSH1, 2, PUSH1, 1, LT, PUSH2, 0, 10, JUMPI, INVALID, JUMPDEST, STOP), 3 + 3 + 3 + 3 + 10 + 1);
+        yield return Succeeds("EQ ISZERO PUSH2 JUMPI taken onto an unanalyzed JUMPDEST",
+            Code(PUSH1, 1, PUSH1, 2, EQ, ISZERO, PUSH2, 0, 11, JUMPI, INVALID, JUMPDEST, STOP), 3 + 3 + 3 + 3 + 3 + 10 + 1);
 
         // The loop jumps to one destination twice, so the second jump finds it analyzed.
         byte[] countdown = Code(
@@ -94,7 +109,30 @@ public class GuestOpcodeHandlerTests
         const ulong countdownGas = 3 + 2 * (countdownIteration + 3 + 8) + countdownIteration + 1;
         yield return Succeeds("JUMP back to an analyzed destination", countdown, countdownGas);
 
-        // The same loop with PUSH2 destinations: the first jump to each destination runs unfused, the later ones fuse.
+        // An internal function called twice returns with SWAP1 JUMP or POP JUMP, the second time to an analyzed destination.
+        yield return Succeeds("SWAP1 JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 21, JUMP, JUMPDEST, POP, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, SWAP1, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 3 + 8 + 1 + 2 + 3 + 3 + 3 + 3 + 3 + 10));
+        yield return Succeeds("POP JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 20, JUMP, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, POP, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 2 + 8 + 1 + 3 + 3 + 3 + 3 + 3 + 10));
+
+        // ADD, DUP2 and DUP1 dispatched from a handler that reads the opcode after them, so each runs fused with the memory
+        // opcode it computes the offset for.
+        byte[] wordAt32 = [.. new byte[32], .. Word(0x2a)];
+        yield return Succeeds("ADD MSTORE", Code(PUSH1, 0x2a, PUSH1, 0x10, PUSH1, 0x10, JUMPDEST, ADD, MSTORE, STOP), 5 * 3 + 1 + MemoryCost(2), wordAt32);
+        yield return Succeeds("DUP2 MSTORE", Code(PUSH1, 0x20, PUSH1, 0x2a, DUP2, MSTORE, STOP), 4 * 3 + MemoryCost(2), wordAt32);
+        byte[] storedTwice = [.. Word(0x2a), .. Word(0x2a)];
+        yield return Succeeds("ADD MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x10, PUSH1, 0x10, ADD, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP2 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, PUSH1, 0, DUP2, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP1 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, JUMPDEST, DUP1, MLOAD, PUSH1, 0, MSTORE, STOP), 8 * 3 + 1 + MemoryCost(2), storedTwice);
+
+        // The same loop with PUSH2 destinations: the first jump to each destination leaves it to the analysis, the later ones fuse.
         byte[] fusedCountdown = Code(
             PUSH1, 3,
             JUMPDEST,
@@ -119,8 +157,8 @@ public class GuestOpcodeHandlerTests
         yield return Succeeds("JUMP onto a JUMPDEST its look-back cannot prove",
             Code([PUSH1, 48, JUMP, .. Filled(43, STOP), PUSH1, PUSH32, JUMPDEST, STOP]), 3 + 8 + 1);
 
-        // Each loop branches back while its counter is non-zero: the first branch finds the destination unanalyzed and runs
-        // unfused, the second fuses with it taken, the last fuses with it not taken.
+        // Each loop branches back while its counter is non-zero: the first branch finds the destination unanalyzed and leaves
+        // it to the analysis, the second fuses with it taken, the last fuses with it not taken.
         const ulong conditionIteration = 1 + 3 + 3 + 3 + 3 + 3 + 3 + 3 + 10;
         yield return Succeeds("LT PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, LT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
@@ -144,7 +182,7 @@ public class GuestOpcodeHandlerTests
             Code([.. Filled(1023, PUSH0), PUSH1, 1, EQ, PUSH2, 0, 0x3f, JUMPI, STOP]), 1023 * 2 + 3 + 3 + 3 + 10);
 
         // A dispatcher run twice: the first entry passes over a selector and finds the second's destination unanalyzed,
-        // so its match runs unfused; the second entry passes over and matches fused.
+        // so its match leaves the jump to the analysis; the second entry passes over and matches fused.
         byte[] dispatcher = Code(
             PUSH1, 2, PUSH4, 0xaa, 0xbb, 0xcc, 0xdd,
             JUMPDEST,
@@ -350,6 +388,9 @@ public class GuestOpcodeHandlerTests
         }
 
         yield return Succeeds("CALLDATASIZE", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), Word(input.Length), input);
+        yield return Succeeds("RETURNDATASIZE before any call", Code(RETURNDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
+        // Run on exactly its gas, GAS leaves what the opcodes after it charge.
+        yield return Succeeds("GAS", Code(GAS, PUSH1, 0, MSTORE, JUMPDEST, STOP), 2 + 3 + (3 + 3) + 1, Word(3 + (3 + 3) + 1));
         yield return Succeeds("CALLDATASIZE of no input", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
         yield return Succeeds("CALLDATALOAD at 2^32", Code(PUSH5, 1, 0, 0, 0, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32], input);
         yield return Succeeds("CALLDATALOAD of no input", Code(PUSH1, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32]);
@@ -366,6 +407,59 @@ public class GuestOpcodeHandlerTests
                 shiftGas, Word(amount < 256 ? shifted << (int)amount : BigInteger.Zero));
             yield return Succeeds($"SHR by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SHR, PUSH1, 0, MSTORE, STOP]),
                 shiftGas, Word(amount < 256 ? shifted >> (int)amount : BigInteger.Zero));
+            // BigInteger shifts arithmetically, and a shift past the word leaves the sign.
+            BigInteger negative = shifted - (BigInteger.One << 256);
+            yield return Succeeds($"SAR of a negative word by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(negative >> (int)BigInteger.Min(amount, 256)));
+            yield return Succeeds($"SAR of a positive word by {name}", Code([PUSH32, .. WordA, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(new BigInteger(WordA, isUnsigned: true, isBigEndian: true) >> (int)BigInteger.Min(amount, 256)));
+        }
+
+        // Every byte boundary of a limb, the last byte of the word, and indices past it, including one only a high limb makes large.
+        BigInteger[] indices = [0, 1, 7, 8, 15, 16, 23, 24, 30, 31, 32, BigInteger.One << 64];
+        foreach (BigInteger index in indices)
+        {
+            string name = index > ushort.MaxValue ? "2^64" : index.ToString();
+            yield return Succeeds($"BYTE {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(index), BYTE, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + (3 + 3 + 3), Word(index < 32 ? WordB[(int)index] : 0));
+            // WordA's bytes are below 0x80 and WordB's above, so the sign byte at every index extends both ways.
+            foreach (byte[] word in (byte[][])[WordA, WordB])
+            {
+                BigInteger value = new(word, isUnsigned: true, isBigEndian: true);
+                BigInteger extended = value;
+                if (index < 31)
+                {
+                    int bits = 8 * ((int)index + 1);
+                    BigInteger low = value & ((BigInteger.One << bits) - 1);
+                    extended = low >= BigInteger.One << (bits - 1) ? low - (BigInteger.One << bits) : low;
+                }
+
+                yield return Succeeds($"SIGNEXTEND {name} of {word[0]:x2}..", Code([PUSH32, .. word, PUSH32, .. Word(index), SIGNEXTEND, PUSH1, 0, MSTORE, STOP]),
+                    3 + 3 + 5 + (3 + 3 + 3), Word(extended));
+            }
+        }
+
+        byte[] storedByte = new byte[32];
+        storedByte[31] = 0xab;
+        storedByte[5] = 0x34;
+        yield return Succeeds("MSTORE8 inside active memory",
+            Code(PUSH1, 0xab, PUSH1, 0, MSTORE, PUSH2, 0x12, 0x34, PUSH1, 5, MSTORE8, STOP), 3 + 3 + (3 + 3) + 3 + 3 + 3, storedByte);
+        byte[] grownByte = new byte[64];
+        grownByte[40] = 0x34;
+        yield return Succeeds("MSTORE8 growing memory", Code(PUSH2, 0x12, 0x34, PUSH1, 40, MSTORE8, STOP), 3 + 3 + 3 + MemoryCost(2), grownByte);
+
+        yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
+            Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
+
+        // A zero modulus, one, and ones the operands reach or pass.
+        BigInteger[] moduli = [0, 1, 97, ulong.MaxValue, new BigInteger(WordB, isUnsigned: true, isBigEndian: true)];
+        foreach (BigInteger modulus in moduli)
+        {
+            BigInteger a = new(WordB, isUnsigned: true, isBigEndian: true), b = new(WordA, isUnsigned: true, isBigEndian: true);
+            yield return Succeeds($"ADDMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, ADDMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : (a + b) % modulus));
+            yield return Succeeds($"MULMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, MULMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : a * b % modulus));
         }
     }
 
@@ -378,6 +472,8 @@ public class GuestOpcodeHandlerTests
         yield return Fails("JUMP to a destination above 32 bits", Code(PUSH5, 1, 0, 0, 0, 8, JUMP, STOP, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("JUMP to a destination above 64 bits", Code(PUSH9, 1, 0, 0, 0, 0, 0, 0, 0, 12, JUMP, STOP, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("JUMP on an empty stack", Code(JUMP), EvmExceptionType.StackUnderflow);
+        yield return Fails("SWAP1 JUMP onto a non-JUMPDEST byte", Code(PUSH1, 7, PUSH1, 0, SWAP1, JUMP, STOP, STOP), EvmExceptionType.InvalidJumpDestination);
+        yield return Fails("POP JUMP into PUSH data", Code(PUSH1, 7, PUSH1, 0, POP, JUMP, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("JUMP onto the last byte of PUSH32 data",
             Code([PUSH1, 48, JUMP, .. Filled(13, STOP), PUSH32, .. Filled(31, STOP), JUMPDEST, STOP]), EvmExceptionType.InvalidJumpDestination);
 
@@ -389,8 +485,12 @@ public class GuestOpcodeHandlerTests
 
         yield return Fails("PUSH2 JUMP onto a non-JUMPDEST byte", Code(PUSH2, 0, 4, JUMP, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI onto a non-JUMPDEST byte", Code(PUSH1, 1, PUSH2, 0, 6, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
+        yield return Fails("PUSH2 JUMP into PUSH data", Code(PUSH2, 0, 5, JUMP, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
+        yield return Fails("PUSH2 JUMPI into PUSH data", Code(PUSH1, 1, PUSH2, 0, 7, JUMPI, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI on an empty stack", Code(PUSH2, 0, 4, JUMPI, JUMPDEST), EvmExceptionType.StackUnderflow);
         yield return Fails("PUSH0 onto a full stack", Filled(1025, PUSH0), EvmExceptionType.StackOverflow);
+        yield return Fails("GAS onto a full stack", Code([.. Filled(1024, PUSH0), GAS]), EvmExceptionType.StackOverflow);
+        yield return Fails("RETURNDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), RETURNDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("CALLDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), CALLDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("PUSH1 onto a full stack", Code([.. Filled(1024, PUSH0), PUSH1, 0, STOP]), EvmExceptionType.StackOverflow);
         // The branch's PUSH2 overflows the stack an ISZERO leaves full, so the comparison runs unfused before it faults.
@@ -398,7 +498,13 @@ public class GuestOpcodeHandlerTests
         // A non-zero top leaves the branch not taken, which would fuse if the full stack did not stop it first.
         yield return Fails("ISZERO PUSH2 JUMPI not taken on a full stack",
             Code([.. Filled(1023, PUSH0), PUSH1, 1, ISZERO, PUSH2, 0, 0x3f, JUMPI, STOP]), EvmExceptionType.StackOverflow);
+        yield return Fails("DUP1 PUSH4 EQ PUSH2 JUMPI matching into PUSH data",
+            Code(PUSH4, 0, 0, 0, 1, DUP1, PUSH4, 0, 0, 0, 1, EQ, PUSH2, 0, 17, JUMPI, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("EQ PUSH2 JUMPI taken onto a non-JUMPDEST byte", Code(PUSH1, 2, PUSH1, 2, EQ, PUSH2, 0, 9, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
+        yield return Fails("LT PUSH2 JUMPI taken into PUSH data",
+            Code(PUSH1, 2, PUSH1, 1, LT, PUSH2, 0, 10, JUMPI, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
+        yield return Fails("EQ ISZERO PUSH2 JUMPI taken into PUSH data",
+            Code(PUSH1, 1, PUSH1, 2, EQ, ISZERO, PUSH2, 0, 11, JUMPI, PUSH2, JUMPDEST, JUMPDEST, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("ISZERO on an empty stack", Code(ISZERO), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 on an empty stack", Code(DUP1), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 onto a full stack", Code([.. Filled(1024, PUSH0), DUP1]), EvmExceptionType.StackOverflow);
@@ -444,6 +550,18 @@ public class GuestOpcodeHandlerTests
         }
 
         yield return Fails("SHR with one operand", Code(PUSH1, 1, SHR), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[SAR, BYTE, SIGNEXTEND])
+        {
+            yield return Fails($"{(Instruction)op} with one operand", Code(PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
+
+        yield return Fails("NOT on an empty stack", Code(NOT), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 with one operand", Code(PUSH1, 0, MSTORE8), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, MSTORE8), EvmExceptionType.OutOfGas);
+        foreach (byte op in (byte[])[ADDMOD, MULMOD])
+        {
+            yield return Fails($"{(Instruction)op} with two operands", Code(PUSH1, 1, PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
     }
 
     [TestCaseSource(nameof(Successes))]
@@ -576,15 +694,14 @@ public class GuestOpcodeHandlerTests
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
         EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
-        // The table's declared entry type is the host's signature; its entries take the guest's.
-        fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        fixed (nint* entries = PairedHandlers(vm))
         {
-            nint* table = (nint*)entries;
+            nint* table = entries + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(
                 ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
@@ -592,6 +709,21 @@ public class GuestOpcodeHandlerTests
         Assert.That(frame.Memory.TryLoadSpan(UInt256.Zero, size, out Span<byte> memory), Is.True);
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), memory.ToArray());
     }
+
+    /// <summary>The table the guest dispatches through, paired from the machine's untraced table once for all tests.</summary>
+    private static unsafe nint[] PairedHandlers(VirtualMachine<EthereumGasPolicy> vm)
+    {
+        if (_pairedHandlers is null)
+        {
+            // The table's declared entry type is the host's signature; its entries take the guest's.
+            fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+                _pairedHandlers = VirtualMachine<EthereumGasPolicy>.PairHandlers(new ReadOnlySpan<nint>(entries, 256));
+        }
+
+        return _pairedHandlers;
+    }
+
+    private static nint[]? _pairedHandlers;
 
     /// <summary>The Yellow Paper memory cost of <paramref name="words"/> active words.</summary>
     private static ulong MemoryCost(ulong words) => words * GasCostOf.Memory + words * words / 512;

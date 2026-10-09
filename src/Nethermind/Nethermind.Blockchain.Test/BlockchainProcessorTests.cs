@@ -787,6 +787,7 @@ public class BlockchainProcessorTests
         Block secondCopy = UnrecoveredCopy(_block1D2);
         ProcessingTestContext context = When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
+            .CountIs(0)
             .Suggested(_block1D2)
             .Recovered(_block1D2)
             .HeldAfterVerdict(_block1D2);
