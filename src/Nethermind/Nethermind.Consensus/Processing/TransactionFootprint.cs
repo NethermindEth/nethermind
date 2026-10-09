@@ -51,6 +51,7 @@ internal sealed class TransactionFootprint(
 
     public ReadOnlySpan<StateEffect> Effects => effects;
 
+    [SkipLocalsInit]
     public bool Matches(IWorldState state)
     {
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
@@ -178,6 +179,8 @@ internal struct StateEffect
 
     public readonly Address Address => Cell.Address;
 
+    // The balance and nonce a change leaves are discarded; clearing them first would cost every effect replayed.
+    [SkipLocalsInit]
     public readonly void Replay(IWorldState state, IReleaseSpec spec)
     {
         switch (Kind)

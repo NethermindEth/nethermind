@@ -225,6 +225,7 @@ internal sealed class BlockFootprints(Block block)
         if (!WerePredicted(position, writes)) _changed.Release();
     }
 
+    [SkipLocalsInit]
     private bool WerePredicted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         TransactionFootprint?[] footprints = _footprints;

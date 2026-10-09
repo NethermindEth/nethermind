@@ -34,6 +34,7 @@ public class PrewarmerTxAdapter(
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
 
+    [SkipLocalsInit]
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         if (!prewarmerState.IsPrewarmer)
@@ -81,6 +82,7 @@ public class PrewarmerTxAdapter(
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
 
+    [SkipLocalsInit]
     private bool TryReplay(TransactionFootprint? footprint, Transaction tx, ITxTracer txTracer, out TransactionResult result)
     {
         result = default;
