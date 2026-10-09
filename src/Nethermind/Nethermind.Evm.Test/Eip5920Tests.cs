@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
@@ -16,12 +17,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
-using Nethermind.Evm.GasPolicy;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -394,13 +394,18 @@ public class Eip5920Tests : VirtualMachineTestsBase
     private BlockAccessListAtIndex ExecuteWithBal(byte[] code)
     {
         (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, code);
-        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(SpecProvider)
+            .Build();
+        // The world state the BAL-recording processing envs decorate, over the state the test seeded.
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton(TestState)
+            .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false)));
+        TracedAccessWorldState tracedState = (TracedAccessWorldState)scope.Resolve<IWorldState>();
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumVirtualMachine machine = new(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance);
-        TransactionProcessor<EthereumGasPolicy> processor = new(
-            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
 
-        TransactionResult txResult = processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
+        TransactionResult txResult = scope.Resolve<ITransactionProcessor>().Execute(transaction, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(txResult.TransactionExecuted, Is.True, txResult.ToString());
         return tracedState.GetGeneratingBlockAccessList()!;
