@@ -372,9 +372,16 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>Resolves the nodes on the path to <paramref name="rawKey"/>, so a later write to that key finds them loaded.</summary>
+        /// <param name="rawKey">The key whose path is warmed.</param>
+        /// <param name="forDelete">
+        /// The key is being deleted. Deleting a leaf from a branch that has one other child collapses the branch into
+        /// that child, which <see cref="MaybeCombineNode"/> has to resolve; the path alone never reaches it, so this
+        /// also resolves the child the delete would leave behind.
+        /// </param>
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey, bool forDelete = false)
         {
             byte[]? array = null;
             try
@@ -390,7 +397,7 @@ namespace Nethermind.Trie
                 TreePath emptyPath = TreePath.Empty;
                 TrieNode? root = RootRef;
 
-                DoWarmUpPath(nibbles, ref emptyPath, root);
+                DoWarmUpPath(nibbles, ref emptyPath, root, forDelete);
             }
             catch (TrieException e)
             {
@@ -966,9 +973,11 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool forDelete = false)
         {
             int originalPathLength = path.Length;
+            // The branch the current node hangs from, while the walk is still at that branch's child.
+            TrieNode? parentBranch = null;
 
             try
             {
@@ -992,7 +1001,7 @@ namespace Nethermind.Trie
                         {
                             if (node.IsLeaf)
                             {
-                                // Done
+                                if (forDelete && parentBranch is not null) WarmUpDeleteSibling(parentBranch, ref path);
                                 return;
                             }
 
@@ -1001,6 +1010,7 @@ namespace Nethermind.Trie
                             TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
                             remainingKey = remainingKey[node!.Key.Length..];
                             node = extensionChild;
+                            parentBranch = null;
 
                             continue;
                         }
@@ -1015,6 +1025,7 @@ namespace Nethermind.Trie
                     TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
 
                     // Continue loop with child as current node
+                    parentBranch = node;
                     node = child;
                     remainingKey = remainingKey[1..];
                 }
@@ -1023,6 +1034,27 @@ namespace Nethermind.Trie
             {
                 path.TruncateMut(originalPathLength);
             }
+        }
+
+        /// <summary>
+        /// Resolves the child that <paramref name="branch"/> is left with once the leaf at the last nibble of
+        /// <paramref name="leafPath"/> is deleted: the node <see cref="MaybeCombineNode"/> collapses the branch into.
+        /// </summary>
+        /// <remarks>Nothing is resolved when the branch keeps two or more children, since it then stays a branch.</remarks>
+        private void WarmUpDeleteSibling(TrieNode branch, ref TreePath leafPath)
+        {
+            int deletedNibble = leafPath[leafPath.Length - 1];
+            int siblingNibble = branch.FindOnlyChild(ignoredChild: deletedNibble);
+            if (siblingNibble < 0) return;
+
+            leafPath.TruncateOne();
+            leafPath.AppendMut(siblingNibble);
+            TrieNode? sibling = branch.GetChildWithChildPath(TrieStore, ref leafPath, siblingNibble, keepChildRef: true);
+            if (sibling is null) return;
+
+            // Same lookup as the walk: an odd path is cached in the store rather than only under its parent.
+            if (sibling.IsSealed && sibling.Keccak is not null && leafPath.Length % 2 == 1) sibling = TrieStore.FindCachedOrUnknown(leafPath, sibling.Keccak);
+            sibling.TryResolveNode(TrieStore, ref leafPath);
         }
 
         /// <summary>
