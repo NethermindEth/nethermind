@@ -43,5 +43,14 @@ public partial class BlockProcessor
 
         public void InstallPredeploys(IReleaseSpec spec)
             => balManager.InstallPredeploys(spec);
+
+        public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
+            => balManager.CommitIndexTableRoots(block, receipts, spec, tracer);
+
+        public void RollbackBlock(Block block)
+            => balManager.RollbackBlock(block);
+
+        public void UpdateFinalBlockHash(Block block)
+            => balManager.UpdateFinalBlockHash(block);
     }
 }

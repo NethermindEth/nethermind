@@ -900,6 +900,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenConsensusRequiresToWaitForReceipts()
+                {
+                    SyncConfig.NeedToWaitForReceipts = true;
+                    return this;
+                }
+
             }
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>

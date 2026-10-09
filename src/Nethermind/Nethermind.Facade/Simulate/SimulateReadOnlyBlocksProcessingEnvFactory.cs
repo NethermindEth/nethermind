@@ -10,6 +10,7 @@ using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -52,6 +53,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         BlockTree tempBlockTree = CreateTempBlockTree(specProvider, logManager, editableDbProvider,
             tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
+        OverlayIndexTableStore tmpIndexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
@@ -77,6 +79,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
                 txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+            .AddSingleton<IIndexTableStore>(tmpIndexTableStore)
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());
@@ -85,7 +88,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
         SimulateReadOnlyBlocksProcessingEnv env = envLifetimeScope.Resolve<SimulateReadOnlyBlocksProcessingEnv>();
         return new DisposableSimulateReadOnlyBlocksProcessingEnv(
-            env, envLifetimeScope, tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository);
+            env, envLifetimeScope, tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository, tmpIndexTableStore);
     }
 
     private sealed class DisposableSimulateReadOnlyBlocksProcessingEnv(
@@ -93,13 +96,15 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         ILifetimeScope scope,
         IClearableCache tmpHeaderStore,
         IClearableCache tmpBlockStore,
-        IClearableCache tmpChainLevelInfoRepository) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
+        IClearableCache tmpChainLevelInfoRepository,
+        IClearableCache tmpIndexTableStore) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
     {
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
             tmpHeaderStore.ClearCache();
             tmpBlockStore.ClearCache();
             tmpChainLevelInfoRepository.ClearCache();
+            tmpIndexTableStore.ClearCache();
             return inner.Begin(baseBlock);
         }
 
