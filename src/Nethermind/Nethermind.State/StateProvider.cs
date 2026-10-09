@@ -762,15 +762,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 case ChangeType.Delete:
                     {
                         if (isTracing) TraceRemove(change);
-                        bool wasItCreatedNow = false;
-                        for (int previousOne = change.PrevIdx; previousOne != -1; previousOne = changes[previousOne].PrevIdx)
-                        {
-                            if (changes[previousOne].ChangeType == ChangeType.New)
-                            {
-                                wasItCreatedNow = true;
-                                break;
-                            }
-                        }
+                        // Only a chain that starts with New proves the account was absent before the commit window.
+                        // Block production commits once per block, so a New can sit above the delete of a pre-existing account.
+                        int oldest = change.PrevIdx;
+                        while (oldest != -1 && changes[oldest].PrevIdx != -1) oldest = changes[oldest].PrevIdx;
+                        bool wasItCreatedNow = oldest != -1 && changes[oldest].ChangeType == ChangeType.New;
 
                         if (!wasItCreatedNow)
                         {

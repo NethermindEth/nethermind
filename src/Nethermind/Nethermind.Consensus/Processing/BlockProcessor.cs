@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -70,9 +71,13 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    internal sealed class BlockAccessListSequentialRetryException(
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, blockAccessListException);
+    /// <summary>Requests a fresh parent-state scope and ordinary sequential execution.</summary>
+    public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
+        : InvalidBlockException(block, message, innerException)
+    {
+        internal BlockAccessListSequentialRetryException(BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException exception)
+            : this(exception.InvalidBlock, exception.Message, exception) { }
+    }
 
     public event Action? TransactionsExecuted;
 
@@ -173,9 +178,9 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec, _balManager.GetParentSpec(header)))
         {
-            _systemContractHandler.InstallPredeploys(spec);
+            throw new InvalidBlockException(block, BlockErrorMessages.RecentRootPredeployNotEmpty);
         }
         CommitState(spec);
 

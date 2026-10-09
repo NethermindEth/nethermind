@@ -14,7 +14,7 @@ using Nethermind.State;
 namespace Nethermind.Init;
 
 [StepCommand("verify-trie", "Verify that the full state trie is stored for the current head.")]
-[RunnerStepDependencies(typeof(InitializeBlockTree))]
+[RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
 public class RunVerifyTrie(
     IWorldStateManager worldStateManager,
     IBlockTree blockTree,

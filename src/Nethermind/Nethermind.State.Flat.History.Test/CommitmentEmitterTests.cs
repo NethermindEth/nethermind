@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -21,6 +23,9 @@ public class CommitmentEmitterTests
     private static readonly TreePath CheckpointedPath = TreePath.FromHexString("abc");
     private static readonly TreePath StorageTop = TreePath.FromHexString("7");
     private static readonly ValueHash256 StorageAccount = TestItem.KeccakB.ValueHash256;
+    private const int PinnedNodeSpan = 120_000;
+    private const string PinnedRowsDigest = "0x6a57acc267ec3da93a0123198e383190e4ae81471f82bd0f85ed82375e6f5b72";
+    private static readonly ulong[] PinnedBlocks = [1, 2, 30, 64, 65, 100, 130, 192, 193, 16_383, 16_384, 16_385];
 
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private CommitmentMetadata _metadata = null!;
@@ -287,6 +292,54 @@ public class CommitmentEmitterTests
             "a block that only touches the top of a large trie must still write an exact row there; a per-block verdict would split the node's history across two chains");
     }
 
+    [TestCase(0, (ushort)0, TestName = "WriteExact_BranchStillRemembered_WritesOnlyChangedChildren")]
+    [TestCase((1 << 14) + 1, (ushort)0b11, TestName = "WriteExact_AfterRememberedBranchesOverflow_WritesFullVector")]
+    public void WriteExact_ExactBranchRewritten_ChangedMaskFollowsWhetherItWasRemembered(int otherTries, ushort expectedChanged)
+    {
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            RecordLargeStorageRoot(walk, StorageAccount);
+            walk.CompleteBlock();
+            walk.BeginBlock(2);
+            for (int i = 0; i < otherTries; i++) RecordLargeStorageRoot(walk, ValueKeccak.Compute(BitConverter.GetBytes(i)));
+            walk.CompleteBlock();
+            walk.BeginBlock(3);
+            RecordLargeStorageRoot(walk, StorageAccount);
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), Policy, CommitmentKeyLayout.IdentityLength);
+        Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.Empty, exact: true);
+        byte[] row = store.TryGetExact(prefix[..prefixLength], 3)!;
+        ChildVector carried = ChildVector.Rent();
+        try
+        {
+            ushort presence = ParentRowCodec.Presence(row);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(presence, Is.EqualTo((ushort)0b11));
+                Assert.That(ParentRowCodec.Changed(row), Is.EqualTo(expectedChanged),
+                    "a branch the emitter still remembers writes only its changed children; one it forgot writes every present child, as if it had never been a branch");
+                Assert.That(ParentRowCodec.Fill(row, presence, carried), Is.EqualTo(expectedChanged), "the row carries a reference for exactly the children it marks changed");
+            }
+        }
+        finally
+        {
+            ChildVector.Return(carried);
+        }
+    }
+
+    private static void RecordLargeStorageRoot(CommitmentEmitter emitter, in ValueHash256 account)
+    {
+        emitter.RecordStorageDepthReached(account, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth);
+        ChildVector children = Children(0, 1);
+        emitter.RecordStorageNode(account, TreePath.Empty, BranchRlp.Encode(children));
+        ChildVector.Return(children);
+    }
+
     [Test]
     public void A_commitment_row_scan_is_charged_against_the_proof_budget()
     {
@@ -436,6 +489,53 @@ public class CommitmentEmitterTests
         }
     }
 
+    [Test]
+    public void FlushWindows_AcrossTheOpenNodeCapAndSeveralWindows_WritesPinnedRows()
+    {
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            foreach (ulong block in PinnedBlocks)
+            {
+                walk.BeginBlock(block);
+                int count = block == PinnedBlocks[0] ? PinnedNodeSpan : PinnedNodeSpan / 16;
+                for (int node = 0; node < count; node++) RecordPinnedNode(walk, block, (int)((node * 7L + (long)block) % PinnedNodeSpan));
+                walk.CompleteBlock();
+            }
+
+            walk.FlushOpenWindows();
+        }
+
+        Assert.That(CommitmentRowsDigest(), Is.EqualTo(PinnedRowsDigest),
+            "the digest covers every account and storage commitment row this sequence writes; a change to how open nodes are held must leave it byte-identical");
+    }
+
+    [Test]
+    public void Accumulate_AfterTheFirstWindowFlushed_DoesNotAllocatePerOpenNode()
+    {
+        const int nodes = 10_000;
+        TreePath[] paths = new TreePath[nodes];
+        byte[][] rlps = new byte[nodes][];
+        for (int node = 0; node < nodes; node++)
+        {
+            paths[node] = PinnedPath(node * 97, CommitmentDepthPolicy.DefaultAccountCheckpointDepth);
+            ChildVector children = Children(node % 16, (node + 5) % 16);
+            rlps[node] = BranchRlp.Encode(children);
+            ChildVector.Return(children);
+        }
+
+        using CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata);
+        RecordAll(walk, 1, paths, rlps);
+        RecordAll(walk, Policy.Interval, paths, rlps);
+        walk.BeginBlock(Policy.Interval + 1);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int node = 0; node < nodes; node++) walk.RecordAccountNode(paths[node], rlps[node]);
+        walk.CompleteBlock();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.LessThan(64 * 1024),
+            "once a window has been flushed the open-node storage is reused, so the next window's nodes cost no new heap objects");
+    }
+
     private static byte[]? ExactRow(CommitmentStore store, in TreePath path, ulong block)
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
@@ -449,6 +549,106 @@ public class CommitmentEmitterTests
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = CommitmentKeyLayout.WritePathPrefix(prefix, path, exact: false);
         return store.TryGetExact(prefix[..prefixLength], window);
+    }
+
+    private static void RecordAll(CommitmentEmitter emitter, ulong block, TreePath[] paths, byte[][] rlps)
+    {
+        emitter.BeginBlock(block);
+        for (int node = 0; node < paths.Length; node++) emitter.RecordAccountNode(paths[node], rlps[node]);
+        emitter.CompleteBlock();
+    }
+
+    private static void RecordPinnedNode(CommitmentEmitter emitter, ulong block, int node)
+    {
+        int depth = 3 + node % 3;
+        TreePath path = PinnedPath(node, depth);
+        byte[] seed = Keccak.Compute(BitConverter.GetBytes(node * 1_000_003L + (long)block)).BytesToArray();
+        switch ((node + (int)block) % 7)
+        {
+            case 0:
+                emitter.RecordAccountEmpty(path);
+                break;
+            case 1:
+                emitter.RecordAccountNode(path, node % 97 == 0 ? LongLeafRlp(seed) : LeafRlp(seed));
+                break;
+            case 2:
+                emitter.RecordAccountNode(path, PinnedBranch(node, seed), (ushort)(seed[2] | (seed[3] << 8)));
+                break;
+            default:
+                emitter.RecordAccountNode(path, PinnedBranch(node, seed));
+                if (depth == CommitmentDepthPolicy.DefaultAccountCheckpointDepth) emitter.RecordAccountNode(path.Append(seed[4] & 0xf), LeafRlp(seed));
+                break;
+        }
+
+        if (node % 50 == 0)
+        {
+            emitter.RecordStorageNode(StorageAccount, PinnedPath(node, 1 + node % 4), PinnedBranch(node, seed));
+        }
+    }
+
+    private static TreePath PinnedPath(int node, int depth)
+    {
+        Span<byte> nibbles = stackalloc byte[depth];
+        for (int index = 0; index < depth; index++) nibbles[index] = (byte)((node >> (4 * index)) & 0xf);
+        return TreePath.FromNibble(nibbles);
+    }
+
+    private static byte[] PinnedBranch(int node, byte[] seed)
+    {
+        ChildVector children = ChildVector.Rent();
+        ushort presence = (ushort)(seed[0] | (seed[1] << 8) | 0b11);
+        for (int index = 0; index < 16; index++)
+        {
+            if (((presence >> index) & 1) == 0) continue;
+
+            byte[] hash = new byte[Hash256.Size];
+            hash[0] = (byte)(index + 1);
+            BitConverter.TryWriteBytes(hash.AsSpan(1), node);
+            if (index % 3 == 0) hash[31] = seed[5 + index];
+            children.Set(index, hash);
+        }
+
+        byte[] rlp = BranchRlp.Encode(children);
+        ChildVector.Return(children);
+        return rlp;
+    }
+
+    private static byte[] LeafRlp(byte[] seed)
+    {
+        byte[] rlp = LeafRlp();
+        seed.CopyTo(rlp.AsSpan(3));
+        return rlp;
+    }
+
+    private static byte[] LongLeafRlp(byte[] seed)
+    {
+        const int payload = 600;
+        byte[] rlp = new byte[6 + payload];
+        rlp[0] = 0xF9;
+        rlp[1] = (payload + 3) >> 8;
+        rlp[2] = (payload + 3) & 0xff;
+        rlp[3] = 0xB9;
+        rlp[4] = payload >> 8;
+        rlp[5] = payload & 0xff;
+        for (int index = 6; index < rlp.Length; index += seed.Length) seed.AsSpan(0, Math.Min(seed.Length, rlp.Length - index)).CopyTo(rlp.AsSpan(index));
+        return rlp;
+    }
+
+    private string CommitmentRowsDigest()
+    {
+        using MemoryStream rows = new();
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountCommitments, FlatHistoryColumns.StorageCommitments })
+        {
+            foreach (KeyValuePair<byte[], byte[]> row in _historyColumns.GetColumnDb(column).GetAll().OrderBy(static row => row.Key, Bytes.Comparer))
+            {
+                rows.Write(BitConverter.GetBytes(row.Key.Length));
+                rows.Write(row.Key);
+                rows.Write(BitConverter.GetBytes(row.Value.Length));
+                rows.Write(row.Value);
+            }
+        }
+
+        return Keccak.Compute(rows.ToArray()).ToString();
     }
 
     private static ChildVector Children(params int[] present)

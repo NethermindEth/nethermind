@@ -147,6 +147,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 private readonly List<ISyncPeer> _peers = [];
 
+                private readonly List<(ulong PivotNumber, SyncMode SyncMode)> _pivotMoves = [];
+
                 public ISyncPeerPool SyncPeerPool { get; set; } = null!;
 
                 public ISyncProgressResolver SyncProgressResolver { get; set; } = null!;
@@ -168,7 +170,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestFullState().Returns(0UL);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
-                    SyncProgressResolver.SyncPivot.Returns((Pivot.Number, Keccak.Zero));
 
                     SyncConfig.FastSync = false;
                     SyncConfig.PivotNumber = Pivot.Number;
@@ -178,6 +179,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.DownloadBodiesInFastSync = true;
                     SyncConfig.DownloadReceiptsInFastSync = true;
                 }
+
+                private void SetSyncPivot(ulong pivotNumber) => SyncProgressResolver.SyncPivot.Returns((pivotNumber, Keccak.Zero));
 
                 private void AddPeeringSetup(string name, params ISyncPeer[] peers) =>
                     _peeringSetups.Add(() =>
@@ -700,6 +703,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                /// <summary>
+                /// After the initial mode is checked, moves the sync pivot to <paramref name="pivotNumber"/>,
+                /// updates the same selector again and expects <paramref name="syncMode"/>.
+                /// </summary>
+                public ScenarioBuilder AndThenThePivotMovesTo(ulong pivotNumber, SyncMode syncMode)
+                {
+                    _pivotMoves.Add((pivotNumber, syncMode));
+                    return this;
+                }
+
                 public ScenarioBuilder WhenSynchronizationIsDisabled()
                 {
                     _overwrites.Add(() => SyncConfig.SynchronizationEnabled = false);
@@ -841,6 +854,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     void Test()
                     {
+                        SetSyncPivot(Pivot.Number);
                         foreach (Action overwrite in _overwrites)
                         {
                             overwrite.Invoke();
@@ -851,6 +865,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         selector.StopAsync().Wait();
                         selector.Update();
                         Assert.That(selector.Current, Is.EqualTo(syncMode));
+
+                        foreach ((ulong pivotNumber, SyncMode syncModeAfterMove) in _pivotMoves)
+                        {
+                            SetSyncPivot(pivotNumber);
+                            selector.Update();
+                            Assert.That(selector.Current, Is.EqualTo(syncModeAfterMove), $"after the pivot moved to {pivotNumber}");
+                        }
                     }
 
                     SetDefaults();
