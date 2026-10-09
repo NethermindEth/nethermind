@@ -384,7 +384,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.Header.Timestamp;
+        {
+            vm.BlockContextReads |= BlockContextReads.Timestamp;
+            return vm.BlockExecutionContext.Header.Timestamp;
+        }
     }
 
     /// <summary>
@@ -404,7 +407,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.GasLimit;
+        {
+            vm.BlockContextReads |= BlockContextReads.GasLimit;
+            return vm.BlockExecutionContext.GasLimit;
+        }
     }
 
     /// <summary>
@@ -514,7 +520,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static Address Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.Coinbase;
+        {
+            vm.BlockContextReads |= BlockContextReads.Coinbase;
+            return vm.BlockExecutionContext.Coinbase;
+        }
     }
 
     /// <summary>
@@ -672,6 +681,7 @@ public static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        vm.BlockContextReads |= BlockContextReads.PrevRandao;
         return stack.Push32Bytes<TTracingInst, OnFlag>(in vm.BlockExecutionContext.PrevRandao);
     }
 
