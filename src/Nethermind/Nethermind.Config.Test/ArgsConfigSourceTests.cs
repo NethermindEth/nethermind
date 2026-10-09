@@ -36,6 +36,8 @@ public class ArgsConfigSourceTests
     [TestCase(typeof(ulong), "12", 12UL)]
     [TestCase(typeof(string), "12", "12")]
     [TestCase(typeof(bool), "false", false)]
+    [TestCase(typeof(ProducedBlockDumpOptions), "Receipts, Geth", ProducedBlockDumpOptions.Receipts | ProducedBlockDumpOptions.Geth)]
+    [TestCase(typeof(ProducedBlockDumpOptions), "All", ProducedBlockDumpOptions.All)]
     public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
     {
         Dictionary<string, string> args = new()

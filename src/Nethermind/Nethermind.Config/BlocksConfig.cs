@@ -51,6 +51,9 @@ namespace Nethermind.Config
         public bool Enabled { get; set; }
         public ulong? TargetBlockGasLimit { get; set; } = null;
 
+        /// <inheritdoc/>
+        public ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
+
         public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
         public bool RandomizedBlocks { get; set; }

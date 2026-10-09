@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,7 +24,7 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Consensus.Producers;
 
 /// <summary>Dumps diagnostic traces of the blocks a block producer environment builds, as selected by
-/// <see cref="IMiningConfig.DumpProducedBlocks"/>.</summary>
+/// <see cref="IBlocksConfig.DumpProducedBlocks"/>.</summary>
 /// <remarks>
 /// The dump tracers run in the same pass as the build, next to the caller's tracer, so the block is not executed twice.
 /// Candidate transactions that fail to execute are traced too but are not in the produced block, so the traces are
@@ -34,14 +35,14 @@ namespace Nethermind.Consensus.Producers;
 /// </remarks>
 internal sealed class TracingProducedBlockProcessor(
     IBlockchainProcessor processor,
-    IMiningConfig miningConfig,
+    IBlocksConfig blocksConfig,
     ISpecProvider specProvider,
     ILogManager logManager,
     ProducedBlockDumpDirectory? dumpDirectory = null) : IBlockchainProcessor
 {
     internal static readonly string DefaultDumpDirectory = Path.Combine(Path.GetTempPath(), "nethermind-produced-blocks");
 
-    private readonly DumpOptions _dumpOptions = miningConfig.DumpProducedBlocks;
+    private readonly ProducedBlockDumpOptions _dumpOptions = blocksConfig.DumpProducedBlocks;
     private readonly ILogger _logger = logManager.GetClassLogger<TracingProducedBlockProcessor>();
 
     internal string DumpDirectory { get; } = dumpDirectory?.Path ?? DefaultDumpDirectory;
@@ -50,16 +51,16 @@ internal sealed class TracingProducedBlockProcessor(
 
     public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
-        if (_dumpOptions == DumpOptions.None)
+        if (_dumpOptions == ProducedBlockDumpOptions.None)
         {
             return processor.Process(block, options, tracer, token);
         }
 
-        BlockReceiptsTracer? receiptsTracer = (_dumpOptions & DumpOptions.Receipts) != 0 ? new BlockReceiptsTracer(parallel: true) : null;
-        ParityLikeBlockTracer? parityTracer = (_dumpOptions & DumpOptions.Parity) != 0
+        BlockReceiptsTracer? receiptsTracer = (_dumpOptions & ProducedBlockDumpOptions.Receipts) != 0 ? new BlockReceiptsTracer(parallel: true) : null;
+        ParityLikeBlockTracer? parityTracer = (_dumpOptions & ProducedBlockDumpOptions.Parity) != 0
             ? new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider)
             : null;
-        GethLikeBlockMemoryTracer? gethTracer = (_dumpOptions & DumpOptions.Geth) != 0
+        GethLikeBlockMemoryTracer? gethTracer = (_dumpOptions & ProducedBlockDumpOptions.Geth) != 0
             ? new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, specProvider)
             : null;
 
@@ -86,11 +87,11 @@ internal sealed class TracingProducedBlockProcessor(
             Directory.CreateDirectory(DumpDirectory);
             string name = $"{processed.Number}_{processed.Hash}";
 
-            if ((_dumpOptions & (DumpOptions.Rlp | DumpOptions.RlpLog)) != 0)
+            if ((_dumpOptions & (ProducedBlockDumpOptions.Rlp | ProducedBlockDumpOptions.RlpLog)) != 0)
             {
                 byte[] rlp = Rlp.Encode(processed, RlpBehaviors.AllowExtraBytes).Bytes;
-                if ((_dumpOptions & DumpOptions.Rlp) != 0) File.WriteAllBytes(Path.Combine(DumpDirectory, $"block_{name}.rlp"), rlp);
-                if ((_dumpOptions & DumpOptions.RlpLog) != 0 && _logger.IsInfo) _logger.Info($"RLP dump of produced block {processed.Hash} is {rlp.ToHexString()}");
+                if ((_dumpOptions & ProducedBlockDumpOptions.Rlp) != 0) File.WriteAllBytes(Path.Combine(DumpDirectory, $"block_{name}.rlp"), rlp);
+                if ((_dumpOptions & ProducedBlockDumpOptions.RlpLog) != 0 && _logger.IsInfo) _logger.Info($"RLP dump of produced block {processed.Hash} is {rlp.ToHexString()}");
             }
 
             Dictionary<Hash256, int> positions = new(processed.Transactions.Length);

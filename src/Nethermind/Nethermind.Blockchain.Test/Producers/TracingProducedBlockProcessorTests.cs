@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -27,11 +27,11 @@ namespace Nethermind.Blockchain.Test.Producers;
 
 public class TracingProducedBlockProcessorTests
 {
-    [TestCase(DumpOptions.Receipts, "receipts_{0}.json")]
-    [TestCase(DumpOptions.Parity, "parityStyle_{0}.json")]
-    [TestCase(DumpOptions.Geth, "gethStyle_{0}.json")]
-    [TestCase(DumpOptions.Rlp, "block_{0}.rlp")]
-    public void Dumps_trace_of_produced_block_and_keeps_caller_tracer(DumpOptions dumpOptions, string fileNameFormat)
+    [TestCase(ProducedBlockDumpOptions.Receipts, "receipts_{0}.json")]
+    [TestCase(ProducedBlockDumpOptions.Parity, "parityStyle_{0}.json")]
+    [TestCase(ProducedBlockDumpOptions.Geth, "gethStyle_{0}.json")]
+    [TestCase(ProducedBlockDumpOptions.Rlp, "block_{0}.rlp")]
+    public void Dumps_trace_of_produced_block_and_keeps_caller_tracer(ProducedBlockDumpOptions dumpOptions, string fileNameFormat)
     {
         using TempDirectory dumpDirectory = new();
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -57,7 +57,7 @@ public class TracingProducedBlockProcessorTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         IBlockTracer callerTracer = Substitute.For<IBlockTracer>();
         IBlockchainProcessor inner = CreateInner(disabled ? block : null);
-        TracingProducedBlockProcessor processor = CreateProcessor(inner, disabled ? DumpOptions.None : DumpOptions.Receipts, dumpDirectory.Path);
+        TracingProducedBlockProcessor processor = CreateProcessor(inner, disabled ? ProducedBlockDumpOptions.None : ProducedBlockDumpOptions.Receipts, dumpDirectory.Path);
 
         processor.Process(block, ProcessingOptions.ProducingBlock, callerTracer);
 
@@ -79,7 +79,7 @@ public class TracingProducedBlockProcessorTests
         DateTime writeTime = DateTime.UtcNow.AddHours(-1);
         foreach (Block block in blocks)
         {
-            TracingProducedBlockProcessor processor = CreateProcessor(CreateInner(block), DumpOptions.Receipts, dumpDirectory.Path, maxDumpFiles);
+            TracingProducedBlockProcessor processor = CreateProcessor(CreateInner(block), ProducedBlockDumpOptions.Receipts, dumpDirectory.Path, maxDumpFiles);
             processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
             // Backdates each dump in production order, so the order holds whatever the file system timestamp resolution.
@@ -91,9 +91,8 @@ public class TracingProducedBlockProcessorTests
             Is.EquivalentTo(blocks.TakeLast(maxDumpFiles).Select(static b => $"receipts_{b.Number}_{b.Hash}.json").Append("notes.txt")));
     }
 
-    [TestCase(1)]
-    [TestCase(16)]
-    public void Receipt_dump_does_not_modify_producer_header(int transactionCount)
+    [Test]
+    public void Receipt_dump_does_not_modify_producer_header([Values(1, 16)] int transactionCount)
     {
         using TempDirectory dumpDirectory = new();
         Transaction[] transactions = Enumerable.Range(0, transactionCount)
@@ -118,7 +117,7 @@ public class TracingProducedBlockProcessorTests
                 return block;
             });
 
-        CreateProcessor(inner, DumpOptions.Receipts, dumpDirectory.Path)
+        CreateProcessor(inner, ProducedBlockDumpOptions.Receipts, dumpDirectory.Path)
             .Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 
         using (Assert.EnterMultipleScope())
@@ -143,9 +142,9 @@ public class TracingProducedBlockProcessorTests
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton(txSourceFactory)
             .AddSingleton(new ProducedBlockDumpDirectory(dumpDirectory.Path))
-            .AddDecorator<IMiningConfig>(static (_, config) =>
+            .AddDecorator<IBlocksConfig>(static (_, config) =>
             {
-                config.DumpProducedBlocks = DumpOptions.Receipts | DumpOptions.Parity | DumpOptions.Geth;
+                config.DumpProducedBlocks = ProducedBlockDumpOptions.Receipts | ProducedBlockDumpOptions.Parity | ProducedBlockDumpOptions.Geth;
                 return config;
             }));
 
@@ -175,8 +174,8 @@ public class TracingProducedBlockProcessorTests
         }
     }
 
-    private static TracingProducedBlockProcessor CreateProcessor(IBlockchainProcessor inner, DumpOptions dumpOptions, string dumpDirectory, int maxDumpFiles = 256) =>
-        new(inner, new MiningConfig { DumpProducedBlocks = dumpOptions }, MainnetSpecProvider.Instance, LimboLogs.Instance,
+    private static TracingProducedBlockProcessor CreateProcessor(IBlockchainProcessor inner, ProducedBlockDumpOptions dumpOptions, string dumpDirectory, int maxDumpFiles = 256) =>
+        new(inner, new BlocksConfig { DumpProducedBlocks = dumpOptions }, MainnetSpecProvider.Instance, LimboLogs.Instance,
             new ProducedBlockDumpDirectory(dumpDirectory))
         {
             MaxDumpFiles = maxDumpFiles
