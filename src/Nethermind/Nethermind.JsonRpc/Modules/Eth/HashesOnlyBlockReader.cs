@@ -131,6 +131,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
     /// <returns>The block, or <see langword="null"/> when it has to be looked up through the block tree.</returns>
     public HashesOnlyBlock? Find(IBlockFinder blockFinder, BlockParameter blockParameter)
     {
+        long generation = _cache.Generation;
         if (blockFinder.Head is not { } head || head.Number < _headWindow)
         {
             return null;
@@ -139,15 +140,15 @@ public sealed class HashesOnlyBlockReader : IDisposable
         ulong windowStart = head.Number - _headWindow;
         return blockParameter.Type switch
         {
-            BlockParameterType.BlockNumber => FindByNumber(blockFinder, blockParameter.BlockNumber!.Value, windowStart),
-            BlockParameterType.BlockHash => FindByHash(blockFinder, blockParameter.BlockHash!, blockParameter.RequireCanonical, windowStart),
+            BlockParameterType.BlockNumber => FindByNumber(blockFinder, blockParameter.BlockNumber!.Value, windowStart, generation),
+            BlockParameterType.BlockHash => FindByHash(blockFinder, blockParameter.BlockHash!, blockParameter.RequireCanonical, windowStart, generation),
             _ => null
         };
     }
 
     /// <remarks>Resolves the number through its level, as the block tree does for a canonical block. A level with no
     /// canonical block is left to the block tree.</remarks>
-    private HashesOnlyBlock? FindByNumber(IBlockFinder blockFinder, ulong number, ulong windowStart)
+    private HashesOnlyBlock? FindByNumber(IBlockFinder blockFinder, ulong number, ulong windowStart, long generation)
     {
         if (number >= windowStart || _chainLevels.LoadLevel(number) is not { MainChainBlock: { } blockInfo } level)
         {
@@ -162,10 +163,10 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
         return _cache.TryGet(blockHash.ValueHash256, out HashesOnlyBlock? cached) && IsCurrent(blockFinder, cached!, blockInfo)
             ? cached
-            : Load(blockHash, number, level, requireCanonical: true);
+            : Load(blockHash, number, level, generation, requireCanonical: true);
     }
 
-    private HashesOnlyBlock? FindByHash(IBlockFinder blockFinder, Hash256 blockHash, bool requireCanonical, ulong windowStart)
+    private HashesOnlyBlock? FindByHash(IBlockFinder blockFinder, Hash256 blockHash, bool requireCanonical, ulong windowStart, long generation)
     {
         if (_cache.TryGet(blockHash.ValueHash256, out HashesOnlyBlock? cached)
             && cached!.Block.Number >= blockFinder.LowestServedBlock
@@ -183,7 +184,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return null;
         }
 
-        return Load(blockHash, number, level, requireCanonical);
+        return Load(blockHash, number, level, generation, requireCanonical);
     }
 
     /// <summary>Whether a cached block can be served: <paramref name="blockInfo"/>, its canonical entry, still gives the
@@ -198,7 +199,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
         && cached.Block.Header.TotalDifficulty == ResolveTotalDifficulty(blockInfo);
 
     /// <remarks>A level without the block's entry is left to the block tree, which may create it.</remarks>
-    private HashesOnlyBlock? Load(Hash256 blockHash, ulong number, ChainLevelInfo level, bool requireCanonical)
+    private HashesOnlyBlock? Load(Hash256 blockHash, ulong number, ChainLevelInfo level, long generation, bool requireCanonical)
     {
         bool isCanonical = level.MainChainBlock?.BlockHash == blockHash;
         if ((requireCanonical && !isCanonical) || level.FindBlockInfo(blockHash) is not { } blockInfo)
@@ -206,7 +207,6 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return null;
         }
 
-        long generation = _cache.Generation;
         HashesOnlyBlock? block = Read(number, blockHash);
         if (block is null)
         {

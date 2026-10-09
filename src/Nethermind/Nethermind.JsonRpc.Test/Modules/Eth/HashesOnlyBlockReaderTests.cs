@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -333,6 +334,38 @@ public class HashesOnlyBlockReaderTests
     }
 
     [Test]
+    public void Find_BlockReadAcrossAHeadRewind_IsNotCached([Values] bool byHash)
+    {
+        (IBlockTree blockTree, HashesOnlyBlockReader reader, CountingChainLevels chainLevels, _) = BuildCountingChainWithBuilder();
+        Block block = blockTree.FindBlock(8)!;
+        Hash256 rewindHash = blockTree.FindBlock(6)!.Hash!;
+        BlockParameter parameter = byHash ? new BlockParameter(block.Hash!) : new BlockParameter(block.Number);
+        chainLevels.OnLoad = number =>
+        {
+            if (number != block.Number)
+            {
+                return;
+            }
+
+            chainLevels.OnLoad = null;
+            chainLevels.ClearCache();
+            Assert.That(blockTree.TryRewindHead(rewindHash), Is.True);
+        };
+
+        Assert.That(reader.Find(blockTree, parameter), Is.Not.Null);
+        Assert.That(blockTree.Head!.Number, Is.EqualTo(6UL));
+        Assert.That(reader.Read(block.Number, block.Hash!), Is.Not.Null);
+
+        blockTree.DeleteChainSlice(block.Number);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(new BlockParameter(block.Hash!)), Is.Null);
+            Assert.That(reader.Find(blockTree, new BlockParameter(block.Hash!)), Is.Null);
+        }
+    }
+
+    [Test]
     public void Find_BlockOffTheMainChain_IsNotCached()
     {
         (IBlockTree blockTree, HashesOnlyBlockReader reader) = BuildChain();
@@ -517,10 +550,16 @@ public class HashesOnlyBlockReaderTests
     {
         public int Loads { get; set; }
 
+        public Action<ulong>? OnLoad { get; set; }
+
+        public void ClearCache() => ((IClearableCache)inner).ClearCache();
+
         public ChainLevelInfo? LoadLevel(ulong number)
         {
             Loads++;
-            return inner.LoadLevel(number);
+            ChainLevelInfo? level = inner.LoadLevel(number);
+            OnLoad?.Invoke(number);
+            return level;
         }
 
         public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
