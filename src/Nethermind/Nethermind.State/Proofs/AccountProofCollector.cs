@@ -73,6 +73,7 @@ namespace Nethermind.State.Proofs
         {
             keccakStorageKeys ??= [];
 
+            ArgumentOutOfRangeException.ThrowIfNotEqual(hashedAddress.Length, Hash256.Size, nameof(hashedAddress));
             _hashedAddress = new ValueHash256(hashedAddress);
 
             _accountProof = new AccountProof

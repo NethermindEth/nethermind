@@ -85,6 +85,15 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
+        public void HashedAddress_WhenLengthIsInvalid_Throws([Values(0, 20, 31, 33)] int length)
+        {
+            byte[] address = new byte[length];
+            ArgumentOutOfRangeException exception = Assert.Throws<ArgumentOutOfRangeException>(
+                () => new AccountProofCollector(address, Array.Empty<byte[]>()))!;
+            Assert.That(exception.ParamName, Is.EqualTo("hashedAddress"));
+        }
+
+        [Test]
         public void Packed_keys_do_not_alias_the_caller_array()
         {
             ValueHash256[] keys = [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakA.ValueHash256];
