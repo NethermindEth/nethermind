@@ -262,7 +262,7 @@ public class Eip8288BlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(1), "a proof verified when produced is not verified natively again");
             Assert.That(second.Header.RecursiveStark!.StarkProof,
                 Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(second).ToByteArray()));
         }
@@ -308,6 +308,28 @@ public class Eip8288BlockProductionTests
             Assert.That(reused, Is.EqualTo(hash.ToByteArray()));
             Assert.That(verifier.ProofCalls, Is.EqualTo(3));
             Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
+    public void Verified_recursive_proofs_are_not_verified_natively_again()
+    {
+        CountingVerifier verifier = new();
+        ProductionProofCache cache = new(verifier);
+        ValueHash256 statement = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("verified"), default)]);
+        ValueHash256 other = Eip8288Dependencies.ComputeDepsHash([new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("other"), default)]);
+        byte[] proof = statement.ToByteArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False);
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "a rejection is never cached");
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(2));
+            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(cache.VerifyRecursiveStark(statement, Eip8288Constants.AggregatedVk, proof), Is.True);
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(3));
+            Assert.That(cache.VerifyRecursiveStark(other, Eip8288Constants.AggregatedVk, proof), Is.False, "the statement is part of the key");
+            Assert.That(cache.VerifyRecursiveStark(statement, new byte[32], proof), Is.True, "the verification key is part of the key");
+            Assert.That(verifier.RecursiveVerificationCalls, Is.EqualTo(5));
         }
     }
 

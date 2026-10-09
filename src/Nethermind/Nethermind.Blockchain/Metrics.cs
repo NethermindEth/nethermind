@@ -142,4 +142,8 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of EIP-8288 block bodies rebuilt from proven dependencies because their own proof was not ready.")]
     public static long LeanProofFallbacks;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 recursive proof verifications answered from earlier successful verifications.")]
+    public static long LeanVerificationCacheHits;
 }

@@ -26,6 +26,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private readonly object _provingLock = new();
     private int _producersWaiting;
     private Task? _scheduled;
+    private const int MaxVerified = 256;
+    private readonly Dictionary<ValueHash256, LinkedListNode<ValueHash256>> _verified = [];
+    private readonly LinkedList<ValueHash256> _verifiedOrder = [];
     private static readonly AsyncLocal<Request?> CurrentRequest = new();
     private long _bytes;
 
@@ -76,8 +79,55 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
         verifier.VerifyLeanStark(in dataHash, in verificationKey, witness);
     /// <inheritdoc/>
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) =>
-        verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
+    /// <remarks>
+    /// A recursive proof that verified once is accepted again without the native call: a produced block is otherwise
+    /// verified when produced and again on import, and identical proofs arrive repeatedly in wrappers and blocks.
+    /// </remarks>
+    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    {
+        ValueHash256 key = VerifiedKey(in depsHash, aggregatedVk, proof);
+        lock (_cacheLock)
+        {
+            if (_verified.TryGetValue(key, out LinkedListNode<ValueHash256>? node))
+            {
+                _verifiedOrder.Remove(node);
+                _verifiedOrder.AddLast(node);
+                Interlocked.Increment(ref Metrics.LeanVerificationCacheHits);
+                return true;
+            }
+        }
+        if (!verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof)) return false;
+        RememberVerified(key);
+        return true;
+    }
+
+    private void RememberVerified(in ValueHash256 key)
+    {
+        lock (_cacheLock)
+        {
+            if (_verified.ContainsKey(key)) return;
+            if (_verified.Count >= MaxVerified)
+            {
+                _verified.Remove(_verifiedOrder.First!.Value);
+                _verifiedOrder.RemoveFirst();
+            }
+            _verified.Add(key, _verifiedOrder.AddLast(key));
+        }
+    }
+
+    private static ValueHash256 VerifiedKey(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    {
+        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(depsHash.Bytes);
+        Span<byte> length = stackalloc byte[4];
+        BitConverter.TryWriteBytes(length, aggregatedVk.Length);
+        hash.AppendData(length);
+        hash.AppendData(aggregatedVk);
+        hash.AppendData(proof);
+        Span<byte> digest = stackalloc byte[32];
+        hash.GetHashAndReset(digest);
+        return new ValueHash256(digest);
+    }
 
     /// <inheritdoc/>
     public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
@@ -202,6 +252,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                     $"{(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +
                     $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded{(cancellationToken.IsCancellationRequested ? ", caller canceled" : "")}");
             if (!valid) throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
+            RememberVerified(VerifiedKey(in statement, aggregatedVk, proof));
             byte[] owned = (byte[])proof.Clone();
             lock (_cacheLock)
             {
