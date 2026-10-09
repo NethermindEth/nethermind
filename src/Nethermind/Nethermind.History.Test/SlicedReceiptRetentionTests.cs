@@ -107,7 +107,8 @@ public class SlicedReceiptRetentionTests
             testBlockchain.ReceiptStorage,
             testBlockchain.ReceiptStorage,
             LimboLogs.Instance,
-            Substitute.For<IReceiptsRecovery>());
+            Substitute.For<IReceiptsRecovery>(),
+            testBlockchain.SpecProvider);
 
         LogFilter filter = new(0, new BlockParameter(0UL), BlockParameter.Latest, new AddressFilter(slicedAddress), new SequenceTopicsFilter());
 
@@ -221,7 +222,8 @@ public class SlicedReceiptRetentionTests
             testBlockchain.ReceiptStorage,
             testBlockchain.ReceiptStorage,
             LimboLogs.Instance,
-            Substitute.For<IReceiptsRecovery>());
+            Substitute.For<IReceiptsRecovery>(),
+            testBlockchain.SpecProvider);
 
         LogFilter filter = new(0, new BlockParameter(blockNumber), new BlockParameter(blockNumber), new AddressFilter(address), new SequenceTopicsFilter());
 
@@ -276,6 +278,7 @@ public class SlicedReceiptRetentionTests
             testBlockchain.ReceiptStorage,
             LimboLogs.Instance,
             Substitute.For<IReceiptsRecovery>(),
+            testBlockchain.SpecProvider,
             prunedLogsRetention: logsRetention);
 
         LogFilter slicedFilter = new(0, new BlockParameter(prunedBlockNumber), BlockParameter.Latest, new AddressFilter(slicedAddress), new SequenceTopicsFilter());

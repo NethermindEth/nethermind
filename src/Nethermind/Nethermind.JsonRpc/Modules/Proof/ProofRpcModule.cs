@@ -116,8 +116,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            if (spec.IsEip8116Enabled)
+            {
+                tracedReceipts.SetEip8116GasUsed();
+            }
 
-            int logIndexStart = GetLogIndexStart(txs, storedReceipts, txIndex);
+            int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
             TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
             receiptWithProof.Receipt = new ReceiptForRpc(

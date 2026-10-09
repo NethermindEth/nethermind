@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     ? fee
                     : UInt256.Zero;
 
-                List<RewardInfo> rewardsInBlock = GetRewardsInBlock(b, out ulong rewardsGasUsedTotal);
+                List<RewardInfo> rewardsInBlock = GetRewardsInBlock(b, spec, out ulong rewardsGasUsedTotal);
 
                 return new(
                     b.Number,
@@ -276,7 +276,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, rewardPercentiles.Length)
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
 
-        private List<RewardInfo> GetRewardsInBlock(Block block, out ulong gasUsedTotal)
+        private List<RewardInfo> GetRewardsInBlock(Block block, IReleaseSpec spec, out ulong gasUsedTotal)
         {
             static IEnumerable<ulong> CalculateGasUsed(TxReceipt[] txReceipts)
             {
@@ -292,7 +292,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
             using ArrayPoolListRef<ulong> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
-                ? CalculateGasUsed(receipts)
+                // EIP-8116 receipts carry each transaction's own gas used.
+                ? spec.IsEip8116Enabled ? receipts.Select(static r => r.GasUsedTotal) : CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
                 : txs.Select(static tx => tx.GasLimit));

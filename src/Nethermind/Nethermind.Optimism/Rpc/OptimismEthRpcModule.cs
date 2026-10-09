@@ -105,6 +105,8 @@ public class OptimismEthRpcModule(
             {
                 TxReceipt receipt = receipts[i];
                 Transaction tx = transactions[i];
+                // EIP-8116: logIndex counts within the receipt.
+                int logIndexStart = spec.IsEip8116Enabled ? 0 : receipts.GetBlockLogFirstIndex(receipt.Index);
                 result.Add(receipt is OptimismTxReceipt optimismTxReceipt
                     ? new OptimismReceiptForRpc(
                         tx.Hash!,
@@ -112,13 +114,13 @@ public class OptimismEthRpcModule(
                         block.Timestamp,
                         tx.GetGasInfo(spec, block.Header),
                         l1BlockGasInfo.GetTxGasInfo(tx),
-                        receipts.GetBlockLogFirstIndex(receipt.Index))
+                        logIndexStart)
                     : new OptimismReceiptForRpc(
                         tx.Hash!,
                         receipt,
                         block.Timestamp,
                         tx.GetGasInfo(spec, block.Header),
-                        receipts.GetBlockLogFirstIndex(receipt.Index)));
+                        logIndexStart));
             }
         }
         catch
