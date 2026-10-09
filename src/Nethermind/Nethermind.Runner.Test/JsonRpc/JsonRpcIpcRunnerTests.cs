@@ -52,8 +52,11 @@ public class JsonRpcIpcRunnerTests
         JsonRpcContext? context = await HandleSingleRequest(config, new TestLogger());
 
         string[]? expectedModules = ipcEnabledModules is { Length: > 0 } ? ipcEnabledModules : null;
-        Assert.That(context, Is.Not.Null);
-        Assert.That(context!.Url?.EnabledModules.Order(), Is.EqualTo(expectedModules?.Order()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context, Is.Not.Null);
+            Assert.That(context?.Url?.EnabledModules.Order(), Is.EqualTo(expectedModules?.Order()));
+        }
     }
 
     /// <summary>
