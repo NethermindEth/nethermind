@@ -451,7 +451,6 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
-    // Without EIP-5920, 0xfc is an undefined opcode: the frame halts and the prefix fails as before the EIP.
     [Test]
     public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
     {

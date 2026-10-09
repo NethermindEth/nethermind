@@ -359,8 +359,11 @@ public class Eip5920Tests : VirtualMachineTestsBase
             return;
         }
 
-        Assert.That(target, Is.Not.Null);
-        Assert.That(target!.BalanceChange?.Value, balanceChanges ? Is.EqualTo((UInt256)12) : Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(target, Is.Not.Null);
+            Assert.That(target?.BalanceChange?.Value, balanceChanges ? Is.EqualTo((UInt256)12) : Is.Null);
+        }
     }
 
     [Test]
@@ -430,7 +433,6 @@ public class Eip5920Tests : VirtualMachineTestsBase
     }
 }
 
-/// <summary>Byte <c>0xfc</c> on Bogota with EIP-5920 on and off; off, it must behave as an undefined opcode.</summary>
 [TestFixture(true)]
 [TestFixture(false)]
 public class Eip5920ActivationTests(bool enabled) : VirtualMachineTestsBase
