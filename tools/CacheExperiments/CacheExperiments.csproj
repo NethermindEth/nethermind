@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
+    <Compile Include="../../artifacts/cache-experiments/generated/*.cs" />
+  </ItemGroup>
+  <Target Name="RequireGeneratedBaselines" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('../../artifacts/cache-experiments/generated/LruCache.cs')" Text="Run python tools/CacheExperiments/prepare.py from the repository root before building this experiment." />
+  </Target>
+</Project>
