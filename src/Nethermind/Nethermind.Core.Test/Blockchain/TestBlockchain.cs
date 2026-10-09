@@ -416,6 +416,11 @@ public class TestBlockchain : IDisposable
                 genesisBlockBuilder.WithSlotNumber(0);
             }
 
+            if (specProvider.GenesisSpec.IsEip7668Enabled)
+            {
+                genesisBlockBuilder.WithBloom(Bloom.ZeroLength);
+            }
+
             Block genesisBlock = genesisBlockBuilder.TestObject;
 
             foreach (IGenesisPostProcessor genesisPostProcessor in postProcessors)
