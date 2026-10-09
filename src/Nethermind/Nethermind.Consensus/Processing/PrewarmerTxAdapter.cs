@@ -140,6 +140,7 @@ public class PrewarmerTxAdapter(
         Tally = Tally with { Replayed = Tally.Replayed + 1 };
         Blockchain.Metrics.PrewarmHandoffs++;
         if (footprint.Refreshed) Blockchain.Metrics.PrewarmRefreshesTakenOver++;
+        if (footprint.FromMempool) Blockchain.Metrics.PrewarmMempoolRunsTakenOver++;
         result = footprint.Result;
         return true;
     }

@@ -173,8 +173,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
         // The marker's tx set only means anything while the entries it describes are still in the caches.
-        ISet<Hash256>? speculativelyWarmed =
-            TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
+        WarmMarker? marker = TryConsumeWarmMarker(suggestedBlock.ParentHash, spec);
+        ISet<Hash256>? speculativelyWarmed = carried ? marker?.WarmedTxHashes : null;
         if (speculativelyWarmed is not null)
         {
             // Handoff taken: the RLP cache holds the session's nodes for this parent, so keep RLP caching on for execution.
@@ -189,10 +189,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         if (skipReactiveWarming) return null;
-        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, marker?.Footprints, cancellationToken);
     }
 
-    private IDisposable? WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
+    /// <param name="recorded">The footprints the mempool pass recorded on the parent; they hold whether or not the caches carried over.</param>
+    private IDisposable? WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed,
+        MempoolFootprints? recorded, CancellationToken cancellationToken)
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return null;
 
@@ -203,9 +205,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             CancellationToken token = session.Token;
             BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
-            // Transactions the mempool pass warmed run again: their footprints are only taken here.
+            // Transactions the mempool pass warmed run again unless a footprint it recorded holds in the block; those are
+            // stored on the session before any warm starts.
+            HashSet<Hash256>? seeded = footprints is not null && recorded is not null ? [] : null;
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
-                suggestedBlock, spec, footprints is null ? speculativelyWarmed : null, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
+                suggestedBlock, spec, footprints is null ? speculativelyWarmed : seeded, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
                 warmCalldataAddresses: true, handColdChainsToDiscovery: true);
             if (footprints is not null)
             {
@@ -219,6 +223,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
+                if (seeded is not null) Seed(recorded!, suggestedBlock, spec, footprints!, seeded);
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
@@ -258,6 +263,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             session.Dispose();
             throw;
+        }
+    }
+
+    private void Seed(MempoolFootprints recorded, Block block, IReleaseSpec spec, BlockFootprints footprints, HashSet<Hash256> seeded)
+    {
+        try
+        {
+            if (recorded.Seed(block, spec, footprints) is not { } stored) return;
+            seeded.UnionWith(stored);
+            Blockchain.Metrics.PrewarmMempoolRunsStored += stored.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError($"Error taking the mempool footprints for block {block.Number}", ex);
         }
     }
 
@@ -740,8 +759,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
-    private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
+    /// <param name="recording">Where the runs' footprints go; <see langword="null"/> when none is recorded.</param>
+    private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, MempoolFootprints? recording, CancellationToken token)
     {
+        // The runs pay their fees to the recording's coinbase, while the account warmed stays the predicted one.
+        Address? predictedCoinbase = delta.Header.GasBeneficiary;
+        if (recording is not null)
+        {
+            delta.Header.Author = null;
+            delta.Header.Beneficiary = recording.Coinbase;
+        }
+
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(_speculativeConcurrencyLevel);
         // The delta comes from the txpool, where every sender is already recovered, so there is no recovery to wait on.
         // The address warmer runs inline ahead of the delta's transaction warming, so the calldata pass is left to the
@@ -749,6 +777,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
             delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists,
             warmCalldataAddresses: false, handColdChainsToDiscovery: false);
+        blockState.Recording = recording;
+        addressWarmer.Beneficiary = predictedCoinbase;
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
         // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
         ((IThreadPoolWorkItem)addressWarmer).Execute();
@@ -817,7 +847,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private async Task RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
-        WarmMarker marker = new(headHash, spec, _warmedTxHashes);
+        MempoolFootprints? recorded = _handoff ? new MempoolFootprints(head) : null;
+        WarmMarker marker = new(headHash, spec, _warmedTxHashes, recorded);
         try
         {
             int delay = Math.Max(1, idlePassDelayMs);
@@ -837,7 +868,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
                     if (warmSystemAccessLists || delta.Transactions.Length > 0)
                     {
-                        bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
+                        // Not for a block the footprints do not apply to: nothing recorded for it would be used.
+                        MempoolFootprints? recording = recorded is not null && BlockFootprints.AppliesTo(deltaSpec) ? recorded : null;
+                        bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, recording, token);
                         // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
                         if (token.IsCancellationRequested) break;
                         if (warmSystemAccessLists)
@@ -871,6 +904,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _logger.DebugWarn($"Error during speculative pre-warming. {ex}");
         }
     }
+
+    // For tests: the runs the mempool pass recorded for the marker's block.
+    internal int MempoolRunsRecorded => Volatile.Read(ref _warmMarker)?.Footprints?.Count ?? 0;
 
     // For tests: true once a session has published its handoff marker.
     internal bool SpeculativeMarkerPublished => Volatile.Read(ref _warmMarker) is not null;
@@ -906,18 +942,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private void ClearWarmMarker() => Volatile.Write(ref _warmMarker, null);
 
-    private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
+    private WarmMarker? TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec)
     {
         WarmMarker? marker = Interlocked.Exchange(ref _warmMarker, null);
         // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
-        if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
-        {
-            warmedTxHashes = marker.WarmedTxHashes;
-            return true;
-        }
-
-        warmedTxHashes = null;
-        return false;
+        return marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec)
+            ? marker
+            : null;
     }
 
     private bool ShouldPreWarm(IReleaseSpec spec)
@@ -1334,8 +1365,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             TransactionResult result;
             try
             {
-                result = blockState.Footprints is { } footprints && recorder is not null && BlockFootprints.IsRecordable(tx)
-                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, footprints, recorder, tracer, cancellationToken)
+                result = (blockState.Footprints is not null || blockState.Recording is not null) && recorder is not null && BlockFootprints.IsRecordable(tx)
+                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
             }
             finally
@@ -1364,7 +1395,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Transaction tx,
         int txIndex,
         BlockState blockState,
-        BlockFootprints footprints,
         FootprintRecorder recorder,
         CancellationTxTracer tracer,
         CancellationToken cancellationToken)
@@ -1378,7 +1408,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
-            if (result && recorder.Finish(tx, in result) is { } footprint) footprints.Store(txIndex, footprint);
+            if (result && recorder.Finish(tx, in result) is { } footprint)
+            {
+                if (blockState.Footprints is { } footprints) footprints.Store(txIndex, footprint);
+                else blockState.Recording!.Record(footprint, blockState.Block.Header, blockState.Spec);
+            }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -1625,6 +1659,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         public bool HasBal => Bal is not null;
 
+        /// <summary>The coinbase whose account is warmed; the block's unless set.</summary>
+        public Address? Beneficiary { get; set; } = block.Header.GasBeneficiary;
+
         /// <summary>Whether the system-contract hints were evaluated and warmed; false if the pass was cancelled or faulted.</summary>
         /// <remarks>Only meaningful after <see cref="Wait"/>, which orders this read after the warming thread's write.</remarks>
         public bool SystemAccessListsWarmed => Volatile.Read(ref _systemAccessListsWarmed);
@@ -1657,7 +1694,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
             try
             {
-                Address? beneficiary = block.Header.GasBeneficiary;
+                Address? beneficiary = Beneficiary;
                 if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
                 {
                     IPrewarmerEnv env = envPool.Get();
@@ -1905,6 +1942,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         public CancellationToken Token { get; init; }
 
         public BlockFootprints? Footprints { get; set; }
+
+        /// <summary>For a mempool pass, where its runs' footprints go.</summary>
+        public MempoolFootprints? Recording { get; set; }
 
         void IColdReadHandler.OnColdReads(int index, object? item) => PreWarmer.HandToDiscovery(index, (Transaction)item!, this);
 
@@ -2570,5 +2610,5 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         public void Dispose() => _run.Dispose();
     }
 
-    private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes);
+    private sealed record WarmMarker(Hash256 ParentHash, IReleaseSpec Spec, ISet<Hash256> WarmedTxHashes, MempoolFootprints? Footprints);
 }

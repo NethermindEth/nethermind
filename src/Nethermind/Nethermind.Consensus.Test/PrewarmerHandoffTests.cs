@@ -1179,6 +1179,20 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    [Test]
+    public void A_run_recorded_without_its_machine_counts_as_reading_the_whole_block_context()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            (TransactionFootprint footprint, _) = Record(worldState, static _ => 0, out _);
+
+            Assert.That(footprint.ContextReads,
+                Is.EqualTo(BlockContextReads.Coinbase | BlockContextReads.Timestamp | BlockContextReads.GasLimit | BlockContextReads.PrevRandao
+                    | BlockContextReads.OutOfGas));
+        }
+    }
+
     /// <summary>Records <paramref name="run"/> as the footprint of a transfer from A, returning the state before it.</summary>
     private (TransactionFootprint Footprint, Snapshot Before) Record(IWorldState worldState, Func<FootprintRecorder, int> run, out int changes)
     {
@@ -1307,6 +1321,17 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
     protected static readonly Address Copier = new("0x00000000000000000000000000000000004e4d0d");
     protected static readonly Address Guarded = new("0x00000000000000000000000000000000004e4d0e");
+    // Each stores the block context field it reads: COINBASE, TIMESTAMP, GASLIMIT or PREVRANDAO, then PUSH0 SSTORE STOP.
+    protected static readonly Address CoinbaseReader = new("0x00000000000000000000000000000000004e4d10");
+    protected static readonly Address TimestampReader = new("0x00000000000000000000000000000000004e4d11");
+    protected static readonly Address GasLimitReader = new("0x00000000000000000000000000000000004e4d12");
+    protected static readonly Address PrevRandaoReader = new("0x00000000000000000000000000000000004e4d13");
+    // PUSH20 F BALANCE POP STOP: reads the balance of the coinbase of the blocks built here.
+    protected static readonly Address CoinbaseBalanceReader = new("0x00000000000000000000000000000000004e4d14");
+    // CALL(1000, CoinbaseBalanceReader, 0, 0, 0, 0, 0) POP STOP: enough gas for a warm balance read only.
+    protected static readonly Address LimitedCaller = new("0x00000000000000000000000000000000004e4d15");
+    // EXTCODECOPY(F, 0, 0, 0) STOP: accesses the coinbase of the blocks built here without reading it.
+    protected static readonly Address CoinbaseCodeCopier = new("0x00000000000000000000000000000000004e4d16");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -1374,6 +1399,13 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, Copier, CopierCode, 0);
             // BALANCE(C) POP; SSTORE(0, 1); SSTORE(0, 0); SSTORE(1, 1); STOP
             Deploy(worldState, Guarded, [0x73, .. TestItem.AddressC.Bytes, 0x31, 0x50, 0x60, 0x01, 0x5F, 0x55, 0x5F, 0x5F, 0x55, 0x60, 0x01, 0x60, 0x01, 0x55, 0x00], 0);
+            Deploy(worldState, CoinbaseReader, [0x41, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, TimestampReader, [0x42, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, GasLimitReader, [0x45, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, PrevRandaoReader, [0x44, 0x5F, 0x55, 0x00], 0);
+            Deploy(worldState, CoinbaseBalanceReader, [0x73, .. TestItem.AddressF.Bytes, 0x31, 0x50, 0x00], 0);
+            Deploy(worldState, LimitedCaller, [0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x73, .. CoinbaseBalanceReader.Bytes, 0x61, 0x03, 0xE8, 0xF1, 0x50, 0x00], 0);
+            Deploy(worldState, CoinbaseCodeCopier, [0x5F, 0x5F, 0x5F, 0x73, .. TestItem.AddressF.Bytes, 0x3C, 0x00], 0);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);

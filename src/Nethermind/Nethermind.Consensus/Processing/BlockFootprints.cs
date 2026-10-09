@@ -64,11 +64,11 @@ internal sealed class BlockFootprints(Block block)
     /// (EIP-7928) are built while transactions execute, which a replay does not.
     /// </remarks>
     public static bool AppliesTo(Block block, IReleaseSpec spec) =>
-        block.Transactions.Length > 0
-        && spec.IsEip658Enabled
-        && !spec.IsEip8037Enabled
-        && !spec.BlockLevelAccessListsEnabled
-        && block.BlockAccessList is null;
+        block.Transactions.Length > 0 && AppliesTo(spec) && block.BlockAccessList is null;
+
+    /// <inheritdoc cref="AppliesTo(Block, IReleaseSpec)"/>
+    public static bool AppliesTo(IReleaseSpec spec) =>
+        spec.IsEip658Enabled && !spec.IsEip8037Enabled && !spec.BlockLevelAccessListsEnabled;
 
     /// <remarks>
     /// A warm run skips the pre-execution checks; the nonce is checked when it is recorded and the rest when it is

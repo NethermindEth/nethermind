@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
@@ -47,10 +48,16 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private readonly StrongBox<ExecutionCounts> _counts = new();
 
+    private const BlockContextReads AllContextReads =
+        BlockContextReads.Coinbase | BlockContextReads.Timestamp | BlockContextReads.GasLimit | BlockContextReads.PrevRandao | BlockContextReads.OutOfGas;
+
     // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
     private const int RetainedCapacity = 1024;
 
     public OutcomeTracer Outcome { get; } = new();
+
+    /// <summary>The machine the env runs transactions on; without it a run is taken to read every block context field.</summary>
+    public VirtualMachine<EthereumGasPolicy>? Machine { get; set; }
 
     public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
     {
@@ -62,6 +69,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         _effectCount = 0;
         _frameCount = 0;
         _opaque = false;
+        Machine?.BlockContextReads = BlockContextReads.None;
         if (_accounts.Length > RetainedCapacity)
         {
             _accounts = new AccountPrecondition[32];
@@ -148,7 +156,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         }
 
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed };
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value)
+        {
+            Refreshed = refreshed,
+            ContextReads = Machine?.BlockContextReads ?? AllContextReads
+        };
     }
 
     /// <summary>The run's effects with fewer state calls to replay and the same state after a commit.</summary>
@@ -452,6 +464,13 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     {
         if (_active) Require(address, AccountFields.Code);
         return base.IsContract(address);
+    }
+
+    // An access with no state read still costs gas by whether the account is warm, as the coinbase is (EIP-3651).
+    public override void AddAccountRead(Address address)
+    {
+        if (_active) Require(address, AccountFields.Existence);
+        base.AddAccountRead(address);
     }
 
     public bool HasCode(Address address)

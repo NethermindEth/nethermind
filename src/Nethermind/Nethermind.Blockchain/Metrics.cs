@@ -97,6 +97,14 @@ public static class Metrics
     [Description("Transactions block processing took over from a refreshed pre-warm run")]
     public static long PrewarmRefreshesTakenOver { get; set; }
 
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }

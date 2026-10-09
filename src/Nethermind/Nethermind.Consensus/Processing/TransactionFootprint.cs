@@ -36,6 +36,12 @@ internal sealed class TransactionFootprint(
     /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
     public bool Refreshed { get; init; }
 
+    /// <summary>Whether the mempool pass recorded the run, on the block's parent.</summary>
+    public bool FromMempool { get; init; }
+
+    /// <summary>The block context fields the run read through an opcode.</summary>
+    public BlockContextReads ContextReads { get; init; }
+
     /// <summary>The storage writes replay makes, one per slot.</summary>
     public int StorageWrites { get; } = CountStorageWrites(effects);
 
@@ -46,10 +52,17 @@ internal sealed class TransactionFootprint(
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
 
+    /// <summary>The accounts the run depended on, at the values it depended on.</summary>
+    public ReadOnlySpan<AccountPrecondition> Accounts => accounts;
+
     /// <summary>The slots the run read, at the values it read.</summary>
     public ReadOnlySpan<SlotPrecondition> Slots => slots;
 
     public ReadOnlySpan<StateEffect> Effects => effects;
+
+    /// <summary>This mempool run as the run of the block's <paramref name="tx"/>, with <paramref name="replacedEffects"/> in place of its effects.</summary>
+    public TransactionFootprint For(Transaction tx, StateEffect[] replacedEffects) =>
+        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true };
 
     [SkipLocalsInit]
     public bool Matches(IWorldState state)
