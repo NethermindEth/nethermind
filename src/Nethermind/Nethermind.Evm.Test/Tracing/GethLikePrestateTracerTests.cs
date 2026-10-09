@@ -500,6 +500,48 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Test_PrestateTrace_CreateCollisionAfterValueTransfer_PreservesCodeBearingPrestate(
+        [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode, [Values] bool disableCode)
+    {
+        byte[] salt = { 4, 5, 6 };
+        byte[] initCode = Prepare.EvmCode.ForInitOf([1, 2, 3]).Done;
+        Address created = opcode == Instruction.CREATE
+            ? ContractAddress.From(TestItem.AddressC, 0)
+            : ContractAddress.From(TestItem.AddressC, salt.PadLeft(32), initCode);
+        Prepare creator = Prepare.EvmCode
+            .PushData(0).PushData(0).PushData(0).PushData(0)
+            .PushData(1).PushData(created).PushData(50_000)
+            .Op(Instruction.CALL).Op(Instruction.POP);
+        byte[] creatorCode = opcode == Instruction.CREATE
+            ? creator.Create(initCode, 0).Done
+            : creator.Create2(initCode, salt, 0).Done;
+        byte[] existingCode = [(byte)Instruction.STOP];
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, creatorCode, Spec);
+        TestState.CreateAccount(created, UInt256.Zero);
+        TestState.InsertCode(created, existingCode, Spec);
+
+        string config = JsonSerializer.Serialize(new { diffMode = true, disableCode });
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        GethLikeTxTrace trace = ExecutePrestate(tracer, Prepare.EvmCode.Call(TestItem.AddressC, 50000).Done, wrapped: false);
+
+        using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions));
+        JsonElement prestate = document.RootElement.GetProperty("pre").GetProperty(created.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prestate.GetProperty("balance").GetString(), Is.EqualTo("0x0"));
+            Assert.That(prestate.GetProperty("codeHash").GetString(), Is.EqualTo(Keccak.Compute(existingCode).ToString()));
+            Assert.That(prestate.TryGetProperty("code", out JsonElement code), Is.EqualTo(!disableCode));
+            if (!disableCode) Assert.That(code.GetString(), Is.EqualTo("0x00"));
+            Assert.That(document.RootElement.GetProperty("post").GetProperty(created.ToString()).GetProperty("balance").GetString(),
+                Is.EqualTo("0x1"));
+        }
+    }
+
     private const string ExpectedExistingAccountPrestateTrace = """
         {
           "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
