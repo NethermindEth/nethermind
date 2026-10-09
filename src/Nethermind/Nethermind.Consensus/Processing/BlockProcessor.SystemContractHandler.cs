@@ -43,7 +43,6 @@ public partial class BlockProcessor
         public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
 
-
         public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
 
