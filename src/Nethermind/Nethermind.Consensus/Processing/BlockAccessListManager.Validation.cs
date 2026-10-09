@@ -46,10 +46,8 @@ public partial class BlockAccessListManager
         ulong totalReceiptGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
-            if (token.IsCancellationRequested)
-            {
-                return;
-            }
+            // Throws rather than returns: an early return would read as a validated block.
+            token.ThrowIfCancellationRequested();
 
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)

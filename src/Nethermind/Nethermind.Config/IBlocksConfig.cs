@@ -77,6 +77,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
 
+    [ConfigItem(Description = "The longest a single block may take to process, in milliseconds. A block that takes longer is abandoned without being marked invalid, so it can be processed again. `0` to disable.", DefaultValue = "300000")]
+    int BlockProcessingTimeoutMs { get; set; }
+
     [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "7936")]
     long BlockProductionMaxTxKilobytes { get; set; }
 

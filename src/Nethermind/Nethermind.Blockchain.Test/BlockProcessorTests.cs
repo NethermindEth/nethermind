@@ -3397,6 +3397,35 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Bal_validation_stops_executing_once_cancelled([Values] bool sequential)
+    {
+        const int txCount = 4096;
+        const int cancelAfter = 8;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = BuildParallelValidationBlock(txCount);
+        ProcessingOptions options = sequential ? ProcessingOptions.ForceSequentialBlockAccessList : ProcessingOptions.None;
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, options);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, options, receiptsTracer, cancellation.Token));
+        // Workers already inside a transaction finish it.
+        Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(cancelAfter + 2 * Environment.ProcessorCount));
+    }
+
+    [Test]
     public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit([Values] bool stateGas)
     {
         const ulong gasUsed = 1_000_000;
@@ -4108,6 +4137,26 @@ public partial class BlockProcessorTests
             args.TxReceipt.GasUsedTotal,
             args.HeaderGasUsed,
             args.Transaction.Nonce));
+    }
+
+    /// <summary>Counts executed transactions and cancels once <c>cancelAfter</c> of them have run.</summary>
+    private sealed class CancellingTransactionProcessorAdapter(int cancelAfter, CancellationTokenSource cancellation) : ITransactionProcessorAdapter
+    {
+        private int _executedCount;
+
+        public int ExecutedCount => Volatile.Read(ref _executedCount);
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            if (Interlocked.Increment(ref _executedCount) == cancelAfter) cancellation.Cancel();
+            transaction.BlockGasUsed = GasCostOf.Transaction;
+            txTracer.MarkAsSuccess(Address.Zero, GasCostOf.Transaction, [], []);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
     }
 
     /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until

@@ -120,6 +120,7 @@ public class BlockchainProcessorTests
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
+                int nextAnnounced = 0;
                 BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                 int processedBlocksCount = 0;
                 Exception? processingException = null;
@@ -134,7 +135,12 @@ public class BlockchainProcessorTests
                             for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                             {
                                 Block suggestedBlock = suggestedBlocks[i];
-                                BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                                // Once per block, as the real processor raises it, however often a held block is rechecked.
+                                if (i == nextAnnounced)
+                                {
+                                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                                    nextAnnounced++;
+                                }
                                 Hash256 hash = suggestedBlock.Hash!;
                                 if (_executeBeforeAllowed.TryRemove(hash)) BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
                                 if (!_allowed.Contains(hash))
@@ -161,6 +167,7 @@ public class BlockchainProcessorTests
                             }
 
                             Monitor.Wait(_gate, MockRecheckInterval);
+                            token.ThrowIfCancellationRequested();
                         }
                     }
                 }
@@ -262,7 +269,7 @@ public class BlockchainProcessorTests
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
-        public ProcessingTestContext(bool startProcessor)
+        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0)
         {
             _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
@@ -272,7 +279,8 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance,
+                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -478,6 +486,12 @@ public class BlockchainProcessorTests
         public ProcessingTestContext Recovered(Block block)
         {
             _recoveryStep.Allow(block.Hash!);
+            return this;
+        }
+
+        public ProcessingTestContext IsInTree(Block block)
+        {
+            Assert.That(_blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None), Is.Not.Null, $"{block.ToString(Block.Format.Short)} should still be in the tree");
             return this;
         }
 
@@ -838,6 +852,30 @@ public class BlockchainProcessorTests
 
         context.Processed(_block2D4).BecomesNewHead();
         await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// A block still processing when its time runs out leaves the queue without a verdict: it is not deleted as
+    /// invalid, the loop keeps going, and the block processes when queued again.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Block_over_the_processing_timeout_is_abandoned_without_a_verdict()
+    {
+        ProcessingTestContext context = new ProcessingTestContext(true, blockProcessingTimeoutMs: 1_000)
+            .FullyProcessed(_block0).BecomesGenesis();
+        ProcessingResult? result = null;
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash) result ??= args.ProcessingResult;
+        });
+
+        Task removed = context.Suggested(_block1D2).Recovered(_block1D2).WaitUntilRemoved(_block1D2);
+        await removed.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result, Is.EqualTo(ProcessingResult.Exception));
+        context.IsInTree(_block1D2)
+            .EnqueuedAgain(_block1D2)
+            .Processed(_block1D2).BecomesNewHead();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
