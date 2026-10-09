@@ -72,34 +72,47 @@ internal sealed class MempoolFootprints(BlockHeader head)
         return seeded;
     }
 
-    private TransactionFootprint? ForBlock(in Entry entry, Transaction tx, BlockHeader header, IReleaseSpec spec, Address coinbase)
-    {
-        TransactionFootprint footprint = entry.Footprint;
-        BlockHeader predicted = entry.Header;
-        BlockContextReads reads = footprint.ContextReads;
-        if (!ReferenceEquals(entry.Spec, spec)
-            || (reads & (BlockContextReads.Coinbase | BlockContextReads.PrevRandao | BlockContextReads.OutOfGas)) != 0
-            || ((reads & BlockContextReads.Timestamp) != 0 && predicted.Timestamp != header.Timestamp)
-            || ((reads & BlockContextReads.GasLimit) != 0 && predicted.GasLimit != header.GasLimit)
-            || predicted.BaseFeePerGas != header.BaseFeePerGas
-            || predicted.ExcessBlobGas != header.ExcessBlobGas
-            || predicted.SlotNumber != header.SlotNumber)
-        {
-            return null;
-        }
+    private TransactionFootprint? ForBlock(in Entry entry, Transaction tx, BlockHeader header, IReleaseSpec spec, Address coinbase) =>
+        RanOnBlockContext(in entry, header, spec) && !DependsOnCoinbase(entry.Footprint, coinbase)
+            && WithFeeMoved(entry.Footprint, coinbase) is { } effects
+            ? entry.Footprint.For(tx, effects)
+            : null;
 
-        // A dependence on either coinbase is a dependence on which one it is.
+    /// <summary>Whether every block context field the run depends on is the same in <paramref name="header"/>.</summary>
+    private static bool RanOnBlockContext(in Entry entry, BlockHeader header, IReleaseSpec spec)
+    {
+        BlockHeader predicted = entry.Header;
+        BlockContextReads reads = entry.Footprint.ContextReads;
+        if ((reads & (BlockContextReads.Coinbase | BlockContextReads.PrevRandao | BlockContextReads.OutOfGas)) != 0) return false;
+        if ((reads & BlockContextReads.Timestamp) != 0 && predicted.Timestamp != header.Timestamp) return false;
+        if ((reads & BlockContextReads.GasLimit) != 0 && predicted.GasLimit != header.GasLimit) return false;
+        return ReferenceEquals(entry.Spec, spec)
+            && predicted.BaseFeePerGas == header.BaseFeePerGas
+            && predicted.ExcessBlobGas == header.ExcessBlobGas
+            && predicted.SlotNumber == header.SlotNumber;
+    }
+
+    // A dependence on either coinbase is a dependence on which one it is.
+    private bool DependsOnCoinbase(TransactionFootprint footprint, Address coinbase)
+    {
         foreach (ref readonly AccountPrecondition account in footprint.Accounts)
         {
-            if (account.Address == Coinbase || account.Address == coinbase) return null;
+            if (account.Address == Coinbase || account.Address == coinbase) return true;
         }
 
         foreach (ref readonly SlotPrecondition slot in footprint.Slots)
         {
-            if (slot.Cell.Address == Coinbase || slot.Cell.Address == coinbase) return null;
+            if (slot.Cell.Address == Coinbase || slot.Cell.Address == coinbase) return true;
         }
 
-        // The fee is the one change to the predicted coinbase: credited whether or not the account exists.
+        return false;
+    }
+
+    /// <summary>The run's effects with its fee paid to <paramref name="coinbase"/> instead of <see cref="Coinbase"/>.</summary>
+    /// <returns><see langword="null"/> when the run changed <paramref name="coinbase"/> or did not pay exactly one fee.</returns>
+    /// <remarks>The fee is the one change to the predicted coinbase: credited whether or not the account exists.</remarks>
+    private StateEffect[]? WithFeeMoved(TransactionFootprint footprint, Address coinbase)
+    {
         StateEffect[] effects = footprint.Effects.ToArray();
         int fees = 0;
         for (int i = 0; i < effects.Length; i++)
@@ -113,7 +126,7 @@ internal sealed class MempoolFootprints(BlockHeader head)
             effect.Cell = new StorageCell(coinbase, effect.Cell.Index);
         }
 
-        return fees == 1 ? footprint.For(tx, effects) : null;
+        return fees == 1 ? effects : null;
     }
 
     private readonly record struct Entry(TransactionFootprint Footprint, BlockHeader Header, IReleaseSpec Spec);
