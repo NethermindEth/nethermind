@@ -11,19 +11,19 @@ internal static class LightClientBanner
         string orange = redirected ? "" : "\u001b[1;38;2;255;153;0m";
         string reset = redirected ? "" : "\u001b[0m";
         string[] logo = [
-            $"{blue}_____   __   ______  ___   {orange}______     _________",
-            $"{blue}___  | / /   ___   |/  /   {orange}___  /     __  ____/",
-            $"{blue}__   |/ /    __  /|_/ /    {orange}__  /      _  /",
-            $"{blue}_  /|  /     _  /  / /     {orange}_  /___    / /___",
-            $"{blue}/_/ |_/      /_/  /_/      {orange}/_____/    \\____/{reset}",
+            $"     {blue}_____   ____  ___{orange}  __    ______{reset}",
+            $"     {blue}___  | / /  |/  /{orange} / /   / ____/{reset}",
+            $"     {blue}__   |/ / /|_/ /{orange} / /   / /{reset}",
+            $"     {blue}_  /|  / /  / /{orange} / /___/ /___{reset}",
+            $"     {blue}/_/ |_/_/  /_/{orange} /_____/\\____/{reset}",
         ];
-        const string border = "    --------------------------------------------------------------------";
+        const string border = "--------------------------------------------------------------------";
         string separator = redirected ? " | " : "  ·  ";
-        return Environment.NewLine + border + Environment.NewLine +
-            string.Join(Environment.NewLine, logo) + Environment.NewLine +
-            $"    {network.ToUpperInvariant()}{separator}Beacon + execution P2P{separator}Local verification{Environment.NewLine}" +
-            $"    RPC {rpcUrl}{separator}P2P :9050 / :30307{Environment.NewLine}" +
-            $"    Trusted checkpoint {checkpoint}{Environment.NewLine}" +
+        return Environment.NewLine + string.Join(Environment.NewLine, logo) +
+            Environment.NewLine + Environment.NewLine +
+            $"{network.ToUpperInvariant()}{separator}Beacon + execution P2P{separator}Local verification{Environment.NewLine}" +
+            $"RPC {rpcUrl}{separator}P2P :9050 / :30307{Environment.NewLine}" +
+            $"Trusted checkpoint {checkpoint}{Environment.NewLine}" +
             border + Environment.NewLine + Environment.NewLine;
     }
 }
