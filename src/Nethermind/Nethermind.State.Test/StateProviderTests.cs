@@ -454,6 +454,10 @@ public class StateProviderTests(bool useFlat)
         // Reverting the transaction drops its start, back to the commit.
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
         Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+
+        // A write after the revert must not see the dropped start.
+        provider.AddToBalance(_address1, 16, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
     }
 
     [Test]
