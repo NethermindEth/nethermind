@@ -251,14 +251,19 @@ public class GCKeeper : IDisposable
     /// <summary>The gen0 budget that has to be left for the guard to skip the region.</summary>
     /// <param name="fixedBytes"><see cref="IGCStrategy.NoGCRegionGuardBytes"/>: a positive value replaces the rule.</param>
     /// <param name="gen0Budget">The budget the estimate starts from (B0), 0 when unknown.</param>
-    /// <param name="blockAllocation">The most a payload's window allocated lately (A), at least <see cref="BlockAllocationTracker.Floor"/>.</param>
+    /// <param name="blockAllocation">The most a payload's window allocated lately (A).</param>
     /// <remarks>
-    /// T = max(3/4 x B0, 2 x A). B0 is the budget the runtime derives from the L3 cache and the core count (5/8 of L3
-    /// per Server GC heap), or the region's own after the keeper's entry, and a quarter of it is the margin kept on
-    /// it; 2 x A leaves room for twice the largest payload seen lately, whatever the budget.
+    /// T = max(3/4 x B0, 2 x A, <see cref="GuardFloor"/>). B0 is the budget the runtime derives from the L3 cache and
+    /// the core count (5/8 of L3 per Server GC heap), or the region's own after the keeper's entry, and a quarter of
+    /// it is the margin kept on it; 2 x A leaves room for twice the largest payload seen lately, whatever the budget.
     /// </remarks>
     internal static long GuardThreshold(long fixedBytes, long gen0Budget, long blockAllocation) =>
-        fixedBytes > 0 ? fixedBytes : Math.Max(gen0Budget * 3 / 4, 2 * blockAllocation);
+        fixedBytes > 0 ? fixedBytes : Math.Max(GuardFloor, Math.Max(gen0Budget * 3 / 4, 2 * blockAllocation));
+
+    // Half of the small-object budget a region guarantees (Gen0BudgetTracker.RegionSohBudget, computed here rather than
+    // read from the nested type so that the two type initializers cannot wait on each other): skip only when at least
+    // half of what the region would guarantee is left.
+    internal static readonly long GuardFloor = (_defaultSize - _lohSize) / 2;
 
     private void OnRegionEntered()
     {
@@ -454,21 +459,18 @@ public class GCKeeper : IDisposable
     {
         internal const int BucketPayloads = 300;
         internal const int WarmUpPayloads = 20;
-        // 1/8 of the small-object budget a region guarantees, so that the threshold's floor, twice this, means at
-        // least a quarter of what the region would guarantee is left.
-        internal static readonly long Floor = Gen0BudgetTracker.RegionSohBudget / 8;
         private readonly Lock _lock = new();
         private int _warmUpLeft = WarmUpPayloads;
         private int _inBucket;
         private long _current;
         private long _previous;
 
-        /// <summary>The largest allocation of a window in the current and the previous bucket, at least <see cref="Floor"/>.</summary>
+        /// <summary>The largest allocation of a window in the current and the previous bucket, 0 before any is recorded.</summary>
         public long Maximum
         {
             get
             {
-                lock (_lock) return Math.Max(Floor, Math.Max(_previous, _current));
+                lock (_lock) return Math.Max(_previous, _current);
             }
         }
 
