@@ -19,6 +19,8 @@ internal interface IGcRegionRuntime
     long AllocatedBytes { get; }
     /// <summary>Gen0's allocation budget summed over the heaps, or -1 when the runtime does not tell.</summary>
     long Gen0Budget { get; }
+    /// <summary>Whether the runtime exposes <see cref="Gen0Budget"/> at all; a budget it exposes can still read 0 or less.</summary>
+    bool CanReadGen0Budget { get; }
     /// <summary>The index of the last collection; a region entry collects nothing and leaves it.</summary>
     long LastGcIndex { get; }
 }
@@ -42,9 +44,9 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
 
     // System.GC.GetGenerationBudget is internal (dotnet/runtime v10.0.0, GC.CoreCLR.cs); it sums dd_desired_allocation
     // over the heaps (gcee.cpp, GCHeap::GetGenerationBudget). GCMemoryInfo exposes no budget.
-    private static readonly Func<int, long>? _generationBudget = typeof(System.GC)
-        .GetMethod("GetGenerationBudget", BindingFlags.Static | BindingFlags.NonPublic, [typeof(int)])
-        ?.CreateDelegate<Func<int, long>>();
+    private static readonly Func<int, long>? _generationBudget = CreateGenerationBudget();
+
+    public bool CanReadGen0Budget => _generationBudget is not null;
 
     public long Gen0Budget
     {
@@ -58,6 +60,24 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
             {
                 return -1;
             }
+        }
+    }
+
+    private static Func<int, long>? CreateGenerationBudget()
+    {
+        try
+        {
+            Func<int, long>? budget = typeof(System.GC)
+                .GetMethod("GetGenerationBudget", BindingFlags.Static | BindingFlags.NonPublic, [typeof(int)])
+                ?.CreateDelegate<Func<int, long>>();
+            // Probed once: a changed signature or an internal call the runtime refuses then reads as unavailable,
+            // instead of failing the type initializer or every payload.
+            budget?.Invoke(0);
+            return budget;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 

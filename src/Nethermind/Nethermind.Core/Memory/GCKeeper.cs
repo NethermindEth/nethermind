@@ -49,6 +49,10 @@ public class GCKeeper : IDisposable
         _delay = delay ?? TaskExtensions.DelaySafe;
         // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
         _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
+        if (gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard && !runtime.CanReadGen0Budget && _logger.IsWarn)
+        {
+            _logger.Warn("No-GC region guard unavailable: the runtime does not expose gen0's allocation budget, so engine_newPayload enters the no-GC region every time, as with Merge.NoGcRegionOnNewPayload=Always.");
+        }
     }
 
     public void Dispose()
@@ -163,7 +167,6 @@ public class GCKeeper : IDisposable
             CompleteEntry();
             throw;
         }
-        Interlocked.Increment(ref Metrics.NoGcRegionEntries);
         return region;
     }
 
@@ -178,9 +181,10 @@ public class GCKeeper : IDisposable
         return left != Gen0BudgetTracker.Unknown && left >= _gcStrategy.NoGCRegionGuardBytes;
     }
 
-    /// <summary>Called right after the runtime entered a region for this keeper.</summary>
     private void OnRegionEntered()
     {
+        // Counted here rather than when queued: the runtime can still decline, and the payload can end before the entry runs.
+        Interlocked.Increment(ref Metrics.NoGcRegionEntries);
         Interlocked.Increment(ref _ownEntries);
         if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
     }
@@ -352,7 +356,11 @@ public class GCKeeper : IDisposable
         {
             lock (_stateLock)
             {
-                if (_released) return;
+                if (_released)
+                {
+                    Interlocked.Increment(ref Metrics.NoGcRegionSkips);
+                    return;
+                }
                 _starting = true;
             }
 
@@ -382,8 +390,15 @@ public class GCKeeper : IDisposable
                 }
             }
 
-            if (started) EndRegion();
-            else keeper.ReleaseRegion(this);
+            if (started)
+            {
+                EndRegion();
+            }
+            else
+            {
+                Interlocked.Increment(ref Metrics.NoGcRegionSkips);
+                keeper.ReleaseRegion(this);
+            }
         }
 
         /// <summary>Released by the payload that admitted the region, after which it takes no new leases.</summary>

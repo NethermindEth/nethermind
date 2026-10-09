@@ -163,6 +163,55 @@ public class GCKeeperTests
         }
     }
 
+    [TestCase(false, false, false, TestName = "{m}(entered)")]
+    [TestCase(true, false, false, TestName = "{m}(declined)")]
+    [TestCase(true, true, false, TestName = "{m}(threw)")]
+    [TestCase(false, false, true, TestName = "{m}(payload ended first)")]
+    public void Entries_are_counted_only_when_the_runtime_enters(bool refuse, bool throws, bool releaseFirst)
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new() { Refuse = refuse, Throw = throws };
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        long entries = Interlocked.Read(ref Metrics.NoGcRegionEntries);
+        long skips = Interlocked.Read(ref Metrics.NoGcRegionSkips);
+
+        IDisposable lease = keeper.TryStartNoGCRegion();
+        Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.Zero, "queued, not yet entered");
+        if (releaseFirst) lease.Dispose();
+        queued[0].Execute();
+        lease.Dispose();
+
+        bool entered = !refuse && !releaseFirst;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Starts, Is.EqualTo(releaseFirst ? 0 : 1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.EqualTo(entered ? 1 : 0));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionSkips) - skips, Is.EqualTo(entered ? 0 : 1));
+        }
+    }
+
+    [Test]
+    public void Guard_warns_once_when_the_runtime_does_not_expose_the_budget([Values] NoGcRegionMode mode, [Values] bool readable)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        // A budget the runtime exposes can read 0, which is not a reason to warn.
+        RegionRuntime runtime = new() { CanReadGen0Budget = readable, Gen0Budget = readable ? 0 : -1 };
+        using GCKeeper keeper = new(ModeStrategy(mode), new OneLoggerLogManager(new ILogger(logger)), runtime, static _ => { });
+        for (int i = 0; i < 3; i++) keeper.TryStartNoGCRegion().Dispose();
+        logger.Received(mode == NoGcRegionMode.Guard && !readable ? 1 : 0).Warn(Arg.Is<string>(message => message.StartsWith("No-GC region guard unavailable")));
+    }
+
+    [Test]
+    public void Runtime_exposes_the_gen0_budget()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GcRegionRuntime.Instance.CanReadGen0Budget, Is.True, "the guard would enter the region on every payload");
+            Assert.That(GcRegionRuntime.Instance.Gen0Budget, Is.Positive);
+        }
+    }
+
     [Test]
     public void Ending_a_region_logs_expected_failure_at_debug([Values] bool expected)
     {
@@ -571,6 +620,8 @@ public class GCKeeperTests
         List<IThreadPoolWorkItem> queued = [];
         RegionRuntime runtime = new();
         using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        long entries = Interlocked.Read(ref Metrics.NoGcRegionEntries);
+        long skips = Interlocked.Read(ref Metrics.NoGcRegionSkips);
 
         IDisposable first = keeper.TryStartNoGCRegion();
         queued[0].Execute();
@@ -584,6 +635,8 @@ public class GCKeeperTests
             Assert.That(runtime.IsActive, Is.True, "the region still covers the payload inside it");
             Assert.That(runtime.Ends, Is.Zero);
             Assert.That(queued, Has.Count.EqualTo(1), "the overlapping payload shares the region rather than admitting another");
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.EqualTo(1), "a shared region is not an entry of its own");
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionSkips) - skips, Is.Zero, "nor a payload without a region");
         }
 
         second.Dispose();
@@ -611,6 +664,8 @@ public class GCKeeperTests
         first.Dispose();
 
         // The payload that admitted the region has let go, so this one is not taken into it.
+        long entries = Interlocked.Read(ref Metrics.NoGcRegionEntries);
+        long skips = Interlocked.Read(ref Metrics.NoGcRegionSkips);
         IDisposable third = keeper.TryStartNoGCRegion();
         second.Dispose();
 
@@ -618,6 +673,9 @@ public class GCKeeperTests
         {
             Assert.That(runtime.IsActive, Is.False, "the region ends with the payloads it took in");
             Assert.That(runtime.Ends, Is.EqualTo(1));
+            // It started inside the region the others still held, so it is neither an entry nor a payload without one.
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.Zero);
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionSkips) - skips, Is.Zero);
         }
 
         third.Dispose();
@@ -692,6 +750,7 @@ public class GCKeeperTests
         public int CollectionCount { get; private set; }
         public long AllocatedBytes { get; set; }
         public long Gen0Budget { get; set; } = -1;
+        public bool CanReadGen0Budget { get; init; } = true;
         public long LastGcIndex { get; private set; }
         /// <summary>A collection the runtime runs: moves the count and the index.</summary>
         public void RunGC()

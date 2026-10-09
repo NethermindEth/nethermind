@@ -13,7 +13,7 @@ public static class Metrics
     public static long NoGcRegionEntries;
 
     [CounterMetric]
-    [Description("Number of engine_newPayload calls processed without a no-GC region, by the guard or with the region set to Never.")]
+    [Description("Number of engine_newPayload calls processed without a no-GC region: skipped by the guard or with the region set to Never, or whose entry the runtime declined or had not made when the payload ended.")]
     public static long NoGcRegionSkips;
 
     [CounterMetric]
