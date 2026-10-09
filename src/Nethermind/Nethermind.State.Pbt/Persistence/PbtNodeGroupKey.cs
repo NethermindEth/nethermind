@@ -43,7 +43,9 @@ internal static class PbtNodeGroupKey
         int depth = (key.Length - TrailerLength - 1) * 8 + bitsInLastByte;
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth))
             throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
-        try { return new PbtStorageNodePath(key[..^TrailerLength], depth); }
-        catch (ArgumentException exception) { throw new InvalidDataException("Invalid persisted PBT node-group key padding.", exception); }
+        ReadOnlySpan<byte> path = key[..^TrailerLength];
+        if (!PbtNodeCodec.IsCanonicalPath(path, depth, PbtStorageNodePath.MaxBitDepth))
+            throw new InvalidDataException("Invalid persisted PBT node-group key padding.");
+        return PbtStorageNodePath.Create(path, depth);
     }
 }

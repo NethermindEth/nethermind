@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -145,7 +144,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (state.reads.IsCancellationRequested) return state;
             int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
             ReadOnlyAccountChanges accountChanges = state.keys.Bal.AccountChanges.AsSpan()[index];
-            Account? account = state.bundle.ReadAccount(PbtStateKey.StorageAddress(state.keys.Accounts[position].Key), promote: accountChanges.HasStateChanges);
+            Account? account = state.bundle.ReadAccount(Eip8297KeyDerivation.AddressHashOf(state.keys.Accounts[position].Key), promote: accountChanges.HasStateChanges);
             if (state.sink?.StillNeeded(accountChanges.Address, out _) == true) state.sink.OnAccountRead(accountChanges.Address, account);
             state.keys.Missing[index] = account is null;
             return state;
@@ -166,7 +165,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 if (state.reads.IsCancellationRequested) return state;
                 TKey key = state.slots[position].Key;
-                ValueHash256 addressHash = PbtStateKey.StorageAddress(key);
+                ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(key);
                 if (state.keys.WritesNothing(addressHash, out int index)) continue;
                 TKey run = SlotRun.RunKey(key);
                 if (!state.keys.Missing[index] && ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value))
@@ -187,7 +186,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             if (state.reads.IsCancellationRequested) return state;
             TKey key = state.slots[position].Key;
-            ValueHash256 addressHash = PbtStateKey.StorageAddress(key);
+            ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(key);
             int index = state.keys.AccountIndex(addressHash);
             if (!state.keys.Missing[index])
                 ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value);
@@ -213,7 +212,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         foreach (PbtWriteOperation<PbtPath> slot in keys.HeaderWrites)
         {
             PbtPath key = slot.Key;
-            if (!keys.WritesNothing(PbtStateKey.StorageAddress(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+            if (!keys.WritesNothing(Eip8297KeyDerivation.AddressHashOf(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
         }
         PbtStorageNodePath[] accountGroupPaths = [.. accountGroups];
         using ArrayPoolList<Range> storageAccounts = keys.StorageAccounts();
@@ -233,14 +232,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         PbtStoragePath previous = slots[0].Key;
         Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
         using (RefCountingMemory? storageGroup = ReadNodeGroup(bundle, GroupOf(previous.Bytes, StorageGroupDepth)))
-            StorageDescendantBytes(storageGroup, descendantBytes);
+            if (storageGroup is not null) PbtNodeGroupCodec.ReadDescendantBytes(storageGroup.GetSpan(), descendantBytes);
 
         for (int position = 0; position < slots.Length; position++)
         {
             PbtStoragePath key = slots[position].Key;
-            int sharedBits = position == 0 ? StorageGroupDepth : SharedBits(previous.Bytes, key.Bytes);
+            int sharedBits = position == 0 ? StorageGroupDepth : previous.FirstDifferingBit(key, 0);
             previous = key;
-            long subtreeBytes = descendantBytes[key.Bytes[StorageGroupDepth / 8] >> 4];
+            long subtreeBytes = descendantBytes[TrieUpdater.BoundarySlot(key.Bytes, StorageGroupDepth)];
             int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
             for (int level = 1; level <= levels; level++)
             {
@@ -250,12 +249,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 ((IDisposable?)ReadNodeGroup(bundle, GroupOf(key.Bytes, depth)))?.Dispose();
             }
         }
-    }
-
-    private static int SharedBits(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
-    {
-        int bytes = left.CommonPrefixLength(right);
-        return bytes == left.Length ? bytes * 8 : bytes * 8 + BitOperations.LeadingZeroCount((uint)(left[bytes] ^ right[bytes])) - 24;
     }
 
     /// <summary>The path of the group at <paramref name="depth"/> above the leaf at <paramref name="key"/>.</summary>
@@ -271,16 +264,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
     private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
         bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
-
-    private static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
-    {
-        if (payload is null) return;
-
-        ReadOnlySpan<byte> bytes = payload.GetSpan();
-        ushort mask = PbtNodeGroupCodec.ReadDescendantMask(bytes);
-        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
-            if ((mask & (1 << slot)) != 0) descendantBytes[slot] = PbtNodeGroupCodec.ReadDescendantBytes(bytes, mask, slot);
-    }
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>
     /// <returns>Whether the slot was read.</returns>
@@ -483,7 +466,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 if (!changes.HasStateChanges && !withReads) continue;
                 ValueHash256 addressHash = PbtStateKey.AddressKeyHash(changes.Address);
                 keys._accountIndexes[addressHash] = index;
-                keys.Accounts.Add(new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
+                keys.Accounts.Add(new(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
                 StemKeys writes = new(changes.Address, addressHash);
                 foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
                     if (slotChanges.Changes.Length != 0) writes.Add(slotChanges.Key, keys.HeaderWrites, keys.StorageWrites);
@@ -514,8 +497,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             ArrayPoolList<Range> ranges = new(0);
             for (int start = 0, end; start < StorageWrites.Count; start = end)
             {
-                ValueHash256 addressHash = PbtStateKey.StorageAddress(StorageWrites[start].Key);
-                for (end = start + 1; end < StorageWrites.Count && PbtStateKey.StorageAddress(StorageWrites[end].Key) == addressHash; end++) { }
+                ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(StorageWrites[start].Key);
+                for (end = start + 1; end < StorageWrites.Count && Eip8297KeyDerivation.AddressHashOf(StorageWrites[end].Key) == addressHash; end++) { }
                 if (!WritesNothing(addressHash, out _)) ranges.Add(start..end);
             }
             return ranges;
@@ -539,20 +522,17 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
             public void Add(in UInt256 slot, ArrayPoolList<PbtWriteOperation<PbtPath>> headerKeys, ArrayPoolList<PbtWriteOperation<PbtStoragePath>> storageKeys)
             {
-                if (PbtStateKey.IsHeaderSlot(slot))
+                if (Eip8297KeyDerivation.IsHeaderSlot(slot))
                 {
-                    headerKeys.Add(new(PbtStateKey.HeaderStorage(_addressHash, slot), slot.ToValueHash()));
+                    headerKeys.Add(new(Eip8297KeyDerivation.HeaderStorageKey(_addressHash, slot), slot.ToValueHash()));
                     return;
                 }
-                if (_stemSlot is not { } stemSlot || stemSlot >> 8 != slot >> 8)
+                if (_stemSlot is not { } stemSlot || !Eip8297KeyDerivation.InSameStem(stemSlot, slot))
                 {
                     _stemKey = PbtStateKey.Storage(address, _addressHash, slot);
                     _stemSlot = slot;
                 }
-                Span<byte> key = stackalloc byte[PbtStoragePath.KeyLength];
-                _stemKey.Bytes.CopyTo(key);
-                key[^1] = (byte)slot.u0;
-                storageKeys.Add(new(new PbtStoragePath(key), slot.ToValueHash()));
+                storageKeys.Add(new(Eip8297KeyDerivation.StorageKeyInStem(_stemKey, slot), slot.ToValueHash()));
             }
         }
     }

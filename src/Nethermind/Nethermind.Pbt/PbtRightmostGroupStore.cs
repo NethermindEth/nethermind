@@ -4,9 +4,8 @@
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
-using Nethermind.Pbt;
 
-namespace Nethermind.State.Pbt.Image;
+namespace Nethermind.Pbt;
 
 /// <summary>
 /// Node-group store for folding strictly ascending leaves in windows from an empty tree; it retains only the rightmost

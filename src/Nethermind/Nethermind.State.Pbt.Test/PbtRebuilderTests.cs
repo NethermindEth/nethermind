@@ -176,7 +176,7 @@ public class PbtRebuilderTests
         {
             for (int index = 0; index < 2; index++)
             {
-                PbtVariableTreeKey key = (PbtVariableTreeKey)PbtStateKey.Code(TestItem.KeccakB.ValueHash256, 256 + index);
+                PbtVariableTreeKey key = (PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(TestItem.KeccakB.ValueHash256.Bytes, 256 + index);
                 ArrayPoolList<RebuildEntry> chunk = new(windowSize);
                 for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await channel.Writer.WriteAsync(chunk);

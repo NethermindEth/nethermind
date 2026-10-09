@@ -115,17 +115,20 @@ internal static class PbtNodeCodec
     /// <summary>The length of a root leaf encoding.</summary>
     internal static int LeafLength(int keyLength) => 2 + keyLength;
 
-    /// <summary>Validates a node path's canonical form: <paramref name="bitDepth"/> bits within <paramref name="maximumDepth"/>, packed into exactly as many bytes, with the unused trailing bits zero.</summary>
+    /// <summary>Validates a node path's canonical form, see <see cref="IsCanonicalPath"/>.</summary>
     /// <remarks>Debug builds only: release callers construct paths from already-canonical bytes.</remarks>
     [Conditional("DEBUG")]
     internal static void ValidatePath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth)
     {
-        if ((uint)bitDepth > (uint)maximumDepth) throw new ArgumentOutOfRangeException(nameof(bitDepth));
-        int byteLength = (bitDepth + 7) >> 3;
-        if (path.Length != byteLength) throw new ArgumentException("Path length does not match the bit depth.", nameof(path));
-        if (byteLength != 0 && (bitDepth & 7) != 0 && (path[^1] & (0xFF >> (bitDepth & 7))) != 0)
-            throw new ArgumentException("Unused path bits must be zero.", nameof(path));
+        if (!IsCanonicalPath(path, bitDepth, maximumDepth)) throw new ArgumentException("Path is not in canonical form.", nameof(path));
     }
+
+    /// <summary>Whether a node path is in canonical form: <paramref name="bitDepth"/> bits within <paramref name="maximumDepth"/>, packed into exactly as many bytes, with the unused trailing bits zero.</summary>
+    /// <remarks>Checks in every build, for callers decoding untrusted keys.</remarks>
+    internal static bool IsCanonicalPath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth) =>
+        (uint)bitDepth <= (uint)maximumDepth
+        && path.Length == PbtBitPrefix.ByteCount(bitDepth)
+        && ((bitDepth & 7) == 0 || (path[^1] & (0xFF >> (bitDepth & 7))) == 0);
 
     /// <summary>Throws unless <paramref name="encoding"/> is exactly one structurally valid node, in every build.</summary>
     internal static void ThrowIfNotExact(ReadOnlySpan<byte> encoding)

@@ -167,7 +167,7 @@ internal static class PbtImageVerifier
                 ValueHash256 addressHash = reader.AccountHash!.Value;
                 walked = PbtImageProgress.KeyspaceFraction(addressHash);
                 progress.Update(++accounts);
-                Queue(new Job((PbtVariableTreeKey)PbtStateKey.Account(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
+                Queue(new Job((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
                     address, addressHash, default, slotCount, IsSlot: false));
                 for (uint index = 0; index < slotCount; index++)
                 {
@@ -263,7 +263,7 @@ internal static class PbtImageVerifier
                 job.AddressHash.Bytes.CopyTo(key);
                 if (!job.IsSlot)
                 {
-                    Account account = state.GetAccount(new ValueHash256(job.StateKey.Bytes[1..33]))?.ToAccount()
+                    Account account = state.GetAccount(Eip8297KeyDerivation.AddressHashOf(job.StateKey))?.ToAccount()
                         ?? throw new InvalidDataException($"Preimages list the account {job.Address} the snapshot lacks.");
                     byte[] rlp = AccountDecoder.Slim.Encode(account).Bytes;
                     byte[] value = new byte[sizeof(uint) + rlp.Length];

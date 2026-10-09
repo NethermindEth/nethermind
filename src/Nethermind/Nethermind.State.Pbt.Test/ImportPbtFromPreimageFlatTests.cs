@@ -61,7 +61,7 @@ public class ImportPbtFromPreimageFlatTests
                     firstHash = hash;
                 }
                 batch.SetAccount(AccountKey(i), PbtAccount.From(new Account(0, 0).WithChangedCodeHash(new Hash256(hash)), new CodeInfo(code)));
-                foreach ((PbtPath key, ValueHash256 value) in PbtStateKey.CodeLeaves(hash, new CodeInfo(code)))
+                foreach ((PbtPath key, ValueHash256 value) in Eip8297KeyDerivation.CodeLeaves(hash, code))
                 {
                     batch.SetCodeLeaf(key, value);
                     chunks++;

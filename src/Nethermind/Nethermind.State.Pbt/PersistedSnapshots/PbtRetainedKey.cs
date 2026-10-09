@@ -121,13 +121,12 @@ internal static class PbtRetainedKey
     {
         if (key.Length < 4) throw new InvalidDataException("Invalid retained PBT group key.");
         int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth) || depth > (key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth)
-            || key.Length != 4 + (depth + 7) / 8)
+        int maxDepth = key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != 4 + PbtBitPrefix.ByteCount(depth))
             throw new InvalidDataException("Invalid retained PBT group depth.");
-        if ((depth & 7) != 0 && (key[^2] & (0xFF >> (depth & 7))) != 0)
-            throw new InvalidDataException("Invalid retained PBT group padding.");
-        try { return new PbtStorageNodePath(key.Slice(3, key.Length - 4), depth); }
-        catch (ArgumentException e) { throw new InvalidDataException("Invalid retained PBT group padding.", e); }
+        ReadOnlySpan<byte> path = key.Slice(3, key.Length - 4);
+        if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid retained PBT group padding.");
+        return PbtStorageNodePath.Create(path, depth);
     }
 
     internal static PbtPath DecodeHeaderRun(ReadOnlySpan<byte> key)

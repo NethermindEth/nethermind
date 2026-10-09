@@ -266,8 +266,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
 
     private RefCountingMemory DecodeGroup<TPath>(in TPath path, ReadOnlySpan<byte> bytes) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], path);
-        PbtNodeGroupCodec.ValidateNodes(cursor, bytes);
+        PbtNodeGroupCodec.ValidateNodes(path, bytes);
         RefCountingMemory payload = _memory.Rent(bytes.Length);
         bytes.CopyTo(payload.GetSpan());
         return payload;

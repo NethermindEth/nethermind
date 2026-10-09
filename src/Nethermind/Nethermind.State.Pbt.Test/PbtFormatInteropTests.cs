@@ -118,7 +118,7 @@ public class PbtFormatInteropTests
         PbtAccount codeless = PbtAccount.From(new Account(2, 456), null);
         content.Accounts[default] = codeless;
         content.SelfDestructedStorageAddresses[address] = clearValue;
-        PbtPath headerKey = SlotRun.RunKey(PbtStateKey.HeaderStorage(address, 7));
+        PbtPath headerKey = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 7));
         content.HeaderStorages[new(headerKey)] = SlotRun.Empty;
         PbtStoragePath storageKey = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000));
         EvmWord[] words = new EvmWord[16];
@@ -165,7 +165,7 @@ public class PbtFormatInteropTests
     {
         using PbtRetainedTestStore store = new();
         int depth = groupKey.BitDepth;
-        PbtPath leaf = PbtStateKey.Account(default, 0);
+        PbtPath leaf = Eip8297KeyDerivation.AccountKey(default, 0);
         PbtSnapshotContent content = new();
         byte[] expected;
         using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(depth, store.Memory))

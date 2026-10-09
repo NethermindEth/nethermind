@@ -173,7 +173,7 @@ internal static class PbtSnapshotCodec
     }
 
     private static RebuildEntry AccountLeaf(in ValueHash256 addressHash, byte subIndex, in ValueHash256 value) =>
-        new((PbtVariableTreeKey)PbtStateKey.Account(addressHash, subIndex), value);
+        new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(addressHash, subIndex), value);
 
     /// <summary>Reads one stem group, whose leaf keys are <paramref name="prefix"/>, the stem hash and each entry's sub-index.</summary>
     /// <param name="single">Whether the group holds one entry and so omits its entry count.</param>
@@ -368,8 +368,8 @@ internal static class PbtSnapshotCodec
             }
             if (basicData is not { } basic) throw new InvalidDataException("Account header needs a basic-data leaf.");
             uint codeSize = PbtKeyDerivation.ReadBasicDataCodeSize(basic.Bytes);
-            ReadOnlySpan<byte> nonce = basic.Bytes[8..16];
-            ReadOnlySpan<byte> balance = basic.Bytes[16..];
+            ReadOnlySpan<byte> nonce = PbtKeyDerivation.BasicDataNonce(basic.Bytes);
+            ReadOnlySpan<byte> balance = PbtKeyDerivation.BasicDataBalance(basic.Bytes);
 
             // The tag names the account kind, which the branch below decides.
             int tagPosition = _position++;
@@ -386,7 +386,7 @@ internal static class PbtSnapshotCodec
             {
                 _record[tagPosition] = ContractHeader;
                 Append(codeHash!.Value.Bytes);
-                AppendInteger(basic.Bytes.Slice(4, sizeof(uint)));
+                AppendInteger(PbtKeyDerivation.BasicDataCodeSize(basic.Bytes));
             }
 
             _record[_position++] = (byte)(_count - firstSlot);

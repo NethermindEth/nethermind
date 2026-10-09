@@ -110,10 +110,14 @@ public static class PbtNodeGroupCodec
         }
     }
 
+    /// <inheritdoc cref="ValidateNodes(in PbtTraversalPath, ReadOnlySpan{byte})"/>
+    internal static void ValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
+        ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey), payload);
+
     /// <summary>Debug-build guard for a payload entering or leaving a store; readers on the update path trust stored payloads.</summary>
     [Conditional("DEBUG")]
     internal static void DebugValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
-        ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey), payload);
+        ValidateNodes(groupKey, payload);
 
     /// <summary>Reads the descendant mask that ends a payload, without validating anything else.</summary>
     public static ushort ReadDescendantMask(ReadOnlySpan<byte> payload) => BinaryPrimitives.ReadUInt16LittleEndian(payload[^DescendantMaskLength..]);
@@ -121,6 +125,14 @@ public static class PbtNodeGroupCodec
     /// <summary>Reads the availability bitmap of a payload, with or without its header, without validating anything else.</summary>
     internal static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
         BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + DescendantsLength(payload))..]);
+
+    /// <summary>Reads the subtree size of every boundary slot that has one into <paramref name="descendantBytes"/>, leaving the other slots untouched.</summary>
+    internal static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
+    {
+        ushort mask = ReadDescendantMask(payload);
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+            if ((mask & (1 << slot)) != 0) descendantBytes[slot] = ReadDescendantBytes(payload, mask, slot);
+    }
 
     internal static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {

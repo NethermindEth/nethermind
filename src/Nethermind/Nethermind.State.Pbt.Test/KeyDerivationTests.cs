@@ -19,11 +19,7 @@ public class KeyDerivationTests
     {
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
         PbtPath expected = PbtReferenceModel.CodeKey(codeHash, chunkId);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), Is.EqualTo(expected));
-            Assert.That(PbtStateKey.Code(codeHash, chunkId), Is.EqualTo(expected));
-        }
+        Assert.That(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId), Is.EqualTo(expected));
     }
 
     [Test]

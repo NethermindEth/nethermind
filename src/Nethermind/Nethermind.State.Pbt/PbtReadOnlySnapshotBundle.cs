@@ -171,8 +171,8 @@ public sealed class PbtReadOnlySnapshotBundle(
     public EvmWord GetSlot(Address address, in UInt256 slot)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
-        return PbtStateKey.IsHeaderSlot(slot)
-            ? GetSlot(PbtStateKey.HeaderStorage(addressHash, slot))
+        return Eip8297KeyDerivation.IsHeaderSlot(slot)
+            ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot))
             : GetSlot(PbtStateKey.Storage(address, addressHash, slot));
     }
 
@@ -184,7 +184,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
-        ValueHash256 addressHash = PbtStateKey.StorageAddress(runKey.Key);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(runKey.Key);
         for (int layer = LayerCount - 1; layer >= 0; layer--)
         {
             if (TryReadSlot(layer, runKey, addressHash, index, out EvmWord value))

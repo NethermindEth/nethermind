@@ -442,7 +442,7 @@ public class PbtDbManagerTests
         ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         content.Accounts[address] = null;
         content.SelfDestructedStorageAddresses[address] = false;
-        content.HeaderStorages[SlotRun.RunKey(PbtStateKey.HeaderStorage(address, 0))] = SlotRun.Empty;
+        content.HeaderStorages[SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 0))] = SlotRun.Empty;
         content.Storages[SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000))] = SlotRun.Empty;
         content.AccountNodeGroups[default] = null;
         return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);

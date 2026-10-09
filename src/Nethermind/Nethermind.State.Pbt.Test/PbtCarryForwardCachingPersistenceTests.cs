@@ -25,7 +25,7 @@ public class PbtCarryForwardCachingPersistenceTests
     private static readonly StateId Basis0 = new(0, Keccak.EmptyTreeHash);
     private static readonly StateId Basis1 = new(1, Keccak.EmptyTreeHash);
     private static readonly ValueHash256 AddressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-    private static readonly PbtPath Run1 = SlotRun.RunKey(PbtStateKey.HeaderStorage(AddressHash, 1));
+    private static readonly PbtPath Run1 = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(AddressHash, 1));
     private static readonly PbtStoragePath Run2 = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, AddressHash, 100));
 
     [TestCaseSource(nameof(ReadCases))]

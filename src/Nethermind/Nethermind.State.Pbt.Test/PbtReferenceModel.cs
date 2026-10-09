@@ -19,19 +19,19 @@ internal static class PbtReferenceModel
         byte[] basicData = new byte[32];
         PbtKeyDerivation.PackBasicData(basicData, (uint)(code?.Length ?? 0), nonce, balance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
-        Set(model, PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
+        Set(model, Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
 
         ValueHash256 codeHash = code is null or [] ? Keccak.OfAnEmptyString.ValueHash256 : ValueKeccak.Compute(code);
-        model.Remove(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey).Bytes.ToArray().ToHexString());
-        model.Remove(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey).Bytes.ToArray().ToHexString());
+        model.Remove(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.CodeHashLeafKey).Bytes.ToArray().ToHexString());
+        model.Remove(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.DelegationLeafKey).Bytes.ToArray().ToHexString());
         if (code is not null && Eip7702Constants.IsDelegatedCode(code))
         {
             byte[] delegation = new byte[32];
             code.CopyTo(delegation, 0);
-            Set(model, PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
+            Set(model, Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
             return;
         }
-        Set(model, PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), codeHash.ToByteArray());
+        Set(model, Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.CodeHashLeafKey), codeHash.ToByteArray());
 
         if (code is not { Length: > 0 }) return;
         byte[] chunks = PbtTreeHarness.ChunkifyCode(code);

@@ -23,6 +23,13 @@ public static class PbtKeyDerivation
     /// <summary>Size of one code chunk, which is one leaf value.</summary>
     public const int CodeChunkSize = 32;
 
+    /// <summary>Code bytes one chunk carries after its leading PUSHDATA count.</summary>
+    public const int CodeBytesPerChunk = CodeChunkSize - 1;
+
+    private const int BasicDataCodeSizeOffset = 4;
+    private const int BasicDataNonceOffset = 8;
+    private const int BasicDataBalanceOffset = 16;
+
     private const int PushOffset = 95;
     private const byte Push1 = PushOffset + 1;
     private const byte Push32 = PushOffset + 32;
@@ -34,7 +41,7 @@ public static class PbtKeyDerivation
     /// <returns>The chunks laid out back to back, so that a run of them can be written as one span; the caller disposes them.</returns>
     public static RefCountingMemory ChunkifyCode(ReadOnlySpan<byte> code)
     {
-        int chunkCount = (code.Length + 30) / 31;
+        int chunkCount = (int)CodeChunkCount(code.Length);
         RefCountingMemory chunks = PooledRefCountingMemoryProvider.Instance.Rent(chunkCount * CodeChunkSize);
         ChunkifyCode(code, chunks.GetSpan());
         return chunks;
@@ -42,7 +49,7 @@ public static class PbtKeyDerivation
 
     internal static void ChunkifyCode(ReadOnlySpan<byte> code, Span<byte> chunks)
     {
-        int chunkCount = (code.Length + 30) / 31;
+        int chunkCount = (int)CodeChunkCount(code.Length);
         chunks.Clear();
         if (chunkCount == 0) return;
 
@@ -63,11 +70,21 @@ public static class PbtKeyDerivation
 
         for (int i = 0; i < chunkCount; i++)
         {
-            int start = i * 31;
+            int start = i * CodeBytesPerChunk;
             Span<byte> chunk = chunks.Slice(i * CodeChunkSize, CodeChunkSize);
             chunk[0] = Math.Min(pushDataRemaining[start], (byte)31);
-            code[start..Math.Min(start + 31, code.Length)].CopyTo(chunk[1..]);
+            code[start..Math.Min(start + CodeBytesPerChunk, code.Length)].CopyTo(chunk[1..]);
         }
+    }
+
+    /// <summary>The number of chunks <see cref="ChunkifyCode(ReadOnlySpan{byte})"/> splits <paramref name="codeSize"/> bytes of code into.</summary>
+    public static long CodeChunkCount(long codeSize) => (codeSize + CodeBytesPerChunk - 1) / CodeBytesPerChunk;
+
+    /// <summary>Copies the code bytes of chunk <paramref name="chunkId"/> back into <paramref name="code"/>, the whole code's buffer.</summary>
+    public static void CopyChunkCode(ReadOnlySpan<byte> chunk, int chunkId, Span<byte> code)
+    {
+        int start = chunkId * CodeBytesPerChunk;
+        chunk.Slice(1, Math.Min(CodeBytesPerChunk, code.Length - start)).CopyTo(code[start..]);
     }
 
     /// <summary>
@@ -77,19 +94,31 @@ public static class PbtKeyDerivation
     public static void PackBasicData(Span<byte> dest32, uint codeSize, in UInt256 nonce, in UInt256 balance)
     {
         dest32.Clear();
-        BinaryPrimitives.WriteUInt32BigEndian(dest32[4..], codeSize);
-        BinaryPrimitives.WriteUInt64BigEndian(dest32[8..], nonce.u0);
-        BinaryPrimitives.WriteUInt64BigEndian(dest32[16..], balance.u1);
-        BinaryPrimitives.WriteUInt64BigEndian(dest32[24..], balance.u0);
+        BinaryPrimitives.WriteUInt32BigEndian(dest32[BasicDataCodeSizeOffset..], codeSize);
+        BinaryPrimitives.WriteUInt64BigEndian(dest32[BasicDataNonceOffset..], nonce.u0);
+        BinaryPrimitives.WriteUInt64BigEndian(dest32[BasicDataBalanceOffset..], balance.u1);
+        BinaryPrimitives.WriteUInt64BigEndian(dest32[(BasicDataBalanceOffset + sizeof(ulong))..], balance.u0);
     }
 
-    public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(basicData.Slice(4, 4));
+    /// <summary>Whether the version and reserved bytes of <paramref name="basicData"/> are zero, as <see cref="PackBasicData"/> writes them.</summary>
+    public static bool IsCanonicalBasicData(ReadOnlySpan<byte> basicData) => basicData[..BasicDataCodeSizeOffset].IndexOfAnyExcept((byte)0) < 0;
+
+    /// <summary>The big-endian code size bytes of a <c>BASIC_DATA</c> leaf.</summary>
+    public static ReadOnlySpan<byte> BasicDataCodeSize(ReadOnlySpan<byte> basicData) => basicData.Slice(BasicDataCodeSizeOffset, sizeof(uint));
+
+    /// <summary>The big-endian nonce bytes of a <c>BASIC_DATA</c> leaf.</summary>
+    public static ReadOnlySpan<byte> BasicDataNonce(ReadOnlySpan<byte> basicData) => basicData.Slice(BasicDataNonceOffset, sizeof(ulong));
+
+    /// <summary>The big-endian balance bytes of a <c>BASIC_DATA</c> leaf.</summary>
+    public static ReadOnlySpan<byte> BasicDataBalance(ReadOnlySpan<byte> basicData) => basicData[BasicDataBalanceOffset..];
+
+    public static uint ReadBasicDataCodeSize(ReadOnlySpan<byte> basicData) => BinaryPrimitives.ReadUInt32BigEndian(BasicDataCodeSize(basicData));
 
     /// <summary>Reads back the nonce and balance <see cref="PackBasicData"/> wrote.</summary>
     /// <remarks>The leaf holds 16 balance bytes, so a balance above 2^128 does not round-trip; no such account is reachable.</remarks>
     public static void UnpackBasicData(ReadOnlySpan<byte> basicData, out ulong nonce, out UInt256 balance)
     {
-        nonce = BinaryPrimitives.ReadUInt64BigEndian(basicData.Slice(8, sizeof(ulong)));
-        balance = new UInt256(basicData[16..], isBigEndian: true);
+        nonce = BinaryPrimitives.ReadUInt64BigEndian(BasicDataNonce(basicData));
+        balance = new UInt256(BasicDataBalance(basicData), isBigEndian: true);
     }
 }

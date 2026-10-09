@@ -58,7 +58,7 @@ internal static class PbtLeafStaging
             }
             if (key[0] == Eip8297KeyDerivation.AccountZone)
             {
-                ValueHash256 addressHash = new(key[1..33]);
+                ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(entry.Key);
                 if (stem != addressHash)
                 {
                     FlushAccount();
@@ -96,7 +96,7 @@ internal static class PbtLeafStaging
         void FlushAccount()
         {
             if (stem is not { } addressHash) return;
-            if (basicData.Bytes[..4].IndexOfAnyExcept((byte)0) >= 0)
+            if (!PbtKeyDerivation.IsCanonicalBasicData(basicData.Bytes))
                 throw new InvalidDataException("Nonzero basic-data version or reserved bytes.");
             int codeSize = (int)PbtKeyDerivation.ReadBasicDataCodeSize(basicData.Bytes);
             PbtKeyDerivation.UnpackBasicData(basicData.Bytes, out ulong nonce, out UInt256 balance);
@@ -119,7 +119,7 @@ internal static class PbtLeafStaging
                 {
                     if (account.HasCode) throw new InvalidDataException("Codeless account has a nonempty code hash.");
                 }
-                else if ((ulong)codeSize + ((ulong)codeSize + 30) / 31 * 32 > MaxBufferedCodeBytes)
+                else if ((ulong)codeSize + (ulong)PbtKeyDerivation.CodeChunkCount(codeSize) * PbtKeyDerivation.CodeChunkSize > MaxBufferedCodeBytes)
                     throw new PbtImageResourceLimitException("Code staging requires a larger local buffering budget.");
             }
             batch.Next().SetAccount(addressHash, account);
@@ -209,15 +209,15 @@ internal static class PbtLeafStaging
     private static long Rebuild(IPbtPersistence.IReader staged, in ValueHash256 codeHash, int size, IPbtPersistence.IWriteBatch batch, CancellationToken cancellationToken)
     {
         byte[] code = new byte[size];
-        int chunkCount = (int)(((long)size + 30) / 31);
+        int chunkCount = (int)PbtKeyDerivation.CodeChunkCount(size);
         using ArrayPoolList<ValueHash256> leaves = new(chunkCount, chunkCount);
         using ArrayPoolList<bool> stored = new(chunkCount, chunkCount);
         for (int chunk = 0; chunk < chunkCount; chunk++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            stored[chunk] = staged.TryGetCodeLeaf(PbtStateKey.Code(codeHash, chunk), out ValueHash256 value);
+            stored[chunk] = staged.TryGetCodeLeaf(Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunk), out ValueHash256 value);
             leaves[chunk] = value;
-            if (stored[chunk]) value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
+            if (stored[chunk]) PbtKeyDerivation.CopyChunkCode(value.Bytes, chunk, code);
         }
 
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
@@ -227,7 +227,7 @@ internal static class PbtLeafStaging
         long consumed = 0;
         for (int chunk = 0; chunk < chunkCount; chunk++)
         {
-            ValueHash256 expected = new(encodedChunks.Slice(chunk * 32, 32));
+            ValueHash256 expected = new(encodedChunks.Slice(chunk * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
             if (leaves[chunk] != expected || stored[chunk] != (expected != default))
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
             if (stored[chunk]) consumed++;

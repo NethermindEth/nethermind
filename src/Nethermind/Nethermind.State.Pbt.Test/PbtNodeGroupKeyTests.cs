@@ -72,9 +72,7 @@ public class PbtNodeGroupKeyTests
     [TestCase("01", TestName = "Rejects_trailer_only_key")]
     [TestCase("ab02", TestName = "Rejects_unknown_trailer")]
     [TestCase("ab04", TestName = "Rejects_bit_count_trailer")]
-#if DEBUG
     [TestCase("0f01", TestName = "Rejects_non_zero_unused_bits")]
-#endif
     [TestCase("00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", TestName = "Rejects_depth_past_the_maximum_group_depth")]
     [TestCase("0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", TestName = "Rejects_path_past_the_storage_capacity")]
     public void Decode_rejects_malformed_keys(string keyHex) =>

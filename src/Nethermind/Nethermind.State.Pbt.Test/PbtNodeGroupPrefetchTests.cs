@@ -42,7 +42,7 @@ public class PbtNodeGroupPrefetchTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Entries(keys.Accounts), Is.EqualTo(Sorted(accounts.Select(address =>
-                (PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), PbtKeyDerivation.BasicDataLeafKey).Bytes.ToHexString(), (UInt256)IndexOf(address))))));
+                (Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(address), PbtKeyDerivation.BasicDataLeafKey).Bytes.ToHexString(), (UInt256)IndexOf(address))))));
             Assert.That(Entries(keys.HeaderWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 7))));
             Assert.That(Entries(keys.StorageWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 1000), (TestItem.AddressA, 1001), (TestItem.AddressA, 2000), (TestItem.AddressB, 1000))));
             Assert.That(Entries(keys.HeaderReads), Is.EqualTo(withReads ? SlotKeys((TestItem.AddressA, 3), (TestItem.AddressC, 5)) : []));

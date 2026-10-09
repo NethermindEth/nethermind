@@ -99,7 +99,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
-        static PbtPath Key(uint slot) => PbtStateKey.HeaderStorage(PbtStateKey.AddressKeyHash(TestItem.AddressA), slot);
+        static PbtPath Key(uint slot) => Eip8297KeyDerivation.HeaderStorageKey(PbtStateKey.AddressKeyHash(TestItem.AddressA), slot);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         StateId third = new(3, TestItem.KeccakC.ValueHash256);

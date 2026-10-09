@@ -36,7 +36,7 @@ public class PbtSnapshotBundleTests
         PbtSnapshotContent retainedContent = new();
         retainedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
         retainedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
-        PbtPath key = PbtStateKey.HeaderStorage(address, 5);
+        PbtPath key = Eip8297KeyDerivation.HeaderStorageKey(address, 5);
         retainedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped([7])));
         PbtNodePath root = new([], 0);
         retainedContent.SetNodeGroup(root, null);

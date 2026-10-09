@@ -6,7 +6,6 @@ using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -20,7 +19,6 @@ internal static class PbtLeafIngestion
 {
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
     internal const int BatchSize = 255;
-    private const int FoldChunkSize = 2048;
     private const string Phase = "PBT import";
 
     /// <summary>Stages the logical accounts, slots and code of the leaves while folding them into the tree, and publishes the tree
@@ -42,12 +40,12 @@ internal static class PbtLeafIngestion
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(
-            (windowSize > 0 ? windowSize : PbtRebuilder.DefaultWindowSize) / FoldChunkSize + 1);
+            (windowSize > 0 ? windowSize : PbtSortedLeafFold.DefaultWindowSize) / PbtSortedLeafFold.FoldChunkSize + 1);
         Task<(ulong Accounts, ulong Slots)> staging = Task.Run(() =>
         {
             try
             {
-                (ulong Accounts, ulong Slots) staged = Stage(target, Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
+                (ulong Accounts, ulong Slots) staged = Stage(target, PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
                     concurrency, logManager, linked.Token);
                 verifyStaged(staged.Accounts, staged.Slots, linked.Token);
                 return staged;
@@ -80,52 +78,6 @@ internal static class PbtLeafIngestion
         }
         PbtLeafStaging.RebuildCodes(target, staged.CodeChunks, logManager, cancellationToken);
         return (staged.Accounts, staged.Slots);
-    }
-
-    /// <summary>Passes the leaves through while handing each to the fold, completing the fold's input once they run out.</summary>
-    private static IEnumerable<RebuildEntry> Teed(IEnumerable<RebuildEntry> leaves, ChannelWriter<ArrayPoolList<RebuildEntry>> fold,
-        CancellationToken cancellationToken)
-    {
-        using (PbtRebuilder.EntrySink sink = new(fold, FoldChunkSize, cancellationToken))
-        {
-            foreach (RebuildEntry entry in leaves)
-            {
-                sink.Add(entry).AsTask().GetAwaiter().GetResult();
-                yield return entry;
-            }
-            sink.Complete().AsTask().GetAwaiter().GetResult();
-        }
-        fold.TryComplete();
-    }
-
-    /// <summary>The root of the tree over <paramref name="leaves"/>, folded window by window without storing the tree.</summary>
-    /// <remarks>The next window is read and chunked on another thread while the current one folds.</remarks>
-    /// <param name="leaves">Strictly ascending account, code and storage leaves, such as those <see cref="PbtSnapshotCodec.Write"/>
-    /// passes on; an out-of-order leaf is not detected and yields a wrong root.</param>
-    /// <param name="windowSize">Maximum leaves folded per tree update.</param>
-    /// <param name="foldConcurrency">Maximum threads, including the calling one, folding a window.</param>
-    public static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> leaves, int windowSize, int foldConcurrency, CancellationToken cancellationToken)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowSize);
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(windowSize / FoldChunkSize + 1);
-        Task reading = Task.Run(() =>
-        {
-            try { foreach (RebuildEntry _ in Teed(leaves, channel.Writer, linked.Token)) { } }
-            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
-        }, CancellationToken.None);
-        try
-        {
-            return PbtRebuilder.FoldWindows(channel.Reader, NullNodeGroupSink.Instance, windowSize, new ConcurrencyController(foldConcurrency),
-                FoldFanOut.Default, static _ => { }, linked.Token).GetAwaiter().GetResult();
-        }
-        finally
-        {
-            linked.Cancel();
-            try { reading.GetAwaiter().GetResult(); }
-            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
-        }
     }
 
     /// <summary>The ascending leaves of a spool of tree keys and leaf values.</summary>
@@ -236,12 +188,5 @@ internal static class PbtLeafIngestion
             Task.WaitAll(_flushers);
             _failure?.Throw();
         }
-    }
-
-    private sealed class NullNodeGroupSink : IPbtNodeGroupSink
-    {
-        public static readonly NullNodeGroupSink Instance = new();
-
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) { }
     }
 }

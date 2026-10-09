@@ -114,8 +114,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupPath);
-        PbtNodeGroupCodec.ValidateNodes(traversalPath, value);
+        PbtNodeGroupCodec.ValidateNodes(groupPath, value);
         using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(RefCountingMemory.Wrapping(value.ToArray()), groupPath.BitDepth);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;

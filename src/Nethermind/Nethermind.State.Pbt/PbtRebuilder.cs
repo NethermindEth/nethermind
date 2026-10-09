@@ -13,7 +13,6 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
@@ -21,7 +20,6 @@ namespace Nethermind.State.Pbt;
 /// <summary>Rebuilds a canonical EIP-8297 tree in bounded staging windows, then publishes its state.</summary>
 public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, int foldConcurrency, ILogManager logManager)
 {
-    internal const int DefaultWindowSize = 2_000_000;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
     private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
@@ -47,7 +45,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ValueHash256? expectedRoot,
         Task publishAfter)
     {
-        if (windowSize == 0) windowSize = DefaultWindowSize;
+        if (windowSize == 0) windowSize = PbtSortedLeafFold.DefaultWindowSize;
 
         long receivedCount = 0;
         long committedWindows = 0;
@@ -55,7 +53,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ValueHash256 root;
         using (StagingSink staging = new(target, cancellationToken))
         {
-            root = await FoldWindows(source, staging, windowSize, _foldQuota, _foldFanOut, CommitWindow, cancellationToken);
+            root = await PbtSortedLeafFold.FoldWindows(source, staging, windowSize, _foldQuota, _foldFanOut, CommitWindow, cancellationToken);
 
             void CommitWindow(int leaves)
             {
@@ -84,62 +82,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         return root;
     }
 
-    /// <summary>Folds leaf chunks into a tree from empty, window by window, writing every group through to <paramref name="writeThrough"/>.</summary>
-    /// <remarks>Reads are served from the tree's right edge in memory (see <see cref="PbtRightmostGroupStore"/>), never from where the groups were written.</remarks>
-    /// <param name="source">Owned leaf chunks, strictly ascending across the whole stream; an out-of-order leaf is not detected and yields a wrong root.</param>
-    /// <param name="writeThrough">Receives every group the fold writes, one call at a time.</param>
-    /// <param name="windowSize">Maximum leaves per tree update.</param>
-    /// <param name="onWindowFolded">Called with the window's leaf count once its fold ends.</param>
-    /// <returns>The tree root.</returns>
-    internal static async Task<ValueHash256> FoldWindows(ChannelReader<ArrayPoolList<RebuildEntry>> source, IPbtNodeGroupSink writeThrough, int windowSize,
-        ConcurrencyController foldQuota, FoldFanOut foldFanOut, Action<int> onWindowFolded, CancellationToken cancellationToken)
-    {
-        using PbtRightmostGroupStore store = new(writeThrough);
-        using PbtWriteBatchBuilder<PbtPath> accountChanges = new();
-        using PbtWriteBatchBuilder<PbtPath> codeChanges = new();
-        using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new();
-        ValueHash256 root = default;
-        int windowCount = 0;
-
-        await foreach (ArrayPoolList<RebuildEntry> chunk in source.ReadAllAsync(cancellationToken))
-        {
-            using (chunk)
-            {
-                foreach (RebuildEntry entry in chunk.AsSpan())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    PbtPartition? partition = PbtPartitions.PartitionOf(entry.Key);
-                    if (partition == PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
-                    else if (partition == PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                    else if (partition == PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                    else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
-                    if (++windowCount == windowSize) FoldWindow();
-                }
-            }
-        }
-
-        if (windowCount != 0) FoldWindow();
-        return root;
-
-        void FoldWindow()
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using (PbtPartitionBatches prepared = new())
-            {
-                if (accountChanges.Count != 0) prepared.Account = accountChanges.Build();
-                if (codeChanges.Count != 0) prepared.Code = codeChanges.Build();
-                if (storageChanges.Count != 0) prepared.Storage = storageChanges.Build();
-                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null);
-            }
-            store.ReleaseSuperseded();
-            accountChanges.Reset();
-            codeChanges.Reset();
-            storageChanges.Reset();
-            onWindowFolded(windowCount);
-            windowCount = 0;
-        }
-    }
-
     /// <summary>Writes a window's groups into one staging batch, committed once the window folds.</summary>
     /// <remarks>Not thread-safe: <see cref="PbtRightmostGroupStore"/> serializes its writes.</remarks>
     private sealed class StagingSink(PbtRocksDbPersistence target, CancellationToken cancellationToken) : IPbtNodeGroupSink, IDisposable
@@ -161,34 +103,5 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         }
 
         public void Dispose() => _batch?.Dispose();
-    }
-
-    /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
-    internal sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
-    {
-        private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);
-        private bool _owned = true;
-
-        public ValueTask Add(in RebuildEntry entry)
-        {
-            _chunk.Add(entry);
-            return _chunk.Count >= chunkSize ? Flush() : default;
-        }
-
-        public ValueTask Complete() => _chunk.Count > 0 ? Flush() : default;
-
-        // A failed channel write leaves ownership with this sink.
-        private async ValueTask Flush()
-        {
-            await entries.WriteAsync(_chunk, cancellationToken);
-            _owned = false;
-            _chunk = new ArrayPoolList<RebuildEntry>(chunkSize);
-            _owned = true;
-        }
-
-        public void Dispose()
-        {
-            if (_owned) _chunk.Dispose();
-        }
     }
 }

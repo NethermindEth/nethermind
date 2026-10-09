@@ -295,7 +295,7 @@ public class PbtWorldStateScopeTests
         Dictionary<PbtVariableTreeKey, ValueHash256> leaves = expected.ToDictionary(entry => entry.Key, entry => entry.Leaf);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(leaves.ContainsKey((PbtVariableTreeKey)PbtStateKey.Code(codeHash.ValueHash256, 256)), Is.True);
+            Assert.That(leaves.ContainsKey((PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(codeHash.ValueHash256.Bytes, 256)), Is.True);
             Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(leaves)));
             Assert.That(reopened.TreeRoot, Is.EqualTo(scope.RootHash.ValueHash256));
         }

@@ -26,9 +26,8 @@ public sealed class PbtSnapshotBundle(
     IPbtTrieNodeCache trieNodeCache) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
-    private readonly PbtWriteBatchBuilder<PbtPath> _accountBatch = resourcePool.GetWriteBatch(usage);
-    private readonly PbtWriteBatchBuilder<PbtPath> _codeBatch = resourcePool.GetWriteBatch(usage);
-    private readonly PbtWriteBatchBuilder<PbtStoragePath> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
+    private readonly PbtPartitionBatchesBuilder _leafChanges = new(
+        resourcePool.GetWriteBatch(usage), resourcePool.GetWriteBatch(usage), resourcePool.GetStorageWriteBatch(usage));
     // Accounts set before their code arrived; they reach the write buffer once the code converts them to their stem.
     private readonly ConcurrentDictionary<ValueHash256, Account> _accountsAwaitingCode = new();
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
@@ -55,21 +54,18 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal int PendingMutationCount => _accountBatch.Count + _codeBatch.Count + _storageBatch.Count;
+    internal int PendingMutationCount => _leafChanges.Count;
 
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        PbtPartition? partition = PbtPartitions.PartitionOf(key);
-        if (partition == PbtPartition.Account) _accountBatch.SetLeaf(key, value);
-        else if (partition == PbtPartition.Code) _codeBatch.SetLeaf(key, value);
-        else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
+        _leafChanges.SetLeaf(key, value);
     }
 
     private void SetPbtLeaf(in PbtStoragePath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        _storageBatch.SetLeaf(key, value);
+        _leafChanges.SetLeaf(key, value);
     }
 
     internal PbtPartitionBatches PrepareLeafChanges()
@@ -81,28 +77,10 @@ public sealed class PbtSnapshotBundle(
             StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
         }
         _accountsAwaitingCode.Clear();
-        PbtPartitionBatches changes = new();
-        try
-        {
-            // The fold appends the code zone to the account zone's operations.
-            changes.Account = _accountBatch.Build(_codeBatch.Count);
-            changes.Code = _codeBatch.Build();
-            changes.Storage = _storageBatch.Build();
-            return changes;
-        }
-        catch
-        {
-            changes.Dispose();
-            throw;
-        }
+        return _leafChanges.Build();
     }
 
-    internal void CompleteLeafChanges()
-    {
-        _accountBatch.Reset();
-        _codeBatch.Reset();
-        _storageBatch.Reset();
-    }
+    internal void CompleteLeafChanges() => _leafChanges.Reset();
 
     internal void SetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
     {
@@ -191,8 +169,8 @@ public sealed class PbtSnapshotBundle(
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtStateKey.AddressKeyHash(address), slot);
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
-    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => PbtStateKey.IsHeaderSlot(slot)
-        ? GetSlot(PbtStateKey.HeaderStorage(addressHash, slot), addressHash)
+    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => Eip8297KeyDerivation.IsHeaderSlot(slot)
+        ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot), addressHash)
         : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
 
     internal EvmWord GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
@@ -254,10 +232,10 @@ public sealed class PbtSnapshotBundle(
     private void WriteAccountLeaves(in ValueHash256 addressHash, PbtAccount? account, CodeInfo? deployedCode)
     {
         bool isDelegation = account is { IsDelegation: true };
-        SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.DelegationLeafKey : (byte)PbtKeyDerivation.CodeHashLeafKey), account?.CodeLeaf);
-        SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
+        SetPbtLeaf(Eip8297KeyDerivation.AccountKey(addressHash, isDelegation ? (byte)PbtKeyDerivation.DelegationLeafKey : (byte)PbtKeyDerivation.CodeHashLeafKey), account?.CodeLeaf);
+        SetPbtLeaf(Eip8297KeyDerivation.AccountKey(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
         // A zero basic-data value is stored as a deletion by the batch builder.
-        SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), account?.BasicData ?? default);
+        SetPbtLeaf(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), account?.BasicData ?? default);
         // Chunk leaves are keyed by code hash alone, so every deployment stages them: a layer can hold the bytecode
         // without its chunks in the tree, as when the contract that first wrote it did not survive its transaction.
         if (account is { IsDelegation: false } stem && deployedCode is not null) WriteCodeChunkLeaves(stem.CodeLeaf, deployedCode);
@@ -274,10 +252,10 @@ public sealed class PbtSnapshotBundle(
         {
             for (end = start + 1; end < writes.Length && SlotRun.InSameRun(writes[start].Slot, writes[end].Slot); end++) { }
             ReadOnlySpan<SlotWrite> runWrites = writes[start..end];
-            if (PbtStateKey.IsHeaderSlot(runWrites[0].Slot))
+            if (Eip8297KeyDerivation.IsHeaderSlot(runWrites[0].Slot))
             {
                 PbtPath key = default;
-                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = PbtStateKey.HeaderStorage(addressHash, write.Slot), SlotLeaf(write.Value));
+                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = Eip8297KeyDerivation.HeaderStorageKey(addressHash, write.Slot), SlotLeaf(write.Value));
                 SetRunSlots(key, addressHash, runWrites);
             }
             else
@@ -339,7 +317,7 @@ public sealed class PbtSnapshotBundle(
 
     private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)
     {
-        foreach ((PbtPath key, ValueHash256 chunk) in PbtStateKey.CodeLeaves(codeHash, code)) SetPbtLeaf(key, chunk);
+        foreach ((PbtPath key, ValueHash256 chunk) in Eip8297KeyDerivation.CodeLeaves(codeHash, code.Code)) SetPbtLeaf(key, chunk);
     }
 
     /// <summary>The bytecode as a PBT layer holds it; null when no layer has it, in which case its chunk leaves are not in the tree either.</summary>
@@ -398,17 +376,17 @@ public sealed class PbtSnapshotBundle(
             {
                 try
                 {
-                    resourcePool.ReturnWriteBatch(usage, _accountBatch);
+                    resourcePool.ReturnWriteBatch(usage, _leafChanges.Account);
                 }
                 finally
                 {
                     try
                     {
-                        resourcePool.ReturnWriteBatch(usage, _codeBatch);
+                        resourcePool.ReturnWriteBatch(usage, _leafChanges.Code);
                     }
                     finally
                     {
-                        resourcePool.ReturnStorageWriteBatch(usage, _storageBatch);
+                        resourcePool.ReturnStorageWriteBatch(usage, _leafChanges.Storage);
                     }
                 }
             }

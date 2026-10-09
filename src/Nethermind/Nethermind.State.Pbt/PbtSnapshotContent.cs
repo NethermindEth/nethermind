@@ -52,7 +52,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     private static void ClearRuns<TKey>(ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> runs, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
     {
         foreach ((HashedKey<TKey> key, _) in runs)
-            if (PbtStateKey.StorageAddress(key.Key) == addressHash && runs.TryRemove(key, out PackedSlotRun? removed)) SlotRun.Return(removed);
+            if (Eip8297KeyDerivation.AddressHashOf(key.Key) == addressHash && runs.TryRemove(key, out PackedSlotRun? removed)) SlotRun.Return(removed);
     }
 
     /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>

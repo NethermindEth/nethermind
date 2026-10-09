@@ -35,7 +35,7 @@ public class PbtRootBuildBenchmark
 {
     public enum Variant
     {
-        /// <summary><see cref="PbtLeafIngestion.CalculateRoot"/>, which the exporter computes a snapshot's claimed root with.</summary>
+        /// <summary><see cref="PbtSortedLeafFold.CalculateRoot"/>, which the exporter computes a snapshot's claimed root with.</summary>
         CalculateRoot,
         /// <summary>The partitioned updater, sorting the shards and folding slots across threads, building every group from an empty tree.</summary>
         Partitioned,
@@ -59,7 +59,7 @@ public class PbtRootBuildBenchmark
     public Variant Method { get; set; }
 
     /// <summary>Leaves per fold window for the windowed variants: the anchor import's window and the default.</summary>
-    [Params(16_384, PbtRebuilder.DefaultWindowSize)]
+    [Params(16_384, PbtSortedLeafFold.DefaultWindowSize)]
     public int WindowSize { get; set; }
 
     [GlobalSetup]
@@ -116,7 +116,7 @@ public class PbtRootBuildBenchmark
     }
 
     private ValueHash256 CalculateRoot() =>
-        PbtLeafIngestion.CalculateRoot(_entries, WindowSize, Environment.ProcessorCount, CancellationToken.None);
+        PbtSortedLeafFold.CalculateRoot(_entries, WindowSize, Environment.ProcessorCount, CancellationToken.None);
 
     /// <remarks>Feeds the rebuilder as <see cref="PbtLeafIngestion"/> does: pooled chunks through a channel bounded at one window.</remarks>
     private ValueHash256 Rebuild()
@@ -127,7 +127,7 @@ public class PbtRootBuildBenchmark
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(WindowSize / FoldChunkSize + 1);
         Task producing = Task.Run(async () =>
         {
-            using (PbtRebuilder.EntrySink sink = new(channel.Writer, FoldChunkSize, CancellationToken.None))
+            using (PbtSortedLeafFold.EntrySink sink = new(channel.Writer, FoldChunkSize, CancellationToken.None))
             {
                 foreach (RebuildEntry entry in _entries) await sink.Add(entry);
                 await sink.Complete();
