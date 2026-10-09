@@ -85,10 +85,20 @@ internal sealed class BlockFootprints(Block block)
 
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
+    internal readonly int[] ProbeBits = new int[block.Transactions.Length];
+
+    internal void ProbeMark(int index, int bit)
+    {
+        if ((uint)index < (uint)ProbeBits.Length) Interlocked.Or(ref ProbeBits[index], bit);
+    }
+
+    internal int ProbeBitsAt(int index) => (uint)index < (uint)ProbeBits.Length ? Volatile.Read(ref ProbeBits[index]) : -1;
+
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
     public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
     {
         Volatile.Write(ref _footprints[index], footprint);
+        ProbeMark(index, 128);
         Index(index, footprint, seededAt);
     }
 

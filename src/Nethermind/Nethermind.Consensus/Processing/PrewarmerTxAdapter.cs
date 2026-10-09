@@ -60,6 +60,11 @@ public class PrewarmerTxAdapter(
             int probeClass = _probeClass;
             if (probeClass == 4 && _probeFootprint is not null && ProbeIsAdditive(_probeFootprint, transaction)) probeClass = 5;
             ProbeAdd(probeClass, transaction, probeStart);
+            if (probeClass == 1)
+            {
+                ProbeAdd(ProbeMissClass(_probeMissBits), transaction, probeStart);
+                if ((_probeMissBits & 512) != 0) ProbeAdd(17, transaction, probeStart);
+            }
             return executed;
         }
 
@@ -102,6 +107,7 @@ public class PrewarmerTxAdapter(
         if (footprint is null)
         {
             _probeClass = 1;
+            _probeMissBits = preWarmer.ProbeBitsAtMain();
             Tally = Tally with { Missing = Tally.Missing + 1 };
             Blockchain.Metrics.PrewarmHandoffsMissing++;
             return false;
@@ -160,10 +166,31 @@ public class PrewarmerTxAdapter(
         result = footprint.Result;
         return true;
     }
-    private static readonly string[] ProbeNames = ["rep", "miss", "rej_acct", "rej_ro", "rej_rw", "rej_add", "other"];
-    private readonly long[] _probeCount = new long[7];
-    private readonly long[] _probeGas = new long[7];
-    private readonly long[] _probeTicks = new long[7];
+    private static readonly string[] ProbeNames = ["rep", "miss", "rej_acct", "rej_ro", "rej_rw", "rej_add", "other",
+        "m_none", "m_late", "m_running", "m_op_acct", "m_op_restore", "m_op_value", "m_failed", "m_nonce", "m_plain", "m_exc", "m_disc", "m_stored", "m_other", "m_nofp", "m_op_misc"];
+    private readonly long[] _probeCount = new long[22];
+    private readonly long[] _probeGas = new long[22];
+    private readonly long[] _probeTicks = new long[22];
+    private int _probeMissBits;
+
+    private static int ProbeMissClass(int bits)
+    {
+        if (bits < 0) return 20;
+        if ((bits & 128) != 0) return 18;
+        if ((bits & 8192) != 0) return 10;
+        if ((bits & 16384) != 0) return 11;
+        if ((bits & 32768) != 0) return 12;
+        if ((bits & 65536) != 0) return 21;
+        if ((bits & 16) != 0) return 12;
+        if ((bits & 32) != 0) return 13;
+        if ((bits & 64) != 0) return 14;
+        if ((bits & (1024 | 2048)) != 0) return 16;
+        if ((bits & 256) != 0) return 15;
+        if ((bits & 4) != 0) return 9;
+        if ((bits & 2) != 0) return 8;
+        if (bits == 0 || bits == 512) return 7;
+        return 19;
+    }
     private readonly List<(StorageCell Cell, UInt256 Read, UInt256 Current)> _probeFailed = [];
     private long _probeBlock = -1;
     private int _probeClass;
@@ -178,7 +205,7 @@ public class PrewarmerTxAdapter(
         {
             System.Text.StringBuilder sb = new();
             sb.Append("HANDOFFPROBE block=").Append(_probeBlock);
-            for (int i = 0; i < 7; i++)
+            for (int i = 0; i < ProbeNames.Length; i++)
             {
                 sb.Append(' ').Append(ProbeNames[i]).Append('=').Append(_probeCount[i]).Append('/').Append(_probeGas[i]).Append('/')
                     .Append(_probeTicks[i] * 1_000_000 / Stopwatch.Frequency);
