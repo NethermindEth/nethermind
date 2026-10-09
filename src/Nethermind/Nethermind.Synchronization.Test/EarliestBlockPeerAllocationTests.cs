@@ -4,15 +4,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Test.Mocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,9 +25,9 @@ public class EarliestBlockPeerAllocationTests
     [Test]
     public void Skips_peers_that_announced_they_no_longer_store_the_block()
     {
-        PeerInfo archive = Peer(TestItem.PublicKeyA, earliest: 1);
-        PeerInfo unannounced = Peer(TestItem.PublicKeyB, earliest: 0);
-        PeerInfo pruned = Peer(TestItem.PublicKeyC, earliest: GnosisBarrier);
+        PeerInfo archive = HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: 1);
+        PeerInfo unannounced = HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: 0);
+        PeerInfo pruned = HistoryPeerTestHelpers.Create(TestItem.PublicKeyC, earliest: GnosisBarrier);
         RecordingStrategy inner = new();
 
         new EarliestBlockPeerAllocationStrategy(inner, 10_830_000).Allocate(pruned, [archive, unannounced, pruned], Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
@@ -46,7 +44,7 @@ public class EarliestBlockPeerAllocationTests
     [TestCase(48_000_000UL)]
     public void Keeps_every_peer_for_blocks_they_all_store(ulong blockNumber)
     {
-        PeerInfo[] peers = [Peer(TestItem.PublicKeyA, earliest: 1), Peer(TestItem.PublicKeyB, earliest: 0), Peer(TestItem.PublicKeyC, earliest: GnosisBarrier)];
+        PeerInfo[] peers = [HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: 1), HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: 0), HistoryPeerTestHelpers.Create(TestItem.PublicKeyC, earliest: GnosisBarrier)];
         RecordingStrategy inner = new();
 
         new EarliestBlockPeerAllocationStrategy(inner, blockNumber).Allocate(peers[2], peers, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
@@ -70,8 +68,8 @@ public class EarliestBlockPeerAllocationTests
             ReceiptsRequests = Headers(firstReceipt),
         };
 
-        PeerInfo atFloor = Peer(TestItem.PublicKeyA, earliest: expectedFloor, supportsAccessLists: true);
-        PeerInfo aboveFloor = Peer(TestItem.PublicKeyB, earliest: expectedFloor + 1, supportsAccessLists: true);
+        PeerInfo atFloor = HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: expectedFloor, supportsAccessLists: true);
+        PeerInfo aboveFloor = HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: expectedFloor + 1, supportsAccessLists: true);
         INodeStatsManager stats = Substitute.For<INodeStatsManager>();
 
         IPeerAllocationStrategy strategy = new BlocksSyncPeerAllocationStrategyFactory().Create(request);
@@ -83,7 +81,7 @@ public class EarliestBlockPeerAllocationTests
     public void Blocks_request_strategy_without_requests_keeps_every_peer()
     {
         using BlocksRequest request = new();
-        PeerInfo pruned = Peer(TestItem.PublicKeyA, earliest: GnosisBarrier);
+        PeerInfo pruned = HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: GnosisBarrier);
 
         IPeerAllocationStrategy strategy = new BlocksSyncPeerAllocationStrategyFactory().Create(request);
 
@@ -93,7 +91,7 @@ public class EarliestBlockPeerAllocationTests
     [Test]
     public void Nobody_is_allocated_when_every_peer_pruned_the_block()
     {
-        PeerInfo[] peers = [Peer(TestItem.PublicKeyA, earliest: GnosisBarrier), Peer(TestItem.PublicKeyB, earliest: GnosisBarrier)];
+        PeerInfo[] peers = [HistoryPeerTestHelpers.Create(TestItem.PublicKeyA, earliest: GnosisBarrier), HistoryPeerTestHelpers.Create(TestItem.PublicKeyB, earliest: GnosisBarrier)];
 
         PeerInfo? allocated = BlocksSyncPeerAllocationStrategyFactory.ForBlocksFrom(10_830_000)
             .Allocate(null, peers, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
@@ -105,16 +103,6 @@ public class EarliestBlockPeerAllocationTests
         first == 0
             ? IOwnedReadOnlyList<BlockHeader>.Empty
             : new ArrayPoolList<BlockHeader>(2) { Build.A.BlockHeader.WithNumber(first).TestObject, Build.A.BlockHeader.WithNumber(first + 1).TestObject };
-
-    private static PeerInfo Peer(PublicKey key, ulong earliest, bool supportsAccessLists = false)
-    {
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.Node.Returns(new Node(key, "127.0.0.1", 30303));
-        syncPeer.EarliestBlock.Returns(earliest);
-        syncPeer.IsInitialized.Returns(true);
-        syncPeer.ProtocolVersion.Returns(supportsAccessLists ? (byte)71 : (byte)69);
-        return new PeerInfo(syncPeer);
-    }
 
     private sealed class RecordingStrategy : IPeerAllocationStrategy
     {

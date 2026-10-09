@@ -15,6 +15,7 @@ using Nethermind.Core.Events;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -211,14 +212,18 @@ public class SyncPeerPoolTests
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
-    [TestCase(false, 0UL)]
-    [TestCase(false, 101UL)]
-    [TestCase(true, 0UL)]
-    public async Task Prefers_history_serving_peer_only_without_fast_sync(bool fastSyncEnabled, ulong servingFloor)
+    [TestCase(false, false, 0UL)]
+    [TestCase(false, false, 101UL)]
+    [TestCase(true, false, 0UL)]
+    [TestCase(false, true, 0UL)]
+    public async Task Prefers_history_serving_peer_only_without_fast_sync(bool fastSyncEnabled, bool snapSyncEnabled, ulong servingFloor)
     {
         await using Context ctx = new();
-        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, LimboLogs.Instance, 2, fastSyncEnabled: fastSyncEnabled);
-        ctx.BlockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(fastSyncEnabled ? 0 : 100).TestObject);
+        SyncConfig syncConfig = new() { FastSync = fastSyncEnabled, SnapSync = snapSyncEnabled };
+        bool usesFastOrSnapSync = fastSyncEnabled || snapSyncEnabled;
+        ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy,
+            new NetworkConfig { MaxActivePeers = 2 }, syncConfig, LimboLogs.Instance);
+        ctx.BlockTree.BestSuggestedBody.Returns(Build.A.Block.WithNumber(usesFastOrSnapSync ? 0 : 100).TestObject);
         SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
         peers[0].EarliestBlock = 102;
         peers[0].HeadNumber = 200;
@@ -229,8 +234,8 @@ public class SyncPeerPoolTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(peers[0].DisconnectRequested, Is.EqualTo(!fastSyncEnabled));
-            Assert.That(peers[1].DisconnectRequested, Is.EqualTo(fastSyncEnabled));
+            Assert.That(peers[0].DisconnectRequested, Is.EqualTo(!usesFastOrSnapSync));
+            Assert.That(peers[1].DisconnectRequested, Is.EqualTo(usesFastOrSnapSync));
         }
     }
 

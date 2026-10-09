@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -14,6 +13,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Test.Mocks;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NUnit.Framework;
@@ -109,16 +109,13 @@ public partial class BlockDownloaderTests
 
     private static PeerInfo StatsPeer(INodeStatsManager stats, PublicKey key, ulong earliest, long speed, int limit)
     {
-        Node peerNode = new(key, "127.0.0.1", 30303);
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.Node.Returns(peerNode);
-        syncPeer.IsInitialized.Returns(true);
-        syncPeer.EarliestBlock.Returns(earliest);
+        PeerInfo peer = HistoryPeerTestHelpers.Create(key, earliest);
+        Node peerNode = peer.SyncPeer.Node;
 
         INodeStats nodeStats = Substitute.For<INodeStats>();
         nodeStats.GetAverageTransferSpeed(TransferSpeedType.Bodies).Returns(speed);
         nodeStats.GetCurrentRequestLimit(RequestType.Bodies).Returns(limit);
         stats.GetOrAdd(peerNode).Returns(nodeStats);
-        return new PeerInfo(syncPeer);
+        return peer;
     }
 }

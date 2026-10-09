@@ -545,7 +545,7 @@ namespace Nethermind.Synchronization.Peers
 
         private int DropWorstPeer()
         {
-            // Fast sync leaves BestSuggestedBody at genesis while headers and state are still downloading.
+            // Fast/snap sync never needs forward bodies below its pivot, even after state sync finishes.
             ulong? nextBodyNumber = !_fastSyncEnabled && _blockTree.BestSuggestedBody?.Number is { } bestBodyNumber
                 ? bestBodyNumber + 1
                 : null;
