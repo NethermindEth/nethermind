@@ -48,7 +48,9 @@ public class AccountAccessForRpc
             StorageReads = Map(account.StorageReads, static r => r.ToValueHash()),
             BalanceChanges = Map(account.BalanceChanges, static c => new BalanceChangeForRpc { Index = c.Index, Value = c.Value }),
             NonceChanges = Map(account.NonceChanges, static c => new NonceChangeForRpc { Index = c.Index, Value = c.Value }),
-            CodeChanges = Map(account.CodeChanges, static c => new CodeChangeForRpc { Index = c.Index, Code = c.Code, CodeHash = c.IsAdopted ? c.CodeHash : null }),
+            CodeChanges = Map(account.CodeChanges, static c => c.IsAdopted
+                ? new CodeChangeForRpc { Index = c.Index, Code = [], CodeHash = c.CodeHash }
+                : new CodeChangeForRpc { Index = c.Index, Code = c.Code }),
         };
 
     /// <summary>Projects each element of <paramref name="source"/>, reusing a shared empty array when empty.</summary>

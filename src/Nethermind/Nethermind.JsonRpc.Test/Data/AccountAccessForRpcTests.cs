@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -38,5 +39,19 @@ public class AccountAccessForRpcTests
             "\"balanceChanges\":[{\"index\":\"0x1\",\"value\":\"0xa410\"}]," +
             "\"nonceChanges\":[{\"index\":\"0x2\",\"value\":\"0x5\"}]," +
             "\"codeChanges\":[{\"index\":\"0x4\",\"code\":\"0xdeadbeef\"}]}]"));
+    }
+
+    // EIP-8298: an adopted change is reported as its hash with empty code, whether or not the BAL holds the bytecode.
+    [Test]
+    public void Serializes_adopted_code_change_as_hash_with_empty_code([Values] bool withBytecode)
+    {
+        byte[] code = [0xde, 0xad, 0xbe, 0xef];
+        CodeChange adopted = CodeChange.Adopted(4, ValueKeccak.Compute(code), withBytecode ? code : null);
+        ReadOnlyBlockAccessList blockAccessList = new([new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [], [], [adopted])], itemCount: 2);
+
+        string json = new EthereumJsonSerializer().Serialize(AccountAccessForRpc.FromBlockAccessList(blockAccessList));
+
+        Assert.That(json, Does.Contain(
+            "\"codeChanges\":[{\"index\":\"0x4\",\"code\":\"0x\",\"codeHash\":\"" + ValueKeccak.Compute(code) + "\"}]"));
     }
 }
