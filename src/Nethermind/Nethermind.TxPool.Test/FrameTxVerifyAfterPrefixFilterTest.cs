@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Specs.Forks;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -37,10 +38,19 @@ internal class FrameTxVerifyAfterPrefixFilterTest
             .SetName("a trailing expiry frame is rejected as a VERIFY frame behind the prefix");
         yield return new TestCaseData(new[] { OnlyVerify(), Pay(), Execution(), Pay() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
             .SetName("a VERIFY frame behind a paymaster prefix is rejected");
-        // A layout matching none of the recognized prefixes has no boundary to sit behind; the rules
-        // that reject it do so on their own terms.
+        // Nothing can approve payment ahead of the only approving frame, so there is no prefix to sit behind.
         yield return new TestCaseData(new[] { Execution(), SelfVerify() }, AcceptTxResult.Accepted)
-            .SetName("an unrecognized layout is left to the other rules");
+            .SetName("a layout whose only approving frame is last has nothing behind it");
+        // Standalone classification remains conservative for layouts rejected earlier by the pool's grammar filter.
+        yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind an unrecognized prefix is rejected");
+        yield return new TestCaseData(new[] { ExtraVerify(), SelfVerify(), Execution() }, AcceptTxResult.Accepted)
+            .SetName("the standalone trailing-VERIFY check accepts an unrecognized prefix without trailing VERIFY");
+        yield return new TestCaseData(new[] { OnlyVerify(), ExtraVerify(), Pay(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind a paymaster prefix carrying an extra check is rejected");
+        // The boundary is the approval flag rather than the mode, which carries no scope of its own.
+        yield return new TestCaseData(new[] { ApprovingDefault(), Execution(), OnlyVerify() }, AcceptTxResult.FrameTxVerifyAfterPrefix)
+            .SetName("a VERIFY frame behind an approving DEFAULT frame is rejected");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
@@ -67,7 +77,7 @@ internal class FrameTxVerifyAfterPrefixFilterTest
     private static AcceptTxResult Accept(Transaction tx)
     {
         FrameTxVerifyAfterPrefixFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxVerifyAfterPrefixFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref state, TxHandlingOptions.None);
     }
 }

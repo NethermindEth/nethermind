@@ -14,18 +14,18 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 {
     private Dictionary<Address, AccountStruct> _accounts = [];
     private Dictionary<ValueHash256, byte[]> _codes = [];
-    private readonly Dictionary<StorageCell, byte[]> _storage = [];
+    private readonly Dictionary<StorageCell, UInt256> _storage = [];
 
     public bool TryGetAccount(Address address, out AccountStruct account) => _accounts.TryGetValue(address, out account);
 
     public Hash256 StateRoot => throw new NotImplementedException();
-    public byte[]? GetCode(Address address)
+    public ReadOnlyMemory<byte> GetCode(Address address)
     {
         if (TryGetAccount(address, out AccountStruct account)) return _codes[account.CodeHash];
-        return null;
+        return default;
     }
 
-    public byte[]? GetCode(in ValueHash256 codeHash) => _codes[codeHash];
+    public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => _codes[codeHash];
 
     public bool IsContract(Address address) => TryGetAccount(address, out AccountStruct account) && account.IsContract;
 
@@ -33,10 +33,9 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
 
     public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell) =>
-        _storage.TryGetValue(storageCell, out byte[]? value) ? value : default;
+    public void Get(in StorageCell storageCell, out UInt256 value) => _storage.TryGetValue(storageCell, out value);
 
-    public void Set(in StorageCell storageCell, byte[] value) => _storage[storageCell] = value;
+    public void Set(in StorageCell storageCell, in UInt256 value) => _storage[storageCell] = value;
 
     public void CreateAccount(Address address, UInt256 wei, ulong nonce = default) => _accounts[address] = new AccountStruct(nonce, wei);
 

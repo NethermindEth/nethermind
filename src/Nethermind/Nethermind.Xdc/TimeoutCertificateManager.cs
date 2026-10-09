@@ -289,7 +289,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return isKnownSigner;
     }
 
-    internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
+    internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC, isMine: true);
 
     private void SendTimeout(ulong currentRound)
     {

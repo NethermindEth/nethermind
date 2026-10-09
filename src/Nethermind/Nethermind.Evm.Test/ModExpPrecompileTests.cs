@@ -76,4 +76,81 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
             { TestName = "baseLen=uint32.MaxValue-68 (0xffffffbb): huge baseLength wraps exponent offset to header, must return zero (pre-EIP-7823)" };
         }
     }
+
+    [TestCaseSource(nameof(ReducibleBases))]
+    public void TestReducibleBase(string input, string expectedOutput, bool status)
+    {
+        RunTest(input, expectedOutput, status, Prague.Instance);
+        RunTest(input, expectedOutput, status, Osaka.Instance);
+    }
+
+    /// <summary>Bases that reduce to 0 or 1 modulo the modulus, which skip the exponentiation ladder.</summary>
+    public static IEnumerable<TestCaseData<string, string, bool>> ReducibleBases
+    {
+        get
+        {
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001070507",
+                "00",
+                true
+            )
+            { TestName = "base equal to the modulus reduces to 0" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001080507",
+                "01",
+                true
+            )
+            { TestName = "base one above the modulus reduces to 1" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001080007",
+                "01",
+                true
+            )
+            { TestName = "a zero exponent is 1 even when the base reduces to 1" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001070007",
+                "01",
+                true
+            )
+            { TestName = "0^0 is 1 when the base reduces to 0" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001080501",
+                "00",
+                true
+            )
+            { TestName = "a modulus of 1 always yields 0" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000001",
+                "00",
+                true
+            )
+            { TestName = "0^0 modulo 1 is 0" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000020fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe",
+                "0000000000000000000000000000000000000000000000000000000000000001",
+                true
+            )
+            { TestName = "zkevm worst case: 2^256-1 modulo 2^256-2 reduces to 1" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000000800000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000008ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "0000000000000000",
+                true
+            )
+            { TestName = "exp_heavy: base equal to the modulus reduces to 0" };
+
+            yield return new(
+                "000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000180000000000000000000000000000000000000000000000000000000000000020ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "0000000000000000000000000000000000000000000000000000000000000000",
+                true
+            )
+            { TestName = "exp_heavy: a 32-byte base equal to the modulus reduces to 0" };
+        }
+    }
 }

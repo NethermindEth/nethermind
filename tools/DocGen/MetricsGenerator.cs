@@ -19,9 +19,8 @@ internal static partial class MetricsGenerator
         string startMark = "<!--[start autogen]-->";
         string endMark = "<!--[end autogen]-->";
         string[] excluded = Array.Empty<string>();
-        IOrderedEnumerable<Type> types = Directory
-            .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
-            .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
+        IOrderedEnumerable<Type> types = NethermindAssemblies
+            .GetExportedTypes()
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => GetNamespace(t.FullName));

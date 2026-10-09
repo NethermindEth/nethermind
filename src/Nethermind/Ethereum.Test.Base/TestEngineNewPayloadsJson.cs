@@ -17,6 +17,12 @@ namespace Ethereum.Test.Base
         public ExecutionWitnessJson? ExecutionWitness { get; set; }
         public bool? ExecutionWitnessMutated { get; set; }
 
+        /// <summary>
+        /// The JSON-RPC error code the fixture expects <c>engine_newPayloadV*</c> to answer with
+        /// instead of a payload status, or null when the payload is expected to be validated.
+        /// </summary>
+        public string? ErrorCode { get; set; }
+
         public class ParamsExecutionPayload
         {
             public string ParentHash { get; set; }

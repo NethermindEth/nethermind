@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -28,7 +29,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed class WorldState : IWorldState
+    public sealed partial class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -40,6 +41,7 @@ namespace Nethermind.State
         private bool _isInScope;
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
+        private readonly Func<IWorldStateScopeProvider.IBlockChangeSnapshot> _takeBlockChangeSnapshot;
 
         public Hash256 StateRoot
         {
@@ -52,7 +54,7 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager)
+            ILogManager logManager)
         {
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
@@ -60,9 +62,13 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
             _logger = logManager.GetClassLogger<WorldState>();
             _onAccountUpdated = (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+            _takeBlockChangeSnapshot = () => new BlockChangeSnapshot(
+                _stateProvider.CopyAccountChanges(),
+                _persistentStorageProvider.DetachBlockChanges());
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MemberNotNull(nameof(_currentScope))]
         private void GuardInScope()
         {
             if (_currentScope is null) ThrowOutOfScope();
@@ -102,27 +108,52 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public void GetOriginal(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public void Get(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.Get(storageCell);
+            _persistentStorageProvider.Get(in storageCell, out value);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+
+        public void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+            => Set(in storageCell, in newValue);
+
+        /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal void GetPureReadStorage(in StorageCell cell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _transientStorageProvider.Get(storageCell);
+            _persistentStorageProvider.GetPureRead(in cell, out value);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+
+        public bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.TryGetBeforeClear(in storageCell, out value);
+        }
+
+        /// <summary>Reads a parent-state account without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal Account? GetPureReadAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetPureRead(address);
+        }
+        public void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            _transientStorageProvider.Get(in storageCell, out value);
+        }
+        public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
@@ -134,6 +165,14 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+        /// <summary>Refuses an overlay before changing accounts if locally cached storage would hide its values.</summary>
+        public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
+        {
+            if (_persistentStorageProvider.HasCachedStorage(overlay)) return false;
+            _stateProvider.ApplyAccountOverlay(overlay);
+            return true;
+        }
+
         public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)
@@ -221,9 +260,12 @@ namespace Nethermind.State
 
         public void CommitTree(ulong blockNumber)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
+            // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
+            _currentScope.WriteBackCommittedState(_takeBlockChangeSnapshot);
+            _stateProvider.ClearRemovedAccounts();
             _persistentStorageProvider.ClearStorageMap();
         }
 
@@ -235,20 +277,41 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
+            return TryBeginScope(baseBlock, atTarget: false, out scopeCloser);
+        }
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope for target {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            return TryBeginScope(targetBlock, atTarget: true, out scopeCloser);
+        }
+
+        private bool TryBeginScope(BlockHeader? block, bool atTarget, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
-
             try
             {
-                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
-                _stateProvider.SetScope(_currentScope);
-                _persistentStorageProvider.SetBackendScope(_currentScope);
+                bool acquired = atTarget
+                    ? ScopeProvider.TryBeginScopeAtTarget(block!, _localMetrics, out IWorldStateScopeProvider.IScope? scope)
+                    : ScopeProvider.TryBeginScope(block, _localMetrics, out scope);
+                if (!acquired)
+                {
+                    EndScope();
+                    scopeCloser = null;
+                    return false;
+                }
+
+                _currentScope = scope!;
+                _stateProvider.SetScope(scope);
+                _persistentStorageProvider.SetBackendScope(scope);
             }
             catch
             {
@@ -256,11 +319,22 @@ namespace Nethermind.State
                 throw;
             }
 
-            return new Reactive.AnonymousDisposable(() =>
+            scopeCloser = new ScopeCloser(this, block, atTarget);
+            return true;
+        }
+
+        /// <summary>Ends the scope on the first dispose. A class rather than a lambda, so a scope allocates one object.</summary>
+        private sealed class ScopeCloser(WorldState worldState, BlockHeader? block, bool atTarget) : IDisposable
+        {
+            private WorldState? _worldState = worldState;
+
+            public void Dispose()
             {
-                EndScope();
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
-            });
+                WorldState? owner = Interlocked.Exchange(ref _worldState, null);
+                if (owner is null) return;
+                owner.EndScope();
+                if (owner._logger.IsTrace) owner._logger.Trace($"WorldState scope for {(atTarget ? "target" : "baseblock")} {block?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
+            }
         }
 
         private void EndScope()
@@ -269,10 +343,13 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
+                    // Reset first: it unwinds code staged since the last commit, and this scope's only
+                    // remaining chance to report that is the flush below.
+                    Reset();
                     // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
                     _localMetrics.Flush();
-                    Reset();
                     _stateProvider.SetScope(null);
+                    _persistentStorageProvider.SetBackendScope(null);
                     _currentScope.Dispose();
                 }
             }
@@ -286,10 +363,28 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            return ScopeProvider.HasStateForTargetBlock(targetBlock);
+        }
+
         public Task HintBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            return _currentScope.HintBal(bal);
+        }
+
+        /// <inheritdoc/>
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            GuardInScope();
+            // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
+            // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
+            _stateProvider.ForgetBlockChanges(bal, _currentScope);
+            _currentScope.ApplyBal(bal);
+            Reset(resetBlockChanges: false);
+            _persistentStorageProvider.ForgetBlockChanges(bal);
         }
 
         public ref readonly UInt256 GetBalance(Address address)
@@ -305,16 +400,10 @@ namespace Nethermind.State
             return _persistentStorageProvider.GetStorageRoot(address);
         }
 
-        public byte[] GetCode(Address address)
+        public ReadOnlyMemory<byte> GetCode(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
-        }
-
-        public byte[] GetCode(in ValueHash256 codeHash)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCode(in codeHash);
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)
@@ -334,7 +423,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || account.Nonce != 0);
+            return account is not null && (account.IsContract || account.Nonce != 0);
         }
 
         public bool IsDeadAccount(Address address)
@@ -347,7 +436,7 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
@@ -411,6 +500,38 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
+        }
+
+        /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>
+        private sealed class BlockChangeSnapshot(
+            ArrayPoolList<KeyValuePair<AddressAsKey, Account?>> accounts,
+            IWorldStateScopeProvider.IBlockChangeSnapshot storage) : IWorldStateScopeProvider.IBlockChangeSnapshot
+        {
+            // Accounts first is safe only because a storage clear cannot drop an account write; the ordering that
+            // matters, every storage clear before every slot write, is the storage snapshot's own.
+            public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+            {
+                foreach (KeyValuePair<AddressAsKey, Account?> account in accounts)
+                {
+                    writeBatch.Set(account.Key.Value, account.Value);
+                }
+
+                storage.WriteTo(writeBatch);
+            }
+
+            public void Dispose()
+            {
+                // The storage half owns the pooled contract states and the world state's spare collections, so it is
+                // released even if returning the account copy fails.
+                try
+                {
+                    accounts.Dispose();
+                }
+                finally
+                {
+                    storage.Dispose();
+                }
+            }
         }
     }
 }

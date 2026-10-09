@@ -25,9 +25,8 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class LightTxDecoderTests
 {
-    [TestCase(TxType.Blob)]
-    [TestCase(TxType.FrameTx)]
-    public void Round_trip_preserves_the_type_and_proof_version(TxType type)
+    [Test]
+    public void Round_trip_preserves_the_type_and_proof_version([Values(TxType.Blob, TxType.FrameTx)] TxType type)
     {
         Transaction tx = BlobCarryingTx(type);
 
@@ -63,9 +62,8 @@ public class LightTxDecoderTests
     }
 
     // ProofVersion.V0 encodes as the RLP empty string, which a raw byte read returns as 128.
-    [TestCase(ProofVersion.V0)]
-    [TestCase(ProofVersion.V1)]
-    public void Round_trip_preserves_the_proof_version(ProofVersion version)
+    [Test]
+    public void Round_trip_preserves_the_proof_version([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
         Transaction tx = BlobCarryingTx(TxType.Blob);
         tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
@@ -123,7 +121,7 @@ public class LightTxDecoderTests
     public void Unreadable_record_is_skipped_and_leaves_the_rest_of_the_pool_loadable(TxType type, ulong? deadline)
     {
         Transaction readable = BlobCarryingTx(TxType.Blob);
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         lightBlobTxs.Set(UnreadableRecordKey, EncodeWithBlobFieldsLast(BlobCarryingTx(type, deadline)));
         lightBlobTxs.Set(ReadableRecordKey, LightTxDecoder.Encode(readable));
@@ -140,7 +138,7 @@ public class LightTxDecoderTests
     public void Unreadable_records_are_reported_as_one_warning()
     {
         const int unreadableCount = 5;
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         for (int i = 0; i < unreadableCount; i++)
         {
@@ -187,7 +185,7 @@ public class LightTxDecoderTests
             $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
 
         Transaction readable = BlobCarryingTx(TxType.Blob);
-        MemColumnsDb<BlobTxsColumns> database = new();
+        using MemColumnsDb<BlobTxsColumns> database = new();
         IDb lightBlobTxs = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
         for (int i = 0; i < corrupt.Length; i++)
         {
@@ -246,7 +244,262 @@ public class LightTxDecoderTests
         return bytes;
     }
 
-    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null)
+    // The nonce keys and the payer share one trailing group, because two adjacent optional sequences could not
+    // be told apart: RLP does not distinguish a 20-byte integer from an address, so a two-key list is
+    // byte-identical to a payer pair. All four combinations have to survive the round trip.
+    [TestCase(false, false, TestName = "neither keys nor payer")]
+    [TestCase(true, false, TestName = "keys alone")]
+    [TestCase(false, true, TestName = "payer alone")]
+    [TestCase(true, true, TestName = "keys and payer together")]
+    public void Round_trip_carries_the_nonce_keys_and_the_payer_in_one_group(bool withKeys, bool withPayer)
+    {
+        // Two keys, each 20 bytes wide: the shape that is byte-identical to an address plus a scalar.
+        UInt256[] keys = withKeys ? [UInt256.One << 152, (UInt256.One << 152) + 1] : null;
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 12_345;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)12_345 : null));
+        }
+    }
+
+    // Records written before the grouping end in a flat nonce_keys list. Its first element is a scalar where the
+    // grouped form always opens with the keys list, which is what lets one decoder read both.
+    [Test]
+    public void A_record_written_before_the_grouping_still_decodes()
+    {
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        // The legacy trailing field: a flat list of the keys 1 and 2, each a single RLP byte.
+        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC2, 0x01, 0x02];
+
+        LightTransaction decoded = LightTxDecoder.Decode(legacy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.EqualTo(new UInt256[] { 1, 2 }));
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // A payer that never reached the exposure gate holds no reservation, and the slot cannot tell that from a
+    // zero one, so the placeholder reads back as absent. The payer itself must still survive.
+    [Test]
+    public void Round_trip_of_a_payer_without_a_reservation_keeps_the_payer()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx);
+        tx.PayerAddress = TestItem.AddressB;
+        tx.PayerExposure = null;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PayerAddress, Is.EqualTo(TestItem.AddressB));
+            Assert.That(decoded.PayerExposure, Is.Null);
+        }
+    }
+
+    // The shape an earlier build wrote for a sponsored transaction admitted without simulation: the paymaster
+    // is what makes the group exist, and the exposure slot holds the placeholder. Read as a zero price it
+    // would charge the sender nothing for the record.
+    [Test]
+    public void A_record_whose_exposure_slot_holds_the_placeholder_decodes_as_unpriced()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: placeholder, paymaster: AddressC]
+        byte[] group = [0xD8, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.PayerExposure, Is.Null);
+        }
+    }
+
+    // A payer-less frame tx reserves nothing but is still summed at the price admission recorded, and a
+    // restored record is frameless and cannot be re-priced, so the exposure has to open the group alone.
+    [Test]
+    public void Round_trip_of_a_payerless_record_keeps_the_price_admission_recorded()
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx);
+        tx.PayerExposure = 12_345;
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.PayerAddress, Is.Null, "the record must name no payer, or this pins the payer slot instead");
+            Assert.That(decoded.PayerAddress, Is.Null);
+            Assert.That(decoded.PayerExposure, Is.EqualTo((UInt256)12_345));
+        }
+    }
+
+    // A legacy record whose flat list is empty leaves the group zero-length, and IsSequenceNext is an
+    // unguarded index: deciding the branch on it first read past the end of the buffer.
+    [Test]
+    public void An_empty_legacy_key_list_decodes_rather_than_reading_past_the_buffer()
+    {
+        Transaction bare = BlobCarryingTx(TxType.FrameTx);
+        byte[] legacy = [.. LightTxDecoder.Encode(bare), 0xC0];
+
+        LightTransaction decoded = LightTxDecoder.Decode(legacy);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.NonceKeys, Is.Null);
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // The pool holds a frameless record, so the sponsor the cap counts is recoverable only from the record
+    // itself. A paymaster with no resolved payer leaves slot 1 empty, which is the shape that has to survive —
+    // including behind a populated keys list, which a keyed transaction admitted without simulation produces.
+    [TestCase(false, false, TestName = "paymaster alone")]
+    [TestCase(true, false, TestName = "paymaster behind a payer")]
+    [TestCase(false, true, TestName = "paymaster behind keys, no payer")]
+    [TestCase(true, true, TestName = "paymaster behind keys and a payer")]
+    public void Round_trip_carries_the_paymaster(bool withPayer, bool withKeys)
+    {
+        // Two keys, each 20 bytes wide: the shape byte-identical to an address plus a scalar.
+        UInt256[] keys = withKeys ? [UInt256.One << 152, (UInt256.One << 152) + 1] : null;
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys, paymaster: TestItem.AddressC);
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 12_345;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(FrameTxValidation.GetPrefixPaymaster(decoded), Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+            Assert.That(decoded.PayerExposure, Is.EqualTo(withPayer ? (UInt256)12_345 : null));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // Downgrade readability is why the trailing fields are one nested group: a build predating a later slot
+    // must still read the record, losing that field rather than the whole record.
+    [Test]
+    public void A_group_carrying_a_slot_this_build_does_not_know_still_decodes()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, one slot this build has no name for]
+        byte[] group = [0xD9, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x01];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
+            Assert.That(decoded.PayerAddress, Is.Null);
+        }
+    }
+
+    // Slot 3 tolerates the placeholder for the reason slot 1 does: behind a later slot an absent paymaster is
+    // written out rather than omitted, so the strict read would throw on a record a newer build wrote.
+    [Test]
+    public void A_group_whose_paymaster_slot_is_empty_decodes_as_unsponsored()
+    {
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+        // [keys: [], payer: absent, exposure: 0, paymaster: absent, one slot this build has no name for]
+        byte[] group = [0xC5, 0xC0, 0x80, 0x80, 0x80, 0x01];
+
+        LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
+
+        Assert.That(decoded.PersistedPaymaster, Is.Null);
+    }
+
+    // A paymaster on its own opens the group, so it costs the header, the empty keys list, the empty payer
+    // slot, a zero reservation and the address. Measured off two frameless records that differ in nothing
+    // else: carrying the sponsor in a pay frame instead would also move the two persisted size fields.
+    [Test]
+    public void A_paymaster_alone_grows_the_record_by_the_group_and_the_address()
+    {
+        static LightTransaction Record(Address paymaster) => new(
+            timestamp: 42, TestItem.AddressA, nonce: 7, TestItem.KeccakA, value: 5, gasLimit: 1_000_000,
+            gasPrice: 1, maxFeePerGas: 2, maxFeePerBlobGas: 3, [new byte[32]], poolIndex: 11, size: 100,
+            ProofVersion.V1, BlobCellMask.Full, sparseBlobNetworkSize: 100, TxType.FrameTx, paymaster: paymaster);
+
+        int grownBy = LightTxDecoder.Encode(Record(TestItem.AddressC)).Length - LightTxDecoder.Encode(Record(null)).Length;
+
+        Assert.That(grownBy, Is.EqualTo(1 + 1 + 1 + 1 + 21));
+    }
+
+    // The group is written only for a slot that has a value, so a keys-only record keeps the flat list every
+    // earlier build writes — and stays readable by one, which a nested form would not be.
+    [Test]
+    public void A_keys_only_record_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The flat list alone: 0xc2 over two single-byte keys, with no outer group header.
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(LightTxDecoder.Decode(encoded).NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // A zero price is what the decoder hands back as absent, so it cannot be a record's only claim on the group:
+    // one written for it costs the header and three slots for nothing, and forfeits the flat list.
+    [Test]
+    public void A_zero_price_alone_keeps_the_flat_list()
+    {
+        UInt256[] keys = [1, 2];
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, nonceKeys: keys);
+        // What admission records for a zero-cost transaction no payer resolved for.
+        tx.PayerExposure = UInt256.Zero;
+        byte[] bare = LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx));
+
+        byte[] encoded = LightTxDecoder.Encode(tx);
+        LightTransaction decoded = LightTxDecoder.Decode(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded[bare.Length..], Is.EqualTo(new byte[] { 0xC2, 0x01, 0x02 }));
+            Assert.That(decoded.NonceKeys, Is.EqualTo(keys));
+            Assert.That(decoded.PayerExposure, Is.Null);
+            Assert.That(LightTxDecoder.Encode(decoded), Is.EqualTo(encoded), "a group the decoder discards leaves the round trip without a fixed point");
+        }
+    }
+
+    // A record needing neither field must keep the exact layout every already-persisted one has, or the whole
+    // pool becomes unreadable at once; a payer costs exactly the group and nothing more.
+    [Test]
+    public void A_payer_grows_the_record_by_the_group_alone()
+    {
+        Transaction bare = BlobCarryingTx(TxType.Blob);
+        Transaction withPayer = BlobCarryingTx(TxType.Blob);
+        withPayer.PayerAddress = TestItem.AddressB;
+        withPayer.PayerExposure = 1;
+
+        int grownBy = LightTxDecoder.Encode(withPayer).Length - LightTxDecoder.Encode(bare).Length;
+
+        // The group header, the empty keys list holding slot 0, the 21-byte address and a 1-byte reservation.
+        Assert.That(grownBy, Is.EqualTo(1 + 1 + 21 + 1));
+    }
+
+    private static Transaction BlobCarryingTx(TxType type, ulong? deadline = null, UInt256[] nonceKeys = null, Address paymaster = null)
     {
         byte[][] versionedHashes = [new byte[32]];
         Transaction tx = new()
@@ -269,7 +522,9 @@ public class LightTxDecoderTests
 
         if (type == TxType.FrameTx)
         {
-            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
+            tx.Frames = paymaster is null
+                ? [FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas)]
+                : [FrameTxTestFrames.OnlyVerify(FrameTxTestFrames.PrefixFrameGas), FrameTxTestFrames.Pay(paymaster, FrameTxTestFrames.PrefixFrameGas)];
             tx.FrameSignatures = [];
         }
 
@@ -278,7 +533,7 @@ public class LightTxDecoderTests
             // An expiry verifier frame carries a deadline only where the spec permits it: at the head.
             byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
             BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData), .. tx.Frames!];
+            tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData), .. tx.Frames!];
         }
 
         tx.Hash = tx.CalculateHash();
@@ -286,7 +541,7 @@ public class LightTxDecoderTests
     }
 
     [Test]
-    public void should_roundtrip_sparse_blob_tx_cell_mask_and_consensus_size()
+    public void should_roundtrip_sparse_blob_tx_metadata()
     {
         Transaction tx = BuildBlobTx();
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
@@ -299,10 +554,14 @@ public class LightTxDecoderTests
 
         LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
 
-        Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
-        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
-        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
+            Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
+            Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        }
     }
 
     [Test]
@@ -340,12 +599,12 @@ public class LightTxDecoderTests
         {
             Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
             Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
-            Assert.That(second.GetConsensusEncodingSize(), Is.EqualTo(first.GetConsensusEncodingSize()));
+            Assert.That(second.GetElidedNetworkEncodingSize(), Is.EqualTo(first.GetElidedNetworkEncodingSize()));
         }
     }
 
     [Test]
-    public void should_not_treat_legacy_sparse_network_size_as_consensus_encoding_size()
+    public void should_derive_elided_size_only_from_versioned_consensus_size([Values] bool hasConsensusSizeMarker)
     {
         Transaction tx = BuildBlobTx();
         BlobCellMask cellMask = BlobCellMask.FromIndices([3, 42, 100]);
@@ -354,28 +613,98 @@ public class LightTxDecoderTests
             tx,
             includeProofVersion: true,
             cellMask,
-            sparseBlobNetworkSize: 12345));
+            persistedSize: hasConsensusSizeMarker ? tx.GetLength(shouldCountBlobs: false) : 12345,
+            sizeFormatVersion: hasConsensusSizeMarker ? (byte)1 : null));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
-            Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
+            Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(hasConsensusSizeMarker ? tx.GetLength(shouldCountBlobs: false) : 0));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(hasConsensusSizeMarker ? tx.GetElidedNetworkEncodingSize() : 0));
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void should_decode_legacy_entry_without_mask_as_full(bool includeProofVersion)
+    [Test]
+    public void elided_network_encoding_size_matches_the_blob_elided_wire_length(
+        [Values(1, 6)] int blobCount,
+        [Values] ProofVersion proofVersion)
+    {
+        Transaction tx = BuildBlobTx(proofVersion, blobCount);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        Transaction lightTx = new LightTransaction(tx);
+        Assert.That(wrapper.Version, Is.EqualTo(proofVersion));
+
+        int consensusSize = tx.GetLength(shouldCountBlobs: false);
+        int wrapperOverhead =
+            (proofVersion is ProofVersion.V1 ? 1 : 0)               // wrapper_version
+            + Rlp.OfEmptyList.Length                                // elided blobs
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
+            Assert.That(
+                lightTx.GetElidedNetworkEncodingSize(),
+                Is.EqualTo(1 + Rlp.LengthOfSequence(consensusSize - 1 + wrapperOverhead)));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.LessThan(tx.GetLength()));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize() - consensusSize, Is.GreaterThan(8));
+        }
+    }
+
+    [Test]
+    public void overflowing_derived_elided_size_is_rejected([Values] ProofVersion proofVersion) =>
+        Assert.That(
+            TransactionExtensions.CalculateElidedNetworkEncodingSize(int.MaxValue, proofVersion, blobCount: 128),
+            Is.Zero);
+
+    [Test]
+    public void should_read_and_preserve_elided_network_encoding_size_records_written_by_earlier_branch_versions()
+    {
+        Transaction tx = BuildBlobTx();
+        int elidedNetworkEncodingSize = tx.GetElidedNetworkEncodingSize();
+        LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
+            tx,
+            includeProofVersion: true,
+            BlobCellMask.Full,
+            elidedNetworkEncodingSize,
+            sizeFormatVersion: 2));
+        LightTransaction reencoded = LightTxDecoder.Decode(LightTxDecoder.Encode(decoded));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(elidedNetworkEncodingSize));
+            Assert.That(reencoded.GetElidedNetworkEncodingSize(), Is.EqualTo(elidedNetworkEncodingSize));
+        }
+    }
+
+    [Test]
+    public void should_decode_legacy_entry_without_mask_as_full([Values] bool includeProofVersion)
     {
         Transaction tx = BuildBlobTx();
 
         LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion));
 
         // Entries persisted before the mask field was added always hold full blobs.
-        Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
-        Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
-        Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(0));
-        Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
+            Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.Zero);
+            Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
+        }
+    }
+
+    [Test]
+    public void should_refresh_unknown_elided_network_encoding_size_with_blob_pool_metadata()
+    {
+        Transaction tx = BuildBlobTx();
+        LightTransaction lightTx = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion: true));
+
+        lightTx.UpdateBlobPoolMetadata(tx);
+
+        Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
     }
 
     [Test]
@@ -396,11 +725,12 @@ public class LightTxDecoderTests
             Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(fullTx.GetElidedNetworkEncodingSize()));
         }
     }
 
-    private static Transaction BuildBlobTx() => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+    private static Transaction BuildBlobTx(ProofVersion proofVersion = ProofVersion.V1, int blobCount = 1) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(blobCount, spec: proofVersion is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
         .WithNonce(0UL)
@@ -411,7 +741,8 @@ public class LightTxDecoderTests
         Transaction tx,
         bool includeProofVersion,
         BlobCellMask? cellMask = null,
-        int? sparseBlobNetworkSize = null)
+        int? persistedSize = null,
+        byte? sizeFormatVersion = null)
     {
         int length = Rlp.LengthOf(tx.Timestamp)
             + Rlp.LengthOf(tx.SenderAddress)
@@ -427,7 +758,8 @@ public class LightTxDecoderTests
             + Rlp.LengthOf(tx.GetLength())
             + (includeProofVersion ? Rlp.LengthOf(sizeof(byte)) : 0)
             + (cellMask is null ? 0 : Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0))
-            + (sparseBlobNetworkSize is null ? 0 : Rlp.LengthOf(sparseBlobNetworkSize.Value));
+            + (persistedSize is null ? 0 : Rlp.LengthOf(persistedSize.Value))
+            + (sizeFormatVersion is null ? 0 : Rlp.LengthOf(sizeFormatVersion.Value));
 
         byte[] bytes = new byte[length];
         RlpWriter writer = new(bytes);
@@ -455,9 +787,14 @@ public class LightTxDecoderTests
             writer.Encode(maskBytes);
         }
 
-        if (sparseBlobNetworkSize is { } networkSize)
+        if (persistedSize is { } networkSize)
         {
             writer.Encode(networkSize);
+        }
+
+        if (sizeFormatVersion is { } formatVersion)
+        {
+            writer.Encode(formatVersion);
         }
 
         return bytes;

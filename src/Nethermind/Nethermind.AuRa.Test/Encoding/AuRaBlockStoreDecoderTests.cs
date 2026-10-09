@@ -35,7 +35,7 @@ public class AuRaBlockStoreDecoderTests
     }
 
     [Test]
-    public void Base_header_decoder_misreads_aura_signature_as_nonce()
+    public void Base_header_decoder_rejects_aura_header()
     {
         Block block = AuRaGenesisShapedBlock();
 

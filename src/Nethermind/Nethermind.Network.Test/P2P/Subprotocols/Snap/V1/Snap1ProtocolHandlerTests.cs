@@ -167,6 +167,28 @@ public class Snap1ProtocolHandlerTests
     public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
 
     [Test]
+    public void GetStorageRange_rejects_missing_root_hash()
+    {
+        Context ctx = new();
+
+        Assert.That(
+            async () => await ctx.Snap1ProtocolHandler.GetStorageRange(new StorageRange(), CancellationToken.None),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void GetPathGroups_rejects_missing_account_path()
+    {
+        using AccountsToRefreshRequest request = new()
+        {
+            RootHash = Keccak.Zero,
+            Paths = new ArrayPoolList<AccountWithStorageStartingHash>(1) { new() }
+        };
+
+        Assert.That(() => Snap1ProtocolHandler.GetPathGroups(request), Throws.ArgumentException);
+    }
+
+    [Test]
     public void GetTrieNodes_forwards_requested_byte_budget_to_snap_server()
     {
         ISnapServer snapServer = Substitute.For<ISnapServer>();
@@ -218,6 +240,28 @@ public class Snap1ProtocolHandlerTests
         }
 
         snapServer.Received(1).GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), request.RootHash, request.Bytes, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public void Should_reject_unrequested_response_before_decoding(
+        [Values(Snap1MessageCode.AccountRange, Snap1MessageCode.StorageRanges, Snap1MessageCode.ByteCodes, Snap1MessageCode.TrieNodes)] int messageCode)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Snap1ProtocolHandler handler = new(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            new MessageSerializationService(
+                SerializerInfo.Create(new AccountRangeMessageSerializer()),
+                SerializerInfo.Create(new StorageRangesMessageSerializer()),
+                SerializerInfo.Create(new ByteCodesMessageSerializer()),
+                SerializerInfo.Create(new TrieNodesMessageSerializer())),
+            RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance,
+            new SyncConfig(),
+            Substitute.For<ISnapServer>());
+
+        UndecodableResponse.AssertRejectedAsUnrequested(handler.HandleMessage, messageCode);
     }
 
     [Test]

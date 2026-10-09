@@ -1,0 +1,188 @@
+{
+  "test_name": "Native callTracer at head",
+  "description": "Native callTracer subset of json-bench bee3dd3e28b91ebbab217e3f9a5e2a70d32b21e6 debug trace head workload.",
+  "clients": [
+    "nethermind"
+  ],
+  "duration": "120s",
+  "rps": 100,
+  "vus": 64,
+  "calls": [
+    {
+      "name": "native_call_1",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "from": "0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700",
+          "to": "0x252568abdeb9de59fd8963dfcd87be2db65f1ce1",
+          "gas": "0x493E0",
+          "data": "0x60606040526040516102b43803806102b48339016040526060805160600190602001505b5b33600060006101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908302179055505b806001600050908051906020019082805482825590600052602060002090601f01602090048101928215609e579182015b82811115609d5782518260005055916020019190600101906081565b5b50905060c5919060a9565b8082111560c1576000818150600090555060010160a9565b5090565b50505b506101dc806100d86000396000f30060606040526000357c01000000000000000000000000000000000000000000000000000000009004806341c0e1b514610044578063cfae32171461005157610042565b005b61004f6004506100ca565b005b61005c60045061015e565b60405180806020018281038252838181518152602001915080519060200190808383829060006004602084601f0104600302600f01f150905090810190601f1680156100bc5780820380516001836020036101000a031916815260200191505b509250505060405180910390f35b600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16141561015b57600060009054906101000a900473ffffffffffffffffffffffffffffffffffffffff1673ffffffffffffffffffffffffffffffffffffffff16ff5b5b565b60206040519081016040528060008152602001506001600050805480601f016020809104026020016040519081016040528092919081815260200182805480156101cd57820191906000526020600020905b8154815290600101906020018083116101b057829003601f168201915b505050505090506101d9565b90560000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000c48656c6c6f20576f726c64210000000000000000000000000000000000000000"
+        },
+        "latest",
+        {
+          "tracer": "callTracer"
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_2",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "from": "0xa9Ac1233699BDae25abeBae4f9Fb54DbB1b44700",
+          "to": "0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009",
+          "gas": "0x5208",
+          "gasPrice": "0x2CB417800",
+          "value": "0x229322"
+        },
+        "latest",
+        {
+          "tracer": "callTracer",
+          "tracerConfig": {
+            "onlyTopCall": false
+          }
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_3",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "from": "0xF21079d225F4f3e7FDd3E258042a55cED651b2a1",
+          "to": "0xa9D53f7B4836a595db7E11A7f92F9EF3810E04B6",
+          "data": "0x46c474a60000000000000000000000000000000000000000000000000000000000bc614e00000000000000000000000000000000000000000000000000000000000f455a000000000000000000000000125f4b6650e205a987ba92972a87c833dcf5a84700000000000000000000000000000000000000000000000000000000000f455a"
+        },
+        "latest",
+        {
+          "tracer": "callTracer",
+          "tracerConfig": {
+            "onlyTopCall": true
+          }
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_4",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "from": "0xF21079d225F4f3e7FDd3E258042a55cED651b2a1",
+          "to": "0xa9D53f7B4836a595db7E11A7f92F9EF3810E04B6",
+          "data": "0x46c474a60000000000000000000000000000000000000000000000000000000000bc614e00000000000000000000000000000000000000000000000000000000000f455a000000000000000000000000125f4b6650e205a987ba92972a87c833dcf5a84700000000000000000000000000000000000000000000000000000000000f455a"
+        },
+        "latest",
+        {
+          "enableMemory": false,
+          "tracer": "callTracer",
+          "stateOverrides": {
+            "0xdAC17F958D2ee523a2206206994597C13D831ec7": {
+              "stateDiff": {
+                "0xe8668fbdcb49eea01f71c55f2c539b0953b137a92283519b2e33d48a03e1e3e7": "0x000000000000000000000000000000000000000000000000000000000098a0a8",
+                "0xa2d1bb9934928c34b005700965f54467eef400cea7fd9fbfc0d1d1eb2184eee8": "0x000000000000000000000000000000000000000000000000000000000098a0a8"
+              }
+            },
+            "0xa9D53f7B4836a595db7E11A7f92F9EF3810E04B6": {
+              "stateDiff": {
+                "0xe8668fbdcb49eea01f71c55f2c539b0953b137a92283519b2e33d48a03e1e3e7": "0x000000000000000000000000000000000000000000000000000000000098a0a8",
+                "0xa2d1bb9934928c34b005700965f54467eef400cea7fd9fbfc0d1d1eb2184eee8": "0x000000000000000000000000000000000000000000000000000000000098a0a8"
+              }
+            },
+            "0xF21079d225F4f3e7FDd3E258042a55cED651b2a1": {
+              "nonce": "0x1",
+              "balance": "0x2386f26fc10000"
+            }
+          }
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_5",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "data": "0xf242432a000000000000000000000000d3181ddbb2cea7b4954b8d4a05dbf85d8fc36aef000000000000000000000000e44249550d8a03737f185e054a686e55577f38400000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000",
+          "from": "0x7b98421B9314E3Ffc0B7a593DBa2FBBd3b789c7D",
+          "to": "0xe3782B8688ad2b0D5ba42842d400F7AdF310F88d",
+          "gas": "0xDDD002",
+          "gasPrice": "0x2098A67800",
+          "value": "0x0"
+        },
+        "latest",
+        {
+          "tracer": "callTracer"
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_6",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "data": "0xf242432a000000000000000000000000d3181ddbb2cea7b4954b8d4a05dbf85d8fc36aef000000000000000000000000e44249550d8a03737f185e054a686e55577f38400000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000000",
+          "from": "0x7b98421B9314E3Ffc0B7a593DBa2FBBd3b789c7D",
+          "to": "0xe3782B8688ad2b0D5ba42842d400F7AdF310F88d",
+          "gas": "0xDDD002",
+          "gasPrice": "0x2098A67800",
+          "value": "0x0"
+        },
+        "latest",
+        {
+          "tracer": "callTracer",
+          "tracerConfig": {
+            "onlyTopCall": true
+          }
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    },
+    {
+      "name": "native_call_7",
+      "method": "debug_traceCall",
+      "params": [
+        {
+          "data": "0xa1ba444dffffffffffffffffffffffffffffffd5ffffffffffffffffffffffffffffffb80000000000000000000000000000000000000000000003ca5c66d9bc443000000000000000000000000000000000000000000000000000000000016342329000",
+          "from": "0x2D9eEfF21Cf846b4471CA7DE7A0f082B24773579",
+          "gas": "0x2BF20",
+          "gasPrice": "0xF4240",
+          "to": "0xB3BCa6F5052c7e24726b44da7403b56A8A1b98f8",
+          "value": "0x0"
+        },
+        "latest",
+        {
+          "tracer": "callTracer",
+          "enableMemory": false,
+          "disableStack": false,
+          "disableStorage": false
+        }
+      ],
+      "weight": 1,
+      "thresholds": [
+        "p(99)<600000"
+      ]
+    }
+  ]
+}

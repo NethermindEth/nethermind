@@ -13,6 +13,8 @@ public static class TxErrorMessages
         "gas below floor data cost";
     public const string InsufficientFundsForTransfer =
         "insufficient funds for transfer";
+    public const string TipAboveFeeCap =
+        "max priority fee per gas higher than max fee per gas";
     public const string InsufficientFundsForGas =
         "insufficient funds for gas * price + value";
     public const string TxMissingTo =

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -42,17 +43,21 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
     private void CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
     {
+        // BlobTxStorage tolerates missing payloads during reads; this unsynchronized cleaner must only delete records.
         try
         {
             using (IWriteBatch writeBatch = _processedTxsDb.StartWriteBatch())
             {
                 foreach (byte[] key in _processedTxsDb.GetAllKeys())
                 {
-                    ulong blockNumber = key.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
+                    // Individual payload keys contain an eight-byte block number followed by a four-byte index.
+                    ulong blockNumber = key.Length == sizeof(ulong) + sizeof(int)
+                        ? BinaryPrimitives.ReadUInt64BigEndian(key)
+                        : key.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
-                        writeBatch.Delete(blockNumber);
+                        writeBatch.Remove(key);
                     }
                 }
             }

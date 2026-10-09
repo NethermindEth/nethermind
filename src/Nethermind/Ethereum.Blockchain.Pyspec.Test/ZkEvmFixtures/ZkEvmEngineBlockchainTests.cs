@@ -17,12 +17,12 @@ public abstract class ZkEvmEngineBlockchainTestFixture : PyspecLinuxX64Blockchai
     protected ZkEvmEngineBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     private static IEnumerable<TestCaseData> LoadTests() =>
-        PyspecLoader.ToTestCases(new TestsSourceLoader(
+        PyspecLoader.LoadCases<BlockchainTest>(
             new LoadPyspecTestsStrategy { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName },
-            "fixtures/blockchain_tests_engine").LoadTests<BlockchainTest>());
+            "fixtures/blockchain_tests_engine");
 }
 
 public class ZkEvmEngineBlockchainTests : ZkEvmEngineBlockchainTestFixture;

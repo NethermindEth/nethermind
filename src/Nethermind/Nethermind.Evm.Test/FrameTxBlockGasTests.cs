@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -37,10 +38,15 @@ public class FrameTxBlockGasTests
     [SetUp]
     public void Setup()
     {
-        // EIP-7906 is on so a POST_TX frame is admissible; the opcodes it adds are unused here.
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
         _state = TestWorldStateFactory.CreateForTest();
         _closer = _state.BeginScope(IWorldState.PreGenesis);
+        // EIP-7906 is on so a POST_TX frame is admissible; the opcodes it adds are unused here.
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8250Enabled = true });
+    }
+
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_state);
         EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _state, vm, codeInfoRepository, LimboLogs.Instance);
@@ -52,7 +58,7 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameWritesFreshSlot_ReportsTheChargeInTheStateDimension()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         Deploy(Inert, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
@@ -78,7 +84,7 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameReverts_OwesNoStateGas()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE)
             .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
@@ -98,21 +104,21 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameStateBudgetCoversTheWrite_SucceedsFromTheStateReservoir()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         const ulong executionBudget = 30_000;
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
                 "the write committed, so its state gas came from the reservoir rather than out-of-gassing");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
                 "the reservoir-funded write still bills the state dimension");
@@ -128,20 +134,20 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameStateChargeExceedsEmptyStatePool_HaltsAndOwesNoStateGas()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         const ulong executionBudget = 30_000;
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 0, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionBudget, 0, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the write halted out of gas, so no slot was committed");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
@@ -154,21 +160,21 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameStateChargeExceedsStatePool_HaltsInsteadOfSpillingIntoExecution()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         const ulong executionBudget = 200_000;
         const ulong stateBudget = 50_000;
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, stateBudget, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionBudget, stateBudget, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the state pool could not cover the write and execution must not fund it, so no slot was committed");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         }
@@ -181,21 +187,21 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_PayloadFrameConsumesStateThenHalts_OwesNoStateGas()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode
             .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.INVALID).Done);
 
         const ulong executionBudget = 30_000;
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionBudget, 150_000, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.True,
                 "the frame halted, so its write rolled back and committed no slot");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
                 "a halted frame grows no state, so it owes none even though it drew from the reservoir");
@@ -213,21 +219,21 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_CalldataFloorBindsWithStateGas_ChargesTheStateGasOnTopOfTheFloor()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
 
         byte[] calldata = new byte[8192];
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 150_000, UInt256.Zero, calldata));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 150_000, UInt256.Zero, calldata));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
         const ulong stateCharge = (ulong)GasCostOf.SSetState;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_state.Get(new StorageCell(Writer, (UInt256)0)).ToArray(), Is.Not.All.EqualTo((byte)0),
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
                 "the write committed from the state reservoir");
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
                 "the fresh slot's state charge lands in the state dimension");
@@ -243,15 +249,15 @@ public class FrameTxBlockGasTests
     [Test]
     public void Execute_AtomicBatchUnrolls_GivesBackTheStateGasOfTheRolledBackFrames()
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         Deploy(Inert, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Inert, gasLimit: 400_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Inert, gasLimit: 400_000, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
@@ -268,7 +274,7 @@ public class FrameTxBlockGasTests
     [TestCase(false, (ulong)GasCostOf.SSetState, TestName = "A satisfied POST_TX assertion keeps the body's state gas")]
     public void Execute_PostTxOutcome_DecidesWhetherTheBodyOwesStateGas(bool assertionReverts, ulong expectedStateGas)
     {
-        Deploy(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         Deploy(Asserter, assertionReverts
             ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
@@ -276,9 +282,9 @@ public class FrameTxBlockGasTests
 
         TestAllTracerWithOutput tracer = new();
         Transaction tx = FrameTx(nonce: 0,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModePostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.PostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default));
 
         Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
 
@@ -291,8 +297,180 @@ public class FrameTxBlockGasTests
         }
     }
 
-    private static byte[] ApproveCode(byte scope) =>
-        Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+    /// <summary>A first use of an EIP-8250 keyed nonce set grows the block's state dimension by one storage
+    /// set per fresh key, the same as if the approving frame had written those slots itself.</summary>
+    /// <remarks>
+    /// A full <c>MAX_NONCE_KEYS</c> set is 1,566,720 state gas from a single transaction, a material share
+    /// of a block's state budget, so it has to reach the dimension the budget is counted in. The consumption
+    /// outlives a failed assertion, so the charge has to outlive it too: the body is rewound down to the
+    /// validation prefix, which the approval sits inside.
+    /// </remarks>
+    [TestCase(false, TestName = "A first-use keyed nonce set grows the block state dimension")]
+    [TestCase(true, TestName = "A failed POST_TX assertion keeps a first-use keyed nonce set's state gas")]
+    public void Execute_KeyedNonceFirstUse_GrowsTheBlockStateDimension(bool postTxReverts)
+    {
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        const ulong nonceStateGas = Eip8250Constants.MaxNonceKeys * (ulong)GasCostOf.SSetState;
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys];
+        for (int i = 0; i < keys.Length; i++) keys[i] = (UInt256)(i + 1);
+
+        TxFrame verify = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
+            executionGasLimit: 200_000, nonceStateGas, UInt256.Zero, default);
+        Transaction tx = postTxReverts
+            ? FrameTx(nonce: 0, verify, new TxFrame(FrameMode.PostTx, 0, Asserter, gasLimit: 200_000, UInt256.Zero, default))
+            : FrameTx(nonce: 0, verify);
+        tx.NonceKeys = keys;
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(nonceStateGas),
+                "every NONCE_MANAGER slot the approval creates grows the block's state");
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
+                Is.EqualTo(tracer.GasConsumedResult.SpentGas - nonceStateGas),
+                "the charge leaves the regular dimension; counting it in both bills the block twice");
+            foreach (UInt256 key in keys)
+            {
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
+                    Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
+            }
+        }
+    }
+
+    [Test]
+    public void Execute_WritingFrameTxAcrossTheFrameLimitsBoundary_MetersStateOnlyAfterActivation()
+    {
+        Address laterWriter = TestItem.AddressF;
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(Writer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        Deploy(laterWriter, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+
+        TestSpecProvider provider = (TestSpecProvider)_specProvider;
+        OverridableReleaseSpec specBeforeFork = new(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8037Enabled = false };
+
+        Transaction afterFork = FrameTx(nonce: 0, laterWriter);
+        TestAllTracerWithOutput after = new();
+        Assert.That(Process(afterFork, after).TransactionExecuted, Is.True);
+
+        provider.GenesisSpec = specBeforeFork;
+        Transaction beforeFork = FrameTx(nonce: 1, Writer);
+        TestAllTracerWithOutput before = new();
+        Assert.That(Process(beforeFork, before).TransactionExecuted, Is.True);
+
+        const ulong stateCharge = (ulong)GasCostOf.SSetState;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StorageAt(new StorageCell(Writer, (UInt256)0)).IsZero, Is.False,
+                "the fresh slot is written before the fork");
+            Assert.That(StorageAt(new StorageCell(laterWriter, (UInt256)0)).IsZero, Is.False,
+                "the fresh slot is written after the fork");
+            Assert.That(before.GasConsumedResult.BlockStateGas, Is.Zero,
+                "before frameLimitsTime the state dimension is inert, so a fresh slot owes no state gas");
+            Assert.That(after.GasConsumedResult.BlockStateGas, Is.EqualTo(stateCharge),
+                "after frameLimitsTime the same fresh-slot write is billed in the state dimension");
+        }
+    }
+
+    [Test]
+    public void Execute_PayloadFrameClearsAStorageSlot_BlockExecutionGasCountsBeforeTheRefundOnlyUnderEip7778([Values] bool eip7778Enabled)
+    {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8250Enabled = true, IsEip7778Enabled = eip7778Enabled });
+        Address clearer = TestItem.AddressE;
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
+        Deploy(clearer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        _state.Set(new StorageCell(clearer, (UInt256)0), UInt256.One);
+        _state.Commit(Spec);
+        _state.CommitTree(0);
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(FrameTx(nonce: 0, clearer), tracer).TransactionExecuted, Is.True);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(StorageAt(new StorageCell(clearer, (UInt256)0)).IsZero, Is.True,
+                "the slot was cleared, so the transaction earned a storage refund");
+            Assert.That(gas.EffectiveBlockGas + gas.BlockStateGas, eip7778Enabled ? Is.GreaterThan(gas.SpentGas) : Is.EqualTo(gas.SpentGas),
+                "EIP-7778: a storage refund lowers the payer charge but not the gas counted toward the block");
+        }
+    }
+
+    public enum RefundScenario { Uncapped, FrameReverts, FloorBinds }
+
+    /// <summary>
+    /// EIP-3298 lifts the EIP-3529 cap on the refund netted at frame-tx settlement: x -> y -> x write reversals earn
+    /// more than a fifth of the gross gas, the payer is charged net of it, and EIP-7778 block gas stays gross.
+    /// </summary>
+    [Test]
+    public void Execute_PayloadFrameRestoresSlots_SettlesTheRefund([Values] RefundScenario scenario, [Values] bool eip3298Enabled)
+    {
+        const int slots = 4;
+        UseSpec(new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip3298Enabled = eip3298Enabled });
+        UInt256 initialBalance = UInt256.Parse("100000000000000000000");
+        Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), initialBalance);
+        Prepare code = Prepare.EvmCode;
+        for (int slot = 0; slot < slots; slot++)
+        {
+            code.PushData(2).PushData(slot).Op(Instruction.SSTORE).PushData(1).PushData(slot).Op(Instruction.SSTORE);
+        }
+
+        if (scenario == RefundScenario.FrameReverts) code.PushData(0).PushData(0).Op(Instruction.REVERT);
+        Deploy(Writer, code.Done);
+        for (int slot = 0; slot < slots; slot++)
+        {
+            _state.Set(new StorageCell(Writer, (UInt256)slot), UInt256.One);
+        }
+
+        _state.Commit(Spec);
+        _state.CommitTree(0);
+
+        byte[] calldata = scenario == RefundScenario.FloorBinds ? Enumerable.Repeat((byte)0xff, 500).ToArray() : [];
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Writer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, calldata));
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, Spec, out _, out ulong floorGas, out _), Is.True);
+
+        TestAllTracerWithOutput tracer = new();
+        Assert.That(Process(tx, tracer).TransactionExecuted, Is.True);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        ulong grossGas = gas.EffectiveBlockGas;
+        ulong refundCounter = scenario == RefundScenario.FrameReverts ? 0 : slots * Eip8038Constants.StorageWrite;
+        ulong cappedRefund = grossGas / RefundHelper.MaxRefundQuotientEIP3529;
+        ulong appliedRefund = eip3298Enabled ? refundCounter : Math.Min(cappedRefund, refundCounter);
+        ulong expectedSpent = Math.Max(grossGas - appliedRefund, floorGas);
+        if (scenario == RefundScenario.FloorBinds)
+        {
+            Assert.That(floorGas, Is.InRange(grossGas - refundCounter + 1, grossGas - cappedRefund - 1), "the floor binds only under the full refund");
+        }
+        else if (scenario == RefundScenario.Uncapped)
+        {
+            Assert.That(refundCounter, Is.GreaterThan(cappedRefund), "the refund exceeds the EIP-3529 cap");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gas.GasRefund, Is.EqualTo(appliedRefund), "applied refund");
+            Assert.That(tracer.GasSpent, Is.EqualTo(expectedSpent), "receipt gas used");
+            Assert.That(_state.GetBalance(Sender), Is.EqualTo(initialBalance - expectedSpent), "payer charged the net gas at price 1");
+            Assert.That(gas.BlockStateGas, Is.Zero, "restored slots grow no state");
+            Assert.That(tx.BlockGasUsed, Is.EqualTo(grossGas), "EIP-7778: block gas is counted before the refund");
+            Assert.That(grossGas, Is.GreaterThan(floorGas), "the gross gas clears the floor");
+        }
+    }
+
+    private static byte[] ApproveCode(FrameFlags scope) =>
+        Prepare.EvmCode.PushData((byte)scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+
+    private UInt256 StorageAt(in StorageCell cell)
+    {
+        _state.Get(in cell, out UInt256 value);
+        return value;
+    }
 
     private void Deploy(Address address, byte[] code, UInt256 balance = default)
     {
@@ -304,8 +482,8 @@ public class FrameTxBlockGasTests
 
     private static Transaction FrameTx(ulong nonce, Address target) =>
         FrameTx(nonce,
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, target, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
     private static Transaction FrameTx(ulong nonce, params TxFrame[] frames) =>
         new()

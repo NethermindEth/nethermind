@@ -124,15 +124,15 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             int i = 0;
             while (true)
             {
-                TrieNode node = boundaryNodes[i];
+                TrieNode? node = boundaryNodes[i];
                 if (node is null) break;
 
-                proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp.ToArray() ?? throw new TrieException("A visited trie node must have encoded RLP."));
 
                 if (node.IsBranch)
                     i++;
                 else if (node.IsExtension)
-                    i += node.Key.Length;
+                    i += (node.Key ?? throw new TrieException("A resolved extension node must have a key.")).Length;
                 else
                     break;
             }
@@ -163,7 +163,8 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _leftmostNodes[ctx.Path.Length] ??= node;
         _rightmostNodes[ctx.Path.Length] = node;
 
-        TreePath path = ctx.Path.Append(node.Key);
+        byte[] key = node.Key ?? throw new TrieException("A resolved leaf node must have a key.");
+        TreePath path = ctx.Path.Append(key);
         if (!ShouldVisit(path))
         {
             return;

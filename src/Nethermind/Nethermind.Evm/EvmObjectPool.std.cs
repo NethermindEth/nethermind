@@ -56,7 +56,7 @@ internal static class EvmPoolTiers
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTooManyPools() =>
         throw new InvalidOperationException(
-            $"More than {MaxPools} {nameof(EvmObjectPool<object>)} instances were constructed; raise the slot count.");
+            $"More than {MaxPools} {nameof(EvmObjectPool<>)} instances were constructed; raise the slot count.");
 }
 
 /// <summary>
@@ -203,8 +203,13 @@ internal sealed class EvmObjectPool<T>
         return false;
     }
 
+    /// <summary>Returns <paramref name="item"/> to the shared tier, bypassing the calling thread's local tier.</summary>
+    /// <remarks>
+    /// For an item whose owner ends its life on a thread that may never rent from this pool again: kept in that
+    /// thread's local tier, it would be out of reach of every other thread.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EnqueueShared(T item)
+    public void EnqueueShared(T item)
     {
         // Reserve before enqueueing so the bound costs no queue walk.
         if (Interlocked.Increment(ref _sharedCount) > _maxShared)
@@ -219,6 +224,6 @@ internal sealed class EvmObjectPool<T>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowDuplicatePool() =>
         throw new InvalidOperationException(
-            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<T>)}; each would keep its own " +
+            $"{typeof(T).Name} is pooled by more than one {nameof(EvmObjectPool<>)}; each would keep its own " +
             "per-thread free list, halving reuse and doubling retention. Hoist the pool to a single instance.");
 }

@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -36,13 +37,6 @@ namespace Nethermind.Consensus.Processing
                 Block block,
                 Transaction currentTx,
                 IReadOnlySet<Transaction> transactionsInBlock,
-                IReadOnlyStateProvider stateProvider) =>
-                CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, block.GasUsed, 0);
-
-            public virtual AddingTxEventArgs CanAddTransaction(
-                Block block,
-                Transaction currentTx,
-                IReadOnlySet<Transaction> transactionsInBlock,
                 IReadOnlyStateProvider stateProvider,
                 ulong cumulativeBlockExecutionGas,
                 ulong cumulativeBlockStateGas)
@@ -51,9 +45,10 @@ namespace Nethermind.Consensus.Processing
 
                 ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
-                // No more gas available in block for any transactions,
-                // the only case we have to really stop
-                if (GasCostOf.Transaction > gasRemaining)
+                // No more gas available in block for any transactions, the only case we have to really stop. An
+                // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
+                if (GasCostOf.Transaction > gasRemaining
+                    && (!_specProvider.GetSpec(block.Header).IsEip8141Enabled || (ulong)Eip8141Constants.IntrinsicGasCost > gasRemaining))
                 {
                     return args.Set(TxAction.Stop, "Block full");
                 }
@@ -79,7 +74,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
-                if (!TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
+                if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
                     return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
                 }
@@ -99,17 +94,30 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                // EIP-8141 exempts frame transactions from EIP-3607, so the pool admits one from a
-                // contract sender; without the same exemption here it could never be built into a block.
+                // EIP-8141 exempts frame transactions from EIP-3607 ("Do not apply the restriction put
+                // in place by EIP-3607 to frame transactions"), so the pool admits one from a contract
+                // sender; without the same exemption here it could never be built into a block.
                 if (!ignoreEip3607 && !currentTx.SupportsFrames && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }
 
-                ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
-                if (expectedNonce != currentTx.Nonce)
+                // EIP-8250 moves a keyed transaction's replay protection to NONCE_MANAGER; both arms read the state
+                // built up so far, so either also skips a candidate whose domain an earlier one in this block consumed.
+                if (KeyedNonceManager.UsesKeyedNonce(currentTx))
                 {
-                    return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    if (!KeyedNonceManager.IsNonceSetValid(stateProvider, currentTx.SenderAddress, currentTx.NonceKeys!, currentTx.Nonce))
+                    {
+                        return args.Set(TxAction.Skip, KeyedNonceSkipReason(stateProvider, currentTx));
+                    }
+                }
+                else
+                {
+                    ulong expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
+                    if (expectedNonce != currentTx.Nonce)
+                    {
+                        return args.Set(TxAction.Skip, $"Invalid nonce - expected {expectedNonce}");
+                    }
                 }
 
                 // A frame transaction's fees are paid by the frame that approves payment, which need not
@@ -127,18 +135,28 @@ namespace Nethermind.Consensus.Processing
                 return args;
             }
 
-            private static bool TryGetBlockGasReservations(Transaction currentTx, IReleaseSpec spec, out ulong executionReservation, out ulong stateReservation)
+            /// <summary>Explains a keyed-nonce skip by naming the first key whose sequence disagrees with the candidate's.</summary>
+            /// <remarks>Cold path only, reached once the candidate is already being skipped. Any single key of the set can be
+            /// the one an earlier transaction in this block consumed, so a set-wide value would name a key that is current.</remarks>
+            private static string KeyedNonceSkipReason(IReadOnlyStateProvider stateProvider, Transaction currentTx)
             {
-                if (currentTx.SupportsFrames)
+                UInt256[] nonceKeys = currentTx.NonceKeys!;
+                if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
                 {
-                    return FrameTxValidation.TryCalculateBlockGasReservations(currentTx, spec, out executionReservation, out stateReservation);
+                    return "Invalid nonce sequence - malformed key set";
                 }
 
-                executionReservation = spec.IsEip8037Enabled
-                    ? Math.Min(Eip7825Constants.DefaultTxGasLimitCap, currentTx.GasLimit)
-                    : currentTx.GasLimit;
-                stateReservation = spec.IsEip8037Enabled ? currentTx.GasLimit : 0;
-                return true;
+                foreach (ref readonly UInt256 nonceKey in nonceKeys.AsSpan())
+                {
+                    ulong current = KeyedNonceManager.CurrentNonceSeq(stateProvider, currentTx.SenderAddress!, in nonceKey);
+                    if (current != currentTx.Nonce)
+                    {
+                        return $"Invalid nonce sequence - key {nonceKey} expected {current}";
+                    }
+                }
+
+                // Well-formed and every key at nonce_seq leaves exhaustion as the only reason the set was rejected.
+                return $"Invalid nonce sequence - exhausted at {currentTx.Nonce}";
             }
 
             private static bool HasEnoughFunds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)

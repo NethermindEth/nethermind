@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using System.Linq;
 using System.Text.Json;
@@ -89,7 +90,7 @@ public class SlowBlockIntegrationTests
 
         byte[] code = Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
+        _harness.WorldState.Set(new StorageCell(contract, 0), new UInt256(new byte[] { 0x42 }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
@@ -114,7 +115,7 @@ public class SlowBlockIntegrationTests
             .Op(Instruction.PUSH0).PushData(1).Op(Instruction.SSTORE)
             .Op(Instruction.STOP).Done;
         _harness.DeployCode(contract, code);
-        _harness.WorldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
+        _harness.WorldState.Set(new StorageCell(contract, 1), new UInt256(new byte[] { 0xFF }, isBigEndian: true));
         _harness.WorldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)

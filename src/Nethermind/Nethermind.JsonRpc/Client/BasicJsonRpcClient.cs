@@ -7,6 +7,7 @@ using System.Data;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -53,7 +54,8 @@ namespace Nethermind.JsonRpc.Client
                 responseString = await response.Content.ReadAsStringAsync();
                 if (_logger.IsTrace) _logger.Trace(responseString);
 
-                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString);
+                JsonRpcResponse<T> jsonResponse = _jsonSerializer.Deserialize<JsonRpcResponse<T>>(responseString)
+                    ?? throw new JsonException("JSON-RPC response decoded as null.");
                 if (jsonResponse.Error is not null)
                 {
                     if (_logger.IsError) _logger.Error(string.Concat(jsonResponse.Error.Message, " | ", jsonResponse.Error.Data));
@@ -73,18 +75,8 @@ namespace Nethermind.JsonRpc.Client
             }
         }
 
-        private string GetJsonRequest(string method, IEnumerable<object?> parameters)
-        {
-            var request = new
-            {
-                jsonrpc = "2.0",
-                method,
-                @params = parameters ?? [],
-                id = 67
-            };
-
-            return _jsonSerializer.Serialize(request);
-        }
+        private string GetJsonRequest(string method, IEnumerable<object?> parameters) =>
+            _jsonSerializer.Serialize(new JsonRpcClientRequest(method, parameters ?? []));
 
         private void AddAuthorizationHeader()
         {
@@ -104,5 +96,17 @@ namespace Nethermind.JsonRpc.Client
             => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
 
         public virtual void Dispose() => _client.Dispose();
+    }
+
+    /// <summary>The JSON-RPC 2.0 request envelope <see cref="BasicJsonRpcClient"/> sends.</summary>
+    internal sealed class JsonRpcClientRequest(string method, IEnumerable<object?> parameters)
+    {
+        public string Jsonrpc => "2.0";
+
+        public string Method { get; } = method;
+
+        public IEnumerable<object?> Params { get; } = parameters;
+
+        public int Id => 67;
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -20,8 +19,8 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     {
         IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
 
-        Dictionary<AddressAsKey, IDictionary<string, Transaction>> pendingTransactions = new(standardBySender.Count);
-        Dictionary<AddressAsKey, IDictionary<string, Transaction>> queuedTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions = new(standardBySender.Count);
 
         foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {
@@ -36,7 +35,7 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Transaction[] standard = txPool.GetPendingTransactionsBySender(address);
         if (standard.Length == 0) return TxPoolSenderInfo.Empty;
 
-        (IDictionary<string, Transaction> pending, IDictionary<string, Transaction> queued) =
+        (IDictionary<TxPoolTxKey, Transaction> pending, IDictionary<TxPoolTxKey, Transaction> queued) =
             SplitByNonce(standard, blobs: null, accountStateProvider.GetNonce(address));
         return new TxPoolSenderInfo(pending, queued);
     }
@@ -68,13 +67,13 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
         Address sender,
         Transaction[]? standardTransactions,
         Transaction[]? blobTransactions,
-        Dictionary<AddressAsKey, IDictionary<string, Transaction>> pendingTransactions,
-        Dictionary<AddressAsKey, IDictionary<string, Transaction>> queuedTransactions)
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pendingTransactions,
+        Dictionary<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queuedTransactions)
     {
         int total = (standardTransactions?.Length ?? 0) + (blobTransactions?.Length ?? 0);
         if (total == 0) return;
 
-        (IDictionary<string, Transaction> pending, IDictionary<string, Transaction> queued) =
+        (IDictionary<TxPoolTxKey, Transaction> pending, IDictionary<TxPoolTxKey, Transaction> queued) =
             SplitByNonce(standardTransactions, blobTransactions, accountStateProvider.GetNonce(sender));
         if (pending.Count != 0) pendingTransactions[sender] = pending;
         if (queued.Count != 0) queuedTransactions[sender] = queued;
@@ -98,11 +97,11 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     /// <summary>Splits a sender's transactions into the <c>pending</c> and <c>queued</c> maps of <c>txpool_contentFrom</c>.</summary>
     /// <remarks>A transaction stays pending while its nonce is contiguous from the account nonce; an EIP-8250 keyed one is
     /// always pending, its sequence living in the nonce manager rather than the account nonce.</remarks>
-    private static (IDictionary<string, Transaction> pending, IDictionary<string, Transaction> queued)
+    private static (IDictionary<TxPoolTxKey, Transaction> pending, IDictionary<TxPoolTxKey, Transaction> queued)
         SplitByNonce(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {
-        Dictionary<string, Transaction> pending = [];
-        Dictionary<string, Transaction> queued = [];
+        Dictionary<TxPoolTxKey, Transaction> pending = [];
+        Dictionary<TxPoolTxKey, Transaction> queued = [];
         ulong expectedNonce = accountNonce;
 
         int i = 0;
@@ -137,10 +136,10 @@ public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxP
     /// <summary>The key under which <paramref name="tx"/> is listed in <c>txpool_content</c>.</summary>
     /// <remarks>The nonce identifies a sender's transaction, but under EIP-8250 a sender can hold several includable ones
     /// at the same sequence, so keyed transactions are keyed by hash instead.</remarks>
-    private static string KeyOf(Transaction tx) =>
+    private static TxPoolTxKey KeyOf(Transaction tx) =>
         KeyedNonceManager.UsesKeyedNonce(tx)
-            ? tx.Hash!.ToString()
-            : tx.Nonce.ToString(CultureInfo.InvariantCulture);
+            ? new TxPoolTxKey(tx.Hash!)
+            : new TxPoolTxKey(tx.Nonce);
 
     private static int CountPending(Transaction[]? standard, Transaction[]? blobs, ulong accountNonce)
     {

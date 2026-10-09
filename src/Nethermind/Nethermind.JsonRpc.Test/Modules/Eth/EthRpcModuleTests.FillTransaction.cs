@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -74,6 +75,23 @@ public partial class EthRpcModuleTests
         Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
     }
 
+    [Test]
+    public async Task FillTransaction_WhenDynamicFeeTxSuppliesOnlyGasPrice_UsesItAsFeeCapAndTip()
+    {
+        EIP1559TransactionForRpc rpcTx = new()
+        {
+            From = TestItem.AddressC,
+            To = TestItem.AddressB,
+            Value = 1,
+            GasPrice = 7,
+        };
+
+        EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);
+
+        Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the fee cap instead of being replaced by the oracle");
+        Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7), "gasPrice must become the tip instead of being replaced by the oracle");
+    }
+
     private static IEnumerable<TestCaseData> InvalidInputCases()
     {
         yield return new TestCaseData(
@@ -95,8 +113,47 @@ public partial class EthRpcModuleTests
             "invalid chain id").SetName("ChainIdMismatch");
 
         yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxFeePerGas");
+
+        yield return new TestCaseData(
+            (TransactionForRpc)new EIP1559TransactionForRpc
+            {
+                From = TestItem.AddressC,
+                To = TestItem.AddressB,
+                Value = 1,
+                GasPrice = 1,
+                MaxPriorityFeePerGas = 2,
+            },
+            RpcTransactionErrors.GasPriceInEip1559).SetName("GasPriceWithMaxPriorityFeePerGas");
+
+        yield return new TestCaseData(
             (TransactionForRpc)new EIP1559TransactionForRpc { From = TestItem.AddressC, To = null, Value = 1 },
             null).SetName("ContractCreationWithoutData");
+
+        // With gas omitted, the fill first estimates the gas on the same request, which estimates a zero blob fee cap as a call does.
+        foreach (bool gasOmitted in new[] { true, false })
+        {
+            yield return new TestCaseData(
+                (TransactionForRpc)new BlobTransactionForRpc
+                {
+                    From = TestItem.AddressC,
+                    To = TestItem.AddressB,
+                    Gas = gasOmitted ? null : 0x5208UL,
+                    MaxFeePerGas = UInt256.Zero,
+                    MaxPriorityFeePerGas = UInt256.Zero,
+                    MaxFeePerBlobGas = UInt256.Zero,
+                    BlobVersionedHashes = [Bytes.FromHexString("0x0122000000000000000000000000000000000000000000000000000000000000")],
+                },
+                RpcTransactionErrors.ZeroMaxFeePerBlobGas).SetName(gasOmitted ? "ZeroBlobFeeCapWithGasOmitted" : "ZeroBlobFeeCap");
+        }
     }
 
     [TestCaseSource(nameof(InvalidInputCases))]

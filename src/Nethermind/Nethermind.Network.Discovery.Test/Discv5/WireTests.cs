@@ -2,17 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Embedded;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -25,8 +18,8 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -35,6 +28,44 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 
 public class WireTests
 {
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Ping_timeout_does_not_throw_but_caller_cancellation_does(CancellationToken token)
+    {
+        await using TestPeer peer = CreatePeer(TestItem.PrivateKeyA, IPEndPoint.Parse("127.0.0.1:10000"), pingTimeout: 100);
+        Node remote = new(TestItem.PublicKeyB, IPEndPoint.Parse("127.0.0.1:10001"));
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        System.Threading.AsyncLocal<bool> observing = new() { Value = true };
+        int exceptions = 0;
+        void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (observing.Value && args.Exception is OperationCanceledException) Interlocked.Increment(ref exceptions);
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
+        bool result;
+        try
+        {
+            result = await peer.Adapter.Ping(remote, caller.Token);
+        }
+        finally
+        {
+            observing.Value = false;
+            AppDomain.CurrentDomain.FirstChanceException -= OnException;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(exceptions, Is.Zero);
+        }
+
+        Task<bool> cancelled = peer.Adapter.Ping(remote, caller.Token);
+        await caller.CancelAsync();
+        Assert.That(async () => await cancelled, Throws.InstanceOf<OperationCanceledException>());
+        peer.Kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
+    }
+
     [Test]
     public async Task Ping_Completes_After_WhoAreYou_Handshake()
     {
@@ -161,7 +192,132 @@ public class WireTests
         await cancellationSource.CancelAsync();
         await Task.WhenAll(runA, runB);
 
-        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node => node.Id.Equals(TestItem.PrivateKeyA.PublicKey) && !HasEnr(node)));
+        peerB.Kademlia.Received().AddOrRefresh(Arg.Is<Node>(node =>
+            node.Id.Equals(TestItem.PrivateKeyA.PublicKey) &&
+            !HasEnr(node) &&
+            node.HighestObservedEnrSequence == peerA.NodeRecordProvider.Current.EnrSequence));
+    }
+
+    [TestCase(false, null, false, false)]
+    [TestCase(true, null, true, false)]
+    [TestCase(true, "2001:db8::2", false, false)]
+    [TestCase(true, "2001:db8::2", false, true)]
+    public async Task FindNeighbours_HandshakePreservesVerifiedEnrStateOnKnownNode(
+        bool includeEndpointInRecord,
+        string? recordIp,
+        bool expectRecordReplacement,
+        bool knownAsReplacement)
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        NodeRecord reachableRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            endpointA.Address,
+            tcpPort: endpointA.Port,
+            udpPort: endpointA.Port,
+            enrSequence: 1);
+        Node knownNodeA = new(TestItem.PrivateKeyA.PublicKey, endpointA);
+        knownNodeA.SetVerifiedEnr(reachableRecord);
+        BoundedDistanceKademlia tableB = new(TestItem.PrivateKeyB.PublicKey.Hash, capacityPerDistance: 16);
+        if (knownAsReplacement)
+        {
+            tableB.AddReplacement(knownNodeA);
+        }
+        else
+        {
+            tableB.AddOrRefresh(knownNodeA);
+        }
+
+        await using TestPeer peerA = CreatePeer(
+            TestItem.PrivateKeyA,
+            endpointA,
+            includeEndpointInRecord,
+            enrSequence: 2,
+            recordIp: recordIp is null ? null : IPAddress.Parse(recordIp));
+        await using TestPeer peerB = CreatePeer(TestItem.PrivateKeyB, endpointB, kademlia: tableB);
+        Node nodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB)
+        {
+            Enr = peerB.NodeRecordProvider.Current
+        };
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task<Node[]?> findTask = peerA.Adapter.FindNeighbours(nodeB, TestItem.PrivateKeyC.PublicKey, cancellationSource.Token);
+        await PumpUntilComplete(findTask, peerA, peerB, cancellationSource.Token);
+        Node[]? nodes = await findTask;
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+
+        Assert.That(nodes, Is.Not.Null);
+        NodeRecord knownEnr = knownNodeA.Enr ?? throw new AssertionException("Expected the known node to retain its ENR.");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(knownEnr.EnrSequence, Is.EqualTo(expectRecordReplacement ? 2 : 1));
+            Assert.That(knownNodeA.IsVerifiedEnr(knownEnr), Is.True);
+            Assert.That(knownNodeA.HighestObservedEnrSequence, Is.EqualTo(peerA.NodeRecordProvider.Current.EnrSequence));
+        }
+    }
+
+    [Test]
+    public async Task Ping_CachesEndpointlessSelfRecordSequenceWithoutRefetching()
+    {
+        IPEndPoint endpointA = IPEndPoint.Parse("127.0.0.1:10000");
+        IPEndPoint endpointB = IPEndPoint.Parse("127.0.0.1:10001");
+        NodeRecord reachableRecord = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyB,
+            endpointB.Address,
+            tcpPort: endpointB.Port,
+            udpPort: endpointB.Port,
+            enrSequence: 1);
+        Node knownNodeB = new(TestItem.PrivateKeyB.PublicKey, endpointB);
+        knownNodeB.SetVerifiedEnr(reachableRecord);
+        BoundedDistanceKademlia tableA = new(TestItem.PrivateKeyA.PublicKey.Hash, capacityPerDistance: 16);
+        tableA.AddOrRefresh(knownNodeB);
+
+        await using TestPeer peerA = CreatePeer(TestItem.PrivateKeyA, endpointA, kademlia: tableA);
+        await using TestPeer peerB = CreatePeer(
+            TestItem.PrivateKeyB,
+            endpointB,
+            includeEndpointInRecord: false,
+            enrSequence: 2);
+
+        using CancellationTokenSource cancellationSource = new(10_000);
+        Task runA = peerA.Adapter.RunAsync(cancellationSource.Token);
+        Task runB = peerB.Adapter.RunAsync(cancellationSource.Token);
+
+        Task firstPing = peerA.Adapter.Ping(knownNodeB, cancellationSource.Token);
+        await PumpUntilComplete(firstPing, peerA, peerB, cancellationSource.Token);
+        await firstPing;
+        await PumpUntil(
+            () => FindNode(tableA, TestItem.PrivateKeyB.PublicKey).HighestObservedEnrSequence == 2,
+            peerA,
+            peerB,
+            cancellationSource.Token);
+        int requestsAfterFirstPing = peerB.NodeRecordProvider.RequestCount;
+
+        Node cachedNode = FindNode(tableA, TestItem.PrivateKeyB.PublicKey);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cachedNode.Enr, Is.SameAs(reachableRecord));
+            Assert.That(cachedNode.IsVerifiedEnr(reachableRecord), Is.True);
+            Assert.That(cachedNode.HighestObservedEnrSequence, Is.EqualTo(2));
+        }
+
+        Task secondPing = peerA.Adapter.Ping(cachedNode, cancellationSource.Token);
+        await PumpUntilComplete(secondPing, peerA, peerB, cancellationSource.Token);
+        await secondPing;
+
+        await cancellationSource.CancelAsync();
+        await Task.WhenAll(runA, runB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerB.NodeRecordProvider.RequestCount, Is.EqualTo(requestsAfterFirstPing + 1));
+            Assert.That(FindNode(tableA, TestItem.PrivateKeyB.PublicKey).HighestObservedEnrSequence, Is.EqualTo(2));
+        }
     }
 
     [Test]
@@ -342,33 +498,59 @@ public class WireTests
         bool includeEndpointInRecord = true,
         ulong enrSequence = 1,
         IKademlia<PublicKey, Node>? kademlia = null,
-        int bucketSize = 16)
+        int bucketSize = 16,
+        IPAddress? recordIp = null,
+        int pingTimeout = 1000)
     {
         IKademlia<PublicKey, Node> table = kademlia ?? Substitute.For<IKademlia<PublicKey, Node>>();
-        NettyDiscoveryV5Handler handler = new(new TestLogManager());
-        EmbeddedChannel channel = new();
-        OutboundDatagramCapture outbound = new();
-        channel.Pipeline.AddLast(outbound);
-        handler.InitializeChannel(channel);
+        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+        if (table is BoundedDistanceKademlia boundedTable)
+        {
+            routingTable.TryGet(Arg.Any<ValueHash256>(), out _).Returns(callInfo =>
+            {
+                if (!boundedTable.TryGetNode((ValueHash256)callInfo[0], out Node storedNode))
+                {
+                    return false;
+                }
 
-        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence);
+                callInfo[1] = storedNode;
+                return true;
+            });
+        }
+
+        DiscoveryV5Transport transport = new(new TestLogManager());
+        RecordingDatagramSocket outbound = new();
+        transport.BindSocket(outbound);
+
+        TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence, recordIp);
         PacketCodec packetCodec = new(
             new InsecureProtectedPrivateKey(privateKey),
             new CryptoRandom(),
             new EthereumEcdsa(0));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(endpoint.Address, endpoint.Address)));
+        NetworkListenerState listenerState = new(
+            new NetworkConfig { LocalIp = endpoint.Address.ToString() },
+            ipResolver,
+            LimboLogs.Instance);
+        listenerState.SetRlpxAddress(endpoint.Address);
+        listenerState.SetDiscoveryAddress(endpoint.Address);
         Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
-            handler,
+            routingTable,
+            transport,
             packetCodec,
             nodeRecordProvider,
-            new DiscoveryConfig(),
+            new DiscoveryConfig { PingTimeout = pingTimeout },
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
-            Hash256KademliaDistance.Instance,
-            LimboLogs.Instance);
+            ValueHash256KademliaDistance.Instance,
+            LimboLogs.Instance,
+            listenerState);
 
-        return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
+        return new TestPeer(adapter, transport, outbound, packetCodec, table, nodeRecordProvider, endpoint);
     }
 
     private static async Task PumpUntilComplete(Task task, TestPeer peerA, TestPeer peerB, CancellationToken token)
@@ -416,11 +598,24 @@ public class WireTests
 
     private static bool HasEnr(Node node) => node.Enr is not null;
 
+    private static Node FindNode(IKademlia<PublicKey, Node> kademlia, PublicKey publicKey)
+    {
+        foreach (Node node in kademlia.IterateNodes())
+        {
+            if (node.Id.Equals(publicKey))
+            {
+                return node;
+            }
+        }
+
+        throw new InvalidOperationException($"Node {publicKey} was not found in the routing table.");
+    }
+
     private static bool HasReceivedNodeWithEnrSequence(IKademlia<PublicKey, Node> kademlia, PublicKey publicKey, ulong sequence)
     {
         foreach (NSubstitute.Core.ICall call in kademlia.ReceivedCalls())
         {
-            if (call.GetMethodInfo().Name == nameof(IKademlia<PublicKey, Node>.AddOrRefresh) &&
+            if (call.GetMethodInfo().Name == nameof(IKademlia<,>.AddOrRefresh) &&
                 call.GetArguments()[0] is Node node &&
                 node.Id.Equals(publicKey) &&
                 HasEnrSequence(node, sequence))
@@ -448,7 +643,7 @@ public class WireTests
                 continue;
             }
 
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, candidate.PublicKey.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, candidate.PublicKey.Hash.ValueHash256);
             if (!keysByDistance.TryGetValue(distance, out List<PrivateKey>? keys))
             {
                 keys = [];
@@ -476,18 +671,9 @@ public class WireTests
 
     private static void Pump(TestPeer from, TestPeer to)
     {
-        while (from.Outbound.TryDequeue(out DatagramPacket? packet))
+        while (from.Outbound.Sent.TryDequeue(out (byte[] Data, IPEndPoint Destination) datagram))
         {
-            try
-            {
-                byte[] data = packet.Content.ReadAllBytesAsArray();
-                IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-                to.Handler.ChannelRead(context, new DatagramPacket(Unpooled.WrappedBuffer(data), from.Endpoint, to.Endpoint));
-            }
-            finally
-            {
-                ReferenceCountUtil.Release(packet);
-            }
+            to.Transport.Receive(PooledUdpReceiveResult.Copy(datagram.Data, from.Endpoint));
         }
     }
 
@@ -502,7 +688,7 @@ public class WireTests
 
         public void AddOrRefresh(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             bool added = false;
             lock (_lock)
             {
@@ -531,9 +717,27 @@ public class WireTests
             }
         }
 
+        public bool TryGetNode(ValueHash256 nodeHash, out Node storedNode)
+        {
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, nodeHash);
+            lock (_lock)
+            {
+                if ((_nodesByDistance.TryGetValue(distance, out List<Node>? nodes) &&
+                     TryGetNode(nodes, nodeHash, out storedNode)) ||
+                    (_replacementsByDistance.TryGetValue(distance, out List<Node>? replacements) &&
+                     TryGetNode(replacements, nodeHash, out storedNode)))
+                {
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
+        }
+
         public void AddReplacement(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             lock (_lock)
             {
                 GetReplacements(distance).Add(node);
@@ -542,7 +746,7 @@ public class WireTests
 
         public void Remove(Node node)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, node.Id.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, node.Id.Hash.ValueHash256);
             Node? removed = null;
             lock (_lock)
             {
@@ -573,7 +777,7 @@ public class WireTests
 
         public bool Contains(PublicKey publicKey)
         {
-            int distance = Hash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash, publicKey.Hash);
+            int distance = ValueHash256KademliaDistance.Instance.CalculateLogDistance(currentNodeHash.ValueHash256, publicKey.Hash.ValueHash256);
             lock (_lock)
             {
                 if (!_nodesByDistance.TryGetValue(distance, out List<Node>? nodes))
@@ -642,6 +846,21 @@ public class WireTests
             return nodes;
         }
 
+        private static bool TryGetNode(List<Node> nodes, ValueHash256 nodeHash, out Node storedNode)
+        {
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (nodes[i].Id.Hash == nodeHash)
+                {
+                    storedNode = nodes[i];
+                    return true;
+                }
+            }
+
+            storedNode = null!;
+            return false;
+        }
+
         private List<Node> GetReplacements(int distance)
         {
             if (!_replacementsByDistance.TryGetValue(distance, out List<Node>? replacements))
@@ -668,9 +887,8 @@ public class WireTests
 
     private sealed record TestPeer(
         KademliaAdapter Adapter,
-        NettyDiscoveryV5Handler Handler,
-        EmbeddedChannel Channel,
-        OutboundDatagramCapture Outbound,
+        DiscoveryV5Transport Transport,
+        RecordingDatagramSocket Outbound,
         PacketCodec PacketCodec,
         IKademlia<PublicKey, Node> Kademlia,
         TestNodeRecordProvider NodeRecordProvider,
@@ -686,8 +904,7 @@ public class WireTests
             {
                 try
                 {
-                    Outbound.ReleaseAll();
-                    Channel.FinishAndReleaseAll();
+                    Transport.Close();
                 }
                 finally
                 {
@@ -697,45 +914,25 @@ public class WireTests
         }
     }
 
-    /// <summary>Captures outbound datagrams into a thread-safe queue, bypassing the embedded channel's non-thread-safe <c>ChannelOutboundBuffer</c> so packet workers can send concurrently with the test thread's pumping and disposal.</summary>
-    private sealed class OutboundDatagramCapture : ChannelHandlerAdapter
-    {
-        private readonly ConcurrentQueue<DatagramPacket> _queue = new();
-
-        public override Task WriteAsync(IChannelHandlerContext context, object message)
-        {
-            // discv5 only writes DatagramPackets; anything else would reach the suppressed-flush buffer and re-introduce the race.
-            if (message is not DatagramPacket packet)
-            {
-                throw new NotSupportedException($"Unexpected outbound message type: {message?.GetType()}.");
-            }
-
-            _queue.Enqueue(packet);
-            return Task.CompletedTask;
-        }
-
-        public override void Flush(IChannelHandlerContext context)
-        {
-            // Datagrams are captured in WriteAsync; there is nothing to flush to the embedded buffer.
-        }
-
-        public bool TryDequeue([NotNullWhen(true)] out DatagramPacket? packet) => _queue.TryDequeue(out packet);
-
-        public void ReleaseAll()
-        {
-            while (_queue.TryDequeue(out DatagramPacket? packet))
-            {
-                ReferenceCountUtil.Release(packet);
-            }
-        }
-    }
-
-    private sealed class TestNodeRecordProvider(PrivateKey privateKey, IPEndPoint endpoint, bool includeEndpoint, ulong enrSequence) : INodeRecordProvider
+    private sealed class TestNodeRecordProvider(
+        PrivateKey privateKey,
+        IPEndPoint endpoint,
+        bool includeEndpoint,
+        ulong enrSequence,
+        IPAddress? recordIp) : INodeRecordProvider
     {
         public NodeRecord Current { get; } = includeEndpoint
-            ? TestEnrBuilder.BuildSigned(privateKey, endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port, enrSequence: enrSequence)
+            ? TestEnrBuilder.BuildSigned(privateKey, recordIp ?? endpoint.Address, tcpPort: endpoint.Port, udpPort: endpoint.Port, enrSequence: enrSequence)
             : TestEnrBuilder.BuildSignedWithoutEndpoint(privateKey, enrSequence);
 
-        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default) => new(Current);
+        private int _requestCount;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        public ValueTask<NodeRecord> GetCurrentAsync(CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _requestCount);
+            return new ValueTask<NodeRecord>(Current);
+        }
     }
 }

@@ -30,7 +30,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         return Volatile.Read(ref _jsonRpc)!;
     }
 
-    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v2/payloads"</c>).</summary>
+    /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
     public FrozenDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
     {
         EnsureBuilt();

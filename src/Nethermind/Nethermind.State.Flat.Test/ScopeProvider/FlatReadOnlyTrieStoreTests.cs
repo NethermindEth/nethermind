@@ -91,6 +91,20 @@ public class FlatReadOnlyTrieStoreTests
     }
 
     [Test]
+    public void BeginScope_WhileScopeOpen_Throws_ButReopensAfterDispose()
+    {
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(_ => FlatTestHelpers.MakeBundle(_pool));
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        IDisposable scope = _store.BeginScope(header);
+        Assert.That(() => _store.BeginScope(header), Throws.InvalidOperationException);
+        _flatDbManager.Received(1).GatherReadOnlySnapshotBundle(Arg.Any<StateId>());
+
+        scope.Dispose();
+        Assert.That(() => _store.BeginScope(header), Throws.Nothing);
+    }
+
+    [Test]
     public void BeginCommit_ReturnsNullCommitter_NoOps()
     {
         Assert.That(_store.BeginBlockCommit(1), Is.Not.Null);

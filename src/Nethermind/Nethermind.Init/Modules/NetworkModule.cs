@@ -52,6 +52,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
+            .AddSingleton<NetworkListenerState>()
 
             .AddSingleton<EnodeProvider>()
             .Map<IEnode, EnodeProvider>(provider => provider.Enode)
@@ -109,8 +110,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Base block RLP decoders so the Eth message serializers resolve them via DI instead of
             // ctor-default fallbacks. Consensus plugins (AuRa, Xdc) override these with their own decoders.
             .AddSingleton<IHeaderDecoder, HeaderDecoder>()
-            .AddSingleton(new BlockDecoder())
-            .AddSingleton(BlockBodyDecoder.Instance)
+            .AddSingleton<BlockDecoder, IHeaderDecoder>(static headerDecoder => new BlockDecoder(headerDecoder))
+            .AddSingleton<BlockBodyDecoder, IHeaderDecoder>(static headerDecoder => new BlockBodyDecoder(headerDecoder))
 
             // V62
             .AddMessageSerializer<V62.BlockBodiesMessage, V62.BlockBodiesMessageSerializer>()

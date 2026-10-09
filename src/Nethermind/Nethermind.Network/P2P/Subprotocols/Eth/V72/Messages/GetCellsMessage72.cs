@@ -7,23 +7,23 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 public class GetCellsMessage72(
-    Hash256[] hashes,
+    ValueHash256[] hashes,
     byte[] cellMask,
     bool generateRandomRequestId = true)
     : Eth66MessageBase(generateRandomRequestId)
 {
-    public GetCellsMessage72(long requestId, Hash256[] hashes, byte[] cellMask)
+    public GetCellsMessage72(long requestId, ValueHash256[] hashes, byte[] cellMask)
         : this(hashes, cellMask, false) =>
         RequestId = requestId;
 
-    internal GetCellsMessage72(long requestId, Hash256[] hashes, byte[] cellMask, int wireHashCount)
+    internal GetCellsMessage72(long requestId, ValueHash256[] hashes, byte[] cellMask, int wireHashCount)
         : this(requestId, hashes, cellMask) =>
         WireHashCount = wireHashCount;
 
     public override int PacketType => Eth72MessageCode.GetCells;
     public override string Protocol => "eth";
 
-    public Hash256[] Hashes { get; } = hashes;
+    public ValueHash256[] Hashes { get; } = hashes;
     public byte[] CellMask { get; } = cellMask;
     internal int WireHashCount { get; } = hashes.Length;
 

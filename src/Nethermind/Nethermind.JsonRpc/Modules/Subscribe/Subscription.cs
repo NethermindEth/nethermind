@@ -12,10 +12,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         protected ILogger _logger;
 
-        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
+        /// <param name="jsonRpcDuplexClient">The client notifications are sent to.</param>
+        /// <param name="maxQueuedMessages">Queued sends after which a lagging client is disconnected.</param>
+        protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient, int maxQueuedMessages)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
             JsonRpcDuplexClient = jsonRpcDuplexClient;
+            _maxQueuedMessages = maxQueuedMessages;
+            SendChannel = Channel.CreateBounded<Func<Task>>(new BoundedChannelOptions(maxQueuedMessages) { SingleReader = true });
             ProcessMessages();
         }
 
@@ -37,7 +41,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public string Id { get; }
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
-        private Channel<Func<Task>> SendChannel { get; } = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions { SingleReader = true });
+
+        /// <summary>
+        /// Queue limit for subscriptions that send once per block (a new head, a block's logs): 30 minutes of 2 s blocks.
+        /// </summary>
+        /// <remarks>
+        /// Blocks canonicalised in one burst (a sync batch, a deep rewind) are queued at once, so a burst of more
+        /// blocks than this disconnects the client regardless of its speed.
+        /// </remarks>
+        internal const int MaxQueuedBlocks = 1_000;
+
+        /// <summary>
+        /// Queue limit for subscriptions that send once per transaction or p2p message: about 30 s of a busy mempool.
+        /// </summary>
+        internal const int MaxQueuedEvents = 10_000;
+
+        private readonly int _maxQueuedMessages;
+        private volatile bool _overflowed;
+
+        private Channel<Func<Task>> SendChannel { get; }
 
         public virtual void Dispose() => SendChannel.Writer.TryComplete();
 
@@ -63,7 +85,20 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     MethodName = methodName
                 }, default);
 
-        protected void ScheduleAction(Func<Task> action) => SendChannel.Writer.TryWrite(action);
+        /// <remarks>
+        /// A client that falls the queue limit's worth of sends behind is disconnected rather than buffered
+        /// without limit, and its backlog is dropped.
+        /// </remarks>
+        protected void ScheduleAction(Func<Task> action)
+        {
+            // TryComplete fails once disposed, so only an overflow gets past it.
+            if (SendChannel.Writer.TryWrite(action) || !SendChannel.Writer.TryComplete()) return;
+
+            _overflowed = true;
+            if (_logger.IsWarn) _logger.Warn($"{GetErrorMsg()} Client fell {_maxQueuedMessages} sends behind and is disconnected.");
+            // Off the caller's thread, which may be block processing.
+            _ = Task.Run(JsonRpcDuplexClient.Dispose);
+        }
 
         protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
 
@@ -77,6 +112,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 {
                     while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
+                        if (_overflowed) continue;
+
                         try
                         {
                             await action();

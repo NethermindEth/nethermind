@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -74,8 +75,34 @@ namespace Nethermind.Evm.Test
             AssertSignExtend(byteIndex, value, value);
         }
 
-        // The index is pushed last because SIGNEXTEND pops it before peeking the value.
+        private static IEnumerable<UInt256> IndicesOutsideTheWord()
+        {
+            // These read as zero in their last byte, which would extend from byte 31.
+            yield return 256;
+            yield return UInt256.One << 64;
+            yield return UInt256.One << 128;
+            yield return UInt256.One << 192;
+            // These set the sign bit of the least significant limb, which read as signed would pass a
+            // range check as a negative offset and address outside the value slot.
+            yield return UInt256.One << 63;
+            yield return ulong.MaxValue;
+            yield return UInt256.MaxValue;
+        }
+
+        [TestCaseSource(nameof(IndicesOutsideTheWord))]
+        public void Sign_ext_index_outside_the_word_changes_nothing(UInt256 byteIndex)
+        {
+            // An index is in range only when the whole 256-bit word is below 32, not just its last byte.
+            UInt256 value = 0xff;
+
+            AssertSignExtend(byteIndex, value, value);
+        }
+
         private void AssertSignExtend(int byteIndex, UInt256 value, UInt256 expected)
+            => AssertSignExtend((UInt256)byteIndex, value, expected);
+
+        // The index is pushed last because SIGNEXTEND pops it before peeking the value.
+        private void AssertSignExtend(UInt256 byteIndex, UInt256 value, UInt256 expected)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(value)

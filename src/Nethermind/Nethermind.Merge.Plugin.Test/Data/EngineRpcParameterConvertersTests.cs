@@ -36,10 +36,8 @@ public class EngineRpcParameterConvertersTests
         Assert.That(hashes, Has.Length.EqualTo(GetBlobsV4Limits.MaxBlobVersionedHashes + 1));
     }
 
-    [TestCase(Hash256.Size - 1)]
-    [TestCase(Hash256.Size + 1)]
-    [TestCase(1_024)]
-    public void Blob_hash_converter_rejects_non_hash_width_before_conversion(int byteLength)
+    [Test]
+    public void Blob_hash_converter_rejects_non_hash_width_before_conversion([Values(Hash256.Size - 1, Hash256.Size + 1, 1_024)] int byteLength)
     {
         string json = BuildHashArray(1, byteLength);
         JsonSerializerOptions options = CreateOptions(new BlobVersionedHashesV4Converter());
@@ -49,10 +47,8 @@ public class EngineRpcParameterConvertersTests
             Throws.TypeOf<JsonException>());
     }
 
-    [TestCase(BlobCellMask.FixedByteLength - 1)]
-    [TestCase(BlobCellMask.FixedByteLength + 1)]
-    [TestCase(1_024)]
-    public void Blob_cell_mask_converter_rejects_non_protocol_width(int byteLength)
+    [Test]
+    public void Blob_cell_mask_converter_rejects_non_protocol_width([Values(BlobCellMask.FixedByteLength - 1, BlobCellMask.FixedByteLength + 1, 1_024)] int byteLength)
     {
         string json = BuildHexString(byteLength);
         JsonSerializerOptions options = CreateOptions(new BlobCellBitArrayConverter());
@@ -70,6 +66,28 @@ public class EngineRpcParameterConvertersTests
         BitArray? mask = JsonSerializer.Deserialize<BitArray>(BuildHexString(BlobCellMask.FixedByteLength), options);
 
         Assert.That(mask, Has.Length.EqualTo(BlobCellMask.CellCount));
+    }
+
+    // Pins the wire bit convention shared by every packing site: bit i is bit i % 8 of byte i / 8.
+    [Test]
+    public void Blob_cell_mask_converter_round_trips_the_wire_bit_order()
+    {
+        JsonSerializerOptions options = CreateOptions(new BlobCellBitArrayConverter());
+        int[] indices = [0, 60, 62, 100, 114, BlobCellMask.CellCount - 1];
+        BitArray bits = new(BlobCellMask.CellCount);
+        foreach (int index in indices)
+        {
+            bits.Set(index, true);
+        }
+
+        string json = JsonSerializer.Serialize(bits, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("\"0x01000000000000500000000010000480\""));
+            Assert.That(BlobCellBits.ToMask(bits), Is.EqualTo(BlobCellMask.FromIndices(indices)));
+            Assert.That(JsonSerializer.Deserialize<BitArray>(json, options), Is.EqualTo(bits));
+        }
     }
 
     private static JsonSerializerOptions CreateOptions(System.Text.Json.Serialization.JsonConverter converter)

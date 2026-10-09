@@ -20,6 +20,15 @@ namespace Nethermind.Core.Specs
         bool IsEip7778Enabled { get; }
 
         /// <summary>
+        /// EIP-7668: Remove bloom filters
+        /// </summary>
+        /// <remarks>
+        /// The logs bloom of the header and of every receipt is a zero-length byte string (RLP <c>0x80</c>)
+        /// instead of the 256-byte filter; see <see cref="Bloom.ZeroLength"/>.
+        /// </remarks>
+        bool IsEip7668Enabled { get; }
+
+        /// <summary>
         /// Should validate ReceiptsRoot.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

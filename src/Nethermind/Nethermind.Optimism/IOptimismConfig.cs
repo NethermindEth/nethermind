@@ -13,7 +13,7 @@ public interface IOptimismConfig : IConfig
     [ConfigItem(Description = "Whether to use the enshrined Optimism consensus layer.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ClEnabled { get; set; }
 
-    [ConfigItem(Description = "The Optimism consensus layer host.", DefaultValue = "null", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The Optimism consensus layer IPv4 or IPv6 address.", DefaultValue = "null", HiddenFromDocs = true)]
     public string? ClP2PHost { get; set; }
 
     [ConfigItem(Description = "CL p2p communication host", DefaultValue = "3030", HiddenFromDocs = true)]

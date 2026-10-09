@@ -199,8 +199,8 @@ public sealed partial class KeccakHash
         }
 
         Unsafe.Add(ref state, 15) ^= Vector128.Create(
-            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input0, finalBlockOffset + 120)) | (1UL << 32),
-            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input1, finalBlockOffset + 120)) | (1UL << 32));
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input0, Hash532InputLength - sizeof(uint))) | (1UL << 32),
+            Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref input1, Hash532InputLength - sizeof(uint))) | (1UL << 32));
         Unsafe.Add(ref state, 16) ^= Vector128.Create(0x8000000000000000UL);
         KeccakF1600x2Avx512VL(ref state);
 

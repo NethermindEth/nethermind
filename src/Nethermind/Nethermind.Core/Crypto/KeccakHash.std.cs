@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 
@@ -12,8 +13,48 @@ namespace Nethermind.Core.Crypto;
 
 public sealed partial class KeccakHash
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial bool TryComputeHash256Into(ReadOnlySpan<byte> input, Span<byte> output) => false;
+
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
+
+    /// <inheritdoc cref="KeccakHash.InitializeState" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize) =>
+        state = default;
+
+    /// <inheritdoc cref="KeccakHash.AbsorbMessageIntoZeroState" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize)
+    {
+        // Held here rather than in the guest arm, which cannot run on a host: this is the arm a Debug test
+        // run executes, so it is the one that can catch a caller the guest arm would then hash wrongly.
+        Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
+
+        return AbsorbFullBlocks(state, stateBytes, input, roundSize);
+    }
+
+    /// <inheritdoc cref="KeccakHash.ComputeHash256" />
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input)
+    {
+        Unsafe.SkipInit(out ValueHash256 keccak);
+        ComputeHash(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
+        return keccak;
+    }
+
+    /// <inheritdoc cref="KeccakHash.ComputeHash256OfWitnessNodes" />
+    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
+    {
+        for (int i = 0; i < count; i++)
+            hashes[i] = ComputeHash256(nodes[i]);
+    }
+
+    /// <inheritdoc cref="KeccakHash.NoteWitnessNodeLoaded" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial void NoteWitnessNodeLoaded(nint tag) { }
 
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)

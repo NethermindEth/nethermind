@@ -3,30 +3,54 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Evm;
 
 /// <summary>Transaction-scoped context for an in-flight EIP-8141 frame transaction: the read-only envelope
 /// plus the approval state the outer loop advances and the <c>APPROVE</c> opcode writes.</summary>
+/// <remarks>One instance per transaction, not thread-safe: it is mutated by the single frame loop executing it.</remarks>
+/// <param name="sender">The transaction sender, and the default target and signer of frames and entries that name none.</param>
+/// <param name="nonce">The nonce the envelope was signed at: the account nonce, or the shared <c>nonce_seq</c> when
+/// <paramref name="nonceKeys"/> is set.</param>
+/// <param name="frames">The envelope's frames, in execution order.</param>
+/// <param name="signatures">The envelope's signature entries, already validated when execution begins.</param>
+/// <param name="transaction">The envelope <see cref="SigHash"/> is computed from on first read.</param>
+/// <param name="sigHash">The canonical signature hash when validation already computed it.</param>
+/// <param name="maxCost">The gas and blob-gas cost the payer's approval reserves up front.</param>
+/// <param name="maxPriorityFeePerGas">EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</param>
+/// <param name="maxFeePerGas">EIP-1559 <c>max_fee_per_gas</c> of the envelope.</param>
+/// <param name="maxFeePerBlobGas">EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope, zero when it carries no blobs.</param>
+/// <param name="legacyNonce">The sender's account nonce before any frame executed.</param>
+/// <param name="nonceKeys">EIP-8250 nonce keys, or <see langword="null"/> for a plain account nonce.</param>
 public sealed class FrameTxContext(
     Address sender,
     ulong nonce,
     TxFrame[] frames,
     TxFrameSignature[] signatures,
-    ValueHash256 sigHash,
+    Transaction transaction,
+    ValueHash256? sigHash,
     in UInt256 maxCost,
     in UInt256 maxPriorityFeePerGas,
     in UInt256 maxFeePerGas,
     in UInt256 maxFeePerBlobGas,
     in UInt256 legacyNonce,
-    RecentRootReference[]? recentRootReferences = null,
     UInt256[]? nonceKeys = null)
 {
+    /// <summary>The transaction sender: the default target of a frame and signer of an entry that names none.</summary>
     public Address Sender { get; } = sender;
+
+    /// <summary>The nonce the envelope was signed at; with <see cref="NonceKeys"/> set, the shared <c>nonce_seq</c>.</summary>
     public ulong Nonce { get; } = nonce;
 
     /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
@@ -46,17 +70,34 @@ public sealed class FrameTxContext(
 
     private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
 
+    /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;
-    public TxFrameSignature[] Signatures { get; } = signatures;
-    public ValueHash256 SigHash { get; } = sigHash;
-    public UInt256 MaxCost { get; } = maxCost;
-    public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
-    public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
-    public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
 
-    /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
-    /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
-    public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];
+    /// <summary>The envelope's signature entries, validated before the first frame runs.</summary>
+    public TxFrameSignature[] Signatures { get; } = signatures;
+
+    /// <summary>The hash entries carrying no explicit <c>msg</c> are taken to have signed.</summary>
+    /// <remarks>Computed on first read unless validation supplied it: only a canonical-hash signature entry and
+    /// <c>TXPARAM(0x08)</c> need it.</remarks>
+    public ValueHash256 SigHash => _sigHash ??= FrameTxSigHash.ComputeValue(transaction);
+
+    private ValueHash256? _sigHash = sigHash;
+
+    /// <summary>The cost an approving payer reserves up front: the whole gas budget plus blob gas at the
+    /// envelope's maximum prices.</summary>
+    public UInt256 MaxCost { get; } = maxCost;
+
+    /// <summary>Whether a restored gas-search probe defers escrow without changing fee introspection.</summary>
+    internal bool SkipFeeReservation { get; init; }
+
+    /// <summary>EIP-1559 <c>max_priority_fee_per_gas</c> of the envelope.</summary>
+    public UInt256 MaxPriorityFeePerGas { get; } = maxPriorityFeePerGas;
+
+    /// <summary>EIP-1559 <c>max_fee_per_gas</c> of the envelope.</summary>
+    public UInt256 MaxFeePerGas { get; } = maxFeePerGas;
+
+    /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
+    public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
 
     /// <summary>Index of the frame currently executing; set by the outer loop before each frame.</summary>
     public int CurrentFrameIndex { get; set; }
@@ -68,29 +109,37 @@ public sealed class FrameTxContext(
     /// <summary>EVM code only runs while some frame executes, so completed means strictly earlier.</summary>
     public bool IsFrameCompleted(int frameIndex) => frameIndex < CurrentFrameIndex;
 
+    /// <summary>Whether a completed frame ran to success; meaningless for a frame that has not completed.</summary>
     public bool HasFrameSucceeded(int frameIndex) => (_frameSucceededBits & (1UL << frameIndex)) != 0;
 
+    /// <summary>Records that <paramref name="frameIndex"/> completed successfully.</summary>
     public void MarkFrameSucceeded(int frameIndex) => _frameSucceededBits |= 1UL << frameIndex;
 
+    /// <summary>Whether a frame was skipped rather than run, as a failed atomic batch's remaining members are.</summary>
     public bool WasFrameSkipped(int frameIndex) => (_frameSkippedBits & (1UL << frameIndex)) != 0;
 
+    /// <summary>Records that <paramref name="frameIndex"/> was skipped rather than run.</summary>
     public void MarkFrameSkipped(int frameIndex) => _frameSkippedBits |= 1UL << frameIndex;
 
 
+    /// <summary>Whether some frame has authorized the transaction on the sender's behalf.</summary>
+    /// <remarks>Set through <see cref="ApplyApproval"/>, which journals it; assigning it directly skips the undo record.</remarks>
     public bool SenderApproved { get; set; }
+
+    /// <summary>The account whose balance covers the transaction, once a frame has approved payment.</summary>
+    /// <remarks>Write-once for the life of the transaction, apart from a journal restore.</remarks>
     public Address? Payer { get; set; }
 
-    /// <summary>Scope deposited by a successful <c>APPROVE</c> in the current frame; 0 means no signal.
-    /// The outer loop reads and clears it after the frame terminates.</summary>
-    public byte ApprovalScopeSignal { get; set; }
-
+    /// <summary>The frame the outer loop is currently executing.</summary>
     public TxFrame CurrentFrame => Frames[CurrentFrameIndex];
 
     /// <summary>EIP-7906: lazily-built, sorted view of this transaction's state diff and logs, shared by its POST_TX frames.</summary>
     internal TransactionDiffView? PostTxDiffView { get; set; }
 
+    /// <summary>A frame's target with the omitted-target encoding resolved to the sender.</summary>
     public Address ResolvedTarget(int frameIndex) => Frames[frameIndex].Target ?? Sender;
 
+    /// <summary>An entry's signer with the omitted-signer encoding resolved to the sender.</summary>
     public Address ResolvedSigner(int signatureIndex) => Signatures[signatureIndex].Signer ?? Sender;
 
     private const int NoOwner = -1;
@@ -99,7 +148,7 @@ public sealed class FrameTxContext(
     private readonly long[] _frameStateGasCorrection = new long[frames.Length];
     private readonly ulong[] _frameExecutionGasUsed = new ulong[frames.Length];
     private readonly ulong[] _frameStateGasUsed = new ulong[frames.Length];
-    private readonly List<StateGasJournalEntry> _stateGasJournal = [];
+    private readonly List<FrameJournalEntry> _frameJournal = [];
 
     /// <summary>
     /// Records a completed frame's attributed <c>gas_used</c> so a later frame can read it through
@@ -125,8 +174,95 @@ public sealed class FrameTxContext(
         return net > 0 ? (ulong)net : 0;
     }
 
-    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
-    public int StateGasJournalCheckpoint => _stateGasJournal.Count;
+    /// <summary>Journal position captured when an EVM call frame begins, so the rollback boundary that restores world state also restores the approval context, the SSTORE-charge ownership map and per-frame <c>gas_used.state</c> corrections (EIP-8141 Gas Accounting).</summary>
+    public int FrameJournalCheckpoint => _frameJournal.Count;
+
+    // Approval only advances, none -> sender approved -> paid, and Payer is write-once, so the stage
+    // number the journal keeps is a complete undo record.
+    private const int NoApproval = 0;
+    private const int SenderApprovedStage = 1;
+    private const int PaidStage = 2;
+
+    private int ApprovalStage => Payer is not null ? PaidStage : SenderApproved ? SenderApprovedStage : NoApproval;
+
+    /// <summary>
+    /// Evaluates an <c>APPROVE</c> of <paramref name="scope"/> by <paramref name="resolvedTarget"/> against
+    /// the transaction's approval context, changing nothing.
+    /// </summary>
+    /// <remarks>Split from <see cref="ApplyApproval"/> so a caller can charge the approval's gas in between:
+    /// a charge that cannot be met must not leave a half-applied approval behind.</remarks>
+    /// <param name="plan">The effects an admitted approval will apply; meaningless unless the outcome is
+    /// <see cref="FrameApprovalOutcome.Approved"/>.</param>
+    internal FrameApprovalOutcome PlanApproval(FrameFlags scope, Address resolvedTarget, IWorldState worldState, out FrameApprovalPlan plan)
+    {
+        plan = default;
+        if (scope == 0 || (scope & ~CurrentFrame.AllowedApproveScope) != 0) return FrameApprovalOutcome.Rejected;
+
+        bool approvesExecution = (scope & FrameFlags.ApproveExecution) != 0;
+        bool approvesPayment = (scope & FrameFlags.ApprovePayment) != 0;
+
+        if (approvesExecution && (SenderApproved || resolvedTarget != Sender)) return FrameApprovalOutcome.Rejected;
+
+        bool createsSender = false;
+        if (approvesPayment)
+        {
+            if (Payer is not null) return FrameApprovalOutcome.Rejected;
+            // EIP-8141 ordering: payment may not be approved before execution, unless this same APPROVE grants both.
+            if (!approvesExecution && !SenderApproved) return FrameApprovalOutcome.Rejected;
+            if (!SkipFeeReservation && worldState.GetBalance(resolvedTarget) < MaxCost) return FrameApprovalOutcome.Rejected;
+
+            if (NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys))
+            {
+                if (worldState.GetNonce(Sender) >= Eip8250Constants.MaxNonceSeq) return FrameApprovalOutcome.NonceExhausted;
+                createsSender = !worldState.AccountExists(Sender);
+            }
+        }
+
+        plan = new FrameApprovalPlan(approvesExecution, approvesPayment, createsSender);
+        return FrameApprovalOutcome.Approved;
+    }
+
+    /// <summary>EIP-8250 <c>nonce_state_gas</c>: the state gas the approval's nonce consumption owes.</summary>
+    /// <remarks>The branches are exclusive: a keyed set writes <c>NONCE_MANAGER</c> slots and never the sender's
+    /// account, so <see cref="FrameApprovalPlan.CreatesSender"/> is set only for the account-nonce set.</remarks>
+    internal long NonceStateGas<TGasPolicy>(in FrameApprovalPlan plan, IReadOnlyStateProvider state)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        Debug.Assert(!plan.CreatesSender || NonceKeys is not { } keys || !KeyedNonceManager.UsesKeyedDomain(keys),
+            "a keyed set never creates the sender, so the two branches must stay exclusive");
+
+        return plan.CreatesSender ? TGasPolicy.GetNewAccountStateCost()
+            : plan.ApprovesPayment
+                ? KeyedNonceManager.FirstUseCount(state, Sender, NonceKeys) * TGasPolicy.GetStorageSetStateCost()
+                : 0;
+    }
+
+    /// <summary>
+    /// Applies an approval admitted by <see cref="PlanApproval"/>, journaled so the boundary that restores
+    /// world state on a nested revert or halt restores the approval context with it.
+    /// </summary>
+    /// <remarks>The sender's account creation, when the plan calls for one, must already have been charged.</remarks>
+    internal void ApplyApproval(in FrameApprovalPlan plan, Address resolvedTarget, IWorldState worldState, IReleaseSpec spec, in StackAccessTracker accessTracker)
+    {
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.ApprovalAdvanced, default, ApprovalStage, 0));
+
+        if (plan.ApprovesExecution) SenderApproved = true;
+        if (!plan.ApprovesPayment) return;
+
+        if (plan.CreatesSender) worldState.CreateAccountIfNotExists(Sender, UInt256.Zero);
+        if (!SkipFeeReservation) worldState.SubtractFromBalance(resolvedTarget, MaxCost, spec);
+        if (NonceKeys is { } nonceKeys)
+        {
+            KeyedNonceManager.ConsumeNonceSet(worldState, Sender, nonceKeys, Nonce);
+        }
+        else
+        {
+            worldState.IncrementNonce(Sender);
+        }
+
+        Payer = resolvedTarget;
+        if (spec.UseHotAndColdStorage) accessTracker.WarmUp(resolvedTarget);
+    }
 
     /// <summary>
     /// Records the frame that paid an <c>SSTORE</c> state charge as the outstanding-charge owner
@@ -138,7 +274,7 @@ public sealed class FrameTxContext(
         ref int owner = ref CollectionsMarshal.GetValueRefOrAddDefault(_stateChargeOwner, slot, out bool existed);
         int previousOwner = existed ? owner : NoOwner;
         owner = frame;
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerSet, slot, previousOwner, 0));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.OwnerSet, slot, previousOwner, 0));
     }
 
     /// <summary>
@@ -153,7 +289,7 @@ public sealed class FrameTxContext(
             return false;
         }
 
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.OwnerCleared, slot, owner, 0));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.OwnerCleared, slot, owner, 0));
         return true;
     }
 
@@ -164,60 +300,72 @@ public sealed class FrameTxContext(
     public void ReduceFrameStateGas(int owner, long amount)
     {
         _frameStateGasCorrection[owner] += amount;
-        _stateGasJournal.Add(new StateGasJournalEntry(StateGasJournalKind.ReceiptReduced, default, owner, amount));
+        _frameJournal.Add(new FrameJournalEntry(FrameJournalKind.ReceiptReduced, default, owner, amount));
     }
 
     /// <summary>
-    /// Undoes ownership and receipt-correction journal entries recorded after
+    /// Undoes approval, ownership and receipt-correction journal entries recorded after
     /// <paramref name="checkpoint"/>, at the same boundary that restores world state.
     /// </summary>
-    public void RestoreStateGasJournal(int checkpoint)
+    public void RestoreFrameJournal(int checkpoint)
     {
-        int count = _stateGasJournal.Count;
+        int count = _frameJournal.Count;
         if (count == checkpoint) return;
 
-        Span<StateGasJournalEntry> entries = CollectionsMarshal.AsSpan(_stateGasJournal);
+        Span<FrameJournalEntry> entries = CollectionsMarshal.AsSpan(_frameJournal);
         for (int k = count - 1; k >= checkpoint; k--)
         {
-            ref StateGasJournalEntry entry = ref entries[k];
+            ref FrameJournalEntry entry = ref entries[k];
             switch (entry.Kind)
             {
-                case StateGasJournalKind.OwnerSet:
-                    if (entry.Owner == NoOwner)
+                case FrameJournalKind.OwnerSet:
+                    if (entry.Value == NoOwner)
                     {
                         _stateChargeOwner.Remove(entry.Slot);
                     }
                     else
                     {
-                        _stateChargeOwner[entry.Slot] = entry.Owner;
+                        _stateChargeOwner[entry.Slot] = entry.Value;
                     }
                     break;
-                case StateGasJournalKind.OwnerCleared:
-                    _stateChargeOwner[entry.Slot] = entry.Owner;
+                case FrameJournalKind.OwnerCleared:
+                    _stateChargeOwner[entry.Slot] = entry.Value;
                     break;
-                case StateGasJournalKind.ReceiptReduced:
-                    _frameStateGasCorrection[entry.Owner] -= entry.Amount;
+                case FrameJournalKind.ReceiptReduced:
+                    _frameStateGasCorrection[entry.Value] -= entry.Amount;
+                    break;
+                case FrameJournalKind.ApprovalAdvanced:
+                    SenderApproved = entry.Value >= SenderApprovedStage;
+                    if (entry.Value < PaidStage) Payer = null;
                     break;
             }
         }
 
-        _stateGasJournal.RemoveRange(checkpoint, count - checkpoint);
+        _frameJournal.RemoveRange(checkpoint, count - checkpoint);
     }
 
     /// <summary>The refill-driven reduction of <paramref name="frame"/>'s <c>gas_used.state</c>.</summary>
     public long StateGasCorrectionFor(int frame) => _frameStateGasCorrection[frame];
 
-    private enum StateGasJournalKind : byte
+    private enum FrameJournalKind : byte
     {
         OwnerSet,
         OwnerCleared,
         ReceiptReduced,
+        ApprovalAdvanced,
     }
 
-    private readonly record struct StateGasJournalEntry(StateGasJournalKind Kind, StorageCell Slot, int Owner, long Amount);
+    /// <summary><see cref="Value"/> carries the entry's undo target: a frame index for the ownership and
+    /// receipt kinds, the previous approval stage for <see cref="FrameJournalKind.ApprovalAdvanced"/>.</summary>
+    private readonly record struct FrameJournalEntry(FrameJournalKind Kind, StorageCell Slot, int Value, long Amount);
 
+    /// <exception cref="ArgumentOutOfRangeException">The set is longer than a well-formed one, which the
+    /// fixed-size preimage buffer cannot hold.</exception>
+    [SkipLocalsInit]
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(nonceKeys.Length, Eip8250Constants.MaxNonceKeys);
+
         Span<byte> input = stackalloc byte[(1 + Eip8250Constants.MaxNonceKeys) * 32];
         new UInt256((ulong)nonceKeys.Length).ToBigEndian(input[..32]);
         for (int i = 0; i < nonceKeys.Length; i++)
@@ -228,3 +376,19 @@ public sealed class FrameTxContext(
         return ValueKeccak.Compute(input[..((nonceKeys.Length + 1) * 32)]);
     }
 }
+
+/// <summary>Outcome of evaluating an EIP-8141 <c>APPROVE</c> against a transaction's approval context.</summary>
+internal enum FrameApprovalOutcome : byte
+{
+    /// <summary>The approval is admissible.</summary>
+    Approved,
+
+    /// <summary>A guard refused the approval; the requesting call frame reverts.</summary>
+    Rejected,
+
+    /// <summary>The sender's nonce sequence is exhausted; the requesting call frame halts exceptionally.</summary>
+    NonceExhausted,
+}
+
+/// <summary>The effects an admitted <c>APPROVE</c> will apply, so its caller can charge for them beforehand.</summary>
+internal readonly record struct FrameApprovalPlan(bool ApprovesExecution, bool ApprovesPayment, bool CreatesSender);

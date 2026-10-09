@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
@@ -12,22 +13,53 @@ namespace Nethermind.Evm;
 
 public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    private delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] _opcodeMethods;
+    // Keeping this call boundary reduces guest execution cost.
+    private const MethodImplOptions ExecutionHandlersInlining = MethodImplOptions.NoInlining;
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesNoTrace;
-    private static delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[]? _opcodesTraced;
+    private static readonly OpcodeTable _opcodeTable = new();
 
-    private partial void PrepareOpcodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        _opcodeMethods = !TTracingInst.IsActive
-            ? _opcodesNoTrace ??= GenerateOpCodes<TTracingInst>(spec)
-            : _opcodesTraced ??= GenerateOpCodes<TTracingInst>(spec);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
 
-    protected delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
-        EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
+    /// <inheritdoc/>
+    /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
+    private partial bool ShouldRefreshOpcodes() => false;
 
-    public object ReturnData;
+    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
+    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
+    internal void PrepareFrameHandlersForTests()
+    {
+        PrepareOpcodes<OffFlag>();
+        _executionHandlers = new ExecutionHandlers(Spec);
+    }
+
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+
+    public object? ReturnData;
+
+    /// <summary>
+    /// <see cref="InitializeFrameCore{Eip158}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// </summary>
+    /// <remarks>
+    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
+    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
+    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
+    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// </remarks>
+    private static void InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+            return;
+
+        InitializeFrameCore<OnFlag>(vm, state);
+    }
 
     /// <summary>
     /// Inline handling of a CALL whose target is a precompile. Precompiles run
@@ -61,7 +93,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             snapshot: in snapshot,
             newAccountCharged: newAccountCharged);
 
-        CallResult callResult = ExecutePrecompile(child, _isTracingActionsCached, out Exception? failure, out _);
+        CallResult callResult = ExecutePrecompile(child, isTracingActions: false, out Exception? failure, out _);
 
         if (failure is not null)
         {
@@ -74,8 +106,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             if (child.NewAccountCharged)
                 CreditStateGasRefund(ref parent.Gas, TGasPolicy.GetNewAccountStateCost());
             child.Dispose();
-            ReturnDataBuffer = Array.Empty<byte>();
-            return stack.PushZero<TTracingInst>();
+            ReturnDataBuffer = default;
+            return stack.PushZero<TTracingInst, OnFlag>();
         }
 
         bool reverted = callResult.ShouldRevert;
@@ -83,6 +115,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             IncorporateChildStateGasRefunds(child);
             TGasPolicy.Refund(ref parent.Gas, in child.Gas);
+            TGasPolicy.RepayStateGasSpill(ref parent.Gas);
         }
         else
         {

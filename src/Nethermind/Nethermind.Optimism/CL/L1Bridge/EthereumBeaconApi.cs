@@ -68,7 +68,7 @@ public class EthereumBeaconApi : IBeaconApi
                 _logger.Debug(
                     $"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
 
-            T decoded =
+            T? decoded =
                 _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(cancellationToken));
 
             return decoded;
@@ -85,7 +85,7 @@ public class EthereumBeaconApi : IBeaconApi
         return default;
     }
 
-    private class GetBlobSidecarsResponse
+    internal class GetBlobSidecarsResponse
     {
         public required BlobSidecar[] Data { get; init; }
     }

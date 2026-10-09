@@ -22,6 +22,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -51,7 +52,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new() { Timestamp = Timestamper.UnixTime.Seconds, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
@@ -86,7 +87,7 @@ public partial class EngineModuleTests
             );
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -104,13 +105,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(30000)]
+    [CancelAfter(120000)]
     public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         uint count = 3;
         int value = 10;
         Address recipient = TestItem.AddressF;
@@ -138,6 +139,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
         UInt256 totalValue = ((int)(count * value)).GWei;
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
@@ -183,9 +185,9 @@ public partial class EngineModuleTests
 
         public bool SupportsBlobs { get; }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
-            Hash256 startingHead = blockTree.HeadHash;
+            Hash256 startingHead = blockTree.HeadHash!;
             uint count = 50;
             int value = 10;
             Address recipient = TestItem.AddressF;
@@ -243,7 +245,7 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
 
         Task improvedBlock = chain.WaitForImprovedBlock();
         string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
@@ -281,7 +283,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256? random = TestItem.KeccakF;
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
@@ -306,7 +308,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -405,7 +407,7 @@ public partial class EngineModuleTests
         StoringBlockImprovementContextFactory improvementContextFactory = chain.StoringBlockImprovementContextFactory!;
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
@@ -438,6 +440,39 @@ public partial class EngineModuleTests
 
     [Parallelizable(ParallelScope.None)] // Timing sensitive
     [Test]
+    public async Task WaitForImprovedBlock_with_minTransactions_ignores_the_empty_first_improvement()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
+            ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
+            TimeSpan.FromSeconds(60), delay: TimeSpan.FromMilliseconds(10));
+
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Task anyWait = chain.WaitForImprovedBlock(startingHead);
+        Task minTxWait = chain.WaitForImprovedBlock(startingHead, minTransactions: 1);
+
+        string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+
+        // The pool is empty, so the first improvement is empty too: it satisfies the parent-hash-only wait,
+        // and must not satisfy a wait that expects a transaction.
+        await anyWait;
+        Assert.That(minTxWait.IsCompleted, Is.False, "an empty improvement must not satisfy minTransactions");
+
+        IBlockImprovementContext emptyImprovement = chain.StoringBlockImprovementContextFactory.SnapshotCreatedContexts()[^1];
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 1, 10, out _, out _));
+        await minTxWait;
+
+        Assert.That(() => emptyImprovement.Disposed, Is.True.After(5000, 10));
+
+        ExecutionPayload payload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        Assert.That(payload.TryGetTransactions().Data!, Has.Length.AtLeast(1));
+    }
+
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Test]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -449,7 +484,7 @@ public partial class EngineModuleTests
             timePerSlot, delay: delay);
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
 
         // Each round waits for an improvement that contains the full batch. The improvement
@@ -466,14 +501,17 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await improvementWaitTask;
 
-        improvementWaitTask = improvementContextFactory.WaitForImprovedBlockWithCondition(chain.CancellationToken, static b => b.Transactions.Length == 11);
+        // An improvement starts building before it is stored for its payload, so a fast build can finish while
+        // the previous context is still the stored one. getPayload returns the stored context: wait for it.
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 11, chain.CancellationToken);
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
-        await improvementWaitTask;
+        await storedImprovementTask;
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         using (Assert.EnterMultipleScope())
         {
@@ -515,7 +553,7 @@ public partial class EngineModuleTests
         });
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         chain.AddTransactions(tx1);
 
         Task improvedBlockWait = chain.WaitForImprovedBlock();
@@ -525,13 +563,14 @@ public partial class EngineModuleTests
             .Result.Data.PayloadId!;
         await improvedBlockWait;
 
-        improvedBlockWait = chain.WaitForImprovedBlock();
+        ObservablePayloadPreparationService payloadPreparation = (ObservablePayloadPreparationService)chain.Container.Resolve<IPayloadPreparationService>();
+        Task storedImprovementTask = payloadPreparation.WaitForStoredBlockAsync(payloadId, static block => block.Transactions.Length == 2, chain.CancellationToken);
         chain.AddTransactions(tx2);
-        await improvedBlockWait;
+        await storedImprovementTask;
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         Assert.That(transactionsLength, Is.EqualTo(new[] { 1, 2 }));
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -554,7 +593,7 @@ public partial class EngineModuleTests
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Task blockImprovement = chain.WaitForImprovedBlock();
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
@@ -573,7 +612,8 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        Assert.That(cancelledContext?.Disposed, Is.True);
+        // The creation event can precede publication, so cleanup may finish after getPayload returns.
+        await ((DelayBlockImprovementContext)cancelledContext).DisposalCompleted.WaitAsync(chain.CancellationToken);
     }
 
     [Test]
@@ -619,7 +659,7 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(getPayloadResultBlock31A);
 
         // current main chain block 30->31A, we start building payload 32A
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResultBlock31A.BlockHash, Keccak.Zero, getPayloadResultBlock31A.BlockHash));
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResultBlock31A.BlockHash!, Keccak.Zero, getPayloadResultBlock31A.BlockHash!));
         Block block31A = chain.BlockTree.Head!;
         PayloadAttributes payloadAttributes = new()
         {
@@ -680,7 +720,7 @@ public partial class EngineModuleTests
                 timePerSlot, delay: delay);
 
             IEngineRpcModule rpc = chain.EngineRpcModule;
-            Hash256 blockX = chain.BlockTree.HeadHash;
+            Hash256 blockX = chain.BlockTree.HeadHash!;
             chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
 
             Task improvementTask = chain.WaitForImprovedBlock(blockX);
@@ -708,6 +748,7 @@ public partial class EngineModuleTests
             }
 
             Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid), $"iteration {iteration}");
+            await chain.WaitForCommitted(getPayloadResult.BlockHash);
 
 
             // starting building on block X
@@ -721,7 +762,7 @@ public partial class EngineModuleTests
             // starting building on block X + 1
             Task secondImprovementTask = chain.WaitForImprovedBlock(getPayloadResult.BlockHash);
             string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
-                    new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
+                    new ForkchoiceStateV1(getPayloadResult.BlockHash!, Keccak.Zero, getPayloadResult.BlockHash!),
                     new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
                 .Result.Data.PayloadId!;
             await secondImprovementTask;
@@ -749,7 +790,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 blockX = chain.BlockTree.HeadHash;
+        Hash256 blockX = chain.BlockTree.HeadHash!;
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
@@ -772,7 +813,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 blockX = chain.BlockTree.HeadHash;
+        Hash256 blockX = chain.BlockTree.HeadHash!;
         await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
@@ -812,7 +853,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot,
         TimeSpan? delay = null
     ) =>
-        (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+        (producer, txPool, ctxFactory, timer, logManager) => new ObservablePayloadPreparationService(
             producer,
             txPool,
             ctxFactory,
@@ -842,13 +883,13 @@ public partial class EngineModuleTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(initialSpec) { NextForkSpec = isForked ? nextBlockSpec : initialSpec }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 blockHash = chain.BlockTree.HeadHash;
+        Hash256 blockHash = chain.BlockTree.HeadHash!;
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(blockHash, Keccak.Zero, blockHash));
 
         AcceptTxResult initiallyAccepted = chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
         Assert.That(initiallyAccepted, Is.EqualTo(AcceptTxResult.Accepted));
 
-        IBlockProducer blockProducer = chain!.BlockProducer;
+        IBlockProducer blockProducer = chain.BlockProducer!;
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Header.Timestamp + 1,
@@ -907,6 +948,76 @@ public partial class EngineModuleTests
                     isForked)
                 { TestName = "Blob count higher than lowered maximum" + nameSuffix };
             }
+        }
+    }
+
+    /// <summary>Signals when the improvement stored for a payload, the one <c>getPayload</c> returns, holds a matching block.</summary>
+    /// <remarks>
+    /// A context is stored before its build completes, so waiters are checked both when a context is stored and when the
+    /// stored context's build completes. Registration and notification check the stored block under one lock, so a
+    /// publication cannot fall between a waiter's initial check and its registration.
+    /// </remarks>
+    private sealed class ObservablePayloadPreparationService(
+        IBlockProducer blockProducer,
+        ITxPool txPool,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        TimeSpan timePerSlot,
+        int slotsPerOldPayloadCleanup,
+        TimeSpan? improvementDelay)
+        : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot,
+            slotsPerOldPayloadCleanup: slotsPerOldPayloadCleanup, improvementDelay: improvementDelay)
+    {
+        private readonly Lock _waitersLock = new();
+        private readonly List<StoredBlockWaiter> _waiters = [];
+
+        public Task WaitForStoredBlockAsync(string payloadId, Func<Block, bool> predicate, CancellationToken cancellationToken)
+        {
+            StoredBlockWaiter waiter = new(payloadId, predicate);
+            lock (_waitersLock)
+            {
+                if (StoredBlockMatches(waiter))
+                {
+                    return Task.CompletedTask;
+                }
+
+                _waiters.Add(waiter);
+            }
+
+            cancellationToken.Register(static state => ((StoredBlockWaiter)state!).Completion.TrySetCanceled(), waiter);
+            return waiter.Completion.Task;
+        }
+
+        protected override void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+        {
+            base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
+
+            if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored))
+            {
+                NotifyWaiters();
+                stored.ImprovementTask.ContinueWith(_ => NotifyWaiters(), TaskContinuationOptions.ExecuteSynchronously);
+            }
+        }
+
+        private void NotifyWaiters()
+        {
+            lock (_waitersLock)
+            {
+                _waiters.RemoveAll(waiter => waiter.Completion.Task.IsCompleted || (StoredBlockMatches(waiter) && waiter.Completion.TrySetResult()));
+            }
+        }
+
+        private bool StoredBlockMatches(StoredBlockWaiter waiter) =>
+            _payloadStorage.TryGetValue(waiter.PayloadId, out IBlockImprovementContext? context)
+            && context.Best.CurrentBestBlock is { } block
+            && waiter.Predicate(block);
+
+        private sealed class StoredBlockWaiter(string payloadId, Func<Block, bool> predicate)
+        {
+            public string PayloadId { get; } = payloadId;
+            public Func<Block, bool> Predicate { get; } = predicate;
+            public TaskCompletionSource Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 }

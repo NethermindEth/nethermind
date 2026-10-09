@@ -129,10 +129,15 @@ public class CliqueSealEngineTests
         ulong gasLimit = 4700000;
         ulong timestamp = 1492009146UL;
         byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
-        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-        header.Bloom = Bloom.Empty;
+        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+        {
+            Bloom = Bloom.Empty,
+            StateRoot = PatriciaTree.EmptyTreeHash,
+            TxRoot = PatriciaTree.EmptyTreeHash,
+            ReceiptsRoot = PatriciaTree.EmptyTreeHash,
+            MixHash = Keccak.Zero
+        };
         Block genesis = new(header);
-        genesis.Header.Bloom = Bloom.Empty;
         genesis.Header.Hash = genesis.CalculateHash();
 
         return genesis;
@@ -164,10 +169,15 @@ public class CliqueSealEngineTests
         ulong gasLimit = 4700000;
         ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");
-        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-        header.MixHash = Keccak.Zero;
+        BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+        {
+            Bloom = Bloom.Empty,
+            StateRoot = PatriciaTree.EmptyTreeHash,
+            TxRoot = PatriciaTree.EmptyTreeHash,
+            ReceiptsRoot = PatriciaTree.EmptyTreeHash,
+            MixHash = Keccak.Zero
+        };
         Block block = new(header);
-        block.Header.Bloom = Bloom.Empty;
         block.Header.Hash = block.CalculateHash();
         return block;
     }

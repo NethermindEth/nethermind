@@ -44,7 +44,9 @@ public sealed class TxFrameDecoder : RlpDecoder<TxFrame>
             decoderContext.Check(check);
         }
 
-        return new TxFrame(mode, flags, target, executionGasLimit, stateGasLimit, value, data);
+        // Unchecked on purpose: an out-of-range mode or a reserved flag bit from a peer is rejected by
+        // FrameTxValidation.IsWellFormed, not here, so the decode stays a pure structural read.
+        return new TxFrame((FrameMode)mode, (FrameFlags)flags, target, executionGasLimit, stateGasLimit, value, data);
     }
 
     public override void Encode<TWriter>(ref TWriter writer, TxFrame item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -25,6 +25,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -109,6 +110,17 @@ namespace Nethermind.Merge.Plugin.Test
             }
         ];
 
+        private static PayloadAttributes CreateAmsterdamPayloadAttributes(BlockHeader parent) => new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressC,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Zero,
+            SlotNumber = 1,
+            TargetGasLimit = parent.GasLimit,
+        };
+
         private static byte[] RandomBytes(int length)
         {
             byte[] bytes = new byte[length];
@@ -170,9 +182,11 @@ namespace Nethermind.Merge.Plugin.Test
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+        private static async Task<ExecutionPayload> CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
             ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
+            // A parent answered VALID a moment ago may not have its state committed yet.
+            await chain.WaitForCommitted(parent.BlockHash);
             using IOverridableWorldScope overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
             using ILifetimeScope childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
 
@@ -205,7 +219,7 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(
+        private static async Task<ExecutionPayloadV3> CreateBlockRequestV3(
             MergeTestBlockchain chain,
             ExecutionPayload parent,
             Address miner,
@@ -215,6 +229,7 @@ namespace Nethermind.Merge.Plugin.Test
             Transaction[]? transactions = null,
             Hash256? parentBeaconBlockRoot = null)
         {
+            await chain.WaitForCommitted(parent.BlockHash);
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequestV3.TryGetBlock().Data;
 
@@ -262,8 +277,9 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayload[] CreateBlockRequestBranch(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, int count)
+        private static async Task<ExecutionPayload[]> CreateBlockRequestBranch(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, int count)
         {
+            await chain.WaitForCommitted(parent.BlockHash);
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
 

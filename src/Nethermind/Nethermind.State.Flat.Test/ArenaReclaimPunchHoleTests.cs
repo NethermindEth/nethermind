@@ -36,9 +36,8 @@ public class ArenaReclaimPunchHoleTests
         try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ReservationCleanup_PunchesHole_ForDeadRange_WhenEnabled(bool punchHoleOnReclaim)
+    [Test]
+    public void ReservationCleanup_PunchesHole_ForDeadRange_WhenEnabled([Values] bool punchHoleOnReclaim)
     {
         if (!OperatingSystem.IsLinux()) Assert.Ignore("fallocate punch-hole is Linux-only");
         int pageSize = Environment.SystemPageSize;

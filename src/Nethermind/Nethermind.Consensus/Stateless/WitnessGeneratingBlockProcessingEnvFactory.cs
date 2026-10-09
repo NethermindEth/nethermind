@@ -14,7 +14,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
@@ -38,7 +37,6 @@ public interface IWitnessGeneratingBlockProcessingEnvFactory
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IWorldStateManager worldStateManager,
-    IDbProvider dbProvider,
     IBlockValidationModule[] validationModules,
     ISpecProvider specProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory, IDisposable
@@ -69,18 +67,15 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private PooledEntry BuildEntry()
     {
-        IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-
         WitnessHeaderRecorder headerRecorder = new();
 
+        // Execution reads go through the layout-native state; the trieStore serves only the post-execution witness walk.
         IReadOnlyTrieStore trieStore = worldStateManager.CreateReadOnlyTrieStore();
-        IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
-        IWorldState baseWorldState = new WorldState(
-            new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
+        IWorldStateScopeProvider scopeProvider = worldStateManager.CreateResettableWorldState();
+        IWorldState baseWorldState = new WorldState(scopeProvider, logManager);
 
         IHeaderStore headerStore = rootLifetimeScope.Resolve<IHeaderStore>();
         WitnessCapturingHeaderFinder capturingHeaderFinder = new(headerStore, headerRecorder);
-        // Proof-collection walks go through the global (non-capturing) reader; the trieStore serves execution-path reads.
         WitnessGeneratingWorldState witnessWorldState = new(
             baseWorldState, worldStateManager.GlobalStateReader, trieStore, headerRecorder, headerStore);
 
@@ -92,7 +87,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope(builder =>
         {
             builder
-                .AddScoped<IStateReader>(stateReader)
                 .AddScoped<IWorldState>(witnessWorldState)
                 .AddScoped<WitnessGeneratingWorldState>(witnessWorldState)
                 .AddScoped<IHeaderFinder>(capturingHeaderFinder)
@@ -105,7 +99,10 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<ILogManager>(),
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
-                    ctx.Resolve<BalTxProcessorFactory>()));
+                    ctx.Resolve<BalTxProcessorFactory>(),
+                    zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>(),
+                    specProvider: ctx.Resolve<ISpecProvider>(),
+                    headerFinder: ctx.Resolve<IHeaderFinder>()));
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.
@@ -118,7 +115,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
         IWitnessGeneratingBlockProcessingEnv env = envLifetimeScope.Resolve<IWitnessGeneratingBlockProcessingEnv>();
         IBlockhashCache blockhashCache = envLifetimeScope.Resolve<IBlockhashCache>();
-        return new PooledEntry(envLifetimeScope, trieStore, readOnlyDbProvider, headerRecorder, witnessWorldState, blockhashCache, env);
+        return new PooledEntry(envLifetimeScope, scopeProvider, trieStore, headerRecorder, witnessWorldState, blockhashCache, env);
     }
 
     private void Return(PooledEntry entry)
@@ -167,8 +164,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
 
     private sealed class PooledEntry(
         ILifetimeScope scope,
+        IWorldStateScopeProvider scopeProvider,
         IReadOnlyTrieStore trieStore,
-        IReadOnlyDbProvider dbProvider,
         WitnessHeaderRecorder headerRecorder,
         WitnessGeneratingWorldState worldState,
         IBlockhashCache blockhashCache,
@@ -177,10 +174,11 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         public ILifetimeScope Scope { get; } = scope;
         public IWitnessGeneratingBlockProcessingEnv Env { get; } = env;
 
-        /// <summary>Tears down the Autofac scope first, then the manually-created read-only trie store it borrowed.</summary>
+        /// <summary>Tears down the Autofac scope first, then the manually-created state backends it borrowed.</summary>
         public void Dispose()
         {
             Scope.Dispose();
+            (scopeProvider as IDisposable)?.Dispose();
             trieStore.Dispose();
         }
 
@@ -190,7 +188,6 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
         {
             headerRecorder.Reset();
             worldState.Reset();
-            dbProvider.ClearTempChanges();
             blockhashCache.Clear();
         }
     }

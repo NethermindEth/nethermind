@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -41,6 +42,101 @@ public class FrameTransactionForRpcTests
 
     private static readonly EthereumJsonSerializer Serializer = new();
 
+    [Test]
+    public void ToTransaction_NonFrameCreationWithoutData_IsRejected(
+        [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.SetCode)] TxType type)
+    {
+        Transaction tx = new() { Type = type };
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
+        if (rpc is EIP1559TransactionForRpc feeMarket) feeMarket.GasPrice = null;
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.ContractCreationWithoutData));
+    }
+
+    [Test]
+    public void ToTransaction_WithoutOuterRecipient_UsesFrameTargets()
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            From = TestItem.AddressA,
+            Frames = [new FrameForRpc { Target = TestItem.AddressB, ExecutionGas = 50_000 }],
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.IsError, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.To, Is.Null);
+            Assert.That(result.Data!.Frames![0].Target, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    [Test]
+    public void FrameSignature_DeserializesDefaultSigner(
+        [Values((byte)0, (byte)1, (byte)2)] byte scheme,
+        [Values(null, "null", "\"0x\"")] string? signer)
+    {
+        string signerField = signer is null ? "" : $"\"signer\":{signer},";
+        int signatureLength = scheme == TxFrameSignature.SchemeP256 ? 128 : 65;
+        string json = $"{{{signerField}\"scheme\":{scheme},\"signature\":\"0x{new string('1', signatureLength * 2)}\"}}";
+
+        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.ToSignature().Signer, Is.Null);
+            Assert.That(rpc.Signature.Length, Is.EqualTo(signatureLength));
+        }
+    }
+
+    [Test]
+    public void FrameSignature_DeserializesExplicitSigner()
+    {
+        string json = $"{{\"scheme\":1,\"signer\":\"{TestItem.AddressA}\"}}";
+        FrameSignatureForRpc rpc = Serializer.Deserialize<FrameSignatureForRpc>(json)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rpc.Signer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(rpc.Signature.IsEmpty, Is.True);
+        }
+    }
+
+    [TestCase("0x12", typeof(ArgumentException))]
+    [TestCase("0xzz", typeof(FormatException))]
+    public void FrameSignature_RejectsMalformedSigner(string signer, Type expectedException)
+    {
+        string json = $"{{\"scheme\":1,\"signer\":\"{signer}\"}}";
+
+        Assert.That(() => Serializer.Deserialize<FrameSignatureForRpc>(json), Throws.TypeOf(expectedException));
+    }
+
+    [Test]
+    public void FrameSignature_Signer_FollowsStrictHexFormat([Values] bool strictHexFormat)
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Insert(0, new AddressConverter(strictHexFormat));
+        Address? ReadSigner(string signer) =>
+            JsonSerializer.Deserialize<FrameSignatureForRpc>($$"""{"scheme":1,"signer":"{{signer}}"}""", options)!.Signer;
+        string unprefixed = TestItem.AddressA.ToString(withZeroX: false, withEip55Checksum: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadSigner("0x"), Is.Null);
+            if (strictHexFormat)
+                Assert.That(() => ReadSigner(unprefixed), Throws.InstanceOf<FormatException>());
+            else
+                Assert.That(ReadSigner(unprefixed), Is.EqualTo(TestItem.AddressA));
+        }
+    }
+
+    [Test]
+    public void Frame_RejectsEmptyTarget() =>
+        Assert.That(() => Serializer.Deserialize<FrameForRpc>("""{"target":"0x"}"""), Throws.ArgumentException);
+
     private static JsonDocument SerializeToJson(TransactionForRpc rpc) => JsonDocument.Parse(Serializer.Serialize(rpc));
 
     [Test]
@@ -69,7 +165,7 @@ public class FrameTransactionForRpcTests
     public void FrameTransactionForRpc_SerializesFrames()
     {
         Transaction tx = BuildMinimalFrameTx();
-        tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
+        tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, TestItem.AddressB, 50_000, (UInt256)1, default)];
         TransactionForRpc rpc = TransactionForRpc.FromTransaction(tx);
 
         using JsonDocument doc = SerializeToJson(rpc);
@@ -78,11 +174,11 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frames.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(frames[0].GetProperty("mode").GetInt32(), Is.EqualTo(TxFrame.ModeVerify));
-            Assert.That(frames[0].GetProperty("flags").GetInt32(), Is.EqualTo(TxFrame.ApproveExecutionAndPayment));
+            Assert.That(frames[0].GetProperty("mode").GetString(), Is.EqualTo("0x1"));
+            Assert.That(frames[0].GetProperty("flags").GetString(), Is.EqualTo("0x3"));
             Assert.That(frames[0].GetProperty("target").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
-            Assert.That(frames[0].GetProperty("executionGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
-            Assert.That(frames[0].GetProperty("stateGasLimit").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("executionGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
+            Assert.That(frames[0].GetProperty("stateGas").GetString(), Does.Match("^0x[0-9a-f]+$"));
         }
     }
 
@@ -99,7 +195,7 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(signatures.GetArrayLength(), Is.EqualTo(1));
-            Assert.That(signatures[0].GetProperty("scheme").GetInt32(), Is.EqualTo(TxFrameSignature.SchemeSecp256k1));
+            Assert.That(signatures[0].GetProperty("scheme").GetString(), Is.EqualTo("0x1"));
         }
     }
 
@@ -181,18 +277,14 @@ public class FrameTransactionForRpcTests
     }
 
     /// <remarks>
-    /// A JSON <c>null</c> in any of the EIP-8141 lists — as an element, or as one of a reference's hashes, which
-    /// System.Text.Json assigns past the converter rather than rejecting — deserializes to a null the mapping used
-    /// to dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
+    /// A JSON <c>null</c> element in any of the EIP-8141 lists deserializes to a null the mapping used to
+    /// dereference, so <c>eth_call</c> answered these requests with a <see cref="NullReferenceException"/>.
     /// </remarks>
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","frames":[null]}""", "frames", TestName = "ToTransaction_NullFrame_IsRejected")]
     [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","signatures":[null]}""", "signatures", TestName = "ToTransaction_NullSignature_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[null]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReference_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":null,"slot":"0x1","root":"0x0000000000000000000000000000000000000000000000000000000000000001"}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceSourceId_IsRejected")]
-    [TestCase("""{"type":"0x6","to":"0x0000000000000000000000000000000000000002","recentRootReferences":[{"sourceId":"0x0000000000000000000000000000000000000000000000000000000000000001","slot":"0x1","root":null}]}""", "recentRootReferences", TestName = "ToTransaction_NullRecentRootReferenceRoot_IsRejected")]
     public void FrameTransactionForRpc_ToTransaction_RejectsANullListEntry(string json, string field)
     {
-        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(json)!;
 
         Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
 
@@ -214,15 +306,15 @@ public class FrameTransactionForRpcTests
     [TestCase(GasCap, false, TestName = "ToTransaction_FrameGasAtTheCap_IsAccepted")]
     [TestCase(GasCap + 1, true, TestName = "ToTransaction_FrameGasAboveTheCap_IsRejected")]
     [TestCase(ulong.MaxValue, true, TestName = "ToTransaction_FrameGasOverflowingTheSum_IsRejected")]
-    public void FrameTransactionForRpc_ToTransaction_CapsTheFrameGasLimits(ulong frameGasLimit, bool expectedError)
+    public void FrameTransactionForRpc_ToTransaction_CapsTheFrameGasLimits(ulong frameGas, bool expectedError)
     {
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = frameGasLimit },
-                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = frameGas },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC },
             ],
         };
 
@@ -245,8 +337,8 @@ public class FrameTransactionForRpcTests
             Gas = 12,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, Flags = TxFrame.ApproveExecutionAndPayment, ExecutionGasLimit = 30_000 },
-                new FrameForRpc { Mode = TxFrame.ModeSender, Target = TestItem.AddressC, ExecutionGasLimit = 40_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = 30_000 },
+                new FrameForRpc { Mode = (byte)FrameMode.Sender, Target = TestItem.AddressC, ExecutionGas = 40_000 },
             ],
         };
 
@@ -265,7 +357,7 @@ public class FrameTransactionForRpcTests
             To = TestItem.AddressB,
             Frames =
             [
-                new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue, StateGasLimit = 1 },
+                new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = ulong.MaxValue, StateGas = 1 },
             ],
         };
 
@@ -280,10 +372,93 @@ public class FrameTransactionForRpcTests
         FrameTransactionForRpc rpc = new()
         {
             To = TestItem.AddressB,
-            Frames = [new FrameForRpc { Mode = TxFrame.ModeVerify, ExecutionGasLimit = ulong.MaxValue }],
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = ulong.MaxValue }],
         };
 
         Assert.That(rpc.ToTransaction(validateUserInput: true).IsError, Is.False);
+    }
+
+    private const int Secp256k1EntriesAtTheCap = (int)(GasCap / Eip8141Constants.Secp256k1VerificationGasCost);
+
+    /// <summary><paramref name="count"/> verifying SECP256K1 entries, each costing a full recovery.</summary>
+    /// <remarks>An explicit non-zero digest and a named signer, so every entry is structurally acceptable.</remarks>
+    private static FrameSignatureForRpc[] Secp256k1Signatures(int count)
+    {
+        FrameSignatureForRpc[] signatures = new FrameSignatureForRpc[count];
+        for (int i = 0; i < count; i++)
+        {
+            signatures[i] = new FrameSignatureForRpc
+            {
+                Scheme = TxFrameSignature.SchemeSecp256k1,
+                Signer = TestItem.AddressA,
+                Msg = TestItem.KeccakA.BytesToArray(),
+                Signature = new byte[TxFrameSignature.Secp256k1SignatureLength],
+            };
+        }
+
+        return signatures;
+    }
+
+    /// <summary>The RPC gas cap also bounds the signature verification a frame transaction asks for.</summary>
+    /// <remarks>
+    /// The processor runs <c>validate_signature</c> over every entry before it derives any gas budget, so
+    /// capping the frame limits alone leaves the elliptic-curve work unpriced: a request can keep its frames
+    /// tiny and repeat a verifying SECP256K1 entry to buy arbitrarily many recoveries off one call.
+    /// </remarks>
+    [TestCase(Secp256k1EntriesAtTheCap, false, TestName = "ToTransaction_SignatureWorkAtTheCap_IsAccepted")]
+    [TestCase(Secp256k1EntriesAtTheCap + 1, true, TestName = "ToTransaction_SignatureWorkAboveTheCap_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_CountsSignatureVerificationAgainstTheCap(int entries, bool expectedError)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            // Deliberately free of frame gas, so only the signature list can breach the cap.
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment }],
+            Signatures = Secp256k1Signatures(entries),
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.IsError, Is.EqualTo(expectedError), result.Error);
+    }
+
+    /// <remarks>
+    /// The rejection reports the two terms apart, because the common one is a frame transaction carrying no
+    /// signatures at all: a single combined figure blames a verification cost that contributed nothing to it.
+    /// </remarks>
+    [TestCase(0, 0UL, TestName = "ToTransaction_AboveTheCapWithoutSignatures_ReportsAZeroVerificationTerm")]
+    [TestCase(2, 2 * Eip8141Constants.Secp256k1VerificationGasCost, TestName = "ToTransaction_AboveTheCapWithSignatures_ReportsBothTerms")]
+    public void FrameTransactionForRpc_ToTransaction_ReportsTheFrameAndSignatureTermsApart(int entries, ulong expectedSignatureGas)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, Flags = (byte)FrameFlags.ApproveExecutionAndPayment, ExecutionGas = GasCap + 1 }],
+            Signatures = Secp256k1Signatures(entries),
+        };
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true, gasCap: GasCap);
+
+        Assert.That(result.Error, Is.EqualTo(
+            $"frame gas limits ({GasCap + 1}) and signature verification ({expectedSignatureGas}) exceed the gas cap ({GasCap})"));
+    }
+
+    /// <summary>Signature work is charged on top of the frame limits, so neither alone hides the other.</summary>
+    /// <remarks>The saturating case also pins that the combined reservation does not wrap to a value under the cap.</remarks>
+    [TestCase(GasCap, TestName = "ToTransaction_SignatureWorkOnTopOfFrameGasAtTheCap_IsRejected")]
+    [TestCase(ulong.MaxValue, TestName = "ToTransaction_SignatureWorkSaturatingTheReservation_IsRejected")]
+    public void FrameTransactionForRpc_ToTransaction_AddsSignatureWorkToTheFrameGas(ulong frameGas)
+    {
+        FrameTransactionForRpc rpc = new()
+        {
+            To = TestItem.AddressB,
+            Frames = [new FrameForRpc { Mode = (byte)FrameMode.Verify, ExecutionGas = frameGas }],
+            Signatures = Secp256k1Signatures(1),
+        };
+
+        Assert.That(rpc.ToTransaction(validateUserInput: true, gasCap: GasCap).IsError, Is.True);
+        // GasLimit still reports the frame sum alone, matching FrameTxDecoder.
+        Assert.That(rpc.ToTransaction(validateUserInput: true).Data!.GasLimit, Is.EqualTo(frameGas));
     }
 
     private static Transaction BuildKeyedFrameTx(UInt256[]? nonceKeys, ulong nonceSeq = 3)
@@ -362,11 +537,11 @@ public class FrameTransactionForRpcTests
                 "from": "0x0000000000000000000000000000000000000001",
                 "nonce": "0x3",
                 "nonceKeys": ["0x1", "0x7"],
-                "frames": [{"mode": 0, "flags": 3, "gasLimit": "0x186a0", "value": "0x0", "data": "0x"}]
+                "frames": [{"mode": 0, "flags": 3, "executionGas": "0x186a0", "value": "0x0", "data": "0x"}]
             }
             """;
 
-        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json);
+        TransactionForRpc rpc = Serializer.Deserialize<TransactionForRpc>(json)!;
 
         Assert.That(rpc, Is.InstanceOf<FrameTransactionForRpc>());
         Transaction tx = rpc.ToTransaction().Data!;
@@ -420,7 +595,7 @@ public class FrameTransactionForRpcTests
         if (throughJson)
         {
             EthereumJsonSerializer serializer = new();
-            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc));
+            receiptForRpc = serializer.Deserialize<ReceiptForRpc>(serializer.Serialize(receiptForRpc))!;
         }
 
         TxReceipt roundTripped = receiptForRpc.ToReceipt();
@@ -442,6 +617,34 @@ public class FrameTransactionForRpcTests
         }
     }
 
+    /// <summary>A frame receipt serializes to the execution-apis <c>FrameReceipt</c> schema: quantities, the
+    /// summed <c>gasUsed</c>, and full <c>Log</c> objects identical to the receipt's own, block-global indexes included.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_SerializesFrameReceiptsPerSchema()
+    {
+        TxReceipt receipt = BuildFrameTxReceipt();
+        receipt.TxHash = TestItem.KeccakB;
+        receipt.Index = 2;
+        receipt.BlockNumber = 7;
+        receipt.Logs = [FrameLog, FrameLog];
+        receipt.FrameReceipts = [.. receipt.FrameReceipts!, new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []), new TxFrameReceipt(TxFrameReceipt.StatusSuccess, 1_000, 0, [FrameLog])];
+
+        ReceiptForRpc receiptForRpc = new(TestItem.KeccakB, receipt, blockTimestamp: 0x10, new TxGasInfo(UInt256.One), logIndexStart: 5);
+        using JsonDocument doc = JsonDocument.Parse(Serializer.Serialize(receiptForRpc));
+        JsonElement logs = doc.RootElement.GetProperty("logs");
+        JsonElement frames = doc.RootElement.GetProperty("frameReceipts");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frames.EnumerateArray().Select(static f => f.GetProperty("status").GetString()), Is.EqualTo(new[] { "0x1", "0x0", "0x2", "0x1" }));
+            Assert.That(frames[0].GetProperty("gasUsed").GetString(), Is.EqualTo("0x1d088"));
+            Assert.That(frames[3].GetProperty("gasUsed").GetString(), Is.EqualTo("0x3e8"));
+            Assert.That(frames[3].GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x6"));
+            Assert.That(JsonElement.DeepEquals(frames[0].GetProperty("logs")[0], logs[0]), Is.True);
+            Assert.That(JsonElement.DeepEquals(frames[3].GetProperty("logs")[0], logs[1]), Is.True);
+        }
+    }
+
     /// <summary>The wire-facing converter, not just the DTO, must carry the frame fields both ways.</summary>
     /// <remarks><see cref="TxReceiptConverter"/> is the registered converter for <see cref="TxReceipt"/>.</remarks>
     [Test]
@@ -449,6 +652,9 @@ public class FrameTransactionForRpcTests
     {
         TxReceipt receipt = BuildFrameTxReceipt();
         receipt.TxHash = Keccak.Zero;
+        receipt.BlockGasUsed = 118_920;
+        receipt.ExecutionGasUsed = 21_000;
+        receipt.StorageGasUsed = 97_920;
         EthereumJsonSerializer serializer = new(new JsonConverter[] { new TxReceiptConverter() });
 
         TxReceipt? roundTripped = serializer.Deserialize<TxReceipt>(serializer.Serialize(receipt));
@@ -456,6 +662,9 @@ public class FrameTransactionForRpcTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(roundTripped!.Payer, Is.EqualTo(TestItem.AddressA));
+            Assert.That(roundTripped.BlockGasUsed, Is.EqualTo(118_920UL));
+            Assert.That(roundTripped.ExecutionGasUsed, Is.EqualTo(21_000UL));
+            Assert.That(roundTripped.StorageGasUsed, Is.EqualTo(97_920UL));
             Assert.That(roundTripped.FrameReceipts, Has.Length.EqualTo(2));
             Assert.That(roundTripped.FrameReceipts![0].ExecutionGasUsed, Is.EqualTo(21_000UL));
             Assert.That(roundTripped.FrameReceipts[0].StateGasUsed, Is.EqualTo(97_920UL));
@@ -519,12 +728,151 @@ public class FrameTransactionForRpcTests
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
     }
 
+    /// <summary>The stored receipt decoder holds the wire decoder's status bound, so an undefined status has to be
+    /// refused here too rather than stored as a receipt no read path, local or remote, accepts.</summary>
+    [TestCase(TxFrameReceipt.StatusFailure, false)]
+    [TestCase(TxFrameReceipt.StatusSuccess, false)]
+    [TestCase(TxFrameReceipt.StatusSkipped, false)]
+    [TestCase((byte)3, true)]
+    [TestCase(byte.MaxValue, true)]
+    public void ReceiptForRpc_FrameTx_RejectsAFrameStatusOutsideThePayloadValues(byte status, bool rejected)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts = [new FrameReceiptForRpc { Status = status }];
+
+        if (rejected)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Status, Is.EqualTo(status));
+        }
+    }
+
     /// <summary>The same hazard on the top-level logs, which every receipt type carries.</summary>
     [Test]
     public void ReceiptForRpc_RejectsANullLogEntry()
     {
-        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""");
+        ReceiptForRpc receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>("""{"logs":[null]}""")!;
 
         Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    /// <summary>And on the frame logs, which ConcatLogs then carries into the receipt's own log set: the element
+    /// annotation does not bind the deserializer, so <c>"logs": [null]</c> reaches the binder here too.</summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void ReceiptForRpc_FrameTx_RejectsANullFrameLogEntry(bool withNullEntry)
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc
+            {
+                Status = TxFrameReceipt.StatusSuccess,
+                Logs = withNullEntry ? [null!] : [new LogEntryForRpc { Address = TestItem.AddressA, Data = [1], Topics = [] }],
+            }
+        ];
+
+        if (withNullEntry)
+        {
+            Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+        }
+        else
+        {
+            Assert.That(receiptForRpc.ToReceipt().FrameReceipts![0].Logs, Has.Length.EqualTo(1));
+        }
+    }
+
+    private const int MaxAggregateLogs = 270_000;
+
+    /// <summary>The frame log union is admitted right up to the wire receipt decoder's log ceiling.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_AdmitsFrameLogsUpToTheWireCeiling()
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(MaxAggregateLogs - 1) },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(1) },
+        ];
+
+        TxReceipt receipt = receiptForRpc.ToReceipt();
+
+        Assert.That(receipt.Logs, Has.Length.EqualTo(MaxAggregateLogs));
+    }
+
+    /// <summary>A frame log union above that ceiling is a caller error, rejected before the receipt store.</summary>
+    [Test]
+    public void ReceiptForRpc_FrameTx_RejectsFrameLogsAboveTheWireCeiling()
+    {
+        ReceiptForRpc receiptForRpc = ToRpc(BuildFrameTxReceipt());
+        receiptForRpc.FrameReceipts =
+        [
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(MaxAggregateLogs) },
+            new FrameReceiptForRpc { Status = TxFrameReceipt.StatusSuccess, Logs = RepeatFrameLog(1) },
+        ];
+
+        Assert.That(() => receiptForRpc.ToReceipt(), Throws.InstanceOf<JsonException>());
+    }
+
+    private static LogEntryForRpc[] RepeatFrameLog(int count)
+    {
+        LogEntryForRpc frameLog = new() { Address = FrameLog.Address, Data = FrameLog.Data, Topics = FrameLog.Topics };
+        LogEntryForRpc[] logs = new LogEntryForRpc[count];
+        for (int i = 0; i < count; i++)
+        {
+            logs[i] = frameLog;
+        }
+
+        return logs;
+    }
+
+    /// <summary>The frames wire form, captured from the serializer and pinned verbatim.</summary>
+    /// <remarks>Every scalar, <c>mode</c> and <c>flags</c> included, is a hex quantity as the execution-apis
+    /// <c>Frame</c> schema requires. Pinning the string rather than round-tripping catches a change that moved
+    /// both ends together.</remarks>
+    private const string PinnedFramesJson =
+        """[{"mode":"0x1","flags":"0x3","executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":"0x2","flags":"0x4","target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":"0x3","flags":"0x0","target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""";
+
+    /// <summary>The frames <see cref="PinnedFramesJson"/> was captured from: every mode, an approval scope, the
+    /// atomic-batch bit, an omitted target and a present one, both gas limits, a value and calldata.</summary>
+    private static TxFrame[] PinnedFrames() =>
+    [
+        new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, 50_000, 1_000, UInt256.Zero, default),
+        new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, TestItem.AddressB, 21_000, 0, (UInt256)7, new byte[] { 0xde, 0xad }),
+        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressC, 1_000, 2_000, UInt256.Zero, default),
+    ];
+
+    [Test]
+    public void FrameForRpc_SerializedForm_IsUnchanged() =>
+        Assert.That(Serializer.Serialize(FrameForRpc.FromFrames(PinnedFrames())), Is.EqualTo(PinnedFramesJson));
+
+    /// <remarks><c>eth_sendTransaction</c> callers and t8n fixture input may still send <c>mode</c> and
+    /// <c>flags</c> as JSON numbers, so that form reads the same frames.</remarks>
+    [TestCase(PinnedFramesJson)]
+    [TestCase("""[{"mode":1,"flags":3,"executionGas":"0xc350","stateGas":"0x3e8","value":"0x0","data":"0x"},{"mode":2,"flags":4,"target":"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358","executionGas":"0x5208","stateGas":"0x0","value":"0x7","data":"0xdead"},{"mode":3,"flags":0,"target":"0x76e68a8696537e4141926f3e528733af9e237d69","executionGas":"0x3e8","stateGas":"0x7d0","value":"0x0","data":"0x"}]""")]
+    public void FrameForRpc_DeserializedFromThePinnedForm_YieldsTheSameFrames(string framesJson)
+    {
+        FrameForRpc[]? parsed = Serializer.Deserialize<FrameForRpc[]>(framesJson);
+
+        Assert.That(FrameForRpc.TryToFrames(parsed, out TxFrame[]? frames), Is.True);
+
+        TxFrame[] expected = PinnedFrames();
+        Assert.That(frames, Has.Length.EqualTo(expected.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < expected.Length; i++)
+            {
+                Assert.That(frames![i].Mode, Is.EqualTo(expected[i].Mode));
+                Assert.That(frames[i].Flags, Is.EqualTo(expected[i].Flags));
+                Assert.That(frames[i].Target, Is.EqualTo(expected[i].Target));
+                Assert.That(frames[i].ExecutionGasLimit, Is.EqualTo(expected[i].ExecutionGasLimit));
+                Assert.That(frames[i].StateGasLimit, Is.EqualTo(expected[i].StateGasLimit));
+                Assert.That(frames[i].Value, Is.EqualTo(expected[i].Value));
+                Assert.That(frames[i].Data, Is.SequenceEqualTo(expected[i].Data));
+            }
+        }
     }
 }

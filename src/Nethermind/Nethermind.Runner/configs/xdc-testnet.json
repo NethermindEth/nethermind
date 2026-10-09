@@ -3,7 +3,8 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc-testnet.json",
     "BaseDbPath": "nethermind_db/xdc-testnet",
-    "LogFileName": "xdc-testnet.log"
+    "LogFileName": "xdc-testnet.log",
+    "StateDbKeyScheme": "Hash"
   },
   "Network": {
     "FilterDiscoveryNodesByRecentIp": false,
@@ -16,8 +17,12 @@
   "Pruning": {
     "PruningBoundary": 4096
   },
+  "FlatDb": {
+    "Enabled": false
+  },
   "Blocks": {
-    "TargetBlockGasLimit": 420000000
+    "TargetBlockGasLimit": 420000000,
+    "MinGasPrice": 0
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -25,10 +30,9 @@
   "Sync": {
     "FastSync": true,
     "SnapSync": false,
-    "NeedToWaitForHeader": true,
-    "PivotNumber": 85820000,
-    "PivotHash": "0xb444655a6aab8780f0b09fc2500d089b35256d104c60539eb1e1276e19a164cc",
-    "PivotTotalDifficulty": "342157235",
+    "PivotNumber": 86980000,
+    "PivotHash": "0xfdb1155cd9d2aad2bc38e8e865f5b854046cb5c82805ad2788ac363b7418e2ed",
+    "PivotTotalDifficulty": "343317235",
     "AncientReceiptsBarrier": 56828700,
     "AncientBodiesBarrier": 56828700
   },

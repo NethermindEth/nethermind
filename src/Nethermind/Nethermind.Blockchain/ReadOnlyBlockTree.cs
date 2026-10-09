@@ -64,6 +64,10 @@ namespace Nethermind.Blockchain
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
 
+        /// <inheritdoc/>
+        public bool TryRewindHead(Hash256 blockHash) =>
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(TryRewindHead)} calls");
+
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
         public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
@@ -207,8 +211,12 @@ namespace Nethermind.Blockchain
 
         public ulong GetLowestBlock() => _wrapped.GetLowestBlock();
 
+        public ulong LowestServedBlock => _wrapped.LowestServedBlock;
+
         public void NewOldestBlock(ulong oldestBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(NewOldestBlock)} calls");
 
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlockRange)} calls");
+
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteOldBlock)} calls");
     }
 }

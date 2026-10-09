@@ -8,8 +8,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -42,6 +44,63 @@ public class PersistedSnapshotRepositoryTests
         if (account is not null)
             content.Accounts[account] = Build.An.Account.WithBalance(balance == 0 ? 1000 : balance).TestObject;
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+    }
+
+    [Test]
+    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace)
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        StateId parent = new(0, Keccak.EmptyTreeHash);
+        StateId state = new(1, Keccak.Compute("lease-replacement"));
+        using Snapshot source = CreateTestSnapshot(parent, state, TestItem.AddressA);
+        PersistedSnapshotBucket bucket = new(tier.Resolve<ISnapshotCatalog>(), SnapshotTier.PersistedBase, LimboLogs.Instance.GetClassLogger<PersistedSnapshotBucket>());
+        try
+        {
+            using (PersistedSnapshot original = tier.ConvertToPersistedBase(source))
+            {
+                bucket.Add(state, original);
+                Assert.That(tier.Repository.RemovePersistedStateExact(state), Is.True);
+            }
+            Assert.That(bucket.TryGet(state, out PersistedSnapshot? observed), Is.True);
+            PersistedSnapshot? retired = observed;
+            void Retire(PersistedSnapshot current)
+            {
+                if (replace)
+                {
+                    using PersistedSnapshot replacement = new(parent, state, current.Reservation, tier.Blobs,
+                        SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
+                    Assert.That(bucket.Replace(state, replacement), Is.True);
+                }
+                else
+                {
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                }
+                Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
+            }
+            Retire(observed!);
+            bool acquired = bucket.TryAcquire(state, ref observed);
+            Assert.That(bucket.TryLease(state, out PersistedSnapshot? fresh), Is.EqualTo(replace));
+            fresh?.Dispose();
+            using (observed)
+            {
+                Assert.That(acquired, Is.EqualTo(replace), "replacement must not look like a missing snapshot");
+                if (replace)
+                {
+                    Assert.That(observed, Is.Not.SameAs(retired));
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                    Assert.That(observed!.TryGetAccount(TestItem.AddressA, out Account? account), Is.True);
+                    Assert.That(account!.Balance, Is.EqualTo((UInt256)1000), "the acquired lease must keep the replacement readable after removal");
+                }
+                else
+                {
+                    Assert.That(observed, Is.Null);
+                }
+            }
+        }
+        finally
+        {
+            bucket.DisposeAndClear();
+        }
     }
 
     [Test]
@@ -161,7 +220,7 @@ public class PersistedSnapshotRepositoryTests
         byte[] slotBytes = new byte[32];
         slotBytes[31] = 0xAB;
         slotBytes[30] = 0xCD;
-        SlotValue slotValue = new(slotBytes);
+        UInt256 slotValue = new(slotBytes, isBigEndian: true);
 
         TreePath statePath = new(Keccak.Compute("state_path"), 4);
         byte[] stateRlp = [0xC2, 0x80, 0x80];
@@ -186,9 +245,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(account, Is.Not.Null);
         Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
 
-        SlotValue readSlot = default;
-        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, ref readSlot), Is.True);
-        Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
+        Assert.That(persisted.TryGetSlot(storageAddr, slotIndex, out UInt256? readSlot), Is.True);
+        Assert.That(readSlot.GetValueOrDefault().ToBigEndian(), Is.EqualTo(slotBytes));
 
         Assert.That(persisted.TryGetSelfDestructFlag(selfDestructAddr), Is.Not.Null);
 
@@ -224,9 +282,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.PersistedSnapshotCount, Is.EqualTo(2));
     }
 
-    [TestCase(100)]
-    [TestCase(1000)]
-    public void ManyBaseSnapshots_ShareUnderlyingFiles(int count)
+    [Test]
+    public void ManyBaseSnapshots_ShareUnderlyingFiles([Values(100, 1000)] int count)
     {
         // Regression for the old "Blob arena id space exhausted (65535 arenas per tier)"
         // bug: ids were minted per base-conversion call, so 65k base
@@ -584,7 +641,7 @@ public class PersistedSnapshotRepositoryTests
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(123).TestObject;
         byte[] slot = new byte[32]; slot[31] = 0x55;
-        content.Storages[(TestItem.AddressA, (UInt256)1)] = new SlotValue(slot);
+        content.Storages[(TestItem.AddressA, (UInt256)1)] = new UInt256(slot, isBigEndian: true);
         PersistedSnapshot persisted = tier.ConvertToPersistedBase(
             new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing));
 
@@ -594,8 +651,8 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(stack.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
         Assert.That(a!.Balance, Is.EqualTo((UInt256)123));
         long start = System.Diagnostics.Stopwatch.GetTimestamp();
-        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out byte[]? sv), Is.True);
-        Assert.That(sv![^1], Is.EqualTo((byte)0x55));
+        Assert.That(stack.TryGetSlot(TestItem.AddressA, (UInt256)1, -1, start, out UInt256? sv), Is.True);
+        Assert.That(sv!.Value.ToBigEndian().AsSpan()[^1], Is.EqualTo((byte)0x55));
 
         // Absent addresses: the real bloom excludes them (or the snapshot misses) → fall through.
         foreach (Address absent in new[] { TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE, TestItem.AddressF })

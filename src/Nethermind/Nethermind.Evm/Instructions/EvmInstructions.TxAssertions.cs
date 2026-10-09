@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -21,13 +21,13 @@ public static partial class EvmInstructions
 {
     /// <summary>TXTRACE (0xb7): enumerate the transaction's state diff and events by index.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         if (!TryGetPostTxView(vm, out TransactionDiffView view, out FrameTxContext ctx)) return EvmExceptionType.BadInstruction;
 
-        TGasPolicy.Consume<TxTraceGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param, out UInt256 index)) return EvmExceptionType.StackUnderflow;
         if (param > 0x15) return EvmExceptionType.BadInstruction;
 
@@ -82,9 +82,8 @@ public static partial class EvmInstructions
         AccountChangesAtIndex account = view.Slice.GetAccountChanges(slot.Address)!;
         if (param == 0x08)
             return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
-        if (!account.TryGetStorageChange(slot.Key, out StorageChange? change)) return EvmExceptionType.BadInstruction;
-        EvmWord after = change.Value.Value;
-        return stack.Push32Bytes<TTracingInst>(ref Unsafe.As<EvmWord, byte>(ref after));
+        if (!account.StorageChanges.TryGetValue(slot.Key, out StorageChange change)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>(change.Value);
     }
 
     // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
@@ -96,7 +95,7 @@ public static partial class EvmInstructions
         if (param == 0x0A) return stack.PushAddress<TTracingInst>(address);
 
         ValueHash256 codeHash = view.Slice.GetAccountChanges(address)!.CodeChange!.Value.CodeHash;
-        return stack.Push32Bytes<TTracingInst>(in codeHash);
+        return stack.Push32Bytes<TTracingInst, OnFlag>(in codeHash);
     }
 
     // 0x0D address / 0x0E topic count / 0x0F..0x12 topics / 0x13 data length, indexed by event position.
@@ -108,7 +107,7 @@ public static partial class EvmInstructions
         switch (param)
         {
             case 0x0D: return stack.PushAddress<TTracingInst>(log.Address);
-            case 0x0E: return stack.PushUInt32<TTracingInst>((uint)log.Topics.Length);
+            case 0x0E: return stack.PushUInt32<TTracingInst, OnFlag>((uint)log.Topics.Length);
             case 0x13: return stack.PushUInt256<TTracingInst>((UInt256)(ulong)log.Data.Length);
             default:
                 int topic = param - 0x0F;
@@ -119,16 +118,23 @@ public static partial class EvmInstructions
 
     /// <summary>TXDIFF (0xb8): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         if (!TryGetPostTxView(vm, out TransactionDiffView view, out _)) return EvmExceptionType.BadInstruction;
 
-        // Spec stack order: param on top, address second, in3 (slot key / local index / unused) third.
+        // Spec stack order: param, address or topic, then in3 (slot key / local index / unused).
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x0A) return EvmExceptionType.BadInstruction;
-        Address address = stack.PopAddress(vm.AddressCache);
+        if (param > 0x0C) return EvmExceptionType.BadInstruction;
+        if (param >= 0x0B)
+        {
+            if (!stack.PopUInt256(out UInt256 topicValue, out UInt256 localIndex))
+                return EvmExceptionType.StackUnderflow;
+            ValueHash256 topic = topicValue.ToValueHash();
+            return TxDiffTopicView<TGasPolicy, TTracingInst>(ref gas, (byte)param.u0, view, in topic, in localIndex, ref stack);
+        }
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 in3)) return EvmExceptionType.StackUnderflow;
 
@@ -144,24 +150,42 @@ public static partial class EvmInstructions
         };
     }
 
+    // 0x0B/0x0C: topic1..3 views, flat priced without account or storage access.
+    private static EvmExceptionType TxDiffTopicView<TGasPolicy, TTracingInst>(ref TGasPolicy gas, byte param, TransactionDiffView view, in ValueHash256 topic, in UInt256 localIndex, ref EvmStack stack)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return param switch
+        {
+            0x0B => localIndex.IsZero
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)view.TopicEventCount(in topic))
+                : EvmExceptionType.BadInstruction,
+            _ => view.TryGetTopicEventGlobalIndex(in topic, in localIndex, out int globalIndex)
+                ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)globalIndex)
+                : EvmExceptionType.BadInstruction,
+        };
+    }
+
     // 0x00 before / 0x01 after. The live read enters the EIP-7928 list like any other state read.
     private static EvmExceptionType TxDiffStorage<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, byte param, Address address, in UInt256 key, AccountChangesAtIndex? account, ref EvmStack stack)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         StorageCell cell = new(address, in key);
-        if (!TGasPolicy.ConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
+        if (!TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, in cell, StorageAccessType.SLOAD, vm.Spec))
             return EvmExceptionType.OutOfGas;
         if (param == 0x00 && account is not null && account.TryGetPreTxStorage(key, out UInt256 before))
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
-        ReadOnlySpan<byte> value = vm.WorldState.Get(in cell);
-        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst>() : stack.PushBytes<TTracingInst>(value);
+        vm.WorldState.Get(in cell, out UInt256 value);
+        if (param == 0x00 && vm.WorldState.TryGetStorageBeforeClear(in cell, out UInt256 beforeClear)) value = beforeClear;
+        EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(value);
 
         // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.
         if (vm.TxTracer.IsTracingOpLevelStorage)
         {
-            vm.TxTracer.LoadOperationStorage(address, key, value);
+            TraceStorageLoad(vm, in cell, in value, transient: false);
         }
 
         return pushResult;
@@ -172,7 +196,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             return EvmExceptionType.OutOfGas;
         IWorldState state = vm.WorldState;
         switch (param)
@@ -184,12 +208,12 @@ public static partial class EvmInstructions
             case 0x04:
                 {
                     ValueHash256 hash = account?.CodeChange is not null ? view.GetPreTxCodeHash(address, account) : state.GetCodeHash(address);
-                    return stack.Push32Bytes<TTracingInst>(in hash);
+                    return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
                 }
             default:
                 {
                     ValueHash256 hash = state.GetCodeHash(address);
-                    return stack.Push32Bytes<TTracingInst>(in hash);
+                    return stack.Push32Bytes<TTracingInst, OnFlag>(in hash);
                 }
         }
     }
@@ -199,7 +223,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        TGasPolicy.Consume<TxTraceGasCost>(ref gas);
+        if (!TGasPolicy.UpdateGas<TxTraceGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         return param switch
         {
             0x06 => in3.IsZero ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)(view.TryGetSlotRun(address, out _, out int slots) ? slots : 0)) : EvmExceptionType.BadInstruction,
@@ -210,14 +234,14 @@ public static partial class EvmInstructions
             0x09 => view.TryGetAddressEventGlobalIndex(address, in in3, out int global)
                 ? stack.PushUInt256<TTracingInst>((UInt256)(ulong)global)
                 : EvmExceptionType.BadInstruction,
-            _ => in3.IsZero ? stack.PushUInt32<TTracingInst>(ChangeFlags(account)) : EvmExceptionType.BadInstruction, // 0x0A
+            _ => in3.IsZero ? stack.PushUInt32<TTracingInst, OnFlag>(ChangeFlags(account)) : EvmExceptionType.BadInstruction, // 0x0A
         };
     }
 
     /// <summary>EVENTDATACOPY (0xb9): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
     /// but an out-of-range read halts rather than zero-padding.</summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
@@ -240,7 +264,7 @@ public static partial class EvmInstructions
         view = null!;
         ctx = null!;
         FrameTxContext? frameContext = vm.TxExecutionContext.FrameTxContext;
-        if (frameContext is null || frameContext.CurrentFrame.Mode != TxFrame.ModePostTx) return false;
+        if (frameContext is null || frameContext.CurrentFrame.Mode != FrameMode.PostTx) return false;
         ctx = frameContext;
 
         if (frameContext.PostTxDiffView is TransactionDiffView cached)

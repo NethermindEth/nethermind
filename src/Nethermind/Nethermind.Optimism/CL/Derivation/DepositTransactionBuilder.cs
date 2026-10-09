@@ -9,7 +9,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
@@ -77,12 +76,10 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         List<Transaction> result = [];
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
-            // An L1 node omits "logs" or sends null for a receipt with no logs.
-            foreach (LogEntryForRpc log in receipt.Logs ?? [])
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
                 if (log.Address != engineParameters.OptimismPortalProxy) continue;
-                if (log.Topics.Length == 0 || log.Topics[0] != DepositEvent.ABIHash) continue;
+                if (log.Topics is not { Length: > 0 } topics || topics[0] != DepositEvent.ABIHash) continue;
 
                 try
                 {

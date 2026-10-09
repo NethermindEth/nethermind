@@ -70,10 +70,8 @@ internal class XdcReorgModuleTests
         Assert.That(blockChain.XdcContext.LockQC!.ProposedBlockInfo.Hash, Is.EqualTo(forkParent.ParentHash!));
     }
 
-    [TestCase(5)]
-    [TestCase(900)]
-    [TestCase(901)]
-    public async Task TestShouldNotReorgCommittedBlock(int number)
+    [Test]
+    public async Task TestShouldNotReorgCommittedBlock([Values(5, 900, 901)] int number)
     {
         using XdcTestBlockchain blockChain = await XdcTestBlockchain.Create();
         ulong startRound = blockChain.XdcContext.CurrentRound;

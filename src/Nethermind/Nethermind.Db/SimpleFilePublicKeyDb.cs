@@ -76,14 +76,14 @@ namespace Nethermind.Db
                 return;
             }
 
-            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
+            if (!_cacheSpan.TryGetValue(key, out byte[]? existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _cache.TryGetValue(k, out byte[]? value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
@@ -159,7 +159,7 @@ namespace Nethermind.Db
             private readonly string _dbPath;
             private readonly ILogger _logger;
 
-            public string BackupPath { get; }
+            public string? BackupPath { get; }
 
             public Backup(string dbPath, ILogger logger)
             {

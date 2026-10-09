@@ -30,6 +30,12 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
+    /// <summary>The EIP-7825 gas-cap failure message, which names the offending amounts rather than being a
+    /// fixed constant.</summary>
+    /// <remarks>The cap is the fixed <see cref="Eip7825Constants.DefaultTxGasLimitCap"/>, applied unconditionally
+    /// as EIP-8141 § Constraints specifies. The check sits in the release-spec-aware validator only because
+    /// <see cref="TryCalculateBlockGasReservations"/> needs an <see cref="IReleaseSpec"/> to price the reservation,
+    /// so just its wording is kept here alongside the other messages.</remarks>
     public static string FrameExecutionGasExceedsCap(ulong executionReservation, ulong gasLimitCap) =>
         $"frame intrinsic and execution gas ({executionReservation}) exceeds the transaction gas cap of {gasLimitCap}";
     public const string InvalidExpiryFrame = "expiry verifier frame must have zero flags, zero value, and 8-byte data";
@@ -42,8 +48,27 @@ public static class FrameTxValidation
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
     public const string MalformedNonceKeySet = "malformed nonce key set";
-    public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
 
+    /// <summary>
+    /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
+    /// list, its signature entries and the fields the frame envelope adds.
+    /// </summary>
+    /// <remarks>
+    /// The decision is a pure function of <paramref name="transaction"/> and <paramref name="postTxEnabled"/>: it
+    /// reads no state and no release spec, so both consensus (<c>BlockValidator</c>) and the pool can reach it, and
+    /// the same transaction always yields the same verdict at a given fork. Structural RLP shape is already enforced
+    /// at decode time and is not rechecked. Checks needing the release spec — the EIP-7594 blob limits and the
+    /// EIP-7825 gas cap among them — are left to the validators in <c>TxValidator</c>'s frame composite, which is
+    /// also the only place several of this type's own message constants are raised, so passing this is necessary
+    /// but not sufficient for validity.
+    /// </remarks>
+    /// <param name="transaction">The frame transaction to check. Must carry <see cref="Transaction.Frames"/> and a
+    /// resolved <see cref="Transaction.SenderAddress"/>; both are reported as failures rather than thrown on.</param>
+    /// <param name="postTxEnabled">Whether EIP-7906 is active, which decides only whether
+    /// <see cref="FrameMode.PostTx"/> frames are admitted at all.</param>
+    /// <param name="error">On failure, the first violated constraint, always one of this type's message constants;
+    /// <see langword="null"/> on success.</param>
+    /// <returns><see langword="true"/> if every stateless constraint holds.</returns>
     public static bool IsWellFormed(Transaction transaction, bool postTxEnabled, out string? error)
     {
         error = null;
@@ -67,22 +92,22 @@ public static class FrameTxValidation
         {
             TxFrame frame = frames[i];
 
-            if (frame.Mode > TxFrame.ModePostTx)
+            if (frame.Mode > FrameMode.PostTx)
             {
                 error = InvalidMode;
                 return false;
             }
 
-            if (frame.Mode == TxFrame.ModePostTx && !postTxEnabled)
+            if (frame.Mode == FrameMode.PostTx && !postTxEnabled)
             {
                 error = PostTxNotEnabled;
                 return false;
             }
 
             // Assertions observe the finished transaction, so nothing may run after them.
-            if (frame.Mode == TxFrame.ModePostTx)
+            if (frame.Mode == FrameMode.PostTx)
             {
-                if (i + 1 < frames.Length && frames[i + 1].Mode != TxFrame.ModePostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode != FrameMode.PostTx)
                 {
                     error = PostTxNotTrailing;
                     return false;
@@ -90,26 +115,26 @@ public static class FrameTxValidation
 
                 // A batch opened by a POST_TX frame can never unroll — the assertion path exits the
                 // frame loop first — so the flag would be inert here and clients could diverge on it.
-                if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
+                if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
                 {
                     error = AtomicBatchOnPostTxFrame;
                     return false;
                 }
             }
 
-            if (frame.Flags > (TxFrame.ApproveScopeMask | TxFrame.AtomicBatchFlag))
+            if (frame.Flags > (TxFrame.ApproveScopeMask | FrameFlags.AtomicBatch))
             {
                 error = InvalidFlags;
                 return false;
             }
 
-            if (frame.Mode != TxFrame.ModeSender && !frame.Value.IsZero)
+            if (frame.Mode != FrameMode.Sender && !frame.Value.IsZero)
             {
                 error = ValueOutsideSenderMode;
                 return false;
             }
 
-            if ((frame.Flags & TxFrame.ApproveExecution) != 0
+            if ((frame.Flags & FrameFlags.ApproveExecution) != 0
                 && frame.Target is not null
                 && frame.Target != transaction.SenderAddress)
             {
@@ -117,22 +142,22 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0 && i + 1 == frames.Length)
+            if ((frame.Flags & FrameFlags.AtomicBatch) != 0 && i + 1 == frames.Length)
             {
                 error = AtomicBatchOnLastFrame;
                 return false;
             }
 
             // EIP-8141: atomic batches contain only non-VERIFY frames.
-            if ((frame.Flags & TxFrame.AtomicBatchFlag) != 0)
+            if ((frame.Flags & FrameFlags.AtomicBatch) != 0)
             {
-                if (frame.Mode == TxFrame.ModeVerify)
+                if (frame.Mode == FrameMode.Verify)
                 {
                     error = AtomicBatchOnVerifyFrame;
                     return false;
                 }
 
-                if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModeVerify)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.Verify)
                 {
                     error = AtomicBatchFollowedByVerifyFrame;
                     return false;
@@ -140,7 +165,7 @@ public static class FrameTxValidation
 
                 // An unroll moves the terminal frame onto the successor and marks it skipped. On a POST_TX
                 // successor that silently drops the assertion, which is the case it exists to catch.
-                if (i + 1 < frames.Length && frames[i + 1].Mode == TxFrame.ModePostTx)
+                if (i + 1 < frames.Length && frames[i + 1].Mode == FrameMode.PostTx)
                 {
                     error = AtomicBatchFollowedByPostTxFrame;
                     return false;
@@ -153,7 +178,7 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if (frame.Mode == TxFrame.ModeVerify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
+            if (frame.Mode == FrameMode.Verify && frame.Target == Eip8141Constants.ExpiryVerifierAddress)
             {
                 if (frame.Flags != 0 || !frame.Value.IsZero || frame.StateGasLimit != 0 || frame.Data.Length != Eip8141Constants.ExpiryDataLength)
                 {
@@ -215,12 +240,6 @@ public static class FrameTxValidation
             }
         }
 
-        if (transaction.RecentRootReferences is { Length: > Eip8272Constants.MaxRecentRootReferences })
-        {
-            error = TooManyRecentRootReferences;
-            return false;
-        }
-
         // A value check, not a presence check: the decoder always populates both blob fields. Refusing a
         // blob-carrying frame tx here would be a block-validity rule, since BlockValidator reaches this.
         bool hasBlobs = transaction.BlobVersionedHashes is { Length: > 0 };
@@ -235,8 +254,8 @@ public static class FrameTxValidation
         return true;
 
         static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
-            (frames[i].Flags & TxFrame.AtomicBatchFlag) != 0
-            || (i > 0 && (frames[i - 1].Flags & TxFrame.AtomicBatchFlag) != 0);
+            (frames[i].Flags & FrameFlags.AtomicBatch) != 0
+            || (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0);
     }
 
     /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
@@ -258,7 +277,7 @@ public static class FrameTxValidation
         ulong total = 0;
         foreach (TxFrame frame in frames ?? [])
         {
-            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+            total = total.SaturatingAdd(frame.ExecutionGasLimit.SaturatingAdd(frame.StateGasLimit));
         }
 
         return total;
@@ -277,12 +296,62 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].ExecutionGasLimit);
+            total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 
-        foreach (TxFrameSignature signature in transaction.FrameSignatures ?? [])
+        return total.SaturatingAdd(SignatureVerificationWorkGas(transaction));
+    }
+
+    /// <summary>
+    /// EIP-8141 MATCHA <c>admission_gas</c>: the validation work admitting one keyed-nonce frame transaction budgets,
+    /// which its width charge scales, saturating at <see cref="ulong.MaxValue"/>.
+    /// </summary>
+    /// <remarks>
+    /// The transaction's intrinsic gas, which prices its data, signature verification and EIP-8272 recent-root
+    /// references, plus the validation prefix's declared execution limits through payment approval and one cold
+    /// <c>SLOAD</c> per EIP-8250 nonce key read. Reading declared limits rather than a first simulation, it also covers
+    /// a later revalidation that runs more work. Application execution past the prefix and the separately bounded state
+    /// gas are excluded. A transaction whose gas budget cannot be computed is charged the maximum.
+    /// </remarks>
+    public static ulong AdmissionGas(Transaction transaction, IReleaseSpec spec)
+    {
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out _, out _))
         {
-            total = Saturating(total, SignatureVerificationGas(signature.Scheme));
+            return ulong.MaxValue;
+        }
+
+        ulong prefixExecutionGas = ValidationWorkGas(transaction) - SignatureVerificationWorkGas(transaction);
+        return intrinsicGas.SaturatingAdd(prefixExecutionGas).SaturatingAdd(KeyedNonceReadGas(transaction.NonceKeys));
+    }
+
+    private static ulong KeyedNonceReadGas(UInt256[]? nonceKeys)
+    {
+        ulong gas = 0;
+        foreach (UInt256 key in nonceKeys ?? [])
+        {
+            if (!key.IsZero) gas += GasCostOf.ColdSLoad;
+        }
+
+        return gas;
+    }
+
+    /// <summary>
+    /// The gas <c>validate_signature</c> spends verifying a frame transaction's signatures, saturating at
+    /// <see cref="ulong.MaxValue"/>. Scheme-weighted, so it reflects the elliptic-curve work each entry costs;
+    /// an ARBITRARY entry contributes only its cheap structural-check cost, its witness being verified by frame code.
+    /// </summary>
+    public static ulong SignatureVerificationWorkGas(Transaction transaction)
+        => SignatureVerificationWorkGas(transaction.FrameSignatures);
+
+    /// <inheritdoc cref="SignatureVerificationWorkGas(Transaction)"/>
+    /// <remarks>Takes the entries directly, for a caller that holds them before a transaction exists —
+    /// the shape <see cref="TotalGasLimit"/> already has for frames.</remarks>
+    public static ulong SignatureVerificationWorkGas(TxFrameSignature[]? signatures)
+    {
+        ulong total = 0;
+        foreach (TxFrameSignature signature in signatures ?? [])
+        {
+            total = total.SaturatingAdd(SignatureVerificationGas(signature.Scheme));
         }
 
         return total;
@@ -301,31 +370,46 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].StateGasLimit);
+            total = total.SaturatingAdd(frames[i].StateGasLimit);
         }
 
         return total;
     }
 
     /// <summary>
-    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its recognized
-    /// validation prefix, which EIP-8141 bars from the public mempool.
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame behind its validation prefix,
+    /// which EIP-8141 bars from the public mempool.
     /// </summary>
     /// <remarks>
     /// A public-mempool rule, not a validity rule: a VERIFY frame past the prefix can revert on state the pool never
-    /// validated, invalidating the whole transaction. Layouts matching no recognized prefix are not covered.
+    /// validated, invalidating the whole transaction. The bound is taken at the first frame permitted to approve
+    /// payment, at or before the frame that actually installs the payer, so it errs towards refusing a layout whose
+    /// approving frame would not have installed one rather than admitting a frame behind the real prefix.
+    /// Deliberately not restricted to the leading VERIFY run <see cref="GetPrefixPaymaster"/> walks: an approving
+    /// DEFAULT frame, or one behind a SENDER frame, must still bound this scan even though no payer resolves there.
+    /// Standalone callers need this bound; the public pool checks prefix-grammar admission separately.
     /// </remarks>
     public static bool HasVerifyFrameAfterPrefix(Transaction transaction)
     {
         TxFrame[] frames = transaction.Frames ?? [];
-        if (RecognizedPrefixLength(frames, transaction.SenderAddress) is not int prefixLength)
+        int prefixEnd = -1;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if ((frames[i].Flags & FrameFlags.ApprovePayment) != 0)
+            {
+                prefixEnd = i;
+                break;
+            }
+        }
+
+        if (prefixEnd < 0)
         {
             return false;
         }
 
-        for (int i = prefixLength; i < frames.Length; i++)
+        for (int i = prefixEnd + 1; i < frames.Length; i++)
         {
-            if (frames[i].Mode == TxFrame.ModeVerify)
+            if (frames[i].Mode == FrameMode.Verify)
             {
                 return true;
             }
@@ -359,12 +443,12 @@ public static class FrameTxValidation
     /// <summary>The paymaster <paramref name="transaction"/> pays through, or <c>null</c> when it pays without one.</summary>
     /// <remarks>
     /// Walks the leading VERIFY run to the first frame approving payment, where the validation-prefix simulation
-    /// also stops, so a sponsor installed through a layout <see cref="RecognizedPrefixLength"/> does not admit is
-    /// still keyed. Derived from the frame layout alone, never from state. The target is resolved as the processor
-    /// resolves it, so omitting it is not a second, uncapped encoding of the same transaction, and a sender paying
-    /// for itself — the self-relay prefix included — uses no paymaster and is bounded by its own balance instead.
-    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, unset after a
-    /// reload — <c>null</c> then means unknown, not unsponsored.
+    /// also stops. Sponsors remain keyed for layouts reaching this method without the pool's grammar filter
+    /// and for persisted records. Derived from the frame layout alone, never from state. The target is resolved
+    /// as the processor resolves it, so omitting it is not a second, uncapped encoding of the same transaction.
+    /// A sender paying for itself — the self-relay prefix included — uses no paymaster and is bounded by its balance.
+    /// A frameless pool record instead answers from <see cref="Transaction.PersistedPaymaster"/>, which the record
+    /// persists; one written before it carried that slot reads <c>null</c> though sponsored, under-counting the cap.
     /// </remarks>
     public static Address? GetPrefixPaymaster(Transaction transaction)
     {
@@ -374,15 +458,11 @@ public static class FrameTxValidation
             return transaction.PersistedPaymaster;
         }
 
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
-        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
-
-        for (int i = next; i < frames.Length; i++)
+        for (int i = ApprovalSearchStart(frames); i < frames.Length; i++)
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
-            if (frames[i].Mode != TxFrame.ModeVerify) break;
-            if ((frames[i].Flags & TxFrame.ApprovePayment) == 0) continue;
+            if (frames[i].Mode != FrameMode.Verify) break;
+            if ((frames[i].Flags & FrameFlags.ApprovePayment) == 0) continue;
 
             Address? resolved = frames[i].Target ?? transaction.SenderAddress;
             return resolved == transaction.SenderAddress ? null : resolved;
@@ -391,15 +471,77 @@ public static class FrameTxValidation
         return null;
     }
 
+    /// <summary>Where a search for a validation prefix's approving frame starts: past the optional leading
+    /// protocol verifier and deploy frames, none of which may carry approval scope.</summary>
+    /// <remarks>A lower bound only — the frame at this index need not approve either. Shared by the three walks
+    /// that scan for the approving frame; the prefix simulation asks the same rule positionally and keeps its form.</remarks>
+    public static int ApprovalSearchStart(TxFrame[] frames)
+    {
+        int next = ProtocolVerifierFrameCount(frames);
+        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+        return next;
+    }
+
+    /// <summary>The number of optional leading protocol verifier frames, an <c>expiry_verify</c> frame and then an
+    /// EIP-8272 <c>recent_root_verify</c> frame, which EIP-8141 prefix-shape matching skips.</summary>
+    public static int ProtocolVerifierFrameCount(TxFrame[] frames)
+    {
+        int next = RecentRootVerifyFrameIndex(frames);
+        if (next < frames.Length && IsRecentRootVerifyFrame(frames[next])) next++;
+        return next;
+    }
+
+    /// <summary>The only index the public mempool admits a <c>recent_root_verify</c> frame at: directly behind the
+    /// optional leading <c>expiry_verify</c> frame.</summary>
+    private static int RecentRootVerifyFrameIndex(TxFrame[] frames) =>
+        frames.Length > 0 && IsExpiryVerifyFrame(frames[0]) ? 1 : 0;
+
+    /// <summary>
+    /// True if <paramref name="transaction"/> carries a <c>VERIFY</c> frame targeting <c>RECENT_ROOT_ADDRESS</c> that
+    /// is not a well-formed <c>recent_root_verify</c> frame, or one anywhere but directly behind the optional leading
+    /// <c>expiry_verify</c> frame, which also bars a second one.
+    /// </summary>
+    /// <remarks>An EIP-8272 public-mempool rule, decided on the frame list alone before any sender state is read.</remarks>
+    public static bool HasMisplacedRecentRootVerifyFrame(Transaction transaction)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int permitted = RecentRootVerifyFrameIndex(frames);
+        for (int i = 0; i < frames.Length; i++)
+        {
+            if (frames[i].Mode == FrameMode.Verify
+                && frames[i].Target == Eip8272Constants.RecentRootAddress
+                && (i != permitted || !IsRecentRootVerifyFrame(frames[i])))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The tuples of the <c>recent_root_verify</c> frame of <paramref name="transaction"/>, if it carries one where
+    /// the public mempool admits it.</summary>
+    public static bool TryGetRecentRootTuples(Transaction transaction, out ReadOnlyMemory<byte> tuples)
+    {
+        TxFrame[] frames = transaction.Frames ?? [];
+        int index = RecentRootVerifyFrameIndex(frames);
+        bool found = index < frames.Length && IsRecentRootVerifyFrame(frames[index]);
+        tuples = found ? frames[index].Data : default;
+        return found;
+    }
+
+    /// <summary>Whether a frame transaction starts with a public-mempool validation prefix recognized by EIP-8141.</summary>
+    public static bool HasRecognizedValidationPrefix(Transaction transaction) =>
+        transaction.Frames is { Length: > 0 } frames
+        && RecognizedPrefixLength(frames, transaction.SenderAddress) is not null;
+
     /// <summary>
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
     private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
-        int next = 0;
-        if (next < frames.Length && IsExpiryVerifyFrame(frames[next])) next++;
-        if (next < frames.Length && IsDeployFrame(frames[next])) next++;
+        int next = ApprovalSearchStart(frames);
 
         if (next < frames.Length && IsSelfVerifyFrame(frames[next], sender))
         {
@@ -416,41 +558,50 @@ public static class FrameTxValidation
         return null;
     }
 
-    private static ulong Saturating(ulong total, ulong addend) =>
-        addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
-
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
     /// <remarks>Position is not checked; the value and length checks let a caller read the deadline without re-validating.</remarks>
     public static bool IsExpiryVerifyFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify
-        && frame.Flags == TxFrame.ApproveScopeNone
+        frame.Mode == FrameMode.Verify
+        && frame.Flags == FrameFlags.None
         && frame.Target == Eip8141Constants.ExpiryVerifierAddress
         && frame.Value.IsZero
         && frame.Data.Length == Eip8141Constants.ExpiryDataLength;
 
+    /// <summary>True if <paramref name="frame"/> is an EIP-8272 <c>recent_root_verify</c> frame: 1 to
+    /// <c>MAX_RECENT_ROOT_REFERENCES</c> 72-byte tuples verified by <c>RECENT_ROOT_ADDRESS</c>.</summary>
+    /// <remarks>Position is not checked.</remarks>
+    public static bool IsRecentRootVerifyFrame(TxFrame frame) =>
+        frame.Mode == FrameMode.Verify
+        && frame.Flags == FrameFlags.None
+        && frame.Target == Eip8272Constants.RecentRootAddress
+        && frame.Value.IsZero
+        && frame.StateGasLimit == 0
+        && frame.Data.Length is > 0 and <= Eip8272Constants.MaxRecentRootReferences * Eip8272Constants.RecentRootTupleLength
+        && frame.Data.Length % Eip8272Constants.RecentRootTupleLength == 0;
+
     /// <summary>True if <paramref name="frame"/> is a deploy frame: any default-mode frame carrying no
     /// approval scope, so it can never approve a payer.</summary>
     public static bool IsDeployFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeDefault && frame.Flags == TxFrame.ApproveScopeNone;
+        frame.Mode == FrameMode.Default && frame.Flags == FrameFlags.None;
 
     /// <summary>True if <paramref name="frame"/> is a self-relay VERIFY frame approving both execution and payment for <paramref name="sender"/>.</summary>
     public static bool IsSelfVerifyFrame(TxFrame frame, Address? sender) =>
-        IsSelfTargetedVerify(frame, TxFrame.ApproveExecutionAndPayment, sender);
+        IsSelfTargetedVerify(frame, FrameFlags.ApproveExecutionAndPayment, sender);
 
     /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving execution only (not payment) for <paramref name="sender"/>.</summary>
     public static bool IsOnlyVerifyFrame(TxFrame frame, Address? sender) =>
-        IsSelfTargetedVerify(frame, TxFrame.ApproveExecution, sender);
+        IsSelfTargetedVerify(frame, FrameFlags.ApproveExecution, sender);
 
     /// <summary>True if <paramref name="frame"/> is a VERIFY frame approving payment.</summary>
     private static bool IsPayFrame(TxFrame frame) =>
-        frame.Mode == TxFrame.ModeVerify && frame.Flags == TxFrame.ApprovePayment;
+        frame.Mode == FrameMode.Verify && frame.Flags == FrameFlags.ApprovePayment;
 
     /// <remarks>
     /// Comparing the whole <see cref="TxFrame.Flags"/> byte rather than the approve scope also enforces
     /// the EIP-8141 structural rule that no prefix frame carries <c>ATOMIC_BATCH_FLAG</c>.
     /// </remarks>
-    private static bool IsSelfTargetedVerify(TxFrame frame, byte flags, Address? sender) =>
-        frame.Mode == TxFrame.ModeVerify
+    private static bool IsSelfTargetedVerify(TxFrame frame, FrameFlags flags, Address? sender) =>
+        frame.Mode == FrameMode.Verify
         && frame.Flags == flags
         && (frame.Target is null || frame.Target == sender);
 
@@ -469,6 +620,8 @@ public static class FrameTxValidation
     /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
     /// caller from the unmeasured reading.
     /// </remarks>
+    /// <param name="transaction">The frame transaction to price.</param>
+    /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
     /// <param name="intrinsicGas">The intrinsic cost, charged before any frame runs.</param>
     /// <param name="floorGas">The minimum chargeable gas, or 0 when floor pricing is not active.</param>
     /// <param name="maxGas">The gas reserved against the payer's balance and the block gas limit.</param>
@@ -476,12 +629,10 @@ public static class FrameTxValidation
     public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
     {
         // Read once: re-reading them to stamp the memo would key a value on stats it was not computed from.
-        (int ZeroBytes, int NonZeroBytes) referenceCalldata = transaction.ReferenceCalldataStats;
         (int ZeroBytes, int NonZeroBytes) frameCalldata = transaction.FrameCalldataStats;
 
         if (Volatile.Read(ref transaction.IntrinsicGasMemo) is FrameGasBudgetMemo memo
             && ReferenceEquals(memo.Spec, spec)
-            && memo.ReferenceCalldata == referenceCalldata
             && memo.FrameCalldata == frameCalldata)
         {
             (intrinsicGas, floorGas, maxGas) = (memo.IntrinsicGas, memo.FloorGas, memo.MaxGas);
@@ -490,13 +641,12 @@ public static class FrameTxValidation
 
         bool priced = CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
         Volatile.Write(ref transaction.IntrinsicGasMemo, new FrameGasBudgetMemo(
-            spec, referenceCalldata, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
+            spec, frameCalldata, priced, intrinsicGas, floorGas, maxGas));
         return priced;
     }
 
     private sealed record FrameGasBudgetMemo(
         IReleaseSpec Spec,
-        (int ZeroBytes, int NonZeroBytes) ReferenceCalldata,
         (int ZeroBytes, int NonZeroBytes) FrameCalldata,
         bool Priced,
         ulong IntrinsicGas,
@@ -533,7 +683,7 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas)
+    private static bool CalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes = false)
     {
         intrinsicGas = 0;
         floorGas = 0;
@@ -583,15 +733,19 @@ public static class FrameTxValidation
                 dataLength += (ulong)(signature.Signer is null ? 0 : Address.Size)
                               + (ulong)signature.Msg.Length
                               + (ulong)signature.Signature.Length;
+                if (estimateSignatureBytes && signature.Signature.IsEmpty)
+                {
+                    ulong length = signature.Scheme switch
+                    {
+                        TxFrameSignature.SchemeSecp256k1 => TxFrameSignature.Secp256k1SignatureLength,
+                        TxFrameSignature.SchemeP256 => TxFrameSignature.P256SignatureLength,
+                        _ => 0,
+                    };
+                    tokens += length * spec.GasCosts.TxDataNonZeroMultiplier;
+                    dataLength += length;
+                }
                 signatureVerificationCost += SignatureVerificationGas(signature.Scheme);
             }
-        }
-
-        if (transaction.RecentRootReferences is not null && spec.IsEip8272Enabled)
-        {
-            (int zeroBytes, int nonZeroBytes) = transaction.ReferenceCalldataStats;
-            tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
-            dataLength += (ulong)(zeroBytes + nonZeroBytes);
         }
 
         if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
@@ -604,8 +758,7 @@ public static class FrameTxValidation
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
-                             + valueTransferCost
-                             + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
+                             + valueTransferCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
@@ -626,16 +779,35 @@ public static class FrameTxValidation
         return true;
     }
 
+    /// <inheritdoc cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as the
+    /// signed transaction will carry it; for simulation, which accepts such placeholders. Such a budget is not memoized.</param>
+    public static bool TryCalculateGasBudget(Transaction transaction, IReleaseSpec spec, out ulong intrinsicGas, out ulong floorGas, out ulong maxGas, bool estimateSignatureBytes) =>
+        estimateSignatureBytes
+            ? CalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas, estimateSignatureBytes: true)
+            : TryCalculateGasBudget(transaction, spec, out intrinsicGas, out floorGas, out maxGas);
+
     /// <summary>Calculates the maximum execution and state gas a frame transaction can add to a block.</summary>
     public static bool TryCalculateBlockGasReservations(
         Transaction transaction,
         IReleaseSpec spec,
         out ulong executionReservation,
-        out ulong stateReservation)
+        out ulong stateReservation) =>
+        TryCalculateBlockGasReservations(transaction, spec, out executionReservation, out stateReservation, estimateSignatureBytes: false);
+
+    /// <inheritdoc cref="TryCalculateBlockGasReservations(Transaction, IReleaseSpec, out ulong, out ulong)"/>
+    /// <param name="estimateSignatureBytes">Prices each empty SECP256K1 or P256 signature at its full length, as in
+    /// <see cref="TryCalculateGasBudget(Transaction, IReleaseSpec, out ulong, out ulong, out ulong, bool)"/>.</param>
+    public static bool TryCalculateBlockGasReservations(
+        Transaction transaction,
+        IReleaseSpec spec,
+        out ulong executionReservation,
+        out ulong stateReservation,
+        bool estimateSignatureBytes)
     {
         executionReservation = 0;
         stateReservation = 0;
-        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _))
+        if (!TryCalculateGasBudget(transaction, spec, out ulong intrinsicGas, out ulong floorGas, out _, estimateSignatureBytes))
         {
             return false;
         }

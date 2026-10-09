@@ -8,9 +8,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -20,7 +20,7 @@ public class MergeFinalizedStateProviderTests
 {
     private IPoSSwitcher _poSSwitcher = null!;
     private IBlockTree _blockTree = null!;
-    private IFinalizedStateProvider _baseFinalizedStateProvider = null!;
+    private IStateHeaderProvider _baseFinalizedStateProvider = null!;
     private MergeFinalizedStateProvider _provider = null!;
     private IBlockCacheService _blockCacheService;
 
@@ -29,7 +29,7 @@ public class MergeFinalizedStateProviderTests
     {
         _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _blockTree = Substitute.For<IBlockTree>();
-        _baseFinalizedStateProvider = Substitute.For<IFinalizedStateProvider>();
+        _baseFinalizedStateProvider = Substitute.For<IStateHeaderProvider>();
         _blockCacheService = Substitute.For<IBlockCacheService>();
         _provider = new MergeFinalizedStateProvider(_poSSwitcher, _blockCacheService, _blockTree, _baseFinalizedStateProvider);
     }
@@ -179,7 +179,7 @@ public class MergeFinalizedStateProviderTests
     }
 
     [Test]
-    public void GetFinalizedStateRootAt_ReturnsNull_WhenBlockNumberExceedsFinalizedBlock()
+    public void GetFinalizedHeader_ReturnsNull_WhenBlockNumberExceedsFinalizedBlock()
     {
         // Arrange
         ulong finalizedBlockNumber = 100;
@@ -188,15 +188,15 @@ public class MergeFinalizedStateProviderTests
         _baseFinalizedStateProvider.FinalizedBlockNumber.Returns(finalizedBlockNumber);
 
         // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
+        BlockHeader? result = _provider.GetFinalizedHeader(blockNumber);
 
         // Assert
         Assert.That(result, Is.Null);
-        _baseFinalizedStateProvider.DidNotReceive().GetFinalizedStateRootAt(Arg.Any<ulong>());
+        _baseFinalizedStateProvider.DidNotReceive().GetFinalizedHeader(Arg.Any<ulong>());
     }
 
     [Test]
-    public void GetFinalizedStateRootAt_DelegatesToBaseProvider_WhenBlockNumberIsFinalized()
+    public void GetFinalizedHeader_DelegatesToBaseProvider_WhenBlockNumberIsFinalized()
     {
         // Arrange
         ulong finalizedBlockNumber = 100;
@@ -204,13 +204,13 @@ public class MergeFinalizedStateProviderTests
         Hash256 expectedStateRoot = TestItem.KeccakA;
         _poSSwitcher.TransitionFinished.Returns(false);
         _baseFinalizedStateProvider.FinalizedBlockNumber.Returns(finalizedBlockNumber);
-        _baseFinalizedStateProvider.GetFinalizedStateRootAt(blockNumber).Returns(expectedStateRoot);
+        _baseFinalizedStateProvider.GetFinalizedHeader(blockNumber).Returns(new BlockHeader(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, TestItem.AddressA, UInt256.Zero, blockNumber, 30_000_000, 0, []) { StateRoot = expectedStateRoot });
 
         // Act
-        Hash256? result = _provider.GetFinalizedStateRootAt(blockNumber);
+        BlockHeader? result = _provider.GetFinalizedHeader(blockNumber);
 
         // Assert
-        Assert.That(result, Is.EqualTo(expectedStateRoot));
-        _baseFinalizedStateProvider.Received(1).GetFinalizedStateRootAt(blockNumber);
+        Assert.That(result!.StateRoot, Is.EqualTo(expectedStateRoot));
+        _baseFinalizedStateProvider.Received(1).GetFinalizedHeader(blockNumber);
     }
 }

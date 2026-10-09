@@ -1,0 +1,120 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Logging;
+
+namespace Nethermind.State.Flat.History.Walk;
+
+internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availableBlocks, MismatchSink sink, ulong to, ILogger logger, CancellationToken token = default, Func<bool>? superseded = null) : ViewObserver, IDisposable
+{
+    public const int PrefetchedBlocks = 16_384;
+    private const int PrefetchedBlocksPerCancellationCheck = 1 << 10;
+
+    private readonly ValueHash256?[] _roots = new ValueHash256?[PrefetchedBlocks];
+    private ulong _firstPrefetched;
+    private int _prefetched;
+    private ISortedView? _markers;
+    private bool _hasMarker;
+    private ulong _markerBlock;
+
+    public ulong Compared { get; private set; }
+
+    public bool Stopped { get; private set; }
+
+    public override bool ObservesEveryBlock => true;
+
+    public override bool OnBlock(ulong block, in NodeView view)
+    {
+        if (!IsPrefetched(block))
+        {
+            if (superseded?.Invoke() == true) return false;
+            Prefetch(block);
+        }
+
+        ValueHash256? expected = _roots[block - _firstPrefetched];
+        if (expected is null)
+        {
+            sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingHeader, view.Hash, default));
+            Stopped = true;
+            return false;
+        }
+
+        Compared++;
+        CheckMarker(block, expected.Value);
+
+        if (view.Hash == expected.Value) return true;
+
+        sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.StateRoot, view.Hash, expected.Value));
+        if (logger.IsWarn) logger.Warn($"History walk diverged from the header at block {block}; stopping the comparison there.");
+        Stopped = true;
+        return false;
+    }
+
+    private bool IsPrefetched(ulong block) =>
+        _prefetched != 0 && block >= _firstPrefetched && block < _firstPrefetched + (ulong)_prefetched;
+
+    private void Prefetch(ulong block)
+    {
+        _firstPrefetched = block;
+        _prefetched = to - block < PrefetchedBlocks ? (int)(to - block) + 1 : PrefetchedBlocks;
+        for (int i = 0; i < _prefetched; i++)
+        {
+            if ((i & (PrefetchedBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+            _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
+        }
+    }
+
+    private void CheckMarker(ulong block, in ValueHash256 expected)
+    {
+        if (_markers is null) OpenMarkers(block);
+        while (_hasMarker && _markerBlock < block) Advance();
+
+        if (_hasMarker && _markerBlock == block)
+        {
+            ReadOnlySpan<byte> marker = _markers!.CurrentValue;
+            if (marker.Length == Hash256.Size && marker.SequenceEqual(expected.Bytes)) return;
+
+            sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.CapturedMarker, marker.Length == Hash256.Size ? new ValueHash256(marker) : default, expected));
+            return;
+        }
+
+        sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.CapturedMarker, default, expected));
+    }
+
+    private void OpenMarkers(ulong block)
+    {
+        _markers?.Dispose();
+        Span<byte> lower = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(lower, block);
+        Span<byte> upper = stackalloc byte[sizeof(ulong) + 1];
+        upper.Fill(0xFF);
+        _markers = ((ISortedKeyValueStore)availableBlocks).GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
+        _hasMarker = true;
+        Advance();
+    }
+
+    private void Advance()
+    {
+        while (_markers!.MoveNext())
+        {
+            ReadOnlySpan<byte> key = _markers.CurrentKey;
+            if (key.Length != sizeof(ulong)) continue;
+
+            _markerBlock = BinaryPrimitives.ReadUInt64BigEndian(key);
+            _hasMarker = true;
+            return;
+        }
+
+        _hasMarker = false;
+    }
+
+    public void Dispose()
+    {
+        _markers?.Dispose();
+        _markers = null;
+    }
+}

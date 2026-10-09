@@ -8,8 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NLog;
+using NLog.Common;
 using NLog.Config;
 using NLog.Targets;
+using NLog.Targets.Wrappers;
 using Level = NLog.LogLevel;
 
 namespace Nethermind.Logging.NLog;
@@ -18,6 +20,7 @@ public class NLogManager : ILogManager, IDisposable
 {
     private const string DefaultFileTargetName = "file-async_wrapped";
     private const string DefaultFolder = "logs";
+    private const string SeqTargetName = "seq";
 
     /// <summary>
     /// The constructor to use when the configuration is not yet initialized.
@@ -90,6 +93,12 @@ public class NLogManager : ILogManager, IDisposable
             lock (configurationLoggingRules)
             {
                 Target[] targets = GetTargets(configurationLoggingRules);
+                if (targets.Length == 0)
+                {
+                    InternalLogger.Warn("Ignoring Init.LogRules '{0}': the NLog configuration has no target other than '{1}'.", logRules, SeqTargetName);
+                    return;
+                }
+
                 IEnumerable<LoggingRule> loggingRules = ParseRules(logRules, targets);
                 foreach (LoggingRule loggingRule in loggingRules)
                 {
@@ -100,15 +109,77 @@ public class NLogManager : ILogManager, IDisposable
         }
     }
 
+    /// <remarks>
+    /// Excludes anything that reaches the seq target: its floor is <c>Seq.MinLevel</c>, which the runner's
+    /// <c>NLogConfigurator</c> applies only to a catch-all ("*") rule whose target is named <c>seq</c> so that
+    /// <c>NLog.config</c> can still opt a single namespace into seq with an explicit <c>writeTo="seq"</c> rule
+    /// (#4835). A rule synthesised from <c>Init.LogRules</c> that fanned out to seq would bypass that floor
+    /// (#6911), and removing a seq-writing rule as "overridden" would leave seq with no rule at all.
+    /// A group target such as <c>all</c> is descended into rather than excluded whole, so a configuration
+    /// whose only route to console and file is that group still has <c>Init.LogRules</c> applied; where such
+    /// a group rule is not <c>final</c>, both its own delivery and the synthesised rule's reach those targets,
+    /// so any level they share is written twice. Give that group rule <c>final="true"</c> to clear it; do not
+    /// suppress the duplication here instead, since ordering the synthesised rule ahead of a
+    /// <c>final="true"</c> group rule would also block the group's own seq delivery for that namespace,
+    /// reopening the inverse of #6911.
+    /// </remarks>
     private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
-        configurationLoggingRules.SelectMany(static r => r.Targets).Distinct().ToArray();
+        configurationLoggingRules.SelectMany(static r => r.Targets).SelectMany(static t => NonSeqTargets(t, [])).Distinct().ToArray();
 
+    /// <remarks>
+    /// A wrapper is unwrapped only to look for a group behind it; its contents are never yielded, since the
+    /// targets inside the seq wrapper chain are unnamed and would slip past the name check.
+    /// <paramref name="visited"/> bounds the walk the way <see cref="WritesToSeq(Target, HashSet{Target})"/> does.
+    /// It records what has been yielded or accounted for, so the unwrap below keeps its own set: a target
+    /// merely passed through on the way to a group can still be a group member in its own right.
+    /// </remarks>
+    private static IEnumerable<Target> NonSeqTargets(Target target, HashSet<Target> visited)
+    {
+        if (!visited.Add(target))
+        {
+            yield break;
+        }
+
+        if (!WritesToSeq(target))
+        {
+            yield return target;
+            yield break;
+        }
+
+        Target inner = target;
+        HashSet<Target> chain = [];
+        while (inner is WrapperTargetBase wrapper && wrapper.WrappedTarget is not null && chain.Add(wrapper.WrappedTarget))
+        {
+            inner = wrapper.WrappedTarget;
+        }
+
+        if (inner is CompoundTargetBase compound)
+        {
+            foreach (Target member in compound.Targets)
+            {
+                foreach (Target nonSeq in NonSeqTargets(member, visited))
+                {
+                    yield return nonSeq;
+                }
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Never removes a rule that writes to seq, for the same reason <see cref="GetTargets"/> excludes it from
+    /// the targets a synthesised rule can use — dropping it as "overridden" would leave seq with no rule at all.
+    /// A surviving rule keeps its own levels and targets, so <c>Init.LogRules</c> cannot lower a namespace
+    /// that <c>NLog.config</c> already routes to seq, directly or through a group such as <c>all</c>, and a
+    /// <c>final="true"</c> rule of that shape suppresses the synthesised rule on the levels it covers itself.
+    /// That matches the node's behaviour with no <c>Init.LogRules</c> set: for those namespaces the config
+    /// file is authoritative.
+    /// </remarks>
     private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
     {
         string regexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
         for (int j = 0; j < configurationLoggingRules.Count;)
         {
-            if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern))
+            if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern) && !configurationLoggingRules[j].Targets.Any(WritesToSeq))
             {
                 configurationLoggingRules.RemoveAt(j);
             }
@@ -118,6 +189,20 @@ public class NLogManager : ILogManager, IDisposable
             }
         }
     }
+
+    private static bool WritesToSeq(Target target) => WritesToSeq(target, []);
+
+    /// <remarks>
+    /// <paramref name="visited"/> bounds the walk: NLog drops a target cycle declared in XML, but a
+    /// configuration assembled in code can hold one, and re-entering it would overflow the stack.
+    /// </remarks>
+    private static bool WritesToSeq(Target target, HashSet<Target> visited) =>
+        target.Name == SeqTargetName || visited.Add(target) && target switch
+        {
+            WrapperTargetBase wrapper => wrapper.WrappedTarget is not null && WritesToSeq(wrapper.WrappedTarget, visited),
+            CompoundTargetBase compound => compound.Targets.Any(t => WritesToSeq(t, visited)),
+            _ => false
+        };
 
     private static IEnumerable<LoggingRule> ParseRules(string logRules, Target[] targets)
     {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Specs.Forks;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -53,7 +54,7 @@ internal class FrameTxMisplacedExpiryFrameFilterTest
     private static AcceptTxResult Accept(Transaction tx)
     {
         FrameTxMisplacedExpiryFrameFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxMisplacedExpiryFrameFilterTest>());
-        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>());
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref state, TxHandlingOptions.None);
     }
 }

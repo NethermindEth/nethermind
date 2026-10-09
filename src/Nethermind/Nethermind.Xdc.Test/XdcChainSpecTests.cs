@@ -16,9 +16,8 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcChainSpecTests
 {
-    [TestCase("xdc.json")]
-    [TestCase("xdc-testnet.json")]
-    public void System_contract_addresses_are_deserialized(string chainSpecFile)
+    [Test]
+    public void System_contract_addresses_are_deserialized([Values("xdc.json", "xdc-testnet.json")] string chainSpecFile)
     {
         XdcChainSpecEngineParameters engineParameters = EngineParameters(LoadChainSpec(chainSpecFile));
 
@@ -34,9 +33,8 @@ public class XdcChainSpecTests
         });
     }
 
-    [TestCase("xdc.json")]
-    [TestCase("xdc-testnet.json")]
-    public void XDCX_flags_flip_on_their_own_blocks(string chainSpecFile)
+    [Test]
+    public void XDCX_flags_flip_on_their_own_blocks([Values("xdc.json", "xdc-testnet.json")] string chainSpecFile)
     {
         ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
         XdcChainSpecEngineParameters engineParameters = EngineParameters(chainSpec);

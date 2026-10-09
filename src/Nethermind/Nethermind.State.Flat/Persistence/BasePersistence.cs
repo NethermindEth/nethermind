@@ -35,6 +35,7 @@ public static class BasePersistence
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
+    private static readonly byte[] WipedForSyncKey = Keccak.Compute("WipedForSync").BytesToArray();
 
     /// <summary>Raw storage slot encoding: the stripped value bytes are stored verbatim. Legacy, deprecated.</summary>
     internal const byte SlotEncodingRaw = 0;
@@ -45,7 +46,8 @@ public static class BasePersistence
     private const string RawSlotDeprecationMessage =
         "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
 
-    internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
+    /// <summary>Reads the flat DB's persisted state pointer, or <see cref="StateId.PreGenesis"/> when none is persisted.</summary>
+    public static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(CurrentStateKey);
         return bytes is null || bytes.Length == 0
@@ -59,6 +61,8 @@ public static class BasePersistence
         BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
+        // A persisted state pointer means the sync that followed a wipe has completed.
+        kv.Remove(WipedForSyncKey);
     }
 
     internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
@@ -175,7 +179,16 @@ public static class BasePersistence
         if (logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
     }
 
-    internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
+    /// <summary>Whether <see cref="ClearAllColumns"/> has marked the flat DB metadata as wiped for a state sync.</summary>
+    /// <remarks>
+    /// Set by the first batch of a wipe and cleared when a state pointer is persisted, i.e. when the sync that follows
+    /// completes. With a pre-genesis state pointer it tells a wiped DB awaiting its sync from one that was never used;
+    /// with a state pointer still present it means the wipe itself was interrupted.
+    /// </remarks>
+    public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
+
+    /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
         // partially-synced DB on restart. #11442
@@ -184,13 +197,15 @@ public static class BasePersistence
         IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         try
         {
+            // The wipe marker precedes every delete and the state pointer reset closes the wipe, so a wipe that dies
+            // midway reads back as "pointer and marker both present" and the next start redoes it.
+            batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
+
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
                 if (column == FlatDbColumns.Metadata)
                 {
-                    // Preserve the format markers; wiping them makes a re-synced RLP DB read back as raw. #11996
-                    batch.GetColumnBatch(column).Remove(CurrentStateKey);
                     continue;
                 }
 
@@ -206,6 +221,9 @@ public static class BasePersistence
                     }
                 }
             }
+
+            // Only the state pointer is reset; wiping the format markers makes a re-synced RLP DB read back as raw. #11996
+            batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(CurrentStateKey);
         }
         finally
         {
@@ -266,7 +284,7 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
-        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -280,7 +298,7 @@ public static class BasePersistence
 
         public void SetAccount(in ValueHash256 address, ReadOnlySpan<byte> value);
 
-        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in SlotValue? value);
+        public void SetStorage(in ValueHash256 address, in ValueHash256 slotHash, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageEncoded(in ValueHash256 address, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
@@ -293,9 +311,9 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
-        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -307,7 +325,7 @@ public static class BasePersistence
 
         public void SetAccount(Address addr, Account? account);
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
@@ -357,7 +375,7 @@ public static class BasePersistence
             _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value)
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, ref hashBuffer);
@@ -403,7 +421,7 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
             StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -418,7 +436,7 @@ public static class BasePersistence
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
 
-        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
+        public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -449,7 +467,7 @@ public static class BasePersistence
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
 
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
@@ -461,7 +479,7 @@ public static class BasePersistence
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);
 
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
@@ -495,7 +513,7 @@ public static class BasePersistence
         public void SetAccount(Address addr, Account? account) =>
             _flatWriter.SetAccount(addr, account);
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) =>
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) =>
             _flatWriter.SetStorage(addr, slot, value);
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>

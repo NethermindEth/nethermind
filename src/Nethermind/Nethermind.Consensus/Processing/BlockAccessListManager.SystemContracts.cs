@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -32,17 +36,61 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
+        BlockhashStore blockhashStore = new(preExecution.WorldState);
+        if (!spec.IsEip8037Enabled)
+        {
+            blockhashStore.ApplyBlockhashStateChanges(header, spec);
+            return;
+        }
+
+        if (!blockhashStore.TryGetHistoryContract(header, spec, out Address? historyContract)) return;
+
+        // EIP-2935 runs whatever code the account holds; a direct storage write matches only the canonical bytecode.
+        SystemCall transaction = new()
+        {
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
+            Data = header.ParentHash!.Bytes.ToArray(),
+            To = historyContract,
+            SenderAddress = Address.SystemUser,
+        };
+        preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
-    public void InstallPredeploys(IReleaseSpec spec)
+    public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec)
     {
         CheckInitialized();
 
         // Probe the untraced parent state so a no-op block records nothing in the BAL; apply any
         // change through the pre-execution (index 0) traced world state so it is captured there.
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
+        return PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec, parentSpec);
+    }
+
+    public IReleaseSpec GetParentSpec(BlockHeader header)
+    {
+        if (specProvider is null || headerFinder is null)
+        {
+            throw new InvalidOperationException($"Resolving a parent spec needs an {nameof(ISpecProvider)} and an {nameof(IHeaderFinder)}, but none was provided.");
+        }
+
+        BlockHeader parent = headerFinder.Get(header.ParentHash!, header.Number - 1)
+            ?? throw new InvalidOperationException($"Cannot resolve the parent spec: parent of {header.ToString(BlockHeader.Format.Short)} not found.");
+        return specProvider.GetSpec(parent);
+    }
+
+    public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip8253Enabled) return;
+
+        ZeroNonceStorageAccountsTransition transition = zeroNonceStorageAccountsTransition
+            ?? throw new InvalidOperationException($"EIP-8253 is enabled but no {nameof(ZeroNonceStorageAccountsTransition)} was provided.");
+        transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
+    }
+
+    private IWorldState GetPreExecutionWorldState()
+    {
+        CheckInitialized();
+        return _txProcessorWithWorldStateManager.GetPreExecution().WorldState;
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
@@ -63,8 +111,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
-        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

@@ -64,11 +64,13 @@ public class GethGenesisConfigJson : IHasNamedForks
     // class is Bogota.
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
-    /// <remarks>
-    /// They schedule on their own rather than with Bogota: the expiry-verifier predeploy they install shifts
-    /// every block's EIP-7928 access list, which the Bogota consensus fixtures pin.
-    /// </remarks>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8250PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-8272 recent roots, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip8272PrototypeTime { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for EIP-7906 transaction outcome assertions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
+    public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
 
     // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
     public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
@@ -80,6 +82,15 @@ public class GethGenesisConfigJson : IHasNamedForks
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
+
+    /// <summary>
+    /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
+    /// </summary>
+    /// <remarks>
+    /// Not part of EIP-7949; mirrors <c>params.beaconChainGenesisTimestamp</c> of Parity-style chainspecs.
+    /// </remarks>
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
+
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 
     IReadOnlyDictionary<string, ulong>? IHasNamedForks.NamedForkBlocks => _blocks;

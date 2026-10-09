@@ -4,8 +4,8 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.GC;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -47,18 +47,18 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 
-    [ConfigItem(Description = $"The memory compaction mode. When set to `{nameof(GcCompaction.Full)}`, compacts the large object heap (LOH) if `{nameof(SweepMemory)}` is set to `{nameof(GcLevel.Gen2)}`.",
-        DefaultValue = nameof(GcCompaction.Yes))]
+    [ConfigItem(Description = $"The compaction mode for ordinary post-block collections; periodic decommit collections always fully compact. No requests non-blocking collection, which may be skipped during background GC and may increase steady-state memory usage. When set to `{nameof(GcCompaction.Full)}`, compacts the large object heap (LOH) if `{nameof(SweepMemory)}` is set to `{nameof(GcLevel.Gen2)}`.",
+        DefaultValue = nameof(GcCompaction.No))]
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of requests to the garbage collector (GC) to release the process memory.
+            The number of eligible newPayload calls between compacting collections that release process memory. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
 
             Allowed values:
 
             - `-1`: No requests.
             - `0`: Requests every time.
-            - A positive number: Requests after that many Engine API calls.
+            - A positive number: Requests after that many eligible newPayload calls, including calls whose entry was skipped or pending collection was cancelled. Calls made while the no-GC strategy is disabled (such as during sync) do not count.
 
 
             """, DefaultValue = "25")]

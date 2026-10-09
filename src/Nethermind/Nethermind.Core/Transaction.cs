@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -19,7 +20,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public partial class Transaction
     {
         public const byte MaxTxType = 0x7F;
         public const uint BaseTxGasCost = 21000;
@@ -42,7 +43,6 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
-        private UInt256 _gasPrice;
         public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
@@ -71,6 +71,7 @@ namespace Nethermind.Core
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
+        private UInt256 _gasPrice;
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
         [JsonIgnore]
@@ -105,16 +106,23 @@ namespace Nethermind.Core
             Hash256? hash = _hash;
             if (hash is not null) return hash;
 
-            lock (this)
-            {
-                hash = _hash;
-                if (hash is not null) return hash;
+            return CalculateHashSynchronized();
+        }
 
-                if (_preHash.Length > 0)
-                {
-                    _hash = hash = Keccak.Compute(_preHash.Span);
-                    ClearPreHashInternal();
-                }
+        /// <summary>Computes and memoizes the hash, holding whatever exclusion the target needs.</summary>
+        /// <remarks>Split per target: see <c>Transaction.std.cs</c> and <c>Transaction.zkevm.cs</c>.</remarks>
+        private partial Hash256 CalculateHashSynchronized();
+
+        /// <summary>The memoizing computation itself, with no exclusion of its own.</summary>
+        private Hash256 ComputeAndMemoizeHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            if (_preHash.Length > 0)
+            {
+                _hash = hash = Keccak.Compute(_preHash.Span);
+                ClearPreHashInternal();
             }
 
             return hash!;
@@ -241,8 +249,9 @@ namespace Nethermind.Core
         public Address? PayerAddress { get; set; }
 
         /// <summary>
-        /// Exposure reserved against <see cref="PayerAddress"/> at mempool admission, released unchanged when the
-        /// transaction leaves the pool. In-memory only (not encoded).
+        /// The maximum cost mempool admission priced this transaction at, released unchanged from
+        /// <see cref="PayerAddress"/>'s exposure when the transaction leaves the pool. Recorded with no payer too,
+        /// where it reserves nothing and only prices the sender's pending total. In-memory only (not encoded).
         /// </summary>
         /// <remarks>
         /// Held rather than re-derived on release: the pool keeps a blob-carrying frame transaction as a light
@@ -265,18 +274,6 @@ namespace Nethermind.Core
         /// <remarks><see langword="null"/> for the EIP-8141 envelope, whose single nonce is the sender's
         /// linear account nonce — the same domain EIP-8250 addresses as the key <c>0</c>.</remarks>
         public UInt256[]? NonceKeys { get; set; }
-
-        /// <summary>
-        /// Recent-root references declared by a frame transaction.
-        /// https://eips.ethereum.org/EIPS/eip-8272
-        /// </summary>
-        /// <remarks><see langword="null"/> for an envelope that predates EIP-8272, which is a different
-        /// signing payload from one carrying an empty reference list.</remarks>
-        public RecentRootReference[]? RecentRootReferences { get; set; }
-
-        /// <summary>Zero and non-zero byte counts of the EIP-8272 recent-root reference calldata, priced in addition to
-        /// frame and signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
-        public (int ZeroBytes, int NonZeroBytes) ReferenceCalldataStats { get; set; }
 
         /// <summary>Zero and non-zero byte counts of EIP-8250's <c>nonce_calldata</c>, priced in addition to frame and
         /// signature data. In-memory only; set from the canonical encoding rather than recomputed.</summary>
@@ -399,6 +396,7 @@ namespace Nethermind.Core
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
                 obj.BlobVersionedHashes = default;
+                PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
@@ -409,8 +407,6 @@ namespace Nethermind.Core
                 obj.PayerAddress = default;
                 obj.PayerExposure = default;
                 obj.NonceKeys = default;
-                obj.RecentRootReferences = default;
-                obj.ReferenceCalldataStats = default;
                 obj.FrameCalldataStats = default;
 
                 return true;
@@ -430,6 +426,8 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
+            // Copies share the network payload and can outlive the original transaction.
+            PooledBlobBuffers.Disown(this);
             if (copyHash)
             {
                 tx.Hash = Hash;
@@ -465,8 +463,6 @@ namespace Nethermind.Core
             tx.PayerAddress = PayerAddress;
             tx.PayerExposure = PayerExposure;
             tx.NonceKeys = NonceKeys;
-            tx.RecentRootReferences = RecentRootReferences;
-            tx.ReferenceCalldataStats = ReferenceCalldataStats;
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
@@ -520,6 +516,28 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        /// <remarks>
+        /// Record copies share this token. Disown the transaction before publishing any additional
+        /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
+        /// </remarks>
+        internal PooledBlobBuffers? PooledBuffers { get; init; }
+
+        /// <inheritdoc/>
+        /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>
+        public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
+            ReferenceEquals(this, other)
+            || (other is not null
+                && EqualityContract == other.EqualityContract
+                && Blobs == other.Blobs
+                && Commitments == other.Commitments
+                && Proofs == other.Proofs
+                && Version == other.Version
+                && CellMask.Equals(other.CellMask)
+                && Cells == other.Cells);
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);
+
         /// <summary>
         /// Creates a blob network wrapper without sparse-cell data.
         /// </summary>

@@ -18,7 +18,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Builds an inclusion list from the local mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1();
+    Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
@@ -36,5 +36,8 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null, BitArray? custodyColumns = null);
+    Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV5(
+        ForkchoiceStateV1 forkchoiceState,
+        PayloadAttributes? payloadAttributes = null,
+        [JsonRpcParameter(ConverterType = typeof(BlobCellBitArrayConverter))] BitArray? custodyColumns = null);
 }

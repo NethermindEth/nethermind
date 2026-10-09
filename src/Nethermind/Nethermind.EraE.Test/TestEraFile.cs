@@ -25,7 +25,8 @@ internal sealed class TestEraFile : IDisposable
     public static async Task<TestEraFile> Create(
         uint preMergeCount,
         uint postMergeCount,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        Transaction? transaction = null)
     {
         specProvider ??= MainnetSpecProvider.Instance;
         TempPath tmpFile = TempPath.GetTempFile();
@@ -39,7 +40,8 @@ internal sealed class TestEraFile : IDisposable
         for (uint i = 0; i < preMergeCount; i++, number++, td += BlockHeaderBuilder.DefaultDifficulty)
         {
             TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-            Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td).TestObject;
+            Block block = Build.A.Block.WithNumber(number).WithTotalDifficulty(td)
+                .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);
@@ -50,7 +52,8 @@ internal sealed class TestEraFile : IDisposable
         for (uint i = 0; i < postMergeCount; i++, number++)
         {
             TxReceipt receipt = Build.A.Receipt.WithTxType(TxType.EIP1559).TestObject;
-            Block block = Build.A.Block.WithNumber(number).WithPostMergeRules().TestObject;
+            Block block = Build.A.Block.WithNumber(number).WithPostMergeRules()
+                .WithTransactions(transaction is null ? [] : [transaction]).TestObject;
             block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(
                 [receipt], specProvider.GetSpec(block.Header), block.ReceiptsRoot);
             block.Header.Hash = Keccak.Compute(headerDecoder.Encode(block.Header).Bytes);

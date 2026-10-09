@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -29,11 +33,7 @@ namespace Nethermind.Evm.Test
         protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;
 
         [Test]
-        [TestCase(Instruction.CALL)]
-        [TestCase(Instruction.CALLCODE)]
-        [TestCase(Instruction.DELEGATECALL)]
-        [TestCase(Instruction.STATICCALL)]
-        public void Stack_underflow_on_call(Instruction instruction)
+        public void Stack_underflow_on_call([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
@@ -48,11 +48,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        [TestCase(Instruction.CALL)]
-        [TestCase(Instruction.CALLCODE)]
-        [TestCase(Instruction.DELEGATECALL)]
-        [TestCase(Instruction.STATICCALL)]
-        public void Out_of_gas_on_call(Instruction instruction)
+        public void Out_of_gas_on_call([Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction)
         {
             byte[] code = Prepare.EvmCode
                 .PushData(0)
@@ -106,9 +102,8 @@ namespace Nethermind.Evm.Test
             Assert.That(TestState.AccountExists(target), Is.False);
         }
 
-        [TestCase(Instruction.INVALID)]
-        [TestCase(Instruction.REVERT)]
-        public void Nested_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        [Test]
+        public void Nested_halt_preserves_ripemd_empty_account_deletion([Values(Instruction.INVALID, Instruction.REVERT)] Instruction halt)
         {
             Address child = TestItem.AddressC;
             TestState.CreateAccount(child, UInt256.Zero);
@@ -122,9 +117,8 @@ namespace Nethermind.Evm.Test
             AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
         }
 
-        [TestCase(Instruction.INVALID)]
-        [TestCase(Instruction.REVERT)]
-        public void Top_level_halt_preserves_ripemd_empty_account_deletion(Instruction halt)
+        [Test]
+        public void Top_level_halt_preserves_ripemd_empty_account_deletion([Values(Instruction.INVALID, Instruction.REVERT)] Instruction halt)
         {
             byte[] code = BuildRipemdTouchThenHalt(halt);
             AssertRipemdTouchPreserved(code, (MainnetSpecProvider.ByzantiumBlockNumber, 0), 300_000);
@@ -202,9 +196,10 @@ namespace Nethermind.Evm.Test
             .Op(Instruction.RETURN)
             .Done;
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Child_output_copy_preserves_memory_beyond_returned_bytes(bool revert)
+        [Test]
+        public void Child_output_copy_preserves_memory_beyond_returned_bytes(
+            [Values] bool revert, [Values(0, 31, 1023, 1024)] int outputOffset,
+            [Values(0, 1, 8, 64)] int requestedLength, [Values] bool traced, [Values] bool repeatCall)
         {
             Address target = TestItem.AddressC;
             Prepare childBuilder = Prepare.EvmCode
@@ -216,19 +211,389 @@ namespace Nethermind.Evm.Test
             TestState.InsertCode(target, childCode, SpecProvider.GenesisSpec);
 
             byte[] dirtyWord = Enumerable.Repeat((byte)0xff, EvmPooledMemory.WordSize).ToArray();
-            byte[] parentCode = Prepare.EvmCode
-                .MSTORE(0, dirtyWord)
-                .CALL(50_000, target, 0, 0, 0, 0, 8)
-                .Op(Instruction.POP)
-                .RETURN(0, 8)
+            Prepare parentBuilder = Prepare.EvmCode
+                .MSTORE((UInt256)outputOffset, dirtyWord)
+                .CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
+                .Op(Instruction.POP);
+            if (repeatCall)
+            {
+                parentBuilder.CALL(50_000, target, 0, 0, 0, (UInt256)outputOffset, (UInt256)requestedLength)
+                    .Op(Instruction.POP);
+            }
+
+            byte[] parentCode = parentBuilder
+                .Op(Instruction.RETURNDATASIZE)
+                .MSTORE((UInt256)(outputOffset + 11))
+                .RETURNDATACOPY((UInt256)(outputOffset + 8), 0, 3)
+                .RETURN((UInt256)outputOffset, 43)
                 .Done;
 
-            TestAllTracerWithOutput tracer = Execute(parentCode);
+            TestAllTracerWithOutput tracer = new OutputCopyTracer(traced);
+            Execute(tracer, parentCode);
+            byte[] expected = new byte[43];
+            expected.AsSpan(0, 8).Fill(0xff);
+            expected[8] = 1;
+            expected[9] = 2;
+            expected[10] = 3;
+            expected[42] = 3;
+            for (int i = 0; i < Math.Min(3, requestedLength); i++) expected[i] = (byte)(i + 1);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tracer.Error, Is.Null);
-                Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { 1, 2, 3, 0xff, 0xff, 0xff, 0xff, 0xff }));
+                Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+            }
+        }
+
+        private sealed class OutputCopyTracer(bool traced) : TestAllTracerWithOutput
+        {
+            public override bool IsTracingInstructions => traced;
+            public List<byte[]> StackPushes { get; } = [];
+            public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => StackPushes.Add(stackItem.ToArray());
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Nested_return_scratch_keeps_logical_length_after_larger_sibling(bool smallReverts)
+        {
+            (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(smallReverts);
+
+            byte[] dirtyMemory = Enumerable.Repeat(byte.MaxValue, EvmPooledMemory.WordSize).ToArray();
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .CALL(100_000, smallTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .StoreDataInMemory(0, dirtyMemory)
+                .Op(Instruction.RETURNDATASIZE).MSTORE(EvmPooledMemory.WordSize)
+                .RETURNDATACOPY(0, 0, (UInt256)smallOutput.Length)
+                .RETURN(0, EvmPooledMemory.WordSize * 2)
+                .Done;
+
+            byte[] expected = new byte[EvmPooledMemory.WordSize * 2];
+            expected.AsSpan(0, EvmPooledMemory.WordSize).Fill(byte.MaxValue);
+            smallOutput.CopyTo(expected, 0);
+            ((UInt256)smallOutput.Length).ToBigEndian().CopyTo(expected, EvmPooledMemory.WordSize);
+
+            TransactionSubstate result = ExecuteDirect(parentCode, new ReceiptOnlyTracer());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ShouldRevert, Is.False);
+                Assert.That(result.Output, Is.SequenceEqualTo(expected));
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(largeOutput.Length));
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Direct_return_data_assignment_preserves_the_full_array(bool reverts)
+        {
+            byte[] stagedOutput = [0x01];
+            byte[] assignedOutput = [0x11, 0x22, 0x33, 0x44];
+            DirectReturnDataAssignmentTracer tracer = new(Machine, assignedOutput);
+            Prepare code = Prepare.EvmCode.StoreDataInMemory(0, stagedOutput);
+
+            TransactionSubstate result = ExecuteDirect(
+                (reverts ? code.REVERT(0, (UInt256)stagedOutput.Length) : code.RETURN(0, (UInt256)stagedOutput.Length)).Done,
+                tracer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Assigned, Is.True);
+                Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
+                Assert.That(result.Output, Is.SequenceEqualTo(assignedOutput));
+            }
+        }
+
+        [Test]
+        public void Top_level_return_output_survives_a_later_nested_return()
+        {
+            byte[] firstOutput = [0x11, 0x22, 0x33, 0x44];
+            TransactionSubstate first = ExecuteDirect(
+                Prepare.EvmCode.StoreDataInMemory(0, firstOutput).RETURN(0, (UInt256)firstOutput.Length).Done);
+            ReadOnlyMemory<byte> retainedOutput = first.Output;
+
+            Address child = TestItem.AddressC;
+            byte[] secondOutput = [0x99, 0x88, 0x77, 0x66];
+            TestState.CreateAccount(child, UInt256.Zero);
+            TestState.InsertCode(child,
+                Prepare.EvmCode.StoreDataInMemory(0, secondOutput).RETURN(0, (UInt256)secondOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+            byte[] secondCode = Prepare.EvmCode
+                .CALL(100_000, child, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ExecuteDirect(secondCode);
+
+            Assert.That(retainedOutput, Is.SequenceEqualTo(firstOutput));
+        }
+
+        [Test]
+        public void Create_deployed_code_is_not_aliased_by_nested_return_scratch()
+        {
+            TestState.CreateAccount(Recipient, UInt256.Zero);
+            Address filler = TestItem.AddressC;
+            TestState.CreateAccount(filler, UInt256.Zero);
+            TestState.InsertCode(filler,
+                Prepare.EvmCode.PushData(0x99).PushData(0).Op(Instruction.MSTORE8).PushData(1).PushData(0).Op(Instruction.RETURN).Done,
+                SpecProvider.GenesisSpec);
+
+            byte[] runtimeCode = Prepare.EvmCode
+                .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
+                .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Done;
+            byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done;
+            Address deployed = ContractAddress.From(Recipient, 0);
+            byte[] parentCode = Prepare.EvmCode
+                .Create(initCode, UInt256.Zero).Op(Instruction.POP)
+                .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .CALL(100_000, deployed, 0, 0, 0, 0, 1).Op(Instruction.POP)
+                .RETURN(0, 1)
+                .Done;
+
+            TransactionSubstate result = ExecuteDirect(parentCode);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
+                Assert.That(result.Output, Is.SequenceEqualTo(new byte[] { 0x2a }));
+            }
+        }
+
+        [Test]
+        public void Top_level_create_deployed_code_survives_a_later_nested_return()
+        {
+            byte[] runtimeCode = Prepare.EvmCode
+                .PushData(0x2a).PushData(0).Op(Instruction.MSTORE8)
+                .PushData(1).PushData(0).Op(Instruction.RETURN)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Op(Instruction.STOP).Op(Instruction.STOP).Op(Instruction.STOP)
+                .Done;
+            Assert.That(BitOperations.IsPow2(runtimeCode.Length), "precondition: a power-of-two length would fill the reusable scratch exactly");
+            byte[] initCode = Prepare.EvmCode.StoreDataInMemory(0, runtimeCode)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done;
+            (Block block, Transaction deployTx) = PrepareInitTx(Activation, 100_000, initCode);
+            Address deployed = ContractAddress.From(Sender, deployTx.Nonce);
+            _processor.Execute(deployTx, new BlockExecutionContext(block.Header, Spec), new ReceiptOnlyTracer());
+
+            Address filler = TestItem.AddressC;
+            byte[] fillerOutput = Enumerable.Repeat((byte)0x99, runtimeCode.Length).ToArray();
+            TestState.CreateAccount(filler, UInt256.Zero);
+            TestState.InsertCode(filler,
+                Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+
+            Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+
+            ExecuteDirect(Prepare.EvmCode
+                .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .RETURN(0, (UInt256)runtimeCode.Length)
+                .Done, new ReceiptOnlyTracer());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
+                Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "later return staging must not rewrite stored code");
+            }
+        }
+
+        [Test]
+        public void Tracer_can_retain_nested_return_output_after_later_sibling_return()
+        {
+            (Address largeTarget, Address smallTarget, byte[] largeOutput, byte[] smallOutput) = SetUpSiblingReturnTargets(false);
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .CALL(100_000, smallTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+            RetainingOutputTracer tracer = new();
+
+            ExecuteDirect(parentCode, tracer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Outputs.Count, Is.GreaterThanOrEqualTo(2));
+                Assert.That(tracer.Outputs[0], Is.SequenceEqualTo(largeOutput));
+                Assert.That(tracer.Outputs[1], Is.SequenceEqualTo(smallOutput));
+                Assert.That(Machine.RetainedReturnDataScratchLength, Is.Zero);
+            }
+        }
+
+        [TestCase(false, false, false, false, true, TestName = "Nested_return_scratch_WithoutRetainingTracer_IsUsed")]
+        [TestCase(true, false, false, false, false, TestName = "Nested_return_scratch_WhenTracingActions_IsNotUsed")]
+        [TestCase(false, true, false, false, false, TestName = "Nested_return_scratch_WhenTracingInstructions_IsNotUsed")]
+        [TestCase(false, false, true, false, false, TestName = "Nested_return_scratch_WhenTracingMemory_IsNotUsed")]
+        [TestCase(false, false, false, true, false, TestName = "Nested_return_scratch_WhenTracingReturnData_IsNotUsed")]
+        public void Nested_return_scratch_follows_tracer_capabilities(
+            bool actions, bool instructions, bool memory, bool returnData, bool expectScratch)
+        {
+            (Address largeTarget, _, byte[] largeOutput, _) = SetUpSiblingReturnTargets(false);
+            byte[] parentCode = Prepare.EvmCode
+                .CALL(100_000, largeTarget, 0, 0, 0, 0, 0).Op(Instruction.POP)
+                .Op(Instruction.STOP)
+                .Done;
+
+            ExecuteDirect(parentCode, new TracingFlagsTracer(actions, instructions, memory, returnData));
+
+            Assert.That(Machine.RetainedReturnDataScratchLength,
+                expectScratch ? Is.GreaterThanOrEqualTo(largeOutput.Length) : Is.Zero,
+                "a tracer that may keep a nested output must disable the reusable return scratch");
+        }
+
+        private (Address LargeTarget, Address SmallTarget, byte[] LargeOutput, byte[] SmallOutput) SetUpSiblingReturnTargets(bool smallReverts)
+        {
+            Address largeTarget = TestItem.AddressC;
+            Address smallTarget = TestItem.AddressD;
+            byte[] largeOutput = Enumerable.Repeat((byte)0xa5, 2048).ToArray();
+            byte[] smallOutput = [0x12, 0x34];
+            TestState.CreateAccount(largeTarget, UInt256.Zero);
+            TestState.CreateAccount(smallTarget, UInt256.Zero);
+            TestState.InsertCode(largeTarget,
+                Prepare.EvmCode.StoreDataInMemory(0, largeOutput).RETURN(0, (UInt256)largeOutput.Length).Done,
+                SpecProvider.GenesisSpec);
+            Prepare smallCode = Prepare.EvmCode.StoreDataInMemory(0, smallOutput);
+            TestState.InsertCode(smallTarget,
+                (smallReverts ? smallCode.REVERT(0, (UInt256)smallOutput.Length) : smallCode.RETURN(0, (UInt256)smallOutput.Length)).Done,
+                SpecProvider.GenesisSpec);
+            return (largeTarget, smallTarget, largeOutput, smallOutput);
+        }
+
+        private sealed class ReceiptOnlyTracer : TxTracer
+        {
+            public override bool IsTracingReceipt => true;
+        }
+
+        private sealed class DirectReturnDataAssignmentTracer(EthereumVirtualMachine machine, byte[] output) : TxTracer
+        {
+            public bool Assigned { get; private set; }
+
+            public override bool IsTracingInstructions => true;
+
+            public override void ReportOperationRemainingGas(ulong gas)
+            {
+                if (!Assigned && machine.ReturnData is byte[])
+                {
+                    machine.ReturnData = output;
+                    Assigned = true;
+                }
+            }
+        }
+
+        private sealed class TracingFlagsTracer : TxTracer
+        {
+            public TracingFlagsTracer(bool actions, bool instructions, bool memory, bool returnData)
+            {
+                IsTracingActions = actions;
+                IsTracingInstructions = instructions;
+                IsTracingMemory = memory;
+                IsTracingReturnData = returnData;
+            }
+        }
+
+        private sealed class RetainingOutputTracer : TxTracer
+        {
+            public override bool IsTracingActions => true;
+            public List<ReadOnlyMemory<byte>> Outputs { get; } = [];
+
+            public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output)
+            {
+                if (!output.IsEmpty) Outputs.Add(output);
+            }
+        }
+
+        private TransactionSubstate ExecuteDirect(byte[] code, ITxTracer? tracer = null)
+        {
+            if (!TestState.AccountExists(Recipient)) TestState.CreateAccount(Recipient, UInt256.Zero);
+
+            ExecutionEnvironment env = ExecutionEnvironment.Rent(
+                new CodeInfo(code), Recipient, Sender, Recipient, 0, UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+            using StackAccessTracker accessTracker = new();
+            Snapshot snapshot = TestState.TakeSnapshot();
+            using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+                EthereumGasPolicy.FromULong(1_000_000), ExecutionType.TRANSACTION, env, in accessTracker, in snapshot);
+            Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Spec));
+            Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+
+            ITxTracer effectiveTracer = tracer ?? NullTxTracer.Instance;
+            return effectiveTracer.IsTracingInstructions
+                ? Machine.ExecuteTransaction<OnFlag>(vmState, TestState, effectiveTracer)
+                : Machine.ExecuteTransaction<OffFlag>(vmState, TestState, effectiveTracer);
+        }
+
+        [Test]
+        public void Child_receives_input_across_memory_boundaries(
+            [Values(0, 31, 1023, 1024)] int inputOffset,
+            [Values(0, 1, 32, 64)] int inputLength, [Values] bool traced)
+        {
+            byte[] data = new byte[64];
+            for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
+            byte[] childCode = Prepare.EvmCode
+                .Op(Instruction.CALLDATASIZE).PushData(0).PushData(0).Op(Instruction.CALLDATACOPY)
+                .Op(Instruction.CALLDATASIZE).PushData(0).Op(Instruction.RETURN).Done;
+            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+            TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+            byte[] parentCode = Prepare.EvmCode.StoreDataInMemory(inputOffset, data)
+                .CALL(50_000, TestItem.AddressC, 0, (UInt256)inputOffset, (UInt256)inputLength, 2048, (UInt256)inputLength)
+                .Op(Instruction.POP).RETURN(2048, (UInt256)inputLength).Done;
+            AssertSuccessfulOutput(parentCode, data.AsSpan(0, inputLength).ToArray(), traced);
+        }
+
+        [Test]
+        public void Resumed_call_pushes_status_after_a_full_stack(
+            [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction instruction,
+            [Values] bool revert, [Values] bool traced)
+        {
+            byte[] childCode = Prepare.EvmCode.PushData(0).PushData(0)
+                .Op(revert ? Instruction.REVERT : Instruction.RETURN).Done;
+            TestState.CreateAccount(TestItem.AddressC, UInt256.Zero);
+            TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+            bool hasValue = instruction is Instruction.CALL or Instruction.CALLCODE;
+            Prepare parent = Prepare.EvmCode;
+            for (int i = 0; i < 1024 - (hasValue ? 7 : 6); i++) parent.Op(Instruction.PUSH0);
+            parent.PushData(0).PushData(0).PushData(0).PushData(0);
+            if (hasValue) parent.PushData(0);
+            byte[] code = parent.PushData(TestItem.AddressC).PushData(50_000).Op(instruction)
+                .PushData(0).Op(Instruction.MSTORE).RETURN(0, 32).Done;
+            AssertSuccessfulOutput(code, ((UInt256)(revert ? 0 : 1)).ToBigEndian(), traced, [(byte)(revert ? 0 : 1)]);
+        }
+
+        [Test]
+        public void Resumed_create_pushes_result_after_a_full_stack(
+            [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction instruction,
+            [Values] bool revert, [Values] bool traced)
+        {
+            byte[] initCode = Prepare.EvmCode.PushData(0).PushData(0)
+                .Op(revert ? Instruction.REVERT : Instruction.RETURN).Done;
+            Prepare parent = Prepare.EvmCode.StoreDataInMemory(0, initCode);
+            for (int i = 0; i < (instruction == Instruction.CREATE2 ? 1020 : 1021); i++) parent.Op(Instruction.PUSH0);
+            if (instruction == Instruction.CREATE2) parent.Op(Instruction.PUSH0);
+            byte[] code = parent.PushData(initCode.Length).PushData(0).PushData(0).Op(instruction)
+                .PushData(0).Op(Instruction.MSTORE).RETURN(0, 32).Done;
+            byte[] expected = new byte[32];
+            if (!revert)
+            {
+                Address address = instruction == Instruction.CREATE2
+                    ? ContractAddress.From(Recipient, new byte[32], initCode)
+                    : ContractAddress.From(Recipient, 0);
+                address.Bytes.CopyTo(expected.AsSpan(12));
+            }
+            AssertSuccessfulOutput(code, expected, traced, revert ? [0] : expected[12..]);
+        }
+
+        private void AssertSuccessfulOutput(byte[] code, byte[] expected, bool traced, byte[]? expectedResumePush = null)
+        {
+            OutputCopyTracer tracer = new(traced);
+            Execute(tracer, code);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.Error, Is.Null);
+                Assert.That(tracer.ReturnValue, Is.EqualTo(expected));
+                // The resumed result precedes the three arguments pushed for MSTORE and RETURN.
+                if (traced && expectedResumePush is not null)
+                    Assert.That(tracer.StackPushes[^4], Is.EqualTo(expectedResumePush));
             }
         }
 
@@ -243,7 +608,7 @@ namespace Nethermind.Evm.Test
             RetainedCreateInputTracer tracer = new(Machine);
 
             Execute(tracer, createCode);
-            Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+            Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
 
             byte[] replacement = new byte[EvmPooledMemory.WordSize];
             Array.Fill(replacement, (byte)0xa5);
@@ -257,7 +622,7 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.CreateReverted, Is.True);
                 Assert.That(tracer.SecondTopLevelState, Is.SameAs(tracer.FirstTopLevelState));
-                Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+                Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
             }
         }
 
@@ -382,5 +747,36 @@ namespace Nethermind.Evm.Test
                 Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000).Done,
                 _ => throw new ArgumentOutOfRangeException(nameof(instruction), instruction, null)
             };
+
+        [Test]
+        public void Jump_after_a_nested_call_validates_against_the_resumed_frame()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+
+            // The destination fits a PUSH1 in both builds, so the probe has the layout of the real code.
+            int jumpDest = CallThenJump(1).Done.Length;
+            byte[] code = CallThenJump(jumpDest)
+                .Op(Instruction.JUMPDEST)
+                .PushData(1)
+                .PushData(0)
+                .Op(Instruction.SSTORE)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Error, Is.Null);
+                AssertStorage(UInt256.Zero, new byte[] { 1 });
+            }
+
+            static Prepare CallThenJump(int destination) => Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .Op(Instruction.POP)
+                .PushData(destination)
+                .Op(Instruction.JUMP)
+                .Op(Instruction.INVALID);
+        }
     }
 }

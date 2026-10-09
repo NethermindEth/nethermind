@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -126,6 +127,17 @@ public class OptimismEngineRpcModuleTest
             payload, blobVersionedHashes, Hash256.Zero, executionRequests);
     }
 
+    [TestCase(false, false, false)]
+    [TestCase(true, false, true)]
+    [TestCase(true, true, true)]
+    public void NewPayloadV4_fork_check_follows_Isthmus(bool isthmusEnabled, bool requestsEnabled, bool expected)
+    {
+        OptimismReleaseSpec spec = new() { IsEip4844Enabled = true, IsOpIsthmusEnabled = isthmusEnabled, IsEip6110Enabled = requestsEnabled };
+        OptimismExecutionPayloadV3 payload = new();
+
+        Assert.That(payload.ValidateForkOnNewPayload(new TestSingleReleaseSpecProvider(spec), EngineApiVersions.NewPayload.V4), Is.EqualTo(expected));
+    }
+
     [Test]
     public void NewPayloadWithWitnessV4_capability_is_enabled_for_Isthmus_without_SSZ_route()
     {
@@ -162,7 +174,7 @@ public class OptimismEngineRpcModuleTest
         handler.CurrentVersion.Returns(testCase.Current);
         IOptimismEngineRpcModule rpcModule = new OptimismEngineRpcModule(Substitute.For<IEngineRpcModule>(), handler);
 
-        OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
+        OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal)!;
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")).Using(JToken.EqualityComparer));

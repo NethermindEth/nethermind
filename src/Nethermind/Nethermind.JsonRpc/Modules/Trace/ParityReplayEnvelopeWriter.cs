@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
@@ -17,36 +20,17 @@ public static class ParityReplayEnvelopeWriter
     {
         writer.WriteStartObject();
         writer.WritePropertyName("vmTrace"u8);
-        JsonSerializer.Serialize(writer, trace.VmTrace, options);
+        TypeInfoJsonSerializer.Serialize(writer, trace.VmTrace, options);
         WriteTail(writer, trace, includeTxHash, options);
     }
 
     public static void WriteTail(Utf8JsonWriter writer, ParityLikeTxTrace trace, bool includeTxHash, JsonSerializerOptions options)
     {
         writer.WritePropertyName("output"u8);
-        JsonSerializer.Serialize(writer, trace.Output, options);
+        TypeInfoJsonSerializer.Serialize(writer, trace.Output, options);
 
         writer.WritePropertyName("stateDiff"u8);
-        if (trace.StateChanges is not null)
-        {
-            writer.WriteStartObject();
-            Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
-            addressBytes[0] = (byte)'0';
-            addressBytes[1] = (byte)'x';
-            Span<byte> hex = addressBytes[2..];
-            foreach ((Address address, ParityAccountStateChange stateChange) in
-                trace.StateChanges.OrderBy(static sc => sc.Key, GenericComparer.GetOptimized<Address>()))
-            {
-                address.Bytes.OutputBytesToByteHex(hex, false);
-                writer.WritePropertyName(addressBytes);
-                JsonSerializer.Serialize(writer, stateChange, options);
-            }
-            writer.WriteEndObject();
-        }
-        else
-        {
-            writer.WriteNullValue();
-        }
+        WriteStateDiff(writer, trace.StateChanges, options);
 
         writer.WritePropertyName("trace"u8);
         writer.WriteStartArray();
@@ -59,7 +43,35 @@ public static class ParityReplayEnvelopeWriter
         if (includeTxHash)
         {
             writer.WritePropertyName("transactionHash"u8);
-            JsonSerializer.Serialize(writer, trace.TransactionHash, options);
+            TypeInfoJsonSerializer.Serialize(writer, trace.TransactionHash, options);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    /// <summary>Writes the accounts in ascending address order, sorting them in a pooled buffer.</summary>
+    [SkipLocalsInit]
+    internal static void WriteStateDiff(Utf8JsonWriter writer, Dictionary<Address, ParityAccountStateChange>? stateChanges, JsonSerializerOptions options)
+    {
+        if (stateChanges is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        writer.WriteStartObject();
+        Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
+        addressBytes[0] = (byte)'0';
+        addressBytes[1] = (byte)'x';
+        Span<byte> hex = addressBytes[2..];
+
+        using ArrayPoolListRef<KeyValuePair<Address, ParityAccountStateChange>> sorted = new(stateChanges.Count, stateChanges);
+        sorted.Sort(static (x, y) => x.Key.CompareTo(y.Key));
+        foreach ((Address address, ParityAccountStateChange stateChange) in sorted.AsSpan())
+        {
+            address.Bytes.OutputBytesToByteHex(hex, false);
+            writer.WritePropertyName(addressBytes);
+            TypeInfoJsonSerializer.Serialize(writer, stateChange, options);
         }
 
         writer.WriteEndObject();
@@ -90,15 +102,18 @@ public static class ParityReplayEnvelopeWriter
         writer.WritePropertyName("action"u8);
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
-        if (action.Error is null)
+        // A failed action keeps its result only when it produced output, as a reverted frame does; a failed root
+        // built without an action keeps an empty one, which is not written.
+        if (action.Error is null || action.Result?.Output is not null)
         {
             writer.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(writer, action.Result, options);
+            TypeInfoJsonSerializer.Serialize(writer, action.Result, options);
         }
-        else
+
+        if (action.Error is not null)
         {
             writer.WritePropertyName("error"u8);
-            JsonSerializer.Serialize(writer, action.Error, options);
+            TypeInfoJsonSerializer.Serialize(writer, action.Error, options);
         }
 
         writer.WriteNumber("subtraces"u8, action.Subtraces.Count);

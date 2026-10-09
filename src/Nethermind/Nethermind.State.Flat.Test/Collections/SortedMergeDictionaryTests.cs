@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Core.Test;
 using Nethermind.State.Flat.Collections;
 using NUnit.Framework;
 
@@ -47,9 +48,8 @@ public class SortedMergeDictionaryTests
         Assert.That(keys, Is.EquivalentTo(source.Keys));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void EdgeCases_EmptyAndSingleEntry(int count)
+    [Test]
+    public void EdgeCases_EmptyAndSingleEntry([Values(0, 1)] int count)
     {
         Dictionary<int, int> source = [];
         for (int i = 0; i < count; i++) source[i] = i + 42;
@@ -141,7 +141,7 @@ public class SortedMergeDictionaryTests
         {
             using SortedMergeDictionary<int, int> typed = new();
             typed.BuildFromMerge(sources.Select(static source => source.AsRun()).ToArray(), Cmp, default(RandomizedKeep));
-            Assert.That(typed.ToArray(), Is.EqualTo(merged.ToArray()));
+            Assert.That(typed, Is.SequenceEqualTo(merged));
         }
 
         Assert.That(merged.Count, Is.EqualTo(reference.Count));
@@ -189,7 +189,22 @@ public class SortedMergeDictionaryTests
             new(4, 30),
             new(5, 30),
         ];
-        Assert.That(actual.ToArray(), Is.EqualTo(expectedEntries));
+        Assert.That(actual, Is.SequenceEqualTo(expectedEntries));
+    }
+
+    [Test]
+    public void PooledRun_RentRoundingUpToTheLargePoolThreshold_GetsItsArrayBack([Values(2049, 2729)] int count)
+    {
+        // With a 24-byte entry, 64 KiB is 2,730 entries, while ArrayPool.Shared would round these counts up to 4,096.
+        Dictionary<int, long> source = [];
+        for (int i = 0; i < count; i++) source[i] = i;
+
+        SortedMergeDictionary<int, long>.Entry[] first;
+        using (SortedMergeDictionary<int, long>.PooledRun run = SortedMergeDictionary<int, long>.BuildRunFromUnsorted(source, Cmp))
+            first = run.AsRun().Entries;
+
+        using SortedMergeDictionary<int, long>.PooledRun again = SortedMergeDictionary<int, long>.BuildRunFromUnsorted(source, Cmp);
+        Assert.That(again.AsRun().Entries, Is.SameAs(first));
     }
 
     [Test]
@@ -360,13 +375,8 @@ public class SortedMergeDictionaryTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(5)]
-    [TestCase(11)]
-    [TestCase(22)]
-    [TestCase(89)]
-    [TestCase(1000)]
-    public void BucketSize_MatchesLegacyLoadFactorRounding(int count)
+    [Test]
+    public void BucketSize_MatchesLegacyLoadFactorRounding([Values(1, 5, 11, 22, 89, 1000)] int count)
     {
         using SortedMergeDictionary<int, int> dict = new();
         Dictionary<int, int> source = new(count);
@@ -436,11 +446,8 @@ public class SortedMergeDictionaryTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(37)]
-    [TestCase(400)]
-    public void SingleBucketChain_WalksItsFullLength(int count)
+    [Test]
+    public void SingleBucketChain_WalksItsFullLength([Values(1, 2, 37, 400)] int count)
     {
         // Multiples of 65536 share the low bits, so every key lands in one bucket and the first-written key
         // sits at the very end of the chain - the walk must reach it, and a same-bucket miss must terminate.

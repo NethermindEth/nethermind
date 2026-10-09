@@ -48,14 +48,14 @@ public class TxPoolInfoProviderTests
         Assert.That(info.Pending.Count, Is.EqualTo(1));
         Assert.That(info.Queued.Count, Is.EqualTo(1));
 
-        KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> pending = info.Pending.First();
+        KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> pending = info.Pending.First();
         Assert.That(pending.Key.Value, Is.EqualTo(_address));
         Assert.That(pending.Value.Count, Is.EqualTo(3));
         VerifyNonceAndTransactions(pending.Value, 3);
         VerifyNonceAndTransactions(pending.Value, 4);
         VerifyNonceAndTransactions(pending.Value, 5);
 
-        KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> queued = info.Queued.First();
+        KeyValuePair<AddressAsKey, IDictionary<TxPoolTxKey, Transaction>> queued = info.Queued.First();
         Assert.That(queued.Key.Value, Is.EqualTo(_address));
         Assert.That(queued.Value.Count, Is.EqualTo(4));
         VerifyNonceAndTransactions(queued.Value, 1);
@@ -79,8 +79,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new[] { "0" }));
-        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new[] { "2" }));
+        Assert.That(info.Pending[_address].Keys, Is.EqualTo(new[] { Key(0) }));
+        Assert.That(info.Queued[_address].Keys, Is.EqualTo(new[] { Key(2) }));
     }
 
     [Test]
@@ -154,8 +154,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new[] { "0" }));
-        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new[] { "2" }));
+        Assert.That(senderInfo.Pending.Keys, Is.EqualTo(new[] { Key(0) }));
+        Assert.That(senderInfo.Queued.Keys, Is.EqualTo(new[] { Key(2) }));
     }
 
     [Test]
@@ -259,7 +259,7 @@ public class TxPoolInfoProviderTests
             .WithHash(Keccak.Compute(nonceKeys[0].ToBigEndian()))
             .TestObject;
 
-    private void VerifyNonceAndTransactions(IDictionary<string, Transaction> transactionNonce, ulong nonce) =>
+    private void VerifyNonceAndTransactions(IDictionary<TxPoolTxKey, Transaction> transactionNonce, ulong nonce) =>
         Assert.That(transactionNonce[Key(nonce)].Nonce, Is.EqualTo(nonce));
 
     private Transaction[] GetTransactions() =>
@@ -273,11 +273,11 @@ public class TxPoolInfoProviderTests
         return result;
     }
 
-    private static string Key(ulong nonce) => nonce.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private static TxPoolTxKey Key(ulong nonce) => new(nonce);
 
-    private static string[] Keys(ulong[] nonces)
+    private static TxPoolTxKey[] Keys(ulong[] nonces)
     {
-        string[] keys = new string[nonces.Length];
+        TxPoolTxKey[] keys = new TxPoolTxKey[nonces.Length];
         for (int i = 0; i < nonces.Length; i++) keys[i] = Key(nonces[i]);
         return keys;
     }

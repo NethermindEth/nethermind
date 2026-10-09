@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Text.Encodings.Web;
@@ -47,6 +48,7 @@ namespace Nethermind.Serialization.Json
 
         private static readonly List<JsonConverter> _additionalConverters = [];
         private static readonly List<JsonTypeInfoResolverRegistration> _additionalResolvers = [];
+        private static readonly List<IJsonTypeInfoResolver> _generatedWriterResolvers = [];
         private static bool _strictHexFormat;
         private static int _optionsVersion;
 
@@ -54,8 +56,8 @@ namespace Nethermind.Serialization.Json
         private readonly JsonConverter[] _instanceConverters;
         private readonly object _instanceOptionsLock = new();
 
-        private JsonSerializerOptions _jsonOptions = null!;
-        private JsonSerializerOptions _jsonOptionsIndented = null!;
+        private JsonSerializerOptions _jsonOptions;
+        private JsonSerializerOptions _jsonOptionsIndented;
         private int _instanceOptionsVersion;
 
         public EthereumJsonSerializer(IEnumerable<JsonConverter> converters, int maxDepth = DefaultMaxDepth)
@@ -72,21 +74,21 @@ namespace Nethermind.Serialization.Json
             RefreshInstanceOptions();
         }
 
-        public object Deserialize(string json, Type type) => JsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
+        public object? Deserialize(string json, Type type) => TypeInfoJsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(Stream stream) => JsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(Stream stream) => TypeInfoJsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(string json) => TypeInfoJsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(ReadOnlySpan<byte> utf8Json) => JsonSerializer.Deserialize<T>(utf8Json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(ReadOnlySpan<byte> utf8Json) => TypeInfoJsonSerializer.Deserialize<T>(utf8Json, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(ref Utf8JsonReader json) => JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
+        public T? Deserialize<T>(ref Utf8JsonReader json) => TypeInfoJsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
 
-        public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
+        public string Serialize<T>(T value, bool indented = false) => TypeInfoJsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
 
-        private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
+        private static JsonSerializerOptions CreateOptions(bool indented, bool strictQuantity = false, IEnumerable<JsonConverter>? instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
-            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers);
+            SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers, out IJsonTypeInfoResolver[] generatedWriterResolvers);
 
             JsonSerializerOptions result = new()
             {
@@ -99,7 +101,7 @@ namespace Nethermind.Serialization.Json
                 PropertyNameCaseInsensitive = true,
                 MaxDepth = maxDepth,
                 Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                TypeInfoResolver = BuildTypeInfoResolver(additionalResolvers),
+                TypeInfoResolver = BuildTypeInfoResolver(generatedWriterResolvers, additionalResolvers),
                 Converters =
                 {
                     new LongConverter(strictQuantity),
@@ -143,6 +145,17 @@ namespace Nethermind.Serialization.Json
             result.Converters.AddRange(additionalConverters);
             result.Converters.AddRange(instanceConverters ?? Array.Empty<JsonConverter>());
             return result;
+        }
+
+        /// <summary>Adds a resolver for a generated JSON writer, queried before every metadata resolver.</summary>
+        internal static void AddGeneratedWriterResolver(IJsonTypeInfoResolver resolver)
+        {
+            ArgumentNullException.ThrowIfNull(resolver);
+            lock (_globalOptionsLock)
+            {
+                _generatedWriterResolvers.Add(resolver);
+                RefreshGlobalOptionsNoLock();
+            }
         }
 
         public static void AddConverter(JsonConverter converter)
@@ -225,7 +238,7 @@ namespace Nethermind.Serialization.Json
         {
             CountingStreamPipeWriter countingWriter = GetPipeWriter(stream, leaveOpen);
             using Utf8JsonWriter writer = new(countingWriter, CreateWriterOptions(indented));
-            JsonSerializer.Serialize(writer, value, GetSerializerOptions(indented));
+            TypeInfoJsonSerializer.Serialize(writer, value, GetSerializerOptions(indented));
             countingWriter.Complete();
 
             long outputCount = countingWriter.WrittenCount;
@@ -234,14 +247,14 @@ namespace Nethermind.Serialization.Json
 
         private JsonWriterOptions CreateWriterOptions(bool indented)
         {
-            JsonWriterOptions writerOptions = new() { SkipValidation = true, Indented = indented, MaxDepth = _maxDepth };
+            JsonWriterOptions writerOptions = new() { SkipValidation = true, Indented = indented, MaxDepth = _maxDepth, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
             return writerOptions;
         }
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
             CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen);
-            await JsonSerializer.SerializeAsync(writer, value, GetSerializerOptions(indented), cancellationToken);
+            await TypeInfoJsonSerializer.SerializeAsync(writer, value, GetSerializerOptions(indented), cancellationToken);
             await writer.CompleteAsync();
 
             long outputCount = writer.WrittenCount;
@@ -251,7 +264,7 @@ namespace Nethermind.Serialization.Json
         public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
         {
             using Utf8JsonWriter jsonWriter = new((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
-            JsonSerializer.Serialize(jsonWriter, value, GetSerializerOptions(indented));
+            TypeInfoJsonSerializer.Serialize(jsonWriter, value, GetSerializerOptions(indented));
             return Task.CompletedTask;
         }
 
@@ -262,11 +275,11 @@ namespace Nethermind.Serialization.Json
         {
             foreach (object instance in instances)
             {
-                _ = JsonSerializer.SerializeToUtf8Bytes(instance, instance.GetType(), JsonOptions);
+                _ = TypeInfoJsonSerializer.SerializeToUtf8Bytes(instance, instance.GetType(), JsonOptions);
             }
         }
 
-        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false) => JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
+        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false) => TypeInfoJsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
 
         private JsonSerializerOptions GetSerializerOptions(bool indented)
         {
@@ -291,6 +304,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
+        [MemberNotNull(nameof(_jsonOptions), nameof(_jsonOptionsIndented))]
         private void RefreshInstanceOptions()
         {
             _jsonOptions = CreateOptions(indented: false, instanceConverters: _instanceConverters, maxDepth: _maxDepth);
@@ -306,11 +320,13 @@ namespace Nethermind.Serialization.Json
             Interlocked.Increment(ref _optionsVersion);
         }
 
-        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers)
+        private static void SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out JsonTypeInfoResolverRegistration[] additionalResolvers,
+            out IJsonTypeInfoResolver[] generatedWriterResolvers)
         {
             lock (_globalOptionsLock)
             {
                 strictHexFormat = _strictHexFormat;
+                generatedWriterResolvers = [.. _generatedWriterResolvers];
                 additionalConverters = new JsonConverter[_additionalConverters.Count];
                 for (int i = 0; i < _additionalConverters.Count; i++)
                 {
@@ -327,23 +343,38 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IReadOnlyList<JsonTypeInfoResolverRegistration> additionalResolvers)
+        private static IJsonTypeInfoResolver BuildTypeInfoResolver(IJsonTypeInfoResolver[] generatedWriterResolvers, IReadOnlyList<JsonTypeInfoResolverRegistration> additionalResolvers)
         {
+            IJsonTypeInfoResolver? reflectionResolver = CreateReflectionResolver();
+            int generatedCount = generatedWriterResolvers.Length;
             int additionalResolversCount = additionalResolvers.Count;
-            if (additionalResolversCount == 0)
-            {
-                return new DefaultJsonTypeInfoResolver();
-            }
-
-            IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[additionalResolversCount + 1];
+            IJsonTypeInfoResolver[] resolverChain = new IJsonTypeInfoResolver[generatedCount + additionalResolversCount + (reflectionResolver is null ? 1 : 2)];
+            generatedWriterResolvers.CopyTo(resolverChain, 0);
+            resolverChain[generatedCount] = SerializationJsonContext.Default;
             for (int i = 0; i < additionalResolversCount; i++)
             {
-                resolverChain[i] = additionalResolvers[i].Resolver;
+                resolverChain[generatedCount + i + 1] = additionalResolvers[i].Resolver;
             }
 
-            resolverChain[additionalResolversCount] = new DefaultJsonTypeInfoResolver();
+            if (reflectionResolver is not null)
+            {
+                resolverChain[generatedCount + additionalResolversCount + 1] = reflectionResolver;
+            }
+
             return JsonTypeInfoResolver.Combine(resolverChain);
         }
+
+        /// <summary>
+        /// Creates the reflection-based fallback resolver, or returns <see langword="null"/> when reflection-based serialization is disabled.
+        /// </summary>
+        /// <remarks>
+        /// Trimmed and native AOT apps set the <c>System.Text.Json.JsonSerializer.IsReflectionEnabledByDefault</c> feature switch to
+        /// <see langword="false"/>; the trimmer then removes the reflection branch, so only registered source-generated contexts supply metadata.
+        /// </remarks>
+        [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode", Justification = "Only reachable when the reflection feature switch is on, which trimmed apps turn off.")]
+        [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode", Justification = "Only reachable when the reflection feature switch is on, which native AOT apps turn off.")]
+        private static IJsonTypeInfoResolver? CreateReflectionResolver() =>
+            JsonSerializer.IsReflectionEnabledByDefault ? new DefaultJsonTypeInfoResolver() : null;
 
         private static void SortResolverRegistrations(JsonTypeInfoResolverRegistration[] registrations) =>
             Array.Sort(registrations, static (left, right) =>

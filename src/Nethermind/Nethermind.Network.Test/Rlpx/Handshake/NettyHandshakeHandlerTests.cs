@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = CreateHandler(HandshakeRole.Initiator);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameEncoder>());
+            _pipeline.DidNotReceive().AddLast(Arg.Any<ZeroFrameEncoder>());
             _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameDecoder>());
         }
 
@@ -154,7 +154,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = CreateHandler();
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameEncoder>());
+            _pipeline.DidNotReceive().AddLast(Arg.Any<ZeroFrameEncoder>());
             _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameDecoder>());
         }
 

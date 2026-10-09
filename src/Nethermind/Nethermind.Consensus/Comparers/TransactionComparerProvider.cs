@@ -22,10 +22,11 @@ namespace Nethermind.Consensus.Comparers
                 .ThenBy(CompareTxByGasLimit.Instance);
 
         public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext) =>
-            new GasPriceTxComparerForProducer(blockPreparationContext, specProvider)
-                .ThenBy(BlobTxPriorityComparer.Instance)
-                .ThenBy(CompareTxByTimestamp.Instance)
-                .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
+            new CompositeComparer<Transaction>(
+                new GasPriceTxComparerForProducer(blockPreparationContext, specProvider),
+                BlobTxPriorityComparer.Instance,
+                CompareTxByTimestamp.Instance,
+                CompareTxByPoolIndex.Instance,
+                CompareTxByGasLimit.Instance);
     }
 }

@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Network;
@@ -30,10 +31,8 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ISpecProvider _specProvider;
+    private readonly StateHealingStrategy _healingStrategy;
     private readonly ILogger _logger;
-
-    // BAL healing isn't implemented yet - always false until it lands.
-    private readonly bool _canBalHeal = false;
 
     private volatile bool _stateDownloaded;
 
@@ -44,14 +43,17 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         ISyncModeSelector syncModeSelector,
         ISyncProgressResolver syncProgressResolver,
         ISpecProvider specProvider,
+        StateHealingStrategy healingStrategy,
         ILogManager logManager)
     {
         _syncConfig = syncConfig;
         _syncModeSelector = syncModeSelector;
         _syncProgressResolver = syncProgressResolver;
         _specProvider = specProvider;
+        _healingStrategy = healingStrategy;
         _logger = logManager.GetClassLogger<SnapP2PCapabilityResolver>();
         _syncModeSelector.Changed += OnSyncModeChanged;
+        _healingStrategy.Changed += OnHealingStrategyChanged;
     }
 
     public void Resolve(ISet<Capability> capabilities)
@@ -67,7 +69,7 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         // snap/2 drops GetTrieNodes/TrieNodes (EIP-8189). Only advertise it once we no longer need
         // trie nodes ourselves - state sync finished, or snap-syncing with a BAL-heal.
         bool canAdvertiseSnap2 = requiresSnapForSync
-            ? _canBalHeal
+            ? _healingStrategy.CanBalHeal
             : stateDownloaded && _specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (canAdvertiseSnap2)
@@ -84,9 +86,16 @@ public class SnapP2PCapabilityResolver : IP2PCapabilityResolver, IDisposable
         _stateDownloaded = StateDownloaded();
         if (stateWasDownloaded == _stateDownloaded) return;
 
-        if (_logger.IsDebug) _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}; snap advertisement updated");
+        if (_logger.IsDebug)
+            _logger.Debug($"State sync {(_stateDownloaded ? "finished" : "in progress")}; snap advertisement updated");
         Changed?.Invoke();
     }
 
-    public void Dispose() => _syncModeSelector.Changed -= OnSyncModeChanged;
+    private void OnHealingStrategyChanged() => Changed?.Invoke();
+
+    public void Dispose()
+    {
+        _syncModeSelector.Changed -= OnSyncModeChanged;
+        _healingStrategy.Changed -= OnHealingStrategyChanged;
+    }
 }

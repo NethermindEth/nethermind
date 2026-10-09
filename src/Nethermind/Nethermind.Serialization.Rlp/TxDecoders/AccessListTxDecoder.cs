@@ -7,59 +7,50 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public class BaseAccessListTxDecoder<T>(TxType txType, Func<T>? transactionFactory = null)
-    : BaseTxDecoder<T>(txType, transactionFactory) where T : Transaction, new()
+public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = null) : BaseTxDecoder(TxType.AccessList, transactionFactory)
 {
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        int contentLength = GetContentLength(transaction, rlpBehaviors, forSigning);
-        int sequenceLength = Rlp.LengthOfSequence(contentLength);
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
 
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            writer.StartByteArray(sequenceLength + 1, false);
-        }
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTransactionLength(transaction, rlpBehaviors, forSigning);
 
-        writer.WriteByte((byte)Type);
-        EncodeTypedWrapped(transaction, ref writer, rlpBehaviors, forSigning, contentLength);
-    }
-
-    protected virtual void EncodeTypedWrapped<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning, int contentLength)
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
+        int contentLength = GetContentLength(transaction, forSigning);
+        StartTypedTransaction(ref writer, TxType.AccessList, Rlp.LengthOfSequence(contentLength), rlpBehaviors);
         writer.StartSequence(contentLength);
-        EncodePayload(transaction, ref writer, rlpBehaviors);
-        EncodeSignature(transaction.Signature, ref writer, forSigning);
-    }
-
-    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false,
-        ulong chainId = 0)
-    {
-        int txPayloadLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-        return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
-            ? 1 + txPayloadLength
-            : Rlp.LengthOfSequence(1 + txPayloadLength);
-    }
-
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
-        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction.ChainId = decoderContext.DecodeULong();
-        base.DecodePayload(transaction, ref decoderContext, rlpBehaviors);
-        transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
-    }
-
-    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
         writer.Encode(transaction.ChainId ?? 0);
-        base.EncodePayload(transaction, ref writer, rlpBehaviors);
+        EncodeLegacyFields(transaction, ref writer);
         AccessListDecoder.Instance.Encode(ref writer, transaction.AccessList, rlpBehaviors);
+        EncodeTypedSignature(transaction.Signature, forSigning, ref writer);
     }
 
-    protected override int GetPayloadLength(Transaction transaction) => base.GetPayloadLength(transaction)
-               + Rlp.LengthOf(transaction.ChainId ?? 0)
-               + AccessListDecoder.Instance.GetLength(transaction.AccessList, RlpBehaviors.None);
-}
+    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning) =>
+        GetTypedTransactionLength(Rlp.LengthOfSequence(GetContentLength(transaction, forSigning)), rlpBehaviors);
 
-public sealed class AccessListTxDecoder<T>(Func<T>? transactionFactory = null) : BaseAccessListTxDecoder<T>(TxType.AccessList, transactionFactory) where T : Transaction, new();
+    private static int GetContentLength(Transaction transaction, bool forSigning) =>
+        Rlp.LengthOf(transaction.ChainId ?? 0)
+        + GetLegacyFieldsLength(transaction)
+        + AccessListDecoder.Instance.GetLength(transaction.AccessList, RlpBehaviors.None)
+        + GetTypedSignatureLength(transaction.Signature, forSigning);
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = decoderContext.DecodeULong();
+            DecodeLegacyFields(transaction, ref decoderContext, hasMaxFeePerGas: false);
+            transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
+        }
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
+    }
+}

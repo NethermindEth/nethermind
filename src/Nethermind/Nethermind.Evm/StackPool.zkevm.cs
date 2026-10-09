@@ -18,6 +18,9 @@ internal static partial class StackPool
         _stackPool.Enqueue(new(dataStack));
     }
 
+    // One thread, one tier.
+    public static partial void ReturnStacksShared(byte[] dataStack) => ReturnStacks(dataStack);
+
     public static partial byte[] RentStacks()
     {
         if (_stackPool.TryDequeue(out StackItem result))

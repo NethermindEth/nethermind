@@ -72,9 +72,8 @@ public class TxCertifierFilterTests
         ShouldAllowAddress(address, expected: false);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void should_default_to_inner_contract_on_non_zero_transactions(bool expected)
+    [Test]
+    public void should_default_to_inner_contract_on_non_zero_transactions([Values] bool expected)
     {
         _notCertifiedFilter.IsAllowed(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
             .Returns(expected ? AcceptTxResult.Accepted : AcceptTxResult.Invalid);

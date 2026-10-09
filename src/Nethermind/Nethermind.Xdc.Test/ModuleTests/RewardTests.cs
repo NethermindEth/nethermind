@@ -789,9 +789,9 @@ public class RewardTests
             LimboLogs.Instance,
             masternodeVotingContract);
 
-    private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, UInt256 slot)
+    private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, in UInt256 slot)
     {
-        ReadOnlySpan<byte> value = worldState.Get(new StorageCell(address, slot));
-        return value.Length == 0 ? UInt256.Zero : new UInt256(value, isBigEndian: true);
+        worldState.Get(new StorageCell(address, slot), out UInt256 value);
+        return value;
     }
 }

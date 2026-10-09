@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -84,7 +85,8 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
+        [AllowNull]
+        public Bloom Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
@@ -133,7 +135,7 @@ namespace Nethermind.Core
         /// </summary>
         public Hash256StructRef PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
 
-        public BloomStructRef Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
+        public BloomStructRef Bloom = receipt.Bloom.ToStructRef();
 
         /// <summary>
         /// Rlp encoded logs

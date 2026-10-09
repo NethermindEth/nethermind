@@ -14,14 +14,4 @@ public partial class StatelessInput<TExecutionPayload>
     public ExecutionWitness Witness { get; set; }
 
     public ulong ChainId { get; set; }
-
-    [SszProgressiveList]
-    public SszPublicKeys[] PublicKeys { get; set; } = [];
-}
-
-[SszContainer(isCollectionItself: true)]
-public partial struct SszPublicKeys
-{
-    [SszVector(65)]
-    public byte[] Bytes { get; set; }
 }

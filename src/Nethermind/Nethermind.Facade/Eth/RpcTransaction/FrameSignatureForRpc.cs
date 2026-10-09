@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -10,10 +13,25 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// <remarks>Raw signature bytes are surfaced here deliberately: the EIP-8141 introspection limits bind the EVM, not RPC.</remarks>
 public class FrameSignatureForRpc
 {
+    /// <summary>Which of the <see cref="TxFrameSignature"/> <c>Scheme*</c> values governs how
+    /// <see cref="Signature"/> is read and verified: <c>0</c> arbitrary, <c>1</c> secp256k1, <c>2</c> P-256.</summary>
+    [JsonConverter(typeof(ByteConverter))]
     public byte Scheme { get; set; }
+
+    /// <summary>The address the entry is verified against; omitted from the response, and accepted as absent in
+    /// a request, when the signer is the transaction sender. Always absent for the arbitrary scheme.</summary>
+    [JsonConverter(typeof(FrameSignerConverter))]
     public Address? Signer { get; set; }
-    public byte[] Msg { get; set; } = [];
-    public byte[] Signature { get; set; } = [];
+
+    /// <summary>The digest a protocol-verified entry signs, or empty when it signs the transaction's canonical
+    /// signature hash.</summary>
+    /// <remarks>Accepted only as empty or exactly 32 non-zero bytes — an all-zero 32-byte value is rejected
+    /// rather than read as a synonym for empty. The arbitrary scheme is held to that same rule although
+    /// nothing verifies the value.</remarks>
+    public ReadOnlyMemory<byte> Msg { get; set; }
+
+    /// <summary>The raw signature bytes, whose layout and required length are fixed by <see cref="Scheme"/>.</summary>
+    public ReadOnlyMemory<byte> Signature { get; set; }
 
     [JsonConstructor]
     public FrameSignatureForRpc() { }
@@ -22,8 +40,8 @@ public class FrameSignatureForRpc
     {
         Scheme = signature.Scheme;
         Signer = signature.Signer;
-        Msg = signature.Msg.ToArray();
-        Signature = signature.Signature.ToArray();
+        Msg = signature.Msg;
+        Signature = signature.Signature;
     }
 
     public TxFrameSignature ToSignature() => new(Scheme, Signer, Msg, Signature);
@@ -47,4 +65,20 @@ public class FrameSignatureForRpc
     /// <returns><c>false</c> if any element was JSON <c>null</c>.</returns>
     public static bool TryToSignatures(FrameSignatureForRpc[]? signatures, out TxFrameSignature[]? converted) =>
         RpcListConverter.TryConvert(signatures, static s => s.ToSignature(), out converted);
+
+    /// <summary>Reads <c>"0x"</c> as an absent signer (execution-apis#907) and otherwise defers to the
+    /// <see cref="Address"/> converter registered on the options, so its strict hex setting still applies.</summary>
+    internal sealed class FrameSignerConverter : JsonConverter<Address>
+    {
+        public override Address? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType == JsonTokenType.String && reader.ValueTextEquals("0x"u8)
+                ? null
+                : GetAddressConverter(options).Read(ref reader, typeToConvert, options);
+
+        public override void Write(Utf8JsonWriter writer, Address value, JsonSerializerOptions options) =>
+            GetAddressConverter(options).Write(writer, value, options);
+
+        private static JsonConverter<Address> GetAddressConverter(JsonSerializerOptions options) =>
+            (JsonConverter<Address>)TypeInfoJsonSerializer.GetTypeInfo<Address>(options).Converter;
+    }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001UL).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(false));
             Assert.That(syncingResult.CurrentBlock, Is.EqualTo(0UL));
@@ -53,7 +53,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178010UL).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(true));
             Assert.That(syncingResult.CurrentBlock, Is.EqualTo(6178000UL));
@@ -74,7 +74,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, new SyncConfig(),
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedResult));
         }
@@ -89,13 +89,41 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(100UL).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(80UL).TestObject).TestObject);
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
 
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
             Assert.That(syncingResult.IsSyncing, Is.True);
             Assert.That(syncingResult.CurrentBlock, Is.EqualTo(80UL));
             Assert.That(syncingResult.HighestBlock, Is.EqualTo(100UL));
+        }
+
+        [TestCase(10005UL, 10000UL, 130000UL, true, 130000UL, TestName = "BeaconTargetFarAhead")]
+        [TestCase(20000UL, 10000UL, 15000UL, true, 20000UL, TestName = "BeaconTargetBelowBestSuggested")]
+        [TestCase(10005UL, 10000UL, 10000UL, false, 0UL, TestName = "BeaconTargetCaughtUp")]
+        [TestCase(10005UL, 10000UL, null, false, 0UL, TestName = "BeaconSyncFinished")]
+        [TestCase(0UL, 0UL, 1UL, true, 1UL, TestName = "AtGenesisWithNearbyBeaconTarget")]
+        [TestCase(0UL, 0UL, 8UL, true, 8UL, TestName = "AtGenesisWithBeaconTargetAtMaxDistance")]
+        public void GetFullInfo_UsesBeaconSyncTarget(ulong bestSuggested, ulong head, ulong? beaconTarget, bool expectedSyncing, ulong expectedHighest)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.IsFastBlocksBodiesFinished().Returns(true);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(true);
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestSuggested).TestObject);
+            // Abandoned-fork high-water mark that must not keep the node reporting syncing
+            blockTree.BestSuggestedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(130000UL).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(head).TestObject).TestObject);
+            IBeaconSyncStrategy beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+            beaconSyncStrategy.GetTargetBlockHeight().Returns(beaconTarget);
+
+            EthSyncingInfo ethSyncingInfo = new(blockTree, Substitute.For<ISyncPointers>(), new SyncConfig(),
+                new StaticSelector(SyncMode.WaitingForBlock), syncProgressResolver, beaconSyncStrategy, LimboLogs.Instance);
+
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.EqualTo(expectedSyncing));
+            Assert.That(syncingResult.HighestBlock, Is.EqualTo(expectedHighest));
         }
 
         [TestCase(false, true, true)]
@@ -127,7 +155,7 @@ namespace Nethermind.Facade.Test.Eth
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000UL).TestObject).TestObject);
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.FastBlocks), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.FastBlocks), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
             Assert.That(syncingResult, Is.EqualTo(CreateSyncingResult(expectedResult, 6178000UL, 6178001UL, SyncMode.FastBlocks)));
         }
@@ -147,7 +175,7 @@ namespace Nethermind.Facade.Test.Eth
                 .TestObject);
 
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
 
             Assert.That(ethSyncingInfo.IsSyncing(), Is.EqualTo(false));
             Assert.That(ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds, Is.EqualTo(0));
@@ -201,7 +229,7 @@ namespace Nethermind.Facade.Test.Eth
                 PivotNumber = 0, // Equivalent to not having a pivot
             };
             EthSyncingInfo ethSyncingInfo = new(blockTree, syncPointers, syncConfig,
-                new StaticSelector(SyncMode.All), syncProgressResolver, LimboLogs.Instance);
+                new StaticSelector(SyncMode.All), syncProgressResolver, No.BeaconSync, LimboLogs.Instance);
             SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
 
             Assert.That(syncingResult.IsSyncing, Is.False);

@@ -60,9 +60,8 @@ public class MergeP2PCapabilityResolverTests
         Assert.That(changed, Is.True);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Resolve_advertises_eth72_only_after_eip7594(bool eip7594Enabled)
+    [Test]
+    public void Resolve_advertises_eth72_only_after_eip7594([Values] bool eip7594Enabled)
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TransitionFinished.Returns(true);

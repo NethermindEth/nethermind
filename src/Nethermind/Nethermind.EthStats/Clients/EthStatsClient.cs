@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -123,8 +122,13 @@ namespace Nethermind.EthStats.Clients
         private async Task HandlePingAsync(string message)
         {
             long clientTime = Timestamper.Default.UnixTime.MillisecondsLong;
-            string? serverTimeString = message.Split("::").LastOrDefault()?.Replace("\"", string.Empty);
-            long serverTime = serverTimeString is null ? clientTime : long.Parse(serverTimeString);
+            bool parsed = TryParseServerTime(message, out long serverTime);
+            // The server discards the pong's payload, so any timestamp works; latency is skipped to avoid a fabricated 0 ms reading.
+            if (!parsed)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Ignoring unparseable ETH stats ping timestamp in message '{message}'.");
+                serverTime = clientTime;
+            }
             long latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
             string pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsDebug) _logger.Debug($"Sending 'pong' message to ETH stats...");
@@ -132,8 +136,19 @@ namespace Nethermind.EthStats.Clients
             if (_client is not null)
             {
                 _client.Send(pong);
-                await _messageSender.SendAsync(_client, new LatencyMessage(latency));
+                if (parsed) await _messageSender.SendAsync(_client, new LatencyMessage(latency));
             }
+        }
+
+        internal static bool TryParseServerTime(string message, out long serverTime)
+        {
+            ReadOnlySpan<char> span = message;
+            int separatorIndex = span.LastIndexOf("::");
+            // Wire frames quote only the outer message, so a well-formed timestamp segment
+            // never contains a quote; an interior quote here is malformed input and is left
+            // in place to fail parsing rather than stripped into a different number.
+            ReadOnlySpan<char> serverTimeSpan = separatorIndex < 0 ? span : span[(separatorIndex + 2)..];
+            return long.TryParse(serverTimeSpan.Trim('"'), out serverTime);
         }
 
         public void Dispose() => _client?.Dispose();

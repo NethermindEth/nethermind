@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -29,18 +28,21 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
 {
     protected ZkEvmBlockchainTestFixture() : base(parallel: false, batchRead: false) { }
 
-    private static readonly Lazy<IReadOnlyList<BlockchainTest>> _tests = new(() =>
-        ZkEvmMutatedWitnessIndex.StampMutatedBlocks(
-            new TestsSourceLoader(
-                new LoadPyspecTestsStrategy { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName },
-                "fixtures/blockchain_tests").LoadTests<BlockchainTest>()).ToList());
+    private static readonly LoadPyspecTestsStrategy _strategy = new() { ArchiveVersion = Constants.ArchiveVersion, ArchiveName = Constants.ArchiveName };
+    private const string TestsDir = "fixtures/blockchain_tests";
 
     [TestCaseSource(nameof(LoadWitnessTests))]
-    public async Task WitnessMatchesFixture(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task WitnessMatchesFixture(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadZkEvmTest(testRef))).Pass, Is.True);
 
+    // Execute publishes the process-wide StatelessExecutor.FailureOutput, and this fixture inherits
+    // ParallelScope.All, so concurrent cases would otherwise overwrite each other's sentinel. (The
+    // hash seed the decode installs is a no-op here: this assembly builds without EnableZkEvm.)
+    [NonParallelizable]
     [TestCaseSource(nameof(LoadStatelessTests))]
-    public void StatelessExecutorOutputMatchesFixture(string inputBytes, string expectedOutputBytes)
+    public void StatelessExecutorOutputMatchesFixture(PyspecStatelessRef testRef)
     {
+        (string inputBytes, string expectedOutputBytes) = PyspecLoader.LoadZkEvmStatelessBytes(testRef);
+
         if (!inputBytes.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"StatelessInputBytes must be 0x-prefixed.");
 
@@ -54,30 +56,11 @@ public abstract class ZkEvmBlockchainTestFixture : PyspecLinuxX64BlockchainFixtu
             $"Expected {expectedOutput.ToHexString(true)}, got {actualOutput.ToHexString(true)}");
     }
 
-    private static IEnumerable<TestCaseData> LoadWitnessTests() => PyspecLoader.ToTestCases(_tests.Value);
+    private static IEnumerable<TestCaseData> LoadWitnessTests() =>
+        PyspecLoader.LoadCases<BlockchainTest>(_strategy, TestsDir);
 
-    private static IEnumerable<TestCaseData> LoadStatelessTests()
-    {
-        foreach (BlockchainTest test in _tests.Value)
-        {
-            if (test.Blocks is not { Length: > 0 } blocks)
-                continue;
-
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                TestBlockJson block = blocks[i];
-
-                if (block.StatelessInputBytes is null && block.StatelessOutputBytes is null)
-                    continue;
-
-                if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
-                    throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {i}.");
-
-                yield return new TestCaseData(block.StatelessInputBytes, block.StatelessOutputBytes)
-                    .SetName($"{test.Name}_stateless_block_{i}");
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> LoadStatelessTests() =>
+        PyspecLoader.LoadZkEvmStatelessCases(_strategy, TestsDir);
 }
 
 [TestFixture]
@@ -89,9 +72,8 @@ public class StatelessSchemaTests
     private const ulong BlockNumber = 30_000_000;
     private const ulong Timestamp = 2_000_000_000;
 
-    [TestCase(InputDecoder.CurrentForkSchemaId)]
-    [TestCase(InputDecoder.AmsterdamSchemaId)]
-    public void Revision_1_schema_roundtrips(ushort schemaId)
+    [Test]
+    public void Revision_1_schema_roundtrips([Values(InputDecoder.CurrentForkSchemaId, InputDecoder.AmsterdamSchemaId)] ushort schemaId)
     {
         byte[] encoded = schemaId == InputDecoder.AmsterdamSchemaId
             ? EncodeInput(new SszExecutionPayloadAmsterdam(), schemaId)
@@ -183,22 +165,16 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    public void Schema_prefix_must_be_two_bytes(int length)
+    [Test]
+    public void Schema_prefix_must_be_two_bytes([Values(0, 1)] int length)
     {
         byte[] encoded = new byte[length];
 
         Assert.That(() => InputDecoder.Decode(encoded), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
-    [TestCase(0x0000)]
-    [TestCase(0x0002)]
-    [TestCase(0x1001)]
-    [TestCase(0x1401)]
-    [TestCase(0x1502)]
-    [TestCase(0x1601)]
-    public void Unsupported_schema_id_is_rejected(int schemaId)
+    [Test]
+    public void Unsupported_schema_id_is_rejected([Values(0x0000, 0x0002, 0x1001, 0x1401, 0x1502, 0x1601)] int schemaId)
     {
         byte[] encoded = new byte[sizeof(ushort)];
         BinaryPrimitives.WriteUInt16BigEndian(encoded, (ushort)schemaId);
@@ -225,10 +201,8 @@ public class StatelessSchemaTests
         }
     }
 
-    [TestCase(BlockchainIds.Mainnet)]
-    [TestCase(BlockchainIds.Sepolia)]
-    [TestCase(BlockchainIds.Gnosis)]
-    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule(ulong chainId)
+    [Test]
+    public void Current_fork_schema_takes_the_rules_from_the_chain_schedule([Values(BlockchainIds.Mainnet, BlockchainIds.Sepolia, BlockchainIds.Gnosis)] ulong chainId)
     {
         IForkAwareSpecProvider baseProvider = chainId switch
         {
@@ -331,8 +305,7 @@ public class StatelessSchemaTests
                 Codes = [],
                 Headers = []
             },
-            ChainId = ChainId,
-            PublicKeys = []
+            ChainId = ChainId
         };
         byte[] payload = StatelessInput<TExecutionPayload>.Encode(input);
         byte[] encoded = new byte[sizeof(ushort) + payload.Length];

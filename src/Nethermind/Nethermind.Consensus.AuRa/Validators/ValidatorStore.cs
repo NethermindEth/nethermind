@@ -96,7 +96,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 return bytes.IsEmpty
                     ? throw new InvalidOperationException($"No validator info for block number {blockNumber}.")
-                    : Rlp.Decode<ValidatorInfo>(bytes);
+                    : Rlp.Decode<ValidatorInfo>(bytes)
+                        ?? throw new InvalidOperationException($"Validator info for block number {blockNumber} decoded as null.");
             }
 
             return EmptyValidatorInfo;

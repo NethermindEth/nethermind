@@ -162,17 +162,7 @@ public class GetBlobsHandlerV4(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
             return false;
         }
 
-        Span<byte> bytes = stackalloc byte[BlobCellMask.FixedByteLength];
-        bytes.Clear();
-        for (int i = 0; i < BlobCellMask.CellCount; i++)
-        {
-            if (bitarray.Get(i))
-            {
-                bytes[i >> 3] |= (byte)(1 << (i & 7));
-            }
-        }
-
-        cellMask = BlobCellMask.FromBytes(bytes);
+        cellMask = BlobCellBits.ToMask(bitarray);
         error = null;
         return true;
     }

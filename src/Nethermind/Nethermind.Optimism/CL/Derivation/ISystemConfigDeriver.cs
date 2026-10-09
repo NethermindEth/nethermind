@@ -51,6 +51,11 @@ public record SystemConfig
     /// process any EIP_1559_PARAMS system config update events.
     /// </summary>
     public byte[] EIP1559Params { get; init; } = new byte[32];
+
+    /// <summary>
+    /// Jovian minimum base fee, or null before Jovian.
+    /// </summary>
+    public ulong? MinBaseFee { get; init; }
     public uint BlobBaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(24, 4));
     public uint BaseFeeScalar => BinaryPrimitives.ReadUInt32BigEndian(Scalar.AsSpan(28, 4));
 
@@ -62,13 +67,14 @@ public record SystemConfig
                && GasLimit == other.GasLimit
                && Overhead.SequenceEqual(other.Overhead)
                && Scalar.SequenceEqual(other.Scalar)
-               && EIP1559Params.SequenceEqual(other.EIP1559Params);
+               && EIP1559Params.SequenceEqual(other.EIP1559Params)
+               && MinBaseFee == other.MinBaseFee;
     }
 
     public override int GetHashCode() =>
-        HashCode.Combine(BatcherAddress, GasLimit, Overhead, Scalar, EIP1559Params);
+        HashCode.Combine(BatcherAddress, GasLimit, Overhead, Scalar, EIP1559Params, MinBaseFee);
 
-    public override string ToString() => $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}";
+    public override string ToString() => $"BatcherAddress: {BatcherAddress}, GasLimit: {GasLimit}, Overhead: {Overhead.ToHexString()}, Scalar: {Scalar.ToHexString()}, EIP1559Params: {EIP1559Params.ToHexString()}, MinBaseFee: {MinBaseFee}";
 
     public static readonly SystemConfig Empty = new()
     {

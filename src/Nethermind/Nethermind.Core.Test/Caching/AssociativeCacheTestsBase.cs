@@ -125,13 +125,11 @@ public abstract class AssociativeCacheTestsBase
         Assert.That(Delete(in _keys[0]), Is.False);
     }
 
-    [TestCase(-1)]
-    [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
+    [Test]
+    public void Capacity_out_of_range_throws([Values(-1, 134_217_729)] int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0)]
-    [TestCase(4096)]
-    public void Capacity_valid_boundary(int capacity)
+    [Test]
+    public void Capacity_valid_boundary([Values(0, 4096)] int capacity)
     {
         CreateCache(capacity);
         Set(in _keys[0], 0);
@@ -303,11 +301,8 @@ public class AssociativeCacheDeterministicHashTests
 {
     private const int Ways = 8;
 
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
+    [Test]
+    public void All_inserted_keys_retrievable_at_various_capacities([Values(8, 32, 256, 1024)] int capacity)
     {
         int insertCount = capacity / 2;
         DeterministicHashKey[] keys = BuildKeys(capacity, insertCount);
@@ -323,8 +318,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 
@@ -335,8 +330,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 

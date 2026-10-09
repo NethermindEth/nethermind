@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -11,26 +12,49 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CacheCodeInfoRepository : ICodeInfoRepository
+public partial class CacheCodeInfoRepository : ICodeInfoRepository
 {
     private readonly IWorldState _worldState;
     private readonly ICodeCache _codeCache;
-    private readonly CodeInfoRepository _inner;
+    private readonly CachingCodeInfoRepository _inner;
 
     public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache)
     {
         _worldState = worldState;
         _codeCache = codeCache;
-        _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
+        _inner = new CachingCodeInfoRepository(worldState, precompileProvider, this);
     }
 
-    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
+    /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
+    /// <remarks>
+    /// A single reference is self-validating: a storing <see cref="ICodeCache"/> assigns <c>CodeHash</c> when it
+    /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
+    /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
+    /// body. Anything that changes an account's code — including a reverted deployment — produces a
+    /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
+    /// generation) the hash stays default and the memo never fires, which is exactly the
+    /// every-lookup-through-the-world-state behaviour that mode requires.
+    /// </remarks>
+    private CodeInfo? _lastResolved;
+
+    private int _memoHits;
+
+    private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
             return CodeInfo.Empty;
         }
 
+        CodeInfo? lastResolved = _lastResolved;
+        if (lastResolved is not null && lastResolved.CodeHash == codeHash && ++_memoHits < MemoHitsPerTickerRefresh)
+        {
+            // A memo hit is a cache hit: keep cache.code.hits and the cached-contracts-used stats counting.
+            Metrics.IncrementCodeDbCache();
+            return lastResolved;
+        }
+
+        _memoHits = 0;
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
@@ -42,6 +66,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             Metrics.IncrementCodeDbCache();
         }
 
+        _lastResolved = cachedCodeInfo;
         return cachedCodeInfo;
     }
 
@@ -53,14 +78,17 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _inner.GetPrecompile(codeSource, vmSpec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        _inner.GetDelegatedCodeInfo(target, vmSpec);
+
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
+            _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 
@@ -71,5 +99,12 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         {
             _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
+    }
+
+    private sealed class CachingCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, CacheCodeInfoRepository owner)
+        : CodeInfoRepository(worldState, precompileProvider)
+    {
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
+            owner.GetOrCacheCodeInfo(address, in codeHash);
     }
 }

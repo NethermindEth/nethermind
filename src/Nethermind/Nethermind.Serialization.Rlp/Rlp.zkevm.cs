@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -41,7 +40,9 @@ public partial class Rlp
         return snapshot;
     }
 
-    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)
+    public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders) => RegisterDefaultDecoders();
+
+    private static bool RegisterDefaultDecoders()
     {
         // Under zkEVM/bflat AOT we cannot rely on reflection-based auto-discovery of decoders
         // (CustomAttribute instantiation can trigger TypeLoader failures).
@@ -70,10 +71,12 @@ public partial class Rlp
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.LegacyStorage), new ReceiptStorageDecoder());
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Storage), CompactReceiptStorageDecoder.Instance);
         RegisterDecoder(new RlpDecoderKey(typeof(TxReceipt), RlpDecoderKey.Trie), new ReceiptMessageDecoder());
+        return true;
     }
 }
 
 public readonly partial struct RlpDecoderKey
 {
-    public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
+    public override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)_type.GetHashCode(), (uint)MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 }

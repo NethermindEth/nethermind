@@ -201,8 +201,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.TryGetStorageChange(key, out StorageChange? slotChange), Is.True);
-        Assert.That(slotChange!.Value.Value, Is.EqualTo(value.ToBigEndianWord()));
+        Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
+        Assert.That(slotChange.Value, Is.EqualTo(value));
     }
 
     private static void AssertNonceChange(BlockAccessListAtIndex bal, Address address, ulong value)
@@ -544,6 +544,43 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Ripemd_out_of_gas_restores_empty_account_touch_after_balance_overlay()
+    {
+        Address address = Ripemd160Precompile.Address;
+        TestState.CreateAccount(address, UInt256.One);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        TracedAccessWorldState tracedState = new(TestState, parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        tracedState.SubtractFromBalance(address, UInt256.One, Byzantium.Instance, out _);
+        // Retain the balance overlay while clearing setup touches, so only the restored EIP-161 touch can delete the account.
+        TestState.Commit(SpecProvider.GenesisSpec);
+        Snapshot snapshot = tracedState.TakeSnapshot();
+        Assert.That(TestState.AccountExists(address), Is.True);
+
+        using ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(Ripemd160Precompile.Instance), address, Sender, address, 0,
+            UInt256.Zero, ReadOnlyMemory<byte>.Empty);
+        using StackAccessTracker accessTracker = new();
+        using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            EthereumGasPolicy.FromULong(0), ExecutionType.TRANSACTION, env, in accessTracker, in snapshot);
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(Build.A.Block.TestObject.Header, Byzantium.Instance));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, new EthereumCodeInfoRepository(tracedState), null, UInt256.Zero));
+
+        TransactionSubstate substate = Machine.ExecuteTransaction<OffFlag>(vmState, tracedState, NullTxTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(substate.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
+            Assert.That(substate.ShouldRestoreRipemdTouch, Is.True);
+        }
+        tracedState.Restore(snapshot);
+        VirtualMachineStatics.RestoreRipemdTouch(tracedState, Byzantium.Instance, substate.ShouldRestoreRipemdTouch);
+        tracedState.Commit(Byzantium.Instance);
+        Assert.That(TestState.AccountExists(address), Is.False);
+    }
+
+    [Test]
     public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
@@ -589,7 +626,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AccountChangesAtIndex? testAddressChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(_testAddress);
         StorageChange? change = null;
-        if (testAddressChanges is not null && testAddressChanges.TryGetStorageChange(UInt256.Zero, out StorageChange? storageChange))
+        if (testAddressChanges is not null && testAddressChanges.StorageChanges.TryGetValue(UInt256.Zero, out StorageChange storageChange))
         {
             change = storageChange;
         }
@@ -599,7 +636,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted, Is.True);
             Assert.That(change, Is.Not.Null,
                 "EIP-7702 FastCall must succeed and propagate via SSTORE; missing slot 0 entry indicates the call failed.");
-            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One.ToBigEndianWord()),
+            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One),
                 "EIP-7702: delegation to a precompile must NOT execute the precompile - FastCall returns 1 regardless of forwarded gas.");
         }
     }
@@ -1054,6 +1091,82 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(false, TestName = "EIP7928_slot_wiped_by_an_earlier_transaction_records_the_later_write_when_committing")]
+    [TestCase(true, TestName = "EIP7928_slot_wiped_by_an_earlier_transaction_records_the_later_write_when_building_up")]
+    public void Eip7928_slot_wiped_by_an_earlier_transaction_records_the_later_write(bool buildUp)
+    {
+        UInt256 slot = 7;
+        byte[] runtimeCode = Prepare.EvmCode.PushData(0).Op(Instruction.CALLDATALOAD).PushData(slot).Op(Instruction.SSTORE).Done;
+        byte[] childInitCode = Prepare.EvmCode.ForInitOf(runtimeCode).Done;
+        byte[] salt = new byte[32];
+        Address createdAddress = ContractAddress.From(_callTargetAddress, salt, childInitCode);
+        InitWorldState(TestState, BuildCreateThenPopCode(Instruction.CREATE2, childInitCode, salt, UInt256.Zero));
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Set(new StorageCell(createdAddress, slot), (UInt256)5);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        byte[] callData = new byte[32];
+        callData[31] = 5;
+        Transaction create = BuildCallTx(_callTargetAddress);
+        Transaction store = Build.A.Transaction
+            .To(createdAddress)
+            .WithNonce(1)
+            .WithData(callData)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(120_000_000).WithBaseFee(1).TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult createResult = buildUp ? processor.BuildUp(create, NullTxTracer.Instance) : processor.Execute(create, NullTxTracer.Instance);
+        tracedState.Clear();
+        tracedState.IncrementIndex();
+        TransactionResult storeResult = buildUp ? processor.BuildUp(store, NullTxTracer.Instance) : processor.Execute(store, NullTxTracer.Instance);
+        AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
+
+        Assert.That(createdChanges, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createResult.TransactionExecuted, Is.True, createResult.ToString());
+            Assert.That(storeResult.TransactionExecuted, Is.True, storeResult.ToString());
+            Assert.That(createdChanges!.StorageChanges.TryGetValue(slot, out StorageChange change), Is.True, "the wipe zeroed the slot before this transaction");
+            Assert.That(change, Is.EqualTo(new StorageChange(1, 5)));
+            Assert.That(createdChanges.StorageReads, Does.Not.Contain(slot));
+        }
+    }
+
+    [Test]
+    public void Eip7928_slot_wiped_by_creation_and_rewritten_to_its_prestate_is_a_read()
+    {
+        UInt256 slot = 7;
+        byte[] childInitCode = Prepare.EvmCode.PushData(5).PushData(slot).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        byte[] salt = new byte[32];
+        Address createdAddress = ContractAddress.From(_callTargetAddress, salt, childInitCode);
+        InitWorldState(TestState, BuildCreateThenPopCode(Instruction.CREATE2, childInitCode, salt, UInt256.Zero));
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Set(new StorageCell(createdAddress, slot), (UInt256)5);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
+        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+        TestState.Get(new StorageCell(createdAddress, slot), out UInt256 stored);
+
+        Assert.That(createdChanges, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges!.NonceChange, Is.Not.Null, "the creation went through, so the wipe happened");
+            Assert.That(createdChanges.StorageReads, Does.Contain(slot));
+            Assert.That(createdChanges.StorageChangeCount, Is.Zero);
+            Assert.That(stored, Is.EqualTo((UInt256)5));
+        }
+    }
+
     [TestCaseSource(nameof(SelfdestructSendToSenderTestSource))]
     public void Eip7928_selfdestruct_to_sender_coalesces_sender_changes(IReleaseSpec spec, int victimBalance)
     {
@@ -1101,7 +1214,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             {
                 Assert.That(TestState.AccountExists(_callTargetAddress), Is.True);
                 Assert.That(TestState.GetBalance(_callTargetAddress), Is.EqualTo(UInt256.Zero));
-                Assert.That(TestState.GetCode(_callTargetAddress), Is.EqualTo(selfdestructCode));
+                Assert.That(TestState.GetCode(_callTargetAddress), Is.SequenceEqualTo(selfdestructCode));
             }
             else
             {
@@ -1276,7 +1389,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
         // Enough gas to push CALL operands and reach the cold-access charge for the EOA, but
         // 1 gas short of the cold-access charge for its delegation target. CALL pushes 7 stack
-        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then ConsumeAccountAccessGas
+        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then TryConsumeAccountAccessGas
         // for codeSource (cold), then for delegated (cold) — we cap at codeSource cold + 1 short.
         ulong pushOperandsCost = 7 * GasCostOf.VeryLow;
         ulong executionGas = pushOperandsCost + GasCostOf.Call + Eip8038Constants.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
@@ -1681,6 +1794,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             changes = [testAccount];
             yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance, EvmExceptionType.OutOfGas)
             { TestName = "selfbalance_oog_post_state_access" };
+
+            code = new byte[1025];
+            code.AsSpan(0, 1024).Fill((byte)Instruction.PUSH0);
+            code[^1] = (byte)Instruction.SELFBALANCE;
+            foreach (bool sufficientGas in new[] { false, true })
+            {
+                yield return new TestCaseData(changes, code, null,
+                    1024UL * GasCostOf.Base + GasCostOf.SelfBalance - (sufficientGas ? 0UL : 1UL),
+                    sufficientGas ? EvmExceptionType.StackOverflow : EvmExceptionType.OutOfGas)
+                { TestName = sufficientGas ? "selfbalance_stack_overflow" : "selfbalance_oog_before_stack_overflow" };
+            }
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)
@@ -2179,7 +2303,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(targetCode));
             // Both the delegated account and the delegation target are traced as account reads in the BAL
             Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegatedAccount), Is.Not.Null);
             Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(delegationTarget), Is.Not.Null);
@@ -2211,7 +2335,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(priorCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(priorCode));
         }
     }
 
@@ -2243,7 +2367,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.Null);
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(parentCode));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(parentCode));
         }
     }
 
@@ -2268,7 +2392,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(result.CodeSpan, Is.SequenceEqualTo(code));
             Assert.That(delegationAddress, Is.Null);
             // GetCachedCodeInfo records a pure account read even through the cache layer
             AssertPureAccountRead(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressB));

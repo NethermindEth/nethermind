@@ -16,6 +16,15 @@ internal sealed class PendingPaymasterCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pending = new();
 
+    /// <summary>
+    /// The paymaster a frame transaction pays through, keying the EIP-8141 non-canonical paymaster cap;
+    /// <c>null</c> when it uses none.
+    /// </summary>
+    /// <remarks>The single definition of the key: the reserve that takes a slot, the restore and release that
+    /// return it, and the persisted record all derive it here, so no two of them can disagree on the sponsor.</remarks>
+    public static Address? KeyFor(Transaction tx) =>
+        tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) : null;
+
     /// <summary>Pending frame transactions currently paying through <paramref name="key"/>.</summary>
     public int GetPendingCount(AddressAsKey key) => _pending.TryGetValue(key, out int count) ? count : 0;
 

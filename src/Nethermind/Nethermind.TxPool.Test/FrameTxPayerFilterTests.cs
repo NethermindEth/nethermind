@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Filters;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
@@ -62,7 +63,7 @@ public class FrameTxPayerFilterTests
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, Transaction tx)
     {
         FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxPayerFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 }

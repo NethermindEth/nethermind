@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -21,7 +22,7 @@ namespace Nethermind.Db.FullPruning
         /// <param name="duplicateReads">If pruning should duplicate db reads.</param>
         /// <param name="context">Out, context of pruning.</param>
         /// <returns>true if pruning was started, false otherwise.</returns>
-        bool TryStartPruning(bool duplicateReads, out IPruningContext context);
+        bool TryStartPruning(bool duplicateReads, [NotNullWhen(true)] out IPruningContext? context);
 
         /// <summary>
         /// Gets the path to current DB using base path.

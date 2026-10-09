@@ -18,18 +18,18 @@ namespace Ethereum.Test.Base;
 /// referenced rather than copied wherever one exists.
 /// </para>
 /// <para>
-/// <see cref="Decode"/> is deliberately outside that invariant. Its fragments are generic RLP-decoder text
-/// carrying no frame context, so they also match decode failures from unrelated payloads. That only widens
+/// <see cref="Decode"/> is deliberately outside that invariant. Most of its fragments are generic RLP-decoder
+/// text carrying no frame context, so they also match decode failures from unrelated payloads. That only widens
 /// what satisfies <c>TYPE_6_INVALID_FRAME_FORMAT</c> — the exception table is additive and a fixture passes
 /// when its expected label is among those matched, so a broad fragment can mask a rejection for the wrong
 /// reason but can never turn a passing lane red. Narrowing it needs frame context in the decoder messages
 /// themselves.
 /// </para>
 /// <para>
-/// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps only
-/// <c>TYPE_6_INVALID_FRAME_FORMAT</c>, from <see cref="Format"/> and <see cref="Decode"/>: it stops at
-/// <c>TxValidator.IsWellFormed</c>, which runs neither the signature validator nor the transaction
-/// processor, so no <see cref="Signature"/> or <see cref="Execution"/> message can reach it.
+/// <c>BlockchainTestBase</c> maps all three labels. <c>TransactionTestBase</c> maps the first two: it runs
+/// <c>TxValidator.IsWellFormed</c> and then <c>FrameTxSignatureValidator</c>, the pair a transaction must
+/// clear to be accepted off the wire, but never the transaction processor, so no <see cref="Execution"/>
+/// message can reach it.
 /// </para>
 /// </remarks>
 public static class FrameExceptionFragments
@@ -64,14 +64,11 @@ public static class FrameExceptionFragments
         FrameTxValidation.KeyedNoncesNotEnabled,
         FrameTxValidation.LegacyNonceNotAllowed,
         FrameTxValidation.MalformedNonceKeySet,
-        FrameTxValidation.TooManyRecentRootReferences,
         // The fixtures file a signer that does not match as a format failure, and a signature that
         // does not verify as a signature failure.
         FrameTxSignatureValidator.InvalidSecp256k1Signer,
         FrameTxSignatureValidator.InvalidP256Signer,
-        // A decoder literal, no constant to reference: the trailing element is present but is not
-        // the recent-root-reference sequence. Thrown before any rule runs, so no rule names it.
-        "frame transaction must not carry a trailing signature",
+        "frame transaction must not carry a trailing element",
     ];
 
     /// <summary>Signature verification — the spec <c>validate_signature</c> step.</summary>
@@ -90,25 +87,44 @@ public static class FrameExceptionFragments
     /// </summary>
     public static readonly string[] Execution =
     [
-        "VERIFY frame reverted",
+        // Covers both the VERIFY and the validation-prefix wording of a reverting frame.
+        "frame reverted",
         "SENDER frame before execution approval",
         "never set a payer",
+    ];
+
+    /// <summary>
+    /// A fee field wider than its type, which the decoder rejects through its length guard.
+    /// </summary>
+    /// <remarks>
+    /// The guard names neither the field nor the type, so these widen both fee labels suite-wide to
+    /// any untyped limit rejection, not merely to the other fee field. Both wordings are one
+    /// rejection: <c>Rlp.ThrowCountOverLimit</c> composes the detailed text only when <c>Rlp</c>'s
+    /// static logger has trace enabled and otherwise throws the bare message, so listing only the
+    /// detailed one leaves the mapping dead in the default configuration.
+    /// </remarks>
+    public static readonly string[] FeeOverflow =
+    [
+        "Collection count",
+        "An RLP limit exceeded",
     ];
 
     /// <summary>
     /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
     /// also name as format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
-    /// <remarks>
-    /// The last two fragments are one rejection under two wordings: <c>Rlp.ThrowCountOverLimit</c> composes the
-    /// detailed text only when <c>Rlp</c>'s static logger has trace enabled and otherwise throws the bare message,
-    /// so both are listed rather than depending on which log manager the runner leaves installed.
-    /// </remarks>
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
+        // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
+        // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
+        "Expected a sequence prefix",
+        "frame transaction payload is incomplete",
+        // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
+        // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",
         "An RLP limit exceeded",
+        "Exceeded Transaction.NonceKeys",
     ];
 }

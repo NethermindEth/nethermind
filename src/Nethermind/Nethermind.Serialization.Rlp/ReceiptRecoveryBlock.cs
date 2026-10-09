@@ -57,10 +57,11 @@ public struct ReceiptRecoveryBlock
             Position = _currentTransactionPosition
         };
         TxDecoder.Instance.Decode(ref decoderContext, ref _txBuffer, RlpBehaviors.AllowUnsigned);
-        Hash256 _ = _txBuffer.Hash; // Force Hash evaluation
+        Transaction tx = _txBuffer ?? throw new RlpException("Transaction decoding returned null.");
+        Hash256? _ = tx.Hash; // Force Hash evaluation
         _currentTransactionPosition = decoderContext.Position;
 
-        return _txBuffer;
+        return tx;
     }
 
     /// <summary>Returns the hash of the next transaction without decoding its fields.</summary>
@@ -70,23 +71,40 @@ public struct ReceiptRecoveryBlock
     /// </remarks>
     public Hash256 GetNextTransactionHash()
     {
+        if (_transactions is null)
+        {
+            return new Hash256(GetNextTransactionValueHash());
+        }
+
         if (_currentTransactionIndex >= TransactionCount)
         {
             ThrowNoTransactionRemaining();
         }
 
+        Transaction transaction = _transactions[_currentTransactionIndex++];
+        Hash256? transactionHash = transaction.Hash;
+        if (transactionHash is null)
+        {
+            KeccakRlpWriter writer = new();
+            TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
+            transaction.Hash = transactionHash = writer.GetHash();
+        }
+
+        return transactionHash;
+    }
+
+    /// <summary>Returns the hash of the next transaction without decoding its fields or allocating a <see cref="Hash256"/>.</summary>
+    /// <remarks><inheritdoc cref="GetNextTransactionHash" path="/remarks"/></remarks>
+    public ValueHash256 GetNextTransactionValueHash()
+    {
         if (_transactions is not null)
         {
-            Transaction transaction = _transactions[_currentTransactionIndex++];
-            Hash256? transactionHash = transaction.Hash;
-            if (transactionHash is null)
-            {
-                KeccakRlpWriter writer = new();
-                TxDecoder.Instance.Encode(ref writer, transaction, RlpBehaviors.SkipTypedWrapping);
-                transaction.Hash = transactionHash = writer.GetHash();
-            }
+            return GetNextTransactionHash().ValueHash256;
+        }
 
-            return transactionHash;
+        if (_currentTransactionIndex >= TransactionCount)
+        {
+            ThrowNoTransactionRemaining();
         }
 
         if ((uint)_currentTransactionPosition >= (uint)_transactionData.Length)
@@ -135,7 +153,7 @@ public struct ReceiptRecoveryBlock
             hashInput = encodedTransaction.Slice(prefixLength, contentLength);
         }
 
-        Hash256 hash = Keccak.Compute(hashInput);
+        ValueHash256 hash = ValueKeccak.Compute(hashInput);
         _currentTransactionPosition += encodedLength;
         _currentTransactionIndex++;
         return hash;

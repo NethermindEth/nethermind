@@ -24,6 +24,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
+    private volatile BlockProductionSnapshot _best;
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -40,7 +41,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
         _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, _timeOutCancellation.Token);
-        CurrentBestBlock = currentBestBlock;
+        _best = new(currentBestBlock, UInt256.Zero);
         StartDateTime = startDateTime;
         ImprovementTask = StartImprovingBlock(blockProducer, parentHeader, payloadAttributes, _linkedCancellation.Token);
     }
@@ -59,18 +60,16 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
         if (block is not null)
         {
-            CurrentBestBlock = block;
-            BlockFees = _feesTracer.Fees;
+            _best = new(block, _feesTracer.Fees);
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
-        return CurrentBestBlock;
+        return _best.CurrentBestBlock;
     }
 
     public Task<Block?> ImprovementTask { get; }
-    public Block? CurrentBestBlock { get; private set; }
-    public UInt256 BlockFees { get; private set; }
+    public BlockProductionSnapshot Best => _best;
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 

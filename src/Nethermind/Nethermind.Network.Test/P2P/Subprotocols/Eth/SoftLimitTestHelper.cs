@@ -18,7 +18,8 @@ internal static class SoftLimitTestHelper
             sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
             if (sizeEstimate > SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit)
             {
-                return i;
+                // The block crossing the soft limit is still served.
+                return i + 1;
             }
         }
 
@@ -31,10 +32,17 @@ internal static class SoftLimitTestHelper
         ulong sizeEstimate = 0;
         for (int i = 0; i < requestedCount; i++)
         {
+            // A block that does not fit under the hard cap is not served at all.
+            if (sizeEstimate + receiptBlockSize > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
+            {
+                return i;
+            }
+
             sizeEstimate += receiptBlockSize;
             if (sizeEstimate > SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit)
             {
-                return i;
+                // The block crossing the soft limit is still served.
+                return i + 1;
             }
         }
 

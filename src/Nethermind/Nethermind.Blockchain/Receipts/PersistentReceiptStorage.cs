@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
+        private readonly bool _eip7668EverEnabled;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IDb _receiptsDb;
         private readonly IDb _defaultColumn;
@@ -131,6 +132,7 @@ namespace Nethermind.Blockchain.Receipts
             ulong Get(Hash256 key, ulong defaultValue) => _defaultColumn.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _eip7668EverEnabled = specProvider.GetFinalSpec().IsEip7668Enabled;
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
@@ -427,16 +429,36 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    receipts = _storageDecoder.Decode(in receiptsData);
+                    receipts = Decode(in receiptsData, block.Header);
 
                     if (recover)
                     {
+                        if (receipts.Length != block.Transactions.Length && _logger.IsWarn)
+                        {
+                            _logger.Warn($"Stored receipt count for block {block.ToString(Block.Format.FullHashAndNumber)} does not match its transactions: decoded {receipts.Length} for {block.Transactions.Length} transactions.");
+                        }
+
                         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender: recoverSender);
                         _receiptsCache.Set(blockHash, receipts);
                     }
 
                     return receipts;
                 }
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        TxReceipt?[] IReceiptMigrationStore.GetForMigration(ulong blockNumber, Hash256 blockHash)
+        {
+            Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
+            try
+            {
+                return receiptsData.IsNullOrEmpty()
+                    ? []
+                    : _storageDecoder.DecodeAllowingMissing(in receiptsData);
             }
             finally
             {
@@ -485,8 +507,44 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block is null) return [];
-            return Get(block, recover, false);
+            if (block is not null) return Get(block, recover, false);
+            return GetRetainedWithoutBody(blockHash);
+        }
+
+        /// <summary>Serves a block whose body was pruned but whose receipts were retained self-describing: the
+        /// encoding carries everything recovery would otherwise derive from the body, so it decodes standalone.
+        /// A compact (body-dependent) record cannot be decoded any more and reports empty.</summary>
+        private TxReceipt[] GetRetainedWithoutBody(Hash256 blockHash)
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null) return [];
+
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? cached)) return cached ?? [];
+
+            Span<byte> receiptsData = GetReceiptData(header.Number, blockHash);
+            try
+            {
+                if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
+                return Decode(in receiptsData, header);
+            }
+            finally
+            {
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        /// <remarks>
+        /// After EIP-7668 the compact encoding skips computing each bloom and a receipt synced without one would
+        /// compute it lazily, so every bloom is set to <see cref="Bloom.ZeroLength"/>. A chain that never schedules
+        /// the EIP skips the spec lookup.
+        /// </remarks>
+        private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
+        {
+            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
+
+            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
+            receipts.SetZeroLengthBlooms();
+            return receipts;
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -515,27 +573,23 @@ namespace Nethermind.Blockchain.Receipts
             Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
+            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null;
 
             if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
-                recoveryContextFactory = () =>
-                {
-                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
-
-                    if (!block.HasValue)
-                    {
-                        throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
-                    }
-
-                    return _receiptsRecovery.CreateRecoveryContext(block.Value);
-                };
+                recoveryContextFactory = () => _receiptsRecovery.CreateRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
+                logRecoveryContextFactory = () => _receiptsRecovery.CreateLogRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
             }
 
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
 
-            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder);
+            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
             return true;
         }
+
+        private ReceiptRecoveryBlock GetRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
+            _blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash)
+            ?? throw new InvalidOperationException($"Unable to recover receipts for block {blockHash} because of missing block data.");
 
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
             => Insert(block, txReceipts, _specProvider.GetSpec(block.Header), ensureCanonical, writeFlags, lastBlockNumber);
@@ -578,6 +632,7 @@ namespace Nethermind.Blockchain.Receipts
             // and the DB write both defer: reads serve the receipts objects, never the bytes, so the RLP is only
             // needed by the queued write and is produced on the consumer instead of on the processing path.
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
@@ -787,6 +842,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
@@ -874,32 +930,69 @@ namespace Nethermind.Blockchain.Receipts
             RemoveBlockTx(block);
         }
 
-        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
-        /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
-        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
         {
-            // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing it
-            // would permanently drop the tx-index write of every block queued near the head.
             if (_pendingReceipts is not null)
             {
-                _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => RemoveReceiptsRangeFromDb(fromInclusive, toExclusive));
+                _pendingReceipts.Remove(blockHash, () => RemoveReceiptsCore(blockNumber, blockHash));
             }
             else
             {
-                RemoveReceiptsRangeFromDb(fromInclusive, toExclusive);
+                RemoveReceiptsCore(blockNumber, blockHash);
             }
-
-            _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
-        }
-
-        private void RemoveReceiptsRangeFromDb(ulong fromInclusive, ulong toExclusive)
-        {
-            _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
-            if (fromInclusive < toExclusive) _receiptsCache.Clear();
         }
 
         [SkipLocalsInit]
-        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed)
+        private void RemoveReceiptsCore(ulong blockNumber, Hash256 blockHash)
+        {
+            _pendingCanonical.TryRemove(blockHash.ValueHash256, out _);
+            if (DropRetainedBody(blockHash.ValueHash256)) UpdateRetentionMetrics();
+
+            _receiptsCache.Delete(blockHash);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
+            _receiptsDb.Remove(blockNumPrefixed);
+        }
+
+        /// <summary>Drops the receipts of every block in <c>[fromInclusive, toExclusive)</c> in one operation. The
+        /// transaction index is keyed by hash, so it is left to <see cref="SweepTransactionIndex"/>.</summary>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive) => RemoveReceiptsRanges([(fromInclusive, toExclusive)]);
+
+        /// <summary>One cache invalidation for the whole batch: the cache is keyed by hash, so it cannot be narrowed
+        /// to a range, and clearing it per range would keep it cold for as long as a caller has ranges to hand over.</summary>
+        public void RemoveReceiptsRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+        {
+            bool removedAny = false;
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                // _pendingCanonical is deliberately NOT drained: it is a cancellation ledger, not a cache, so clearing
+                // it would permanently drop the tx-index write of every block queued near the head.
+                if (_pendingReceipts is not null)
+                {
+                    _pendingReceipts.RemoveRange(fromInclusive, toExclusive, () => _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts"));
+                }
+                else
+                {
+                    _receiptsDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "receipts");
+                }
+
+                removedAny |= fromInclusive < toExclusive;
+            }
+
+            if (!removedAny) return;
+            _receiptsCache.Clear();
+            foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+            {
+                if (fromInclusive < toExclusive) _receiptsDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+            }
+        }
+
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, CancellationToken cancellationToken, out int removed) =>
+            SweepTransactionIndex(retainedFromBlock, resumeFrom, maxEntries, isHeightRetained: null, cancellationToken, out removed);
+
+        [SkipLocalsInit]
+        public byte[]? SweepTransactionIndex(ulong retainedFromBlock, byte[]? resumeFrom, int maxEntries, Func<ulong, bool>? isHeightRetained, CancellationToken cancellationToken, out int removed)
         {
             removed = 0;
             // Not <= 0: the resume key is counted, so a budget of one returns where it started and stalls there.
@@ -929,7 +1022,9 @@ namespace Nethermind.Blockchain.Receipts
 
                 while (view.MoveNext())
                 {
-                    if (PointsBelow(view.CurrentValue, retainedFromBlock))
+                    if (TryGetPointedBlock(view.CurrentValue, out ulong pointedBlock)
+                        && pointedBlock < retainedFromBlock
+                        && (isHeightRetained is null || !isHeightRetained(pointedBlock)))
                     {
                         batch[view.CurrentKey] = null;
                         removed++;
@@ -975,24 +1070,28 @@ namespace Nethermind.Blockchain.Receipts
             batch = _transactionDb.StartWriteBatch();
         }
 
-        /// <summary>Whether an index value names a block at or below the last reclaimed one. Under
-        /// <see cref="IReceiptConfig.CompactTxIndex"/> the value is the number, otherwise the hash, and the header
-        /// supplies the number - headers never being pruned. A hash that does not resolve is left alone.
+        /// <summary>The block an index value names. Under <see cref="IReceiptConfig.CompactTxIndex"/> the value is
+        /// the number, otherwise the hash, and the header supplies the number - headers never being pruned. A hash
+        /// that does not resolve is left alone.
         /// The two branches are not the same cost: the number is read from the iterator's own buffer, while the hash
         /// costs a header lookup per entry, so the same pass budget covers far fewer entries.</summary>
-        private bool PointsBelow(ReadOnlySpan<byte> value, ulong retainedFromBlock)
+        private bool TryGetPointedBlock(ReadOnlySpan<byte> value, out ulong number)
         {
+            number = 0;
             if (value.Length == 0) return false;
 
             if (value.Length == Hash256.Size)
             {
-                return _blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                    is { Number: ulong number } && number < retainedFromBlock;
+                if (_blockTree.FindHeader(new Hash256(value), BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                    is not { Number: ulong headerNumber }) return false;
+                number = headerNumber;
+                return true;
             }
 
             try
             {
-                return new RlpReader(value).DecodeULong() < retainedFromBlock;
+                number = new RlpReader(value).DecodeULong();
+                return true;
             }
             catch (RlpException)
             {

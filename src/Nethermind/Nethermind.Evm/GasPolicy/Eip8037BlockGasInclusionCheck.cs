@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.GasPolicy;
 
@@ -20,7 +21,7 @@ public static class Eip8037BlockGasInclusionCheck
         ulong cumulativeBlockState,
         ulong txGas)
     {
-        ulong worstCaseExecution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
+        ulong worstCaseExecution = WorstCaseExecution(txGas);
         return Validate(blockGasLimit, cumulativeBlockExecution, cumulativeBlockState, worstCaseExecution, txGas);
     }
 
@@ -52,6 +53,26 @@ public static class Eip8037BlockGasInclusionCheck
     /// <summary>
     /// Calculates EIP-8037 execution block gas after removing state gas and applying the EIP-7976 calldata floor.
     /// </summary>
-    public static ulong CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)
-        => Math.Max(preRefundGas.SaturatingSub(blockStateGas), calldataFloor);
+    public static ulong CalculateBlockExecutionGas(ulong gasUsed, ulong blockStateGas, ulong calldataFloor)
+        => Math.Max(gasUsed.SaturatingSub(blockStateGas), calldataFloor);
+
+    /// <summary>Single source for the per-dimension block gas a transaction reserves, shared by block production admission and end-of-block validation.</summary>
+    /// <returns>
+    /// <c>false</c>, with both outputs 0, only for a frame transaction that cannot be priced: one whose
+    /// <see cref="Transaction.Frames"/> are absent (a light record reloaded without them) or whose budget
+    /// overflows <see cref="ulong"/>. Every other transaction is priced, so <c>true</c>.
+    /// </returns>
+    public static bool TryGetBlockGasReservations(Transaction tx, IReleaseSpec spec, out ulong executionReservation, out ulong stateReservation)
+    {
+        if (tx.SupportsFrames)
+        {
+            return FrameTxValidation.TryCalculateBlockGasReservations(tx, spec, out executionReservation, out stateReservation);
+        }
+
+        executionReservation = spec.IsEip8037Enabled ? WorstCaseExecution(tx.GasLimit) : tx.GasLimit;
+        stateReservation = spec.IsEip8037Enabled ? tx.GasLimit : 0;
+        return true;
+    }
+
+    private static ulong WorstCaseExecution(ulong txGas) => Math.Min(Eip7825Constants.DefaultTxGasLimitCap, txGas);
 }

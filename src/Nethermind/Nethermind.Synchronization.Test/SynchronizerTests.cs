@@ -269,11 +269,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             ISyncConfig GetSyncConfig() =>
                 synchronizerType switch
                 {
-                    SynchronizerType.Fast => SyncConfig.WithFastSync,
+                    SynchronizerType.Fast => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
-                    SynchronizerType.Eth2MergeFastWithoutTTD => SyncConfig.WithFastSync,
+                    SynchronizerType.Eth2MergeFastWithoutTTD => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Eth2MergeFullWithoutTTD => SyncConfig.WithFullSyncOnly,
-                    SynchronizerType.Eth2MergeFast => SyncConfig.WithFastSync,
+                    SynchronizerType.Eth2MergeFast => new SyncConfig { FastSync = true, SnapSync = true },
                     SynchronizerType.Eth2MergeFull => SyncConfig.WithFullSyncOnly,
                     _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                 };
@@ -467,17 +467,21 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
         {
             ISyncPeerPool syncPeerPool = SyncPeerPool;
+            string clientId = syncPeer.ClientId
+                ?? throw new InvalidOperationException("Test sync peers must have a client ID.");
             ((SyncPeerMock)syncPeer).Disconnected += (_, _) => syncPeerPool.RemovePeer(syncPeer);
 
-            _logger.Info($"PEER ADDED {syncPeer.ClientId}");
-            _peers.TryAdd(syncPeer.ClientId, syncPeer);
+            _logger.Info($"PEER ADDED {clientId}");
+            _peers.TryAdd(clientId, syncPeer);
             SyncPeerPool.AddPeer(syncPeer);
             return this;
         }
 
         public SyncingContext AfterPeerIsRemoved(ISyncPeer syncPeer)
         {
-            _peers.Remove(syncPeer.ClientId);
+            string clientId = syncPeer.ClientId
+                ?? throw new InvalidOperationException("Test sync peers must have a client ID.");
+            _peers.Remove(clientId);
             SyncPeerPool.RemovePeer(syncPeer);
             return this;
         }

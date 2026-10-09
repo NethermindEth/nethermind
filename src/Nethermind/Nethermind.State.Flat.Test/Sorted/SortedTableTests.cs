@@ -171,14 +171,8 @@ public class SortedTableTests
 
     // A single 4 KB block, exercising restart-run boundaries around RestartInterval (= 8): the
     // builder resets front-coding every restart, the reader binary-searches restarts then scans one run.
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(24)]
-    [TestCase(25)]
-    [TestCase(48)]
-    public void Restart_boundaries_within_one_block(int count)
+    [Test]
+    public void Restart_boundaries_within_one_block([Values(7, 8, 9, 16, 24, 25, 48)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -201,13 +195,8 @@ public class SortedTableTests
     }
 
     // Exercise the last-block fill across single-block sizes 1..17.
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(16)]
-    [TestCase(17)]
-    public void Round_trips_across_record_counts(int count)
+    [Test]
+    public void Round_trips_across_record_counts([Values(1, 7, 8, 9, 16, 17)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -231,10 +220,8 @@ public class SortedTableTests
     // Large values force many 4 KB blocks. Present keys are odd, so every even probe lands in a gap —
     // including gaps that straddle a block boundary (the separator lower-bound + in-block re-validation),
     // plus the before-first and after-last sentinels.
-    [TestCase(50)]
-    [TestCase(800)]
-    [TestCase(4000)]
-    public void Round_trips_multiblock_with_gaps(int count)
+    [Test]
+    public void Round_trips_multiblock_with_gaps([Values(50, 800, 4000)] int count)
     {
         byte[] value = new byte[200];
         for (int i = 0; i < value.Length; i++) value[i] = (byte)i;
@@ -270,9 +257,8 @@ public class SortedTableTests
 
     // 32-byte keys sharing a 30-byte prefix, differing only in the last two bytes — exercises long
     // front-coded cp within restart runs and the cp == 0 reset at each restart and block boundary.
-    [TestCase(20)]
-    [TestCase(4000)]
-    public void Long_shared_prefix_round_trips(int count)
+    [Test]
+    public void Long_shared_prefix_round_trips([Values(20, 4000)] int count)
     {
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
@@ -307,10 +293,8 @@ public class SortedTableTests
 
     // Fuzz arbitrary block fills, restart placements, separator computation and front-coding across
     // boundaries with random unique keys (1..55 B) and values (0..254 B).
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(42)]
-    public void Fuzz_round_trips_random_tables(int seed)
+    [Test]
+    public void Fuzz_round_trips_random_tables([Values(1, 7, 42)] int seed)
     {
         Random rng = new(seed);
         for (int iter = 0; iter < 25; iter++)

@@ -11,12 +11,12 @@ namespace Nethermind.Xdc.P2P.Messages;
 /// <summary>
 /// <see cref="GetPooledTransactionsMessage"/> on the code XDC relocated it to.
 /// </summary>
-public class XdcGetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes)
-    : GetPooledTransactionsMessage(hashes), INew<IOwnedReadOnlyList<Hash256>, XdcGetPooledTransactionsMessage>
+public class XdcGetPooledTransactionsMessage(IOwnedReadOnlyList<ValueHash256> hashes)
+    : GetPooledTransactionsMessage(hashes), INew<IOwnedReadOnlyList<ValueHash256>, XdcGetPooledTransactionsMessage>
 {
     public override int PacketType => XdcMessageCode.GetPooledTransactions;
 
-    public static new XdcGetPooledTransactionsMessage New(IOwnedReadOnlyList<Hash256> arg) => new(arg);
+    public static new XdcGetPooledTransactionsMessage New(IOwnedReadOnlyList<ValueHash256> arg) => new(arg);
 
     public override string ToString() => $"{nameof(XdcGetPooledTransactionsMessage)}({Hashes?.Count})";
 }

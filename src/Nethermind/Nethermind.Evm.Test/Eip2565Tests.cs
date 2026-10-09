@@ -7,6 +7,7 @@ using System.Numerics;
 using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -32,7 +33,7 @@ namespace Nethermind.Evm.Test
             (ReadOnlyMemory<byte>, bool) gmpPair = ModExpPrecompile.Instance.Run(inputData, Berlin.Instance);
             (ReadOnlyMemory<byte>, bool) bigIntPair = BigIntegerModExp(inputData);
 
-            Assert.That(gmpPair.Item1.ToArray(), Is.EqualTo(bigIntPair.Item1.ToArray()));
+            Assert.That(gmpPair.Item1, Is.SequenceEqualTo(bigIntPair.Item1));
         }
 
         [Test]

@@ -17,6 +17,7 @@ namespace Nethermind.Synchronization.Test
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
         ];
 
         [TestCaseSource(nameof(SingleBitContextCases))]
@@ -40,6 +41,7 @@ namespace Nethermind.Synchronization.Test
             Assert.That(d.State, Is.EqualTo(2));
             Assert.That(d.Snap, Is.EqualTo(2));
             Assert.That(d.ForwardHeader, Is.EqualTo(2));
+            Assert.That(d.BlockAccessLists, Is.EqualTo(2));
         }
     }
 }

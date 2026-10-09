@@ -19,6 +19,7 @@ public class SnapSyncRunner(
     public async Task Run(CancellationToken token)
     {
         snapTrieFactory.EnsureInitialize();
+        progressTracker.Reset();
         progressTracker.LoadProgress();
         try
         {

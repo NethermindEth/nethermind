@@ -3,23 +3,21 @@
 
 #nullable enable
 
+using Nethermind.Specs.Forks;
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
+using static Nethermind.TxPool.Test.FrameTxFilterTestPools;
 
 namespace Nethermind.TxPool.Test;
 
@@ -51,31 +49,36 @@ public class FrameTxPaymasterFilterTests
     private static IEnumerable<TestCaseData> CapCases()
     {
         yield return Case("SponsoredByDeployedPaymaster_Rejected",
-            () => FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: true);
+            () => FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: true);
 
         // The recognized prefix skips a leading expiry and deploy frame, so the cap still keys on the pay target.
         yield return Case("DeployPrefixSponsoredByDeployedPaymaster_Rejected",
-            () => FrameTx([ExpiryFrame(9999), DeployFrame(), OnlyVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: true);
+            () => FrameTx([ExpiryAt(9999), DeployFrame(), OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: true);
 
         // A default-code sponsor is not a paymaster: bounded by the per-payer exposure rule alone.
         yield return Case("SponsoredByDefaultCodeAccount_Accepted",
-            () => FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: false, rejected: false);
+            () => FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: false, rejected: false);
 
         yield return Case("SelfRelay_Accepted",
-            () => FrameTx([SelfVerifyFrame()]), paymasterHasCode: true, rejected: false);
+            () => FrameTx([SelfVerify(PrefixFrameGas)]), paymasterHasCode: true, rejected: false);
 
         // A null pay target resolves to the sender, so no paymaster is used.
         yield return Case("PayFrameWithoutTarget_Accepted",
-            () => FrameTx([OnlyVerifyFrame(), PayFrame(null)]), paymasterHasCode: true, rejected: false);
+            () => FrameTx([OnlyVerify(PrefixFrameGas), Pay(null, PrefixFrameGas)]), paymasterHasCode: true, rejected: false);
 
         // The leading frame already approves payment for the sender, so the later pay frame sponsors nothing.
         yield return Case("SelfPaidBeforePayFrame_Accepted",
-            () => FrameTx([SelfVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: false);
+            () => FrameTx([SelfVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: false);
 
         // The simulator walks the whole leading VERIFY run, so an unapproving frame before the pay frame
         // must not hide the sponsor from the cap.
         yield return Case("PayFrameBehindSpacerVerifyFrame_Rejected",
-            () => FrameTx([OnlyVerifyFrame(), SpacerVerifyFrame(), PayFrame(Paymaster)]), paymasterHasCode: true, rejected: true);
+            () => FrameTx([OnlyVerify(PrefixFrameGas), SpacerVerifyFrame(), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: true);
+
+        // A non-VERIFY frame ends the prefix, so nothing behind it can install a payer: the pay frame there
+        // sponsors nothing and names no paymaster, unlike the VERIFY spacer above.
+        yield return Case("PayFrameBehindANonVerifyFrame_Accepted",
+            () => FrameTx([OnlyVerify(PrefixFrameGas), Execution(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: false);
 
         yield return Case("NonFrameTx_Accepted",
             () => Build.A.Transaction.WithSenderAddress(Sender).TestObject, paymasterHasCode: true, rejected: false);
@@ -93,7 +96,7 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(targetSpelledOut ? Sender : null)], nonce: 1));
+        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerify(PrefixFrameGas), Pay(targetSpelledOut ? Sender : null, PrefixFrameGas)], nonce: 1));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
@@ -109,7 +112,7 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: 100_000, UInt256.Zero, default);
+        TxFrame selfRelay = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: PrefixFrameGas, UInt256.Zero, default);
         AcceptTxResult result = Accept(state, cache, FrameTx([selfRelay], nonce: 1));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -121,7 +124,7 @@ public class FrameTxPaymasterFilterTests
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Paymaster);
         PendingPaymasterCache cache = new();
-        Transaction tx = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]);
+        Transaction tx = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]);
 
         // Admission counts the slot itself, so the second submission sees the first one holding it.
         AcceptTxResult first = Accept(state, cache, tx);
@@ -143,7 +146,7 @@ public class FrameTxPaymasterFilterTests
         cache.Reserve(Paymaster);
         cache.Decrement(Paymaster);
 
-        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)]));
+        AcceptTxResult result = Accept(state, cache, FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
@@ -155,14 +158,14 @@ public class FrameTxPaymasterFilterTests
         state.InsertCode([0x60, 0x00], Paymaster);
         state.InsertCode([0x60, 0x00], OtherPaymaster);
 
-        Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(pendingPaymaster)], pendingNonce);
+        Transaction pending = FrameTx([OnlyVerify(PrefixFrameGas), Pay(pendingPaymaster, PrefixFrameGas)], pendingNonce);
         PendingPaymasterCache cache = new();
         cache.Reserve(pendingPaymaster);
         // The incoming tx's own paymaster must be at the cap for the discount to be what decides.
         if (pendingPaymaster != Paymaster) cache.Reserve(Paymaster);
 
         // A fee bump is the same sender and nonce at a higher price.
-        Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], incomingNonce, gasPrice: 2);
+        Transaction incoming = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], incomingNonce, gasPrice: 2);
         AcceptTxResult result = Accept(state, cache, incoming, Pool(blobs: false, pending));
 
         Assert.That(result, Is.EqualTo(rejected ? AcceptTxResult.NonCanonicalPaymasterLimitReached : AcceptTxResult.Accepted));
@@ -175,11 +178,11 @@ public class FrameTxPaymasterFilterTests
         TestReadOnlyStateProvider state = new();
         state.InsertCode([0x60, 0x00], Paymaster);
 
-        Transaction pending = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true);
+        Transaction pending = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], carriesBlobs: true);
         PendingPaymasterCache cache = new();
         cache.Reserve(Paymaster);
 
-        Transaction incoming = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
+        Transaction incoming = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], gasPrice: 2, carriesBlobs: true);
         AcceptTxResult result = Accept(state, cache, incoming, Pool(blobs: true, pending));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -194,7 +197,7 @@ public class FrameTxPaymasterFilterTests
         state.CreateAccount(Sender, Unit.Ether);
         state.InsertCode([0x60, 0x00], Paymaster);
 
-        Transaction record = new LightTransaction(FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], carriesBlobs: true));
+        Transaction record = new LightTransaction(FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], carriesBlobs: true));
         Assert.That(record.Frames, Is.Null, "the record must be frameless, or this pins nothing");
 
         PendingPaymasterCache cache = new();
@@ -202,9 +205,9 @@ public class FrameTxPaymasterFilterTests
 
         // The bump displaces the record, so the discount has to resolve the record's paymaster; a later
         // nonce displaces nothing and must still be capped.
-        Transaction bump = FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], gasPrice: 2, carriesBlobs: true);
+        Transaction bump = FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], gasPrice: 2, carriesBlobs: true);
         AcceptTxResult replacement = Accept(state, cache, bump, Pool(blobs: true, record));
-        AcceptTxResult second = Accept(state, cache, FrameTx([OnlyVerifyFrame(), PayFrame(Paymaster)], nonce: 1, carriesBlobs: true), Pool(blobs: true, record));
+        AcceptTxResult second = Accept(state, cache, FrameTx([OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)], nonce: 1, carriesBlobs: true), Pool(blobs: true, record));
 
         using (Assert.EnterMultipleScope())
         {
@@ -255,29 +258,9 @@ public class FrameTxPaymasterFilterTests
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
             ? (Pool(blobs: false), pool ?? Pool(blobs: true))
             : (pool ?? Pool(blobs: false), Pool(blobs: true));
-        FrameTxPaymasterFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
-        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>());
+        FrameTxPaymasterFilter filter = new(state, standard, blob, cache, new TxPoolConfig(), new SenderWidthCache(holdsPaymasters: true), new(), LimboLogs.Instance.GetClassLogger<FrameTxPaymasterFilterTests>());
+        TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
-    }
-
-    /// <summary>The real pool type for the shape, so the visitor's ascending-nonce exit is exercised as wired.</summary>
-    private static TxDistinctSortedPool Pool(bool blobs, params Transaction[] pending)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new ReleaseSpec { IsEip1559Enabled = false });
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-
-        IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer();
-        TxDistinctSortedPool pool = blobs
-            ? new BlobTxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance)
-            : new TxDistinctSortedPool(pending.Length + 1, comparer, LimboLogs.Instance);
-        foreach (Transaction tx in pending)
-        {
-            pool.TryInsert(tx.Hash!, tx);
-        }
-
-        return pool;
     }
 
     private static Transaction FrameTx(TxFrame[] frames, ulong nonce = 0, uint gasPrice = 1, bool carriesBlobs = false)
@@ -299,25 +282,10 @@ public class FrameTxPaymasterFilterTests
         return tx;
     }
 
-    private static TxFrame SelfVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
-
-    private static TxFrame OnlyVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default);
-
-    private static TxFrame PayFrame(Address? target) =>
-        new(TxFrame.ModeVerify, TxFrame.ApprovePayment, target, gasLimit: 100_000, UInt256.Zero, default);
-
+    /// <remarks>A non-approving VERIFY frame, so the paymaster walk has to step over it to reach the PAY frame.</remarks>
     private static TxFrame SpacerVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, target: TestItem.AddressD, gasLimit: 100_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.None, target: TestItem.AddressD, gasLimit: PrefixFrameGas, UInt256.Zero, default);
 
     private static TxFrame DeployFrame() =>
-        new(TxFrame.ModeDefault, flags: 0, target: null, gasLimit: 50_000, UInt256.Zero, default);
-
-    private static TxFrame ExpiryFrame(ulong deadline)
-    {
-        byte[] data = new byte[Eip8141Constants.ExpiryDataLength];
-        BinaryPrimitives.WriteUInt64BigEndian(data, deadline);
-        return new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data);
-    }
+        new(FrameMode.Default, FrameFlags.None, target: null, gasLimit: 50_000, UInt256.Zero, default);
 }

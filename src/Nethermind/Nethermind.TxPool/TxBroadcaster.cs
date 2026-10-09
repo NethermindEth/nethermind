@@ -15,6 +15,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
@@ -126,12 +127,15 @@ namespace Nethermind.TxPool
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
 
             if (tx is not null
-                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
-                && _persistentTxs.TryInsert(tx.Hash, tx.CarriesBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
-                && removed?.Hash != tx.Hash)
+                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
             {
-                NotifyPeersAboutLocalTx(tx);
-                return true;
+                Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
+                if (_persistentTxs.TryInsert(tx.Hash, broadcastTx, out Transaction? removed)
+                    && removed?.Hash != tx.Hash)
+                {
+                    NotifyPeersAboutLocalTx(broadcastTx);
+                    return true;
+                }
             }
 
             return false;
@@ -139,11 +143,15 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
+            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
             lock (_accumulatedTxsLock)
             {
-                _accumulatedTemporaryTxs.Add(tx);
+                _accumulatedTemporaryTxs.Add(broadcastTx);
             }
         }
+
+        private static Transaction PrecomputeBlobAnnouncement(Transaction tx) =>
+            tx.CarriesBlobs && tx is not LightTransaction ? new LightTransaction(tx) : tx;
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {
@@ -339,13 +347,23 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcastUpToNonce(Address address, ulong nonce)
+        /// <summary>Stops announcing the sender's persistent transactions that <paramref name="includedTx"/>
+        /// has made unmineable.</summary>
+        /// <remarks>Inclusion consumes every EIP-8250 key the transaction names, so a persistent entry is
+        /// superseded when it shares any of them: sequences in the sender's disjoint domains advance
+        /// independently and stay announceable at the same numeric value.</remarks>
+        public void EnsureStopBroadcastUpToNonce(Transaction includedTx)
         {
             if (_persistentTxs.Count != 0)
             {
-                foreach (Transaction tx in _persistentTxs.TakeWhile(address, t => t.Nonce <= nonce))
+                ulong nonce = includedTx.Nonce;
+                // Ascending nonce order bounds the scan; the domain decides which of those entries is superseded.
+                foreach (Transaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Nonce <= nonce))
                 {
-                    StopBroadcast(tx.Hash!);
+                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx))
+                    {
+                        StopBroadcast(tx.Hash!);
+                    }
                 }
             }
         }
@@ -423,7 +441,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(in ValueHash256 hash, out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {
@@ -435,6 +453,8 @@ namespace Nethermind.TxPool
         }
 
         public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
+
+        public long GetRemovalGeneration(Address sender) => _persistentTxs.GetRemovalGeneration(sender);
 
         public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 

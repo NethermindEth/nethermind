@@ -135,7 +135,7 @@ namespace Nethermind.Core
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Finds the first <c>key</c> with <c>lowerBoundIncl &lt;= key &lt; upperBoundExcl</c>,
@@ -219,6 +219,15 @@ namespace Nethermind.Core
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
         public ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
+    /// <summary>A sorted view that can reposition within its bounds.</summary>
+    public interface ISeekableSortedView : ISortedView
+    {
+        /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
+        /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
+        /// remains below the view's upper bound.</summary>
+        public bool SeekTo(ReadOnlySpan<byte> key);
     }
 
     [Flags]

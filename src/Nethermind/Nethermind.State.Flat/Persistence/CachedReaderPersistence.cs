@@ -57,7 +57,8 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
-        if ((flags & ReaderFlags.Sync) != 0)
+        // The cached reader is created flagless, so flagged requests must go to the inner persistence directly.
+        if ((flags & (ReaderFlags.Sync | ReaderFlags.FullScan)) != 0)
             return _inner.CreateReader(flags);
 
         RefCountingPersistenceReader? cachedReader = _cachedReader;
@@ -126,7 +127,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
     {
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) => inner.SetStorage(addr, slot, value);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => inner.SetStorage(addr, slot, value);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);

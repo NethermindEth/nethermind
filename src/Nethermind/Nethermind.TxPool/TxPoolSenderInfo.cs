@@ -8,12 +8,12 @@ using Nethermind.Core;
 namespace Nethermind.TxPool;
 
 public sealed class TxPoolSenderInfo(
-    IDictionary<string, Transaction> pending,
-    IDictionary<string, Transaction> queued)
+    IDictionary<TxPoolTxKey, Transaction> pending,
+    IDictionary<TxPoolTxKey, Transaction> queued)
 {
     public static readonly TxPoolSenderInfo Empty =
-        new(ImmutableDictionary<string, Transaction>.Empty, ImmutableDictionary<string, Transaction>.Empty);
+        new(ImmutableDictionary<TxPoolTxKey, Transaction>.Empty, ImmutableDictionary<TxPoolTxKey, Transaction>.Empty);
 
-    public IDictionary<string, Transaction> Pending { get; } = pending;
-    public IDictionary<string, Transaction> Queued { get; } = queued;
+    public IDictionary<TxPoolTxKey, Transaction> Pending { get; } = pending;
+    public IDictionary<TxPoolTxKey, Transaction> Queued { get; } = queued;
 }

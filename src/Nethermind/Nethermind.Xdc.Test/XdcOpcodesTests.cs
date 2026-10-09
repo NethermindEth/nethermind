@@ -39,9 +39,8 @@ public class XdcOpcodesTests : VirtualMachineTestsBase
 
     // In XDC, ExcessBlobGas is always null — blob transactions are never used.
     // BLOBBASEFEE must return 0 when enabled, and BadInstruction when disabled.
-    [TestCase(true)]
-    [TestCase(false)]
-    public void BlobBaseFee_opcode_returns_zero_when_enabled_and_bad_instruction_when_disabled(bool eip4844Enabled)
+    [Test]
+    public void BlobBaseFee_opcode_returns_zero_when_enabled_and_bad_instruction_when_disabled([Values] bool eip4844Enabled)
     {
         byte[] code = Prepare.EvmCode
             .Op(Instruction.BLOBBASEFEE)

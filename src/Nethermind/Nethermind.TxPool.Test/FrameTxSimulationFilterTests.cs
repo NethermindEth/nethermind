@@ -3,6 +3,9 @@
 
 #nullable enable
 
+using Nethermind.Specs.Forks;
+using System;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -142,14 +145,114 @@ public class FrameTxSimulationFilterTests
     private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
     {
         FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
-    private static AcceptTxResult Accept(TestReadOnlyStateProvider state, IFrameTxPrefixSimulator? simulator, Transaction tx, bool signaturesVerified = false)
+    [Test]
+    public void Accept_SimulationDeferredByAdmissionBound_IsDistinctFromRejection()
     {
+        // Peer scoring must be able to tell this node's load shedding from a peer sending bad transactions.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+    }
+
+    [Test]
+    public void Accept_SimulationTimedOut_IsChargedToTheSender()
+    {
+        // The prefix's own wall clock trips the timeout, so the peer chose it: retained by revalidation,
+        // but it must still count against the sender rather than reading as this node shedding load.
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.RejectTimedOut("timed out"));
+
+        AcceptTxResult result = Accept(state, simulator, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationFailed));
+    }
+
+    // The budget exemption is granted by this mapping alone, so it is pinned rather than left to the
+    // stubs, which match a bare `local: false` by value and so would pass either way.
+    [TestCase(TxHandlingOptions.PersistentBroadcast, true, TestName = "A locally submitted transaction is exempt from the per-head budget")]
+    [TestCase(TxHandlingOptions.None, false, TestName = "A gossiped transaction competes for the per-head budget")]
+    public void Accept_MapsPersistentBroadcastToALocalSimulation(TxHandlingOptions options, bool expected)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        Accept(state, simulator, tx, options: options);
+
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), local: expected, token: Arg.Any<CancellationToken>());
+    }
+
+    [TestCase(false, TxHandlingOptions.None, true)]
+    [TestCase(false, TxHandlingOptions.PersistentBroadcast, false)]
+    [TestCase(true, TxHandlingOptions.None, true)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false)]
+    public void Accept_WhileProcessingOrBuildingABlock_PreemptsOnlyGossipedSimulation(bool building, TxHandlingOptions options, bool deferred)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(!building);
+        headInfo.IsBuildingBlock.Returns(building);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(static call => call.ArgAt<Func<bool>?>(4)?.Invoke() == true
+                ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation preempted")
+                : FrameTxSimulationResult.Accept(TestItem.AddressB));
+
+        AcceptTxResult result = Accept(state, simulator, tx, options: options, headInfo: headInfo);
+
+        Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
+    }
+
+    [TestCase(true, TxHandlingOptions.None, false, true)]
+    [TestCase(false, TxHandlingOptions.None, false, false)]
+    [TestCase(true, TxHandlingOptions.PersistentBroadcast, false, false)]
+    [TestCase(true, TxHandlingOptions.None, true, false)]
+    public void Accept_DeferredSimulation_MarksOnlyAYieldedGossipedBloblessTxForRefetch(bool yielded, TxHandlingOptions options, bool carriesBlobs, bool expected)
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(yielded
+                ? FrameTxSimulationResult.RejectYielded("validation-prefix simulator busy")
+                : FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state) { FrameSignaturesVerified = signaturesVerified };
-        return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref filteringState, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+            Assert.That(filteringState.FrameSimulationYielded, Is.EqualTo(expected));
+        }
+    }
+
+    private static AcceptTxResult Accept(
+        TestReadOnlyStateProvider state,
+        IFrameTxPrefixSimulator? simulator,
+        Transaction tx,
+        bool signaturesVerified = false,
+        TxHandlingOptions options = TxHandlingOptions.None,
+        IChainHeadInfoProvider? headInfo = null)
+    {
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
+        return filter.Accept(tx, ref filteringState, options);
     }
 }

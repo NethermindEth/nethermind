@@ -13,6 +13,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
+            Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
+            Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
             int forkIdContentLength = 0;
 
             if (message.ForkId.HasValue)
@@ -28,8 +30,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
             writer.Encode(message.TotalDifficulty);
-            writer.Encode(message.BestHash ?? Hash256.Zero);
-            writer.Encode(message.GenesisHash ?? Hash256.Zero);
+            writer.Encode(bestHash);
+            writer.Encode(genesisHash);
             if (message.ForkId is not null)
             {
                 ForkId forkId = message.ForkId.Value;
@@ -41,7 +43,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(StatusMessage message, out int contentLength)
         {
-
+            Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
+            Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
             int forkIdSequenceLength = 0;
             if (message.ForkId.HasValue)
             {
@@ -54,8 +57,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
                 Rlp.LengthOf(message.TotalDifficulty) +
-                Rlp.LengthOf(message.BestHash ?? Hash256.Zero) +
-                Rlp.LengthOf(message.GenesisHash ?? Hash256.Zero) +
+                Rlp.LengthOf(bestHash) +
+                Rlp.LengthOf(genesisHash) +
                 forkIdSequenceLength;
 
             return Rlp.LengthOfSequence(contentLength);
@@ -84,5 +87,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             return statusMessage;
         }
+
+        private static Hash256 GetRequiredHash(Hash256? hash, string propertyName) =>
+            hash ?? throw new RlpException($"{propertyName} is required in {nameof(StatusMessage)}.");
     }
 }

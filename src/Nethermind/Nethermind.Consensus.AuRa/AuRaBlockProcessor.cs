@@ -127,8 +127,8 @@ namespace Nethermind.Consensus.AuRa
         {
             if (!_balManager.Enabled) return;
 
-            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, 0);
-            _stateProvider.CreateAccount(_withdrawalContractAddress, UInt256.Zero, 0);
+            _stateProvider.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, 0);
+            _stateProvider.CreateAccountIfNotExists(_withdrawalContractAddress, UInt256.Zero, 0);
             _stateProvider.Commit(spec.ForSystemTransaction(isGenesis: false), commitRoots: false);
         }
 

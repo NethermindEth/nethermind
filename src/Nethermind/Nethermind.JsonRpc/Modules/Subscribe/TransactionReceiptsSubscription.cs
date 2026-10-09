@@ -29,7 +29,7 @@ public class TransactionReceiptsSubscription : Subscription
         IBlockTree blockTree,
         ILogManager logManager,
         TransactionHashesFilter? filter)
-        : base(jsonRpcDuplexClient)
+        : base(jsonRpcDuplexClient, MaxQueuedBlocks)
     {
         ArgumentNullException.ThrowIfNull(receiptCanonicalityMonitor);
         ArgumentNullException.ThrowIfNull(blockTree);

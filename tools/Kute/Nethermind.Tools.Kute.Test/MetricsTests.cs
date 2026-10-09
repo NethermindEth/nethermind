@@ -4,6 +4,8 @@
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
 using NUnit.Framework;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
@@ -62,6 +64,31 @@ public class MetricsTests
 
         Assert.That(report.Batches, Has.Count.EqualTo(1));
         Assert.That(report.Batches, Does.ContainKey("43:45"));
+    }
+
+    [Test]
+    public async Task JsonMetricsReportFormatter_writes_the_reflection_serializer_shape()
+    {
+        // The HTML report template and external tooling read this JSON; source-generated metadata must not change it.
+        MetricsReport report = new()
+        {
+            TotalMessages = 5,
+            Failed = 1,
+            Succeeded = 3,
+            Ignored = 1,
+            Responses = 4,
+            TotalTime = TimeSpan.FromMilliseconds(300),
+            Singles = new Dictionary<string, IReadOnlyDictionary<string, TimeSpan>>
+            {
+                ["eth_call"] = new Dictionary<string, TimeSpan> { ["1"] = TimeSpan.FromMilliseconds(10), ["2"] = TimeSpan.FromMilliseconds(30) },
+            },
+            Batches = new Dictionary<string, TimeSpan> { ["3:5"] = TimeSpan.FromMilliseconds(70) },
+        };
+
+        using MemoryStream stream = new();
+        await new JsonMetricsReportFormatter().WriteAsync(stream, report);
+
+        Assert.That(Encoding.UTF8.GetString(stream.ToArray()), Is.EqualTo(JsonSerializer.Serialize(report)));
     }
 
     [Test]

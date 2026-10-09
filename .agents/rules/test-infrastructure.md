@@ -50,14 +50,19 @@ The rule: **if production modules already wire a component, use them — don't c
 ## Test guidelines
 
 - Add tests to existing test files rather than creating new ones
-- **Do not duplicate test methods that differ only in parameters** — use `[TestCase(...)]` or `[TestCaseSource(...)]` to parameterize a single method
-- Before writing a new test, check if an existing test can be extended with another `[TestCase]` or use `[TestCaseSource]`
+- **Do not duplicate test methods that differ only in parameters** — parameterize a single method instead
+- Before writing a new test, check if an existing test can be extended with another value or case
+- Pick the parameterization that keeps the case list closest to the signature:
+  - `[Values(...)]` on the parameter (with `[Test]`, which NUnit then needs for discovery) — the default for a run of positional-only cases. A `bool` parameter takes a bare `[Values]`; a contiguous integer run takes `[Range(from, to)]`
+  - `[ValueSource(...)]` — same shape, but when the values are not attribute constants or are shared by several methods
+  - `[Values]` on more than one parameter generates the **cartesian product**, so use it only when every combination is a case worth running; a later value added to one parameter multiplies the runs rather than adding one
+  - `[TestCase(...)]` — when the cases are not a product of independent values, when an argument is an array (`[Values]` takes `params object[]`, so a nested array is not a legal attribute argument), when a case carries its own `ExpectedResult`/`TestName`/`Ignore`/`Explicit`, or when a case needs a trailing comment of its own
 - **When only parts of tests are similar** — extract the shared parts into helper methods or types instead of copy-pasting:
   - Shared arrange/build steps → a private helper method, an existing builder (`Build.A.Block...`, `Build.A.Transaction...`, `TestItem.*`), or a new builder if the pattern is reused across files
   - Shared assertions → a helper method like `AssertExpectedState(...)` so each test asserts in one line and the failure message stays meaningful
   - Shared scenarios spanning multiple test classes → a base fixture, a shared `static` helper class, or a fixture-level `[SetUp]`
   - Keep each test body focused on what makes the case unique; the helper should not hide behavior that matters for understanding the test
-- Use `[TestCaseSource]` (not `[TestCase]`) when cases need non-constant data, named scenarios, or grow beyond a handful — keep the source method or `IEnumerable<TestCaseData>` next to the test it feeds
+- Use `[TestCaseSource]` (not `[TestCase]`) when cases need non-constant data, named scenarios, or grow beyond a handful — keep the source method or `IEnumerable<TestCaseData>` next to the test it feeds. The same applies to a single parameter: reach for `[ValueSource]` rather than an inline `[Values]` list that no longer fits the signature line
 
 ## DotNetty `IByteBuffer` in tests
 

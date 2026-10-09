@@ -32,17 +32,17 @@ public class ExitOnInvalidBlockTests
             .AddSingleton<IProcessExitSource>(processExitSource)
             .Build();
 
-        IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
-        RaiseInvalidBlock(processor);
+        IBlockProcessingQueue processingQueue = container.Resolve<IMainProcessingContext>().BlockProcessingQueue;
+        RaiseInvalidBlock(processingQueue);
 
         processExitSource.Received(expectedExitCalls).Exit(ExitCodes.InvalidBlock);
     }
 
-    private static void RaiseInvalidBlock(IBlockchainProcessor processor)
+    private static void RaiseInvalidBlock(IBlockProcessingQueue processingQueue)
     {
-        FieldInfo field = processor.GetType().GetField(nameof(IBlockchainProcessor.InvalidBlock), BindingFlags.Instance | BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException($"InvalidBlock event field not found on {processor.GetType().FullName}");
-        EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? handler = (EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>?)field.GetValue(processor);
-        handler?.Invoke(processor, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = Build.A.Block.TestObject });
+        FieldInfo field = processingQueue.GetType().GetField(nameof(IBlockProcessingQueue.InvalidBlock), BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"InvalidBlock event field not found on {processingQueue.GetType().FullName}");
+        EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? handler = (EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>?)field.GetValue(processingQueue);
+        handler?.Invoke(processingQueue, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = Build.A.Block.TestObject });
     }
 }

@@ -5,29 +5,36 @@ using System;
 using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,6 +45,8 @@ namespace Nethermind.TxPool.Test
     [TestFixture]
     public partial class TxPoolTests
     {
+        private static readonly TimeSpan BlockedStorageReleaseTimeout = TimeSpan.FromMilliseconds(Timeout * 3);
+
         [Test]
         public void should_reject_blob_tx_if_blobs_not_supported([Values(true, false)] bool isBlobSupportEnabled)
         {
@@ -56,6 +65,49 @@ namespace Nethermind.TxPool.Test
                 ? AcceptTxResult.Accepted
                 : AcceptTxResult.NotSupportedTxType));
         }
+
+        // A type-3 declaring no blobs is the SupportsBlobs-true/CarriesBlobs-false shape; the inverse, a
+        // blob-carrying frame tx, is pinned by Frame_tx_pool_routing_follows_the_blob_count. New here: the pool counts.
+        [Test]
+        public void should_reject_blob_tx_with_empty_blob_hashes()
+        {
+            _txPool = CreatePool(new TxPoolConfig(), GetCancunSpecProvider());
+
+            Transaction tx = BuildBlobTxDeclaringNoBlobs([])
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result.ToString(), Does.Contain(TxErrorMessages.BlobTxMissingBlobs));
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        // The absent-hash-list variant cannot be encoded, so it cannot be signed, hashed, gossiped or stored, and
+        // decoding always yields a list. In-process producers normalise it to the empty list covered above.
+        [Test]
+        public void blob_tx_with_absent_blob_hashes_cannot_be_encoded()
+        {
+            Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
+
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>()
+                .With.Message.Contains($"{nameof(Transaction.BlobVersionedHashes)} is required"));
+        }
+
+        private static TransactionBuilder<Transaction> BuildBlobTxDeclaringNoBlobs(byte[][] blobVersionedHashes) =>
+            Build.A.Transaction
+                .WithType(TxType.Blob)
+                .WithNonce(0)
+                .WithTo(TestItem.AddressB)
+                .WithMaxFeePerBlobGas(1)
+                .WithBlobVersionedHashes(blobVersionedHashes)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei);
 
         [Test]
         public void should_reject_blob_tx_if_max_size_is_exceeded([Values(true, false)] bool sizeExceeded, [Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
@@ -246,6 +298,874 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task should_revalidate_persistent_blob_transactions_after_fork()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            _txPool = CreatePool(txPoolConfig, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+        }
+
+        [Test]
+        public async Task should_revalidate_blob_body_held_by_pending_storage_update()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 4
+            };
+            FailingBlobTxUpdateStorage storage = new();
+            await using TxPool txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            _txPool = txPool;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Osaka.Instance);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.True);
+
+            Transaction cacheEvictor = CreateBlobTx(TestItem.PrivateKeyB, releaseSpec: Osaka.Instance);
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            storage.DeletePersistedTransaction(transaction);
+
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            bool found = _txPool.TryGetPendingBlobTransaction(transaction.Hash!, out Transaction pendingTransaction);
+            BlobCellMask pendingMask = found
+                ? ((ShardBlobNetworkWrapper)pendingTransaction.NetworkWrapper!).CellMask
+                : BlobCellMask.Empty;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+                Assert.That(found, Is.True);
+                Assert.That(pendingMask, Is.EqualTo(initialMask | updateMask));
+            }
+        }
+
+        [Test]
+        public async Task should_revalidate_persistent_blob_transactions_on_startup()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            IBlobTxStorage blobTxStorage = new BlobTxStorage();
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(Osaka.Instance), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            await _txPool.DisposeAsync();
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(Amsterdam.Instance), txStorage: blobTxStorage);
+
+            Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
+        }
+
+        [Test]
+        public async Task should_skip_full_blob_revalidation_on_unchanged_restart()
+        {
+            BlockHeader head = _blockTree.Head.Header;
+            _blockTree.BestSuggestedHeader = head;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TrackingBlobTxStorage storage = new();
+            TestSpecProvider specProvider = new(Cancun.Instance);
+
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+            await _txPool.DisposeAsync();
+
+            storage.ResetFullReadCount();
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+                Assert.That(_txPool.IsRevalidatedFor(head), Is.True);
+                Assert.That(storage.FullReadCount, Is.Zero);
+            }
+        }
+
+        [Test]
+        public async Task should_not_reuse_persisted_validation_for_validator_without_fingerprint()
+        {
+            BlockHeader head = _blockTree.Head.Header;
+            _blockTree.BestSuggestedHeader = head;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TrackingBlobTxStorage storage = new();
+            TestSpecProvider specProvider = new(Cancun.Instance);
+            ITxValidator acceptingValidator = Substitute.For<ITxValidator>();
+            acceptingValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage, specChangeTxValidator: acceptingValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            ITxValidator rejectingValidator = Substitute.For<ITxValidator>();
+            rejectingValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>())
+                .Returns(new ValidationResult("changed validator behavior"));
+            storage.ResetFullReadCount();
+            _txPool = CreatePool(txPoolConfig, specProvider, txStorage: storage, specChangeTxValidator: rejectingValidator);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
+                Assert.That(() => _txPool.IsRevalidatedFor(head), Is.True.After(Timeout, 10));
+                Assert.That(storage.FullReadCount, Is.GreaterThan(0));
+            }
+        }
+
+        [Test]
+        public async Task should_revalidate_same_named_spec_on_restart()
+        {
+            BlockHeader head = _blockTree.Head.Header;
+            _blockTree.BestSuggestedHeader = head;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TrackingBlobTxStorage storage = new();
+            IReleaseSpec preForkSpec = new NamedReleaseSpec(Prague.Instance, "Custom");
+            IReleaseSpec postForkSpec = new NamedReleaseSpec(Osaka.Instance, "Custom");
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(preForkSpec), txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Prague.Instance)
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(postForkSpec), txStorage: storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
+                Assert.That(() => _txPool.IsRevalidatedFor(head), Is.True.After(Timeout, 10));
+            }
+        }
+
+        [Test]
+        public async Task should_revalidate_differently_named_spec_on_restart()
+        {
+            BlockHeader head = _blockTree.Head.Header;
+            _blockTree.BestSuggestedHeader = head;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            TrackingBlobTxStorage storage = new();
+            IReleaseSpec preForkSpec = new NamedReleaseSpec(Cancun.Instance, "Fork A");
+            IReleaseSpec postForkSpec = new NamedReleaseSpec(Cancun.Instance, "Fork B");
+
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(preForkSpec), txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            await _txPool.DisposeAsync();
+
+            storage.ResetFullReadCount();
+            _txPool = CreatePool(txPoolConfig, new TestSpecProvider(postForkSpec), txStorage: storage);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => _txPool.IsRevalidatedFor(head), Is.True.After(Timeout, 10));
+                Assert.That(storage.FullReadCount, Is.GreaterThan(0));
+            }
+        }
+
+        [Test]
+        public void should_not_load_persistent_blob_rejected_by_light_fork_validation()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp,
+                }
+            });
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+                provider,
+                txStorage: storage);
+
+            Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
+            storage.DidNotReceiveWithAnyArgs().TryGetMany(default, default, default);
+        }
+
+        [Test]
+        public void reloaded_blobs_are_kept_when_head_state_is_unavailable()
+        {
+            // Soak #13577: after a Flat repair resync, headers/HEAD remain but state was Clear()'d.
+            // Persistent blob txs are reloaded and TxPool ctor used to die in UpdateBucketsWithoutRevalidation
+            // (MissingTrieNodeException from TryGetAccount) → docker restart loop. Unknown state is not an
+            // empty account either: the reloaded blobs must stay pooled and persisted until state is back.
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(_ => throw MissingHeadState());
+
+            Assert.DoesNotThrow(() => _txPool = CreatePoolWithPersistentBlobs(headInfo, storage));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            storage.DidNotReceiveWithAnyArgs().Delete(default, default);
+        }
+
+        [Test]
+        public async Task reloaded_blobs_see_real_account_once_head_state_is_back()
+        {
+            const ulong accountNonce = 2;
+            bool stateAvailable = false;
+            IBlobTxStorage storage = CreateStorageWithOneReloadedBlobTx();
+            ChainHeadInfoProvider headInfo = CreateHeadInfoWithState(callInfo =>
+            {
+                if (!stateAvailable) throw MissingHeadState();
+                callInfo[1] = new AccountStruct(accountNonce, UInt256.MaxValue);
+                return true;
+            });
+
+            _txPool = CreatePoolWithPersistentBlobs(headInfo, storage);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+
+            stateAvailable = true;
+            // Had the failed lookup been cached as TotallyEmpty, the pooled nonce-0 tx would yield 1 here.
+            Assert.That(_txPool.GetLatestPendingNonce(TestItem.AddressA), Is.EqualTo(accountNonce));
+
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            storage.ReceivedWithAnyArgs(1).Delete(default, default);
+        }
+
+        // The constructor's head-state guard covers the bucket update only, but restoring a blob-carrying frame tx
+        // reads head state first, to index a delegated sender. Neither the missing state nor a sender with code may
+        // stop the constructor or leave the second record out of the ledgers, which the checked build compares
+        // against the pool at the next head.
+        [Test]
+        public async Task reloaded_frame_blobs_seed_every_ledger_when_head_state_is_unavailable([Values] bool senderHasCode)
+        {
+            bool stateAvailable = false;
+            Transaction[] restored = [RestorableFrameBlobTx(nonce: 0, payer: TestItem.AddressC), RestorableFrameBlobTx(nonce: 1, payer: TestItem.AddressD)];
+            IBlobTxStorage storage = StorageServing(restored);
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(callInfo =>
+            {
+                if (!stateAvailable && !senderHasCode) throw MissingHeadState();
+                callInfo[1] = senderHasCode
+                    ? new AccountStruct(0, UInt256.MaxValue, Keccak.EmptyTreeHash, TestItem.KeccakA)
+                    : new AccountStruct(0, UInt256.MaxValue);
+                return true;
+            });
+            state.GetCode(Arg.Any<Address>()).Returns(_ => stateAvailable ? Array.Empty<byte>() : throw MissingHeadState());
+            ChainHeadInfoProvider headInfo = new(new ChainHeadSpecProvider(GetBogotaSpecProvider(), _blockTree), _blockTree, state);
+
+            Assert.DoesNotThrow(() => _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 10 },
+                GetBogotaSpecProvider(),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage));
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(2));
+
+            stateAvailable = true;
+            Block nextBlock = Build.A.Block.WithNumber(_blockTree.Head.Number + 1).TestObject;
+            _blockTree.BestSuggestedHeader = nextBlock.Header;
+            await RaiseBlockAddedToMainAndWaitForNewHead(nextBlock);
+            AssertRevalidatedForHead();
+        }
+
+        private Transaction RestorableFrameBlobTx(ulong nonce, Address payer)
+        {
+            Transaction tx = BuildBlobFrameTx(nonce, blobCount: 1, paymaster: payer);
+            tx.PayerAddress = payer;
+            tx.PayerExposure = 1.GWei;
+            return tx;
+        }
+
+        private IBlobTxStorage CreateStorageWithOneReloadedBlobTx() =>
+            StorageServing(CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance));
+
+        /// <remarks>
+        /// Serves the bodies as well as the light records: the constructor's spec revalidation runs in the background
+        /// and evicts a record whose body storage cannot return.
+        /// </remarks>
+        private static IBlobTxStorage StorageServing(params Transaction[] restored)
+        {
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns(Array.ConvertAll(restored, tx => new LightTransaction(tx)));
+            storage.TryGetMany(default, default, default).ReturnsForAnyArgs(callInfo =>
+            {
+                TxLookupKey[] keys = callInfo.ArgAt<TxLookupKey[]>(0);
+                int count = callInfo.ArgAt<int>(1);
+                Transaction[] results = callInfo.ArgAt<Transaction[]>(2);
+                int found = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    results[i] = Array.Find(restored, tx => tx.Hash!.ValueHash256 == keys[i].Hash);
+                    if (results[i] is not null) found++;
+                }
+
+                return found;
+            });
+            return storage;
+        }
+
+        private ChainHeadInfoProvider CreateHeadInfoWithState(Func<NSubstitute.Core.CallInfo, bool> tryGetAccount)
+        {
+            IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
+            state.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>()).Returns(tryGetAccount);
+            return new ChainHeadInfoProvider(new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree), _blockTree, state);
+        }
+
+        private TxPool CreatePoolWithPersistentBlobs(ChainHeadInfoProvider headInfo, IBlobTxStorage storage) => CreatePool(
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+            GetCancunSpecProvider(),
+            chainHeadInfoProvider: headInfo,
+            txStorage: storage);
+
+        private static MissingTrieNodeException MissingHeadState() =>
+            new("State for block 11739434 is unavailable", null, TreePath.Empty, Keccak.Zero);
+
+        [Test]
+        public async Task should_allow_rebroadcast_of_blob_with_new_proofs_after_fork_when_balance_is_insufficient()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp + 1,
+                }
+            });
+
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage }, provider);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction oldProofTransaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithValue(1)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(oldProofTransaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            await AddEmptyBlock();
+            IReleaseSpec newProofSpec = provider.GetSpec(new ForkActivation(0, head.Timestamp + 1));
+            Transaction newProofTransaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: newProofSpec)
+                .WithValue(1)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(newProofTransaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        [Test]
+        public async Task should_flush_failed_revalidation_deletes_before_publishing_marker()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+            {
+                Params = new ChainSpecParamsJson
+                {
+                    Eip4844TransitionTimestamp = head.Timestamp,
+                    Eip7594TransitionTimestamp = head.Timestamp + 1,
+                }
+            });
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                PersistentBlobStorageSize = 1
+            };
+            FailingAtomicBlobTxStorage storage = new() { DeleteManyFailuresRemaining = 2 };
+            _txPool = CreatePool(txPoolConfig, provider, txStorage: storage);
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Not.Null);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await AddEmptyBlock();
+            Assert.That(() => storage.DeleteBatchSizes.Count, Is.EqualTo(1).After(Timeout, 10));
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+
+            await AddEmptyBlock();
+            Assert.That(() => storage.DeleteBatchSizes.Count, Is.EqualTo(2).After(Timeout, 10));
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+
+            await AddEmptyBlock();
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 1 }));
+                Assert.That(storage.GetAll(), Is.Empty);
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
+        public void should_not_persist_spec_change_marker_without_validation_fingerprint()
+        {
+            FailingAtomicBlobTxStorage storage = new();
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage },
+                GetCancunSpecProvider(),
+                txStorage: storage,
+                specChangeTxValidator: Always.Valid);
+
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+        }
+
+        [Test]
+        public async Task should_not_publish_marker_when_pending_blob_update_delete_fails()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            FailingAtomicBlobTxStorage storage = new()
+            {
+                ReplaceFailuresRemaining = int.MaxValue,
+                DeleteManyFailuresRemaining = int.MaxValue
+            };
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = BlobsSupportMode.Storage,
+                    BlobCacheSize = 1,
+                    PersistentBlobStorageSize = 1
+                },
+                provider,
+                txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells), Is.True);
+
+            await AddEmptyBlock();
+
+            Assert.That(() => storage.DeleteBatchSizes.Count, Is.GreaterThanOrEqualTo(1).After(Timeout, 10));
+            Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+        }
+
+        [Test]
+        public async Task should_publish_marker_after_in_flight_blob_update_completes_without_another_head()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            using BlockingBlobTxStorage storage = new();
+            _txPool = CreatePool(
+                new TxPoolConfig
+                {
+                    BlobsSupport = BlobsSupportMode.Storage,
+                    BlobCacheSize = 1,
+                    PersistentBlobStorageSize = 1
+                },
+                provider,
+                txStorage: storage);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithAccessList(BuildUnderGassedAccessList())
+                .WithGasLimit(UnderGassedTransactionGasLimit)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Task<bool> update = RunOnDedicatedThread(() =>
+                _txPool.TryMergeBlobCells(transaction.Hash!, updateMask, updateCells));
+            Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            try
+            {
+                await AddEmptyBlock();
+                Assert.That(
+                    () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
+                    Is.True.After(Timeout, 10));
+                Assert.That(storage.ReleaseTimedOut, Is.False, "the deadlock guard released the update, so it was no longer in flight");
+                Assert.That(((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(), Is.Null);
+            }
+            finally
+            {
+                storage.ReleaseFirstUpdate();
+            }
+
+            Assert.That(await update.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(
+                () => ((ISpecChangeValidationStorage)storage).GetSpecChangeValidationMarker(),
+                Is.Not.Null.After(Timeout, 10));
+        }
+
+        [Test]
+        public void should_retry_batched_revalidation_deletes_after_storage_failure()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            Transaction secondTransaction = CreateBlobTx(TestItem.PrivateKeyB);
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingAtomicBlobTxStorage storage,
+                out IAccountStateProvider accounts);
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(blobPool.TryInsert(secondTransaction.Hash, secondTransaction, out _), Is.True);
+            storage.DeleteManyFailuresRemaining = 1;
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.Count, Is.Zero);
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 1, 2 }));
+            }
+        }
+
+        [Test]
+        public void should_retain_pending_revalidation_delete_through_failed_reinsertion_update()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            FailingAtomicBlobTxStorage storage = new();
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, updateMask, out byte[][] updateCells), Is.True);
+            ConvertToSparseBlobTransaction(transaction, initialMask);
+            storage.Add(transaction);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance, timeProvider);
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            UInt256 originalTimestamp = transaction.Timestamp;
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+
+            transaction.Timestamp += UInt256.One;
+            storage.ReplaceFailuresRemaining = 1;
+            Assert.That(() => blobPool.TryInsert(transaction.Hash, transaction, out _), Throws.TypeOf<InvalidOperationException>());
+            Assert.That(blobPool.TryFlushPendingRevalidationDeletes(), Is.False);
+
+            Assert.That(
+                blobPool.MergeCells(transaction.Hash!.ValueHash256, updateMask, updateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.TryFlushPendingRevalidationDeletes(), Is.True);
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    originalTimestamp,
+                    out _), Is.False);
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    transaction.Timestamp,
+                    out _), Is.True);
+            }
+        }
+
+        [Test]
+        public void should_not_retry_stale_revalidation_delete_after_transaction_is_reinserted([Values] bool changeTimestamp)
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            UInt256 originalTimestamp = transaction.Timestamp;
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingAtomicBlobTxStorage storage,
+                out IAccountStateProvider accounts);
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            if (changeTimestamp)
+            {
+                transaction.Timestamp += UInt256.One;
+            }
+
+            Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, KeepAllTransactions), Throws.Nothing);
+            bool persisted = storage.TryGet(transaction.Hash, transaction.SenderAddress!, transaction.Timestamp, out _);
+            bool obsoleteTransactionPersisted = storage.TryGet(transaction.Hash, transaction.SenderAddress!, originalTimestamp, out _);
+            bool elidedTransactionPersisted = storage.TryGetWithoutBlobs(transaction.Hash, transaction.SenderAddress!, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.Count, Is.EqualTo(1));
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1 }));
+                Assert.That(storage.ReplaceDeleteBatchSizes, Is.EqualTo(new[] { 1 }));
+                Assert.That(persisted, Is.True);
+                Assert.That(obsoleteTransactionPersisted, Is.EqualTo(!changeTimestamp));
+                Assert.That(elidedTransactionPersisted, Is.True);
+                Assert.That(storage.GetAll(), Is.Not.Empty);
+            }
+        }
+
+        [Test]
+        public void should_consume_retained_delete_when_non_atomic_storage_reinserts_transaction()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            UInt256 originalTimestamp = transaction.Timestamp;
+            using BlockingBlobTxStorage innerStorage = new(failedDeleteCount: 1);
+            innerStorage.ReleaseFirstUpdate();
+            NonAtomicBlobTxStorage storage = new(innerStorage);
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            transaction.Timestamp += UInt256.One;
+
+            Assert.That(blobPool.TryInsert(transaction.Hash, transaction, out _), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.TryFlushPendingRevalidationDeletes(), Is.True);
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    originalTimestamp,
+                    out _), Is.False);
+                Assert.That(storage.TryGet(
+                    transaction.Hash!.ValueHash256,
+                    transaction.SenderAddress!,
+                    transaction.Timestamp,
+                    out _), Is.True);
+            }
+        }
+
+        [Test]
+        public void should_preserve_retained_delete_when_replacement_fails()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            UInt256 originalTimestamp = transaction.Timestamp;
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingAtomicBlobTxStorage storage,
+                out IAccountStateProvider accounts);
+
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            transaction.Timestamp += UInt256.One;
+            storage.ReplaceFailuresRemaining = 1;
+            Assert.That(
+                () => blobPool.TryInsert(transaction.Hash, transaction, out _),
+                Throws.TypeOf<InvalidOperationException>());
+
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blobPool.Count, Is.Zero);
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 2 }));
+                Assert.That(storage.TryGet(transaction.Hash, transaction.SenderAddress!, originalTimestamp, out _), Is.False);
+                Assert.That(storage.GetAll(), Is.Empty);
+            }
+        }
+
+        [Test]
+        public void should_delete_newer_body_after_replacement_commits_then_throws()
+        {
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA);
+            using PersistentBlobTxDistinctSortedPool blobPool = CreateFailingBlobPool(
+                transaction,
+                out FailingAtomicBlobTxStorage storage,
+                out IAccountStateProvider accounts);
+            Assert.That(
+                () => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions),
+                Throws.TypeOf<InvalidOperationException>());
+            transaction.Timestamp += UInt256.One;
+            storage.ReplaceFailuresAfterWriteRemaining = 1;
+            Assert.That(
+                () => blobPool.TryInsert(transaction.Hash, transaction, out _),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(storage.TryGet(transaction.Hash, transaction.SenderAddress!, transaction.Timestamp, out _), Is.True);
+
+            Assert.That(() => blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions), Throws.Nothing);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.DeleteBatchSizes, Is.EqualTo(new[] { 1, 2 }));
+                Assert.That(storage.TryGet(transaction.Hash, transaction.SenderAddress!, transaction.Timestamp, out _), Is.False);
+                Assert.That(storage.GetAll(), Is.Empty);
+            }
+        }
+
+        private PersistentBlobTxDistinctSortedPool CreateFailingBlobPool(
+            Transaction transaction,
+            out FailingAtomicBlobTxStorage storage,
+            out IAccountStateProvider accounts,
+            ISpecProvider specProvider = null)
+        {
+            storage = new FailingAtomicBlobTxStorage();
+            storage.Add(transaction);
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                PersistentBlobStorageSize = 2
+            };
+            IComparer<Transaction> comparer = new TransactionComparerProvider(specProvider ?? _specProvider, _blockTree).GetDefaultComparer();
+            accounts = Substitute.For<IAccountStateProvider>();
+            return new PersistentBlobTxDistinctSortedPool(
+                storage,
+                txPoolConfig,
+                comparer,
+                LimboLogs.Instance,
+                new ManualTimeProvider());
+        }
+
+        [Test]
         public void should_load_full_sidecar_from_db_when_getting_blob_tx_after_cache_eviction()
         {
             (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
@@ -258,9 +1178,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs(bool legacyRecord)
+        [Test]
+        public void should_avoid_repeated_full_sidecar_reads_when_getting_blob_tx_without_blobs([Values] bool legacyRecord)
         {
             (CountingBlobTxStorage blobTxStorage, PersistentBlobTxDistinctSortedPool blobPool, Transaction target) =
                 CreatePersistentBlobPoolWithEvictedCacheEntry();
@@ -1078,10 +1997,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isTxValid));
+            int lengthAfterTranslation = isTxValid && isOsakaActivated ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isTxValid)
             {
@@ -1091,6 +2012,11 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                     Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
+                    if (isOsakaActivated)
+                    {
+                        Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                        Assert.That(blobTxAdded.GetLength(), Is.GreaterThan(lengthBeforeTranslation));
+                    }
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -1129,10 +2055,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isConversionEnabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isConversionEnabled));
+            int lengthAfterTranslation = isConversionEnabled ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isConversionEnabled)
             {
@@ -1143,6 +2071,8 @@ namespace Nethermind.TxPool.Test
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(1));
                     Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V0));
                     Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
+                    Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                    Assert.That(blobTxAdded.GetLength(), Is.LessThan(lengthBeforeTranslation));
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -1257,6 +2187,9 @@ namespace Nethermind.TxPool.Test
                         break;
                     case TestAction.Fork:
                         await AddEmptyBlock();
+                        Assert.That(
+                            () => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader),
+                            Is.True.After(Timeout, 10));
                         break;
                     case TestAction.ResetNonce:
                         nonce = 0;
@@ -1301,12 +2234,163 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(block, _blockTree.Head);
         }
 
+        private sealed class TrackingBlobTxStorage : IBlobTxStorage, ISpecChangeValidationStorage
+        {
+            private readonly BlobTxStorage _storage = new();
+
+            public int FullReadCount { get; private set; }
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+            {
+                FullReadCount++;
+                return _storage.TryGet(hash, sender, timestamp, out transaction);
+            }
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results)
+            {
+                FullReadCount += count;
+                return _storage.TryGetMany(keys, count, results);
+            }
+
+            public IEnumerable<LightTransaction> GetAll() => _storage.GetAll();
+
+            public void Add(Transaction transaction) => _storage.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _storage.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                _storage.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                _storage.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) =>
+                _storage.DeleteBlobTransactionsFromBlock(blockNumber);
+
+            string ISpecChangeValidationStorage.GetSpecChangeValidationMarker() =>
+                ((ISpecChangeValidationStorage)_storage).GetSpecChangeValidationMarker();
+
+            void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string marker) =>
+                ((ISpecChangeValidationStorage)_storage).SetSpecChangeValidationMarker(marker);
+
+            public void ResetFullReadCount() => FullReadCount = 0;
+        }
+
+        private sealed class FailingAtomicBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IAtomicBlobTxStorage, ISpecChangeValidationStorage
+        {
+            private readonly BlobTxStorage _storage = new();
+
+            public ConcurrentQueue<int> DeleteBatchSizes { get; } = [];
+
+            public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
+
+            public int DeleteManyFailuresRemaining { get; set; } = 1;
+
+            public int ReplaceFailuresRemaining { get; set; }
+
+            public int ReplaceFailuresAfterWriteRemaining { get; set; }
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
+                _storage.TryGet(hash, sender, timestamp, out transaction);
+
+            public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction) =>
+                _storage.TryGetWithoutBlobs(hash, sender, out transaction);
+
+            public void AddWithoutBlobs(Transaction transaction) => _storage.AddWithoutBlobs(transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
+                _storage.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => _storage.GetAll();
+
+            public void Add(Transaction transaction) => _storage.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _storage.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                _storage.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                _storage.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) =>
+                _storage.DeleteBlobTransactionsFromBlock(blockNumber);
+
+            string ISpecChangeValidationStorage.GetSpecChangeValidationMarker() =>
+                ((ISpecChangeValidationStorage)_storage).GetSpecChangeValidationMarker();
+
+            void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string marker) =>
+                ((ISpecChangeValidationStorage)_storage).SetSpecChangeValidationMarker(marker);
+
+            void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
+            {
+                DeleteBatchSizes.Enqueue(keys.Length);
+                if (DeleteManyFailuresRemaining > 0)
+                {
+                    DeleteManyFailuresRemaining--;
+                    throw new InvalidOperationException();
+                }
+
+                ((IAtomicBlobTxStorage)_storage).DeleteMany(keys);
+            }
+
+            void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+            {
+                ReplaceDeleteBatchSizes.Enqueue(obsoleteTimestamps.Length);
+                if (ReplaceFailuresRemaining > 0)
+                {
+                    ReplaceFailuresRemaining--;
+                    throw new InvalidOperationException();
+                }
+
+                ((IAtomicBlobTxStorage)_storage).Replace(transaction, obsoleteTimestamps);
+                if (ReplaceFailuresAfterWriteRemaining > 0)
+                {
+                    ReplaceFailuresAfterWriteRemaining--;
+                    throw new InvalidOperationException();
+                }
+            }
+        }
+
+        private static void RemoveAllTransactions(
+            in AccountStruct account,
+            EnhancedSortedSet<Transaction> transactions,
+            ref Transaction lastElement,
+            TxDistinctSortedPool.UpdateTransactionDelegate updateTransaction)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                updateTransaction(transactions, tx, changedGasBottleneck: null, lastElement);
+            }
+        }
+
+        private static void KeepAllTransactions(
+            in AccountStruct account,
+            EnhancedSortedSet<Transaction> transactions,
+            ref Transaction lastElement,
+            TxDistinctSortedPool.UpdateTransactionDelegate updateTransaction)
+        {
+        }
+
+        private sealed class NamedReleaseSpec(IReleaseSpec spec, string name) : ReleaseSpecDecorator(spec)
+        {
+            public override string Name => name;
+        }
+
         private Transaction CreateBlobTx(PrivateKey sender, ulong nonce = default, int blobCount = 1, IReleaseSpec releaseSpec = default) => Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(blobCount: blobCount, spec: releaseSpec)
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+
+        private static int GetUncachedLength(Transaction transaction)
+        {
+            Transaction copy = new();
+            transaction.CopyTo(copy, copyHash: true);
+            copy.ClearLengthCache();
+            return copy.GetLength();
+        }
 
         [Test]
         public async Task should_evict_txs_with_too_many_blobs_per_tx_after_fork()
@@ -1338,6 +2422,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
@@ -1372,6 +2457,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
         }
@@ -1394,10 +2480,8 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage()
+        public void should_batch_return_blobs_and_proofs_v1_from_persistent_storage([Values(1, 2)] int blobCount, [Values(1, 2, 16, 256, 257)] int repetitions)
         {
-            // BlobCacheSize = 1 forces cache eviction after the first insert,
-            // so the second tx must be fetched via TryGetMany (Phase 2 DB path).
             TxPoolConfig txPoolConfig = new()
             {
                 BlobsSupport = BlobsSupportMode.Storage,
@@ -1410,40 +2494,64 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
 
             Transaction tx1 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             Transaction tx2 = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithShardBlobTxTypeAndFields(blobCount, spec: new ReleaseSpec() { IsEip7594Enabled = true })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
-                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 3))
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            int expectedSlot = new TxLookupKey(tx1.Hash!, tx1.SenderAddress!, tx1.Timestamp).GetHashCode() & 1023;
+            for (uint timestamp = 0; timestamp < 100_000; timestamp++)
+            {
+                tx2.Timestamp = timestamp;
+                if ((new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023) == expectedSlot)
+                    break;
+            }
+            Assert.That(new TxLookupKey(tx2.Hash!, tx2.SenderAddress!, tx2.Timestamp).GetHashCode() & 1023, Is.EqualTo(expectedSlot));
 
             Assert.That(tx2.BlobVersionedHashes![0], Is.Not.EqualTo(tx1.BlobVersionedHashes![0]));
             Assert.That(_txPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Transaction cacheEvictor = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: new ReleaseSpec() { IsEip7594Enabled = true })
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(1)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 4))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Assert.That(_txPool.SubmitTx(cacheEvictor, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // tx1 was evicted from cache (size=1) when tx2 was inserted,
-            // so at least one must come from DB via TryGetMany
-            byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
-            byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            byte[][] requestedHashes = new byte[repetitions * (blobCount + 1)][];
+            for (int i = 0; i < requestedHashes.Length; i++)
+            {
+                int index = i % (blobCount + 1);
+                requestedHashes[i] = index == blobCount ? tx2.BlobVersionedHashes![0]! : tx1.BlobVersionedHashes![index]!;
+            }
+            byte[][] blobs = new byte[requestedHashes.Length][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[requestedHashes.Length];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(found, Is.EqualTo(2));
-                Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(blobs[1], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
+                Assert.That(found, Is.EqualTo(requestedHashes.Length));
+                for (int i = 0; i < requestedHashes.Length; i++)
+                {
+                    int blobIndex = i % (blobCount + 1);
+                    ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
+                    int index = blobIndex == blobCount ? 0 : blobIndex;
+                    Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
+                    Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)));
+                }
+                Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
         }
 
@@ -1753,6 +2861,32 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
             Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(), Does.Not.ContainKey((AddressAsKey)TestItem.AddressA));
+        }
+
+        [Test]
+        public void should_filter_unready_blob_senders_from_production_view()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            UInt256 baseFee = 2.GWei;
+
+            PendingTransactionsView unfiltered = _txPool.GetPendingForProduction(_blockTree.Head!.Header, filterToReadyTx: false, baseFee);
+            PendingTransactionsView filtered = _txPool.GetPendingForProduction(_blockTree.Head.Header, filterToReadyTx: true, baseFee);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(unfiltered.BlobTransactions, Does.ContainKey((AddressAsKey)TestItem.AddressA));
+                Assert.That(filtered.BlobTransactions, Does.Not.ContainKey((AddressAsKey)TestItem.AddressA));
+            }
         }
 
         [Test]
@@ -2511,21 +3645,34 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
             BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
-            BlobCellMask updateMask = BlobCellMask.FromIndices([3]);
-            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, updateMask, out byte[][] updateCells), Is.True);
+            BlobCellMask firstUpdateMask = BlobCellMask.FromIndices([3]);
+            BlobCellMask secondUpdateMask = BlobCellMask.FromIndices([5]);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, firstUpdateMask, out byte[][] firstUpdateCells), Is.True);
+            Assert.That(BlobCellsHelper.TryGetFlattenedCells(fullWrapper, secondUpdateMask, out byte[][] secondUpdateCells), Is.True);
             ConvertToSparseBlobTransaction(fullBlobTx, initialMask);
             Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
 
-            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
+            Task<BlobCellMergeResult> update = RunOnDedicatedThread(() =>
+                blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, firstUpdateMask, firstUpdateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(
+                blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, secondUpdateMask, secondUpdateCells),
+                Is.EqualTo(BlobCellMergeResult.Accepted));
             storage.ReleaseFirstUpdate();
             Assert.That(await update, Is.EqualTo(BlobCellMergeResult.Accepted));
+            Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromMilliseconds(100)), Is.False);
 
             timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
             Assert.That(storage.WaitForSuccessfulUpdate(TimeSpan.FromSeconds(1)), Is.True);
 
             Assert.That(storage.TryGet(fullBlobTx.Hash!.ValueHash256, fullBlobTx.SenderAddress!, fullBlobTx.Timestamp, out Transaction storedTx), Is.True);
-            Assert.That(((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask, Is.EqualTo(initialMask | updateMask));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(
+                    ((ShardBlobNetworkWrapper)storedTx.NetworkWrapper!).CellMask,
+                    Is.EqualTo(initialMask | firstUpdateMask | secondUpdateMask));
+                Assert.That(storage.ReplaceDeleteBatchSizes, Is.EqualTo(new[] { 0, 0, 0 }));
+            }
         }
 
         [Test]
@@ -2644,11 +3791,16 @@ namespace Nethermind.TxPool.Test
 
             Task<BlobCellMergeResult> update = RunOnDedicatedThread(() => blobPool.MergeCells(fullBlobTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForFirstUpdate(TimeSpan.FromSeconds(5)), Is.True);
-            Task<bool> removal = RunOnDedicatedThread(() => blobPool.TryRemove(fullBlobTx.Hash!.ValueHash256));
-            bool removed;
+            IAccountStateProvider accounts = Substitute.For<IAccountStateProvider>();
+            Task<bool> removal = RunOnDedicatedThread(() =>
+            {
+                blobPool.UpdatePoolForRevalidation(accounts, RemoveAllTransactions);
+                return true;
+            });
             try
             {
-                removed = await removal.WaitAsync(TimeSpan.FromSeconds(5));
+                await removal.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(blobPool.TryFlushPendingRevalidationDeletes(), Is.False);
             }
             finally
             {
@@ -2659,7 +3811,8 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(updated, Is.EqualTo(BlobCellMergeResult.Accepted));
-                Assert.That(removed, Is.True);
+                Assert.That(blobPool.Count, Is.Zero);
+                Assert.That(blobPool.TryFlushPendingRevalidationDeletes(), Is.True);
                 Assert.That(storage.WaitForDelete(TimeSpan.FromSeconds(5)), Is.True);
                 Assert.That(storage.TryGet(
                     fullBlobTx.Hash!.ValueHash256,
@@ -2685,8 +3838,9 @@ namespace Nethermind.TxPool.Test
                 Size = 10
             };
             IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
+            ManualTimeProvider timeProvider = new();
             using BlockingBlobTxStorage storage = new(failedDeleteCount: failReinsertion ? 3 : 2);
-            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool blobPool = new(storage, txPoolConfig, comparer, LimboLogs.Instance, timeProvider);
             Transaction fullBlobTx = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
                 .WithMaxFeePerGas(1.GWei)
@@ -2734,6 +3888,8 @@ namespace Nethermind.TxPool.Test
                 Assert.That(blobPool.TryInsert(fullBlobTx.Hash, fullBlobTx, out _), Is.True);
             }
 
+            // Advance beyond the maximum backoff so every pending retry is due.
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMinutes(1));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(
@@ -2762,6 +3918,12 @@ namespace Nethermind.TxPool.Test
                         fullBlobTx.SenderAddress!,
                         removedTimestamp,
                         out _), Is.False);
+                }
+
+                Assert.That(storage.ReplaceDeleteBatchSizes, Does.Contain(1));
+                if (changeTimestamp && failReinsertion && removeAfterFailedReinsertion)
+                {
+                    Assert.That(storage.DeleteBatchSizes, Does.Contain(2));
                 }
             }
         }
@@ -2865,23 +4027,39 @@ namespace Nethermind.TxPool.Test
             Task<BlobCellMergeResult> merge = RunOnDedicatedThread(() =>
                 blobPool.MergeCells(sparseTx.Hash!.ValueHash256, updateMask, updateCells));
             Assert.That(storage.WaitForBlockedRead(TimeSpan.FromSeconds(5)), Is.True);
+            using ManualResetEventSlim lookupCompleted = new();
             Task<bool> concurrentLookup = RunOnDedicatedThread(() =>
-                blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _));
+            {
+                try
+                {
+                    return blobPool.TryGetValue(cacheEvictor.Hash!.ValueHash256, out _);
+                }
+                finally
+                {
+                    lookupCompleted.Set();
+                }
+            });
+            bool lookupCompletedBeforeRelease;
             try
             {
-                Assert.That(await concurrentLookup.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+                lookupCompletedBeforeRelease = lookupCompleted.Wait(TimeSpan.FromSeconds(5));
             }
             finally
             {
                 storage.ReleaseBlockedRead();
             }
 
-            Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
+            await Task.WhenAll(merge, concurrentLookup);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(lookupCompletedBeforeRelease, Is.True);
+                Assert.That(await concurrentLookup, Is.True);
+                Assert.That(await merge, Is.EqualTo(BlobCellMergeResult.Accepted));
+            }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal(bool legacyRecord)
+        [Test]
+        public async Task should_not_return_or_restore_sidecar_free_record_after_concurrent_removal([Values] bool legacyRecord)
         {
             (BlockingReadBlobTxStorage storage, PersistentBlobTxDistinctSortedPool blobPool, Transaction storedTx) =
                 CreatePersistentBlobPoolWithBlockingReadStorage();
@@ -3364,6 +4542,29 @@ namespace Nethermind.TxPool.Test
             public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => inner.DeleteBlobTransactionsFromBlock(blockNumber);
         }
 
+        private sealed class NonAtomicBlobTxStorage(BlockingBlobTxStorage inner) : IBlobTxStorage
+        {
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
+                inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
+                inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => inner.GetAll();
+
+            public void Add(Transaction transaction) => inner.Add(transaction);
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                inner.AddBlobTransactionsFromBlock(blockNumber, blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => inner.DeleteBlobTransactionsFromBlock(blockNumber);
+        }
+
         private sealed class RehydratingBlobTxDistinctSortedPool(
             int capacity,
             IComparer<Transaction> comparer,
@@ -3436,6 +4637,9 @@ namespace Nethermind.TxPool.Test
                 _inner.Add(transaction);
             }
 
+            public void DeletePersistedTransaction(Transaction transaction) =>
+                _inner.Delete(transaction.Hash!, transaction.Timestamp);
+
             public void Delete(in ValueHash256 hash, in UInt256 timestamp)
             {
                 lock (_insertedHashes)
@@ -3483,7 +4687,12 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
+        private sealed class BlockingBlobTxStorage(int failedUpdateCount = 0, int failedDeleteCount = 0) :
+            IBlobTxStorage,
+            IBlobTxMetadataStorage,
+            IAtomicBlobTxStorage,
+            ISpecChangeValidationStorage,
+            IDisposable
         {
             private readonly BlobTxStorage _inner = new();
             private readonly ManualResetEventSlim _firstUpdateEntered = new();
@@ -3494,6 +4703,13 @@ namespace Nethermind.TxPool.Test
             private int _remainingDeleteFailures = failedDeleteCount;
             private int _successfulDeleteCount;
             private int _addCount;
+            private int _releaseTimedOut;
+
+            public ConcurrentQueue<int> DeleteBatchSizes { get; } = [];
+
+            public ConcurrentQueue<int> ReplaceDeleteBatchSizes { get; } = [];
+
+            public bool ReleaseTimedOut => Volatile.Read(ref _releaseTimedOut) != 0;
 
             public bool WaitForFirstUpdate(TimeSpan timeout) => _firstUpdateEntered.Wait(timeout);
 
@@ -3519,14 +4735,35 @@ namespace Nethermind.TxPool.Test
 
             public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
 
-            public void Add(Transaction transaction)
+            public void Add(Transaction transaction) => Persist(transaction, [], replace: false);
+
+            void IAtomicBlobTxStorage.Replace(Transaction transaction, scoped ReadOnlySpan<UInt256> obsoleteTimestamps)
+            {
+                ReplaceDeleteBatchSizes.Enqueue(obsoleteTimestamps.Length);
+                if (!obsoleteTimestamps.IsEmpty)
+                {
+                    BeforeDelete();
+                }
+
+                Persist(transaction, obsoleteTimestamps, replace: true);
+                if (!obsoleteTimestamps.IsEmpty)
+                {
+                    Interlocked.Add(ref _successfulDeleteCount, obsoleteTimestamps.Length);
+                }
+            }
+
+            private void Persist(
+                Transaction transaction,
+                scoped ReadOnlySpan<UInt256> obsoleteTimestamps,
+                bool replace)
             {
                 int addCount = Interlocked.Increment(ref _addCount);
                 if (addCount == 2)
                 {
                     _firstUpdateEntered.Set();
-                    if (!_releaseFirstUpdate.Wait(TimeSpan.FromSeconds(10)))
+                    if (!_releaseFirstUpdate.Wait(BlockedStorageReleaseTimeout))
                     {
+                        Volatile.Write(ref _releaseTimedOut, 1);
                         throw new TimeoutException("Timed out waiting to release the first sparse blob update.");
                     }
 
@@ -3537,7 +4774,15 @@ namespace Nethermind.TxPool.Test
                     throw new InvalidOperationException("Transient sparse blob update failure.");
                 }
 
-                _inner.Add(transaction);
+                if (replace)
+                {
+                    ((IAtomicBlobTxStorage)_inner).Replace(transaction, obsoleteTimestamps);
+                }
+                else
+                {
+                    _inner.Add(transaction);
+                }
+
                 if (addCount > 1)
                 {
                     _successfulUpdate.Set();
@@ -3546,14 +4791,26 @@ namespace Nethermind.TxPool.Test
 
             public void Delete(in ValueHash256 hash, in UInt256 timestamp)
             {
+                BeforeDelete();
+                _inner.Delete(hash, timestamp);
+                Interlocked.Increment(ref _successfulDeleteCount);
+            }
+
+            void IAtomicBlobTxStorage.DeleteMany(scoped ReadOnlySpan<BlobTxDeleteKey> keys)
+            {
+                DeleteBatchSizes.Enqueue(keys.Length);
+                BeforeDelete();
+                ((IAtomicBlobTxStorage)_inner).DeleteMany(keys);
+                Interlocked.Add(ref _successfulDeleteCount, keys.Length);
+            }
+
+            private void BeforeDelete()
+            {
                 _deleteEntered.Set();
                 if (Interlocked.Decrement(ref _remainingDeleteFailures) >= 0)
                 {
                     throw new InvalidOperationException("Transient sparse blob delete failure.");
                 }
-
-                _inner.Delete(hash, timestamp);
-                Interlocked.Increment(ref _successfulDeleteCount);
             }
 
             public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions)
@@ -3564,8 +4821,15 @@ namespace Nethermind.TxPool.Test
 
             public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
 
+            string ISpecChangeValidationStorage.GetSpecChangeValidationMarker() =>
+                ((ISpecChangeValidationStorage)_inner).GetSpecChangeValidationMarker();
+
+            void ISpecChangeValidationStorage.SetSpecChangeValidationMarker(string marker) =>
+                ((ISpecChangeValidationStorage)_inner).SetSpecChangeValidationMarker(marker);
+
             public void Dispose()
             {
+                _releaseFirstUpdate.Set();
                 _firstUpdateEntered.Dispose();
                 _releaseFirstUpdate.Dispose();
                 _deleteEntered.Dispose();
@@ -3613,7 +4877,7 @@ namespace Nethermind.TxPool.Test
 
                 bool found = _inner.TryGet(hash, sender, timestamp, out Transaction snapshot);
                 _readEntered.Set();
-                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                 {
                     throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
                 }
@@ -3633,7 +4897,7 @@ namespace Nethermind.TxPool.Test
                 if (Interlocked.Exchange(ref _blockNextElidedRead, 0) != 0)
                 {
                     _readEntered.Set();
-                    if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                    if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                     {
                         throw new TimeoutException("Timed out waiting to release the sidecar-free transaction read.");
                     }
@@ -3654,7 +4918,7 @@ namespace Nethermind.TxPool.Test
 
                 int found = _inner.TryGetMany(keys, count, results);
                 _readEntered.Set();
-                if (!_releaseRead.Wait(TimeSpan.FromSeconds(10)))
+                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
                 {
                     throw new TimeoutException("Timed out waiting to release the stale blob transaction batch read.");
                 }
@@ -3716,6 +4980,39 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: the retry budget follows the transaction, not the pool its blob count routed it to, so a
+        // blob-carrying frame tx is kept across the same number of heads as a frameless one.
+        [Test]
+        [NonParallelizable]
+        public async Task Blob_carrying_frame_tx_spends_its_eviction_retry_budget_per_head()
+        {
+            long held = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, FrameTxEvictionRetryBudget = 2 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction frameTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            long whilePooled = Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries);
+
+            bool droppedOnFirstHead = _txPool.EvictTransaction(frameTx);
+            int keptForRetry = _txPool.GetPendingBlobTransactionsCount();
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            bool droppedOnSecondHead = _txPool.EvictTransaction(frameTx);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(droppedOnFirstHead, Is.False, "the first production failure on a head is kept");
+                Assert.That(keptForRetry, Is.EqualTo(1), "the blob pool is where a blob-carrying frame tx is kept");
+                Assert.That(droppedOnSecondHead, Is.True, "failing on a second head spends the last unit and evicts");
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero, "it leaves the blob pool once its budget is spent");
+                Assert.That(whilePooled, Is.EqualTo(held + 1), "the blob pool's insert opens the record");
+                Assert.That(Volatile.Read(ref Metrics.FrameTxEvictionRetryLedgerEntries), Is.EqualTo(held),
+                    "and the blob pool's removal releases it");
+            }
+        }
+
         // EIP-8141: at the shipped blob mode the pool stores a frameless light record, so this is the only
         // shape that exercises the cap's counting path end to end.
         [Test]
@@ -3747,17 +5044,56 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // EIP8141-GAP: this pins a known bypass, not correct behaviour. A reloaded record carries no paymaster,
-        // so it takes no slot; the key cannot be persisted until the light-record trailing-field layout is settled
-        // (two adjacent optional sequences are ambiguous), which is why the fix is not here. Asserted so that a
-        // half-fix encoding the key on write but not on read fails here rather than silently under-counting.
+        // EIP-8141: the persistent blob pool takes the light record before it writes the body, so a throwing
+        // storage leaves the record pooled. The reservations are the pooled record's from that point on, and
+        // releasing them on the way out would free a slot the record still holds.
         [Test]
-        public void Restored_blob_carrying_frame_tx_bypasses_the_sponsor_cap_until_its_key_is_persisted()
+        public async Task Blob_carrying_frame_tx_pooled_by_a_throwing_storage_write_keeps_its_reservations()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs };
+            ThrowingBlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction Sponsored(PrivateKey sender) =>
+                BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: sender);
+
+            Transaction pooled = Sponsored(TestItem.PrivateKeyA);
+            blobTxStorage.ThrowOnAdd = true;
+            Assert.That(() => _txPool.SubmitTx(pooled, TxHandlingOptions.None), Throws.InstanceOf<InvalidOperationException>());
+            blobTxStorage.ThrowOnAdd = false;
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the failed write leaves the record pooled");
+
+            // The ledgers are only checked against pool membership on a head change.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            AcceptTxResult whilePooled = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(pooled.Hash);
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(whilePooled, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached),
+                    "the pooled record still holds its sponsor's slot");
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.Accepted), "and frees it once, on removal");
+            }
+        }
+
+        // EIP-8141: the cap is summed over the pending set, so a record that survived a restart has to keep
+        // holding its sponsor's slot, and to free it on removal.
+        [Test]
+        public async Task Restored_blob_carrying_frame_tx_keeps_its_sponsor_slot_across_a_restart()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
-            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD })
+            foreach (PrivateKey sender in new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC })
             {
                 EnsureSenderBalance(sender.Address, UInt256.MaxValue);
             }
@@ -3769,21 +5105,26 @@ namespace Nethermind.TxPool.Test
             Transaction restored = Sponsored(TestItem.PrivateKeyA);
             Assert.That(_txPool.SubmitTx(restored, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
+            // The bookkeeping check runs only on a head change, and the restore is the one place a slot is taken
+            // that the accumulator never sees being taken, so the seeded ledger needs a head to be checked at all.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "a new head must not disturb what the cap is read against");
+
             AcceptTxResult afterRestart = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
-            AcceptTxResult beyondTheHole = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
 
             _txPool.RemoveTransaction(restored.Hash);
-            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyD), TxHandlingOptions.None);
+            AcceptTxResult afterRestoredRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.Accepted), "the bypass: the reloaded record has no sponsor to count");
-                Assert.That(beyondTheHole, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the bypass costs one slot per restart rather than being unbounded");
-                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "a record that took no slot must at least not free one");
+                Assert.That(afterRestart, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached), "the reloaded record still holds its sponsor's slot");
+                Assert.That(afterRestoredRemoval, Is.EqualTo(AcceptTxResult.Accepted), "removing it frees the slot it kept");
             }
         }
 
@@ -3860,37 +5201,52 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: FixtureHeadTimestamp + 1_000, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
                 "an expired blob-carrying frame tx must be evicted from the blob pool on a new head");
         }
 
-        // The deadline lives in the frames, which a reloaded light record does not have — so without it
-        // persisted the sweep cannot see the transaction and it never leaves the pool.
-        [Test]
-        public async Task Expired_blob_carrying_frame_tx_is_evicted_after_a_restart()
+        /// <summary>Head timestamp the expiry cases below are stated against, so each deadline names its own
+        /// side of the boundary rather than repeating a literal the head could drift away from.</summary>
+        private const ulong ExpiryHeadTimestamp = FixtureHeadTimestamp + 1_500;
+
+        // With persistent storage the pool holds the frameless light record, not the submitted transaction, so
+        // the sweep reads the deadline that record carries: built at admission, or decoded off disk after a restart.
+        [TestCase(ExpiryHeadTimestamp - 1, 0, false, TestName = "a live light record behind the head expires")]
+        [TestCase(ExpiryHeadTimestamp, 1, false, TestName = "a live light record at the head timestamp survives")]
+        [TestCase(ExpiryHeadTimestamp + 1, 1, false, TestName = "a live light record ahead of the head survives")]
+        [TestCase(ExpiryHeadTimestamp - 1, 0, true, TestName = "a reloaded deadline behind the head still expires")]
+        [TestCase(ExpiryHeadTimestamp, 1, true, TestName = "a reloaded deadline at the head timestamp survives")]
+        [TestCase(ExpiryHeadTimestamp + 1, 1, true, TestName = "a reloaded deadline ahead of the head survives")]
+        public async Task Expiring_blob_carrying_frame_tx_expires_on_the_deadline_its_record_carries(ulong deadline, int expectedPending, bool restart)
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, PersistentBlobStorageSize = 10, BlobCacheSize = 10 };
             BlobTxStorage blobTxStorage = new();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: deadline, withSidecar: true);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
-            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must survive the restart");
+            if (restart)
+            {
+                // A fresh pool over the same storage stands in for a node restart, and the old one is disposed
+                // so that only one of them answers the head below.
+                await _txPool.DisposeAsync();
+                _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            }
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the transaction must be pooled before the head moves");
 
-            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
-                "a reloaded blob-carrying frame tx must still expire out of the pool");
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(ExpiryHeadTimestamp).TestObject);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(expectedPending),
+                "the pooled record must expire on exactly the deadline it carries");
         }
 
         // Restoring the pool evicts as it goes and each eviction decrements the expiry count, so the count must be
@@ -3908,18 +5264,20 @@ namespace Nethermind.TxPool.Test
             // Separate senders: evicting a blob tx also evicts the rest of its own bucket, to leave no nonce gap.
             foreach (Address sender in (Address[])[TestItem.AddressA, TestItem.AddressB])
             {
-                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: 1_000, withSidecar: true);
+                Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, deadline: FixtureHeadTimestamp + 1_000, withSidecar: true);
                 tx.SenderAddress = sender;
                 tx.Hash = tx.CalculateHash();
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it.
+            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it. The old
+            // pool is disposed so that only one of them answers the head below.
             _stateProvider.IncrementNonce(TestItem.AddressA);
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
 
-            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(1_500).TestObject);
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).WithTimestamp(FixtureHeadTimestamp + 1_500).TestObject);
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0),
                 "the surviving transaction must still expire out of the pool");
@@ -3975,8 +5333,291 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        // The persistent pool holds a light record, and it is that record's removal which releases the payer's
-        // reservation — a record without the payer would leak it and lock the payer out of the pool for good.
+        // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
+        // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_prefix_stops_validating_is_evicted_on_a_new_head(
+            [Values(BlobsSupportMode.InMemory, BlobsSupportMode.Storage, BlobsSupportMode.StorageWithReorgs)] BlobsSupportMode blobsSupport)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = blobsSupport, FrameTxMaxVerifyGas = 200_000 };
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            // A code-carrying pay target, so the payer only resolves through the simulator: resolved natively
+            // the stub would never be consulted and neither arm would exercise revalidation.
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF);
+            EnsureSenderBalance(TestItem.AddressA, (UInt256)tx.GasLimit * tx.MaxFeePerGas
+                + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // The reload is the claim under test, so a persistent pool must answer from storage rather than
+            // from the cache it would only have on the first few hundred blob transactions after a restart.
+            if (blobsSupport.IsPersistentStorage()) DropCachedBlobTransactions();
+
+            // The prefix stops validating; only the dependency index decides whether that is ever noticed.
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            // A complete change list naming the sender, so only the dependency index decides whether the
+            // transaction is revalidated at all.
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a pooled prefix that no longer validates must be evicted");
+        }
+
+        // EIP-8141 "Revalidation". The payer is admission metadata, carried on the pooled light record but not
+        // on the wire form blob storage keeps, so the verdict must not be read off the reloaded copy.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_payer_moved_is_evicted_on_a_new_head([Values] bool reloadedFromStorage)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            // Both solvent, so only the move can decide the eviction rather than a bound either side failed.
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            if (reloadedFromStorage) DropCachedBlobTransactions();
+            Assert.That(BlobTransactionIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the arm under test is which copy the sweep reads back");
+            Assert.That(BlobTransactionMetadataIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the sweep reads the sidecar-free copy, so that is the cache the storage arm has to miss");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a moved payer evicts rather than rewrites, or its old reservation is held for good");
+        }
+
+        // EIP-8141 "Revalidation". The sidecar-free read also declines when the record behind the light one is
+        // gone, and that decline repeats every head: carrying it alone would leave the transaction pending,
+        // unjudged and still holding its payer's reservation, which is the exemption the sweep exists to close.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_record_cannot_be_read_is_judged_rather_than_deferred_for_good(
+            [Values] bool recordDeleted)
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            // The light record stays pooled either way, so readability is the single variable. The simulator keeps
+            // accepting, so an arm that can read its record has nothing to evict it for.
+            DropCachedBlobTransactions();
+            if (recordDeleted) blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+
+            Assert.That(BlobPool().TryGetValueWithoutBlobs(tx.Hash!.ValueHash256, out _), Is.EqualTo(!recordDeleted),
+                "the arm under test is whether the sweep can read the record back at all");
+            DropCachedBlobTransactions();
+
+            // One head per carry, then one more, on which the carry is spent and a verdict has to be reached.
+            for (int i = 1; i <= deferralBudget + 1; i++)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+                await RaiseBlockAddedToMainAndWaitForNewHead(block);
+            }
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(recordDeleted ? 0 : 1),
+                "a record no head can read must not outlast the carry, and one every head can read must");
+
+            // What the drop is for: the payer takes one pending transaction at a time, so the slot coming back
+            // is the reservation having been released rather than stranded on an unjudgeable record.
+            AcceptTxResult next = _txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyB), TxHandlingOptions.None);
+            Assert.That(next, recordDeleted ? Is.EqualTo(AcceptTxResult.Accepted) : Is.Not.EqualTo(AcceptTxResult.Accepted),
+                "the payer's reservation leaves with the record, and only with it");
+        }
+
+        // The deferral budget is one allowance per transaction, not one per reason it was deferred: a
+        // sidecar-free read that declines spends the same carry the simulation site later reads.
+        [Test]
+        public async Task Blob_frame_tx_carry_spent_by_declined_reads_is_already_gone_when_the_simulator_defers()
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Unreadable for exactly the budget, so the carry is spent without one simulation having run.
+            DropCachedBlobTransactions();
+            blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+            simulator.ClearReceivedCalls();
+
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            for (int number = 2; number <= deferralBudget; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
+
+            // Readable again, and now the simulator is the one that cannot decide. Only the carry can reach the
+            // transaction from here, so every later simulation is one the carry paid for.
+            blobTxStorage.Add(tx);
+            DropCachedBlobTransactions();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+            for (int number = deferralBudget + 1; number <= deferralBudget + 3; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            // One: the carry the declined reads spent is already gone, so the first node-bound simulation
+            // exhausts it rather than opening a fresh allowance. A per-path carry would have run three.
+            simulator.Received(1).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
+                "an exhausted carry leaves the transaction pending and unjudged, it does not evict");
+        }
+
+        // The persistent pool recreates its light records inside its own constructor, so a restart is the one
+        // path on which nothing raises Inserted and the index would otherwise never hear about them.
+        [Test]
+        public async Task Restored_blob_carrying_frame_tx_is_revalidated_against_a_new_head()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyA), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the sweep reads against");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a record restored at startup must be indexed, or a restart exempts it from revalidation");
+        }
+
+        // A reorg's change list does not describe what the abandoned branch reverted, so the sweep falls back
+        // from CollectAffected to CollectAll and queues every indexed frame transaction at once. That fan-out,
+        // not the single-transaction case, is what a reload under the head write lock is paid for.
+        [Test]
+        public async Task Reorg_revalidates_every_indexed_blob_carrying_frame_tx([Values] bool reorged)
+        {
+            const int pooled = 8;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            for (int i = 0; i < pooled; i++)
+            {
+                Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeys[i], TestItem.Addresses[200 + i]), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled), "the fan-out has to have something to reach");
+
+            // The pool has no last head yet, so until one lands even a change-list-carrying block counts as
+            // non-sequential and takes the fallback. This head is the parent the sequential arm needs.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled),
+                "the parent head still resolves the same payer, so nothing may leave on it");
+
+            // Every reload then goes to blob storage, which is the per-transaction cost the fan-out multiplies.
+            DropCachedBlobTransactions();
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            // Named by nothing these transactions depend on, so the sequential arm's change list reaches none of
+            // them and only the reorg's CollectAll fallback can. Both arms are the same sequential block, so a
+            // reported previous branch is the single variable between them.
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, reorged ? parent : null);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(reorged ? 0 : pooled),
+                "a reorg must revalidate every indexed frame transaction, and a sequential head only those its change list names");
+        }
+
+        /// <summary>Drops every cached blob transaction, full and sidecar-free, so the pool has to answer from
+        /// blob storage.</summary>
+        /// <remarks>Both caches, because revalidation reads the sidecar-free one: leaving it populated would
+        /// let the storage arm answer from memory and stop discriminating.</remarks>
+        private void DropCachedBlobTransactions()
+        {
+            BlobTxCache("_blobTxCache").Clear();
+            BlobTxCache("_blobTxMetadataCache").Clear();
+        }
+
+        private bool BlobTransactionIsCached(Hash256 hash) => BlobTxCache("_blobTxCache").Contains(hash.ValueHash256);
+
+        private bool BlobTransactionMetadataIsCached(Hash256 hash) => BlobTxCache("_blobTxMetadataCache").Contains(hash.ValueHash256);
+
+        /// <summary>The pool's blob collection and its caches, which no public surface exposes.</summary>
+        /// <remarks>Reached by field name, so a rename of either field throws here rather than passing quietly —
+        /// these two helpers are the only place it has to be followed to.</remarks>
+        private PersistentBlobTxDistinctSortedPool BlobPool() =>
+            (PersistentBlobTxDistinctSortedPool)PrivateField(typeof(TxPool), "_blobTransactions").GetValue(_txPool)!;
+
+        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache(string field) =>
+            (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)
+                PrivateField(typeof(PersistentBlobTxDistinctSortedPool), field).GetValue(BlobPool())!;
+
+        private static System.Reflection.FieldInfo PrivateField(Type declaring, string field) =>
+            declaring.GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(declaring.Name, field);
+
         [Test]
         // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
         // transaction admitted alongside would move it.
@@ -4001,7 +5642,7 @@ namespace Nethermind.TxPool.Test
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
             // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
-            // residue from earlier tests, whose pools are never disposed.
+            // residue from the pools that earlier tests left undisposed.
             long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -4011,6 +5652,88 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
             Assert.That(Metrics.FrameTxPayersWithReservedExposure, Is.EqualTo(payersBefore), "the light record's removal must release the whole reservation");
         }
+
+        // The bound is summed over the pending set, and the persistent blob pool is exactly what carries that
+        // set across a restart, so a restored record has to keep counting against its payer. Persisting the
+        // fields without seeding the ledger would be worse than not persisting them: the record's removal
+        // would subtract against another transaction's reservation for the same payer.
+        [Test]
+        public async Task Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            // Distinct senders through one sponsor, so only the sponsor's bound can refuse the second.
+            Transaction first = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Transaction second = SponsoredBlobFrameTx(TestItem.PrivateKeyB);
+            // One wei short of two transactions, so the second fits only if the restored reservation is
+            // wrong or missing: a merely non-zero seeded amount would leave room and admit it.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(second, GetBogotaSpecProvider().GetSpec((ForkActivation)(1, 1)), out UInt256 oneTx), Is.True);
+            EnsureSenderBalance(TestItem.AddressF, oneTx * 2 - 1);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
+
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded),
+                "the restored record must still count against its payer's bound, at the amount it reserved");
+        }
+
+        // The round trip the seeding exists for: a restored record's removal has to release what admission
+        // took, or the sponsor stays locked out for the life of the pool.
+        [Test]
+        public async Task Removing_a_restored_blob_carrying_frame_tx_releases_its_payer_exposure()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+
+            Transaction first = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Transaction second = SponsoredBlobFrameTx(TestItem.PrivateKeyB);
+            // One wei short of two, so the second fits only once the restored reservation is released.
+            Assert.That(FrameTxValidation.TryCalculateMaxCost(second, GetBogotaSpecProvider().GetSpec((ForkActivation)(1, 1)), out UInt256 oneTx), Is.True);
+            EnsureSenderBalance(TestItem.AddressF, oneTx * 2 - 1);
+
+            Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // The old pool is disposed so that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
+
+            Assert.That(_txPool.SubmitTx(second, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
+                "removing the restored record must hand its sponsor's reservation back");
+        }
+
+        private IFrameTxPrefixSimulator SponsorNamingSimulator()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), token: Arg.Any<CancellationToken>(), preempt: Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressF));
+            return simulator;
+        }
+
+        // A code-carrying pay target, so the payer resolves only through the simulator rather than natively.
+        private Transaction SponsoredBlobFrameTx(PrivateKey sender, Address paymaster = null)
+        {
+            // One pending transaction per non-canonical pay target, so pooling several needs a target each.
+            paymaster ??= TestItem.AddressF;
+            _stateProvider.InsertCode([0x60, 0x00], paymaster);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: paymaster, sender: sender);
+            EnsureSenderBalance(sender.Address, (UInt256)tx.GasLimit * tx.MaxFeePerGas
+                + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
+            return tx;
+        }
+
 
         // The persistent pool swaps the tx for a light record, so it is that record the DEBUG bookkeeping check
         // walks; a field the record drops makes it price differently from the ledger admission wrote.
@@ -4089,11 +5812,13 @@ namespace Nethermind.TxPool.Test
 
             Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
 
-            PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
-            Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            using (PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance))
+            {
+                Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            }
 
             // A fresh pool over the same storage stands in for a node restart.
-            PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
 
             byte[][] blobs = new byte[1][];
             ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
@@ -4128,7 +5853,9 @@ namespace Nethermind.TxPool.Test
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
             Transaction[] restored = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
             Assert.That(restored, Has.Length.EqualTo(1), "the restart must not evict a keyed transaction whose sequence is current");
@@ -4162,7 +5889,92 @@ namespace Nethermind.TxPool.Test
             Assert.That(readyForSender, Has.Length.EqualTo(1));
         }
 
-        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null)
+        /// <remarks>A keyed sequence starts at 0, so a blob-carrying frame transaction sorts ahead of the sender's
+        /// type-3 transactions; evicting it consumes no account nonce, so it leaves no gap for them to cascade over.</remarks>
+        [Test]
+        public async Task Evicting_a_keyed_blob_carrying_frame_tx_does_not_cascade_into_the_senders_blob_txs()
+        {
+            const ulong nonceKey = 0xbeef;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+
+            // The account nonce advances independently of the key, whose sequence stays at 0 and sorts first.
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+
+            Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [nonceKey]);
+            Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 2), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Control: an all-ordinary sender whose lowest entry goes stale must still cascade into the rest of its bucket.
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 0), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyB, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Control: the set [0] aliases the account nonce, so this blob-carrying frame tx does spend it and must
+            // cascade like any other type-3 entry — the exemption is the keyed domain, not the frame format.
+            Transaction accountDomainFrame = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true,
+                nonceKeys: [UInt256.Zero], sender: TestItem.PrivateKeyC);
+            Assert.That(_txPool.SubmitTx(accountDomainFrame, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyC, 1), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+            _stateProvider.Set(KeyedNonceManager.StorageSlot(TestItem.AddressA, nonceKey), UInt256.One);
+            _stateProvider.IncrementNonce(TestItem.AddressB);
+            _stateProvider.IncrementNonce(TestItem.AddressC);
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(keyed.Hash!, out _), Is.False,
+                    "the keyed entry must be evicted, or this pins nothing");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA), Has.Length.EqualTo(2),
+                    "a keyed eviction must not take the sender's unrelated blob transactions with it");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressB), Is.Empty,
+                    "an ordinary sender's stale lowest entry must still cascade");
+                Assert.That(_txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressC), Is.Empty,
+                    "a stale account-domain frame transaction must still cascade");
+            }
+        }
+
+        /// <remarks>GapNonceFilter sizes a sender's nonce window by its pending count, and a keyed frame transaction
+        /// shares the sender's bucket while spending no account nonce — counting it would admit a gap nothing fills.</remarks>
+        [TestCase(true, TestName = "a keyed frame transaction shares the sender's bucket")]
+        [TestCase(false, TestName = "the sender's bucket is empty")]
+        public void Keyed_blob_carrying_frame_tx_does_not_widen_the_senders_nonce_gap_window(bool submitKeyed)
+        {
+            const ulong nonceKey = 0xbeef;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 };
+            _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            if (submitKeyed)
+            {
+                Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [nonceKey]);
+                Assert.That(_txPool.SubmitTx(keyed, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 1), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.NonceGap),
+                    "nothing sits at the account nonce, so nonce 1 is a gap however the bucket is filled");
+                Assert.That(_txPool.SubmitTx(OrdinaryBlobTx(TestItem.PrivateKeyA, 0), TxHandlingOptions.PersistentBroadcast),
+                    Is.EqualTo(AcceptTxResult.Accepted),
+                    "the account's own nonce must still be admitted");
+            }
+        }
+
+        private Transaction OrdinaryBlobTx(PrivateKey sender, ulong nonce) => Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Eip8141Prototype.Instance)
+            .WithNonce(nonce)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+
+        private Transaction BuildBlobFrameTx(ulong nonce, int blobCount, ulong? deadline = null, UInt256? maxFeePerBlobGas = null, bool withSidecar = false, UInt256[] nonceKeys = null, Address paymaster = null, PrivateKey sender = null, bool withRecentRoot = false)
         {
             ShardBlobNetworkWrapper wrapper = null;
             byte[][] versionedHashes = null;
@@ -4206,6 +6018,11 @@ namespace Nethermind.TxPool.Test
                 frames.Add(FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 40_000));
             }
 
+            if (withRecentRoot)
+            {
+                frames.Add(FrameTxTestFrames.RecentRootVerify(20_000, RecentRootTuple));
+            }
+
             // Sized to leave the prefix headroom under the verify-gas ceiling once an expiry frame and
             // signature verification gas join it.
             if (paymaster is null)
@@ -4236,6 +6053,41 @@ namespace Nethermind.TxPool.Test
             };
             tx.Hash = tx.CalculateHash();
             return tx;
+        }
+
+        /// <summary>A blob tx storage whose body write can be made to fail, standing in for a disk error.</summary>
+        /// <remarks>A decorator rather than a subclass: the pool reaches the write through the interface, and
+        /// deliberately not an <see cref="IAtomicBlobTxStorage"/>, so a fresh insert takes the plain add path.</remarks>
+        private sealed class ThrowingBlobTxStorage : IBlobTxStorage
+        {
+            private readonly BlobTxStorage _inner = new();
+
+            public bool ThrowOnAdd { get; set; }
+
+            public void Add(Transaction transaction)
+            {
+                if (ThrowOnAdd) throw new InvalidOperationException("blob tx storage write failed");
+
+                _inner.Add(transaction);
+            }
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
+                _inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
+                _inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                _inner.AddBlobTransactionsFromBlock(blockNumber, in blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
         }
     }
 }

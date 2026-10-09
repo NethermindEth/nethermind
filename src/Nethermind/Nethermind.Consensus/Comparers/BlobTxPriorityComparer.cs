@@ -9,9 +9,9 @@ namespace Nethermind.Consensus.Comparers;
 
 /// <summary>
 /// Tie-breaker comparer that prefers blob transactions over non-blob transactions.
-/// Returns <see cref="TxComparisonResult.XFirst"/> if only x supports blobs,
-/// <see cref="TxComparisonResult.YFirst"/> if only y supports blobs,
-/// or <see cref="TxComparisonResult.Equal"/> if both or neither support blobs.
+/// Returns <see cref="TxComparisonResult.XFirst"/> if only x carries blobs,
+/// <see cref="TxComparisonResult.YFirst"/> if only y carries blobs,
+/// or <see cref="TxComparisonResult.Equal"/> if both or neither carry blobs.
 /// </summary>
 public sealed class BlobTxPriorityComparer : IComparer<Transaction>
 {

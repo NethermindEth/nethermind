@@ -36,7 +36,7 @@ public class TestBlockchainUtil(
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Block? invalidBlock = null;
-        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
+        void OnInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
 
         invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
 

@@ -50,10 +50,20 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             // ReceiptRegenerationModule replaces this registration with a wrapper around the same unkeyed finder.
             .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => ctx.Resolve<IReceiptFinder>())
             .AddSingleton<IHistoryPruner, HistoryPruner>()
+            .AddSingleton<BlockTreeMutationLock>()
             .AddSingleton<IBlockTree, BlockTree>()
+            .AddSingleton<IStateHeaderProvider, ReorgDepthStateHeaderProvider>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
+
+        // Registered to LOSE: this module loads after FlatWorldStateModule, and Autofac's default is
+        // last-registration-wins, so a plain registration here would silently beat the flat-history module's
+        // SlicedReceiptRetention and turn the whole retention half of that feature into a no-op.
+        builder.RegisterInstance(NullPrunedReceiptRetention.Instance)
+            .As<IPrunedReceiptRetention>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
             .AddDecorator<ILogIndexConfig>((ctx, config) =>
@@ -62,6 +72,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
                 config.MaxReorgDepth ??= pruningConfig.PruningBoundary;
                 return config;
             });
+
+        builder.AddSingleton<IRpcLogFinder, RangeLimitedLogFinder>();
 
         if (logIndexConfig.Enabled)
         {

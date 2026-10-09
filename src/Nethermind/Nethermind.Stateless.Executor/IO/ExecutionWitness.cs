@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Ssz;
@@ -46,28 +50,52 @@ public partial struct ExecutionWitness
 
     public readonly Witness ToWitness()
     {
-        ArrayPoolList<byte[]> state = new(State.Length, State.Length);
-
-        for (int i = 0; i < State.Length; i++)
-            state[i] = State[i].Bytes;
-
         ArrayPoolList<byte[]> codes = new(Codes.Length, Codes.Length);
+        Span<byte[]> codesSpan = codes.AsSpan();
 
         for (int i = 0; i < Codes.Length; i++)
-            codes[i] = Codes[i].Bytes;
+            codesSpan[i] = Codes[i].Bytes;
 
         ArrayPoolList<byte[]> headers = new(Headers.Length, Headers.Length);
+        Span<byte[]> headersSpan = headers.AsSpan();
 
         for (int i = 0; i < Headers.Length; i++)
-            headers[i] = Headers[i].Bytes;
+            headersSpan[i] = Headers[i].Bytes;
 
         return new()
         {
             Codes = codes,
             Headers = headers,
             Keys = ArrayPoolList<byte[]>.Empty(),
-            State = state
+            State = new StateNodeList(State)
         };
+    }
+
+    /// <summary>The decoded state nodes as the list of their bytes, read in place rather than copied into a list of their own.</summary>
+    /// <remarks>The witness of a block holds tens of thousands of state nodes, and the zkVM guest pays for every one it copies.</remarks>
+    private sealed class StateNodeList(SszWitnessState[] nodes) : IOwnedReadOnlyList<byte[]>
+    {
+        public int Count => nodes.Length;
+
+        public byte[] this[int index] => nodes[index].Bytes;
+
+        /// <inheritdoc/>
+        /// <remarks><see cref="SszWitnessState"/> wraps a lone array, so an array of them is laid out as one of array references.</remarks>
+        public ReadOnlySpan<byte[]> AsSpan()
+        {
+            Debug.Assert(Unsafe.SizeOf<SszWitnessState>() == Unsafe.SizeOf<byte[]>());
+            return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<SszWitnessState, byte[]>(ref MemoryMarshal.GetArrayDataReference(nodes)), nodes.Length);
+        }
+
+        public IEnumerator<byte[]> GetEnumerator()
+        {
+            foreach (SszWitnessState node in nodes)
+                yield return node.Bytes;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
     }
 }
 
@@ -85,6 +113,7 @@ public partial struct SszWitnessHeader
     public byte[] Bytes { get; set; }
 }
 
+/// <remarks>Must keep <see cref="Bytes"/> as its only field: the witness reads an array of these as one of byte arrays.</remarks>
 [SszContainer(isCollectionItself: true)]
 public partial struct SszWitnessState
 {

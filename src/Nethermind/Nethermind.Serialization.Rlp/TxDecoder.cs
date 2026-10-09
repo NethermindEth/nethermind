@@ -12,6 +12,59 @@ namespace Nethermind.Serialization.Rlp;
 [Rlp.SkipGlobalRegistration]
 public sealed class TxDecoder : TxDecoder<Transaction>
 {
+    /// <summary>Locates the signed payload inside a transaction's canonical encoding.</summary>
+    /// <param name="encoded">The encoding, typed transactions left unwrapped (<see cref="RlpBehaviors.SkipTypedWrapping"/>).</param>
+    /// <param name="txType">The transaction's type, whose byte prefixes a typed encoding.</param>
+    /// <param name="signedPayload">The signed item bytes: everything the sequence holds before the trailing v/r/s.</param>
+    /// <returns><see langword="true"/> when the encoding is a well-formed sequence holding at least the three signature items.</returns>
+    /// <remarks>
+    /// The signed payload is verbatim wire bytes, so a caller can hash it behind its own sequence header instead of
+    /// encoding the transaction a second time. It excludes the type byte, which the caller re-emits, and the EIP-155
+    /// chain id triplet a legacy signing payload carries in place of the signature.
+    /// Expects bytes that already decoded as a transaction: a length prefix that runs past the end may still throw.
+    /// </remarks>
+    public static bool TryGetSignedPayload(ReadOnlySpan<byte> encoded, TxType txType, out ReadOnlySpan<byte> signedPayload)
+    {
+        signedPayload = default;
+
+        // Only the types whose signature is the trailing v/r/s triplet. A frame transaction (EIP-8250) carries
+        // per-frame signatures nested inside its payload and elides bytes there when signing, so its signed
+        // bytes are not a prefix of its encoding; a deposit transaction is not signed at all.
+        if (txType is not (TxType.Legacy or TxType.AccessList or TxType.EIP1559 or TxType.Blob or TxType.SetCode))
+        {
+            return false;
+        }
+
+        if (txType != TxType.Legacy)
+        {
+            if (encoded.IsEmpty || encoded[0] != (byte)txType) return false;
+            encoded = encoded[1..];
+        }
+
+        if (encoded.IsEmpty || encoded[0] < Rlp.EmptyListByte) return false;
+
+        LiteRlpReader reader = new(encoded);
+        (int prefixLength, int contentLength) = reader.PeekPrefixAndContentLength(0);
+        int payloadEnd = prefixLength + contentLength;
+
+        if (payloadEnd != encoded.Length) return false;
+
+        // Every type ends with v/y_parity, r and s, so the signed payload ends where the third item from the end begins.
+        int signedEnd = -1, secondFromLast = -1, last = -1;
+        for (int position = prefixLength; position < payloadEnd;)
+        {
+            (signedEnd, secondFromLast, last) = (secondFromLast, last, position);
+            position += reader.PeekNextRlpLength(position);
+            if (position > payloadEnd) return false;
+        }
+
+        if (signedEnd < 0) return false;
+
+        signedPayload = encoded[prefixLength..signedEnd];
+        return true;
+    }
+
+    private const int MaxRetainedTransactions = 2_048;
     public static readonly ObjectPool<Transaction> TxObjectPool;
 
     public static readonly TxDecoder Instance;
@@ -20,9 +73,10 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     static TxDecoder()
     {
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+        // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
+        // PoolPolicy clears payload references before retaining a transaction.
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
-        Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
 
     /// <summary>
@@ -56,12 +110,13 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
         Func<T> factory = transactionFactory ?? (static () => new T());
-        RegisterDecoder(TxType.Legacy, new LegacyTxDecoder<T>(factory));
-        RegisterDecoder(TxType.AccessList, new AccessListTxDecoder<T>(factory));
-        RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder<T>(factory));
-        RegisterDecoder(TxType.Blob, new BlobTxDecoder<T>(factory));
-        RegisterDecoder(TxType.SetCode, new SetCodeTxDecoder<T>(factory));
-        RegisterDecoder(TxType.FrameTx, new FrameTxDecoder<T>(factory));
+        // Each type registered here needs an arm in the Decode, EncodeTx and GetLength switches, or it falls back to interface dispatch.
+        RegisterDecoder(TxType.Legacy, new LegacyTxDecoder(factory));
+        RegisterDecoder(TxType.AccessList, new AccessListTxDecoder(factory));
+        RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder(factory));
+        RegisterDecoder(TxType.Blob, new BlobTxDecoder(factory));
+        RegisterDecoder(TxType.SetCode, new SetCodeTxDecoder(factory));
+        RegisterDecoder(TxType.FrameTx, new FrameTxDecoder(factory));
     }
 
     public void RegisterDecoder(ITxDecoder decoder) => RegisterDecoder(decoder.Type, decoder);
@@ -77,53 +132,85 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     }
 
     private ITxDecoder GetDecoder(TxType txType) =>
-        _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
+        _decoders.TryGetByTxType(txType, out ITxDecoder? decoder)
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
     protected override T? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        T transaction = null;
+        T? transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
         return transaction;
     }
 
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position))
         {
-            decoderContext.ReadByte();
             transaction = null;
             return;
         }
 
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
+        int txSequenceStart = position;
+        ReadOnlySpan<byte> transactionSequence = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (decoderContext.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
+            if (rlp.Data[position] <= Transaction.MaxTxType) // it is typed transactions
             {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
+                transactionSequence = rlp.Data.Slice(position);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }
         else
         {
-            if (!decoderContext.IsSequenceNext())
+            if (!rlp.IsSequenceNext(position))
             {
-                (_, int contentLength) = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(contentLength);
-                txType = (TxType)decoderContext.ReadByte();
+                rlp.ReadPrefixAndContentLength(ref position, out _, out int contentLength);
+                txSequenceStart = position;
+                transactionSequence = rlp.Data.Slice(position, contentLength);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }
 
-        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        decoderContext.Position = position;
+
+        Transaction? decodedTransaction = transaction;
+        if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
+            // new T() in shared generic code is a call to Activator.CreateInstance<T>.
+            decodedTransaction = typeof(T) == typeof(Transaction) ? new Transaction() : new T();
+
+        ITxDecoder decoder = GetDecoder(txType);
+
+        // The built-in decoders are sealed, so calling them through their own type lets the call be bound and inlined.
+        switch ((txType, decoder))
+        {
+            case (TxType.EIP1559, EIP1559TxDecoder eip1559):
+                eip1559.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case (TxType.Legacy, LegacyTxDecoder legacy):
+                legacy.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case (TxType.Blob, BlobTxDecoder blob):
+                blob.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case (TxType.SetCode, SetCodeTxDecoder setCode):
+                setCode.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case (TxType.AccessList, AccessListTxDecoder accessList):
+                accessList.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case (TxType.FrameTx, FrameTxDecoder frame):
+                frame.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            default:
+                decoder.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+        }
+        transaction = (T?)decodedTransaction;
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
         {
@@ -134,7 +221,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     public override void Encode<TWriter>(ref TWriter writer, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         => EncodeTx(ref writer, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
-    public override Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override Rlp Encode(T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
         RlpWriter writer = new(bytes);
@@ -153,7 +240,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2718
     /// </summary>
-    public override int GetLength(T tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+    public override int GetLength(T? tx, RlpBehaviors rlpBehaviors) => GetLength(tx, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
 
     public void EncodeTx<TWriter>(ref TWriter writer, T? item, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
@@ -164,9 +251,53 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
             return;
         }
 
-        GetDecoder(item.Type).Encode(item, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        ITxDecoder decoder = GetDecoder(item.Type);
+
+        // A generic interface call resolves its target at run time, so the built-in decoders are bypassed for their
+        // static encoders; any other decoder registered for the type still owns its encoding.
+        switch ((item.Type, decoder))
+        {
+            case (TxType.EIP1559, EIP1559TxDecoder):
+                EIP1559TxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                break;
+            case (TxType.Legacy, LegacyTxDecoder):
+                LegacyTxDecoder.EncodeTransaction(item, ref writer, forSigning, isEip155Enabled, chainId);
+                break;
+            case (TxType.Blob, BlobTxDecoder):
+                BlobTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                break;
+            case (TxType.SetCode, SetCodeTxDecoder):
+                SetCodeTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                break;
+            case (TxType.AccessList, AccessListTxDecoder):
+                AccessListTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                break;
+            case (TxType.FrameTx, FrameTxDecoder):
+                FrameTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
+                break;
+            default:
+                decoder.Encode(item, ref writer, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+                break;
+        }
     }
 
-    private int GetLength(T? tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId) =>
-        tx is null ? Rlp.LengthOfNull : GetDecoder(tx.Type).GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+    private int GetLength(T? tx, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
+        if (tx is null)
+        {
+            return Rlp.LengthOfNull;
+        }
+
+        ITxDecoder decoder = GetDecoder(tx.Type);
+        return (tx.Type, decoder) switch
+        {
+            (TxType.EIP1559, EIP1559TxDecoder) => EIP1559TxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.Legacy, LegacyTxDecoder) => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
+            (TxType.Blob, BlobTxDecoder) => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.SetCode, SetCodeTxDecoder) => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.AccessList, AccessListTxDecoder) => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.FrameTx, FrameTxDecoder) => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            _ => decoder.GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId)
+        };
+    }
 }

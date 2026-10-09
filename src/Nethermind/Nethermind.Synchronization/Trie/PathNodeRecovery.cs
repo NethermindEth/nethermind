@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.Trie;
 
 public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecovery snapRangeRecovery, ILogManager logManager) : IPathRecovery
 {
-    private ILogger _logger = logManager.GetClassLogger<PathNodeRecovery>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PathNodeRecovery>();
 
     public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken = default)
     {
@@ -28,12 +28,12 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
         try
         {
             IOwnedReadOnlyList<(TreePath, byte[])>? res = await Wait.AnyWhere(
-                (res) => res != null,
+                res => res != null,
                 nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
                 snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
             );
 
-            if (res == null)
+            if (res is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Failed to recover path {address ?? Hash256.Zero}:{fullPath}");
             }
@@ -46,6 +46,13 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
         }
         catch (OperationCanceledException)
         {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Recovery is best effort and the caller blocks on it while reading the trie, so degrade to
+            // a failed recovery and let the caller report the missing node rather than this failure.
+            if (_logger.IsWarn) _logger.Warn($"Error recovering path {address ?? Hash256.Zero}:{fullPath} {ex}");
             return null;
         }
     }

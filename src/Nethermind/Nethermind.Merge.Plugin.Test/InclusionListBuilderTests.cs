@@ -52,13 +52,18 @@ public class InclusionListBuilderTests
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
-    private static ITxPool PoolOf(params Transaction[] readyTxs)
+    private static ITxPool PoolOf(params Transaction[] readyTxs) => PoolOf(null, readyTxs);
+
+    /// <inheritdoc cref="PoolOf(Transaction[])"/>
+    /// <param name="emptyBucketSenders">Senders the snapshot holds an empty bucket for.</param>
+    private static ITxPool PoolOf(Address[]? emptyBucketSenders, params Transaction[] readyTxs)
     {
         Dictionary<AddressAsKey, Transaction[]> bySender = readyTxs
             .GroupBy(tx => new AddressAsKey(tx.SenderAddress!))
             .ToDictionary(g => g.Key, g => g.OrderBy(tx => tx.Nonce).ToArray());
+        foreach (Address sender in emptyBucketSenders ?? []) bySender[new AddressAsKey(sender)] = [];
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(bySender);
+        pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(bySender);
         return pool;
     }
 
@@ -68,9 +73,30 @@ public class InclusionListBuilderTests
         return TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
+    private static Transaction MinimalTx(PrivateKey sender) => Build.A.Transaction
+        .WithNonce(0)
+        .WithValue(0)
+        .WithGasPrice(0)
+        .WithGasLimit(0)
+        .WithTo(null)
+        .WithData([])
+        .SignedAndResolved(sender)
+        .TestObject;
+
     [Test]
     public void Empty_pool_yields_empty_inclusion_list() =>
         Assert.That(BuildBuilder(PoolOf()).GetInclusionList(), Is.Empty);
+
+    // ITxPool's contract does not guarantee that its snapshot omits empty buckets.
+    [Test]
+    public void Tolerates_an_empty_bucket_from_the_pool()
+    {
+        ITxPool pool = PoolOf([TestItem.AddressA], TxOfSize(50, 0, TestItem.PrivateKeyB));
+
+        using InclusionListBytes il = BuildBuilder(pool).GetInclusionList();
+
+        Assert.That(il.Count, Is.EqualTo(1));
+    }
 
     [Test]
     public void Caps_at_max_bytes_per_inclusion_list()
@@ -84,12 +110,30 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Not.Empty);
     }
 
+    // An entry too big for the remaining budget is skipped rather than ending the encoding, so another
+    // sender's smaller transaction can still take the space. The skipped sender's own later nonces are
+    // excused whenever it is absent, so listing them spends the scarce byte budget for no extra coverage.
     [Test]
-    public void Skips_txs_that_would_overflow_but_keeps_smaller_ones_that_fit()
+    public void Sender_run_ends_at_a_tx_skipped_for_the_remaining_budget()
     {
-        using InclusionListBytes il = BuildBuilder(PoolOf(TxOfSize(8000), TxOfSize(50, 1))).GetInclusionList();
+        Transaction head = TxOfSize(5 * 1024, 0, TestItem.PrivateKeyA);
+        Transaction skipped = TxOfSize(4 * 1024, 1, TestItem.PrivateKeyA);
+        Transaction afterSkipped = TxOfSize(50, 2, TestItem.PrivateKeyA);
+        // B's run outlives A's, so the rounds after the skip hold only B and no draw order can hide a
+        // premature stop: the space freed by the skip must still reach another sender.
+        Transaction[] otherSender = [.. Enumerable.Range(0, 4).Select(n => TxOfSize(50, n, TestItem.PrivateKeyB))];
+        Hash256?[] expected = [head.Hash, .. otherSender.Select(tx => tx.Hash)];
 
-        Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        using InclusionListBytes il = BuildBuilder(PoolOf([head, skipped, afterSkipped, .. otherSender])).GetInclusionList();
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The scenario is a short remaining budget, not a transaction too big for any list.
+            Assert.That(TxDecoder.Instance.GetLength(skipped, RlpBehaviors.SkipTypedWrapping),
+                Is.LessThan(Eip7805Constants.MaxBytesPerInclusionList));
+            Assert.That(il.Select(b => Decode(b).Hash), Is.EquivalentTo(expected));
+            Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     // Only what the next block could append belongs in the list, so the pool must do the readiness and
@@ -101,7 +145,19 @@ public class InclusionListBuilderTests
 
         BuildBuilder(pool, baseFee: 17).GetInclusionList().Dispose();
 
-        pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
+        pool.Received().GetPendingTransactionsBySenderWithReadyNonFrameTx((UInt256)17);
+    }
+
+    // The named parent, not the head, fixes the fee the candidates are filtered against.
+    [Test]
+    public void Requests_transactions_ready_at_the_named_parents_base_fee()
+    {
+        ITxPool pool = PoolOf();
+        BlockHeader parent = Build.A.BlockHeader.WithBaseFee(23).TestObject;
+
+        BuildBuilder(pool, baseFee: 17).GetInclusionList(parent).Dispose();
+
+        pool.Received().GetPendingTransactionsBySenderWithReadyNonFrameTx((UInt256)23);
     }
 
     // Listing a frame transaction spends the byte cap for nothing, and its per-key nonce would break the
@@ -118,8 +174,8 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { nonce0.Hash, nonce1.Hash }));
     }
 
-    // The pool admits a whole bucket on its first entry's readiness alone, so a frame transaction at the
-    // head is what vouched for the run; once dropped, what remains need not sit at the next account nonce.
+    // The pool admits a bucket on any one entry being ready, so a frame transaction can be what vouched for
+    // the run; once dropped, what remains need not sit at the next account nonce.
     [Test]
     public void Drops_a_sender_run_the_removed_frame_transaction_was_vouching_for()
     {
@@ -153,8 +209,38 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(new[] { atAccountNonce.Hash, next.Hash }));
     }
 
-    // The pool checks CanPayBaseFee on the bucket's first entry alone, so a transaction behind a paying head can
-    // sit below the next block's base fee. The validator excuses omitting it, so listing it burns the cap.
+    private static IEnumerable<TestCaseData> BucketsAdmittedByANonFrontEntry()
+    {
+        // The pool reads a bucket entry under the account nonce as spent rather than blocking, so it admits this
+        // bucket on nonce 5 alone while nonce 4 heads it. Only nonce 5 is appendable.
+        Transaction spent = TxOfSize(50, 4);
+        Transaction atAccountNonce = TxOfSize(50, 5);
+        yield return new TestCaseData(new[] { spent, atAccountNonce }, 5UL, new[] { atAccountNonce })
+            .SetName("Skips_a_spent_nonce_heading_the_bucket");
+
+        // A keyed frame transaction is judged on its own sequence however the account-nonce entries sit, so it can
+        // admit a bucket whose only ordinary entry is four nonces ahead. Stripping it leaves nothing appendable.
+        Transaction gapped = TxOfSize(50, 9);
+        Transaction keyedFrame = FrameTx(TestItem.AddressA, nonce: 100, nonceKeys: [1]);
+        yield return new TestCaseData(new[] { gapped, keyedFrame }, 5UL, Array.Empty<Transaction>())
+            .SetName("Drops_a_gapped_run_admitted_by_a_keyed_frame_transaction");
+    }
+
+    // The bucket's lowest entry is not the account's next nonce: the pool admits a bucket on any one entry being
+    // ready, so only a state read names the anchor.
+    [TestCaseSource(nameof(BucketsAdmittedByANonFrontEntry))]
+    public void Anchors_a_sender_run_at_the_account_nonce_not_at_the_bucket_front(
+        Transaction[] bucket, ulong accountNonce, Transaction[] expected)
+    {
+        using InclusionListBytes il = BuildBuilder(
+            PoolOf(bucket),
+            accountNonces: [(TestItem.AddressA, accountNonce)]).GetInclusionList();
+
+        Assert.That(il.Select(b => Decode(b).Hash), Is.EqualTo(expected.Select(tx => tx.Hash)));
+    }
+
+    // The pool admits a bucket once one entry both pays and is nonce-ready, so a transaction behind a paying head
+    // can sit below the next block's base fee. The validator excuses omitting it, so listing it burns the cap.
     [Test]
     public void Truncates_a_sender_run_at_the_first_transaction_below_the_next_base_fee()
     {
@@ -183,9 +269,10 @@ public class InclusionListBuilderTests
         Assert.That(il, Is.Empty);
     }
 
-    // Worst case for the state read: every sender's bucket is headed by a keyed frame transaction, so the cheap
-    // anchor comparison never decides. The reservoir must bound the reads whatever the pool size.
-    private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) KeyedHeadSetup(int senderCount)
+    // Every drawn sender costs one account-nonce read, so the reservoir must bound the reads whatever the pool size.
+    // The frame transaction no longer decides whether that read happens; it keeps each bucket on the copying
+    // branch of WithoutFrameTxs, which is what still makes this the worst case per drawn sender.
+    private static (ITxPool Pool, IReadOnlyStateProvider HeadState, InclusionListBuilder Builder) WorstCaseReadSetup(int senderCount)
     {
         Transaction[] txs = new Transaction[senderCount * 2];
         for (int i = 0; i < senderCount; i++)
@@ -218,7 +305,7 @@ public class InclusionListBuilderTests
     public void State_reads_are_bounded_by_the_sender_sample_capacity()
     {
         const int senderCount = 1024;
-        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = WorstCaseReadSetup(senderCount);
 
         builder.GetInclusionList().Dispose();
 
@@ -234,7 +321,7 @@ public class InclusionListBuilderTests
     {
         const int senderCount = 1024;
         const int iterations = 50;
-        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = KeyedHeadSetup(senderCount);
+        (_, IReadOnlyStateProvider headState, InclusionListBuilder builder) = WorstCaseReadSetup(senderCount);
 
         builder.GetInclusionList().Dispose();  // warm
         long before = headState.ReceivedCalls().Count();
@@ -255,7 +342,7 @@ public class InclusionListBuilderTests
         SenderAddress = sender,
         Nonce = nonce,
         NonceKeys = nonceKeys,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasLimit = 100_000,
         GasPrice = 1,
@@ -294,7 +381,7 @@ public class InclusionListBuilderTests
     }
 
     [Test]
-    public void Handles_more_senders_than_the_sample_capacity()
+    public void Handles_more_transactions_than_the_sample_capacity()
     {
         Transaction[] txs = [.. Enumerable.Range(0, TestItem.PrivateKeys.Length)
             .SelectMany(i => new[] { TxOfSize(0, 0, TestItem.PrivateKeys[i]), TxOfSize(0, 1, TestItem.PrivateKeys[i]) })];
@@ -303,6 +390,29 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    private static IEnumerable<TestCaseData> ReservoirCases()
+    {
+        yield return new TestCaseData(0).SetName("Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size");
+        yield return new TestCaseData(TestItem.PrivateKeys.Length / 2).SetName("Reservoir_saturates_the_byte_budget_when_half_the_senders_are_skipped_for_size");
+    }
+
+    [TestCaseSource(nameof(ReservoirCases))]
+    public void Reservoir_saturates_the_byte_budget(int sendersSkippedForSize)
+    {
+        Transaction[] txs = [.. TestItem.PrivateKeys.Select((key, i) => i < sendersSkippedForSize
+            ? TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, key)
+            : MinimalTx(key))];
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+        int totalBytes = il.Sum(t => t.Count);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 100));
+            Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     [Test]

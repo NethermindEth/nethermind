@@ -21,17 +21,17 @@ public class TxPoolContentFrom
     }
 
     /// <summary>Transactions ready for inclusion in the next block.</summary>
-    public Dictionary<string, TransactionForRpc> Pending { get; }
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Pending { get; }
 
     /// <summary>Transactions with nonce gaps awaiting preceding transactions.</summary>
-    public Dictionary<string, TransactionForRpc> Queued { get; }
+    public Dictionary<TxPoolTxKey, TransactionForRpc> Queued { get; }
 
-    private static Dictionary<string, TransactionForRpc> MapTransactions(
-        IDictionary<string, Transaction> source,
+    private static Dictionary<TxPoolTxKey, TransactionForRpc> MapTransactions(
+        IDictionary<TxPoolTxKey, Transaction> source,
         in TransactionForRpcContext extraData)
     {
-        Dictionary<string, TransactionForRpc> result = new(source.Count);
-        foreach (KeyValuePair<string, Transaction> kv in source)
+        Dictionary<TxPoolTxKey, TransactionForRpc> result = new(source.Count);
+        foreach (KeyValuePair<TxPoolTxKey, Transaction> kv in source)
             result[kv.Key] = TransactionForRpc.FromTransaction(kv.Value, extraData);
         return result;
     }

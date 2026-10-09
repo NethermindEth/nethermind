@@ -37,6 +37,7 @@ public class TestingRpcModule(
     IBlockFinder blockFinder,
     IBlockTree blockTree,
     IProcessExitSource processExitSource,
+    IBlockProcessingQueue processingQueue,
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
@@ -55,6 +56,9 @@ public class TestingRpcModule(
         Block? parentBlock = blockFinder.FindBlock(parentBlockHash);
         if (parentBlock is null)
             return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
+
+        // A parent answered VALID a moment ago may still be committing; production needs its state.
+        await processingQueue.WaitForExecutedCopyAsync(parentBlockHash, TimeSpan.FromSeconds(1));
 
         FeesTracer feesTracer = new();
         await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
@@ -130,7 +134,7 @@ public class TestingRpcModule(
         try
         {
             IEnumerable<Transaction> txs = txRlps is null
-                ? env.TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true)
+                ? env.TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true)
                 : DecodeTransactions(txRlps);
 
             transactions = txs.ToArray();
@@ -170,7 +174,7 @@ public class TestingRpcModule(
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
         AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceDontSetAsMain);
-        if (addBlockResult != AddBlockResult.Added)
+        if (addBlockResult is not (AddBlockResult.Added or AddBlockResult.AlreadyKnown))
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
             return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
@@ -179,7 +183,8 @@ public class TestingRpcModule(
         // forceUpdateHeadBlock: true is required for post-merge chains where TotalDifficulty=0
         // and TTD != 0; without it MoveToMain skips UpdateHeadBlock and the next commit
         // reads a stale head.
-        blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]);
+        if (!blockTree.TryUpdateMainChain(processedBlock.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [processedBlock]))
+            return ResultWrapper<Hash256>.Fail("canonical chain update was refused", ErrorCodes.ResourceUnavailable);
 
         if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
         return ResultWrapper<Hash256>.Success(processedBlock.Hash);
@@ -219,9 +224,9 @@ public class TestingRpcModule(
 
         if (spec.WithdrawalsEnabled)
         {
-            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null || payloadAttributes.Withdrawals.Length == 0
+            header.WithdrawalsRoot = payloadAttributes.Withdrawals is null
                 ? Keccak.EmptyTreeHash
-                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
+                : WithdrawalTrie.CalculateRoot(payloadAttributes.Withdrawals);
         }
 
         return header;
@@ -230,7 +235,8 @@ public class TestingRpcModule(
     private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
     {
         foreach (byte[] txRlp in txRlps)
-            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping);
+            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping)
+                ?? throw new RlpException("Transaction decoding returned null.");
     }
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)

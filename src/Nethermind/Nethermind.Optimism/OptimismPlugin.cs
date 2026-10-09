@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Optimism.CL;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
@@ -33,8 +34,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.TxPool;
 using Nethermind.Optimism.Precompiles;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
 using Nethermind.JsonRpc;
@@ -58,8 +62,8 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder<Transaction>(), Always.Valid);
-        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder(), Always.Valid);
+        api.RegisterTxType<LegacyTransactionForRpc>(new LegacyTxDecoder(allowEmptySignature: true), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 
@@ -103,6 +107,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddStep(typeof(InitializeBlockchainOptimism))
 
             // Validators
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
+                static ctx => new OptimismSpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, OptimismBlockValidator>()
             .AddSingleton<IHeaderValidator, OptimismHeaderValidator>()
             .AddSingleton<IUnclesValidator>(Always.Valid)
@@ -128,6 +134,8 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .AddSingleton<OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IOptimismEthRpcModule>, OptimismEthModuleFactory>()
                 .Bind<IRpcModuleFactory<IEthRpcModule>, OptimismEthModuleFactory>()
+            .AddDecorator<IProofRpcModule>((ctx, inner) =>
+                new OptimismProofRpcModule(inner, ctx.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey)))
 
             .AddSingleton<IOptimismSignalSuperchainV1Handler, ILogManager>(logManager =>
                 new LoggingOptimismSignalSuperchainV1Handler(OptimismConstants.CurrentProtocolVersion, logManager))

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -20,8 +21,9 @@ namespace Nethermind.State;
 /// <remarks>
 /// Records only while <see cref="SetGeneratingBlockAccessList"/> holds a slice, so the decorator can sit
 /// idle in a simulation stack; with none installed every member delegates to the decorated state.
-/// <see cref="Clear"/>, <see cref="SetIndex"/> and <see cref="IncrementIndex"/> still dereference it, so a
-/// missed setup in block processing fails fast at <c>Setup</c> instead of emitting an empty BAL.
+/// <see cref="Clear"/>, <see cref="SetIndex"/> and <see cref="IncrementIndex"/> instead go through the
+/// guarded <see cref="GeneratingBlockAccessList"/>, so a missed setup in block processing fails fast with
+/// an <see cref="InvalidOperationException"/> naming it instead of emitting an empty BAL.
 /// </remarks>
 public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldStateDecorator(state), IBlockAccessListSource
 {
@@ -29,19 +31,19 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
-    // Scratch buffer for intra-tx SLOAD on the parallel path (see GetInternal). Per-worker —
-    // the returned span is consumed by the EVM stack push before another GetInternal runs.
-    private readonly byte[] _scratchStorage = new byte[32];
     // Single-slot cache for the last storage cell read: a repeated same-cell SLOAD skips the BAL
     // read-recording. Reset in Clear() and Restore() (a revert can un-record the cell's slot).
     private StorageCell _lastReadStorageCell;
     private AccountChangesAtIndex? _lastReadStorageChanges;
-    private bool _hasLastReadCell;
+
+    /// <summary>Optional worker coverage replacing materialization of declared read-only slots.</summary>
+    /// <remarks>Set only between execution slices, with the same coverage used by the BAL-backed state.</remarks>
+    public BalReadCoverage? ReadCoverage { get; set; }
+
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal)
     {
         // The cached entry belongs to the outgoing slice, so it cannot survive the swap.
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
         _generatingBlockAccessList = bal;
     }
@@ -65,41 +67,63 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is null) return base.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
 
-        bool? currentlyExists = AccountExistsCurrent(address);
-        UInt256? currentBalance = GetBalanceCurrent(address);
-        bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        // Single probe: a miss in GetAccountChanges is not memoized, so re-deriving existence and
+        // balance from the address would be three full dictionary misses on first touch.
+        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
+        bool? currentlyExists = accountChanges?.AccountExists ?? AccountExistsCurrent(accountChanges);
+        UInt256? currentBalance = accountChanges?.BalanceChange?.Value;
+        bool wasCreated = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
-        res = currentlyExists ?? res;
+        wasCreated = currentlyExists.HasValue ? !currentlyExists.Value : wasCreated;
 
         UInt256 newBalance = oldBalance + balanceChange;
         if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
         {
+            // Skip the GetOrAddAccountChanges probe when physical existence is already recorded.
+            if (accountChanges?.AccountExists is not true) _generatingBlockAccessList.RecordAccountExistence(address, true);
             _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
-        return res;
+        return wasCreated;
     }
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
     {
-        if (_generatingBlockAccessList is null) return base.Get(in storageCell);
+        if (_generatingBlockAccessList is null)
+        {
+            base.Get(in storageCell, out value);
+            return;
+        }
 
-        AccountChangesAtIndex accountChanges;
-        if (_hasLastReadCell && _lastReadStorageCell.Equals(storageCell))
+        // Already recorded this exact cell; reuse its entry and skip the read-recording.
+        if (_lastReadStorageChanges is { } cached && _lastReadStorageCell.Equals(storageCell))
         {
-            // Already recorded this exact cell; reuse its entry and skip the read-recording.
-            accountChanges = _lastReadStorageChanges!;
+            GetInternal(cached, in storageCell, out value);
+            return;
         }
-        else
+
+        GetStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetStorageSlow(in StorageCell storageCell, out UInt256 value)
+    {
+        bool covered = ReadCoverage?.TryMark(storageCell) == true;
+        AccountChangesAtIndex accountChanges = GeneratingBlockAccessList.RecordReadAndGet(storageCell.Address);
+        ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+        bool hasChange = !Unsafe.IsNullRef(ref change);
+        if (!covered && !hasChange) accountChanges.AddStorageRead(in storageCell.Index);
+        _lastReadStorageCell = storageCell;
+        _lastReadStorageChanges = accountChanges;
+
+        if (parallel && hasChange)
         {
-            accountChanges = _generatingBlockAccessList.RecordStorageReadAndGet(storageCell.Address, storageCell.Index);
-            _lastReadStorageCell = storageCell;
-            _lastReadStorageChanges = accountChanges;
-            _hasLastReadCell = true;
+            value = change.Value;
+            return;
         }
-        return GetInternal(accountChanges, in storageCell);
+        base.Get(in storageCell, out value);
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
@@ -116,6 +140,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is null) { base.SetNonce(address, nonce); return; }
 
+        // Deliberately no AddAccountRead: the probe belongs to the tracer, not the caller, and EIP-7928 lists
+        // only actual changes.
         ulong oldNonce = GetNonceInternal(address);
         base.SetNonce(address, nonce);
         if (nonce != oldNonce)
@@ -128,19 +154,43 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is not null)
         {
-            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address) ?? [], code);
+            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address), code);
         }
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
-    public override void Set(in StorageCell storageCell, byte[] newValue)
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
-        if (_generatingBlockAccessList is not null)
+        if (_generatingBlockAccessList is null)
         {
-            ReadOnlySpan<byte> oldValue = GetInternal(storageCell);
-            _generatingBlockAccessList.AddStorageChange(storageCell, new(oldValue, true), new(newValue, true));
+            base.Set(in storageCell, in newValue);
+            return;
         }
-        base.Set(storageCell, newValue);
+
+        GetInternal(in storageCell, out UInt256 oldValue);
+        Set(in storageCell, in newValue, in oldValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        if (_generatingBlockAccessList is null)
+        {
+            base.Set(in storageCell, in newValue, in currentValue);
+            return;
+        }
+
+        AssertCurrentStorageValue(in storageCell, in currentValue);
+        if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
+            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
+        _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    [Conditional("DEBUG")]
+    private void AssertCurrentStorageValue(in StorageCell cell, in UInt256 expected)
+    {
+        GetInternal(in cell, out UInt256 actual);
+        Debug.Assert(actual == expected, "Storage must not change between reading the current value and recording the write.");
     }
 
     public override ref readonly UInt256 GetBalance(Address address)
@@ -177,7 +227,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return ref base.GetCodeHash(address);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         if (_generatingBlockAccessList is null) return base.GetCode(address);
 
@@ -210,6 +260,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         _generatingBlockAccessList?.DeleteAccount(address, GetBalanceInternal(address));
         base.DeleteAccount(address);
+        _generatingBlockAccessList?.RecordAccountExistence(address, false);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -248,6 +299,19 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private bool ShouldSuppressSystemUserZeroBalanceChange(Address address, in UInt256 balanceChange)
         => _systemAccountReadSuppressionDepth != 0 && address == Address.SystemUser && balanceChange.IsZero;
 
+    /// <summary>Records physical existence, honoring SystemUser suppression.</summary>
+    /// <remarks>
+    /// Unlike a read, this creates the account's BAL entry, so an unguarded call would put a
+    /// suppressed <see cref="Address.SystemUser"/> into the generated BAL and change its hash.
+    /// </remarks>
+    private void RecordAccountExistence(Address address, bool exists)
+    {
+        if (_systemAccountReadSuppressionDepth == 0 || address != Address.SystemUser)
+        {
+            _generatingBlockAccessList?.RecordAccountExistence(address, exists);
+        }
+    }
+
     /// <summary>Records the account read (honoring SystemUser suppression) and returns its change entry in one probe.</summary>
     /// <remarks>Only reached from members that have already established a live slice.</remarks>
     private AccountChangesAtIndex? RecordReadAndGetChanges(Address address)
@@ -256,17 +320,29 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
             ? _generatingBlockAccessList!.GetAccountChanges(address)
             : _generatingBlockAccessList!.RecordReadAndGet(address);
 
+    /// <summary>The live slice, for the control members that must not silently no-op without one.</summary>
+    /// <remarks>Every recording member checks <see cref="_generatingBlockAccessList"/> for null and delegates
+    /// to the decorated state instead; see the class remarks.</remarks>
+    private BlockAccessListAtIndex GeneratingBlockAccessList
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _generatingBlockAccessList ?? ThrowGeneratingBlockAccessListNotSet();
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static BlockAccessListAtIndex ThrowGeneratingBlockAccessListNotSet() =>
+        throw new InvalidOperationException("Block access list tracing requires a generating block access list to be set.");
+
     public void SetIndex(uint index)
-        => _generatingBlockAccessList.Index = index;
+        => GeneratingBlockAccessList.Index = index;
 
     public void IncrementIndex()
-        => _generatingBlockAccessList.Index++;
+        => GeneratingBlockAccessList.Index++;
 
     public void Clear()
     {
-        _generatingBlockAccessList.Clear();
+        GeneratingBlockAccessList.Clear();
         _systemAccountReadSuppressionDepth = 0;
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
     }
 
@@ -275,7 +351,6 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     public override void Restore(Snapshot snapshot)
     {
         // A revert can un-record the last cell's slot, so drop the single-slot cache.
-        _hasLastReadCell = false;
         _lastReadStorageChanges = null;
         _generatingBlockAccessList?.Restore(snapshot.BlockAccessListSnapshot);
         base.Restore(snapshot);
@@ -356,13 +431,13 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
     {
-        hash = null;
-        bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
-        if (res)
+        if (TryGetCodeChangeCurrent(address, out CodeChange? codeChange))
         {
             hash = codeChange.Value.CodeHash;
+            return true;
         }
-        return res;
+        hash = null;
+        return false;
     }
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
@@ -372,34 +447,38 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return codeChange is not null;
     }
 
-    private byte[]? GetCodeInternal(Address address)
-        => GetCodeCurrent(address) ?? base.GetCode(address);
+    private ReadOnlyMemory<byte> GetCodeInternal(Address address)
+        => GetCodeCurrent(address) is { } code ? code : base.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
         => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : base.GetCodeHash(address);
 
-    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
-        => GetInternal(parallel ? _generatingBlockAccessList?.GetAccountChanges(storageCell.Address) : null, in storageCell);
+    private void GetInternal(in StorageCell storageCell, out UInt256 value)
+        => GetInternal(parallel ? _generatingBlockAccessList?.GetAccountChanges(storageCell.Address) : null, in storageCell, out value);
 
-    private ReadOnlySpan<byte> GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell)
+    private void GetInternal(AccountChangesAtIndex? accountChanges, in StorageCell storageCell, out UInt256 value)
     {
-        if (parallel && accountChanges?.TryGetStorageChange(storageCell.Index, out StorageChange? change) == true)
+        if (parallel && accountChanges is not null)
         {
-            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
-            // frame without allocating a new byte[32] per SLOAD.
-            Unsafe.WriteUnaligned(ref MemoryMarshal.GetArrayDataReference(_scratchStorage), change.Value.Value);
-            return _scratchStorage;
+            ref StorageChange change = ref CollectionsMarshal.GetValueRefOrNullRef(accountChanges.StorageChanges, storageCell.Index);
+            if (!Unsafe.IsNullRef(ref change))
+            {
+                value = change.Value;
+                return;
+            }
         }
 
-        return base.Get(storageCell);
+        base.Get(in storageCell, out value);
     }
 
     private bool AccountExistsInternal(Address address)
         => AccountExistsCurrent(address) ?? base.AccountExists(address);
 
     private bool? AccountExistsCurrent(Address address)
+        => AccountExistsCurrent(_generatingBlockAccessList?.GetAccountChanges(address));
+
+    private static bool? AccountExistsCurrent(AccountChangesAtIndex? accountChanges)
     {
-        AccountChangesAtIndex? accountChanges = _generatingBlockAccessList?.GetAccountChanges(address);
         if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
         {
             // if nonce or balance is changed in this tx must exist (could have been created this tx)
@@ -418,6 +497,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
+        RecordAccountExistence(address, true);
         if (!balance.IsZero)
         {
             _generatingBlockAccessList?.AddBalanceChange(address, 0, balance);

@@ -15,12 +15,12 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Hash256 RootHash { get; set; }
+        public Hash256? RootHash { get; set; }
 
         /// <summary>
         /// Accounts of the storage tries to serve
         /// </summary>
-        public IOwnedReadOnlyList<PathWithAccount> Accounts { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> Accounts { get; set; } = IOwnedReadOnlyList<PathWithAccount>.Empty;
 
         /// <summary>
         /// Account hash of the first to retrieve
@@ -43,6 +43,6 @@ namespace Nethermind.State.Snap
 
         public override string ToString() => $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
 
-        public void Dispose() => Accounts?.Dispose();
+        public void Dispose() => Accounts.Dispose();
     }
 }

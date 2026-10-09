@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -16,8 +16,10 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -25,9 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
@@ -48,6 +48,7 @@ public partial class BlockProcessor(
     IBlockAccessListManager balManager)
     : IBlockProcessor
 {
+    private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
@@ -70,13 +71,17 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    internal sealed class BlockAccessListSequentialRetryException(
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, blockAccessListException);
+    /// <summary>Requests a fresh parent-state scope and ordinary sequential execution.</summary>
+    public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
+        : InvalidBlockException(block, message, innerException)
+    {
+        internal BlockAccessListSequentialRetryException(BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException exception)
+            : this(exception.InvalidBlock, exception.Message, exception) { }
+    }
 
     public event Action? TransactionsExecuted;
 
-    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -92,6 +97,8 @@ public partial class BlockProcessor(
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
             processed = true;
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
@@ -105,9 +112,10 @@ public partial class BlockProcessor(
         }
         finally
         {
+            _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
@@ -155,6 +163,10 @@ public partial class BlockProcessor(
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
+        // EIP-7668: set before tracing so receipts are built with the zero-length bloom instead of computing one.
+        // Genesis keeps the bloom it was declared with.
+        if (spec.IsEip7668Enabled && !block.IsGenesis) header.Bloom = Bloom.ZeroLength;
+
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
@@ -162,11 +174,13 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        // EIP-8253: the fork-block nonce bump precedes every pre-execution system call.
+        _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec, _balManager.GetParentSpec(header)))
         {
-            _systemContractHandler.InstallPredeploys(spec);
+            throw new InvalidBlockException(block, BlockErrorMessages.RecentRootPredeployNotEmpty);
         }
         CommitState(spec);
 
@@ -176,6 +190,35 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+        return FinalizeBlock(block, blockTracer, options, spec, receipts);
+    }
+
+    protected virtual TxReceipt[] FinalizeBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options,
+        IReleaseSpec spec, TxReceipt[] receipts) =>
+        FinalizeBlock<OnFlag>(block, blockTracer, spec, receipts);
+
+    /// <summary>
+    /// Finalizes the block; <typeparamref name="TComputesCommitments"/> selects whether the blooms, the receipts root,
+    /// the storage and state roots and the header hash are derived. A replay whose only product is its trace reads none of them.
+    /// </summary>
+    protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
+        where TComputesCommitments : struct, IFlag
+    {
+        BlockHeader header = block.Header;
+
+        using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+        (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
+        // EIP-7668: ProcessBlock set the zero-length header bloom and the receipts were built with it, so no blooms are computed.
+        bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
+        bool inBackground = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts);
+        // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
+        using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved ? StartBloomComputation(receipts) : null;
+        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork is not null
+            ? bloomWork.ContinueWith(() => receiptResults = (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)))
+            : inBackground
+                ? ParallelUnbalancedWork.BackgroundFor(0, 1, SmallBloomOptions, _ => receiptResults = (Bloom.ZeroLength, CalculateReceiptsRoot(receipts, spec, block)))
+                : null;
+
         CommitState(spec);
 
         if (spec.IsEip4844Enabled)
@@ -183,69 +226,58 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        Task<(Bloom BlockBloom, Hash256 ReceiptsRoot)>? bloomsAndReceiptsRootTask = null;
-        if (ShouldCalculateReceiptsInBackground(receipts))
+        if (receiptWork is null && TComputesCommitments.IsActive)
         {
-            bloomsAndReceiptsRootTask = Task.Run(() =>
+            if (!bloomsRemoved)
             {
                 CalculateBlooms(receipts);
-                return (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block));
-            });
-        }
-        else
-        {
-            CalculateBlooms(receipts);
+            }
+
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
-        try
+        ApplyMinerRewards(block, blockTracer, spec);
+        _systemContractHandler.ProcessWithdrawals(block, spec);
+
+        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        CommitState(spec);
+
+        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
+
+        if (TComputesCommitments.IsActive)
         {
-            ApplyMinerRewards(block, blockTracer, spec);
-            _systemContractHandler.ProcessWithdrawals(block, spec);
-
-            // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
-            // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-            CommitState(spec);
-
-            _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
-
-            ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
-
             CommitStateAndStorageRoots(spec);
-
-            if (BlockchainProcessor.IsMainProcessingThread)
-            {
-                SetAccountChanges(block);
-            }
-
-            if (ShouldComputeStateRoot(header))
-            {
-                ComputeStateRoot(header);
-            }
-
-            if (bloomsAndReceiptsRootTask is not null)
-            {
-                (header.Bloom, header.ReceiptsRoot) = bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
-            }
-
-            _balManager.SetBlockAccessList(block);
         }
-        finally
+        else
         {
-            if (bloomsAndReceiptsRootTask is { IsCompletedSuccessfully: false })
-            {
-                try
-                {
-                    bloomsAndReceiptsRootTask.GetAwaiter().GetResult();
-                }
-                catch
-                {
-                    // Preserve the processing failure while ensuring the background task is observed.
-                }
-            }
+            CommitState(spec);
         }
 
-        header.Hash = header.CalculateHash();
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            SetAccountChanges(block);
+        }
+
+        if (TComputesCommitments.IsActive && ShouldComputeStateRoot(header))
+        {
+            ComputeStateRoot(header);
+        }
+
+        if (receiptWork is not null)
+        {
+            receiptWork.WaitForCompletion();
+            (header.Bloom, header.ReceiptsRoot) = receiptResults;
+        }
+
+        _balManager.SetBlockAccessList(block);
+
+        if (TComputesCommitments.IsActive)
+        {
+            header.Hash = header.CalculateHash();
+        }
 
         return receipts;
     }
@@ -295,10 +327,24 @@ public partial class BlockProcessor(
         return blockBloom;
     }
 
-    private static Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
+    protected virtual Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block)
     {
         using MetricsTimer<ReceiptsRootTimeSink> _ = new();
         return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts)
+    {
+        long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
+        ParallelOptions options = receipts.Length <= Environment.ProcessorCount
+            ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
+        return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
+            i => receipts[i].CalculateBloom(), () =>
+            {
+                if (ExecutionMetricsFlag.IsActive)
+                    BloomsTimeSink.AddTicks(Stopwatch.GetElapsedTime(started).Ticks);
+            });
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -374,7 +420,25 @@ public partial class BlockProcessor(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetAccountChanges(Block block)
-        => block.AccountChanges = _stateProvider.GetAccountChanges();
+    {
+        ArrayPoolList<AddressAsKey>? worldStateChanges = _stateProvider.GetAccountChanges();
+        // Already set from the BAL when its changes went straight to the scope: the world state adds only what it did not cover.
+        if (block.AccountChanges is not { } balChanges || block.BlockAccessList is not { } bal)
+        {
+            block.AccountChanges = worldStateChanges;
+            return;
+        }
+
+        if (worldStateChanges is null) return;
+
+        using (worldStateChanges)
+        {
+            foreach (AddressAsKey address in worldStateChanges.AsSpan())
+            {
+                if (bal.GetAccountChanges(address) is not { HasStateChanges: true }) balChanges.Add(address);
+            }
+        }
+    }
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
@@ -452,30 +516,11 @@ public partial class BlockProcessor(
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceMinerReward(BlockReward reward) => _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-    private void ApplyDaoTransition(Block block)
-    {
-        ulong? daoBlockNumber = _specProvider.DaoBlockNumber;
-        if (daoBlockNumber.HasValue && daoBlockNumber.Value == block.Header.Number)
-        {
-            ApplyTransition();
-        }
+    /// <summary>Applies the DAO irregular state change when this block is the DAO fork block.</summary>
+    /// <remarks>
+    /// Split by build: the zkEVM guest serves post-merge blocks only, and naming the Dao fork here
+    /// would compile its whole ancestor chain into the guest.
+    /// </remarks>
+    private partial void ApplyDaoTransition(Block block);
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void ApplyTransition()
-        {
-            if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
-            Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount))
-            {
-                _stateProvider.CreateAccount(withdrawAccount, 0);
-            }
-
-            foreach (Address daoAccount in DaoData.DaoAccounts)
-            {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
-            }
-        }
-    }
 }

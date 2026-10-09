@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Handlers;
 
@@ -17,12 +18,32 @@ public sealed class GetInclusionListSszHandler(IEngineRpcModule engineModule) : 
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.InclusionList;
     public override int? Version => EngineApiVersions.GetInclusionList.V1;
+    public override bool AcceptsPathExtra => true;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         ctx.Response.Headers.CacheControl = "no-store";
+
+        if (!TryParseParentBlockHash(extra.Span, out Hash256? parentBlockHash))
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, $"Invalid parent block hash: '{extra}'");
+            return;
+        }
+
         // WriteSszResultAsync disposes the ResultWrapper (and its IDisposable InclusionListBytes) after encoding.
-        ResultWrapper<InclusionListBytes> result = await engineModule.engine_getInclusionListV1();
+        ResultWrapper<InclusionListBytes> result = await engineModule.engine_getInclusionListV1(parentBlockHash);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeInclusionListResponse);
+    }
+
+    private static bool TryParseParentBlockHash(ReadOnlySpan<char> extra, out Hash256? parentBlockHash)
+    {
+        parentBlockHash = null;
+        if (extra.Length == 0) return true;
+
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        if (!TryDecodeHexPathExtra(extra, bytes)) return false;
+
+        parentBlockHash = new Hash256(bytes);
+        return true;
     }
 }

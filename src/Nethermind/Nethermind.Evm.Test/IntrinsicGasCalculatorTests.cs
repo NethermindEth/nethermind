@@ -226,18 +226,24 @@ namespace Nethermind.Evm.Test
             Assert.That(() => IntrinsicGasCalculator.Calculate(tx, Cancun.Instance), Throws.InstanceOf<InvalidDataException>());
         }
 
-        [Test]
-        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Eip8037_policy_intrinsic_gas_splits_authorization_cost(bool eip8038Enabled)
         {
             Transaction tx = Build.A.Transaction.SignedAndResolved()
                 .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
                 .TestObject;
-            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance);
+            OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8038Enabled = eip8038Enabled };
+            IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec);
 
             // Recipient touch: COLD + TX_VALUE (transfer log folded into TX_VALUE); authorization: state-independent base.
-            ulong recipientExecution = Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
-            Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientExecution + Eip8038Constants.PerAuthBaseExecution));
-            Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
+            ulong recipientExecution = (eip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess) + GasCostOf.TxValueCostEip2780;
+            ulong authorizationExecution = eip8038Enabled ? Eip8038Constants.PerAuthBaseExecution : GasCostOf.PerAuthBaseExecution;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(intrinsicGas.Standard.Value, Is.EqualTo(GasCostOf.TransactionEip2780 + recipientExecution + authorizationExecution));
+                Assert.That(intrinsicGas.Standard.StateReservoir, Is.Zero);
+            }
         }
 
         [Test]
@@ -399,6 +405,23 @@ namespace Nethermind.Evm.Test
             Assert.That(gas.Standard, Is.EqualTo(expectedStandard)); // 21760, still 68/non-zero byte
         }
 
+        [Test]
+        public void IntrinsicGasWithoutMemo_DoesNotCreateOrReplaceMemo([Values] bool existingMemo)
+        {
+            Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressA).WithData([0, 1]).TestObject;
+            if (existingMemo) EthereumGasPolicy.CalculateIntrinsicGas(tx, Cancun.Instance);
+            object? memo = tx.IntrinsicGasMemo;
+
+            IntrinsicGas<EthereumGasPolicy> gas = EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(tx, Prague.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gas.StandardGas, Is.EqualTo(21_020));
+                Assert.That(gas.MinRequiredGasLimit, Is.EqualTo(21_050));
+                Assert.That(tx.IntrinsicGasMemo, Is.SameAs(memo));
+            }
+        }
+
         [TestCase(true, true, true, TestName = "Memo_ForSameSpec_ServesTheCachedResult")]
         [TestCase(false, true, false, TestName = "Memo_ForDifferentSpec_Recomputes")]
         [TestCase(true, false, true, TestName = "Memo_ForDifferentBlockGasLimit_StillHits")]
@@ -453,9 +476,8 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void IntrinsicGasMemo_WhenEip2780ClassificationIsUnchanged_IsReused(bool contractCreation)
+        [Test]
+        public void IntrinsicGasMemo_WhenEip2780ClassificationIsUnchanged_IsReused([Values] bool contractCreation)
         {
             Transaction tx = (contractCreation
                     ? Build.A.Transaction.WithTo(null)

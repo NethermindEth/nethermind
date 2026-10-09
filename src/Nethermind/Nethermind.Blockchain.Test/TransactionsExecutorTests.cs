@@ -443,7 +443,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithGasLimit(GasCostOf.Transaction * 2).TestObject;
             BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec));
 
-            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider);
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             Assert.That(args.Action, Is.EqualTo(expectedSkipReason is null ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
             if (expectedSkipReason is not null) Assert.That(args.Reason, Is.EqualTo(expectedSkipReason));
@@ -464,7 +464,7 @@ namespace Nethermind.Blockchain.Test
                 Type = TxType.FrameTx,
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, frameData)],
                 FrameSignatures = [],
                 GasLimit = frameGasLimit,
                 GasPrice = 1,
@@ -476,7 +476,7 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
 
-            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider);
+            BlockProcessor.AddingTxEventArgs args = picker.CanAddTransaction(block, frameTx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             if (expectedSkipped)
             {
@@ -507,7 +507,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(GasCostOf.Transaction)
                 .TestObject;
             // The picker prices a frame tx through its frames, so it needs at least one to be priceable.
-            frameBlobTx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
+            frameBlobTx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: GasCostOf.Transaction, UInt256.Zero, default)];
             frameBlobTx.FrameSignatures = [];
 
             Block block = Build.A.Block
@@ -518,7 +518,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockProcessor.BlockProductionTransactionPicker picker = new(specProvider);
             BlockProcessor.AddingTxEventArgs args =
-                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider);
+                picker.CanAddTransaction(block, frameBlobTx, new HashSet<Transaction>(), stateProvider, block.GasUsed, 0);
 
             Assert.That(args.Action, Is.EqualTo(BlockProcessor.TxAction.Add));
         }
@@ -540,7 +540,7 @@ namespace Nethermind.Blockchain.Test
             using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
             stateProvider.CreateAccount(TestItem.AddressA, 100.Ether);
             stateProvider.InsertCode(TestItem.AddressA, prefix == FramePrefix.Approves
-                    ? Prepare.EvmCode.PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
+                    ? Prepare.EvmCode.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done
                     : Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done,
                 spec);
             stateProvider.Commit(spec);
@@ -553,7 +553,7 @@ namespace Nethermind.Blockchain.Test
                 ChainId = TestBlockchainIds.ChainId,
                 Nonce = 0,
                 SenderAddress = TestItem.AddressA,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
                 FrameSignatures = [],
                 GasLimit = verifyGas,
                 GasPrice = 1,
@@ -661,9 +661,16 @@ namespace Nethermind.Blockchain.Test
     }
 
     public class WorldStateStab()
-        : WorldStateDecorator(Substitute.For<IWorldState>())
+        : WorldStateDecorator(ScopedSubstitute())
     {
         public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
+
+        private static IWorldState ScopedSubstitute()
+        {
+            IWorldState worldState = Substitute.For<IWorldState>();
+            worldState.TryBeginScope(Arg.Any<BlockHeader?>(), out Arg.Any<IDisposable?>()).Returns(call => call.Succeed(1, Substitute.For<IDisposable>()));
+            return worldState;
+        }
 
         public override bool TryGetAccount(Address address, out AccountStruct account)
         {
@@ -683,9 +690,9 @@ namespace Nethermind.Blockchain.Test
                 return true;
             }
 
-            public byte[] GetCode(Address address) => [];
+            public ReadOnlyMemory<byte> GetCode(Address address) => Array.Empty<byte>();
 
-            public byte[] GetCode(in ValueHash256 codeHash) => [];
+            public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => Array.Empty<byte>();
 
             public bool IsContract(Address address) => false;
 
@@ -693,7 +700,7 @@ namespace Nethermind.Blockchain.Test
 
             public bool IsDeadAccount(Address address) => false;
 
-            public ReadOnlySpan<byte> Get(in StorageCell storageCell) => [];
+            public void Get(in StorageCell storageCell, out UInt256 value) => value = default;
         }
     }
 }

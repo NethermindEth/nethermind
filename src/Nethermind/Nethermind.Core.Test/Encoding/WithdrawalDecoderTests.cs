@@ -38,7 +38,7 @@ public class WithdrawalDecoderTests
             AmountInGwei = 3
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
-        Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
+        Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp)!;
 
         Assert.That(decoded, Is.EqualTo(withdrawal).UsingWithdrawalComparer());
     }
@@ -110,7 +110,7 @@ public class WithdrawalDecoderTests
 
         byte[] rlp = CombineRlpList(tamperedRlp1, tamperedRlp2);
 
-        void Decode() => new RlpReader(rlp).DecodeArray(decoder!);
+        void Decode() => new RlpReader(rlp).DecodeNonNullArray(decoder!);
         Assert.That(Decode, Throws.InstanceOf<RlpException>().And.Message.Contain("checkpoint failed"));
     }
 

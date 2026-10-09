@@ -105,8 +105,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
-                    ? FindLatestBlock()
+                // Head is read once, so a head change cannot answer for another block.
+                BlockParameterType.BlockHash => Head is { } head && head.Hash == blockParameter.BlockHash
+                    ? head
                     : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
@@ -143,5 +144,9 @@ namespace Nethermind.Blockchain.Find
         }
 
         public ulong GetLowestBlock();
+
+        /// <summary>The oldest block this node can actually serve - the published boundary floored by the
+        /// download frontier while a backfill is still descending. What eth/69 advertises as earliest.</summary>
+        public ulong LowestServedBlock => GetLowestBlock();
     }
 }
