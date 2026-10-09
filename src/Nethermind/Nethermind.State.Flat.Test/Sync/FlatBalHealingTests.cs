@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -34,6 +35,7 @@ public class FlatBalHealingTests
     private BlockAccessListStore _balStore = null!;
     private IBlockTree _blockTree = null!;
     private ITreeSyncStore _syncStore = null!;
+    private ICodeRecovery _codeRecovery = null!;
     private FlatBalHealing _healing = null!;
 
     [SetUp]
@@ -47,7 +49,8 @@ public class FlatBalHealingTests
         _balStore = new BlockAccessListStore(_balDb);
         _blockTree = Substitute.For<IBlockTree>();
         _syncStore = Substitute.For<ITreeSyncStore>();
-        _healing = new(_blockTree, _balStore, _reassembler, _persistence, _syncStore, _codeDb, LimboLogs.Instance);
+        _codeRecovery = Substitute.For<ICodeRecovery>();
+        _healing = new(_blockTree, _balStore, _reassembler, _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
     }
 
     [TearDown]
@@ -182,6 +185,44 @@ public class FlatBalHealingTests
             Assert.That(result, Is.True, "healed");
             Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code), "adopted code");
             Assert.That(_codeDb.Get(Keccak.Compute(replacement).Bytes), Is.EqualTo(replacement), "replaced code");
+        }
+    }
+
+    // EIP-8298: snap downloaded the source after it replaced its code, so neither snap nor the BALs supply the
+    // bytecode the adopter took; healing recovers it by hash before finalizing.
+    [Test]
+    public async Task Recovers_adopted_code_whose_source_has_since_replaced_it([Values] bool peerServesCode)
+    {
+        byte[] code = [0x60, 0x00, 0x60, 0x00];
+        byte[] replacement = [0x60, 0x01];
+        Hash256 codeHash = Keccak.Compute(code);
+        Hash256 replacementHash = Keccak.Compute(replacement);
+
+        SeedInitialState(Acc(TestItem.AddressA, 100), Acc(TestItem.AddressB, 500, code: replacement));
+        _codeDb.Set(replacementHash.Bytes, replacement);
+        _codeRecovery.Recover(codeHash.ValueHash256, Arg.Any<CancellationToken>()).Returns(peerServesCode ? code : null);
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 100, code: code), Acc(TestItem.AddressB, 500, code: replacement));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        ReadOnlyAccountChanges adopter = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithCodeChanges(CodeChange.Adopted(1, codeHash.ValueHash256))
+            .TestObject;
+        ReadOnlyAccountChanges source = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressB)
+            .WithCodeChanges(CodeChange.Adopted(2, replacementHash.ValueHash256))
+            .TestObject;
+        BlockHeader lastPivot = SetupBlock(firstPivot, expected, Bal(adopter, source));
+
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(peerServesCode), "finalized");
+            Assert.That(_codeDb.Get(codeHash.Bytes), peerServesCode ? Is.EqualTo(code) : Is.Null, "adopted code");
+            _ = _codeRecovery.Received(1).Recover(codeHash.ValueHash256, Arg.Any<CancellationToken>());
+            _ = _codeRecovery.DidNotReceive().Recover(replacementHash.ValueHash256, Arg.Any<CancellationToken>());
+            _syncStore.Received(peerServesCode ? 1 : 0).FinalizeSync(lastPivot);
         }
     }
 
@@ -504,7 +545,7 @@ public class FlatBalHealingTests
         IBlockAccessListStore throwingStore = Substitute.For<IBlockAccessListStore>();
         throwingStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
         throwingStore.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new InvalidOperationException("boom"));
-        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, _persistence, _syncStore, _codeDb, LimboLogs.Instance);
+        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
 
         SeedInitialState(Acc(TestItem.AddressA, 100));
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
@@ -541,7 +582,7 @@ public class FlatBalHealingTests
         return reader.TryGetSlot(address, slot, ref value);
     }
 
-    // Composes the split IBalHealing primitives into a single-round heal (reassemble → apply → finalize) so these
+    // Composes the split IBalHealing primitives into a single-round heal (reassemble → apply → recover code → finalize) so these
     // tests stay focused on the flat apply logic. Failures propagate as they do in production; the multi-round
     // orchestration in StateSyncRunner.RunBalHealing is not covered here.
     private static Task<bool> RunOnce(FlatBalHealing healing, BlockHeader firstPivot, BlockHeader lastPivot, IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
@@ -552,8 +593,14 @@ public class FlatBalHealingTests
         root = healing.ApplyRange(root, firstPivot, lastPivot, token).Root;
         if (root is null) return Task.FromResult(false);
 
-        healing.FinalizeSync(lastPivot);
-        return Task.FromResult(true);
+        return FinalizeOnceCodeRecovered();
+
+        async Task<bool> FinalizeOnceCodeRecovered()
+        {
+            if (!await healing.TryRecoverMissingCode(token)) return false;
+            healing.FinalizeSync(lastPivot);
+            return true;
+        }
     }
 
     private static BlockHeader Pivot(ulong number, Hash256 stateRoot) =>

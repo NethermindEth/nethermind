@@ -191,6 +191,11 @@ public class StateSyncRunner(
 
         if (finalPivot is null) return;
 
+        while (!await balHealing.TryRecoverMissingCode(token))
+        {
+            await Task.Delay(1000, token);
+        }
+
         if (!blockTree.IsMainChain(finalPivot)) throw new PivotReorgedException(finalPivot);
 
         if (root != finalPivot.StateRoot)

@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 
@@ -27,9 +28,13 @@ public class FlatBalHealing(
     IPersistence persistence,
     ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
+    Lazy<ICodeRecovery> codeRecovery,
     ILogManager logManager) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
+
+    // EIP-8298: hashes of adopted code the code database lacked when the chunk adopting it was applied.
+    private readonly HashSet<ValueHash256> _missingCode = [];
 
     private const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
@@ -65,6 +70,24 @@ public class FlatBalHealing(
     }
 
     public void FinalizeSync(BlockHeader pivot) => store.FinalizeSync(pivot);
+
+    /// <inheritdoc/>
+    public async Task<bool> TryRecoverMissingCode(CancellationToken token)
+    {
+        foreach (ValueHash256 codeHash in _missingCode.ToArray())
+        {
+            if (!codeDb.KeyExists(codeHash.Bytes))
+            {
+                if (await codeRecovery.Value.Recover(codeHash, token) is not { } code) continue;
+                codeDb.Set(codeHash.Bytes, code);
+            }
+
+            _missingCode.Remove(codeHash);
+        }
+
+        if (_missingCode.Count > 0 && _logger.IsInfo) _logger.Info($"BAL healing: {_missingCode.Count} adopted bytecodes still missing, retrying.");
+        return _missingCode.Count == 0;
+    }
 
     private bool TryCollectBals(BlockHeader from, BlockHeader to, ArrayPoolList<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
@@ -176,11 +199,14 @@ public class FlatBalHealing(
             Account account = delta.PostImage;
             if (delta.Code is { } codeChange)
             {
-                // Adopted code not deposited in the chunk predates it, so the code database already holds it.
+                // Adopted code not deposited in the chunk predates it, but snap may not have fetched it: its source
+                // can have replaced its own code before being downloaded. A miss is recovered before the sync finalizes.
                 if (!codeChange.IsAdopted)
                     codeDb.Set(codeChange.CodeHash.Bytes, codeChange.Code);
                 else if (depositedCode?.TryGetValue(codeChange.CodeHash, out byte[]? code) == true)
                     codeDb.Set(codeChange.CodeHash.Bytes, code);
+                else if (!codeDb.KeyExists(codeChange.CodeHash.Bytes))
+                    _missingCode.Add(codeChange.CodeHash);
             }
 
             // SelfDestruct scans the pre-batch snapshot; wipe before writing any revived account's slots.
