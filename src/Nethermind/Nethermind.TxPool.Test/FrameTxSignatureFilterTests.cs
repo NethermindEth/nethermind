@@ -111,16 +111,97 @@ internal class FrameTxSignatureFilterTests
         Assert.That(verified, Is.True);
     }
 
+    [TestCase(TxHandlingOptions.None, false, true, false)]
+    [TestCase(TxHandlingOptions.None, false, true, true)]
+    [TestCase(TxHandlingOptions.None, true, false, false)]
+    [TestCase(TxHandlingOptions.PersistentBroadcast, false, false, false)]
+    public void Accept_DuringBlockWork_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable, bool building)
+    {
+        // Two signatures: the first verifying entry always runs, so only a later one can yield.
+        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
+        if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
+        tx.FrameSignatures = [DigestSignature(TestItem.PrivateKeyB, 1), DigestSignature(TestItem.PrivateKeyC, 2)];
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        if (building) headInfo.IsBuildingBlock.Returns(true);
+        else headInfo.IsProcessingBlock.Returns(true);
+        bool deferred = options == TxHandlingOptions.None;
+        long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+        long preempted = Metrics.FrameTxSignatureVerificationsPreempted;
+
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref state, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted), result.ToString());
+            Assert.That(state.FrameSignaturesVerified, Is.EqualTo(!deferred));
+            Assert.That(state.FrameValidationYielded, Is.EqualTo(refetchable));
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid), "a yield is not a verdict on the signature");
+            Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(deferred ? preempted + 1 : preempted));
+        }
+    }
+
+    [Test]
+    public void Accept_DuringBlockWork_AdmitsASingleSignatureTransaction()
+    {
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsBuildingBlock.Returns(true);
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(state.FrameSignaturesVerified, Is.True);
+        }
+    }
+
+    [Test]
+    public void Accept_DuringBlockWork_RejectsAMalformedLaterEntry()
+    {
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
+        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
+        tx.FrameSignatures =
+        [
+            DigestSignature(TestItem.PrivateKeyB, 1),
+            new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressC, default, new byte[64]),
+        ];
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+        long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+
+        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ToString(), Does.Contain(FrameTxSignatureValidator.InvalidSignatureLength));
+            Assert.That(state.FrameValidationYielded, Is.False);
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid + 1));
+        }
+    }
+
     private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)
     {
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>());
+        FrameTxSignatureFilter filter = CreateFilter();
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
         signaturesVerified = state.FrameSignaturesVerified;
         return result;
+    }
+
+    private static FrameTxSignatureFilter CreateFilter(IChainHeadInfoProvider? headInfo = null)
+    {
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
+        return new FrameTxSignatureFilter(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
     }
 
     private static Transaction Signed(PrivateKey key, Address? signer)

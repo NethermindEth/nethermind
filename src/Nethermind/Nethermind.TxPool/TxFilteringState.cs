@@ -18,9 +18,15 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// implementation outside it cannot have done the verification this claims.</remarks>
     public bool FrameSignaturesVerified { get; internal set; }
 
-    /// <summary>Set when a gossiped frame transaction was deferred only because its simulation yielded to
-    /// this node's own concurrent work, so the pool may fetch it again rather than treat it as received.</summary>
-    internal bool FrameSimulationYielded { get; set; }
+    /// <summary>Set when a gossiped frame transaction was deferred only because its signature verification or
+    /// simulation yielded to this node's own concurrent work, so the pool may fetch it again rather than treat
+    /// it as received.</summary>
+    internal bool FrameValidationYielded { get; set; }
+
+    /// <summary>Set when the transaction is re-added from a reorganised-out block rather than received from a peer.</summary>
+    /// <remarks>Such a transaction has no peer to refetch it from, so its frame validation never yields to this
+    /// node's block work: a deferral would drop it until someone announces it again.</remarks>
+    internal bool ReAddedFromReorg { get; init; }
 
     /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
