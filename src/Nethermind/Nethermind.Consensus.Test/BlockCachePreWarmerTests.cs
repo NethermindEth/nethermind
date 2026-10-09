@@ -1498,6 +1498,39 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void GroupTransactionsBySender_KeepsAHeavyChainWhole_WhenAsked()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, keepChainsWhole: true);
+        try
+        {
+            Assert.That(groups.Count, Is.EqualTo(1), "the chain is one job");
+            Assert.That(groups[0].Transactions.Count, Is.EqualTo(2), "its txs warm in nonce order");
+        }
+        finally
+        {
+            DisposeGroups(groups);
+        }
+    }
+
+    [Test]
+    public void SpeculativePass_KeepsAHeavySenderChainWhole_WhenAsked()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false, keepSpeculativeChainsWhole: true);
+        Block delta = Build.A.Block.WithNumber(1).WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 3_000_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 3_000_000)).TestObject;
+        long kept = Volatile.Read(ref Blockchain.Metrics.PrewarmSpeculativeChainsKeptWhole);
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance, delta);
+
+        Assert.That(Volatile.Read(ref Blockchain.Metrics.PrewarmSpeculativeChainsKeptWhole), Is.GreaterThan(kept));
+    }
+
+    [Test]
     public void GroupTransactionsBySender_DoesNotSplitSingleHeavyTransaction()
     {
         Block block = Build.A.Block.WithNumber(1).WithTransactions(
@@ -2707,7 +2740,8 @@ public class BlockCachePreWarmerTests
         bool parallelExecutionBatchRead,
         ILogManager? logManager = null,
         bool deferSpeculativeJoin = false,
-        bool skipIdleSpeculativeJoin = false)
+        bool skipIdleSpeculativeJoin = false,
+        bool keepSpeculativeChainsWhole = false)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -2720,7 +2754,8 @@ public class BlockCachePreWarmerTests
             ParallelExecution = parallelExecution,
             ParallelExecutionBatchRead = parallelExecutionBatchRead,
             PreWarmDeferSpeculativeJoin = deferSpeculativeJoin,
-            PreWarmSkipIdleSpeculativeJoin = skipIdleSpeculativeJoin
+            PreWarmSkipIdleSpeculativeJoin = skipIdleSpeculativeJoin,
+            PreWarmKeepSpeculativeChainsWhole = keepSpeculativeChainsWhole
         };
 
         return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, logManager ?? LimboLogs.Instance);

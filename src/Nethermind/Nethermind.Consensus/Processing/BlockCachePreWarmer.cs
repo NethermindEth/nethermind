@@ -88,6 +88,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private DiscoveryReads? _discoveryReads;
     private bool _deferSpeculativeJoin;
     private bool _skipIdleSpeculativeJoin;
+    private bool _keepSpeculativeChainsWhole;
     // 1 while the mempool session is in a pass, from before it looks at its token until the pass ends.
     private int _speculativePassActive;
     // 1 while a stopped session was left running; the next JoinWriters waits for it.
@@ -143,6 +144,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _discoverFirst = blocksConfig.PreWarmDiscoverFirst;
         _deferSpeculativeJoin = blocksConfig.PreWarmDeferSpeculativeJoin;
         _skipIdleSpeculativeJoin = blocksConfig.PreWarmSkipIdleSpeculativeJoin;
+        _keepSpeculativeChainsWhole = blocksConfig.PreWarmKeepSpeculativeChainsWhole;
         _discoveryReadThreads = Math.Max(1, blocksConfig.PreWarmDiscoveryReadThreads);
         if (_discoverFirst)
         {
@@ -1051,7 +1053,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // block: it repeats the scan anyway, with the full fan-out, and here it would only delay the warming.
         (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
             delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists,
-            warmCalldataAddresses: false, handColdChainsToDiscovery: false);
+            warmCalldataAddresses: false, handColdChainsToDiscovery: false,
+            // No main thread runs in the gap for a split chain to race, and split, its later txs warm without their
+            // predecessors' writes.
+            keepSenderChainsWhole: _keepSpeculativeChainsWhole && ExperimentBlocks.Apply(delta.Number));
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
         // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
         ((IThreadPoolWorkItem)addressWarmer).Execute();
@@ -1068,7 +1073,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return addressWarmer.SystemAccessListsWarmed;
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists, bool warmCalldataAddresses, bool handColdChainsToDiscovery)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists, bool warmCalldataAddresses, bool handColdChainsToDiscovery, bool keepSenderChainsWhole = false)
     {
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
@@ -1080,6 +1085,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
             DiscoversFirst = _discoverFirst && ExperimentBlocks.Apply(block.Number) && handColdChainsToDiscovery && bal is null && _preBlockCaches is not null,
             Tuned = ExperimentBlocks.Apply(block.Number),
+            KeepsSenderChainsWhole = keepSenderChainsWhole,
             Token = token
         };
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
@@ -1214,6 +1220,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         Transaction[] transactions = block.Transactions;
         Interlocked.Add(ref Blockchain.Metrics.PrewarmBlockTxs, transactions.Length);
+        bool even = (block.Number & 1) == 0;
+        if (even) Interlocked.Add(ref Blockchain.Metrics.EvenBlocksTxs, transactions.Length);
+        else Interlocked.Add(ref Blockchain.Metrics.OddBlocksTxs, transactions.Length);
         if (speculativelyWarmed is null)
         {
             Interlocked.Increment(ref Blockchain.Metrics.PrewarmMempoolHandoffMisses);
@@ -1228,6 +1237,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         Interlocked.Add(ref Blockchain.Metrics.PrewarmBlockTxsMempoolWarmed, warmed);
+        if (even) Interlocked.Add(ref Blockchain.Metrics.EvenBlocksTxsMempoolWarmed, warmed);
+        else Interlocked.Add(ref Blockchain.Metrics.OddBlocksTxsMempoolWarmed, warmed);
     }
 
     private void CancelAndJoinSpeculativeLocked()
@@ -1470,10 +1481,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>For tests: the jobs, and with them their transaction lists, are the caller's to dispose; the scratch is released here.</summary>
-    internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null, int[]? claimed = null)
+    internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null, int[]? claimed = null, bool keepChainsWhole = false)
     {
         using GroupingScratch scratch = new();
-        GroupTransactionsBySender(block, maxWorkers, speculativelyWarmed, claimed, scratch);
+        GroupTransactionsBySender(block, maxWorkers, speculativelyWarmed, claimed, scratch, keepChainsWhole);
         ArrayPoolList<WarmupJob> jobs = new(scratch.Jobs.Count);
         jobs.AddRange(scratch.Jobs.AsSpan());
         scratch.Jobs.Clear();
@@ -1481,7 +1492,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>Groups into <paramref name="scratch"/>, whose lists and dictionary are reused block after block.</summary>
-    private static void GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed, int[]? claimed, GroupingScratch scratch)
+    private static void GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed, int[]? claimed, GroupingScratch scratch, bool keepChainsWhole = false)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> groups = scratch.Groups;
         groups.Clear();
@@ -1521,7 +1532,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // Splitting pays only when idle workers exist to absorb the singleton jobs; with one
             // worker it just discards same-sender state propagation for nothing. Negative follows
             // ParallelOptions.MaxDegreeOfParallelism semantics: unlimited.
-            if (maxWorkers is < 0 or >= 2 && group.Count >= 2 && groupGas > SplitSenderGroupGasThreshold)
+            bool heavyChain = group.Count >= 2 && groupGas > SplitSenderGroupGasThreshold;
+            if (heavyChain && keepChainsWhole) Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeChainsKeptWhole);
+            if (!keepChainsWhole && maxWorkers is < 0 or >= 2 && heavyChain)
             {
                 // A heavy chain warms slower than the main loop executes it; warm each tx in parallel from parent state instead.
                 foreach ((int Index, Transaction Tx) item in group.AsSpan())
@@ -2265,6 +2278,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// <summary>The token the block's warms and their hand-offs stop on.</summary>
         public CancellationToken Token { get; init; }
 
+        /// <summary>Whether a heavy sender chain is warmed in order rather than split into parent-state singletons.</summary>
+        public bool KeepsSenderChainsWhole { get; init; }
+
         public BlockFootprints? Footprints { get; set; }
 
         void IColdReadHandler.OnColdReads(int index, object? item) => PreWarmer.HandToDiscovery(index, (Transaction)item!, this);
@@ -2403,7 +2419,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _waiter = 0;
             _active = 0;
             _helpers = 0;
-            GroupTransactionsBySender(blockState.Block, maxDegree, _speculativelyWarmed, claimed, _scratch);
+            GroupTransactionsBySender(blockState.Block, maxDegree, _speculativelyWarmed, claimed, _scratch, blockState.KeepsSenderChainsWhole);
             return _scratch.Jobs.Count + CountUnclaimed(claimed.AsSpan(0, txCount));
         }
 

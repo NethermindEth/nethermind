@@ -130,6 +130,46 @@ public static class Metrics
     public static long OddBlocksProcessingMicrosTrimmed;
 
     [CounterMetric]
+    [Description("Transactions of even-numbered blocks pre-warmed for processing")]
+    public static long EvenBlocksTxs;
+
+    [CounterMetric]
+    [Description("Transactions of even-numbered blocks the mempool pre-warm had warmed")]
+    public static long EvenBlocksTxsMempoolWarmed;
+
+    [CounterMetric]
+    [Description("Transactions of odd-numbered blocks pre-warmed for processing")]
+    public static long OddBlocksTxs;
+
+    [CounterMetric]
+    [Description("Transactions of odd-numbered blocks the mempool pre-warm had warmed")]
+    public static long OddBlocksTxsMempoolWarmed;
+
+    [CounterMetric]
+    [Description("Transactions of even-numbered blocks whose pre-warm run was rejected at execution")]
+    public static long EvenBlocksHandoffRejected;
+
+    [CounterMetric]
+    [Description("Transactions of even-numbered blocks execution reached with no pre-warm run")]
+    public static long EvenBlocksHandoffMissing;
+
+    [CounterMetric]
+    [Description("Storage reads of even-numbered blocks the pre-block cache missed on the main thread")]
+    public static long EvenBlocksPreBlockStorageMisses;
+
+    [CounterMetric]
+    [Description("Transactions of odd-numbered blocks whose pre-warm run was rejected at execution")]
+    public static long OddBlocksHandoffRejected;
+
+    [CounterMetric]
+    [Description("Transactions of odd-numbered blocks execution reached with no pre-warm run")]
+    public static long OddBlocksHandoffMissing;
+
+    [CounterMetric]
+    [Description("Storage reads of odd-numbered blocks the pre-block cache missed on the main thread")]
+    public static long OddBlocksPreBlockStorageMisses;
+
+    [CounterMetric]
     [Description("Blocks whose processing prepared the pre-block caches")]
     public static long PrewarmBlockStarts;
 
@@ -172,6 +212,14 @@ public static class Metrics
     [CounterMetric]
     [Description("Transactions the mempool pre-warm passes warmed")]
     public static long PrewarmSpeculativeTxs;
+
+    [CounterMetric]
+    [Description("Transactions of the head block the pool still returned to a mempool pre-warm pass")]
+    public static long PrewarmSpeculativeHeadTxsSelected;
+
+    [CounterMetric]
+    [Description("Heavy sender chains a mempool pre-warm pass warmed in order instead of splitting")]
+    public static long PrewarmSpeculativeChainsKeptWhole;
 
     [CounterMetric]
     [Description("Transactions of the blocks pre-warmed for processing")]

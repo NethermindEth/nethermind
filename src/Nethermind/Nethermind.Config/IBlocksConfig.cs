@@ -83,6 +83,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Opening a block's state stops the mempool pre-warm session without waiting for it when no pass of it is running, since it then warms nothing further.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmSkipIdleSpeculativeJoin { get; set; }
 
+    [ConfigItem(Description = "The mempool pre-warm warms a sender again when one of its pending txs has a hash it has not warmed, and leaves out the head block's own txs.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmMempoolSelectByHash { get; set; }
+
+    [ConfigItem(Description = "The mempool pre-warm warms a heavy sender chain in order instead of splitting it into single txs on the parent state.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmKeepSpeculativeChainsWhole { get; set; }
+
     [ConfigItem(Description = "The blocks the experiment flags apply to: 0 all, 1 even block numbers only, 2 odd ones only.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExperimentParity { get; set; }
 

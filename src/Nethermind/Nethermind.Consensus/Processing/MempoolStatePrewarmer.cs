@@ -13,6 +13,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
@@ -43,6 +44,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private readonly ILogger _logger;
     private readonly ulong _maxHeadAgeSeconds;
     private readonly bool _enabled;
+    private readonly bool _selectByHash;
     private int _disposed;
 
     // The newest session's token source, cancelled once a block is queued for processing: that block's processing scope
@@ -75,6 +77,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _secondsPerSlot = Math.Max(1UL, blocksConfig.SecondsPerSlot);
         _maxHeadAgeSeconds = _secondsPerSlot * 4;
         _enabled = blocksConfig.PreWarming == PreWarmMode.BlockAndMempool;
+        _selectByHash = blocksConfig.PreWarmMempoolSelectByHash;
 
         if (_enabled)
         {
@@ -150,6 +153,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
             Dictionary<AddressAsKey, int> warmedPerSender = [];
             Dictionary<AddressAsKey, SenderSelection> selectedBySender = [];
+            // The head's own txs: the pool drops them only once it has processed the head, which this session's first
+            // read can beat.
+            HashSet<Hash256> headTxs = HeadTxHashes(head);
+            HashSet<Hash256>? warmedHashes = _selectByHash && ExperimentBlocks.Apply(head.Number + 1) ? [] : null;
 
             // Not linked or disposed: it only carries this session's cancellation, and holds no registration or timer.
             CancellationTokenSource session = new();
@@ -169,7 +176,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 headHeader,
                 next.Spec,
                 generation,
-                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender, token),
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, warmedHashes, headTxs, selectedBySender, token),
                 IdlePassDelayMs,
                 session.Token);
         }
@@ -230,11 +237,43 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// fork activating inside the gap warms under the spec the predicted block would run rather than the session's.
     /// </remarks>
     private (Block Block, IReleaseSpec Spec)? BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
+        HashSet<Hash256>? warmedHashes, HashSet<Hash256> headTxs, Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token);
+        IEnumerable<Transaction> pending = _txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit);
+        Transaction[]? delta = warmedHashes is null
+            ? SelectDelta(CountHeadTxs(pending, headTxs), warmedPerSender, selectedBySender, token)
+            : SelectDeltaByHash(pending, warmedHashes, headTxs, selectedBySender, token);
         return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
+    }
+
+    private static HashSet<Hash256> HeadTxHashes(Block head)
+    {
+        HashSet<Hash256> hashes = new(head.Transactions.Length);
+        foreach (Transaction tx in head.Transactions)
+        {
+            if (tx.Hash is Hash256 hash) hashes.Add(hash);
+        }
+
+        return hashes;
+    }
+
+    // What the pool still returns of the head's own txs, counted for the selection that keeps them.
+    private static IEnumerable<Transaction> CountHeadTxs(IEnumerable<Transaction> pending, HashSet<Hash256> headTxs)
+    {
+        long seen = 0;
+        try
+        {
+            foreach (Transaction tx in pending)
+            {
+                if (tx.Hash is Hash256 hash && headTxs.Contains(hash)) seen++;
+                yield return tx;
+            }
+        }
+        finally
+        {
+            if (seen > 0) Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeHeadTxsSelected, seen);
+        }
     }
 
     /// <summary>
@@ -328,6 +367,84 @@ public sealed class MempoolStatePrewarmer : IDisposable
         return delta;
     }
 
+    /// <summary>
+    /// Picks the transactions to warm this pass: a sender's selected txs are replayed in nonce order whenever one of them
+    /// has a hash not yet in <paramref name="warmed"/>, so later-nonce txs see their predecessors' state, and a replaced tx,
+    /// which keeps its nonce but not its hash, is warmed again. The head block's own txs are left out: the pool still
+    /// returns them until it has processed the head, and the head's state already holds their effects.
+    /// </summary>
+    /// <returns>The delta, or <see langword="null"/> when <paramref name="token"/> ends the pass before selection completes;
+    /// nothing is then recorded as warmed.</returns>
+    internal static Transaction[]? SelectDeltaByHash(IEnumerable<Transaction> orderedTxs, HashSet<Hash256> warmed, HashSet<Hash256> headTxs,
+        Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default)
+    {
+        bySender ??= [];
+        bySender.Clear();
+        long headTxsSeen = 0;
+        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
+        foreach (Transaction tx in orderedTxs)
+        {
+            if (token.IsCancellationRequested)
+            {
+                bySender.Clear();
+                return null;
+            }
+
+            if (tx.SenderAddress is not Address sender || tx.Hash is not Hash256 hash) continue;
+            if (headTxs.Contains(hash))
+            {
+                headTxsSeen++;
+                continue;
+            }
+
+            ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
+            int index = transactions.Count;
+            if (exists) transactions.GetRef(group.Last).next = index;
+            else group.First = index;
+            group.Last = index;
+            group.Count++;
+            if (!warmed.Contains(hash)) group.Unwarmed++;
+            transactions.Add((tx, -1));
+        }
+
+        if (headTxsSeen > 0) Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeHeadTxsSelected, headTxsSeen);
+        return SelectUnwarmedGroups(transactions.AsSpan(), bySender, warmed);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Transaction[] SelectUnwarmedGroups(ReadOnlySpan<(Transaction tx, int next)> transactions,
+        Dictionary<AddressAsKey, SenderSelection> bySender, HashSet<Hash256> warmed)
+    {
+        int deltaCount = 0;
+        foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
+        {
+            if (senderGroup.Value.Unwarmed > 0) deltaCount += senderGroup.Value.Count;
+        }
+
+        if (deltaCount == 0)
+        {
+            bySender.Clear();
+            return [];
+        }
+
+        Transaction[] delta = new Transaction[deltaCount];
+        int position = 0;
+        foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
+        {
+            if (senderGroup.Value.Unwarmed == 0) continue;
+            for (int index = senderGroup.Value.First; index >= 0; index = transactions[index].next)
+            {
+                Transaction tx = transactions[index].tx;
+                delta[position++] = tx;
+                warmed.Add(tx.Hash!);
+            }
+        }
+
+        Debug.Assert(position == deltaCount, "Sizing and filling must select the same number of transactions.");
+        bySender.Clear();
+        return delta;
+    }
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -357,6 +474,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         public int First;
         public int Last;
         public int Count;
+        public int Unwarmed;
     }
 
     private readonly record struct NextBlockContext(BlockHeader Header, IReleaseSpec Spec);

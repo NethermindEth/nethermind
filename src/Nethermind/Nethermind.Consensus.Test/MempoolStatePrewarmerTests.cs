@@ -95,6 +95,113 @@ public class MempoolStatePrewarmerTests
         Assert.That(secondPass.Length, Is.EqualTo(4), "when new transactions arrive the sender's full group is replayed so predecessors are present");
     }
 
+    /// <summary>
+    /// The pool drops the head's own txs only once it has processed the head, which a session's first read can beat. The
+    /// count of the sender's txs then includes the landed one, and the sender's next tx never takes it past that count.
+    /// </summary>
+    [Test]
+    public void SelectDelta_NeverWarmsTheNextTxOfASenderWhoseTxLandedInTheHead()
+    {
+        Transaction[] sender = BuildSenderTxs(TestItem.PrivateKeyA, 3);
+        Dictionary<AddressAsKey, int> warmedPerSender = [];
+
+        MempoolStatePrewarmer.SelectDelta(sender[..2], warmedPerSender);
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDelta(sender[1..], warmedPerSender);
+
+        Assert.That(secondPass, Is.Empty, "the sender's count does not grow, so its new tx is not warmed");
+    }
+
+    [Test]
+    public void SelectDeltaByHash_LeavesOutTheHeadsOwnTxs()
+    {
+        Transaction[] sender = BuildSenderTxs(TestItem.PrivateKeyA, 2);
+
+        Transaction[] delta = MempoolStatePrewarmer.SelectDeltaByHash(sender, [], [sender[0].Hash!]);
+
+        Assert.That(delta, Is.EqualTo(new[] { sender[1] }), "the head's state already holds the landed tx, so only the next one is warmed");
+    }
+
+    [Test]
+    public void SelectDeltaByHash_WarmsTheNextTxOfASenderWhoseTxLandedInTheHead()
+    {
+        Transaction[] sender = BuildSenderTxs(TestItem.PrivateKeyA, 3);
+        HashSet<Hash256> warmed = [];
+        HashSet<Hash256> headTxs = [sender[0].Hash!];
+
+        Transaction[] firstPass = MempoolStatePrewarmer.SelectDeltaByHash(sender[..2], warmed, headTxs);
+        // The pool has processed the head now, and the sender's next tx has arrived.
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDeltaByHash(sender[1..], warmed, headTxs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPass, Is.EqualTo(new[] { sender[1] }));
+            Assert.That(secondPass, Is.EqualTo(new[] { sender[1], sender[2] }), "the new tx is warmed after its warmed predecessor");
+        }
+    }
+
+    [Test]
+    public void SelectDeltaByHash_SecondPass_SkipsAlreadyWarmedSenders()
+    {
+        Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3), .. BuildSenderTxs(TestItem.PrivateKeyB, 2)];
+        HashSet<Hash256> warmed = [];
+
+        Transaction[] firstPass = MempoolStatePrewarmer.SelectDeltaByHash(ordered, warmed, []);
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDeltaByHash(ordered, warmed, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPass, Has.Length.EqualTo(5), "the first pass warms every selected transaction");
+            Assert.That(secondPass, Is.Empty, "a sender whose selected txs are all warmed is skipped");
+        }
+    }
+
+    [Test]
+    public void SelectDeltaByHash_WarmsAReplacementAgain()
+    {
+        Transaction original = Build.A.Transaction.WithNonce(0).WithValue(1).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction replacement = Build.A.Transaction.WithNonce(0).WithValue(2).WithTo(TestItem.AddressC).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        HashSet<Hash256> warmed = [];
+
+        MempoolStatePrewarmer.SelectDeltaByHash([original], warmed, []);
+        Transaction[] secondPass = MempoolStatePrewarmer.SelectDeltaByHash([replacement], warmed, []);
+
+        Assert.That(secondPass, Is.EqualTo(new[] { replacement }), "a replacement keeps the nonce but not the hash, so it is warmed");
+    }
+
+    [Test]
+    public void SelectDeltaByHash_Cancelled_RecordsNothing()
+    {
+        Transaction[] sender = BuildSenderTxs(TestItem.PrivateKeyA, 2);
+        HashSet<Hash256> warmed = [];
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Transaction[] delta = MempoolStatePrewarmer.SelectDeltaByHash(sender, warmed, [], token: cancellation.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta, Is.Null);
+            Assert.That(warmed, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task NewHead_SelectingByHash_LeavesOutTheHeadsOwnTxs()
+    {
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
+        Transaction[] sender = BuildSenderTxs(TestItem.PrivateKeyA, 2);
+        DeltaCapturingPreWarmer preWarmer = new();
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _, selectByHash: true);
+        // The pool has not processed the head yet, so it still returns the head's tx ahead of the sender's next one.
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(sender);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader, new BlockBody([sender[0]], uncles: [], withdrawals: null))));
+
+        Block delta = await preWarmer.CapturedBlock.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(delta?.Transactions, Is.EqualTo(new[] { sender[1] }));
+    }
+
     [Test]
     public void SelectDelta_ReusedScratchPreservesInterleavedSenderOrder([Values(2, 257)] int count)
     {
@@ -361,7 +468,7 @@ public class MempoolStatePrewarmerTests
 
     /// <summary>A prewarmer whose clock reads the head's timestamp, so the head is fresh enough to warm from.</summary>
     private static MempoolStatePrewarmer CreatePrewarmer(IBlockCachePreWarmer preWarmer, BlockHeader head, out IBlockTree blockTree,
-        out ITxSource txSource, out IBlockProcessingQueue processingQueue)
+        out ITxSource txSource, out IBlockProcessingQueue processingQueue, bool selectByHash = false)
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
@@ -383,6 +490,7 @@ public class MempoolStatePrewarmerTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.PreWarming.Returns(PreWarmMode.BlockAndMempool);
         blocksConfig.SecondsPerSlot.Returns(SecondsPerSlot);
+        blocksConfig.PreWarmMempoolSelectByHash.Returns(selectByHash);
 
         return new MempoolStatePrewarmer(preWarmer, txSourceFactory, blockTree, new Lazy<IBlockProcessingQueue>(() => queue), specProvider, timestamper, blocksConfig, LimboLogs.Instance);
     }
@@ -406,6 +514,7 @@ public class MempoolStatePrewarmerTests
     private sealed class DeltaCapturingPreWarmer : IBlockCachePreWarmer
     {
         public readonly TaskCompletionSource<BlockHeader> CapturedHeader = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public readonly TaskCompletionSource<Block> CapturedBlock = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationToken DeltaToken { get; init; }
 
         public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
@@ -414,7 +523,9 @@ public class MempoolStatePrewarmerTests
 
         public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
         {
-            CapturedHeader.TrySetResult(nextDelta(DeltaToken)?.Block.Header);
+            (Block Block, IReleaseSpec Spec)? next = nextDelta(DeltaToken);
+            CapturedBlock.TrySetResult(next?.Block);
+            CapturedHeader.TrySetResult(next?.Block.Header);
             return Task.CompletedTask;
         }
 

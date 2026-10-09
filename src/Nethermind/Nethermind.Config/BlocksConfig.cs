@@ -81,6 +81,10 @@ namespace Nethermind.Config
 
         public bool PreWarmSkipIdleSpeculativeJoin { get; set; }
 
+        public bool PreWarmMempoolSelectByHash { get; set; }
+
+        public bool PreWarmKeepSpeculativeChainsWhole { get; set; }
+
         public int ExperimentParity { get; set; }
 
         public ulong PreWarmDiscoveryGasThreshold { get; set; } = 10_000_000;

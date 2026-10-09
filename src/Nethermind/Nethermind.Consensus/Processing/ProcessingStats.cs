@@ -412,6 +412,23 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
+            // What execution still had to run itself and read cold, by parity; captured only with slow-block logging on.
+            if (_slowBlockThresholdMs >= 0)
+            {
+                if ((blockNumber & 1) == 0)
+                {
+                    Metrics.EvenBlocksHandoffRejected += data.Experiment[1];
+                    Metrics.EvenBlocksHandoffMissing += data.Experiment[2];
+                    Metrics.EvenBlocksPreBlockStorageMisses += data.DeltaPreBlockStorageMisses;
+                }
+                else
+                {
+                    Metrics.OddBlocksHandoffRejected += data.Experiment[1];
+                    Metrics.OddBlocksHandoffMissing += data.Experiment[2];
+                    Metrics.OddBlocksPreBlockStorageMisses += data.DeltaPreBlockStorageMisses;
+                }
+            }
+
             // Log slow blocks in JSON format for cross-client performance analysis
             // Only log when slow block threshold is enabled (>= 0)
             if (_slowBlockThresholdMs >= 0)
