@@ -231,6 +231,12 @@ public class WitnessGeneratingWorldState(
         base.GetOriginal(in storageCell, out value);
     }
 
+    public override UInt256 GetOriginalBalance(Address address)
+    {
+        RecordEmptySlots(address);
+        return base.GetOriginalBalance(address);
+    }
+
     public override void Get(in StorageCell storageCell, out UInt256 value)
     {
         RecordSlot(storageCell);

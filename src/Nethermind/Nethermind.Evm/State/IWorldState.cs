@@ -70,6 +70,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
+    /// Returns the balance <paramref name="address"/> had at the start of the current transaction.
+    /// </summary>
+    /// <remarks>The transaction start is found as for <see cref="GetOriginal"/>.</remarks>
+    /// <param name="address">The account to read.</param>
+    UInt256 GetOriginalBalance(Address address);
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
@@ -106,8 +113,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
     /// <returns>Snapshot index</returns>
     /// <remarks>
-    /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
-    /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
+    /// If <see cref="newTransactionStart"/> is true and there are already changes then next call to <see cref="GetOriginal"/>
+    /// or <see cref="GetOriginalBalance"/> will use changes before this snapshot as original values for this new transaction.
     /// </remarks>
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 

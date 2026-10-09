@@ -410,6 +410,31 @@ public class Eip8360Tests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Original_balance_is_the_one_at_transaction_start()
+    {
+        // Funding the empty target before the TCREATE leaves its original balance at zero, so draining it
+        // returns to the original: the funding call's state gas is refilled and ACCOUNT_WRITE refunded.
+        byte[] init = Prepare.EvmCode.CallWithValue(Sink, CallGas, 5).Op(Instruction.POP).STOP().Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, Prepare.EvmCode
+            .CallWithValue(tcreated, CallGas, 5).Op(Instruction.POP)
+            .TCreate(init, Salt, 0).Op(Instruction.POP)
+            .STOP()
+            .Done, 100);
+
+        TestAllTracerWithOutput tracer = Run();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero, "state gas");
+            Assert.That(tracer.Refund, Is.EqualTo((long)Eip8038Constants.AccountWrite), "ACCOUNT_WRITE refund");
+            Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)6));
+            AssertFinalized(tcreated, UInt256.Zero);
+        }
+    }
+
     [TestCase(true, TestName = "SELFDESTRUCT draining a TCREATE account refills state gas")]
     [TestCase(false, TestName = "SELFDESTRUCT crediting a TCREATE account charges state gas")]
     public void Self_destruct_follows_the_eip_tables(bool fromTransientCreate)

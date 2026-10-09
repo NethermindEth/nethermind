@@ -59,7 +59,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
     /// <summary>
-    /// EIP-8360 <c>TCREATE</c> accounts of the current transaction, with the balance each had before its creation,
+    /// EIP-8360 <c>TCREATE</c> accounts of the current transaction, with the balance each had at the start of the transaction,
     /// or <see langword="null"/> while no <c>TCREATE</c> has run.
     /// </summary>
     /// <remarks>
@@ -68,7 +68,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// </remarks>
     public readonly Dictionary<AddressAsKey, UInt256>? TransientCreates => _trackingState.TransientCreates;
 
-    /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had before the creation.</summary>
+    /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had at the start of the transaction.</summary>
     public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance) =>
         (_trackingState.TransientCreates ??= new(AddressAsKey.EqualityComparer))[address] = originalBalance;
 
@@ -79,7 +79,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     /// </remarks>
     /// <param name="worldState">The state the creation was made in.</param>
     /// <param name="address">The account to check.</param>
-    /// <param name="originalBalance">The balance the account had before its creation, the EIP-8360 original balance.</param>
+    /// <param name="originalBalance">The balance the account had at the start of the transaction, the EIP-8360 original balance.</param>
     public readonly bool IsTransientCreate(IWorldState worldState, Address address, out UInt256 originalBalance)
     {
         if (_trackingState.TransientCreates?.TryGetValue(address, out originalBalance) == true && worldState.GetNonce(address) != 0)

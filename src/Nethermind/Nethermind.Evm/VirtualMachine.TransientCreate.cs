@@ -23,8 +23,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Address account = frame.Env.ExecutingAccount;
         if (frame.ExecutionType == ExecutionType.TCREATE)
         {
-            // Recorded before the frame's initialization sets the account's nonce to 1, with nothing reading it in between.
-            tracker.WasTransientlyCreated(account, _worldState.GetBalance(account));
+            // EIP-8360's original balance is the one at the start of the transaction, before any earlier funding in it.
+            tracker.WasTransientlyCreated(account, _worldState.GetOriginalBalance(account));
             frame.IsTransientCreateContext = true;
             return TryChargeTransientCreateTransfer(frame, isNewTransientCreate: true);
         }
@@ -70,10 +70,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return false;
         }
 
-        if (isNewTransientCreate || tracker.IsTransientCreate(_worldState, to, out original))
+        // The new account's nonce is not yet set, so IsTransientCreate cannot see it yet.
+        if (isNewTransientCreate ? tracker.TransientCreates!.TryGetValue(to, out original) : tracker.IsTransientCreate(_worldState, to, out original))
         {
             UInt256 toBalance = _worldState.GetBalance(to);
-            if (isNewTransientCreate) original = toBalance;
             if (!TryChargeTransientCreateBalanceChange(frame, ref frame.Gas, in original, in toBalance, toBalance + value))
                 return false;
         }
