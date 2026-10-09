@@ -418,7 +418,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnDuplicatePing()
-            => Logger.Warn($"Another ping request in process: {Session.Node.ToString("c"):hide}");
+            => Logger.Warn($"Another ping request in process: {Session.Node?.ToString("c"):hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceSendingPing()

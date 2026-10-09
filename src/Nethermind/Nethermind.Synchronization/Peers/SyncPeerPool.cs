@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (_peers.ContainsKey(syncPeer.Node.Id))
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node.ToString("c"):hide} already in peers collection.");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node?.ToString("c"):hide} already in peers collection.");
                 return;
             }
 
@@ -288,7 +288,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (!_isStarted)
             {
-                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node.ToString("c"):hide} is blocked.");
+                if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node?.ToString("c"):hide} is blocked.");
                 return;
             }
 
@@ -323,7 +323,7 @@ namespace Nethermind.Synchronization.Peers
                 catch (ObjectDisposedException)
                 {
                     // The refresh continuation disposed the source between the lookup and the cancel.
-                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node.ToString("c"):hide} completed while the peer was being removed.");
+                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node?.ToString("c"):hide} completed while the peer was being removed.");
                 }
             }
         }
@@ -518,11 +518,11 @@ namespace Nethermind.Synchronization.Peers
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceAddingPeer(ISyncPeer syncPeer) =>
-            _logger.Trace($"Adding sync peer {syncPeer.Node.ToString("c"):hide}");
+            _logger.Trace($"Adding sync peer {syncPeer.Node?.ToString("c"):hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRemovingPeer(ISyncPeer syncPeer) =>
-            _logger.Trace($"Removing sync peer {syncPeer.Node.ToString("c"):hide}");
+            _logger.Trace($"Removing sync peer {syncPeer.Node?.ToString("c"):hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TracePeerCount() =>
@@ -530,7 +530,7 @@ namespace Nethermind.Synchronization.Peers
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceAddingToRefreshQueue(ISyncPeer syncPeer) =>
-            _logger.Trace($"Adding {syncPeer.Node.ToString("c"):hide} to refresh queue");
+            _logger.Trace($"Adding {syncPeer.Node?.ToString("c"):hide} to refresh queue");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRefreshedPeerInfo(ISyncPeer syncPeer) =>
@@ -643,7 +643,7 @@ namespace Nethermind.Synchronization.Peers
                                 return;
                             }
 
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
+                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
                             if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
 
                             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
@@ -711,7 +711,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)
         {
-            if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node.ToString("c"):hide}, {reason:hide}, {exception:hide}");
+            if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node?.ToString("c"):hide}, {reason:hide}, {exception:hide}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
             if (exception is OperationCanceledException or TimeoutException)

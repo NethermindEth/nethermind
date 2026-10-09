@@ -97,7 +97,9 @@ finally
 void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
 {
     if (Volatile.Read(ref maskingConfigLoaded) == 0 || SensitiveLogMasking.Enabled)
-        criticalLogger.Error($"{message} Exception: {ex.GetType().Name}");
+        criticalLogger.Error(ex is ConfigurationFileNotFoundException
+            ? $"{message} {ex.Message}"
+            : $"{message} Exception: {ex.GetType().Name}");
     else
         criticalLogger.Error(message, ex);
 }
@@ -444,7 +446,7 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     configFile = Path.GetFullPath(configFile);
 
     if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.");
+        throw new ConfigurationFileNotFoundException();
 
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
@@ -657,3 +659,5 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     /// <inheritdoc />
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
+
+file sealed class ConfigurationFileNotFoundException() : FileNotFoundException("Configuration file not found.");
