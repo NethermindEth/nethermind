@@ -207,7 +207,7 @@ public partial class DebugRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }

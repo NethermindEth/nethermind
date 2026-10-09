@@ -438,7 +438,7 @@ public class WireTests
 
         Assert.That(nodes, Is.Not.Null);
         Assert.That(nodes, Has.Length.LessThanOrEqualTo(16));
-        Assert.That(nodes, Has.One.Matches<Node>(node => node.Id.Equals(validatedNode.Id)));
+        Assert.That(nodes, Has.One.Matches<Node>(node => node?.Id.Equals(validatedNode.Id) == true));
     }
 
     [Test]
@@ -489,7 +489,7 @@ public class WireTests
         await Task.WhenAll(runA, runB, runC);
 
         Assert.That(nodes, Is.Not.Null);
-        Assert.That(nodes, Has.One.Matches<Node>(node => node.Id.Equals(liveKey.PublicKey)));
+        Assert.That(nodes, Has.One.Matches<Node>(node => node?.Id.Equals(liveKey.PublicKey) == true));
     }
 
     private static TestPeer CreatePeer(

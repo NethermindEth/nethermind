@@ -465,7 +465,7 @@ public class FlatBalHealingTests
         Assert.That(_healing.Reassemble([], default), Is.Null);
 
     [Test]
-    public void Apply_propagates_a_bal_store_failure()
+    public async Task Apply_propagates_a_bal_store_failure()
     {
         IBlockAccessListStore throwingStore = Substitute.For<IBlockAccessListStore>();
         throwingStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
@@ -476,18 +476,18 @@ public class FlatBalHealingTests
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(firstPivot, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => RunOnce(healing, firstPivot, lastPivot, [], default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => RunOnce(healing, firstPivot, lastPivot, [], default));
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
 
     [Test]
-    public void Apply_propagates_cancellation()
+    public async Task Apply_propagates_cancellation()
     {
         SeedInitialState(Acc(TestItem.AddressA, 100));
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
         BlockHeader lastPivot = SetupBlock(firstPivot, TestItem.KeccakB, BalanceBal(TestItem.AddressA, 150));
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => RunOnce(_healing, firstPivot, lastPivot, [], new CancellationToken(canceled: true)));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => RunOnce(_healing, firstPivot, lastPivot, [], new CancellationToken(canceled: true)));
         _syncStore.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
 

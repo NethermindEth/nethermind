@@ -50,7 +50,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     }
 
     [Test]
-    public void Keeps_retrying_while_no_peer_serves_the_bals()
+    public async Task Keeps_retrying_while_no_peer_serves_the_bals()
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
@@ -72,7 +72,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         });
         _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => runner.RunBalHealing(firstPivot, cts.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => runner.RunBalHealing(firstPivot, cts.Token));
 
         // Reaching the second round is the retry: the first fetch failure was swallowed, not surfaced.
         Assert.That(rounds, Is.EqualTo(2));
@@ -106,7 +106,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
 
     [TestCase(false, TestName = "Does_not_finalize_when_the_healed_root_does_not_match_the_pivot")]
     [TestCase(true, TestName = "Does_not_finalize_when_the_range_is_lost")]
-    public void Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
+    public async Task Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
     {
         using IContainer container = BuildRunnerContainer();
         StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
@@ -121,7 +121,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         Hash256? healedRoot = rangeLost ? null : TestItem.KeccakF;
         _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, healedRoot));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunBalHealing(firstPivot, default));
 
         _healing.DidNotReceive().FinalizeSync(Arg.Any<BlockHeader>());
     }
