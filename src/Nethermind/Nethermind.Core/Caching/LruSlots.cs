@@ -54,6 +54,7 @@ internal sealed class LruSlots<T>(int maxCapacity, int startCapacity)
         _free = index;
     }
 
+    /// <summary>Releases stored references while retaining slot capacity for allocation-free refill.</summary>
     public void Clear()
     {
         _entries.AsSpan(0, _used).Clear();

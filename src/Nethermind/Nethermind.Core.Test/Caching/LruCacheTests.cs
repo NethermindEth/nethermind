@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -403,10 +404,13 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Matches_reference_lru_after_growth_removal_and_clear([Values(1, 3, 32)] int capacity)
+        public void Matches_reference_lru_after_growth_removal_and_clear(
+            [Values(1, 3, 32)] int capacity,
+            [Values(0, 1, 4)] int startCapacity,
+            [Values] bool useFactory)
         {
-            LruCache<int, int> cache = new(capacity, "test");
-            LruKeyCache<int> keys = new(capacity, "test");
+            LruCache<int, int> cache = new(capacity, startCapacity, "test");
+            LruKeyCache<int> keys = new(capacity, startCapacity, "test");
             List<int> order = [];
             Dictionary<int, int> values = [];
             Random random = new(12345);
@@ -443,14 +447,26 @@ namespace Nethermind.Core.Test.Caching
                 }
                 else
                 {
-                    Assert.That(cache.Set(key, i), Is.EqualTo(!exists));
+                    int expectedValue = useFactory && exists ? values[key] : i;
+                    if (useFactory)
+                    {
+                        Assert.That(cache.SetOrGet(key, i, (_, value) =>
+                        {
+                            Assert.That(exists, Is.False, "An existing entry must not invoke the factory.");
+                            return value;
+                        }), Is.EqualTo(expectedValue));
+                    }
+                    else
+                    {
+                        Assert.That(cache.Set(key, i), Is.EqualTo(!exists));
+                    }
                     Assert.That(keys.Set(key), Is.EqualTo(!exists));
                     if (!exists && order.Count == capacity)
                     {
                         values.Remove(order[0]);
                         order.RemoveAt(0);
                     }
-                    values[key] = i;
+                    values[key] = expectedValue;
                     order.Remove(key);
                     order.Add(key);
                 }
@@ -461,6 +477,31 @@ namespace Nethermind.Core.Test.Caching
                     Assert.That(keys.Count, Is.EqualTo(values.Count));
                     Assert.That(cache.ToArray(), Is.EquivalentTo(values));
                 }
+            }
+        }
+
+        [Test]
+        public void Mem_counting_cache_preserves_eviction_order_after_repeated_mru_hits([Values(1, 2)] int count)
+        {
+            MemCountingCache cache = new((count + 1) * 1024, "test");
+            byte[] value = new byte[1024];
+            cache.Set(TestItem.KeccakA, value);
+            if (count == 2) cache.Set(TestItem.KeccakB, value);
+            Assert.That(cache.Count, Is.EqualTo(count));
+
+            ValueHash256 mostRecent = count == 1 ? TestItem.KeccakA : TestItem.KeccakB;
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.That(cache.Get(mostRecent), Is.SameAs(value));
+            }
+            cache.Set(TestItem.KeccakC, value);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Count, Is.EqualTo(count));
+                Assert.That(cache.Contains(TestItem.KeccakA), Is.False);
+                Assert.That(cache.Contains(TestItem.KeccakC), Is.True);
+                if (count == 2) Assert.That(cache.Contains(TestItem.KeccakB), Is.True);
             }
         }
 
