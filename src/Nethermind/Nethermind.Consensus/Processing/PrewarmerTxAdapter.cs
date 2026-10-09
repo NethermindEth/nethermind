@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -11,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using EvmMetrics = Nethermind.Evm.Metrics;
 
@@ -40,14 +43,24 @@ public class PrewarmerTxAdapter(
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
+            ProbeBlock();
             TransactionFootprint? footprint = preWarmer.FindFootprint(transaction, _blockExecutionContext.Header, out bool eligible);
+            long probeStart = Stopwatch.GetTimestamp();
+            _probeClass = 6;
+            _probeFootprint = null;
             if (eligible && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
+                ProbeAdd(0, transaction, probeStart);
                 return result;
             }
 
-            // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
-            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
+            TransactionResult executed = prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites
+                ? ExecuteReportingWrites(transaction, txTracer, committed)
+                : baseAdapter.Execute(transaction, txTracer);
+            int probeClass = _probeClass;
+            if (probeClass == 4 && _probeFootprint is not null && ProbeIsAdditive(_probeFootprint, transaction)) probeClass = 5;
+            ProbeAdd(probeClass, transaction, probeStart);
+            return executed;
         }
 
         return baseAdapter.Execute(transaction, txTracer);
@@ -88,6 +101,7 @@ public class PrewarmerTxAdapter(
         result = default;
         if (footprint is null)
         {
+            _probeClass = 1;
             Tally = Tally with { Missing = Tally.Missing + 1 };
             Blockchain.Metrics.PrewarmHandoffsMissing++;
             return false;
@@ -103,6 +117,8 @@ public class PrewarmerTxAdapter(
 
         if (!footprint.Matches(worldState))
         {
+            _probeClass = ProbeClassify(footprint);
+            _probeFootprint = footprint;
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;
             return false;
@@ -143,5 +159,111 @@ public class PrewarmerTxAdapter(
         if (footprint.FromMempool) Blockchain.Metrics.PrewarmMempoolRunsTakenOver++;
         result = footprint.Result;
         return true;
+    }
+    private static readonly string[] ProbeNames = ["rep", "miss", "rej_acct", "rej_ro", "rej_rw", "rej_add", "other"];
+    private readonly long[] _probeCount = new long[7];
+    private readonly long[] _probeGas = new long[7];
+    private readonly long[] _probeTicks = new long[7];
+    private readonly List<(StorageCell Cell, UInt256 Read, UInt256 Current)> _probeFailed = [];
+    private long _probeBlock = -1;
+    private int _probeClass;
+    private TransactionFootprint? _probeFootprint;
+
+    private void ProbeBlock()
+    {
+        if (_blockExecutionContext.Header is null) return;
+        long number = (long)_blockExecutionContext.Header.Number;
+        if (number == _probeBlock) return;
+        if (_probeBlock >= 0)
+        {
+            System.Text.StringBuilder sb = new();
+            sb.Append("HANDOFFPROBE block=").Append(_probeBlock);
+            for (int i = 0; i < 7; i++)
+            {
+                sb.Append(' ').Append(ProbeNames[i]).Append('=').Append(_probeCount[i]).Append('/').Append(_probeGas[i]).Append('/')
+                    .Append(_probeTicks[i] * 1_000_000 / Stopwatch.Frequency);
+            }
+            Console.WriteLine(sb.ToString());
+        }
+
+        Array.Clear(_probeCount);
+        Array.Clear(_probeGas);
+        Array.Clear(_probeTicks);
+        _probeBlock = number;
+    }
+
+    private void ProbeAdd(int probeClass, Transaction tx, long start)
+    {
+        _probeTicks[probeClass] += Stopwatch.GetTimestamp() - start;
+        _probeCount[probeClass]++;
+        _probeGas[probeClass] += (long)tx.SpentGas;
+    }
+
+    private int ProbeClassify(TransactionFootprint footprint)
+    {
+        try
+        {
+            _probeFailed.Clear();
+            foreach (ref readonly AccountPrecondition account in footprint.Accounts)
+            {
+                if (!account.IsMet(worldState)) return 2;
+            }
+
+            bool readOnly = false;
+            foreach (ref readonly SlotPrecondition slot in footprint.Slots)
+            {
+                worldState.Get(in slot.Cell, out UInt256 value);
+                if (value == slot.Value) continue;
+                if (slot.Written) _probeFailed.Add((slot.Cell, slot.Value, value));
+                else readOnly = true;
+            }
+
+            return readOnly ? 3 : _probeFailed.Count > 0 ? 4 : 6;
+        }
+        catch
+        {
+            return 6;
+        }
+    }
+
+    private bool ProbeIsAdditive(TransactionFootprint footprint, Transaction tx)
+    {
+        try
+        {
+            if (tx.SpentGas != footprint.Receipt.Gas.SpentGas) return false;
+            foreach ((StorageCell cell, UInt256 read, UInt256 current) in _probeFailed)
+            {
+                UInt256 written = read;
+                foreach (ref readonly StateEffect effect in footprint.Effects)
+                {
+                    if (effect.Kind == EffectKind.SetStorage && effect.Cell.Equals(cell)) written = effect.Value;
+                }
+
+                UInt256.Subtract(in written, in read, out UInt256 delta);
+                UInt256.Add(in current, in delta, out UInt256 predicted);
+                worldState.Get(in cell, out UInt256 actual);
+                if (actual != predicted) return false;
+            }
+
+            foreach (ref readonly StateEffect effect in footprint.Effects)
+            {
+                if (effect.Kind != EffectKind.SetStorage) continue;
+                bool failed = false;
+                foreach ((StorageCell cell, _, _) in _probeFailed)
+                {
+                    if (cell.Equals(effect.Cell)) failed = true;
+                }
+
+                if (failed) continue;
+                worldState.Get(in effect.Cell, out UInt256 actual);
+                if (actual != effect.Value) return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
