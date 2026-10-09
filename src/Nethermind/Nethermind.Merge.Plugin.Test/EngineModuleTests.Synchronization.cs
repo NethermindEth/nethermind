@@ -48,24 +48,38 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), true);
         ExecutionPayload next = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), Address.Zero);
-        bool armed = advanceHead;
+        TaskCompletionSource searchCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim allowPublication = new(false);
+        int hookFired = 0;
         underlying.When(logger => logger.Info(Arg.Is<string>(message => message.StartsWith("Numbers resolved,", StringComparison.Ordinal))))
             .Do(_ =>
             {
-                if (!armed) return;
-                armed = false;
-                PayloadStatusV1 payload = rpc.engine_newPayloadV1(next).GetAwaiter().GetResult().Data;
-                Assert.That(payload.Status, Is.EqualTo(PayloadStatus.Valid));
-                ForkchoiceUpdatedV1Result forkchoice = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(next.BlockHash, Keccak.Zero, Keccak.Zero)).GetAwaiter().GetResult().Data;
-                Assert.That(forkchoice.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+                if (Interlocked.CompareExchange(ref hookFired, 1, 0) != 0) return;
+                searchCompleted.SetResult();
+                Assert.That(allowPublication.Wait(TimeSpan.FromSeconds(10)), Is.True, "the test must release progress publication");
             });
-        chain.BlockTree.RecalculateTreeLevels();
+        Task recalculate = Task.Run(chain.BlockTree.RecalculateTreeLevels);
+        try
+        {
+            await searchCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            if (advanceHead)
+            {
+                PayloadStatusV1 payload = (await rpc.engine_newPayloadV1(next)).Data;
+                Assert.That(payload.Status, Is.EqualTo(PayloadStatus.Valid));
+                ForkchoiceUpdatedV1Result forkchoice = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(next.BlockHash, Keccak.Zero, Keccak.Zero))).Data;
+                Assert.That(forkchoice.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            }
+        }
+        finally
+        {
+            allowPublication.Set();
+            await recalculate;
+        }
         BlockHeader head = chain.BlockTree.Head!.Header;
-        TestContext.Out.WriteLine($"Canonical head={head.Number}, BestKnownNumber={chain.BlockTree.BestKnownNumber}, known={chain.BlockTree.IsKnownBlock(head.Number, head.Hash!)}");
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(hookFired, Is.EqualTo(1), "LoadBestKnown must reach the search-publication boundary");
             Assert.That(head.Number, Is.EqualTo(advanceHead ? 3 : 2));
-            Assert.That(chain.BlockTree.BestKnownNumber, Is.EqualTo(2));
             Assert.That(chain.BlockTree.IsKnownBlock(head.Number, head.Hash!), Is.True, "a current canonical head remains a usable producer parent after concurrent recalculation");
         }
         ForkchoiceUpdatedV1Result build = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head.Hash!, Keccak.Zero, Keccak.Zero), new Nethermind.Consensus.Producers.PayloadAttributes

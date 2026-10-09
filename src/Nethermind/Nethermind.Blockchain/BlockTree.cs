@@ -1446,7 +1446,7 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(ulong number, Hash256 blockHash)
         {
-            // Recalculating progress may briefly publish a bound below a concurrently advanced head.
+            // Recalculating progress can publish a bound below a concurrently advanced head.
             // The captured canonical head is already downloaded, regardless of that stale bound.
             Block? head = Head;
             if (head is not null && blockHash == head.Hash)
