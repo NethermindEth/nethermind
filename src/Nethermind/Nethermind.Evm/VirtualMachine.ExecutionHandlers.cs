@@ -33,9 +33,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> InitializeFrame =
 #if ZK_EVM
             // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
-            SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !spec.IsEip8360Enabled ? &InitializeFrameSkippingNoOpCredit :
+            SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
 #endif
-            (SpecFlags.Eip158(spec), spec.IsEip8360Enabled) switch
+            (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
             {
                 (true, true) => &InitializeFrameCore<OnFlag, OnFlag>,
                 (true, false) => &InitializeFrameCore<OnFlag, OffFlag>,
@@ -45,7 +45,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
-            (SpecFlags.Eip158(spec), spec.IsEip8360Enabled) switch
+            (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
             {
                 (true, true) => &RunPrecompileCore<OnFlag, OnFlag>,
                 (true, false) => &RunPrecompileCore<OnFlag, OffFlag>,

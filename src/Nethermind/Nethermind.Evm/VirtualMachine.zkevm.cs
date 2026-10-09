@@ -37,13 +37,17 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
-    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
-        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
+        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
+            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
+    }
 
     public object? ReturnData;
 
     /// <summary>
-    /// <see cref="InitializeFrameCore{Eip158}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
     /// </summary>
     /// <remarks>
     /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator

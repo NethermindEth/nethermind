@@ -329,7 +329,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             lookup[(int)Instruction.CREATE2] = GetCreateHandler<EvmInstructions.OpCreate2, TTracingInst, TCancelable>(spec);
         }
-        if (spec.IsEip8360Enabled)
+        if (SpecFlags.Eip8360(spec))
             lookup[(int)Instruction.TCREATE] = GetCreateHandler<EvmInstructions.OpTCreate, TTracingInst, TCancelable>(spec);
         if (spec.StaticCallEnabled)
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
@@ -466,7 +466,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2780 : struct, IFlag
         where Eip8279 : struct, IFlag =>
-        spec.IsEip8360Enabled
+        SpecFlags.Eip8360(spec)
             ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780, Eip8279, OnFlag>(spec)
             : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780, Eip8279, OffFlag>(spec);
 
@@ -555,7 +555,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip8279 : struct, IFlag =>
-        spec.IsEip8360Enabled
+        SpecFlags.Eip8360(spec)
             ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038, Eip8279, OnFlag>(spec)
             : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038, Eip8279, OffFlag>(spec);
 
@@ -610,10 +610,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (spec.ExtCodeHashOpcodeEnabled)
             lookup[(int)Instruction.EXTCODEHASH] = OpcodeHandler<ExtCodeHashOpcode<TTracingInst, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>>, TTracingInst, TCancelable>();
         // EIP-8360 storage redirection is compiled only into tables for specs that enable it.
-        lookup[(int)Instruction.SLOAD] = spec.IsEip8360Enabled
+        lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
             ? OpcodeHandler<SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279, OnFlag>, TTracingInst, TCancelable>()
             : OpcodeHandler<SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279, OffFlag>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.SSTORE] = spec.IsEip8360Enabled
+        lookup[(int)Instruction.SSTORE] = SpecFlags.Eip8360(spec)
             ? SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OnFlag>(spec)
             : SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OffFlag>(spec);
         lookup[(int)Instruction.SELFDESTRUCT] =
@@ -676,7 +676,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
         where Eip6780 : struct, IFlag
         where Eip8246 : struct, IFlag =>
-        spec.IsEip8360Enabled
+        SpecFlags.Eip8360(spec)
             ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246, OnFlag>(spec)
             : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246, OffFlag>(spec);
 
