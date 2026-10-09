@@ -77,6 +77,11 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
 
+    /// <summary>The block processing timeout in milliseconds. Defaults to 180,000; <c>0</c> disables it.</summary>
+    /// <remarks>
+    /// Cancellation is cooperative. A timed-out block is abandoned without an invalid verdict.
+    /// Repeated timeouts of the same block double its retry budget up to sixteen times the configured timeout.
+    /// </remarks>
     [ConfigItem(Description = "The longest a single block may take to process, in milliseconds. A block that takes longer is abandoned without being marked invalid, so it can be processed again. `0` to disable.", DefaultValue = "180000")]
     int BlockProcessingTimeoutMs { get; set; }
 

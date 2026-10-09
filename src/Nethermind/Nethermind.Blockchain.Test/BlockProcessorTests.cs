@@ -2994,7 +2994,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void IncrementalValidation_publishes_canonical_receipt_metadata()
+    public void IncrementalValidation_publishes_canonical_receipt_metadata_unless_cancelled([Values] bool cancelled)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3003,14 +3003,19 @@ public partial class BlockProcessorTests
 
         using BlockAccessListManager balManager = CreateAmsterdamBalManager();
         PrepareSetup(balManager, block, Amsterdam.Instance);
-        balManager.IncrementalValidation(
+        void Validate() => balManager.IncrementalValidation(
             block,
             BuildGasResults(gasConsumed),
             BuildParallelReceiptTracers(block, gasConsumed),
             handler,
-            CancellationToken.None);
+            new CancellationToken(cancelled));
 
-        Assert.That(handler.Events, Is.EqualTo(CanonicalReceiptEvents));
+        if (cancelled)
+            Assert.Throws<OperationCanceledException>(Validate);
+        else
+            Validate();
+
+        Assert.That(handler.Events, cancelled ? Is.Empty : Is.EqualTo(CanonicalReceiptEvents));
     }
 
     [Test]
@@ -3401,21 +3406,19 @@ public partial class BlockProcessorTests
     {
         const int txCount = 4096;
         const int cancelAfter = 8;
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-
         Block block = BuildParallelValidationBlock(txCount);
         ProcessingOptions options = sequential ? ProcessingOptions.ForceSequentialBlockAccessList : ProcessingOptions.None;
         using CancellationTokenSource cancellation = new();
         CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessor);
         balManager.PrepareForProcessing(block, Amsterdam.Instance, options);
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
-            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            balManager,
-            LimboLogs.Instance);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton<IBlockAccessListManager>(balManager)
+            .Build();
+        MainProcessingContext processingContext = (MainProcessingContext)container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = processingContext.WorldState.BeginScope(IWorldState.PreGenesis);
+        IBlockProcessor.IBlockTransactionsExecutor executor = processingContext.LifetimeScope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
@@ -3558,7 +3561,7 @@ public partial class BlockProcessorTests
     /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering and its
     /// running EIP-8037 header gas, so tests can exercise the staging and retry wiring without the real
     /// manager. Receipt index and cumulative receipt gas are deliberately left to the executor under
-    /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata"/> is what covers the
+    /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata_unless_cancelled"/> is what covers the
     /// real manager's own metadata contract.</summary>
     private static void ReplayProcessedEvents(
         Block block,

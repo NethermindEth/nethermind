@@ -151,6 +151,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void RearmBlockDeadline(object? sender, BlockEventArgs e)
     {
         if (_blockDeadline is null) return;
+        // Finalization or commit may have exhausted the preceding block's budget after its last cancellation check.
+        _blockDeadline.Token.ThrowIfCancellationRequested();
         _deadlineBlockHash = e.Block.Hash;
         _blockDeadline.CancelAfter(BlockProcessingTimeout(e.Block.Hash));
     }
@@ -662,8 +664,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             using ParallelUnbalancedWork.WorkerScope workers = (work.Workers ?? new(Environment.ProcessorCount)).Enter();
             BlockRef blockRef = work.Reference;
             using CancellationTokenSource? deadline = _options.BlockProcessingTimeoutMs > 0
-                ? CancellationTokenSource.CreateLinkedTokenSource(CancellationToken)
+                ? new CancellationTokenSource(Timeout.InfiniteTimeSpan, _options.TimeProvider)
                 : null;
+            using CancellationTokenRegistration shutdownRegistration = deadline is null
+                ? default
+                : CancellationToken.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), deadline);
             _blockDeadline = deadline;
             try
             {
@@ -997,5 +1002,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary>The longest a single block may take to process, in milliseconds; <c>0</c> disables the limit.</summary>
         public int BlockProcessingTimeoutMs { get; set; }
+
+        internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
     }
 }
