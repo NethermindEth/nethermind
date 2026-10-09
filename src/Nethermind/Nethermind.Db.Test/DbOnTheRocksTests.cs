@@ -1786,6 +1786,25 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void SeekTo_MidIteration_LandsOnTheFirstKeyAtOrAfterTheTargetWithinTheViewBounds()
+        {
+            foreach (byte b in new byte[] { 0, 1, 2, 3, 5, 7 })
+            {
+                _db[[b]] = [b];
+            }
+
+            using ISeekableSortedView view = (ISeekableSortedView)((ISortedKeyValueStore)_db).GetViewBetween([1], [7]);
+
+            Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
+            Assert.That(view.SeekTo([4]), Is.True, "a key at or after 4 remains below the upper bound");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }), "4 is absent, so the seek lands on the next key");
+            Assert.That(view.MoveNext(), Is.False, "7 is the exclusive upper bound, so 5 is the last key of the view");
+            Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
+            Assert.That(view.SeekTo([0]), Is.True, "a target below the lower bound is clamped to it");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }), "0 sits outside the view, so the seek lands on the lower bound");
+        }
+
+        [Test]
         public void Can_GetMetric_AfterDispose()
         {
             _db.Dispose();
