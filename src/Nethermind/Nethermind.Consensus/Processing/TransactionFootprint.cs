@@ -167,17 +167,31 @@ internal enum EffectKind : byte
     InsertCode
 }
 
+/// <remarks>
+/// Laid out in 88 bytes rather than two cache lines: replay reads every effect from the core that recorded it. A
+/// nonce has the slot index of an account effect, and a code hash the value of code being inserted.
+/// </remarks>
 internal struct StateEffect
 {
-    public EffectKind Kind;
     // The account, and for a storage write the slot, in the form the write takes, so replaying it builds no cell.
     public StorageCell Cell;
     public UInt256 Value;
-    public ulong Nonce;
-    public ValueHash256 CodeHash;
     public byte[]? Code;
+    public EffectKind Kind;
 
     public readonly Address Address => Cell.Address;
+
+    public ulong Nonce
+    {
+        readonly get => Cell.Index.u0;
+        set => Cell = new StorageCell(Cell.Address, value);
+    }
+
+    public ValueHash256 CodeHash
+    {
+        readonly get => Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in Value));
+        set => Value = Unsafe.As<ValueHash256, UInt256>(ref value);
+    }
 
     // The balance and nonce a change leaves are discarded; clearing them first would cost every effect replayed.
     [SkipLocalsInit]
@@ -229,5 +243,5 @@ internal struct StateEffect
 
     // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, in CodeHash, Code, spec);
+    private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, CodeHash, Code, spec);
 }
