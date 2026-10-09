@@ -1161,9 +1161,17 @@ public partial class EngineModuleTests
         Block head = blockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
+        // Execution waits for the answer: a block executed before the request checks its spent budget is answered VALID.
+        using ManualResetEventSlim answered = new();
+        chain.BranchProcessor.BlockProcessing += (_, e) =>
+        {
+            if (e.Block.Hash == block.Hash) answered.Wait(GateTimeout);
+        };
+
         if (suggestPending) blockTree.BlockAcceptingNewBlocks();
         ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
         if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+        answered.Set();
 
         Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
