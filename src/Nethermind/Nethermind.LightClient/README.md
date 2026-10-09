@@ -7,8 +7,9 @@ peers for light-client updates and to execution RLPx `eth/68`–`eth/72` plus
 `snap/1` or `snap/2` peers for blocks, receipts, account, storage and bytecode
 data. It verifies consensus signatures and Merkle branches, execution body and
 receipt roots, SNAP ranges against the selected state root, and returned
-bytecode against the authenticated code hash. No upstream JSON-RPC or Beacon
-HTTP endpoint is used.
+bytecode against the authenticated code hash. Beacon HTTP is used only to obtain
+the startup trust anchor when a checkpoint URL is selected; all subsequent
+consensus and execution data come from P2P peers, never an upstream JSON-RPC endpoint.
 
 ## Run
 
@@ -19,11 +20,30 @@ repository root:
 dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network mainnet --checkpoint 0xYOUR-TRUSTED-FINALIZED-BEACON-BLOCK-ROOT
 ```
 
+Hoodi and Sepolia can start without `--checkpoint`; they fetch a finalized
+checkpoint from the [EF ethPandaOps checkpoint services](https://eth-clients.github.io/checkpoint-sync-endpoints/).
+There is no public EF-operated mainnet checkpoint endpoint: the [EF mainnet Beacon API](https://ethpandaops.io/docs/guides/client-developers/api-access/)
+requires credentials. For mainnet, provide a trusted root as above or select a
+trusted HTTPS provider explicitly, for example:
+
+```powershell
+dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
+```
+
+The example mainnet URL is operated by Sigma Prime, not the EF. The client
+fetches its finalized checkpoint through the standard
+[`finality_checkpoints` Beacon API](https://github.com/ethereum/beacon-APIs/blob/master/apis/beacon/states/finality_checkpoints.yaml)
+over HTTPS with a 10-second timeout and a 4 KiB response limit. It does not
+follow redirects. `--checkpoint` takes precedence over `--checkpoint-url` and
+avoids this HTTP request. Choose or cross-check the provider before relying on
+its checkpoint: P2P signatures authenticate updates *after* that root, but do
+not independently establish whether the root belongs to the canonical chain.
+
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
-The root must be a recent **finalized beacon block root**, obtained independently
-from a source you trust. It is not an execution block hash or a beacon state
-root. The client never obtains or replaces its trust anchor from its peers.
+The root must be a recent **finalized beacon block root**. It is not an execution
+block hash or a beacon state root. The client never obtains or replaces its
+trust anchor from its peers.
 The bootstrap, and on restart the latest replayed authenticated header, must be
 at most fourteen days old. That is a conservative local policy, not a
 computation of the network's weak-subjectivity period.
@@ -31,7 +51,8 @@ computation of the network's weak-subjectivity period.
 `src/Nethermind/artifacts/lightclient`). Restart with the same network and
 checkpoint to replay saved updates; a new checkpoint starts a separate journal.
 The saved files are verified again on replay and never replace the supplied
-checkpoint.
+checkpoint. An automatically fetched root can change between launches, so use
+the same explicit root when you want to replay a particular journal.
 
 The host listens for beacon P2P on TCP/UDP 9050 and execution P2P on TCP/UDP
 30307. Outbound connections to public beacon and execution peers must be
@@ -121,7 +142,8 @@ It runs Nethermind's discv4/discv5 discovery, RLPx, `eth/68`–`eth/72` and
 `snap/1` or `snap/2` as the network schedule requires. Execution proofs are
 cached in memory; it does no full block synchronization. Peers can withhold
 recent selected state; this affects availability, never the returned
-value. A recent trusted checkpoint remains required out of band.
+value. The startup checkpoint remains a trusted input, whether supplied directly
+or fetched from the selected HTTPS provider.
 
 ## Security and current scope
 

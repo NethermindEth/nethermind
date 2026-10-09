@@ -13,13 +13,14 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog.Config;
 using NLog.Targets;
 
-if (args.Length == 0 || Array.Exists(args, static arg => arg is "--help" or "-h"))
+if (Array.Exists(args, static arg => arg is "--help" or "-h"))
 {
     Console.WriteLine("Nethermind light client\n" +
-        "Required: --checkpoint <trusted beacon block root>\n" +
+        "Optional: --checkpoint <trusted beacon block root> or --checkpoint-url <trusted HTTPS Beacon API>\n" +
         "Optional: --network mainnet|hoodi|sepolia (default mainnet) --urls http://127.0.0.1:8545\n" +
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
-        "See README.md for verified RPC selectors and checkpoint requirements.");
+        "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
+        "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
 }
 
@@ -49,7 +50,21 @@ BeaconChainSpec spec = network switch
     "sepolia" => BeaconChainSpec.Sepolia,
     _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia."),
 };
-Hash256 checkpoint = new(builder.Configuration["checkpoint"] ?? throw new ArgumentException("--checkpoint is required."));
+string? checkpointValue = builder.Configuration["checkpoint"];
+Hash256 checkpoint;
+if (checkpointValue is not null)
+{
+    checkpoint = new(checkpointValue);
+}
+else
+{
+    string checkpointUrl = builder.Configuration["checkpoint-url"] ?? CheckpointSource.DefaultUrl(network)
+        ?? throw new ArgumentException("Mainnet requires --checkpoint or --checkpoint-url; no public EF mainnet checkpoint endpoint is available.");
+    using HttpClientHandler handler = new() { AllowAutoRedirect = false };
+    using HttpClient client = new(handler) { Timeout = TimeSpan.FromSeconds(10) };
+    checkpoint = await CheckpointSource.FetchAsync(client, checkpointUrl, CancellationToken.None);
+    Console.WriteLine($"Trusted checkpoint from {checkpointUrl}: {checkpoint}");
+}
 string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
 bool redirected = Console.IsOutputRedirected;
 Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected));

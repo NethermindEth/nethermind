@@ -17,10 +17,13 @@ internal static class LightClientBanner
             $"{blue}_  /|  /     _  /  / /     {orange}_  /___    / /___",
             $"{blue}/_/ |_/      /_/  /_/      {orange}/_____/    \\____/{reset}",
         ];
+        const string border = "    --------------------------------------------------------------------";
         string separator = redirected ? " | " : "  ·  ";
-        return string.Join(Environment.NewLine, logo) + Environment.NewLine +
+        return Environment.NewLine + border + Environment.NewLine +
+            string.Join(Environment.NewLine, logo) + Environment.NewLine +
             $"    {network.ToUpperInvariant()}{separator}Beacon + execution P2P{separator}Local verification{Environment.NewLine}" +
             $"    RPC {rpcUrl}{separator}P2P :9050 / :30307{Environment.NewLine}" +
-            $"    Trusted checkpoint {checkpoint}{Environment.NewLine}{Environment.NewLine}";
+            $"    Trusted checkpoint {checkpoint}{Environment.NewLine}" +
+            border + Environment.NewLine + Environment.NewLine;
     }
 }
