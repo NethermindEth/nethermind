@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Image;
 internal sealed class PbtAnchorImport(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
-    PbtPersistenceCoordinator coordinator,
+    PbtPersistenceManager persistenceManager,
     IPbtConfig config,
     ILogManager logManager)
 {
@@ -87,7 +87,7 @@ internal sealed class PbtAnchorImport(
         cancellationToken.ThrowIfCancellationRequested();
 
         // The import bypassed the live persistence: reload what it cached before the write.
-        coordinator.ResetPersistedStateId();
+        persistenceManager.ResetPersistedStateId();
         if (_logger.IsInfo)
             _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");

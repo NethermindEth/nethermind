@@ -28,7 +28,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     private readonly IPbtTrieNodeCache _trieNodeCache;
     private readonly PbtSnapshotRepository _repository;
-    private readonly PbtPersistenceCoordinator _coordinator;
+    private readonly PbtPersistenceManager _persistenceManager;
     private readonly IPbtPersistence _persistence;
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtSnapshotCompactor _compactor;
@@ -58,7 +58,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtDbManager(
         PbtSnapshotRepository repository,
-        PbtPersistenceCoordinator coordinator,
+        PbtPersistenceManager persistenceManager,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
         PbtSnapshotCompactor compactor,
@@ -66,13 +66,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ILogManager logManager,
         IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache)
-        : this(repository, coordinator, persistence, resourcePool, compactor, processExitSource, logManager,
+        : this(repository, persistenceManager, persistence, resourcePool, compactor, processExitSource, logManager,
             metricsConfig, trieNodeCache, NullPbtRetainedSnapshotLoader.Instance)
     { }
 
     internal PbtDbManager(
         PbtSnapshotRepository repository,
-        PbtPersistenceCoordinator coordinator,
+        PbtPersistenceManager persistenceManager,
         IPbtPersistence persistence,
         IPbtResourcePool resourcePool,
         PbtSnapshotCompactor compactor,
@@ -85,16 +85,16 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         retainedLoader.Load();
         _trieNodeCache = trieNodeCache;
         _repository = repository;
-        _coordinator = coordinator;
+        _persistenceManager = persistenceManager;
         _persistence = persistence;
         _resourcePool = resourcePool;
         _compactor = compactor;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
-        _inlineCompaction = coordinator.Configuration.InlineCompaction;
-        _persistenceJobs = Channel.CreateBounded<StateId>(coordinator.Configuration.MaxInFlightCompactJob);
-        _compactionJobs = Channel.CreateBounded<StateId>(coordinator.Configuration.MaxInFlightCompactJob);
+        _inlineCompaction = persistenceManager.Configuration.InlineCompaction;
+        _persistenceJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
+        _compactionJobs = Channel.CreateBounded<StateId>(persistenceManager.Configuration.MaxInFlightCompactJob);
         _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
         _compactionWorker = Task.Run(RunCompactionWorker);
@@ -201,7 +201,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             }
 
             StateId committed = snapshot.To;
-            StateId persisted = _coordinator.GetCurrentPersistedStateId();
+            StateId persisted = _persistenceManager.GetCurrentPersistedStateId();
             if (persisted != StateId.PreGenesis && committed.BlockNumber <= persisted.BlockNumber)
             {
                 snapshot.Dispose();
@@ -254,13 +254,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     public bool HasStateForBlock(in StateId stateId) =>
         stateId == StateId.PreGenesis
         || _repository.HasState(stateId)
-        || _coordinator.GetCurrentPersistedStateId() == stateId;
+        || _persistenceManager.GetCurrentPersistedStateId() == stateId;
 
     public void DropStateNotReachableFrom(in StateId head)
     {
         try
         {
-            if (_coordinator.DropStateNotReachableFrom(head)) ClearReadOnlyBundleCache();
+            if (_persistenceManager.DropStateNotReachableFrom(head)) ClearReadOnlyBundleCache();
         }
         catch
         {
@@ -272,7 +272,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public void FlushCache(CancellationToken cancellationToken)
     {
-        StateId persisted = _coordinator.FlushToPersistenceState(cancellationToken);
+        StateId persisted = _persistenceManager.FlushToPersistenceState(cancellationToken);
         if (cancellationToken.IsCancellationRequested || persisted == StateId.PreGenesis) return;
         ClearReadOnlyBundleCache();
         lock (_trieCacheWriteLock) _trieNodeCache.Clear();
@@ -289,7 +289,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     // only sweep once persistence has actually advanced, and only after the layers it
                     // superseded are pruned: sweeping earlier would re-cache a view assembled from
                     // layers about to go, pinning them all over again
-                    if (await _coordinator.CheckPersistenceAsync(stateId)) ClearReadOnlyBundleCache();
+                    if (await _persistenceManager.CheckPersistenceAsync(stateId)) ClearReadOnlyBundleCache();
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {

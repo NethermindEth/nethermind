@@ -49,12 +49,12 @@ internal static class PbtCoreRegistration
                 ctx.Resolve<PbtRetainedPublicationGate>()))
             .AddSingleton<PbtSnapshotCompactor>()
             .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
-            .AddSingleton<PbtPersistenceCoordinator>(ctx => new PbtPersistenceCoordinator(
+            .AddSingleton<PbtPersistenceManager>(ctx => new PbtPersistenceManager(
                 config, ctx.Resolve<IStateHeaderProvider>(), ctx.Resolve<IPbtPersistence>(), ctx.Resolve<PbtSnapshotRepository>(),
                 ctx.ResolveKeyed<ICompactionSchedule>(DbNames.Pbt), ctx.Resolve<IStatePersistenceBarrier>(), ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IPbtRetainedSnapshotLoader>(), ctx.Resolve<IPbtRetainedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
             .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
-                ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceCoordinator>(), ctx.Resolve<IPbtPersistence>(),
+                ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
                 ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtTrieNodeCache>(), ctx.Resolve<IPbtRetainedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()

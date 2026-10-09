@@ -313,7 +313,7 @@ public class PbtRocksDbPersistenceTests
             using (ColumnsDb<PbtColumns> db = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, config))
             {
                 PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
-                PbtPersistenceCoordinator coordinator = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
+                PbtPersistenceManager persistenceManager = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
                     repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
                 for (ulong number = 0; number <= 5; number++)
                 {
@@ -329,9 +329,9 @@ public class PbtRocksDbPersistenceTests
                     compactor.DoCompactSnapshot(next);
                     last = next;
                 }
-                coordinator.FlushToPersistence(CancellationToken.None);
+                persistenceManager.FlushToPersistence(CancellationToken.None);
                 Assert.That(repository.Count, Is.Zero);
-                Assert.That(coordinator.CheckPersistence(new StateId(2, TestItem.KeccakA.ValueHash256)), Is.False, "queued IDs behind persistence are harmless");
+                Assert.That(persistenceManager.CheckPersistence(new StateId(2, TestItem.KeccakA.ValueHash256)), Is.False, "queued IDs behind persistence are harmless");
             }
 
             using ColumnsDb<PbtColumns> reopenedDb = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, config);

@@ -45,7 +45,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public IPbtResourcePool ResourcePool { get; }
     public IRefCountingMemoryProvider NodeGroupMemory { get; }
     public IPbtPersistence Persistence { get; }
-    public PbtPersistenceCoordinator Coordinator { get; }
+    public PbtPersistenceManager PersistenceManager { get; }
     public PbtDbManager Manager { get; }
     public PbtStateReader StateReader { get; }
     public PbtWorldStateManager WorldStateManager { get; }
@@ -66,9 +66,9 @@ internal sealed class PbtTestContext : IAsyncDisposable
         ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
-        Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _trieNodeCache = new PbtTrieNodeCache(Config);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache);
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
@@ -178,7 +178,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cts.Dispose();
     }
 
-    /// <summary>Finality as the persistence coordinator sees it; parents are never resolved through it.</summary>
+    /// <summary>Finality as the persistence manager sees it; parents are never resolved through it.</summary>
     public sealed class TestFinalizedStateProvider : IStateHeaderProvider
     {
         private readonly Dictionary<ulong, BlockHeader> _headers = [];

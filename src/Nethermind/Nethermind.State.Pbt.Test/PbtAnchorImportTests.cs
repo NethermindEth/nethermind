@@ -559,7 +559,7 @@ public class PbtAnchorImportTests
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorImport? _anchorImport;
         public PbtAnchorImport AnchorImport => _anchorImport ??=
-            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.Coordinator, _config, LimboLogs.Instance);
+            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.PersistenceManager, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 

@@ -23,7 +23,7 @@ using Nethermind.State.Pbt.Snapshot;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Coordinates base persistence and durable snapshot conversion.</summary>
-public class PbtPersistenceCoordinator : IDisposable
+public class PbtPersistenceManager : IDisposable
 {
     private readonly IPbtConfig _config;
     private readonly IStateHeaderProvider _finalized;
@@ -40,14 +40,14 @@ public class PbtPersistenceCoordinator : IDisposable
     // StateId is wider than an atomic write; publish immutable boxes so readers cannot observe torn roots.
     private StrongBox<StateId>? _currentPersistedState;
 
-    public PbtPersistenceCoordinator(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
+    public PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
         IPbtPersistence persistence, PbtSnapshotRepository repository, [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
         IStatePersistenceBarrier persistenceBarrier, ILogManager logManager)
         : this(config, finalizedStateProvider, persistence, repository, schedule, persistenceBarrier, logManager,
             NullPbtRetainedSnapshotLoader.Instance, NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None)
     { }
 
-    internal PbtPersistenceCoordinator(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
+    internal PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
         IPbtPersistence persistence, PbtSnapshotRepository repository, ICompactionSchedule schedule,
         IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtRetainedSnapshotLoader loader,
         IPbtRetainedSnapshotCompactor compactor, CancellationToken shutdown)
@@ -61,7 +61,7 @@ public class PbtPersistenceCoordinator : IDisposable
         _loader = loader;
         _compactor = compactor;
         _shutdown = shutdown;
-        _logger = logManager.GetClassLogger<PbtPersistenceCoordinator>();
+        _logger = logManager.GetClassLogger<PbtPersistenceManager>();
         _backstopReorgDepth = Math.Max(config.EnableLongFinality ? config.LongFinalityMaxReorgDepth : (ulong)config.MaxReorgDepth,
             (ulong)config.MinReorgDepth + (ulong)config.CompactSize);
     }
