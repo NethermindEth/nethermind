@@ -19,6 +19,8 @@ public static class SlotRun
     public const int Width = 16;
     private const byte IndexMask = Width - 1;
     private const int IndexBits = 4;
+    internal const int EncodedHeaderLength = 1 + sizeof(ushort);
+    private const byte MaxEncodedType = 4;
 
     /// <summary>The shared all-zero run; never pooled.</summary>
     public static PackedSlotRun Empty { get; } = new EmptySlotRun();
@@ -51,6 +53,28 @@ public static class SlotRun
         PackedSlotRun run = Rent(count);
         run.SeedPacked(mask, packedValues);
         return run;
+    }
+
+    /// <summary>Whether <paramref name="length"/> is the length of an encoded run holding at least one slot.</summary>
+    internal static bool IsValidEncodedLength(int length) =>
+        length is >= EncodedHeaderLength + ValueHash256.MemorySize and <= EncodedHeaderLength + Width * ValueHash256.MemorySize
+        && (length - EncodedHeaderLength) % ValueHash256.MemorySize == 0;
+
+    /// <summary>
+    /// Decodes the persisted <see cref="PbtColumns.Storages"/> row of one <see cref="PackedSlotRun"/>:
+    /// <c>[type][mask u16 LE][32-byte value × popcount(mask), ascending slot]</c>, where the type byte is the
+    /// log2 of the capacity that wrote it (see <see cref="PackedSlotRun.Encode"/>). An empty run is a row deletion and is never encoded.
+    /// </summary>
+    internal static PackedSlotRun Decode(ReadOnlySpan<byte> encoded) => CreatePacked(ReadEncodedMask(encoded), encoded[EncodedHeaderLength..]);
+
+    private static ushort ReadEncodedMask(ReadOnlySpan<byte> encoded)
+    {
+        if (encoded.Length < EncodedHeaderLength || encoded[0] > MaxEncodedType) throw new InvalidDataException("Invalid persisted PBT slot run header.");
+        ushort mask = BinaryPrimitives.ReadUInt16LittleEndian(encoded[1..]);
+        int count = BitOperations.PopCount(mask);
+        if (count == 0 || count > 1 << encoded[0] || encoded.Length != EncodedHeaderLength + count * ValueHash256.MemorySize)
+            throw new InvalidDataException("Invalid persisted PBT slot run length.");
+        return mask;
     }
 
     private static PackedSlotRun Rent(int count) => count switch
@@ -145,14 +169,14 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     public PackedSlotRun Clone() => SlotRun.CreatePacked(_mask, PackedValues);
 
     /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
-    public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
+    public int EncodedLength => SlotRun.EncodedHeaderLength + Count * ValueHash256.MemorySize;
 
-    /// <summary>Writes the persisted row (see <see cref="SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
+    /// <summary>Writes the persisted row (see <see cref="SlotRun.Decode"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
     public void Encode(Span<byte> destination)
     {
         destination[0] = (byte)BitOperations.Log2((uint)_values.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(destination[1..], _mask);
-        Span<byte> values = destination[SlotRunCodec.HeaderLength..];
+        Span<byte> values = destination[SlotRun.EncodedHeaderLength..];
         ReadOnlySpan<UInt256> packed = PackedValues;
         for (int rank = 0; rank < packed.Length; rank++)
             packed[rank].ToBigEndian(values.Slice(rank * ValueHash256.MemorySize, ValueHash256.MemorySize));

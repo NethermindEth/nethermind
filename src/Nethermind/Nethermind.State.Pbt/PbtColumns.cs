@@ -13,7 +13,7 @@ public enum PbtColumns
     /// <summary>Whole accounts as their <see cref="Common.PbtAccount"/> stem encoding, keyed by the PBT address hash.</summary>
     Accounts,
 
-    /// <summary>Runs of sixteen consecutive storage words (see <see cref="Common.SlotRunCodec"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>
+    /// <summary>Runs of sixteen consecutive storage words (see <see cref="Common.SlotRun.Decode"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>
     Storages,
 
     /// <summary>Whole bytecode keyed by its code hash.</summary>

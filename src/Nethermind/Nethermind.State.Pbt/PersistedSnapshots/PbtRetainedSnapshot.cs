@@ -282,7 +282,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         return payload;
     }
 
-    private static PackedSlotRun DecodeRun(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? SlotRun.Empty : SlotRunCodec.Decode(bytes);
+    private static PackedSlotRun DecodeRun(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? SlotRun.Empty : SlotRun.Decode(bytes);
 
     private static byte[] ReadValue(scoped in ArenaByteReader reader, Bound bound)
     {

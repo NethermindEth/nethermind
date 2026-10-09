@@ -76,14 +76,14 @@ public class SlotRunTests
         run.Encode(row);
         byte[] expected = Bytes.Concat(new byte[] { type, (byte)mask, (byte)(mask >> 8) },
             Bytes.Concat(Enumerable.Range(0, SlotRun.Width).Where(index => (mask & (1 << index)) != 0).Select(WordBytes).ToArray()));
-        PackedSlotRun decoded = SlotRunCodec.Decode(row);
+        PackedSlotRun decoded = SlotRun.Decode(row);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(row, Is.EqualTo(expected));
             Assert.That(decoded, Is.TypeOf(run.GetType()));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(decoded.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
-            Assert.That(() => SlotRunCodec.Decode(row[..^1]), Throws.TypeOf<System.IO.InvalidDataException>());
-            Assert.That(() => SlotRunCodec.Decode(Bytes.Concat(0x05, row[1..])), Throws.TypeOf<System.IO.InvalidDataException>());
+            Assert.That(() => SlotRun.Decode(row[..^1]), Throws.TypeOf<System.IO.InvalidDataException>());
+            Assert.That(() => SlotRun.Decode(Bytes.Concat(0x05, row[1..])), Throws.TypeOf<System.IO.InvalidDataException>());
         }
         SlotRun.Return(decoded);
         SlotRun.Return(run);

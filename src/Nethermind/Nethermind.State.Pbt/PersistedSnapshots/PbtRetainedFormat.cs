@@ -93,7 +93,7 @@ internal static class PbtRetainedFormat
                 PbtRetainedKey.Clear => length == 1,
                 PbtRetainedKey.Account => PbtAccount.IsValidEncodedLength(length),
                 // An empty run is retained as an empty payload, though persistence never encodes one.
-                _ => length == 0 || SlotRunCodec.IsValidEncodedLength(length),
+                _ => length == 0 || SlotRun.IsValidEncodedLength(length),
             },
             PbtRetainedKey.Code => true,
             _ => length is > 0 and <= PbtNodeGroupCodec.MaxPayloadLength,

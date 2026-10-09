@@ -214,7 +214,7 @@ public class PbtRocksDbPersistence(
             ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(runKey, persistedKey));
             try
             {
-                return value.IsNull() ? SlotRun.Empty : SlotRunCodec.Decode(value);
+                return value.IsNull() ? SlotRun.Empty : SlotRun.Decode(value);
             }
             finally
             {
