@@ -39,7 +39,7 @@ public class ProofInclusionListEnforcementTests
     [TestCase("forbidden-touch", true)]
     [TestCase("unfunded", true)]
     [TestCase("withdrawal-funded", true)]
-    [TestCase("proof-gas-full", true)]
+    [TestCase("execution-gas-full", true)]
     [TestCase("missing-proof", true)]
     [TestCase("bad-proof", true)]
     [TestCase("full-bad-proof", true)]
@@ -49,7 +49,8 @@ public class ProofInclusionListEnforcementTests
     [TestCase("mixed-included", true)]
     [TestCase("mixed-malformed-omit-frame", false)]
     [TestCase("mixed-malformed-omit-legacy", false)]
-    [TestCase("mixed-uncovered-omit-frame", false)]
+    // The package must prove dependencies(transactions) exactly, so an uncovered entry invalidates its proof.
+    [TestCase("mixed-uncovered-omit-frame", true)]
     [TestCase("mixed-invalid-proof-omit-legacy", false)]
     [TestCase("mixed-invalid-proof-frame-only", true)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)
@@ -142,14 +143,15 @@ public class ProofInclusionListEnforcementTests
                 new Hash256(Eip8288Dependencies.ComputeDepsHash(existingDependencies)));
         }
         block.Header.GasUsedPerDimension = (0, 0);
-        if (scenario == "proof-gas-full")
+        if (scenario == "execution-gas-full")
         {
             Transaction included = new();
             transaction.CopyTo(included, copyHash: false);
             included.Hash = Keccak.Compute("included");
             block = block.WithReplacedBody(new([included], block.Uncles, block.Withdrawals));
-            ulong executionUsed = block.GasLimit - transaction.GasLimit - 2 * Eip8288Constants.LeanStarkVerificationGas + 1;
-            block.Header.GasUsed = executionUsed + Eip8288Constants.LeanStarkVerificationGas;
+            FrameTxValidation.TryCalculateBlockGasReservations(transaction, spec, out ulong executionReservation, out _);
+            ulong executionUsed = block.GasLimit - executionReservation + 1;
+            block.Header.GasUsed = executionUsed;
             block.Header.GasUsedPerDimension = (executionUsed, 0);
         }
         if (scenario == "full-bad-proof") block.Header.GasUsed = block.GasLimit;

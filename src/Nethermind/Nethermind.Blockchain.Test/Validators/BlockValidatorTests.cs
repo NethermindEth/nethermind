@@ -198,6 +198,21 @@ public class BlockValidatorTests
     }
 
     [Test]
+    public void Eip8288_empty_dependencies_require_empty_proof([Values] bool emptyProof)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
+        block.Header.RecursiveStark = new RecursiveStark(emptyProof ? [] : [1], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
+
+        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(emptyProof), error);
+            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidRecursiveStark));
+        }
+    }
+
+    [Test]
     public void Eip8288_rejects_recursive_stark_before_activation()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
@@ -213,11 +228,27 @@ public class BlockValidatorTests
         }
     }
 
-    private static (Block Block, BlockHeader Parent) Eip8288Block()
+    private static (Block Block, BlockHeader Parent) Eip8288Block(bool withDependency = true)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).TestObject;
-        return (block, parent);
+        BlockBuilder builder = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize);
+        if (withDependency) builder = builder.WithTransactions(DependencyTx());
+        return (builder.TestObject, parent);
+    }
+
+    private static Transaction DependencyTx()
+    {
+        byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
+        depData[31] = Eip8288Constants.LeanSphincsScheme;
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, 0, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, depData)],
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+        return depTx;
     }
 
     private static BlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)

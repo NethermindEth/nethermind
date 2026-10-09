@@ -10,6 +10,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -28,6 +29,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using NSubstitute;
@@ -703,6 +706,48 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
     }
 
+    [TestCase("recovered")]
+    [TestCase("unavailable")]
+    [TestCase("mismatched")]
+    public async Task Payload_without_its_recursive_stark_is_completed_from_a_proof_sidecar(string scenario)
+    {
+        Block block = PostMergeBlock();
+        block.Header.RecursiveStark = new RecursiveStark([1, 2, 3], new Hash256(ValueKeccak.Compute("deps"u8)));
+        block.Header.Hash = block.Header.CalculateHash();
+        // The payload carries every field the header commits to except recursive_stark, as from a client that drops it.
+        ExecutionPayload payload = ExecutionPayload.Create(block);
+        IBlockProofSidecarSource sidecars = Substitute.For<IBlockProofSidecarSource>();
+        sidecars.TryGetAsync(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(scenario switch
+        {
+            "recovered" => block.Header.RecursiveStark,
+            "mismatched" => new RecursiveStark([9], block.Header.RecursiveStark.BlockDepsHash),
+            _ => null
+        });
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true,
+            timeoutMs: 500, specProvider: new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), proofSidecars: sidecars);
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+
+        await sidecars.Received(1).TryGetAsync(Arg.Is<Block>(b => b.Hash == block.Hash), Arg.Any<CancellationToken>());
+        Assert.That(result.Data.Status, scenario switch
+        {
+            "unavailable" => Is.EqualTo(PayloadStatus.Syncing),
+            "mismatched" => Is.EqualTo(PayloadStatus.Invalid),
+            _ => Is.Not.EqualTo(PayloadStatus.Invalid)
+        }, result.Data.ValidationError);
+    }
+
+    [Test]
+    public async Task Payload_carrying_its_recursive_stark_does_not_consult_sidecars()
+    {
+        Block block = PostMergeBlock();
+        IBlockProofSidecarSource sidecars = Substitute.For<IBlockProofSidecarSource>();
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true,
+            specProvider: Substitute.For<ISpecProvider>(), proofSidecars: sidecars);
+        await handler.HandleAsync(ExecutionPayload.Create(block));
+        await sidecars.DidNotReceiveWithAnyArgs().TryGetAsync(default!, default);
+    }
+
     /// <summary>The block every case here drives: post-merge, one past a parent none of them have.</summary>
     private static Block PostMergeBlock()
     {
@@ -727,7 +772,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Func<bool>? parentProcessedNow = null,
         Action<IBlockTree, IStateReader>? configure = null,
         RecoverSignatures? senderRecovery = null,
-        ISpecProvider? specProvider = null)
+        ISpecProvider? specProvider = null,
+        IBlockProofSidecarSource? proofSidecars = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -807,6 +853,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
             LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>(),
+            proofSidecars);
     }
 }

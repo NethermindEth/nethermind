@@ -79,7 +79,6 @@ namespace Nethermind.Consensus.Processing
                         if (blockToProduce is not null)
                         {
                             blockToProduce.TxByteLength += currentTx.GetLength(false);
-                            blockToProduce.RecursiveStarkGas += Eip8288Dependencies.RecursiveStarkGas(currentTx);
                         }
                     }
                 }

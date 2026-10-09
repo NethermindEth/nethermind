@@ -117,22 +117,31 @@ public class InclusionListProofPackageTests
     [TestCase("uncovered")]
     [TestCase("invalid-proof")]
     [TestCase("missing-proof")]
-    [TestCase("missing-metadata")]
+    [TestCase("without-metadata")]
+    [TestCase("mismatched-metadata")]
     public void Eligibility_preserves_independent_entries_when_one_frame_or_package_is_bad(string scenario)
     {
         Transaction ordinary = new();
         Transaction covered = ValidDependencyFrame(default);
-        Transaction bad = ValidDependencyFrame(ValueKeccak.Compute("uncovered"));
-        if (scenario == "malformed") bad.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
-        byte[] metadata = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(covered));
-        RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(ValueKeccak.Compute(metadata)));
+        Transaction other = ValidDependencyFrame(ValueKeccak.Compute("other"));
+        if (scenario == "malformed") other.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[1])];
+        // The proof must commit to dependencies(transactions) exactly; "uncovered" proves only the first entry's.
+        List<FrameDependency> proven = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(covered),
+            .. scenario == "uncovered" ? [] : Eip8288Dependencies.ForTransaction(other)]);
+        byte[] metadata = Eip8288Dependencies.Serialize(scenario == "mismatched-metadata" ? Eip8288Dependencies.ForTransaction(covered) : proven);
+        RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven)));
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
 
-        Transaction[] eligible = InclusionListProofValidator.SelectEligible([covered, bad, ordinary], proof,
-            scenario == "missing-metadata" ? null : metadata, verifier, Eip8288Prototype.Instance, out _, out _);
+        Transaction[] eligible = InclusionListProofValidator.SelectEligible([covered, other, ordinary], proof,
+            scenario == "without-metadata" ? null : metadata, verifier, Eip8288Prototype.Instance, out _, out _);
 
-        Assert.That(eligible, scenario is "malformed" or "uncovered" ? Is.EqualTo(new[] { covered, ordinary }) : Is.EqualTo(new[] { ordinary }));
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(scenario is "missing-proof" or "missing-metadata" ? 0 : 1));
+        Assert.That(eligible, scenario switch
+        {
+            "malformed" => Is.EqualTo(new[] { covered, ordinary }),
+            "without-metadata" => Is.EqualTo(new[] { covered, other, ordinary }),
+            _ => Is.EqualTo(new[] { ordinary })
+        });
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(scenario is "malformed" or "invalid-proof" or "without-metadata" ? 1 : 0));
     }
 
     [TestCase("duplicate")]
@@ -202,25 +211,56 @@ public class InclusionListProofPackageTests
         {
             Transactions = txs,
             RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps))),
-            ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(deps)),
         };
 
-        Assert.That(InclusionListProofValidator.Validate(focil, Accepting, out string? error), Is.True, error);
+        Assert.That(InclusionListProofValidator.Validate(focil, Accepting, out List<FrameDependency> proven, out string? error), Is.True, error);
+        Assert.That(proven, Is.EqualTo(Eip8288Dependencies.Canonicalize(deps)));
+    }
+
+    [TestCase("wrong")]
+    [TestCase("superset")]
+    public void Rejects_deps_hash_mismatch(string scenario)
+    {
+        Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
+        List<FrameDependency> superset = [.. Eip8288Dependencies.ForTransaction(transaction), .. Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanStarkScheme))];
+        FakeLeanProofVerifier verifier = new(true);
+        InclusionListProofPackage focil = new()
+        {
+            Transactions = [transaction],
+            RecursiveStark = new RecursiveStark([1], scenario == "wrong" ? Keccak.Compute("wrong") : new Hash256(Eip8288Dependencies.ComputeDepsHash(superset))),
+        };
+
+        Assert.That(InclusionListProofValidator.Validate(focil, verifier, out _, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(InclusionListProofValidator.DepsHashMismatch));
+        Assert.That(verifier.VerificationCalls, Is.Zero);
     }
 
     [Test]
-    public void Rejects_deps_hash_mismatch()
+    public void Empty_dependencies_require_an_empty_proof([Values] bool emptyProof)
     {
+        FakeLeanProofVerifier verifier = new(true);
         InclusionListProofPackage focil = new()
         {
-            Transactions = [DepTx(Eip8288Constants.LeanSphincsScheme)],
-            RecursiveStark = new RecursiveStark([1], Keccak.Compute("wrong")),
-            ProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(DepTx(Eip8288Constants.LeanSphincsScheme))),
+            Transactions = [new Transaction()],
+            RecursiveStark = new RecursiveStark(emptyProof ? [] : [1], new Hash256(Eip8288Dependencies.ComputeDepsHash([]))),
         };
 
-        Assert.That(InclusionListProofValidator.Validate(focil, Accepting, out string? error), Is.False);
-        Assert.That(error, Is.EqualTo(InclusionListProofValidator.DepsHashMismatch));
+        Assert.That(InclusionListProofValidator.Validate(focil, verifier, out _, out _), Is.EqualTo(emptyProof));
+        Assert.That(verifier.VerificationCalls, Is.Zero);
     }
+
+    [Test]
+    public void Decoder_rejects_extra_recursive_stark_fields()
+    {
+        Rlp encoded = Rlp.Encode(Rlp.Encode(System.Array.Empty<Rlp>()),
+            Rlp.Encode(Rlp.Encode(new byte[] { 1 }), Rlp.Encode(Keccak.Zero), Rlp.Encode(new byte[Eip8288Constants.DependencyTripleLength])));
+        Assert.Throws<RlpException>(() =>
+        {
+            RlpReader reader = new(encoded.Bytes);
+            InclusionListProofPackageDecoder.Instance.Decode(ref reader);
+        });
+    }
+
     [Test]
     public void Typed_transactions_use_canonical_inclusion_list_encoding()
     {

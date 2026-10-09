@@ -127,7 +127,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
         if (executionPayload.InclusionListRecursiveStark is { } proof
             && (!spec.IsEip8288Enabled || !spec.InclusionListsEnabled || InclusionListTransactions is null
-                || proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
+                || !proof.HasValidShape))
         {
             error = "Invalid inclusion-list recursive STARK";
             return ValidationResult.Fail;

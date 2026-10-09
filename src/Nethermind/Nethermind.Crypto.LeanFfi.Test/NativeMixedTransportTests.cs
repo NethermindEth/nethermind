@@ -36,9 +36,9 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeMixedTransportTests
 {
     [Test]
-    public async Task Bulk_frame_backpressure_preserves_eth_response_and_session_control_over_tcp()
+    public async Task Chunk_backpressure_preserves_eth_response_and_session_control_over_tcp()
     {
-        byte[] payload = new byte[LeanProofStore.MaxWrapperBytes];
+        byte[] payload = new byte[LeanProtocol.ChunkBytes];
         new Random(79124).NextBytes(payload);
         byte[] aes = new byte[32];
         byte[] mac = new byte[32];
@@ -57,7 +57,7 @@ public class NativeMixedTransportTests
         ZeroPacketSplitter splitter = new(new FrameCipher(aes), outboundMac);
         splitter.EnableSnappy(LimboLogs.Instance);
         EmbeddedChannel outbound = new(splitter);
-        LeanProofWrapperMessageSerializer leanSerializer = new();
+        ChunkMessageSerializer leanSerializer = new();
         BlockHeadersMessageSerializer headersSerializer = new();
         MessageSerializationService serializers = new(
             SerializerInfo.Create(leanSerializer), SerializerInfo.Create(headersSerializer),
@@ -70,7 +70,7 @@ public class NativeMixedTransportTests
             ZeroPacket packet = call.Arg<ZeroPacket>();
             delivered.Add(packet.PacketType);
             if (packet.PacketType == 1)
-                Assert.That(MemoryExtensions.SequenceEqual<byte>(leanSerializer.Deserialize(packet.Content).Wrapper, payload), Is.True);
+                Assert.That(leanSerializer.Deserialize(packet.Content).Data.Span.SequenceEqual(payload), Is.True);
             else if (packet.PacketType == 20)
             {
                 using BlockHeadersMessage decoded = headersSerializer.Deserialize(packet.Content);
@@ -109,8 +109,8 @@ public class NativeMixedTransportTests
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         try
         {
-            Assert.That(sender.Enqueue(new LeanProofWrapperMessage(payload) { AdaptivePacketType = 1 }), Is.GreaterThan(0));
-            writable = false; // Bulk frame is outstanding at the channel's transport boundary.
+            Assert.That(sender.Enqueue(new ChunkMessage(1, default, 0, payload, []) { AdaptivePacketType = 1 }), Is.GreaterThan(0));
+            writable = false; // The chunk frame is outstanding at the channel's transport boundary.
             using BlockHeadersMessage headers = new(new ArrayPoolList<BlockHeader>(1) { Build.A.BlockHeader.WithNumber(42).TestObject })
             { AdaptivePacketType = 20 };
             PingMessage ping = PingMessage.Instance;
@@ -118,7 +118,6 @@ public class NativeMixedTransportTests
             long started = Stopwatch.GetTimestamp();
             Assert.That(sender.Enqueue(headers), Is.GreaterThan(0));
             Assert.That(sender.Enqueue(ping), Is.GreaterThan(0));
-            Assert.That(sender.Enqueue(new LeanProofWrapperMessage(payload) { AdaptivePacketType = 1 }), Is.Zero);
             Assert.That(frames.Count, Is.EqualTo(1));
             Task reader = ReadFrames();
             await WriteFrame(frames.Dequeue());
@@ -129,7 +128,7 @@ public class NativeMixedTransportTests
             await reader;
             Assert.That(delivered, Is.EqualTo(new[] { 1, 20, 2 }));
             session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-            TestContext.Out.WriteLine($"10 MiB bulk + ETH header + ping delivered in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F2} ms; deterministic writability transition, actual localhost TCP.");
+            TestContext.Out.WriteLine($"64 KiB chunk + ETH header + ping delivered in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F2} ms; deterministic writability transition, actual localhost TCP.");
         }
         finally
         {

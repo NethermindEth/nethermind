@@ -210,6 +210,20 @@ public class PayloadPreparationServiceTests
         }
     }
 
+    [Test]
+    public async Task Payloads_handed_out_have_their_proofs_remembered_for_import()
+    {
+        Consensus.ProofAggregation.IBlockProofSidecarSource sidecars = Substitute.For<Consensus.ProofAggregation.IBlockProofSidecarSource>();
+        using TestPayloadPreparationService service = CreateService(Substitute.For<IBlockImprovementContextFactory>(), proofSidecars: sidecars);
+        (MockBlockImprovementContext context, _) = CreateRound(DateTimeOffset.UtcNow);
+        service.Store("id", context);
+
+        await service.GetPayload("id");
+        await service.GetPayload("unknown");
+
+        sidecars.Received(1).RememberProduced(context.Best.CurrentBestBlock!);
+    }
+
     private static (MockBlockImprovementContext Context, SharedCancellationTokenSource Cts) CreateRound(DateTimeOffset startDateTime, Action? onCancelling = null)
     {
         SharedCancellationTokenSource cts = new(new CancellationTokenSource());
@@ -230,7 +244,7 @@ public class PayloadPreparationServiceTests
         service.GetPayload(payloadId).AsTask().GetAwaiter().GetResult();
 
     private static TestPayloadPreparationService CreateService(IBlockImprovementContextFactory factory,
-        IBlockProducer? producer = null, ILogManager? logManager = null)
+        IBlockProducer? producer = null, ILogManager? logManager = null, Consensus.ProofAggregation.IBlockProofSidecarSource? proofSidecars = null)
     {
         IBlockProducer blockProducer = producer ?? Substitute.For<IBlockProducer>();
         if (producer is null)
@@ -251,7 +265,8 @@ public class PayloadPreparationServiceTests
             Substitute.For<ITimerFactory>(),
             logManager ?? LimboLogs.Instance,
             TimePerSlot,
-            TimeSpan.FromMilliseconds(1));
+            TimeSpan.FromMilliseconds(1),
+            proofSidecars);
     }
 
     private sealed class TestPayloadPreparationService(
@@ -261,8 +276,10 @@ public class PayloadPreparationServiceTests
         ITimerFactory timerFactory,
         ILogManager logManager,
         TimeSpan timePerSlot,
-        TimeSpan improvementDelay)
-        : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot, improvementDelay: improvementDelay)
+        TimeSpan improvementDelay,
+        Consensus.ProofAggregation.IBlockProofSidecarSource? proofSidecars = null)
+        : PayloadPreparationService(blockProducer, txPool, blockImprovementContextFactory, timerFactory, logManager, timePerSlot,
+            improvementDelay: improvementDelay, proofSidecars: proofSidecars)
     {
         private int _improvements;
 

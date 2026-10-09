@@ -216,7 +216,9 @@ public partial class BlockProcessor(
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
             byte[] proof;
-            if (_productionProofKey == key && _productionProof is not null)
+            if (deps.Count == 0)
+                proof = [];
+            else if (_productionProofKey == key && _productionProof is not null)
                 proof = _productionProof;
             else
             {
@@ -270,13 +272,6 @@ public partial class BlockProcessor(
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
-        }
-
-        if (spec.IsEip8288Enabled)
-        {
-            (ulong Execution, ulong State)? dimensions = header.GasUsedPerDimension;
-            header.GasUsed += Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas;
-            header.GasUsedPerDimension = dimensions;
         }
 
         if (receiptWork is null && TComputesCommitments.IsActive)

@@ -123,5 +123,34 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
         public static long OversizedTransactionsSkipped;
+
+        [CounterMetric]
+        [Description("EIP-8437 lean/1 proof object events by object kind, 0 for events without a kind.")]
+        [KeyIsLabel("kind", "event")]
+        public static NonBlocking.ConcurrentDictionary<P2P.Subprotocols.Lean.LeanObjectEventKey, long> LeanObjectEvents { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of lean/1 chunks verified and retained.")]
+        public static long LeanChunksReceived;
+
+        [CounterMetric]
+        [Description("Number of lean/1 chunks written to peers.")]
+        public static long LeanChunksServed;
+
+        [GaugeMetric]
+        [Description("Number of peers with a negotiated lean/1 transport.")]
+        public static long LeanPeers { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of validated lean/1 objects held for serving.")]
+        public static long LeanStoredObjects { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of lean/1 objects being reassembled or validated.")]
+        public static long LeanAssemblies { get; set; }
+
+        [GaugeMetric]
+        [Description("Bytes charged to incomplete lean/1 assemblies.")]
+        public static long LeanIncompleteBytes { get; set; }
     }
 }

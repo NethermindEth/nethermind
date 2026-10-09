@@ -134,7 +134,7 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        if (!verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, recursiveStark.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(verifier, wrapper.Deps.Count, in depsHash, recursiveStark.StarkProof))
         {
             error = InvalidProof;
             return false;

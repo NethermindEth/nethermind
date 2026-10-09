@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -12,35 +11,21 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>Coalesces aggregation work while refreshing completed wrappers on each cadence.</summary>
-public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager logManager, TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
+/// <summary>Drives background aggregation on the EIP-8288 cadence and publishes each new wrapper as a kind-1 object.</summary>
+/// <remarks>Peers fetch the announced wrapper on demand, so an unchanged wrapper is never sent or announced again.</remarks>
+public sealed class LeanProofGossip(ProofWrapperService wrappers, LeanObjectTransport transport, ILogManager logManager,
+    TimeProvider? timeProvider = null) : IAsyncDisposable, IDisposable
 {
-    internal const int RefreshIntervalSeconds = 30;
-    internal const int RefreshJitterMilliseconds = 5000;
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
-    private readonly Lock _lock = new();
-    private readonly Lock _publicationLock = new();
-    private sealed record Wrapper(ReadOnlyMemory<byte> Bytes, ValueHash256 Hash);
-    private sealed class Peer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
-    {
-        public Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> Send { get; } = send;
-        public Wrapper? Pending;
-        public TaskCompletionSource? Worker;
-        public Dictionary<ValueHash256, long> Recent { get; } = [];
-        public TimeSpan RefreshDelay { get; } = TimeSpan.FromSeconds(RefreshIntervalSeconds)
-            + TimeSpan.FromMilliseconds(Random.Shared.Next(RefreshJitterMilliseconds));
-    }
-
-    private readonly Dictionary<Delegate, Peer> _peers = [];
-    private readonly HashSet<Task> _workers = [];
-    private readonly CancellationTokenSource _stop = new();
     private readonly ILogger _logger = logManager.GetClassLogger<LeanProofGossip>();
+    private readonly CancellationTokenSource _stop = new();
+    private readonly Lock _lock = new();
     private Task? _loop;
-    private TaskCompletionSource? _buildWorker;
+    private Task? _build;
+    private ValueHash256? _published;
     private bool _disposed;
-    private Wrapper? _lastWrapper;
 
-    /// <summary>Starts the shared producer, including nodes serving wrappers before their first peer connects.</summary>
+    /// <summary>Starts the shared producer, including on nodes that serve wrappers before their first peer connects.</summary>
     public void Start()
     {
         lock (_lock)
@@ -50,30 +35,12 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
         }
     }
 
-    public void AddPeer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
-    {
-        Peer peer = new(send);
-        lock (_lock)
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!_peers.TryAdd(send, peer)) return;
-            _loop ??= Task.Run(RunAsync);
-        }
-        if (wrappers.IsEnabled) PublishLatest();
-    }
-
-    public void RemovePeer(Func<ReadOnlyMemory<byte>, ValueHash256, CancellationToken, ValueTask<bool>> send)
-    {
-        lock (_lock)
-            if (_peers.Remove(send, out Peer? peer)) peer.Pending = null;
-    }
-
     private async Task RunAsync()
     {
-        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(1000), _clock);
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(Eip8288Constants.AggregationInterval), _clock);
         try
         {
-            while (await timer.WaitForNextTickAsync(_stop.Token))
+            while (await timer.WaitForNextTickAsync(_stop.Token).ConfigureAwait(false))
             {
                 try
                 {
@@ -81,8 +48,10 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
                     ScheduleBuild();
                     PublishLatest();
                 }
-                catch (OperationCanceledException) when (_stop.IsCancellationRequested) { break; }
-                catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof refresh failed: {exception.Message}"); }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Lean proof refresh failed: {exception.Message}");
+                }
             }
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
@@ -90,149 +59,36 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
 
     private void ScheduleBuild()
     {
-        TaskCompletionSource worker;
         lock (_lock)
         {
-            if (_disposed || _buildWorker is not null) return;
-            worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _buildWorker = worker;
-            _workers.Add(worker.Task);
+            if (_disposed || _build is { IsCompleted: false }) return;
+            _build = Task.Run(Build);
         }
-        _ = Task.Run(() => BuildAndPublish(worker));
     }
 
-    private void BuildAndPublish(TaskCompletionSource worker)
+    private void Build()
     {
         try
         {
-            Result result = wrappers.RefreshWrapper(_stop.Token);
-            if (result) PublishLatest();
+            if (wrappers.RefreshWrapper(_stop.Token)) PublishLatest();
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
-        catch (Exception exception) { if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}"); }
-        finally
+        catch (Exception exception)
         {
-            lock (_lock)
-            {
-                _buildWorker = null;
-                worker.TrySetResult();
-                _workers.Remove(worker.Task);
-            }
+            if (_logger.IsWarn) _logger.Warn($"Lean proof aggregation failed: {exception.Message}");
         }
     }
 
-    private void PublishLatest()
+    internal void PublishLatest()
     {
-        lock (_publicationLock)
-        {
-            ValueHash256? knownHash;
-            lock (_lock) knownHash = _lastWrapper?.Hash;
-            Result<byte[]> result = wrappers.GetLatestWrapper(knownHash, out ValueHash256 hash);
-            if (!result.IsSuccess)
-            {
-                lock (_lock)
-                {
-                    _lastWrapper = null;
-                    foreach (Peer peer in _peers.Values) peer.Pending = null;
-                }
-                return;
-            }
-            Wrapper wrapper;
-            Peer[] peers;
-            lock (_lock)
-            {
-                if (_disposed) return;
-                if (result.Data.Length == 0)
-                {
-                    if (_lastWrapper is not { } last || last.Hash != hash) return;
-                    wrapper = last;
-                }
-                else
-                {
-                    wrapper = new(result.Data, hash);
-                    _lastWrapper = wrapper;
-                }
-                peers = [.. _peers.Values];
-            }
-            foreach (Peer peer in peers) TrySend(peer, wrapper);
-        }
-    }
-
-    private void TrySend(Peer peer, Wrapper wrapper)
-    {
-        TaskCompletionSource? worker = null;
         lock (_lock)
         {
-            if (_disposed || !_peers.TryGetValue(peer.Send, out Peer? current) || current != peer) return;
-            if (WasSentRecently(peer, wrapper.Hash)) return;
-            peer.Pending = wrapper;
-            if (peer.Worker is null) worker = ReserveWorker(peer);
-        }
-        if (worker is not null) StartWorker(peer, worker);
-    }
-
-    private bool WasSentRecently(Peer peer, ValueHash256 hash)
-        => peer.Recent.TryGetValue(hash, out long sentAt)
-            && _clock.GetElapsedTime(sentAt, _clock.GetTimestamp()) < peer.RefreshDelay;
-
-    private TaskCompletionSource ReserveWorker(Peer peer)
-    {
-        TaskCompletionSource worker = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        peer.Worker = worker;
-        _workers.Add(worker.Task);
-        return worker;
-    }
-
-    // Reservation is tracked before dispatch, including cancellation or peer removal before startup.
-    private void StartWorker(Peer peer, TaskCompletionSource worker)
-        => _ = Task.Run(() => RunPeerAsync(peer, worker));
-
-    private async Task RunPeerAsync(Peer peer, TaskCompletionSource worker)
-    {
-        CancellationToken cancellationToken = _stop.Token;
-        try
-        {
-            while (true)
-            {
-                Wrapper wrapper;
-                lock (_lock)
-                {
-                    if (_disposed || !_peers.TryGetValue(peer.Send, out Peer? current) || current != peer || peer.Pending is null) return;
-                    wrapper = peer.Pending;
-                    peer.Pending = null;
-                    if (WasSentRecently(peer, wrapper.Hash)) continue;
-                }
-                if (!await peer.Send(wrapper.Bytes, wrapper.Hash, cancellationToken).ConfigureAwait(false)) return;
-                lock (_lock)
-                {
-                    if (_disposed || !_peers.TryGetValue(peer.Send, out Peer? current) || current != peer) return;
-                    if (peer.Recent.Count == 64 && !peer.Recent.ContainsKey(wrapper.Hash))
-                    {
-                        ValueHash256 oldestHash = default;
-                        long oldestTime = long.MaxValue;
-                        foreach ((ValueHash256 known, long timestamp) in peer.Recent)
-                            if (timestamp < oldestTime) { oldestHash = known; oldestTime = timestamp; }
-                        peer.Recent.Remove(oldestHash);
-                    }
-                    peer.Recent[wrapper.Hash] = _clock.GetTimestamp();
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-        catch (Exception exception) { if (_logger.IsDebug) _logger.Debug($"Lean proof peer send failed: {exception.Message}"); }
-        finally
-        {
-            TaskCompletionSource? next = null;
-            lock (_lock)
-            {
-                peer.Worker = null;
-                if (!_disposed && !cancellationToken.IsCancellationRequested && peer.Pending is not null
-                    && _peers.TryGetValue(peer.Send, out Peer? current) && current == peer)
-                    next = ReserveWorker(peer);
-                worker.TrySetResult();
-                _workers.Remove(worker.Task);
-            }
-            if (next is not null) StartWorker(peer, next);
+            if (_disposed) return;
+            Result<byte[]> latest = wrappers.GetLatestWrapper(_published, out ValueHash256 hash);
+            if (!latest.IsSuccess || latest.Data!.Length == 0) return;
+            // Already stored counts as published too, so an unchanged wrapper is not hashed again every cycle.
+            transport.PublishWrapper(latest.Data);
+            _published = hash;
         }
     }
 
@@ -241,19 +97,17 @@ public sealed class LeanProofGossip(ProofWrapperService wrappers, ILogManager lo
     public async ValueTask DisposeAsync()
     {
         Task? loop;
-        Task[] workers;
+        Task? build;
         lock (_lock)
         {
             if (_disposed) return;
             _disposed = true;
-            workers = [.. _workers];
-            _peers.Clear();
-            _lastWrapper = null;
             loop = _loop;
+            build = _build;
         }
         await _stop.CancelAsync().ConfigureAwait(false);
         if (loop is not null) await loop.ConfigureAwait(false);
-        await Task.WhenAll(workers).ConfigureAwait(false);
+        if (build is not null) await build.ConfigureAwait(false);
         _stop.Dispose();
     }
 }

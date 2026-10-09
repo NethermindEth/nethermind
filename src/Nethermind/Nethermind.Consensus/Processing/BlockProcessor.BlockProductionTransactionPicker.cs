@@ -46,8 +46,7 @@ namespace Nethermind.Consensus.Processing
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
-                ulong reservedStarkGas = (block as BlockToProduce)?.RecursiveStarkGas ?? 0;
-                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas).SaturatingSub(reservedStarkGas);
+                ulong gasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockExecutionGas);
 
                 // No more gas available in block for any transactions, the only case we have to really stop. An
                 // EIP-8141 frame transaction reserves from its own lower intrinsic cost, so the legacy floor gates the spec read.
@@ -71,18 +70,13 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-                ulong txStarkGas = spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(currentTx) : 0;
-                gasRemaining = gasRemaining.SaturatingSub(txStarkGas);
 
                 if (transactionsInBlock.Contains(currentTx))
                 {
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
-                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas).SaturatingSub(reservedStarkGas);
-                if (txStarkGas > stateGasRemaining)
-                    return args.Set(TxAction.Skip, "Not enough state gas for dependency proof");
-                stateGasRemaining -= txStarkGas;
+                ulong stateGasRemaining = block.Header.GasLimit.SaturatingSub(cumulativeBlockStateGas);
                 if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(currentTx, spec, out ulong executionReservation, out ulong stateReservation))
                 {
                     return args.Set(TxAction.Skip, "Cannot calculate frame transaction gas reservations");
@@ -140,7 +134,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                if (txStarkGas != 0)
+                if (spec.IsEip8288Enabled && Eip8288Dependencies.RecursiveStarkGas(currentTx) != 0)
                 {
                     List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
                     BlockToProduce? producing = block as BlockToProduce;

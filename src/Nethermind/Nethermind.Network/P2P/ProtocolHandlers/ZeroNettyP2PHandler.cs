@@ -45,7 +45,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     {
         IByteBuffer content = input.Content;
         int readableBytes = content.ReadableBytes;
-        if (readableBytes > SnappyParameters.MaxSnappyLength)
+        if (readableBytes > SnappyParameters.MaxSnappyLength || (!SnappyEnabled && ExceedsProtocolLimit(input.PacketType, readableBytes)))
         {
             _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
             return;
@@ -64,7 +64,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                 throw new CorruptedFrameException(exception);
             }
 
-            if ((uint)uncompressedLength > (uint)SnappyParameters.MaxSnappyLength)
+            if ((uint)uncompressedLength > (uint)SnappyParameters.MaxSnappyLength || ExceedsProtocolLimit(input.PacketType, uncompressedLength))
             {
                 _session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
                 return;
@@ -135,6 +135,10 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             _session.ReceiveMessage(input);
         }
     }
+
+    // EIP-8437 bounds lean/1 messages by their advertised uncompressed size, before any decompression.
+    private bool ExceedsProtocolLimit(int packetType, int uncompressedLength) =>
+        _session is ILeanBulkSession lean && lean.ExceedsMessageLimit(packetType, uncompressedLength);
 
     private ZeroPacket TakeOutputPacket(IChannelHandlerContext context, int length)
     {

@@ -94,7 +94,7 @@ public static class InclusionListValidator
     }
 
     private static bool CouldIncludeFrameTx(Transaction tx, Block block, IReleaseSpec spec, ITxValidator validator)
-        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec, Eip8288Dependencies.RecursiveStarkGas(tx))
+        => tx.SenderAddress is not null && FitsRemainingBlockGas(tx, block, spec)
             && validator.IsWellFormed(tx, spec, block.GasLimit) && tx.MaxFeePerGas >= block.BaseFeePerGas
             && (!tx.CarriesBlobs || BlobGasCalculator.CalculateBlobGas(tx) <= spec.GasCosts.MaxBlobGasPerBlock - (block.Header.BlobGasUsed ?? 0)
                 && BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 blobFee)
@@ -140,25 +140,16 @@ public static class InclusionListValidator
     /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
     /// spec judges includable. Callers whose block carries no dimensions must not put an EIP-8037 block to this
     /// check — the max alone under-reports censorship — which is why the engine API declines to answer instead.</remarks>
-    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec, ulong additionalGas = 0)
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
     {
         // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
         // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed
-            && additionalGas <= block.GasLimit - block.GasUsed - tx.GasLimit;
+        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
 
         (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
-        if (spec.IsEip8288Enabled && block.Header.GasUsedPerDimension is not null)
-        {
-            ulong proofGas = (ulong)Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas;
-            execution += proofGas;
-            state += proofGas;
-        }
         return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
             && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
-                == Eip8037BlockGasInclusionCheck.Outcome.Ok
-            && additionalGas <= block.GasLimit - execution - executionReservation
-            && additionalGas <= block.GasLimit - state - stateReservation;
+                == Eip8037BlockGasInclusionCheck.Outcome.Ok;
     }
 
     /// <summary>Balance the sender would have had when an appended transaction executed.</summary>

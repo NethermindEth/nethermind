@@ -66,6 +66,8 @@ public class HeaderValidatorTests
     [TestCase(false, "valid", false, BlockErrorMessages.RecursiveStarkNotEnabled)]
     [TestCase(true, "absent", false, BlockErrorMessages.MissingRecursiveStark)]
     [TestCase(true, "empty", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "empty-deps", true, null)]
+    [TestCase(true, "empty-deps-with-proof", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "oversized", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "valid", true, null)]
@@ -75,10 +77,15 @@ public class HeaderValidatorTests
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
         _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStark(shape switch
         {
-            "empty" => [],
+            "empty" or "empty-deps" => [],
             "oversized" => new byte[Eip8288Constants.MaxProofBytes + 1],
             _ => [1]
-        }, shape == "missing-hash" ? null! : Keccak.Zero);
+        }, shape switch
+        {
+            "missing-hash" => null!,
+            "empty-deps" or "empty-deps-with-proof" => new Hash256(Eip8288Dependencies.ComputeDepsHash([])),
+            _ => Keccak.Zero
+        });
 
         Assert.That(_validator.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.EqualTo(valid));
         Assert.That(error, Is.EqualTo(expectedError));

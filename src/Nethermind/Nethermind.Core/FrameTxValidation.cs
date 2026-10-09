@@ -46,6 +46,7 @@ public static class FrameTxValidation
     public const string ZeroDigestMsg = "explicit signature msg must not be the zero digest";
     public const string BlobFeeWithoutBlobs = "max fee per blob gas must be 0 when there are no blob hashes";
     public const string DependencyFrameShape = "dependency verification frame must have a null target, zero value, and zero flags";
+    public const string DependencyFrameInAtomicBatch = "dependency verification frame must not be part of an atomic batch";
     public const string DependencyFrameDataLength = "dependency verification frame data must be a non-empty multiple of 96 bytes";
     public const string TooManyDependenciesPerFrame = "dependency verification frame must declare at most 256 dependencies";
     public const string DependencyPaddingNotZero = "each dependency must begin with 31 zero bytes before the scheme id";
@@ -112,6 +113,14 @@ public static class FrameTxValidation
                 if (!dependencyEnabled || !IsWellFormedDependencyFrame(frame, out error))
                 {
                     error ??= InvalidMode;
+                    return false;
+                }
+
+                // EIP-8288: a flag-free dependency frame would still terminate a preceding batch, and a skipped
+                // terminator would declare dependencies the block must prove while its frame never ran.
+                if (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0)
+                {
+                    error = DependencyFrameInAtomicBatch;
                     return false;
                 }
             }
@@ -715,7 +724,8 @@ public static class FrameTxValidation
                              + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
+        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero
+                       + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
 
         ulong standardGas = intrinsicGas + totalFrameGas;
         if (standardGas < intrinsicGas)
@@ -830,7 +840,8 @@ public static class FrameTxValidation
     {
         error = null;
 
-        if (frame.Target is not null && frame.Target != Address.Zero || !frame.Value.IsZero || frame.Flags != 0)
+        // EIP-8288: the absent target, not the zero address; FRAMEPARAM then resolves it to the sender.
+        if (frame.Target is not null || !frame.Value.IsZero || frame.Flags != 0)
         {
             error = DependencyFrameShape;
             return false;

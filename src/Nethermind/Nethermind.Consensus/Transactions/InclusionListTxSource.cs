@@ -64,7 +64,7 @@ public class InclusionListTxSource(
             if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
         }
         if (provenDependencies is not null && !InclusionListProofValidator.HasValidMetadataLength(provenDependencies)) return;
-        if (proof is not null && (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })) return;
+        if (proof is not null && !proof.HasValidShape) return;
         if (_decodedByAttributes.TryGetValue(inclusionListTransactions, out BuildInclusionList? existing)
             && ReferenceEquals(existing.Spec, spec)
             && existing.MatchesInput(inclusionListTransactions, proof, provenDependencies)) return;

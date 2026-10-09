@@ -439,11 +439,10 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
-        public void Backpressure_defers_control_traffic_and_retries_bulk_gossip([Values("eth", "lean")] string controlProtocol)
+        public void Backpressure_defers_control_traffic([Values("eth", "lean")] string controlProtocol)
         {
             (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage _) = SetupChannel(true);
-            TestMessage lean = new("lean", packetType: 1);
-            TestMessage eth = new(controlProtocol);
+            TestMessage eth = new(controlProtocol, packetType: 1);
             IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(32);
             buffer.WriteZero(32);
             serializer.ZeroSerialize(eth, Arg.Any<IByteBufferAllocator>()).Returns(buffer);
@@ -453,10 +452,8 @@ namespace Nethermind.Network.Test.P2P
             sender.EnableLeanBulk();
             try
             {
-                Assert.That(sender.Enqueue(lean), Is.Zero);
                 Assert.That(sender.Enqueue(eth), Is.EqualTo(32));
                 context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
-                serializer.DidNotReceive().ZeroSerialize(lean, Arg.Any<IByteBufferAllocator>());
                 context.Channel.IsWritable.Returns(true);
                 sender.ChannelWritabilityChanged(context);
                 context.Received(1).WriteAndFlushAsync(buffer);

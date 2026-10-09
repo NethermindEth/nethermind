@@ -533,6 +533,31 @@ public class FrameTxValidationTests
             "the measured calldata must be priced, not served from the memo taken before it was set");
     }
 
+    [Test]
+    public void TryCalculateGasBudget_Eip8288_ChargesRecursiveStarkGasPerDeclaredDependencyInIntrinsicGas()
+    {
+        IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
+        IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        enabled.IsEip8288Enabled.Returns(true);
+        byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [.. t.Frames!, DepFrame(repeatedSchemes)]);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out ulong baseFloor, out ulong baseMax), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, disabled, out ulong baseExecution, out ulong baseState), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out ulong floor, out ulong max), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, enabled, out ulong execution, out ulong state), Is.True);
+
+        const ulong recursiveStarkGas = 3 * Eip8288Constants.LeanStarkVerificationGas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic, Is.EqualTo(baseIntrinsic + recursiveStarkGas));
+            Assert.That(floor, Is.EqualTo(baseFloor));
+            Assert.That(max, Is.EqualTo(baseMax + recursiveStarkGas));
+            Assert.That(execution, Is.EqualTo(baseExecution + recursiveStarkGas));
+            Assert.That(state, Is.EqualTo(baseState));
+        }
+    }
+
     [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
     [TestCase(TxFrameSignature.SchemeP256, 128)]
     public void TryCalculateGasBudget_PlaceholderPricesSignatureBytesWithoutChangingConsensus(byte scheme, int length)
@@ -603,8 +628,9 @@ public class FrameTxValidationTests
         yield return DepCase("StateGas_DependencyFrameGasMismatch",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], stateGasLimit: 1)],
             FrameTxValidation.DependencyFrameGasMismatch);
-        yield return DepCase("ZeroAddressTarget_Valid",
-            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: Address.Zero)], null);
+        yield return DepCase("ZeroAddressTarget_DependencyFrameShape",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: Address.Zero)],
+            FrameTxValidation.DependencyFrameShape);
 
         yield return DepCase("NonNullTarget_DependencyFrameShape",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: TestItem.AddressB)],
@@ -615,6 +641,15 @@ public class FrameTxValidationTests
         yield return DepCase("NonZeroFlags_DependencyFrameShape",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], flags: FrameFlags.ApprovePayment)],
             FrameTxValidation.DependencyFrameShape);
+
+        yield return DepCase("AfterAtomicBatchFlag_DependencyFrameInAtomicBatch",
+            static tx => tx.Frames = [new TxFrame(FrameMode.Default, FrameFlags.AtomicBatch, TestItem.AddressB, 100_000, UInt256.Zero, Array.Empty<byte>()),
+                DepFrame(Eip8288Constants.LeanSphincsScheme)],
+            FrameTxValidation.DependencyFrameInAtomicBatch);
+        yield return DepCase("AfterUnflaggedFrame_Valid",
+            static tx => tx.Frames = [new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 100_000, UInt256.Zero, Array.Empty<byte>()),
+                DepFrame(Eip8288Constants.LeanSphincsScheme)],
+            null);
 
         yield return DepCase("TooManySigDeps_TooManySigDeps",
             static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxSigsPerTx + 1).ToArray())],

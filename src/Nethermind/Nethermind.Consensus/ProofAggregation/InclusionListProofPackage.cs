@@ -12,78 +12,74 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>
-/// Packages inclusion-list transactions with an aggregate dependency proof and its explicit proven set.
+/// EIP-8288 FOCIL <c>[transactions, recursive_stark]</c>: inclusion-list transactions with an aggregate proof of
+/// exactly their dependencies.
 /// </summary>
 public sealed class InclusionListProofPackage
 {
     public required IReadOnlyList<Transaction> Transactions { get; init; }
     public required RecursiveStark RecursiveStark { get; init; }
-    public byte[]? ProvenDependencies { get; init; }
 }
 
 /// <summary>Validates aggregate dependency proof coverage for inclusion-list transactions.</summary>
 public static class InclusionListProofValidator
 {
-    public const string DepsHashMismatch = "FOCIL recursive STARK public input must equal hash(deps)";
+    public const string DepsHashMismatch = "FOCIL recursive STARK public input must equal get_deps_hash(dependencies(transactions))";
+    public const string ProvenDependenciesMismatch = "FOCIL proven dependencies must equal dependencies(transactions)";
     public const string InvalidProof = "FOCIL recursive STARK failed verification";
     private static readonly ConditionalWeakTable<ILeanProofVerifier, ProofVerdicts> VerifiedProofs = [];
 
-    public static bool Validate(InclusionListProofPackage package, ILeanProofVerifier verifier, out string? error)
-        => Validate(package.Transactions, package.RecursiveStark, verifier, out _, out error, provenDependencies: package.ProvenDependencies);
+    public static bool Validate(InclusionListProofPackage package, ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error)
+        => Validate(package.Transactions, package.RecursiveStark, verifier, out deps, out error);
 
+    /// <param name="provenDependencies">Optional Engine API echo of the proven list; when present it must equal
+    /// <c>dependencies(transactions)</c>.</param>
     public static bool Validate(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
         ILeanProofVerifier verifier, out List<FrameDependency> deps, out string? error, IReleaseSpec? spec = null,
         byte[]? provenDependencies = null)
     {
         deps = [];
         error = null;
-        bool requiresProof = false;
-        List<List<FrameDependency>> required = [];
         foreach (Transaction tx in transactions)
         {
             if (tx is null) { error = InvalidProof; return false; }
             if (!IsFrameWellFormed(tx, spec, out error)) return false;
-            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
-            required.Add(dependencies);
-            requiresProof |= dependencies.Count > 0;
         }
-        if (!requiresProof && proof is null && provenDependencies is null) return true;
-        if (!ValidateProof(proof, provenDependencies, verifier, out deps, out error)) return false;
-        HashSet<FrameDependency> covered = [.. deps];
-        foreach (List<FrameDependency> dependencies in required)
-            foreach (FrameDependency dependency in dependencies)
-                if (!covered.Contains(dependency)) { error = DepsHashMismatch; return false; }
+        List<FrameDependency> required = DependenciesOf(transactions);
+        if (required.Count == 0 && proof is null && provenDependencies is null) return true;
+        if (!ValidateProof(proof, required, provenDependencies, verifier, out error)) return false;
+        deps = required;
         return true;
     }
 
     /// <summary>Preserves independent obligations when another entry or its dependency proof is invalid.</summary>
+    /// <remarks>The proof covers <c>dependencies(transactions)</c> exactly, so it either covers every entry with
+    /// dependencies or none of them.</remarks>
     public static Transaction[] SelectEligible(IReadOnlyList<Transaction> transactions, RecursiveStark? proof,
         byte[]? provenDependencies, ILeanProofVerifier verifier, IReleaseSpec spec, out List<FrameDependency> proven,
         out string? error)
     {
-        List<(Transaction Transaction, List<FrameDependency> Dependencies)> candidates = [];
-        bool requiresProof = false;
+        List<FrameDependency> required = DependenciesOf(transactions);
+        proven = [];
+        error = null;
+        bool proofValid = required.Count > 0 && ValidateProof(proof, required, provenDependencies, verifier, out error);
+        if (proofValid) proven = required;
+        List<Transaction> eligible = new(transactions.Count);
         foreach (Transaction tx in transactions)
         {
             if (tx is null || !IsFrameWellFormed(tx, spec, out _)) continue;
-            List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(tx);
-            candidates.Add((tx, dependencies));
-            requiresProof |= dependencies.Count > 0;
-        }
-        proven = [];
-        error = null;
-        bool proofValid = requiresProof && ValidateProof(proof, provenDependencies, verifier, out proven, out error);
-        HashSet<FrameDependency> covered = [.. proven];
-        List<Transaction> eligible = new(candidates.Count);
-        foreach ((Transaction tx, List<FrameDependency> dependencies) in candidates)
-        {
-            bool includesAll = dependencies.Count == 0 || proofValid;
-            if (includesAll && dependencies.Count > 0)
-                foreach (FrameDependency dependency in dependencies)
-                    if (!covered.Contains(dependency)) { includesAll = false; break; }
-            if (includesAll) eligible.Add(tx);
+            if (proofValid || Eip8288Dependencies.RecursiveStarkGas(tx) == 0) eligible.Add(tx);
         }
         return [.. eligible];
+    }
+
+    /// <summary>Spec <c>dependencies(transactions)</c>: the sorted, deduplicated union over every entry.</summary>
+    private static List<FrameDependency> DependenciesOf(IReadOnlyList<Transaction> transactions)
+    {
+        List<FrameDependency> declared = [];
+        foreach (Transaction tx in transactions)
+            if (tx is not null) declared.AddRange(Eip8288Dependencies.ForTransaction(tx));
+        return Eip8288Dependencies.Canonicalize(declared);
     }
 
     private static bool IsFrameWellFormed(Transaction tx, IReleaseSpec? spec, out string? error)
@@ -98,24 +94,26 @@ public static class InclusionListProofValidator
         return true;
     }
 
-    private static bool ValidateProof(RecursiveStark? proof, byte[]? encodedDependencies, ILeanProofVerifier verifier,
-        out List<FrameDependency> dependencies, out string? error)
+    /// <summary>The EIP-8437 kind-3 checks: <c>deps_hash</c> commits to <paramref name="required"/>, and the proof
+    /// passes the EIP-8288 STARK check against it.</summary>
+    private static bool ValidateProof(RecursiveStark? proof, List<FrameDependency> required, byte[]? encodedDependencies,
+        ILeanProofVerifier verifier, out string? error)
     {
-        dependencies = [];
         error = InvalidProof;
-        if (proof?.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }
-            || encodedDependencies is null || !HasValidMetadataLength(encodedDependencies)) return false;
-        ReadOnlySpan<byte> bytes = encodedDependencies;
-        for (int offset = 0; offset < bytes.Length; offset += Eip8288Constants.DependencyTripleLength)
+        if (proof?.BlockDepsHash is null || proof.StarkProof is not { Length: <= Eip8288Constants.MaxProofBytes }) return false;
+        if (encodedDependencies is not null && !Eip8288Dependencies.Serialize(required).AsSpan().SequenceEqual(encodedDependencies))
         {
-            ReadOnlySpan<byte> triple = bytes.Slice(offset, Eip8288Constants.DependencyTripleLength);
-            if (triple[..31].IndexOfAnyExcept((byte)0) >= 0
-                || triple[31] is not (Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme)) return false;
+            error = ProvenDependenciesMismatch;
+            return false;
         }
-        List<FrameDependency> parsed = Eip8288Dependencies.Parse(bytes);
-        if (!Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(parsed)).AsSpan().SequenceEqual(bytes)) return false;
-        ValueHash256 depsHash = ValueKeccak.Compute(bytes);
-        if (proof.BlockDepsHash.ValueHash256 != depsHash) { error = DepsHashMismatch; dependencies = []; return false; }
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(required);
+        if (proof.BlockDepsHash.ValueHash256 != depsHash) { error = DepsHashMismatch; return false; }
+        if (proof.StarkProof.Length == 0 != (required.Count == 0)) return false;
+        if (required.Count == 0)
+        {
+            error = null;
+            return true;
+        }
         InclusionListProofVerifier? request = verifier as InclusionListProofVerifier;
         if (request is null || !request.TryGetVerdict(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof, out bool valid))
         {
@@ -124,8 +122,7 @@ public static class InclusionListProofValidator
             valid = VerifiedProofs.GetValue(backend, static _ => new()).Verify(backend, in depsHash, proof.StarkProof);
             request?.RememberVerdict(in depsHash, Eip8288Constants.AggregatedVk, proof.StarkProof, valid);
         }
-        if (!valid) { dependencies = []; return false; }
-        dependencies = parsed;
+        if (!valid) return false;
         error = null;
         return true;
     }
