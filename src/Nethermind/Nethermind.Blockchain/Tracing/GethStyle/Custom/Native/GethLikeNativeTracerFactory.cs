@@ -42,10 +42,23 @@ public static class GethLikeNativeTracerFactory
     public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate) =>
         _tracers.Add(tracerName, (options, block, transaction, worldState, _) => tracerDelegate(options, block, transaction, worldState));
 
-    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState, IReleaseSpec releaseSpec) =>
-        _tracers.TryGetValue(options.Tracer, out SpecAwareNativeTracerFactory? tracerDelegate)
-            ? tracerDelegate(options, block, transaction, worldState, releaseSpec)
-            : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
+    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState, IReleaseSpec releaseSpec)
+    {
+        if (!_tracers.TryGetValue(options.Tracer, out SpecAwareNativeTracerFactory? tracerDelegate))
+            throw new ArgumentException($"Unknown tracer: {options.Tracer}");
+
+        GethLikeNativeTxTracer tracer = tracerDelegate(options, block, transaction, worldState, releaseSpec);
+        try
+        {
+            _ = options.Timeout;
+            return tracer;
+        }
+        catch
+        {
+            tracer.Dispose();
+            throw;
+        }
+    }
 
     /// <summary>Throws if a built-in tracer cannot parse the tracer config of <paramref name="options"/>.</summary>
     /// <remarks>The tracers parse it per transaction, too late for a streamed response to fail as a JSON-RPC error.</remarks>

@@ -482,7 +482,30 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
+        if (CanStreamStructLogs(options))
+        {
+            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
+            if (resolvedBlock is null)
+            {
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
+            }
+
+            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            if (resolvedBlock.Transactions.Length != 0)
+            {
+                try
+                {
+                    _ = effective.Timeout;
+                }
+                catch (FormatException exception)
+                {
+                    return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+                }
+            }
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
+                (writer, pipeWriter, token) =>
+                    debugBridge.GetBlockTrace(resolvedBlock, token, effective, writer, pipeWriter)));
+        }
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -501,6 +524,10 @@ public class DebugRpcModule(
         catch (ArgumentNullException)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
+        }
+        catch (FormatException exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
     }
 
