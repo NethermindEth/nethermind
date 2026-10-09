@@ -42,10 +42,8 @@ namespace Nethermind.Evm.Test;
 /// designator, and charges the EIP-2929 access cost for that address.
 /// </summary>
 /// <remarks>
-/// Transactions run untraced through a <see cref="PrecompileCachedCodeInfoRepository"/>, as block processing does, so
-/// the inline STATICCALL path, access-list rollback and the precompile result cache all behave as in production.
-/// Each measured operation stores <c>gas before</c>, its result, <c>gas after</c>, the return data size and the output
-/// word into consecutive storage slots of the called contract.
+/// Runs through a <see cref="PrecompileCachedCodeInfoRepository"/>, as block processing does. Each measurement stores
+/// gas before, result, gas after, return data size and output word in consecutive storage slots.
 /// </remarks>
 public class Eip8151Tests : VirtualMachineTestsBase
 {

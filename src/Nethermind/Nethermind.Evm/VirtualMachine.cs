@@ -1201,7 +1201,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <remarks>
     /// The Parity touch-bug account (RIPEMD-160) is excluded because <see cref="RunPrecompile"/> records its
     /// EIP-161 empty-account deletion, which the inline path does not replay. EIP-8151 ecRecover is excluded
-    /// because its account warming must roll back with a frame that runs out of gas.
+    /// so its account warming rolls back if it runs out of gas.
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
         !codeSource.Equals(Ripemd160Address) && !IsEip8151EcRecover(precompile, Spec);
@@ -1479,19 +1479,14 @@ public partial class VirtualMachine<TGasPolicy>(
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
         !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
-    /// <remarks>Matched by precompile rather than address, so a precompile moved by a state override keeps its own rules.</remarks>
+    /// <remarks>By name, not type or address: the result cache wraps ecRecover, a state override can move it, and this
+    /// assembly cannot reference its type. The constant is interned, so a match is a reference comparison.</remarks>
     private static bool IsEip8151EcRecover(IPrecompile precompile, IReleaseSpec spec) =>
         spec.IsEip8151Enabled && precompile.Name == EcRecoverPrecompileName;
 
-    /// <summary>Applies the EIP-8151 account-code restriction to a successful ecRecover output.</summary>
-    /// <remarks>
-    /// Runs after <see cref="IPrecompile.Run"/>, so precompile result caches only ever hold the pure recovery result
-    /// and cannot serve a verdict that the recovered account's code has since invalidated. A recovered address is
-    /// charged its EIP-2929 access cost and warmed in the precompile frame's access tracker, so the warming rolls back
-    /// with the frame. Only once that charge succeeds is the account read and recorded in the EIP-7928 block access
-    /// list. The address is returned when its raw code is empty or an EIP-7702 delegation designator; every other
-    /// outcome, including a failed recovery, returns 32 zero bytes.
-    /// </remarks>
+    /// <summary>Zeroes ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
+    /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer, and
+    /// charges the access cost before reading the account so running out of gas leaves it cold and out of the BAL.</remarks>
     /// <returns><c>false</c> when the access cost exceeds the frame's remaining gas.</returns>
     private bool TryRestrictEcRecoverOutput(VmState<TGasPolicy> state, IReleaseSpec spec, ref byte[] output)
     {
