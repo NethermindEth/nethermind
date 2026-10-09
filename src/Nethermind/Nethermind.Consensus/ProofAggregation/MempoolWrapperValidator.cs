@@ -58,7 +58,7 @@ public static class MempoolWrapperValidator
             }
             foreach (FrameDependency dependency in transactionDeps)
             {
-                if (dependency.Scheme is not (Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme))
+                if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme))
                 {
                     error = InvalidProof;
                     return false;

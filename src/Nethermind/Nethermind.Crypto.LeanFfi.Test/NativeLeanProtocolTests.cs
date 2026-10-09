@@ -195,7 +195,7 @@ public class NativeLeanProtocolTests
         }
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
         Assert.That(target.Chain.Container.Resolve<LeanProofStore>().TryGetInput(dependencies, out AggregationInput admitted), Is.True);
-        NativeLeanProofVerifierTests.AssertMixedEnvelope(admitted.RecursiveProofs[0].Proof.ToArray(), dependencies);
+        NativeLeanProofVerifierTests.AssertBareStarkProof(admitted.RecursiveProofs[0].Proof.ToArray(), dependencies);
         Block block = await target.Chain.AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx);
         using (Assert.EnterMultipleScope())
         {

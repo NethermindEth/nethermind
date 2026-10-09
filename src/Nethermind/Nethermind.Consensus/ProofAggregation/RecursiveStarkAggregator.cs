@@ -126,8 +126,10 @@ public static class RecursiveStarkAggregator
             HashSet<FrameDependency> removed = [];
             foreach (FrameDependency dependency in child.InnerDeps)
                 if (discarded.Contains(dependency)) removed.Add(dependency);
-            children.Add(removed.Count != 0
-                ? ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps, removed) : child);
+            if (removed.Count == 0) children.Add(child);
+            // With every dependency discarded a child proves nothing, and the empty set has no proof to fold.
+            else if (!removed.IsSupersetOf(child.InnerDeps))
+                children.Add(ProveChild(new() { RecursiveProofs = [child] }, child.InnerDeps, removed));
         }
         for (int offset = 0; offset < input.Deps.Count;)
         {

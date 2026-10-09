@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/854997bd156f47f1b1ce2192c4499741f29bd0df),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/d4ce2a68235457a242f4aea681bdf99b50462d2d),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims and generic leanVM programs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
@@ -32,7 +32,7 @@ The main solution compiles the test project without requiring Rust. Without the 
 the native suite is explicitly skipped. With it, the backend and fixtures are required and
 missing libraries fail the run.
 
-The C ABI is version 5, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
+The C ABI is version 6, with Cdecl calls, 32-byte hashes/keys and `size_t` buffer lengths.
 `nlean_limits` writes nine u32 values (proof bytes, dependencies, recursive children,
 SPHINCS witness bytes, generic STARK count, instructions, operand offset, aggregation input bytes,
 mixed guest proof bytes); startup
@@ -54,9 +54,8 @@ not a process memory bound. Dependency lists are bounded to 256; recursive child
 STARK claims to 16 each. This format and the
 pinned key are prototype protocol choices, pending finalized EIP-8288 encodings.
 
-The single serialized mixed guest proof has an explicit 8,364,020-byte acceptance bound. Every
-nonempty aggregate reserves `12 + 96*dependencies + MaxMixedGuestProofBytes`; an empty aggregate requires
-12 bytes. This total must fit 8 MiB. Verification and proving enforce the same bounds;
+The serialized mixed guest proof is the whole `stark_proof`, bounded to 8 MiB; an empty
+dependency list has an empty `stark_proof`. Verification and proving enforce the same bounds;
 standalone generic witnesses may be up to 8 MiB and are verified before recursive coverage
 can replace them. These are prototype consensus limits, not proven maxima of upstream
 proof sizes or process memory guarantees. Larger proofs fail closed.
@@ -74,8 +73,9 @@ The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics ret
 large proof-bearing records in a separate eight-entry / 64 MiB tier, counting header
 proofs and inclusion-list proof/dependency buffers and returning owned copies.
 
-* **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). The dependency key
-  is Keccak-256 of the public key. Both this hash and the signature over `data_hash` are checked.
+* **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
+  dependency key is the public key itself, root then public parameter. Both the key and the
+  signature over `data_hash` are checked.
 * **leanSTARK witness:** bytecode blob length, canonical bytecode, then fixed-integer bincode
   serialization of the upstream CPU proof (no trailing bytes). The dependency key is
   Keccak-256 of that canonical bytecode. `data_hash` is the VM's 32-byte public commitment,
@@ -88,26 +88,32 @@ proofs and inclusion-list proof/dependency buffers and returning owned copies.
   in the metadata field.
 * **aggregation input:** direct count then `(96-byte dependency, witness blob)` pairs;
   child count then `(dependency count/triples, proof blob)` pairs; discard count/triples.
-* **aggregate:** `NLR3`, canonical dependency count/triples, then one mixed guest proof
-  blob. A blob is its length followed by bytes. There is no generic-witness trailer or
-  raw program carried in the header. Empty dependencies have exactly the 12-byte envelope
-  with zero dependency count and zero blob length; it stays internal to the adapter, since an
-  EIP-8288 header, wrapper or FOCIL with no dependencies carries an empty `stark_proof`.
+* **aggregate:** the EIP-8288 `stark_proof`, one mixed guest proof without dependencies,
+  generic programs or raw witnesses. It verifies against `deps_hash` and `AGGREGATED_VK`
+  alone; a child's dependencies come from the aggregation input. Proving an empty list
+  returns an empty `stark_proof`, which callers check without the backend.
 
 The recursive key is the actual mixed guest's Fiat-Shamir seed, pinned in
 `Eip8288Constants.AggregatedVk`. The guest authenticates signature claims, generic program
 commitments and public inputs, verifies child mixed proofs, and applies union, deduplication
 and discard selection. The adapter requires exact canonical EIP dependency triples and
-recomputes their Keccak commitment; caller metadata cannot create an unproved claim.
+recomputes their `get_deps_hash`; caller metadata cannot create an unproved claim.
 Every supplied raw witness and child proof is authenticated even when another input already
 covers the same claim. An unchanged verified statement can reuse its parent proof without
 executing another recursive proving step.
 
-This profile is incompatible with the earlier `NLR2` carried-generic prototype and its
-SPHINCS-only guest key. Startup checks ABI 5, the new key and all nine bounds together;
-lean status checks the pinned key before proof transfer. New devnets require fresh chain
-and database namespaces. Historical `NLR2` captures retain their original source/profile
-and do not validate this mixed profile.
+`get_deps_hash` is BLAKE2s-256 over each dependency's 64-byte `data_hash || verification_key`,
+one guest compression per entry. EIP-8288 reserves leanSTARK (`0x11`) until `get_deps_hash`
+covers it; behind `Eip8288Constants.LeanStarkPrototypeEnabled` (on), a list with leanSTARK
+entries commits to `BLAKE2s(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) ||
+"eip8288/leanstark-deps\0" padded to 32 bytes)`. That 96-byte preimage is never a list of
+64-byte entries, so the two forms cannot collide, and an all-leanSPHINCS list keeps the EIP digest.
+The guest checks every entry's scheme against its run.
+
+This profile is incompatible with the earlier ABI 5 `NLR3` profile, its Keccak commitment and
+guest key, and with older `NLR2` captures. Startup checks ABI 6, the new key and all nine bounds
+together; lean status checks the pinned key before proof transfer. New devnets require fresh
+chain and database namespaces.
 
 ## Proving resources
 
@@ -161,7 +167,7 @@ canonical VERIFY contract remains TBD and is not implemented here.
 
 This prototype uses dependency frame mode
 **4**, because current EIP-7906 uses mode 3 for `POST_TX`. Dependencies remain 96-byte triples;
-their commitment is Keccak-256 over the lexicographically sorted, deduplicated set. Gas is
+their commitment is `get_deps_hash` over the lexicographically sorted, deduplicated set. Gas is
 charged for every declaration, including duplicates.
 
 The `eth` JSON-RPC module provides:

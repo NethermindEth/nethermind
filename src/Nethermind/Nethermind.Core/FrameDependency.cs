@@ -10,7 +10,7 @@ namespace Nethermind.Core;
 /// <summary>
 /// A single EIP-8288 dependency triple <c>(scheme, data_hash, verification_key)</c> declared by a
 /// dependency-verification frame. <c>data_hash</c>/<c>verification_key</c> are the message hash and
-/// public-key hash (leanSPHINCS) or the public commitment and bytecode hash (leanSTARK).
+/// 32-byte public key (leanSPHINCS) or the public commitment and bytecode hash (leanSTARK).
 /// </summary>
 public readonly struct FrameDependency(byte scheme, ValueHash256 dataHash, ValueHash256 verificationKey)
     : IEquatable<FrameDependency>
@@ -148,12 +148,53 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
-    /// <summary>
-    /// Spec <c>block_deps_hash</c>: <c>hash(concat(bytes32_be(scheme) || data_hash || verification_key))</c>.
-    /// The prototype uses Keccak-256 for the dependency commitment.
-    /// </summary>
-    public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies) =>
-        dependencies.Count == 0 ? ValueKeccak.OfAnEmptyString : ValueKeccak.Compute(Serialize(Canonicalize(dependencies)));
+    private static readonly ValueHash256 EmptyDepsHash = Blake2s.Compute([]);
+
+    // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
+    private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
+
+    /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against.</summary>
+    /// <remarks>
+    /// <c>DEPS_HASH</c> is BLAKE2s-256 over each canonical dependency's 64-byte <c>data_hash || verification_key</c>.
+    /// EIP-8288 defines it for leanSPHINCS lists only. With <see cref="Eip8288Constants.LeanStarkPrototypeEnabled"/>,
+    /// a list holding leanSTARK dependencies hashes <c>get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) ||
+    /// "eip8288/leanstark-deps\0"</c> zero-padded to 96 bytes, as the pinned recursive guest does.
+    /// Unknown schemes are rejected before hashing and fall in the second list.
+    /// </remarks>
+    public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
+    {
+        if (dependencies.Count == 0) return EmptyDepsHash;
+
+        List<FrameDependency> canonical = Canonicalize(dependencies);
+        int split = 0;
+        while (split < canonical.Count && canonical[split].Scheme == Eip8288Constants.LeanSphincsScheme) split++;
+        ValueHash256 sphincs = ListDepsHash(canonical, 0, split);
+        if (split == canonical.Count) return sphincs;
+
+        ValueHash256 stark = ListDepsHash(canonical, split, canonical.Count);
+        Blake2s hasher = Blake2s.Create();
+        hasher.Update(sphincs.Bytes);
+        hasher.Update(stark.Bytes);
+        hasher.Update(LeanStarkDepsDomain);
+        return hasher.Finish();
+    }
+
+    private static ValueHash256 ListDepsHash(List<FrameDependency> canonical, int start, int end)
+    {
+        Blake2s hasher = Blake2s.Create();
+        Span<byte> triple = stackalloc byte[Eip8288Constants.DependencyTripleLength];
+        for (int i = start; i < end; i++)
+        {
+            canonical[i].WriteTo(triple);
+            hasher.Update(triple[32..]);
+        }
+        return hasher.Finish();
+    }
+
+    /// <summary>Whether a dependency scheme is accepted: leanSPHINCS, and leanSTARK while the prototype switch is on.</summary>
+    internal static bool IsAcceptedScheme(byte scheme) =>
+        scheme == Eip8288Constants.LeanSphincsScheme
+        || (Eip8288Constants.LeanStarkPrototypeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
 
     /// <summary>Sorts and deduplicates dependencies for the EIP-8288 commitment.</summary>
     public static List<FrameDependency> Canonicalize(IEnumerable<FrameDependency> dependencies)

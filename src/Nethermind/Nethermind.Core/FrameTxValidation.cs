@@ -876,7 +876,7 @@ public static class FrameTxValidation
                 case Eip8288Constants.LeanSphincsScheme:
                     expectedGas += Eip8288Constants.LeanSphincsVerificationGas;
                     break;
-                case Eip8288Constants.LeanStarkScheme:
+                case Eip8288Constants.LeanStarkScheme when Eip8288Constants.LeanStarkPrototypeEnabled:
                     expectedGas += Eip8288Constants.LeanStarkVerificationGas;
                     break;
                 default:

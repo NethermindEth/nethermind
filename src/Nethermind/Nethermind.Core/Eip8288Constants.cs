@@ -30,8 +30,8 @@ public static class Eip8288Constants
     /// <summary>Maximum encoded native witness or recursive proof size.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>Prototype acceptance bound for the single serialized mixed guest proof, reserved in aggregate capacity.</summary>
-    public const int MaxMixedGuestProofBytes = MaxProofBytes - 12 - MaxProofDependencies * DependencyTripleLength;
+    /// <summary>Prototype acceptance bound for the serialized mixed guest proof, which is the whole <c>stark_proof</c>.</summary>
+    public const int MaxMixedGuestProofBytes = MaxProofBytes;
 
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
@@ -44,6 +44,11 @@ public static class Eip8288Constants
 
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
+
+    /// <summary>Prototype switch accepting leanSTARK dependencies.</summary>
+    /// <remarks>EIP-8288 reserves <see cref="LeanStarkScheme"/> until <c>get_deps_hash</c> is defined for it;
+    /// <see cref="Eip8288Dependencies.ComputeDepsHash"/> defines it for this prototype.</remarks>
+    public const bool LeanStarkPrototypeEnabled = true;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
@@ -60,5 +65,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("6deed6ff48d7e4af71132fb8cdc5224d16574d0358a94d274af5caee648c80ad");
 }

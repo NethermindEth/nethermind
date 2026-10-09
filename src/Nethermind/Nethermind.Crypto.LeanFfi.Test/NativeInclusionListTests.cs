@@ -54,7 +54,7 @@ public class NativeInclusionListTests
         if (scenario == "uncovered") Assert.That(FrameTxValidation.IsWellFormed(bad, spec, out string? error), Is.True, error);
         FrameDependency[] dependencies = [.. Eip8288Dependencies.ForTransaction(covered)];
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        NativeLeanProofVerifierTests.AssertMixedEnvelope(proofBytes, dependencies);
+        NativeLeanProofVerifierTests.AssertBareStarkProof(proofBytes, dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;
         RecursiveStark proof = new(proofBytes, new Hash256(commitment));

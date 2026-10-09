@@ -13,6 +13,11 @@ public static class LeanProofTestEnvelope
     public static byte[] Create(IReadOnlyList<FrameDependency> dependencies)
         => Create(dependencies, 1);
 
+    /// <summary>A fixture of exactly <see cref="Eip8288Constants.MaxProofBytes"/>, the largest acceptable <c>stark_proof</c>.</summary>
+    public static byte[] CreateMaximal(IReadOnlyList<FrameDependency> dependencies)
+        => Create(dependencies, Eip8288Constants.MaxProofBytes - 8
+            - Eip8288Dependencies.Canonicalize(dependencies).Count * Eip8288Constants.DependencyTripleLength);
+
     public static byte[] Create(IReadOnlyList<FrameDependency> dependencies, int paddingBytes)
     {
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(dependencies);
