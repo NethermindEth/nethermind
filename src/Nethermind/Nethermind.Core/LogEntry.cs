@@ -15,10 +15,19 @@ namespace Nethermind.Core
 
     public ref struct LogEntryStructRef
     {
+        private ReadOnlySpan<byte> _data;
+        private int _dataZeroPrefix;
+
         public LogEntryStructRef(AddressStructRef address, ReadOnlySpan<byte> data, ReadOnlySpan<byte> topicsRlp)
+            : this(address, data, topicsRlp, 0)
+        {
+        }
+
+        internal LogEntryStructRef(AddressStructRef address, ReadOnlySpan<byte> data, ReadOnlySpan<byte> topicsRlp, int dataZeroPrefix)
         {
             Address = address;
-            Data = data;
+            _data = data;
+            _dataZeroPrefix = dataZeroPrefix;
             TopicsRlp = topicsRlp;
             Topics = null;
         }
@@ -28,7 +37,8 @@ namespace Nethermind.Core
         public LogEntryStructRef(LogEntry logEntry)
         {
             Address = logEntry.Address.ToStructRef();
-            Data = logEntry.Data;
+            _data = logEntry.Data;
+            _dataZeroPrefix = 0;
             Topics = logEntry.Topics;
             TopicsRlp = default;
         }
@@ -40,6 +50,20 @@ namespace Nethermind.Core
         /// </summary>
         public ReadOnlySpan<byte> TopicsRlp { get; }
 
-        public ReadOnlySpan<byte> Data { get; }
+        public ReadOnlySpan<byte> Data
+        {
+            get
+            {
+                if (_dataZeroPrefix != 0)
+                {
+                    byte[] data = new byte[_dataZeroPrefix + _data.Length];
+                    _data.CopyTo(data.AsSpan(_dataZeroPrefix));
+                    _data = data;
+                    _dataZeroPrefix = 0;
+                }
+
+                return _data;
+            }
+        }
     }
 }

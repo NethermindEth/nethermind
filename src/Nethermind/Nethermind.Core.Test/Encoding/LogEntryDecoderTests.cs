@@ -85,6 +85,64 @@ public class LogEntryDecoderTests
         }
     }
 
+    [Test]
+    public void Compact_struct_ref_WhenDataHasLeadingZeros_ReturnsCompleteData([Values(0, 1, 31, 64)] int zeroPrefix)
+    {
+        byte[] data = new byte[64];
+        data.AsSpan(zeroPrefix).Fill(0x42);
+        LogEntry logEntry = new(TestItem.AddressA, data, [TestItem.KeccakA]);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader reader = new(encoded);
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        ReadOnlySpan<byte> first = decoded.Data;
+        ReadOnlySpan<byte> second = decoded.Data;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.AreEqual(data, first), "leading zeros must be restored before publishing data");
+            Assert.That(first.Overlaps(second), "repeated access must reuse the materialized data");
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
+            Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
+        }
+    }
+
+    [Test]
+    public void Compact_struct_ref_WhenDataIsEmpty_ReturnsEmptyData()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, [], []);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader reader = new(encoded);
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Data.Length, Is.Zero);
+            Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+        }
+    }
+
+    [Test]
+    public void Compact_struct_ref_WhenDataIsNotRead_DoesNotAllocate()
+    {
+        LogEntry logEntry = new(TestItem.AddressA, new byte[1024], [TestItem.KeccakA]);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes;
+        RlpReader warmup = new(encoded);
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref warmup, RlpBehaviors.None, out _);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        RlpReader reader = new(encoded);
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero, "address/topic filtering must not allocate rejected data");
+            Assert.That(decoded.Address == logEntry.Address, "metadata must remain available before data access");
+        }
+    }
+
     public enum TopicDecodePath
     {
         Full,
