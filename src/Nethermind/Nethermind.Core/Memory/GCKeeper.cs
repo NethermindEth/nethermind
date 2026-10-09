@@ -17,8 +17,9 @@ public class GCKeeper : IDisposable
     // Idle mainnet nodes allocate about 1.5 MB/s between blocks; under eth_call load, more than 100 MB/s, a throwaway
     // entry after every collection had to collect itself (51 ms on average at 8 concurrent calls).
     private static readonly long QuietBytesPerSecond = 8.MB;
-    // A throwaway entry right after a collection on a quiet node takes about 0.25 ms.
-    private static readonly TimeSpan SlowRearm = TimeSpan.FromMilliseconds(2);
+    // A throwaway entry right after a collection on a quiet node took 0.25 ms on a mainnet node and up to 2.8 ms in a
+    // synthetic 16-heap probe; one that has to collect first is caught by the collection check, not by this bound.
+    private static readonly TimeSpan SlowRearm = TimeSpan.FromMilliseconds(10);
     private const int RearmBackoffPayloads = 25;
     private long _payloadsSinceDecommit;
     private readonly Lock _lock = new();
@@ -481,8 +482,8 @@ public class GCKeeper : IDisposable
     /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
     /// grow until they are allocated in. The decommit still returns everything else.</para>
     /// <para>Either entry leaves the heaps the region's budget until the next collection (see <see cref="IsBudgetArmed"/>).
-    /// Right after a collection on a quiet node a re-arm takes about 0.25 ms; under load the entry has to collect
-    /// itself, so a re-arm that takes longer than <see cref="SlowRearm"/>, or during which the runtime collected,
+    /// Right after a collection on a quiet node a re-arm is short; under load the entry has to collect itself, so a
+    /// re-arm that takes longer than <see cref="SlowRearm"/>, or during which the runtime collected,
     /// pauses re-arms for the next <see cref="RearmBackoffPayloads"/> payloads.</para>
     /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
     /// when the strategy disallows regions or its mode is <see cref="NoGcRegionMode.Never"/>, and on shutdown. A

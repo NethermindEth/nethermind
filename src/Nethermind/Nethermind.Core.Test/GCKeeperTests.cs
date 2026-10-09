@@ -655,8 +655,8 @@ public class GCKeeperTests
         runtime.BeforeStart = () =>
         {
             runtime.BeforeStart = null;
-            // 2 ms is not slow yet.
-            time.Advance(TimeSpan.FromMilliseconds(2) + TimeSpan.FromTicks(cost == RearmCost.Slow ? 1 : 0));
+            // 10 ms is not slow yet.
+            time.Advance(TimeSpan.FromMilliseconds(10) + TimeSpan.FromTicks(cost == RearmCost.Slow ? 1 : 0));
         };
         runtime.AfterStart = () =>
         {
