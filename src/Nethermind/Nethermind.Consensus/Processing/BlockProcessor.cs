@@ -234,7 +234,16 @@ public partial class BlockProcessor(
                 {
                     AggregationInput input = new();
                     if (block is BlockToProduce producing)
+                    {
                         input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                        // A pass with a deadline never waits for native proving, which takes longer than a slot: the statement
+                        // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
+                        if (token.CanBeCanceled && leanProofStore is not null)
+                        {
+                            _productionProofCache.TrySchedule(deps, depsHash, input, leanProofStore);
+                            throw new LeanProofNotReadyException(new HashSet<FrameDependency>(leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps))));
+                        }
+                    }
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
                     leanProofStore?.AddCachedRecursive(deps, proof);
                 }

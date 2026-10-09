@@ -54,6 +54,9 @@ namespace Nethermind.Consensus.Producers
         internal List<AggregationInput> LeanProofInputs { get; } = [];
         internal LeanProofBudget LeanProofBudget { get; private set; } = new();
 
+        /// <summary>When set, only transactions whose dependencies all lie in this proven set are picked.</summary>
+        internal IReadOnlySet<FrameDependency>? LeanDependencyLimit { get; set; }
+
         public override Block WithReplacedHeader(BlockHeader newHeader)
         {
             BlockToProduce replacement = new(newHeader, Transactions, Uncles, Withdrawals)
@@ -63,7 +66,8 @@ namespace Nethermind.Consensus.Producers
                 InclusionListProvenDependencies = InclusionListProvenDependencies,
                 InclusionListProofInput = InclusionListProofInput,
                 TxByteLength = TxByteLength,
-                LeanProofBudget = LeanProofBudget.Clone()
+                LeanProofBudget = LeanProofBudget.Clone(),
+                LeanDependencyLimit = LeanDependencyLimit
             };
             replacement.LeanProofInputs.AddRange(LeanProofInputs);
             return replacement;

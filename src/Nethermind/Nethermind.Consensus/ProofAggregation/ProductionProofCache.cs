@@ -25,6 +25,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private readonly Lock _cacheLock = new();
     private readonly object _provingLock = new();
     private int _producersWaiting;
+    private Task? _scheduled;
     private static readonly AsyncLocal<Request?> CurrentRequest = new();
     private long _bytes;
 
@@ -117,6 +118,38 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             cancellationToken.ThrowIfCancellationRequested();
             throw;
+        }
+    }
+
+    /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
+    /// <remarks>
+    /// At most one statement runs at a time; a later request is dropped and repeated by the next production pass that
+    /// still needs it. The statement is proven with producer priority, so background wrapper aggregation yields to it.
+    /// </remarks>
+    /// <returns>Whether the statement was scheduled.</returns>
+    internal bool TrySchedule(IReadOnlyList<FrameDependency> deps, ValueHash256 depsHash, AggregationInput input, LeanProofStore store)
+    {
+        lock (_cacheLock)
+        {
+            if (_scheduled is { IsCompleted: false }) return false;
+            // The caller's proving scope, if any, must not decide this statement's priority or cancellation.
+            using (ExecutionContext.SuppressFlow())
+                _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+        if (_logger.IsDebug) _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies");
+        return true;
+
+        void Run()
+        {
+            try
+            {
+                byte[] proof = RecursiveStarkAggregator.Prove(input, this, in depsHash);
+                store.AddCachedRecursive(deps, proof);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Scheduled EIP-8288 production proof failed: {exception.Message}");
+            }
         }
     }
 

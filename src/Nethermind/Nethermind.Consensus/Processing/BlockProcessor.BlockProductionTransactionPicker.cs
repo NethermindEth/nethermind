@@ -138,6 +138,9 @@ namespace Nethermind.Consensus.Processing
                 {
                     List<FrameDependency> required = Eip8288Dependencies.ForTransaction(currentTx);
                     BlockToProduce? producing = block as BlockToProduce;
+                    if (producing?.LeanDependencyLimit is { } limit)
+                        foreach (FrameDependency dependency in required)
+                            if (!limit.Contains(dependency)) return args.Set(TxAction.Skip, "Dependency proof not ready");
                     LeanProofBudget budget = producing?.LeanProofBudget ?? new();
                     List<FrameDependency> missing = budget.Missing(required);
                     AggregationInput candidateInput = new();

@@ -138,4 +138,8 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of native EIP-8288 proofs that kept running after their block producer was canceled.")]
     public static long LeanDetachedProofs;
+
+    [CounterMetric]
+    [Description("Number of EIP-8288 block bodies rebuilt from proven dependencies because their own proof was not ready.")]
+    public static long LeanProofFallbacks;
 }

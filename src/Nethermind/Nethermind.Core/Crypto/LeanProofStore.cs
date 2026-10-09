@@ -487,6 +487,28 @@ public sealed class LeanProofStore
         return false;
     }
 
+    /// <summary>Finds the largest dependency set inside <paramref name="within"/> that already has a verified recursive proof.</summary>
+    /// <remarks>A producer that cannot wait for proving restricts its body to this set, whose proof it reuses unchanged.</remarks>
+    public FrameDependency[] LargestProvenSubset(IReadOnlySet<FrameDependency> within)
+    {
+        FrameDependency[] best = [];
+        lock (_lock)
+        {
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+            foreach (ProofRecord record in _records)
+                if (record.RecursiveProof is not null) Consider(record);
+        }
+        return best.Length == 0 ? best : [.. best];
+
+        void Consider(ProofRecord record)
+        {
+            if (record.Dependencies.Length <= best.Length || record.Dependencies.Length > within.Count) return;
+            foreach (FrameDependency dependency in record.Dependencies)
+                if (!within.Contains(dependency)) return;
+            best = record.Dependencies;
+        }
+    }
+
     /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>
     public bool TryGetInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {

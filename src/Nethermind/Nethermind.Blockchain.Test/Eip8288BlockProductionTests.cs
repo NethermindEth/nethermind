@@ -361,37 +361,47 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Canceled_production_releases_the_producer_while_its_native_proof_finishes_for_reuse()
+    public async Task Deadline_production_keeps_plain_transactions_while_the_missing_proof_is_prepared_off_path()
     {
         using ManualResetEventSlim entered = new();
         using ManualResetEventSlim release = new();
         CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
         LeanProofStore proofs = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("detached"), default);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("deadline"), default);
         proofs.AddVerified([dependency], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
-            Is.EqualTo(AcceptTxResult.Accepted));
+        Transaction proofBacked = CreateTransaction(chain, dependency, [UInt256.Zero]);
+        Transaction plain = CreatePlainTransaction(chain);
+        Assert.That(chain.TxPool.SubmitTx(proofBacked, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(plain, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         try
         {
-            using CancellationTokenSource improvement = new();
-            Task<Block?> canceled = Task.Run(() => chain.BlockProducer.BuildBlock(cancellationToken: improvement.Token));
-            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
-            improvement.Cancel();
-            Assert.That(async () => await canceled.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>(),
-                "a canceled improvement returns while its native call is still active");
-            Block? next = await Task.Run(() => chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock)).WaitAsync(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource deadline = new();
+            Block? first = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first, Is.Not.Null, "a pass with a deadline does not wait for the native call");
+                Assert.That(first!.Transactions, Is.EqualTo(new[] { plain }));
+                Assert.That(first.Header.RecursiveStark!.StarkProof, Is.Empty);
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "the missing statement is proven off the production path");
+            }
+            Block? next = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(next, Is.Not.Null, "the next payload is not held behind the noninterruptible call");
         }
         finally
         {
             release.Set();
         }
+        Assert.That(() => proofs.TryGetRecursiveProof([dependency], out _), Is.True.After(5000, 20));
         verifier.OnProof = null;
-        Block? retried = await chain.BlockProducer.BuildBlock();
-        Assert.That(retried, Is.Not.Null);
-        Assert.That(retried!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the retry reuses the proof the canceled improvement started");
+        using CancellationTokenSource retryDeadline = new();
+        Block? retried = await chain.BlockProducer.BuildBlock(cancellationToken: retryDeadline.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retried, Is.Not.Null);
+            Assert.That(retried!.Transactions, Has.Length.EqualTo(2));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the retry reuses the proof prepared off path");
+        }
     }
 
     [Test]
@@ -506,25 +516,39 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Cancelled_proving_does_not_publish_but_retains_verified_work_for_retry()
+    public async Task Deadline_production_falls_back_to_the_largest_proven_dependency_set()
     {
-        using CancellationTokenSource cancellation = new();
-        CountingVerifier verifier = new() { OnProof = cancellation.Cancel };
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => release.Wait() };
         LeanProofStore proofs = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cancelled"), default);
-        proofs.AddVerified([dependency], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
-            Is.EqualTo(AcceptTxResult.Accepted));
-        Hash256 head = chain.BlockTree.Head!.Hash!;
-        Assert.That(async () => await chain.BlockProducer.BuildBlock(cancellationToken: cancellation.Token),
-            Throws.InstanceOf<OperationCanceledException>());
-        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
-        Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
-        verifier.OnProof = null;
-        Block? fresh = await chain.BlockProducer.BuildBlock();
-        Assert.That(fresh, Is.Not.Null);
-        Assert.That(fresh!.Transactions, Has.Length.EqualTo(1));
+        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("proven"), default);
+        FrameDependency pending = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("pending"), default);
+        proofs.AddVerified([proven], [[1]], null);
+        proofs.AddVerified([pending], [[1]], null);
+        proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
+        Transaction covered = CreateTransaction(chain, proven, [1]);
+        Transaction uncovered = CreateTransaction(chain, pending, [2]);
+        Assert.That(chain.TxPool.SubmitTx(covered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(uncovered, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        try
+        {
+            using CancellationTokenSource deadline = new();
+            Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block, Is.Not.Null);
+                Assert.That(block!.Transactions, Is.EqualTo(new[] { covered }));
+                Assert.That(block.Header.RecursiveStark!.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray()),
+                    "the body is restricted to a dependency set whose proof is reused unchanged");
+            }
+        }
+        finally
+        {
+            release.Set();
+        }
+        Assert.That(() => proofs.TryGetRecursiveProof(Eip8288Dependencies.Canonicalize([proven, pending]), out _), Is.True.After(5000, 20),
+            "the full statement is proven for a later pass");
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
@@ -727,6 +751,11 @@ public class Eip8288BlockProductionTests
         transaction.Hash = transaction.CalculateHash();
         return transaction;
     }
+
+    private static Transaction CreatePlainTransaction(BasicTestBlockchain chain) =>
+        Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(chain.SpecProvider.ChainId).WithNonce(0)
+            .WithTo(TestItem.AddressA).WithValue(1).WithGasLimit(100_000).WithMaxFeePerGas(100.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
     private static byte[] EncodeWrapper(FrameDependency dependency, params Transaction[] transactions) => MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
     {

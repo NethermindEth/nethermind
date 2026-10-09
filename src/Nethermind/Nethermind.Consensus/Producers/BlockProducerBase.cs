@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -87,7 +88,7 @@ namespace Nethermind.Consensus.Producers
                 {
                     block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
                 }
-                catch (Exception e) when (e is not TaskCanceledException)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (Logger.IsError) Logger.Error("Failed to produce block", e);
                     Metrics.FailedBlockSeals++;
@@ -137,7 +138,7 @@ namespace Nethermind.Consensus.Producers
             {
                 if (PreparedBlockCanBeMined(block))
                 {
-                    Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
+                    Block? processedBlock = ProcessWithProvenDependencies(block, parent, blockTracer, payloadAttributes, flags, token);
                     if (processedBlock is null)
                     {
                         if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -184,6 +185,35 @@ namespace Nethermind.Consensus.Producers
             }
 
             return Task.FromResult((Block?)null);
+        }
+
+        private const int MaxProofFallbacks = 3;
+
+        /// <summary>Processes the block, rebuilding its body from proven dependencies when its own proof is not ready.</summary>
+        /// <remarks>
+        /// Each rebuild is limited to a strictly smaller set with an existing proof, ending with no proof-backed transactions,
+        /// so a deadline-bound pass always yields a body without waiting for native proving.
+        /// </remarks>
+        private Block? ProcessWithProvenDependencies(Block block, BlockHeader parent, IBlockTracer? blockTracer,
+            PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token)
+        {
+            for (int fallback = 0; ; fallback++)
+            {
+                try
+                {
+                    return ProcessPreparedBlock(block, blockTracer, token);
+                }
+                catch (LeanProofNotReadyException exception) when (fallback < MaxProofFallbacks)
+                {
+                    token.ThrowIfCancellationRequested();
+                    IReadOnlySet<FrameDependency> limit = fallback + 1 == MaxProofFallbacks ? new HashSet<FrameDependency>() : exception.Proven;
+                    if (Logger.IsDebug) Logger.Debug($"Rebuilding block {block.Number} from {limit.Count} proven dependencies while its proof is prepared");
+                    Interlocked.Increment(ref Metrics.LeanProofFallbacks);
+                    block = PrepareBlock(parent, payloadAttributes, flags);
+                    if (block is not BlockToProduce producing) throw;
+                    producing.LeanDependencyLimit = limit;
+                }
+            }
         }
 
         protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) =>
