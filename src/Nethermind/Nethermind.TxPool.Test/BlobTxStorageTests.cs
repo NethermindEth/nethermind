@@ -749,7 +749,7 @@ public class BlobTxStorageTests
         Transaction[] txs = [CreateBlobTransaction(TestItem.PrivateKeyA), CreateBlobTransaction(TestItem.PrivateKeyB)];
 
         byte[] corruptRecord = corrupt(LightTxDecoder.Encode(txs[0]));
-        Exception decodeFailure = Assert.Throws(Is.InstanceOf(expectedDecodeException), () => LightTxDecoder.Decode(corruptRecord),
+        Exception decodeFailure = Assert.Catch(expectedDecodeException, () => LightTxDecoder.Decode(corruptRecord),
             "case no longer exercises the decode failure mode it is meant to cover")!;
 
         blobTxStorage.Add(txs[0]);
