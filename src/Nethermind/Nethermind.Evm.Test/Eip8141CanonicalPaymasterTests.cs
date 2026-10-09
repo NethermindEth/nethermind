@@ -84,11 +84,11 @@ public class Eip8141CanonicalPaymasterTests
     private static readonly byte[] RevertOnCallCode = [0x5f, 0x5f, 0xfd];
 
     private static readonly TxFrame OnlyVerifyFrame =
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, default);
     private static readonly TxFrame PayFrame =
-        new(TxFrame.ModeVerify, TxFrame.ApprovePayment, Paymaster, gasLimit: 15_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApprovePayment, Paymaster, gasLimit: 15_000, UInt256.Zero, default);
     private static readonly TxFrame ActionFrame =
-        new(TxFrame.ModeSender, 0, Recipient, gasLimit: 200_000, UInt256.Zero, default);
+        new(FrameMode.Sender, FrameFlags.None, Recipient, gasLimit: 200_000, UInt256.Zero, default);
 
     private readonly Ecdsa _ecdsa = new();
     private ISpecProvider _specProvider;
@@ -652,13 +652,16 @@ public class Eip8141CanonicalPaymasterTests
     {
         _stateProvider.CreateAccount(Paymaster, balance);
         _stateProvider.InsertCode(Paymaster, code, Spec);
-        _stateProvider.Set(new StorageCell(Paymaster, UInt256.Zero), signer.Bytes.WithoutLeadingZeros().ToArray());
+        _stateProvider.Set(new StorageCell(Paymaster, UInt256.Zero), new UInt256(signer.Bytes, isBigEndian: true));
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
     }
 
-    private UInt256 Slot(int slot) =>
-        new(_stateProvider.Get(new StorageCell(Paymaster, (UInt256)slot)), isBigEndian: true);
+    private UInt256 Slot(int slot)
+    {
+        _stateProvider.Get(new StorageCell(Paymaster, (UInt256)slot), out UInt256 value);
+        return value;
+    }
 
     private Transaction AdminFrameTx(ulong nonce, UInt256 amount)
     {
@@ -666,11 +669,11 @@ public class Eip8141CanonicalPaymasterTests
         // index 1 for the admin authorization. Frame 1: a SENDER frame calls the paymaster with
         // initiate-withdrawal calldata, reaching the admin path.
         TxFrame sponsorFrame =
-            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
         // The admin op writes the pending amount and its deadline, so the frame needs a limits.state
         // budget; the execution-only constructor would leave it at zero and fail before the auth check.
         TxFrame adminFrame =
-            new(TxFrame.ModeSender, 0, Paymaster, executionGasLimit: 1_000_000, stateGasLimit: 200_000, UInt256.Zero, WithdrawalCall(amount));
+            new(FrameMode.Sender, FrameFlags.None, Paymaster, executionGasLimit: 1_000_000, stateGasLimit: 200_000, UInt256.Zero, WithdrawalCall(amount));
         return new Transaction
         {
             Type = TxType.FrameTx,
@@ -721,7 +724,7 @@ public class Eip8141CanonicalPaymasterTests
     }
 
     private void StoreSlot(int slot, UInt256 value) =>
-        _stateProvider.Set(new StorageCell(Paymaster, (UInt256)slot), value.ToBigEndian().WithoutLeadingZeros().ToArray());
+        _stateProvider.Set(new StorageCell(Paymaster, (UInt256)slot), value);
 
     // Finalizes exactly at maturity (the pending was set to unlock at the same timestamp), so the
     // revert is driven by the failing withdrawal CALL rather than the timelock.
