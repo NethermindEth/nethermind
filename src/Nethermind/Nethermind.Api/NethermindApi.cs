@@ -77,14 +77,14 @@ namespace Nethermind.Api
         public ITimestamper Timestamper => Context.Resolve<ITimestamper>();
         public ITimerFactory TimerFactory => Context.Resolve<ITimerFactory>();
         public IMainProcessingContext MainProcessingContext => Context.Resolve<IMainProcessingContext>();
-        public ITxSender? TxSender { get; set; }
+        public ITxSender? TxSender => Context.Resolve<ITxSender>();
         public INonceManager? NonceManager => Context.Resolve<INonceManager>();
-        public ITxPool? TxPool { get; set; }
+        public ITxPool? TxPool => Context.Resolve<ITxPool>();
         public TxValidator? TxValidator => Context.Resolve<TxValidator>();
 
         public IBackgroundTaskScheduler BackgroundTaskScheduler => Context.Resolve<IBackgroundTaskScheduler>();
         public IWallet Wallet => Context.Resolve<IWallet>();
-        public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
+        public ITransactionComparerProvider? TransactionComparerProvider => Context.Resolve<ITransactionComparerProvider>();
 
         public ChainSpec ChainSpec => _dependencies.ChainSpec;
         public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();

@@ -141,6 +141,11 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             .RegisterSingletonJsonRpcModule<IOptimismEngineRpcModule, OptimismEngineRpcModule>()
             ;
 
+        if (optimismConfig.SequencerUrl is not null)
+        {
+            builder.AddSingleton<ITxPool>(NullTxPool.Instance);
+        }
+
         if (optimismConfig.ClEnabled)
         {
             builder

@@ -42,6 +42,7 @@ using Nethermind.Taiko.Tdx;
 using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
 using Nethermind.Taiko.ZkGas;
+using Nethermind.TxPool;
 
 namespace Nethermind.Taiko;
 
@@ -90,6 +91,9 @@ public class TaikoModule : Module
             .AddSingleton<RlpDecoder<L1Origin>>(ctx => ctx.Resolve<L1OriginDecoder>())
             .AddDatabase(L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName, L1OriginStore.L1OriginDbName.ToLower())
             .AddSingleton<IL1OriginStore, L1OriginStore>()
+
+            // Taiko does not use blobs on L2, so blob transactions must be rejected at the mempool boundary.
+            .Intercept<ITxPoolConfig>(txPoolConfig => txPoolConfig.BlobsSupport = BlobsSupportMode.Disabled)
 
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
