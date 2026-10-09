@@ -459,36 +459,41 @@ public class Eip8298Tests : VirtualMachineTestsBase
         return (factoryBlock, factoryTx, created);
     }
 
+    public enum SourceOrigin { EarlierTransaction, SameTransaction, SameTransactionByAdoption }
+
+    // A source created in the adopting transaction is invalid, whether its code was deposited or itself adopted.
     [Test]
-    public void SourceSelfDestructedInSameTx_AdoptedCodeRemainsAvailable()
+    public void SourceCreatedInSameTx_IsInvalid([Values] SourceOrigin origin)
     {
-        // Runtime: self-destruct when called without calldata, otherwise return 42.
-        byte[] selfDestruct = Prepare.EvmCode.SELFDESTRUCT(TestItem.AddressF).Done;
-        const int jumpHeaderLength = 4; // CALLDATASIZE; PUSH1 dest; JUMPI
-        byte[] runtime = Prepare.EvmCode.CALLDATASIZE().PushData(jumpHeaderLength + selfDestruct.Length).Op(Instruction.JUMPI)
-            .Data(selfDestruct).JUMPDEST().PushData(42).MSTORE(0).Return(32, 0).Done;
-        byte[] initCode = Prepare.EvmCode.ForInitOf(runtime).Done;
+        DeploySource();
+        byte[] initCode = origin == SourceOrigin.SameTransactionByAdoption
+            ? Prepare.EvmCode.SETCODEFROM(Source).STOP().Done
+            : Prepare.EvmCode.ForInitOf(SourceCode).Done;
         byte[] salt = new byte[32];
-        Address source = ContractAddress.From(Recipient, salt, initCode);
+        Address created = ContractAddress.From(Recipient, salt, initCode);
         Address adopter = TestItem.AddressE;
+        byte[] adopterCode = Prepare.EvmCode.SETCODEFROM(created).PushData(0).Op(Instruction.SSTORE).STOP().Done;
         TestState.CreateAccount(adopter, 1.Ether);
-        TestState.InsertCode(adopter, Prepare.EvmCode.SETCODEFROM(source).STOP().Done, Spec);
+        TestState.InsertCode(adopter, adopterCode, Spec);
 
-        // Create the source, adopt its code, then self-destruct it, all in one transaction (EIP-6780).
-        byte[] code = Prepare.EvmCode.Create2(initCode, salt, 0).POP()
-            .Call(adopter, 100_000).POP()
-            .Call(source, 100_000).POP()
-            .STOP().Done;
-        TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code);
+        Prepare code = Prepare.EvmCode.Create2(initCode, salt, 0).POP();
+        if (origin == SourceOrigin.EarlierTransaction)
+        {
+            Execute(Activation, 1_000_000, code.STOP().Done);
+            code = Prepare.EvmCode;
+        }
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(TestState.AccountExists(source), Is.False);
-        ReadOnlyMemory<byte> adoptedCode = TestState.GetCode(adopter);
-        Assert.That(adoptedCode.ToArray(), Is.EqualTo(runtime));
+        TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code.Call(adopter, 500_000).POP().STOP().Done);
 
-        result = Execute(Prepare.EvmCode.CallWithInput(adopter, 50_000, [1]).ReturnInnerCallResult().Done);
-
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)42));
+        bool adopted = origin == SourceOrigin.EarlierTransaction;
+        TestState.Get(new StorageCell(adopter, 0), out UInt256 success);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "status");
+            Assert.That(TestState.GetCodeHash(created), Is.EqualTo(SourceCodeHash.ValueHash256), "source code hash");
+            Assert.That(success, Is.EqualTo(adopted ? UInt256.One : UInt256.Zero), "SETCODEFROM result");
+            AssertCodeHash(adopter, adopted ? SourceCodeHash : Keccak.Compute(adopterCode));
+        }
     }
 
     public enum SourceKind { Missing, SameCode, OtherCode }

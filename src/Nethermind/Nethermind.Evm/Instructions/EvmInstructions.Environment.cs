@@ -690,8 +690,10 @@ public static partial class EvmInstructions
         // EIP-8279: the source enters the block access list on the transaction's first touch, metered after its charge.
         if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(source)) goto OutOfGas;
 
-        // Valid source: exists, has code, and that code is regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
-        // A missing account reads as the empty code hash, so the code check also covers existence.
+        // Valid source: not created in this transaction, exists, has code, and that code is regular deployed code
+        // (not 0xEF-prefixed per EIP-3541/7702). A missing account reads as the empty code hash, so the code check
+        // also covers existence. The creation set is the one EIP-6780 SELFDESTRUCT consults.
+        if (vmState.AccessTracker.CreateList.Contains(source)) goto InvalidSource;
         IWorldState state = vm.WorldState;
         ValueHash256 codeHash = state.GetCodeHash(source);
         if (codeHash == ValueKeccak.OfAnEmptyString) goto InvalidSource;
@@ -710,7 +712,7 @@ public static partial class EvmInstructions
             // EIP-8279: the adopted code joins the block access list as the executing account's code change, metered
             // like a code deposit; an adopted creation never reaches the deposit, so this is its only metering.
             if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData((ulong)code.Length)) goto OutOfGas;
-            // Install by the known hash; passing the code retains a pending entry if the source self-destructs.
+            // Install by the known hash, passing the code so the adopted hash always resolves.
             state.InsertCode(executingAccount, in codeHash, code, spec);
         }
 
