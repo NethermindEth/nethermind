@@ -727,7 +727,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             _timedOutCount = slowBlockHash == _timedOutBlockHash ? _timedOutCount + 1 : 1;
             _timedOutBlockHash = slowBlockHash;
 
-            if (_logger.IsError) _logger.Error($"Processing block {slowBlockHash} took longer than {timeoutMs} ms; abandoned without a verdict, and a retry of it gets more time. If this node is just slow, raise Blocks.BlockProcessingTimeoutMs or set it to 0 to disable.");
+            string retry = _timedOutCount <= MaxTimeoutDoublings ? "a retry of it gets twice the time" : "a retry of it gets no more time";
+            if (_logger.IsError) _logger.Error($"Processing block {slowBlockHash} took longer than {timeoutMs} ms; abandoned without a verdict, and {retry}. If this node is just slow, raise Blocks.BlockProcessingTimeoutMs or set it to 0 to disable.");
             OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
         }
 
@@ -870,6 +871,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     {
         if ((_options.DumpOptions & dumpType) != 0)
         {
+            // A diagnostic replay of a block already judged invalid; the block's deadline must not cut it short.
+            CancellationTokenSource? deadline = _blockDeadline;
+            _blockDeadline = null;
             try
             {
                 _branchProcessor.Process(
@@ -886,6 +890,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             catch (Exception ex)
             {
                 BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.BaseBlock, ex, _logger);
+            }
+            finally
+            {
+                _blockDeadline = deadline;
             }
         }
     }

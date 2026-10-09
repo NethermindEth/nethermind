@@ -2397,6 +2397,25 @@ public partial class BlockProcessorTests
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
+    /// <summary>
+    /// Cancellation leaves the real processing stack as cancellation, never as an invalid block: the processing
+    /// timeout relies on it to abandon a block without a verdict.
+    /// </summary>
+    [Test]
+    public async Task BranchProcessor_surfaces_cancellation_rather_than_an_invalid_block()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).WithTransactions(3, chain.SpecProvider.GetSpec(parent.Header)).TestObject;
+
+        Assert.Catch<OperationCanceledException>(() => chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance,
+            new CancellationToken(true)));
+    }
+
     [TestCase(true, 2)]
     [TestCase(false, 1)]
     public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, int expectedAttempts)
@@ -2994,7 +3013,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void IncrementalValidation_publishes_canonical_receipt_metadata_unless_cancelled([Values] bool cancelled)
+    public void IncrementalValidation_publishes_canonical_receipt_metadata()
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3003,19 +3022,33 @@ public partial class BlockProcessorTests
 
         using BlockAccessListManager balManager = CreateAmsterdamBalManager();
         PrepareSetup(balManager, block, Amsterdam.Instance);
-        void Validate() => balManager.IncrementalValidation(
+        balManager.IncrementalValidation(
             block,
             BuildGasResults(gasConsumed),
             BuildParallelReceiptTracers(block, gasConsumed),
             handler,
-            new CancellationToken(cancelled));
+            CancellationToken.None);
 
-        if (cancelled)
-            Assert.Throws<OperationCanceledException>(Validate);
-        else
-            Validate();
+        Assert.That(handler.Events, Is.EqualTo(CanonicalReceiptEvents));
+    }
 
-        Assert.That(handler.Events, cancelled ? Is.Empty : Is.EqualTo(CanonicalReceiptEvents));
+    [Test]
+    public void IncrementalValidation_throws_when_cancelled()
+    {
+        GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        RecordingTransactionProcessedEventHandler handler = new();
+
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        Assert.Throws<OperationCanceledException>(() => balManager.IncrementalValidation(
+            block,
+            BuildGasResults(gasConsumed),
+            BuildParallelReceiptTracers(block, gasConsumed),
+            handler,
+            new CancellationToken(true)));
+        Assert.That(handler.Events, Is.Empty);
     }
 
     [Test]
@@ -3429,6 +3462,24 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Validation_stops_executing_once_cancelled()
+    {
+        const int cancelAfter = 8;
+        Block block = BuildParallelValidationBlock(64);
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        BlockProcessor.BlockValidationTransactionsExecutor executor = new(transactionProcessor, stateProvider);
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, cancellation.Token));
+        Assert.That(transactionProcessor.ExecutedCount, Is.EqualTo(cancelAfter));
+    }
+
+    [Test]
     public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit([Values] bool stateGas)
     {
         const ulong gasUsed = 1_000_000;
@@ -3561,7 +3612,7 @@ public partial class BlockProcessorTests
     /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s ordering and its
     /// running EIP-8037 header gas, so tests can exercise the staging and retry wiring without the real
     /// manager. Receipt index and cumulative receipt gas are deliberately left to the executor under
-    /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata_unless_cancelled"/> is what covers the
+    /// test; <see cref="IncrementalValidation_publishes_canonical_receipt_metadata"/> is what covers the
     /// real manager's own metadata contract.</summary>
     private static void ReplayProcessedEvents(
         Block block,

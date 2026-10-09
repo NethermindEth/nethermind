@@ -497,6 +497,10 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        /// <summary>Queues <paramref name="second"/> so its branch processes <paramref name="first"/> too.</summary>
+        public ProcessingTestContext QueuedAsBranch(Block first, Block second) =>
+            Suggested(first, BlockTreeSuggestOptions.None).Suggested(second).Recovered(first).Recovered(second);
+
         public ProcessingTestContext IsInTree(Block block)
         {
             Assert.That(_blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None), Is.Not.Null, $"{block.ToString(Block.Format.Short)} should still be in the tree");
@@ -956,17 +960,12 @@ public class BlockchainProcessorTests
     public async Task Processing_timeout_applies_to_each_block_of_a_branch()
     {
         const int timeoutMs = 2_000;
-        // Distinct state roots, so the branch builder finds no state for the first block and processes both.
-        Block block1 = Build.A.Block.WithNumber(1).WithParent(_block0).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).WithDifficulty(2).WithStateRoot(TestItem.KeccakB).TestObject;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
         BlockDeadlineTimeProvider time = new();
         await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
             .FullyProcessed(_block0).BecomesGenesis()
             .OnBlockProcessing(_ => time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 5)))
-            .Suggested(block1, BlockTreeSuggestOptions.None)
-            .Suggested(block2)
-            .Recovered(block1)
-            .Recovered(block2);
+            .QueuedAsBranch(block1, block2);
 
         context.Processed(block1);
         context.Processed(block2).BecomesNewHead();
@@ -976,8 +975,7 @@ public class BlockchainProcessorTests
     public async Task Processing_timeout_during_commit_backs_off_the_completed_block()
     {
         const int timeoutMs = 1_000;
-        Block block1 = Build.A.Block.WithNumber(1).WithParent(_block0).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).WithDifficulty(2).WithStateRoot(TestItem.KeccakB).TestObject;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
         BlockDeadlineTimeProvider time = new();
         await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
             .FullyProcessed(_block0).BecomesGenesis()
@@ -985,10 +983,7 @@ public class BlockchainProcessorTests
             {
                 if (block.Hash == block1.Hash) time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 2));
             })
-            .Suggested(block1, BlockTreeSuggestOptions.None)
-            .Suggested(block2)
-            .Recovered(block1)
-            .Recovered(block2);
+            .QueuedAsBranch(block1, block2);
 
         Task removed = context.WaitUntilRemoved(block2);
         context.Processed(block1);
@@ -998,6 +993,38 @@ public class BlockchainProcessorTests
         Task retry = Task.Run(() => context.EnqueuedAgain(block2));
         context.Processed(block2).BecomesNewHead();
         await retry;
+    }
+
+    /// <summary>
+    /// Shutdown cancels the block in progress through the same deadline token, but it is not a timeout: nothing is
+    /// reported for the block.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Shutdown_mid_block_is_not_reported_as_a_processing_timeout()
+    {
+        using ManualResetEventSlim processing = new(false);
+        ProcessingTestContext context = new ProcessingTestContext(true, 1_000, new BlockDeadlineTimeProvider())
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == _block1D2.Hash) processing.Set();
+            });
+        bool reported = false;
+        context.OnBlockRemoved((_, args) => reported |= args.BlockHash == _block1D2.Hash);
+
+        context.Suggested(_block1D2).Recovered(_block1D2);
+        Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the block never started processing");
+        await context.DisposeAsync();
+
+        Assert.That(reported, Is.False);
+    }
+
+    /// <summary>Two blocks with distinct state roots, so the branch builder finds no state for the first and processes both.</summary>
+    private (Block First, Block Second) BuildTwoBlockBranch()
+    {
+        Block first = Build.A.Block.WithNumber(1).WithParent(_block0).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block second = Build.A.Block.WithNumber(2).WithParent(first).WithDifficulty(2).WithStateRoot(TestItem.KeccakB).TestObject;
+        return (first, second);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -239,7 +239,8 @@ public class BranchProcessor(
         catch (Exception ex) // try to restore at all cost
         {
             processingException = ex;
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            // Cancellation is reported by whoever cancelled: a processing timeout or shutdown.
+            if (ex is not OperationCanceledException && _logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             DrainAndClear(ref prewarming);
 
