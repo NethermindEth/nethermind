@@ -114,7 +114,7 @@ public class TransportTests
         await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":1}", logger);
         await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"id\":2}", logger);
         await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}", logger);
-        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\\nmethod\",\"id\":3}", logger);
+        await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\\n\\u001bmethod\",\"id\":3}", logger);
 
         Assert.That(logger.Entries, Has.Count.EqualTo(4));
         using (Assert.EnterMultipleScope())
@@ -122,8 +122,26 @@ public class TransportTests
             Assert.That(logger.Entries[0], Does.Match(@"RPC eth_chainId -> ok in \d+(\.\d+)? ms"));
             Assert.That(logger.Entries[1], Does.Contain("RPC unknown -> error -32601 in "));
             Assert.That(logger.Entries[2], Does.Contain("RPC eth_chainId -> notification in "));
-            Assert.That(logger.Entries[3], Does.Contain("RPC unknown method -> error -32601 in "));
+            Assert.That(logger.Entries[3], Does.Contain("RPC unknown  method -> error -32601 in "));
         }
+    }
+
+    [Test]
+    public async Task Rpc_body_above_the_size_limit_is_refused([Values] bool rejectedByServer)
+    {
+        DefaultHttpContext context = new();
+        context.Request.Body = rejectedByServer
+            ? new OversizedBody()
+            : new MemoryStream(new byte[RpcEndpoint.MaxRequestBodySize + 1]);
+        context.Response.Body = new MemoryStream();
+        RecordingLogger logger = new();
+
+        await RpcEndpoint.HandleAsync(context, new VerifiedRpc(null!, () => throw new AssertionException("Unexpected head read."), 1), logger);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+        Assert.That(logger.Entries, Has.Count.EqualTo(1));
+        Assert.That(logger.Entries[0], Does.Contain("body too large"));
     }
 
     [Test]
@@ -229,6 +247,12 @@ public class TransportTests
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             => Entries.Add(formatter(state, exception));
+    }
+
+    private sealed class OversizedBody : MemoryStream
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            ValueTask.FromException<int>(new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge));
     }
 
     private sealed class BlockingBody(Task release) : Stream

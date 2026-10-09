@@ -54,7 +54,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         string addressText = addressParameter.GetString()!;
         if (addressText.Length != 42 || !Address.IsValidAddress(addressText, allowPrefix: true)) throw InvalidParameters();
         Address address = new(addressText);
-        UInt256 key = storage ? ParseQuantity(parameters[1]) : UInt256.Zero;
+        UInt256 key = storage ? ParseQuantity(parameters[1], allowLeadingZeros: true) : UInt256.Zero;
         (VerifiedHead head, bool historicalState) = await ResolveStateHeadAsync(parameters[storage ? 2 : 1], cancellationToken);
         try
         {
@@ -229,14 +229,14 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         return (ulong)number;
     }
 
-    private static HashSet<Address> ParseAddresses(JsonElement value)
+    private static HashSet<Address>? ParseAddresses(JsonElement value)
     {
         HashSet<Address> result = [];
         if (value.ValueKind == JsonValueKind.String) Add(value);
         else if (value.ValueKind == JsonValueKind.Array && value.GetArrayLength() <= 16)
             foreach (JsonElement item in value.EnumerateArray()) Add(item);
         else throw InvalidParameters();
-        return result;
+        return result.Count == 0 ? null : result;
 
         void Add(JsonElement item)
         {
@@ -265,7 +265,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
                 }
             }
             else throw InvalidParameters();
-            result.Add(wildcard ? null : choices);
+            result.Add(wildcard || choices.Count == 0 ? null : choices);
         }
         return result;
     }
@@ -407,11 +407,12 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
     }
 
-    private static UInt256 ParseQuantity(JsonElement element)
+    private static UInt256 ParseQuantity(JsonElement element, bool allowLeadingZeros = false)
     {
         if (element.ValueKind != JsonValueKind.String) throw InvalidParameters();
         string value = element.GetString()!;
-        if (!value.StartsWith("0x", StringComparison.Ordinal) || value.Length is < 3 or > 66 || value.Length > 3 && value[2] == '0')
+        if (!value.StartsWith("0x", StringComparison.Ordinal) || value.Length is < 3 or > 66 ||
+            !allowLeadingZeros && value.Length > 3 && value[2] == '0')
             throw InvalidParameters();
         try
         {

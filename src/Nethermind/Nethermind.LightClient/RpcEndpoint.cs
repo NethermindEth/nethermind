@@ -8,6 +8,7 @@ namespace Nethermind.LightClient;
 
 internal static class RpcEndpoint
 {
+    internal const int MaxRequestBodySize = 64 * 1024;
     private const int MaxActiveRequests = 64;
     private static readonly TimeSpan RequestDeadline = TimeSpan.FromSeconds(90);
     private static readonly SemaphoreSlim ActiveRequests = new(MaxActiveRequests);
@@ -41,17 +42,22 @@ internal static class RpcEndpoint
         long started = Stopwatch.GetTimestamp();
         using MemoryStream input = new();
         byte[] buffer = new byte[4096];
-        while (true)
+        try
         {
-            int read = await context.Request.Body.ReadAsync(buffer, cancellationToken);
-            if (read == 0) break;
-            if (input.Length + read > 64 * 1024)
+            while (true)
             {
-                context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
-                logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                return;
+                int read = await context.Request.Body.ReadAsync(buffer, cancellationToken);
+                if (read == 0) break;
+                if (input.Length + read > MaxRequestBodySize)
+                    throw new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge);
+                input.Write(buffer, 0, read);
             }
-            input.Write(buffer, 0, read);
+        }
+        catch (BadHttpRequestException exception) when (exception.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            logger.LogInformation("RPC request -> body too large in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            return;
         }
         JsonDocument document;
         try { document = JsonDocument.Parse(input.ToArray()); }
@@ -132,8 +138,11 @@ internal static class RpcEndpoint
         finally
         {
             if (cancellationToken.IsCancellationRequested) outcome = "cancelled";
-            string displayName = (methodName.Length <= 64 ? methodName : methodName[..64] + "…")
-                .Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+            string displayName = methodName.Length <= 64 ? methodName : methodName[..64] + "…";
+            displayName = string.Create(displayName.Length, displayName, static (chars, source) =>
+            {
+                for (int i = 0; i < chars.Length; i++) chars[i] = char.IsControl(source[i]) ? ' ' : source[i];
+            });
             logger.LogInformation("RPC {Method} -> {Outcome} in {ElapsedMs:F1} ms", displayName, outcome, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }

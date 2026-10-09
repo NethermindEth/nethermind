@@ -43,14 +43,21 @@ internal sealed class LightClientStore
         ValidateHeader(bootstrap.Header);
         LightClientHeader header = bootstrap.Header!;
         RequireLocal(header.Beacon!.Slot <= currentSlot, "Checkpoint is in the future.");
-        RequireLocal(currentSlot - header.Beacon.Slot <= 14 * 24 * 60 * 60 / spec.SecondsPerSlot, "Checkpoint is older than fourteen days.");
         Require(SszRoots.HashTreeRoot(header.Beacon) == checkpoint, "Bootstrap does not match the trusted checkpoint.");
         ValidateCommittee(bootstrap.CurrentSyncCommittee);
         Require(VerifyBranch(SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee!), bootstrap.CurrentSyncCommitteeBranch,
             header.IsGloas ? 2945 : 86, header.Beacon.StateRoot!), "Invalid current sync committee proof.");
         LightClientHeader copy = CloneHeader(header);
         _snapshot = new(copy, copy, copy, Clone(bootstrap.CurrentSyncCommittee!), null, null, 0, 0);
+        RequireRecent(currentSlot);
     }
+
+    /// <summary>Requires the most recent authenticated header to be at most fourteen days old.</summary>
+    /// <remarks>A conservative local policy, not a computation of the network's weak-subjectivity period.</remarks>
+    /// <exception cref="LightClientLocalStateException">The authenticated state is too old to trust.</exception>
+    internal void RequireRecent(ulong currentSlot) => RequireLocal(
+        currentSlot - Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot <= 14 * 24 * 60 * 60 / _spec.SecondsPerSlot,
+        "Authenticated light-client state is older than fourteen days.");
 
     /// <summary>A detached copy of the most recent authenticated finalized header.</summary>
     public LightClientHeader FinalizedHeader => CloneHeader(Volatile.Read(ref _snapshot).Header);
@@ -105,8 +112,8 @@ internal sealed class LightClientStore
     {
         Snapshot snapshot = _snapshot;
         ulong timeout = _spec.SlotsPerEpoch * Presets.EpochsPerSyncCommitteePeriod;
-        if (snapshot.BestUpdate is null || currentSlot <= snapshot.Header.Beacon!.Slot ||
-            currentSlot - snapshot.Header.Beacon.Slot <= timeout)
+        if (snapshot.BestUpdate is null || currentSlot <= snapshot.SyncHeader.Beacon!.Slot ||
+            currentSlot - snapshot.SyncHeader.Beacon.Slot <= timeout)
             return false;
 
         LightClientUpdate best = snapshot.BestUpdate;
@@ -135,7 +142,7 @@ internal sealed class LightClientStore
             ? CloneHeader(target) : snapshot.OptimisticHeader;
         Volatile.Write(ref _snapshot, snapshot with
         {
-            SyncHeader = CloneHeader(target),
+            SyncHeader = target.Beacon.Slot > snapshot.SyncHeader.Beacon.Slot ? CloneHeader(target) : snapshot.SyncHeader,
             OptimisticHeader = optimistic,
             CurrentCommittee = currentCommittee,
             NextCommittee = nextCommittee,
@@ -213,23 +220,26 @@ internal sealed class LightClientStore
         });
         LightClientUpdate? best = snapshot.BestUpdate is null || Better(candidate, snapshot.BestUpdate) ? candidate : snapshot.BestUpdate;
 
-        bool supermajority = participants * 3 >= Presets.SyncCommitteeSize * 2;
-        bool canAdvanceFinality = supermajority && hasFinality &&
-            (finalizedSlot > snapshot.Header.Beacon!.Slot ||
-             snapshot.NextCommittee is null && hasNextCommittee &&
-             PeriodAtSlot(finalizedSlot) == attestedPeriod);
-        if (!canAdvanceFinality)
+        bool supermajorityFinality = participants * 3 >= Presets.SyncCommitteeSize * 2 && hasFinality;
+        ulong finalizedPeriod = PeriodAtSlot(finalizedSlot);
+        bool advancesSync = supermajorityFinality &&
+            (finalizedSlot > snapshot.SyncHeader.Beacon.Slot ||
+             snapshot.NextCommittee is null && hasNextCommittee && finalizedPeriod == attestedPeriod);
+        if (!advancesSync)
         {
+            // Forced progress can leave the exposed finalized head behind the sync committee state.
+            LightClientHeader finalizedHeader = supermajorityFinality && finalizedSlot > snapshot.Header.Beacon!.Slot
+                ? CloneHeader(finalized!) : snapshot.Header;
             Volatile.Write(ref _snapshot, snapshot with
             {
-                OptimisticHeader = optimistic,
+                Header = finalizedHeader,
+                OptimisticHeader = optimistic.Beacon!.Slot < finalizedHeader.Beacon!.Slot ? finalizedHeader : optimistic,
                 BestUpdate = best,
                 CurrentMaxParticipants = currentMax,
             });
             return;
         }
 
-        ulong finalizedPeriod = PeriodAtSlot(finalizedSlot);
         SyncCommittee currentCommittee = snapshot.CurrentCommittee;
         SyncCommittee? nextCommittee = snapshot.NextCommittee;
         if (finalizedPeriod == storePeriod + 1)

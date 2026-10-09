@@ -321,8 +321,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     {
         if (ReceiptTrie.CalculateRoot(specProvider.GetSpec(header), receipts, new ReceiptMessageDecoder()) != header.ReceiptsRoot)
             throw new InvalidDataException("Execution peer returned receipts inconsistent with the verified header.");
-        if ((receipts.Length == 0 ? 0UL : receipts[^1].GasUsedTotal) != header.GasUsed)
-            throw new InvalidDataException("Execution peer returned receipts with an invalid cumulative gas total.");
     }
 
     private async Task<T> RequestExecutionAsync<T>(Func<ISyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken)

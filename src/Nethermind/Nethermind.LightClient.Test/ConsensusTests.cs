@@ -110,6 +110,53 @@ public class ConsensusTests
     }
 
     [Test]
+    public void Forced_progress_restarts_the_update_timeout([Values(16292, 16293)] int currentSlot)
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(8100, 8101, 8102, 1, participants: 341, nextKey: 2), 8102);
+        Assert.That(store.ForceUpdate(8194), Is.True);
+        store.Process(Update(8192, 8193, 8194, 2, participants: 1), 8194);
+
+        bool advanced = store.ForceUpdate((ulong)currentSlot);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(advanced, Is.EqualTo(currentSlot > 8100 + 8192));
+        Assert.That(store.Period, Is.EqualTo(advanced ? 1 : 0));
+        Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Forced_progress_never_moves_the_sync_header_backwards()
+    {
+        LightClientStore store = Store(Bootstrap(8190, 1));
+        store.Process(Update(8100, 8150, 8191, 1, participants: 341, nextKey: 2), 8191);
+        Assert.That(store.ForceUpdate(8190 + 8193), Is.True);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(store.NextSyncCommitteeKnown, Is.True);
+        Assert.That(() => store.Process(Update(8100, 8170, 8191, 1, participants: 341), 8190 + 8193),
+            Throws.TypeOf<IrrelevantLightClientUpdateException>());
+    }
+
+    [Test]
+    public void Finality_older_than_forced_progress_only_advances_the_finalized_head()
+    {
+        LightClientStore store = Store(Bootstrap(1, 1));
+        store.Process(Update(8100, 8101, 8102, 1, participants: 341, nextKey: 2), 8102);
+        store.ForceUpdate(8194);
+        store.Process(Update(8192, 8193, 8194, 2, participants: 1), 8194);
+        Assert.That(store.ForceUpdate(16293), Is.True);
+
+        store.Process(Update(8000, 8300, 8301, 2, nextKey: 3), 16293);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8000));
+        Assert.That(store.Period, Is.EqualTo(1));
+        Assert.That(store.NextSyncCommitteeKnown, Is.False);
+        Assert.That(store.BestUpdate!.AttestedHeader!.Beacon!.Slot, Is.EqualTo(8300));
+    }
+
+    [Test]
     public void Recovery_candidate_is_detached_from_callers()
     {
         LightClientStore store = Store(Bootstrap(1, 1));

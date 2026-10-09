@@ -89,7 +89,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             Transaction transaction = block.Transactions[i];
             RecoverSender(transaction);
             TxReceipt receipt = receipts[i];
-            if (receipt.TxType != transaction.Type || receipt.GasUsedTotal < previousGas || receipt.GasUsedTotal > block.GasUsed)
+            if (receipt.TxType != transaction.Type || receipt.GasUsedTotal < previousGas)
                 throw new InvalidDataException("Verified receipt has inconsistent transaction type or cumulative gas.");
             receipt.TxHash = transaction.Hash;
             receipt.BlockHash = block.Hash;

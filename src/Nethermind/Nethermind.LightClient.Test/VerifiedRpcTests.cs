@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
-using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -25,26 +22,27 @@ public class VerifiedRpcTests
 
     [TestCase("eth_getBalance", "0x7b")]
     [TestCase("eth_getTransactionCount", "0x7")]
-    public async Task Account_values_ignore_forged_response_metadata(string method, string expected)
+    public async Task Account_values_are_derived_from_the_proof(string method, string expected)
     {
         using Provider provider = new(new Account(7, 123));
         object actual = await provider.Rpc.InvokeAsync(method, Parameters(AccountAddress.ToString(), "finalized"), CancellationToken.None);
 
         Assert.That(actual, Is.EqualTo(expected));
-        AssertPinnedRequest(provider.Requests[0], "eth_getProof");
+        AssertFinalizedRequest(provider.Requests[0], "account");
     }
 
     [Test]
-    public async Task Storage_value_is_derived_from_proof_and_padded_to_32_bytes()
+    public async Task Storage_value_is_derived_from_proof_and_padded_to_32_bytes(
+        [Values("0x1", "0x01", "0x0000000000000000000000000000000000000000000000000000000000000001")] string slotText)
     {
         UInt256 slot = 1;
         byte[] storageLeaf = Leaf(Keccak.Compute(slot.ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
         using Provider provider = new(new Account(7, 123, Keccak.Compute(storageLeaf), Keccak.OfAnEmptyString), storageLeaf);
 
-        object actual = await provider.Rpc.InvokeAsync("eth_getStorageAt", Parameters(AccountAddress.ToString(), "0x1", "finalized"), CancellationToken.None);
+        object actual = await provider.Rpc.InvokeAsync("eth_getStorageAt", Parameters(AccountAddress.ToString(), slotText, "finalized"), CancellationToken.None);
 
         Assert.That(actual, Is.EqualTo("0x" + new string('0', 62) + "2a"));
-        AssertPinnedRequest(provider.Requests[0], "eth_getProof");
+        AssertFinalizedRequest(provider.Requests[1], "storage");
     }
 
     [Test]
@@ -74,7 +72,7 @@ public class VerifiedRpcTests
             AssertRpcError(provider, "eth_getCode", Parameters(AccountAddress.ToString(), "finalized"), -32000);
         else
             Assert.That(await provider.Rpc.InvokeAsync("eth_getCode", Parameters(AccountAddress.ToString(), "finalized"), CancellationToken.None), Is.EqualTo("0x600100"));
-        AssertPinnedRequest(provider.Requests[1], "eth_getCode");
+        Assert.That(provider.Requests[1].Kind, Is.EqualTo("code"));
     }
 
     [Test]
@@ -86,13 +84,12 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public void Storage_rejects_wrong_key_or_tampered_proof([Values] bool wrongKey)
+    public void Storage_rejects_a_tampered_proof()
     {
         byte[] storageLeaf = Leaf(Keccak.Compute(((UInt256)1).ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
         using Provider provider = new(new Account(7, 123, Keccak.Compute(storageLeaf), Keccak.OfAnEmptyString), storageLeaf)
         {
-            WrongStorageKey = wrongKey,
-            TamperStorageProof = !wrongKey
+            TamperStorageProof = true
         };
 
         AssertRpcError(provider, "eth_getStorageAt", Parameters(AccountAddress.ToString(), "0x1", "finalized"), -32000);
@@ -209,7 +206,7 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public async Task Transaction_receipt_and_logs_are_derived_from_verified_roots()
+    public async Task Transaction_receipt_and_logs_are_derived_from_verified_roots([Values(-1, 0, 1)] int headerGasOffset)
     {
         using Provider provider = new(new Account(7, 123));
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
@@ -236,7 +233,7 @@ public class VerifiedRpcTests
         provider.Header.TxRoot = TxTrie.CalculateRoot(provider.Transactions);
         provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
             provider.Receipts, new ReceiptMessageDecoder());
-        provider.Header.GasUsed = receipt.GasUsedTotal;
+        provider.Header.GasUsed = (ulong)((long)receipt.GasUsedTotal + headerGasOffset);
 
         JsonElement tx = (JsonElement)await provider.Rpc.InvokeAsync("eth_getTransactionByBlockHashAndIndex",
             Parameters(BlockHash.ToString(), "0x0"), CancellationToken.None);
@@ -247,6 +244,12 @@ public class VerifiedRpcTests
             address = AccountAddress.ToString(),
             topics = new[] { topic.ToString() }
         }), CancellationToken.None);
+        JsonElement emptyFilterLogs = (JsonElement)await provider.Rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            blockHash = BlockHash.ToString(),
+            address = Array.Empty<string>(),
+            topics = new[] { Array.Empty<string>() }
+        }), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -256,6 +259,7 @@ public class VerifiedRpcTests
             Assert.That(rpcReceipt[0].GetProperty("gasUsed").GetString(), Is.EqualTo("0x537f"));
             Assert.That(logs.GetArrayLength(), Is.EqualTo(1));
             Assert.That(logs[0].GetProperty("data").GetString(), Is.EqualTo("0xabcd"));
+            Assert.That(emptyFilterLogs.GetArrayLength(), Is.EqualTo(1), "empty address and topic lists are wildcards");
         }
 
         provider.Header.ReceiptsRoot = Keccak.Compute("forged receipts");
@@ -310,7 +314,7 @@ public class VerifiedRpcTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.Requests.Count, Is.EqualTo(depth == 32 ? 1 : 0));
+            Assert.That(provider.Requests, Has.Count.EqualTo(depth == 32 ? 1 : 0));
             Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 32 ? 1 : 0));
         }
     }
@@ -399,7 +403,7 @@ public class VerifiedRpcTests
     [TestCase("eth_call", "[]", -32602)]
     [TestCase("eth_getBalance", "[]", -32602)]
     [TestCase("eth_getBalance", "[\"0x12\",\"finalized\"]", -32602)]
-    [TestCase("eth_getStorageAt", "[\"0x1234567890123456789012345678901234567890\",\"0x01\",\"finalized\"]", -32602)]
+    [TestCase("eth_getStorageAt", "[\"0x1234567890123456789012345678901234567890\",\"0x10000000000000000000000000000000000000000000000000000000000000000\",\"finalized\"]", -32602)]
     [TestCase("eth_getBalance", "[\"0x1234567890123456789012345678901234567890\",{\"blockNumber\":\"0xa\",\"blockHash\":\"0x00\"}]", -32602)]
     public void Invalid_requests_do_not_reach_provider(string method, string json, int error)
     {
@@ -423,14 +427,6 @@ public class VerifiedRpcTests
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(provider.Requests, Is.Empty);
         }
-    }
-
-    [Test]
-    public void Malformed_or_failed_upstream_envelopes_are_rejected([Values("{", "{\"jsonrpc\":\"2.0\",\"id\":9,\"result\":{}}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000}}", "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}")] string response)
-    {
-        using Provider provider = new(new Account(7, 123)) { RawResponse = response };
-
-        AssertRpcError(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), -32000);
     }
 
     [Test]
@@ -460,21 +456,18 @@ public class VerifiedRpcTests
         Assert.That(exception!.Code, Is.EqualTo(code));
     }
 
-    private static void AssertPinnedRequest(JsonElement request, string method)
+    private static void AssertFinalizedRequest((string Kind, Hash256? BlockHash) request, string kind)
     {
-        JsonElement parameters = request.GetProperty("params");
-        JsonElement block = parameters[parameters.GetArrayLength() - 1];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(request.GetProperty("method").GetString(), Is.EqualTo(method));
-            Assert.That(block.GetProperty("blockHash").GetString(), Is.EqualTo(BlockHash.ToString()));
-            Assert.That(block.GetProperty("requireCanonical").GetBoolean(), Is.True);
+            Assert.That(request.Kind, Is.EqualTo(kind));
+            Assert.That(request.BlockHash, Is.EqualTo(BlockHash));
         }
     }
 
     private static JsonElement Parameters(params object[] values) => JsonSerializer.SerializeToElement(values);
 
-    private sealed class Provider : HttpMessageHandler, IExecutionStateSource
+    private sealed class Provider : IExecutionStateSource, IDisposable
     {
         private readonly byte[] _accountLeaf;
         private readonly byte[] _storageLeaf;
@@ -498,11 +491,9 @@ public class VerifiedRpcTests
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 WithdrawalsRoot = Keccak.EmptyTreeHash,
             };
-            Client = new HttpClient(this, disposeHandler: false) { BaseAddress = new Uri("https://execution.invalid/") };
             Rpc = new VerifiedRpc(this, () => Head, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => LatestHead);
         }
 
-        public HttpClient Client { get; }
         public VerifiedRpc Rpc { get; }
         public VerifiedHead Head { get; }
         public VerifiedHead? LatestHead { get; set; }
@@ -517,13 +508,11 @@ public class VerifiedRpcTests
         public TxReceipt[] Receipts { get; set; } = [];
         public int BlockFetches { get; private set; }
         public VerifiedHead? LastQueriedHead { get; private set; }
-        public List<JsonElement> Requests { get; } = [];
+        public List<(string Kind, Hash256? BlockHash)> Requests { get; } = [];
         public bool OmitProof { get; init; }
         public bool TamperProof { get; init; }
-        public bool WrongStorageKey { get; init; }
         public bool TamperStorageProof { get; init; }
         public bool Cancel { get; init; }
-        public string? RawResponse { get; init; }
 
         public async Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
         {
@@ -536,9 +525,8 @@ public class VerifiedRpcTests
                     await HistoricalGate.Task.WaitAsync(cancellationToken);
                 }
                 LastQueriedHead = head;
-                using JsonDocument response = await RequestAsync("eth_getProof", [address.ToString(), Array.Empty<string>(), Block(head)], cancellationToken);
-                JsonElement proof = response.RootElement.GetProperty("result").GetProperty("accountProof");
-                return ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, ReadProof(proof));
+                Record("account", head.BlockHash, cancellationToken);
+                return ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, OmitProof ? [] : [Served(_accountLeaf, TamperProof)]);
             }
             finally
             {
@@ -546,20 +534,18 @@ public class VerifiedRpcTests
             }
         }
 
-        public async Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
+        public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
         {
-            using JsonDocument response = await RequestAsync("eth_getProof", [address.ToString(), new[] { key.ToBigEndian().ToHexString(withZeroX: true) }, Block(head)], cancellationToken);
-            JsonElement entry = response.RootElement.GetProperty("result").GetProperty("storageProof")[0];
-            if (entry.GetProperty("key").GetString() != "0x1") throw new InvalidDataException("Wrong key.");
-            return ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, ReadProof(entry.GetProperty("proof")));
+            Record("storage", head.BlockHash, cancellationToken);
+            byte[][] proof = _storageLeaf.Length == 0 ? [] : [Served(_storageLeaf, TamperStorageProof)];
+            return Task.FromResult(ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, proof));
         }
 
-        public async Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken)
+        public Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken)
         {
-            using JsonDocument response = await RequestAsync("eth_getCode", [AccountAddress.ToString(), Block(Head)], cancellationToken);
-            byte[] code = Convert.FromHexString(response.RootElement.GetProperty("result").GetString()![2..]);
-            ExecutionProofVerifier.VerifyCode(account.CodeHash, code);
-            return code;
+            Record("code", null, cancellationToken);
+            ExecutionProofVerifier.VerifyCode(account.CodeHash, _code);
+            return Task.FromResult(_code);
         }
 
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken) => Task.FromResult(Header);
@@ -599,59 +585,19 @@ public class VerifiedRpcTests
             WithdrawalsRoot = Keccak.EmptyTreeHash,
         };
 
-        private static object Block(VerifiedHead head) => new { blockHash = head.BlockHash.ToString(), requireCanonical = true };
-
-        private async Task<JsonDocument> RequestAsync(string method, object[] parameters, CancellationToken cancellationToken)
-        {
-            using HttpResponseMessage response = await Client.PostAsync("", new StringContent(JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method, @params = parameters }), Encoding.UTF8, "application/json"), cancellationToken);
-            JsonDocument document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
-            JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("jsonrpc", out JsonElement version) || version.GetString() != "2.0"
-                || !root.TryGetProperty("id", out JsonElement id) || id.GetInt32() != 1 || root.TryGetProperty("error", out _)
-                || !root.TryGetProperty("result", out JsonElement result) || result.ValueKind == JsonValueKind.Null)
-            {
-                document.Dispose();
-                throw new InvalidDataException("Invalid response.");
-            }
-            return document;
-        }
-
-        private static byte[][] ReadProof(JsonElement proof) => proof.EnumerateArray()
-            .Select(static node => Convert.FromHexString(node.GetString()![2..])).ToArray();
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        private void Record(string kind, Hash256? blockHash, CancellationToken cancellationToken)
         {
             if (Cancel) cancellationToken.ThrowIfCancellationRequested();
-            using JsonDocument document = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
-            JsonElement rpc = document.RootElement.Clone();
-            Requests.Add(rpc);
-            byte[] accountLeaf = (byte[])_accountLeaf.Clone();
-            byte[] storageLeaf = (byte[])_storageLeaf.Clone();
-            if (TamperProof) accountLeaf[^1] ^= 1;
-            if (TamperStorageProof) storageLeaf[^1] ^= 1;
-            object result = rpc.GetProperty("method").GetString() == "eth_getCode"
-                ? _code.ToHexString(withZeroX: true)
-                : new
-                {
-                    balance = "0xffff",
-                    nonce = "0xffff",
-                    codeHash = BlockHash.ToString(),
-                    storageHash = BlockHash.ToString(),
-                    accountProof = OmitProof ? Array.Empty<string>() : new[] { accountLeaf.ToHexString(withZeroX: true) },
-                    storageProof = new[] { new { key = WrongStorageKey ? "0x2" : "0x1", value = "0xffff", proof = storageLeaf.Length == 0 ? Array.Empty<string>() : new[] { storageLeaf.ToHexString(withZeroX: true) } } }
-                };
-            string json = RawResponse ?? JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, result });
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+            Requests.Add((kind, blockHash));
         }
 
-        protected override void Dispose(bool disposing)
+        private static byte[] Served(byte[] node, bool tamper)
         {
-            if (disposing)
-            {
-                Client.Dispose();
-                _snapSlots.Dispose();
-            }
-            base.Dispose(disposing);
+            byte[] copy = (byte[])node.Clone();
+            if (tamper) copy[^1] ^= 1;
+            return copy;
         }
+
+        public void Dispose() => _snapSlots.Dispose();
     }
 }

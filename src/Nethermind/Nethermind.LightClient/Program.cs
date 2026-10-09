@@ -57,7 +57,7 @@ if (!redirected) Console.ForegroundColor = ConsoleColor.Cyan;
 Console.Write(LightClientBanner.Render(network, rpcUrl, checkpoint.ToString(), redirected));
 if (!redirected) Console.ForegroundColor = originalColor;
 builder.WebHost.UseUrls(rpcUrl);
-builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = 64 * 1024);
+builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = RpcEndpoint.MaxRequestBodySize);
 await using WebApplication app = builder.Build();
 ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LightClient");
 await using BeaconPeerTransport beacon = new(spec, logManager);
@@ -192,18 +192,25 @@ async Task SyncAsync(CancellationToken cancellationToken)
             {
                 await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
                     PersistUpdateAsync, PublishFinalizedAsync, cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
+            }
+            try
+            {
                 LightClientUpdate? bestUpdate = store.BestUpdate;
                 ulong slot = CurrentSlot();
                 if (bestUpdate is not null && store.ForceUpdate(slot))
                 {
                     await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, cancellationToken), cancellationToken);
-                    logger.LogInformation("Advanced sync committee after the update timeout; finalized RPC head remains unchanged");
+                    logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
                 }
                 await PublishOptimisticAsync(cancellationToken);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
+                logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
             }
             try
             {

@@ -24,8 +24,9 @@ dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDis
 The root must be a recent **finalized beacon block root**, obtained independently
 from a source you trust. It is not an execution block hash or a beacon state
 root. The client never obtains or replaces its trust anchor from its peers.
-The bootstrap must be at most fourteen days old. That is a conservative local
-policy, not a computation of the network's weak-subjectivity period.
+The bootstrap, and on restart the latest replayed authenticated header, must be
+at most fourteen days old. That is a conservative local policy, not a
+computation of the network's weak-subjectivity period.
 `--data-dir` selects the verified consensus journal directory (default:
 `src/Nethermind/artifacts/lightclient`). Restart with the same network and
 checkpoint to replay saved updates; a new checkpoint starts a separate journal.
@@ -132,7 +133,9 @@ finality and next-committee branches, participant public-key subgroups, aggregat
 BLS signature and signing domain, slot order and committee-period continuity.
 It refuses committee conflicts and skips. Signed optimistic updates can move
 `latest`; timeout recovery can advance the sync committee, but never promotes
-an unfinalized execution state to finalized RPC.
+an unfinalized execution state to finalized RPC. Later finality is signed by
+the committee that recovery selected, so it carries that recovery's weaker
+trust; each forced advance is logged as a warning.
 
 The client implements Electra, Fulu and Gloas wire formats with built-in
 mainnet, Hoodi and Sepolia schedules. Gloas authenticates an execution block
@@ -200,7 +203,7 @@ dotnet src/Nethermind/artifacts/bin/Nethermind.LightClient.Test/release/Nethermi
 ```
 
 Tests use synthetic signed committees, independently constructed Merkle/RLP
-fixtures, offline JSON-RPC handlers, and synthetic SNAP ranges. They exercise
+fixtures, in-memory execution sources, and synthetic SNAP ranges. They exercise
 tampering, key-bound absence, committee rollover, fork/signature boundaries,
 range verification, block selectors, cancellation and JSON-RPC envelopes.
 

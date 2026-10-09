@@ -69,7 +69,7 @@ internal sealed class VerifiedConsensusJournal
         LightClientBootstrap bootstrap = LightClientWireCodec.DecodeBootstrap(bootstrapBytes, _spec);
         ulong bootstrapSlot = bootstrap.Header?.Beacon?.Slot ?? throw new InvalidDataException("Saved bootstrap has no slot.");
         if (bootstrapSlot > currentSlot) throw new InvalidDataException("Saved checkpoint is in the future.");
-        LightClientStore store = new(_spec, _checkpoint, bootstrap, currentSlot);
+        LightClientStore store = new(_spec, _checkpoint, bootstrap, bootstrapSlot);
         int count = ReadInt32(payload, ref offset);
         if (count is < 0 or > MaxUpdates) throw new InvalidDataException("Saved committee chain has too many updates.");
         List<(byte Kind, byte[] Data)> updates = new(count);
@@ -104,6 +104,7 @@ internal sealed class VerifiedConsensusJournal
             }
         }
 
+        store.RequireRecent(currentSlot);
         _bootstrap = bootstrapBytes;
         _updates.Clear();
         _updates.AddRange(updates);
@@ -194,6 +195,12 @@ internal sealed class VerifiedConsensusJournal
         _updates.AddRange(updates);
         _chainDigest = chain.AsSpan(chain.Length - DigestBytes).ToArray();
         _latestHead = null;
+        try { File.Delete(_headPath); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The chain digest already invalidates the stale head, so leaving it only costs a warning on restart.
+            _logger.LogWarning(exception, "Could not delete superseded light-client head {Path}", _headPath);
+        }
     }
 
     private void RecordState(LightClientStore store)
