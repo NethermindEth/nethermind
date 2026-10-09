@@ -186,24 +186,24 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         ITxDecoder decoder = GetDecoder(txType);
 
         // The built-in decoders are sealed, so calling them through their own type lets the call be bound and inlined.
-        switch (txType)
+        switch ((txType, decoder))
         {
-            case TxType.EIP1559 when decoder is EIP1559TxDecoder eip1559:
+            case (TxType.EIP1559, EIP1559TxDecoder eip1559):
                 eip1559.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
-            case TxType.Legacy when decoder is LegacyTxDecoder legacy:
+            case (TxType.Legacy, LegacyTxDecoder legacy):
                 legacy.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
-            case TxType.Blob when decoder is BlobTxDecoder blob:
+            case (TxType.Blob, BlobTxDecoder blob):
                 blob.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
-            case TxType.SetCode when decoder is SetCodeTxDecoder setCode:
+            case (TxType.SetCode, SetCodeTxDecoder setCode):
                 setCode.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
-            case TxType.AccessList when decoder is AccessListTxDecoder accessList:
+            case (TxType.AccessList, AccessListTxDecoder accessList):
                 accessList.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
-            case TxType.FrameTx when decoder is FrameTxDecoder frame:
+            case (TxType.FrameTx, FrameTxDecoder frame):
                 frame.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
                 break;
             default:
@@ -255,24 +255,24 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
         // A generic interface call resolves its target at run time, so the built-in decoders are bypassed for their
         // static encoders; any other decoder registered for the type still owns its encoding.
-        switch (item.Type)
+        switch ((item.Type, decoder))
         {
-            case TxType.EIP1559 when decoder is EIP1559TxDecoder:
+            case (TxType.EIP1559, EIP1559TxDecoder):
                 EIP1559TxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
-            case TxType.Legacy when decoder is LegacyTxDecoder:
+            case (TxType.Legacy, LegacyTxDecoder):
                 LegacyTxDecoder.EncodeTransaction(item, ref writer, forSigning, isEip155Enabled, chainId);
                 break;
-            case TxType.Blob when decoder is BlobTxDecoder:
+            case (TxType.Blob, BlobTxDecoder):
                 BlobTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
-            case TxType.SetCode when decoder is SetCodeTxDecoder:
+            case (TxType.SetCode, SetCodeTxDecoder):
                 SetCodeTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
-            case TxType.AccessList when decoder is AccessListTxDecoder:
+            case (TxType.AccessList, AccessListTxDecoder):
                 AccessListTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
-            case TxType.FrameTx when decoder is FrameTxDecoder:
+            case (TxType.FrameTx, FrameTxDecoder):
                 FrameTxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
             default:
@@ -289,14 +289,14 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         }
 
         ITxDecoder decoder = GetDecoder(tx.Type);
-        return tx.Type switch
+        return (tx.Type, decoder) switch
         {
-            TxType.EIP1559 when decoder is EIP1559TxDecoder => EIP1559TxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            TxType.Legacy when decoder is LegacyTxDecoder => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
-            TxType.Blob when decoder is BlobTxDecoder => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            TxType.SetCode when decoder is SetCodeTxDecoder => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            TxType.AccessList when decoder is AccessListTxDecoder => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            TxType.FrameTx when decoder is FrameTxDecoder => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.EIP1559, EIP1559TxDecoder) => EIP1559TxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.Legacy, LegacyTxDecoder) => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
+            (TxType.Blob, BlobTxDecoder) => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.SetCode, SetCodeTxDecoder) => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.AccessList, AccessListTxDecoder) => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
+            (TxType.FrameTx, FrameTxDecoder) => FrameTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
             _ => decoder.GetLength(tx, rlpBehaviors, forSigning, isEip155Enabled, chainId)
         };
     }

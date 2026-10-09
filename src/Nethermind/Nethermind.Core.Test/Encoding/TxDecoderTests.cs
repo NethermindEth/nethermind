@@ -400,21 +400,25 @@ namespace Nethermind.Core.Test.Encoding
 
         [Test]
         public void Decoder_registered_over_built_in_type_is_used_to_encode_and_decode(
-            [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType)
+            [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType,
+            [Values] bool existingTransaction)
         {
             // A plugin replacing a standard type's decoder must own its wire form, not the built-in codec.
             IsolatedTxDecoder decoder = new();
-            decoder.RegisterDecoder(new MarkerTxDecoder(txType));
+            MarkerTxDecoder marker = new(txType);
+            decoder.RegisterDecoder(marker);
             // An empty list decodes as no transaction, so a legacy sequence needs an item.
             byte[] encoded = txType == TxType.Legacy ? [0xc1, 0x80] : [(byte)txType, Rlp.EmptyListByte];
 
             Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
-            Assert.That(Decode, Throws.TypeOf<NotSupportedException>());
+            RlpReader reader = new(encoded);
+            Transaction? transaction = existingTransaction ? new Transaction() : null;
+            decoder.Decode(ref reader, ref transaction, RlpBehaviors.SkipTypedWrapping);
 
-            void Decode()
+            using (Assert.EnterMultipleScope())
             {
-                RlpReader reader = new(encoded);
-                decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+                Assert.That(transaction, Is.SameAs(marker.DecodedTransaction));
+                Assert.That(reader.Position, Is.EqualTo(encoded.Length));
             }
         }
 
@@ -447,11 +451,16 @@ namespace Nethermind.Core.Test.Encoding
         private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
         {
             public static readonly byte[] Encoding = [0xc1, 0x2a];
+            public Transaction DecodedTransaction { get; } = new();
 
             public TxType Type => txType;
 
             public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
+                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                transaction = DecodedTransaction;
+                decoderContext.Position = txSequenceStart + transactionSequence.Length;
+            }
 
             public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
                 bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
