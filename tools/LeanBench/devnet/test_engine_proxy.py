@@ -297,5 +297,49 @@ class PayloadCaptureChecks(unittest.TestCase):
                 proxy.PayloadCapture(Path(directory))
 
 
+class EmptyProofChecks(unittest.TestCase):
+    @staticmethod
+    def payload(proof="0x"):
+        return {"blockHash": "0x" + "11" * 32, proxy.PROOF: proof, proxy.DEPS: "0x" + "cd" * 32}
+
+    def import_request(self):
+        payload = self.payload()
+        del payload[proxy.PROOF]
+        del payload[proxy.DEPS]
+        return {"jsonrpc": "2.0", "id": 2, "method": "engine_newPayloadV5",
+                "params": [payload, [], "0x" + "12" * 32, []]}
+
+    def test_dependency_free_block_proof_is_relayed_and_restored_after_restart(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            produced = {"jsonrpc": "2.0", "id": 1, "result": {"executionPayload": self.payload()}}
+            proxy.handle({"jsonrpc": "2.0", "id": 1, "method": "engine_getPayloadV6", "params": []},
+                         "http://offline", "", proxy.ProofCache(Path(directory)), send=lambda *_: produced)
+            forwarded = []
+            verdict = {"jsonrpc": "2.0", "id": 2, "result": {"status": "VALID"}}
+            capture = proxy.PayloadCapture(Path(directory) / "captures")
+            proxy.handle(self.import_request(), "http://offline", "", proxy.ProofCache(Path(directory)),
+                         send=lambda _, request, __: forwarded.append(request) or verdict, capture=capture)
+            self.assertEqual(forwarded[0]["params"][0][proxy.PROOF], "0x")
+            self.assertEqual(forwarded[0]["params"][0][proxy.DEPS], "0x" + "cd" * 32)
+            self.assertEqual(capture.records, {}, "a dependency-free import is not a capture fixture")
+            self.assertFalse(proxy.ProofCache(Path(directory) / "other").restore(self.payload()),
+                             "a supplied empty proof is forwarded for the EL to judge")
+
+    def test_withhold_toggle_forwards_imports_without_proof_until_removed(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
+            cache = proxy.ProofCache(Path(directory))
+            cache.remember(self.payload("0x" + "ab" * 13))
+            withhold = Path(directory) / "withhold-1"
+            withhold.touch()
+            forwarded = []
+            send = lambda _, request, __: forwarded.append(request) or {"jsonrpc": "2.0", "id": 2, "result": {}}
+            proxy.handle(self.import_request(), "http://offline", "", cache, send=send, withhold=withhold)
+            self.assertNotIn(proxy.PROOF, forwarded[0]["params"][0])
+            self.assertIn('"event": "proof_withheld"', output.getvalue())
+            withhold.unlink()
+            proxy.handle(self.import_request(), "http://offline", "", cache, send=send, withhold=withhold)
+            self.assertEqual(forwarded[1]["params"][0][proxy.PROOF], "0x" + "ab" * 13)
+
+
 if __name__ == "__main__":
     unittest.main()

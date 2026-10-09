@@ -33,14 +33,14 @@ class ProxyError(Exception):
     pass
 
 
-def decode_hex(value, limit):
+def decode_hex(value, limit, allow_empty=False):
     if not isinstance(value, str) or not value.startswith("0x") or len(value) > 2 + 2 * limit:
         raise ProxyError("Invalid proof field")
     try:
         result = bytes.fromhex(value[2:])
     except ValueError as error:
         raise ProxyError("Invalid proof field") from error
-    if not result or len(result) > limit:
+    if (not result and not allow_empty) or len(result) > limit:
         raise ProxyError("Invalid proof field")
     return result
 
@@ -64,7 +64,7 @@ class ProofCache:
                 continue
             with path.open("rb") as source:
                 data = source.read(MAX_PROOF + 37)
-            if data[:4] != b"NLC1" or not 36 < len(data) <= MAX_PROOF + 36:
+            if data[:4] != b"NLC1" or not 36 <= len(data) <= MAX_PROOF + 36:
                 raise ProxyError("Invalid persisted proof cache")
             self._insert("0x" + path.stem, data[36:], data[4:36])
 
@@ -78,7 +78,7 @@ class ProofCache:
 
     def remember(self, payload):
         key = block_hash(payload)
-        proof = decode_hex(payload.get(PROOF), MAX_PROOF)
+        proof = decode_hex(payload.get(PROOF), MAX_PROOF, allow_empty=True)
         deps = decode_hex(payload.get(DEPS), 32)
         if len(deps) != 32:
             raise ProxyError("Invalid dependency commitment")
@@ -106,7 +106,7 @@ class ProofCache:
             if None in supplied:
                 raise ProxyError("Incomplete proof fields")
             # The Runner must validate caller-supplied bytes, including invalid proofs.
-            decode_hex(supplied[0], MAX_PROOF)
+            decode_hex(supplied[0], MAX_PROOF, allow_empty=True)
             if len(decode_hex(supplied[1], 32)) != 32:
                 raise ProxyError("Invalid dependency commitment")
             return False
@@ -162,7 +162,7 @@ class PayloadCapture:
         params = request.get("params")
         if not isinstance(params, list) or len(params) != 4 or not isinstance(params[0], dict):
             raise ProxyError("Invalid capture parameters")
-        proof = decode_hex(params[0].get(PROOF), MAX_PROOF)
+        proof = decode_hex(params[0].get(PROOF), MAX_PROOF, allow_empty=True)
         if len(decode_hex(params[0].get(DEPS), 32)) != 32:
             raise ProxyError("Invalid capture dependency commitment")
         return block_hash(params[0]) if len(proof) > 12 else None
@@ -238,7 +238,7 @@ def forward(endpoint, request, authorization):
     return json.loads(data)
 
 
-def handle(request, endpoint, authorization, cache, send=forward, capture=None):
+def handle(request, endpoint, authorization, cache, send=forward, capture=None, withhold=None):
     if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
         raise ProxyError("Single JSON-RPC request required")
     method = request.get("method")
@@ -251,7 +251,13 @@ def handle(request, endpoint, authorization, cache, send=forward, capture=None):
         params = request.get("params")
         if not isinstance(params, list) or len(params) != 4 or not isinstance(params[0], dict):
             raise ProxyError("Invalid Amsterdam newPayload parameters")
-        restored = cache.restore(params[0])
+        # Kind-2 test toggle: while the flag file exists, forward this listener's payloads without the proof fields
+        # so the EL must recover recursive_stark from an EIP-8437 block-proof sidecar.
+        if withhold is not None and withhold.exists() and params[0].get(PROOF) is None:
+            print(json.dumps({"event": "proof_withheld", "blockHash": block_hash(params[0])}), flush=True)
+            restored = False
+        else:
+            restored = cache.restore(params[0])
         if restored:
             print(json.dumps({"event": "proof_restored", "blockHash": block_hash(params[0])}), flush=True)
         if capture is not None:
@@ -272,7 +278,7 @@ def handle(request, endpoint, authorization, cache, send=forward, capture=None):
     return result
 
 
-def handler(endpoint, secret, cache, capacity=None, capture=None):
+def handler(endpoint, secret, cache, capacity=None, capture=None, withhold=None):
     if capacity is None:
         capacity = threading.BoundedSemaphore(2)
     class Handler(BaseHTTPRequestHandler):
@@ -300,7 +306,7 @@ def handler(endpoint, secret, cache, capacity=None, capture=None):
                     request = json.loads(body)
                     if isinstance(request, dict):
                         request_id = request.get("id")
-                    response = handle(request, endpoint, authorization, cache, capture=capture)
+                    response = handle(request, endpoint, authorization, cache, capture=capture, withhold=withhold)
                     encoded = json.dumps(response, separators=(",", ":")).encode()
                 except (ProxyError, ValueError, OSError, urllib.error.URLError) as error:
                     message = str(error) if isinstance(error, ProxyError) else "Engine proxy request failed"
@@ -349,8 +355,9 @@ def main():
         args.upstream_url2 or f"http://127.0.0.1:{args.upstream2}")
     if any(not endpoint.startswith("http://") for endpoint in endpoints):
         parser.error("Upstream endpoints must use HTTP on the private devnet network")
-    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache, capture=capture))
-        for listen, endpoint in zip((args.listen1, args.listen2), endpoints)]
+    servers = [ThreadingHTTPServer((args.bind, listen), handler(endpoint, secret, cache, capture=capture,
+        withhold=args.cache / f"withhold-{index}"))
+        for index, (listen, endpoint) in enumerate(zip((args.listen1, args.listen2), endpoints), start=1)]
     threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
     for thread in threads:
         thread.start()
