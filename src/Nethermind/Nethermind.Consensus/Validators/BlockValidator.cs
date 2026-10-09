@@ -344,10 +344,14 @@ public class BlockValidator(
             }
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
-            if (!isWellFormed && onDemand && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            // The background recovery can publish the sender after the check above priced the transaction without it.
+            if (!isWellFormed && onDemand && isEip2780Enabled && transaction.Signature is not null)
             {
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
-                Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
+                if (transaction.SenderAddress is null)
+                {
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                    Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
+                }
                 isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             }
             if (!isWellFormed)
