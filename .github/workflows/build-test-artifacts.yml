@@ -24,18 +24,6 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(inputs.matrix) }}
     steps:
-      - name: Free up disk space (Linux)
-        # Checkout + submodules + SDK + NuGet cache still land on the root disk and can
-        # exhaust its remaining free space; the runner worker then dies on ENOSPC mid-build,
-        # leaving a red job with no logs. Drop the unused preinstalled toolchains for headroom.
-        # Runs in the background over checkout, setup and restore; Build waits for it.
-        id: free-disk-linux
-        if: runner.os == 'Linux'
-        background: true
-        run: |
-          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache/CodeQL
-          df -h / | tail -1
-
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -66,9 +54,6 @@ jobs:
         run: |
           dotnet restore src/Nethermind/Nethermind.slnx
           dotnet restore src/Nethermind/EthereumTests.slnx
-
-      - name: Wait for disk space
-        wait-all:
 
       - name: Build
         # Skip analyzers (run in code-lint); source generators still run, so binaries are identical.

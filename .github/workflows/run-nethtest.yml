@@ -242,7 +242,7 @@ jobs:
                   if [ "$type" = "engineTest" ]; then
                     emit "$type" sequential full '' false false 4 3
                   else
-                    emit "$type" sequential full '' false false 4 2
+                    emit "$type" sequential full '' false false 4 4
                   fi
                 elif run_sequential; then
                   # The pyspec NUnit chunks in nethermind-tests.yml ran the whole assembly
