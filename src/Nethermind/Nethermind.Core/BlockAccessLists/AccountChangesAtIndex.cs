@@ -60,6 +60,13 @@ public class AccountChangesAtIndex(Address address)
         return needsUndo;
     }
 
+    /// <summary>Records a slot's transaction prestate known before its first write, such as one hidden by a storage clear.</summary>
+    public void SeedPreTxStorage(in UInt256 key, in UInt256 value)
+    {
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        _preTxStorage.TryAdd(key, new PreTxStorage(in value, ulong.MaxValue));
+    }
+
     /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
     public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
     {

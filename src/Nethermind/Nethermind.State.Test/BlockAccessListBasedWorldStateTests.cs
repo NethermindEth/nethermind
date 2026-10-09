@@ -148,6 +148,28 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void Storage_before_clear_is_not_read_from_the_shared_state()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        StorageCell cell = new(TestItem.AddressA, 1);
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, UInt256.One);
+            inner.Set(cell, (UInt256)5);
+            inner.Commit(Spec);
+            inner.ClearStorage(TestItem.AddressA);
+            BlockAccessListBasedWorldState bws = new(inner, Logger);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inner.TryGetStorageBeforeClear(in cell, out UInt256 shared), Is.True);
+                Assert.That(shared, Is.EqualTo((UInt256)5));
+                Assert.That(bws.TryGetStorageBeforeClear(in cell, out _), Is.False);
+            }
+        }
+    }
+
+    [Test]
     public void Traced_balance_creation_preserves_existence_across_repeated_touches(
         [Values("missing", "empty", "funded")] string parentState,
         [Values(0u, 5u)] uint balanceChange)
