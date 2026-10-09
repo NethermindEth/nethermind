@@ -173,6 +173,19 @@ public class ReleaseSpecTests
         Assert.That(inherited, Is.Empty, $"{forwarder.Name} answers these from the interface default instead of the spec it wraps");
     }
 
+    [Test]
+    public void Decorator_forwards_values_that_differ_from_interface_defaults()
+    {
+        ReleaseSpec spec = new() { ValidateReceipts = false, Eip1559BaseFeeMinValue = 7 };
+        MinimalExternalDecorator decorated = new(spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decorated.ValidateReceipts, Is.False);
+            Assert.That(decorated.Eip1559BaseFeeMinValue, Is.EqualTo((UInt256)7));
+        }
+    }
+
     private sealed class MinimalExternalSpec : ReleaseSpec;
 
     private sealed class MinimalExternalDecorator(IReleaseSpec spec) : ReleaseSpecDecorator(spec);
