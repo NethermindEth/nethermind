@@ -425,8 +425,6 @@ public class LogFinderTests
         Assert.That(() => CreateLogFinder(_rawBlockTree, receiptStorage).FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray(), Throws.TypeOf<InvalidOperationException>().With.Message.Contains(@"missing block data"));
     }
 
-    private const ulong BoundaryOldestStored = 50;
-
     [Test]
     public void FindLogs_WhenEncodedLogsAreFiltered_ReturnsOwnedDataAndOriginalIndexes([Values] bool compact, [Values] bool filterByTopic)
     {
@@ -467,6 +465,7 @@ public class LogFinderTests
             Assert.That(logs[0].TransactionIndex, Is.Zero);
         }
     }
+    private const ulong BoundaryOldestStored = 50;
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
 
