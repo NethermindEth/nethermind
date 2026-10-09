@@ -48,7 +48,14 @@ public static class RecursiveStarkAggregator
     }
 
     /// <summary>Combines selected witnesses, pruning recursive dependencies absent from the final transaction set.</summary>
-    public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required)
+    /// <param name="inputs">The selected witnesses and recursive proofs.</param>
+    /// <param name="required">The final dependency set.</param>
+    /// <param name="parent">
+    /// An already proven subset of <paramref name="required"/>; selected inputs it fully covers are left out, so a growing
+    /// set is proven by extending its previous statement instead of re-folding every witness.
+    /// </param>
+    public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required,
+        RecursiveProofInput? parent = null)
     {
         List<FrameDependency> direct = [];
         List<ReadOnlyMemory<byte>> witnesses = [];
@@ -57,11 +64,23 @@ public static class RecursiveStarkAggregator
         HashSet<FrameDependency> discards = [];
         HashSet<FrameDependency> covered = [];
         HashSet<ValueHash256> seenProofs = [];
+        if (parent is { } proven)
+        {
+            if (proven.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(parent));
+            seenProofs.Add(proven.ProofHash);
+            recursive.Add(proven);
+            foreach (FrameDependency dep in proven.InnerDeps)
+            {
+                if (!wanted.Contains(dep)) throw new ArgumentException("The proven parent must be a subset of the required set.", nameof(parent));
+                covered.Add(dep);
+            }
+        }
         foreach (AggregationInput input in inputs)
         {
             foreach (RecursiveProofInput child in input.RecursiveProofs)
             {
                 if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(inputs));
+                if (parent is not null && IsCovered(child.InnerDeps, covered)) continue;
                 if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
                 foreach (FrameDependency dep in child.InnerDeps)
@@ -82,6 +101,13 @@ public static class RecursiveStarkAggregator
             }
         }
         return new() { Deps = direct, Witnesses = witnesses, RecursiveProofs = recursive, Discards = [.. discards] };
+
+        static bool IsCovered(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> covered)
+        {
+            foreach (FrameDependency dependency in dependencies)
+                if (!covered.Contains(dependency)) return false;
+            return true;
+        }
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>

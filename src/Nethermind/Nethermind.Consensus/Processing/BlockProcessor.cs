@@ -237,10 +237,16 @@ public partial class BlockProcessor(
                     // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
                     if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
                     {
+                        FrameDependency[] proven = leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps));
                         // Only the unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
-                            _productionProofCache.TrySchedule(deps, depsHash, RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps), leanProofStore);
-                        throw new LeanProofNotReadyException(new HashSet<FrameDependency>(leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps))));
+                        {
+                            // Extending the largest proven subset folds only the new dependencies into one recursive child.
+                            RecursiveProofInput? parent = proven.Length != 0 && leanProofStore.TryGetRecursiveProof(proven, out byte[]? parentProof)
+                                ? new RecursiveProofInput(proven, parentProof!) : null;
+                            _productionProofCache.TrySchedule(deps, depsHash, RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, parent), leanProofStore);
+                        }
+                        throw new LeanProofNotReadyException(new HashSet<FrameDependency>(proven));
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);

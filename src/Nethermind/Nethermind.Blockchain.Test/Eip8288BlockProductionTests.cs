@@ -599,6 +599,34 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Scheduled_production_proof_extends_the_largest_proven_subset()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-proven"), default);
+        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
+        proofs.AddVerified([proven], [[1]], null);
+        proofs.AddVerified([added], [[1]], null);
+        proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven, [1]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [2]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+
+        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([proven, added]);
+        Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call extends the proven statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(verifier.LastInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(new[] { proven }));
+            Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }), "the proven dependency's witness is not folded again");
+        }
+    }
+
+    [Test]
     public async Task Deadline_production_keeps_shrinking_past_a_proven_set_that_is_not_includable()
     {
         CountingVerifier verifier = new();
@@ -880,9 +908,11 @@ public class Eip8288BlockProductionTests
             RecursiveVerificationCalls++;
             return proof.Length == 32 + ProofPaddingBytes && proof[..32].SequenceEqual(depsHash.Bytes);
         }
+        public AggregationInput? LastInput { get; private set; }
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
+            LastInput = input;
             OnProof?.Invoke();
             if (RejectChangedWitness)
                 foreach (ReadOnlyMemory<byte> witness in input.Witnesses)
