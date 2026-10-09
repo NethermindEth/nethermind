@@ -1732,18 +1732,13 @@ internal sealed class McpTransactionTools(
         }
 
         // Transactions: types, recipients and creations.
-        object[] transactions = block.Transactions ?? [];
+        TransactionForRpc[] transactions = block.Transactions?.Full ?? [];
         SortedDictionary<string, int> types = new(StringComparer.Ordinal);
         Dictionary<AddressAsKey, int> recipients = [];
         int creations = 0;
         int classificationsOmitted = 0;
-        foreach (object item in transactions)
+        foreach (TransactionForRpc tx in transactions)
         {
-            if (item is not TransactionForRpc tx)
-            {
-                continue;
-            }
-
             string typeName = TypeName(tx.Type ?? TxType.Legacy);
             types[typeName] = types.TryGetValue(typeName, out int typeCount) ? typeCount + 1 : 1;
             LegacyTransactionForRpc? readable = ReadableTransaction(tx);

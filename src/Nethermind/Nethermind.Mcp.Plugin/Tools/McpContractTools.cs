@@ -291,7 +291,7 @@ internal sealed class McpContractTools(
 
             McpTokenInfo? info = tokenMetadata.Get(eth, address, pinned);
             UInt256? totalSupply = ReadUInt256(eth, address, TotalSupplySelector, pinned);
-            (string standard, string evidence) = DetectStandard(eth, address, pinned, info, totalSupply);
+            (string standard, string evidence) = DetectStandard(eth, address, pinned, specProvider.GetSpec(header), info, totalSupply);
 
             JsonObject output = new() { ["address"] = McpEthHelpers.Checksum(address) };
             AddBlock(output, header);
@@ -597,7 +597,7 @@ internal sealed class McpContractTools(
                 return Task.FromResult(failure);
             }
 
-            EnsResolution resolution = ResolveName(eth, normalized, pinned, cancellation);
+            EnsResolution resolution = ResolveName(eth, normalized, pinned, specProvider.GetSpec(header), cancellation);
             if (resolution.Transient)
             {
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable, "The ENS contracts could not be read at this block; retry later or use another block."));
@@ -683,7 +683,8 @@ internal sealed class McpContractTools(
             UInt256 balance = balanceResult.Data ?? UInt256.Zero;
             UInt256 nonce = nonceResult.Data;
             bool delegated = Eip7702Constants.IsDelegatedCode(code);
-            string kind = specProvider.GetSpec(header).IsPrecompile(account) ? "precompile"
+            IReleaseSpec spec = specProvider.GetSpec(header);
+            string kind = spec.IsPrecompile(account) ? "precompile"
                 : delegated ? "eip7702-delegated"
                 : code.Length > 0 ? "contract"
                 : nonce.IsZero && balance.IsZero ? "empty"
@@ -731,7 +732,7 @@ internal sealed class McpContractTools(
 
             if ((chain.EnsUniversalResolverAddress is not null || chain.EnsRegistryAddress is not null) && Continue("ens"))
             {
-                JsonObject? ens = ReverseResolve(eth, account, pinned, cancellation);
+                JsonObject? ens = ReverseResolve(eth, account, pinned, spec, cancellation);
                 if (ens is not null) output["ens"] = ens;
             }
 
@@ -850,16 +851,16 @@ internal sealed class McpContractTools(
         return McpToolExecutor.Error(McpToolErrorCodes.NotFound, "Transaction not found on this node.");
     }
 
-    private (string Standard, string Evidence) DetectStandard(IEthRpcModule eth, Address address, BlockParameter block, McpTokenInfo? info, UInt256? totalSupply)
+    private (string Standard, string Evidence) DetectStandard(IEthRpcModule eth, Address address, BlockParameter block, IReleaseSpec spec, McpTokenInfo? info, UInt256? totalSupply)
     {
-        if (Erc165TransactionGas(address, Erc165Id, block) > _maxCallGas)
+        if (Erc165TransactionGas(address, Erc165Id, spec) > _maxCallGas)
         {
             return ("unknown", "The configured call gas cap prevents a full ERC-165 interface probe.");
         }
-        if (SupportsInterface(eth, address, Erc165Id, block) && !SupportsInterface(eth, address, InvalidInterfaceId, block))
+        if (SupportsInterface(eth, address, Erc165Id, block, spec) && !SupportsInterface(eth, address, InvalidInterfaceId, block, spec))
         {
-            if (SupportsInterface(eth, address, Erc721Id, block)) return (McpKnownAbi.Erc721, "supportsInterface(0x80ac58cd) is true (ERC-165)");
-            if (SupportsInterface(eth, address, Erc1155Id, block)) return (McpKnownAbi.Erc1155, "supportsInterface(0xd9b67a26) is true (ERC-165)");
+            if (SupportsInterface(eth, address, Erc721Id, block, spec)) return (McpKnownAbi.Erc721, "supportsInterface(0x80ac58cd) is true (ERC-165)");
+            if (SupportsInterface(eth, address, Erc1155Id, block, spec)) return (McpKnownAbi.Erc1155, "supportsInterface(0xd9b67a26) is true (ERC-165)");
         }
 
         UInt256? balance = ReadUInt256(eth, address, Concat(BalanceOfSelector, AddressWord(Address.Zero)), block);
@@ -873,21 +874,20 @@ internal sealed class McpContractTools(
             : "no token functions respond");
     }
 
-    private bool SupportsInterface(IEthRpcModule eth, Address address, byte[] interfaceId, BlockParameter block)
+    private bool SupportsInterface(IEthRpcModule eth, Address address, byte[] interfaceId, BlockParameter block, IReleaseSpec spec)
     {
         byte[] word = new byte[32];
         interfaceId.CopyTo(word, 0);
         byte[] input = Concat(SupportsInterfaceSelector, word);
-        CallOutcome outcome = CallContract(eth, address, input, block, Erc165TransactionGas(address, interfaceId, block));
+        CallOutcome outcome = CallContract(eth, address, input, block, Erc165TransactionGas(address, interfaceId, spec));
         return ReturnsTrue(outcome.Data);
     }
 
-    private ulong Erc165TransactionGas(Address target, byte[] interfaceId, BlockParameter block)
+    private static ulong Erc165TransactionGas(Address target, byte[] interfaceId, IReleaseSpec spec)
     {
         byte[] word = new byte[32];
         interfaceId.CopyTo(word, 0);
         Transaction probe = new() { To = target, Data = Concat(SupportsInterfaceSelector, word) };
-        IReleaseSpec spec = specProvider.GetSpec(blockFinder.SearchForHeader(block).Object!);
         EthereumIntrinsicGas intrinsic = IntrinsicGasCalculator.Calculate(probe, spec);
         return Math.Max(intrinsic.FloorGas, checked(intrinsic.Standard + Erc165Gas));
     }
@@ -945,7 +945,7 @@ internal sealed class McpContractTools(
 
     // The Universal Resolver is the recommended path (and the only one that sees ENSv2 names on Sepolia); the registry is read
     // directly only at blocks where the Universal Resolver has no code yet.
-    private EnsResolution ResolveName(IEthRpcModule eth, string name, BlockParameter block, CancellationToken cancellation)
+    private EnsResolution ResolveName(IEthRpcModule eth, string name, BlockParameter block, IReleaseSpec spec, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         if (chain.EnsUniversalResolverAddress is { } universalResolver
@@ -955,7 +955,7 @@ internal sealed class McpContractTools(
         }
 
         return chain.EnsRegistryAddress is { } registry
-            ? ResolveViaRegistry(eth, registry, name, block, cancellation)
+            ? ResolveViaRegistry(eth, registry, name, block, spec, cancellation)
             : new EnsResolution(McpEns.NameHash(name), null, null, null, "none", "ENS is not available at this block.");
     }
 
@@ -1028,7 +1028,7 @@ internal sealed class McpContractTools(
             : null;
     }
 
-    private EnsResolution ResolveViaRegistry(IEthRpcModule eth, Address registry, string name, BlockParameter block, CancellationToken cancellation)
+    private EnsResolution ResolveViaRegistry(IEthRpcModule eth, Address registry, string name, BlockParameter block, IReleaseSpec spec, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         Hash256 node = McpEns.NameHash(name);
@@ -1088,7 +1088,7 @@ internal sealed class McpContractTools(
             cancellation.ThrowIfCancellationRequested();
             byte[] interfaceWord = new byte[32];
             McpEns.ResolveSelector.CopyTo(interfaceWord, 0);
-            ulong interfaceGas = Erc165TransactionGas(parentResolver, McpEns.ResolveSelector, block);
+            ulong interfaceGas = Erc165TransactionGas(parentResolver, McpEns.ResolveSelector, spec);
             if (interfaceGas > _maxCallGas)
             {
                 return new EnsResolution(node, owner, parentResolver, null, "none",
@@ -1140,7 +1140,7 @@ internal sealed class McpContractTools(
     private static bool ReturnsTrue(byte[]? data) =>
         data is { Length: 32 } && !data.AsSpan(0, 31).ContainsAnyExcept((byte)0) && data[31] == 1;
 
-    private JsonObject? ReverseResolve(IEthRpcModule eth, Address account, BlockParameter block, CancellationToken cancellation)
+    private JsonObject? ReverseResolve(IEthRpcModule eth, Address account, BlockParameter block, IReleaseSpec spec, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         if (chain.EnsUniversalResolverAddress is { } universalResolver)
@@ -1170,7 +1170,7 @@ internal sealed class McpContractTools(
             }
         }
 
-        return chain.EnsRegistryAddress is { } registry ? ReverseResolveViaRegistry(eth, registry, account, block, cancellation) : null;
+        return chain.EnsRegistryAddress is { } registry ? ReverseResolveViaRegistry(eth, registry, account, block, spec, cancellation) : null;
     }
 
     // ABI strings normally sanitize display text; ENSIP-19 must verify the resolver's original UTF-8 name.
@@ -1205,7 +1205,7 @@ internal sealed class McpContractTools(
         };
     }
 
-    private JsonObject? ReverseResolveViaRegistry(IEthRpcModule eth, Address registry, Address account, BlockParameter block, CancellationToken cancellation)
+    private JsonObject? ReverseResolveViaRegistry(IEthRpcModule eth, Address registry, Address account, BlockParameter block, IReleaseSpec spec, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         Hash256 reverseNode = McpEns.NameHash(McpEns.ReverseName(account));
@@ -1226,7 +1226,7 @@ internal sealed class McpContractTools(
         // A reverse record is a free-form claim; it only counts once the name resolves back to the same address.
         // A verified name is normalized (a-z, 0-9, '-', '_' and dots, at most 255 characters), so it is shown exactly as verified.
         string? verifiedName = McpEns.TryNormalize(reverseName, out string? normalized, out _) && normalized == reverseName
-            && ResolveViaRegistry(eth, registry, normalized, block, cancellation).Resolved == account ? normalized : null;
+            && ResolveViaRegistry(eth, registry, normalized, block, spec, cancellation).Resolved == account ? normalized : null;
         return new JsonObject
         {
             ["name"] = verifiedName ?? McpTokenMetadata.Sanitize(normalized ?? reverseName) ?? string.Empty,

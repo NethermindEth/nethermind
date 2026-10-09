@@ -579,6 +579,41 @@ public class McpContractToolsTests
     }
 
     [Test]
+    public async Task Interface_probes_reuse_the_resolved_block_when_a_second_header_lookup_fails(
+        [Values("token_info", "resolve_ens")] string tool)
+    {
+        await using McpTestNode node = await McpTestNode.Create(configureContainer: builder =>
+        {
+            builder.AddScoped<IGenesisPostProcessor, EnsGenesis>();
+            builder.RegisterType<McpContractTools>().Named<McpContractTools>("pinned-probes");
+        });
+        Deployed deployed = await Deploy(node);
+        BlockHeader header = node.Chain.BlockTree.Head!.Header;
+        IBlockFinder finder = Substitute.For<IBlockFinder>();
+        finder.Head.Returns(node.Chain.BlockTree.Head);
+        finder.FindHeader(Arg.Any<BlockParameter?>(), Arg.Any<bool>()).Returns(call =>
+            call.ArgAt<BlockParameter?>(0)?.Type == BlockParameterType.Latest ? header : null);
+        McpContractTools tools = node.Chain.Container.ResolveNamed<McpContractTools>("pinned-probes",
+            new TypedParameter(typeof(IBlockFinder), finder));
+
+        CallToolResult response = tool switch
+        {
+            "token_info" => await tools.TokenInfo(Hex(deployed.NftToken)),
+            "resolve_ens" => await tools.ResolveEns("sub.offchain.eth"),
+            _ => throw new ArgumentOutOfRangeException(nameof(tool))
+        };
+        JsonElement result = McpAssert.Success(response);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("blockHash").GetString(), Is.EqualTo(header.Hash!.ToString()));
+            if (tool == "token_info") Assert.That(result.GetProperty("standard").GetString(), Is.EqualTo("ERC-721"));
+            else Assert.That(result.GetProperty("offchain").GetBoolean(), Is.True);
+            finder.Received(1).FindHeader(Arg.Any<BlockParameter?>(), Arg.Any<bool>());
+        }
+    }
+
+    [Test]
     public async Task Token_info_reports_when_the_gas_cap_prevents_an_erc165_probe()
     {
         await using McpTestNode node = await McpTestNode.Create(config => config.MaxCallGas = 30_000);

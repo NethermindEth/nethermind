@@ -1751,7 +1751,7 @@ public class McpTransactionToolsTests
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
         Block block = (await node.Seed()).Block;
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
-        BlockForRpc resultBlock = new(block, true, node.Chain.SpecProvider) { Transactions = [new DepositRpc()] };
+        BlockForRpc resultBlock = new(block, true, node.Chain.SpecProvider) { Transactions = (TransactionForRpc[])[new DepositRpc()] };
         eth.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).Returns(ResultWrapper<BlockForRpc>.Success(resultBlock));
         eth.eth_getBlockReceipts(Arg.Any<BlockParameter>()).Returns(ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success([]));
         ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getBlockByNumber), eth);

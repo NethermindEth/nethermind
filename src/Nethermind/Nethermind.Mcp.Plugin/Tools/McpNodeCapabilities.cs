@@ -15,7 +15,6 @@ using Nethermind.Init;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
 namespace Nethermind.Mcp.Plugin.Tools;

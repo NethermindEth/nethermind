@@ -425,7 +425,7 @@ internal sealed partial class McpEthTools(
     /// <summary>Returns a block with one page of its full transactions and the paging fields.</summary>
     private CallToolResult PagedBlock(BlockForRpc block, int offset, int limit)
     {
-        object[] transactions = block.Transactions;
+        TransactionForRpc[] transactions = block.Transactions?.Full ?? [];
         if (offset > transactions.Length)
         {
             return McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'transactionOffset' ({offset}) is beyond the {transactions.Length} transactions of this block.");
