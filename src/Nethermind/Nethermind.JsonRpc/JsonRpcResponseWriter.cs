@@ -3,14 +3,20 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Facade.Filters;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
@@ -18,6 +24,8 @@ namespace Nethermind.JsonRpc;
 /// <summary>Writes server-side JSON-RPC response objects to transport-owned buffers.</summary>
 public static class JsonRpcResponseWriter
 {
+    private const int MaterializedLogsStreamingThreshold = 128;
+    private static readonly ConditionalWeakTable<JsonSerializerOptions, MaterializedLogsMetadata> _materializedLogsTypeInfo = [];
     private static readonly byte[] BatchStart = [(byte)'['];
     private static readonly byte[] BatchSeparator = [(byte)','];
     private static readonly byte[] BatchEnd = [(byte)']'];
@@ -58,6 +66,17 @@ public static class JsonRpcResponseWriter
     {
         if (!response.TryGetStreamableResult(out IStreamableResult? streamable))
         {
+            if (TryGetMaterializedLogs(response, out ArrayPoolList<FilterLog>? logs) &&
+                writer.CanGetUnflushedBytes && writer is not RewindableStreamPipeWriter &&
+                ReferenceEquals(options, EthereumJsonSerializer.JsonOptions) && options.ReferenceHandler is null)
+            {
+                JsonTypeInfo<JsonRpcSuccessResponse>? typeInfo = _materializedLogsTypeInfo.GetValue(options,
+                    static options => new(options)).TypeInfo;
+                if (typeInfo is not null)
+                {
+                    return WriteMaterializedLogsAsync(writer, response, logs, typeInfo, cancellationToken);
+                }
+            }
             Write(writer, response, options);
             return ValueTask.CompletedTask;
         }
@@ -70,6 +89,73 @@ public static class JsonRpcResponseWriter
         return cancellationToken.IsCancellationRequested
             ? CancelledAsync(cancellationToken)
             : WriteStreamableAsync(writer, response, streamable, isBatch, cancellationToken);
+    }
+
+    private static bool TryGetMaterializedLogs(JsonRpcResponse response, [NotNullWhen(true)] out ArrayPoolList<FilterLog>? logs)
+    {
+        logs = response switch
+        {
+            ResultWrapper<IEnumerable<FilterLog>> typed when response.GetType() == typeof(ResultWrapper<IEnumerable<FilterLog>>) &&
+                typed.Result.ResultType == ResultType.Success => typed.Data as ArrayPoolList<FilterLog>,
+            JsonRpcSuccessResponse success when response.GetType() == typeof(JsonRpcSuccessResponse) => success.Result as ArrayPoolList<FilterLog>,
+            _ => null
+        };
+        return logs is { Count: >= MaterializedLogsStreamingThreshold };
+    }
+
+    private static async ValueTask WriteMaterializedLogsAsync(
+        PipeWriter writer,
+        JsonRpcResponse response,
+        ArrayPoolList<FilterLog> logs,
+        JsonTypeInfo<JsonRpcSuccessResponse> typeInfo,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        JsonRpcSuccessResponse envelope = new() { Result = logs, Id = response.Id };
+        await JsonSerializer.SerializeAsync(new SerializationPipeWriter(writer), envelope, typeInfo, cancellationToken);
+    }
+
+    private sealed class MaterializedLogsMetadata
+    {
+        public JsonTypeInfo<JsonRpcSuccessResponse>? TypeInfo { get; }
+
+        public MaterializedLogsMetadata(JsonSerializerOptions options)
+        {
+            foreach (JsonConverter converter in options.Converters)
+            {
+                if (converter.CanConvert(typeof(object))) return;
+            }
+            if (!options.TryGetTypeInfo(typeof(ArrayPoolList<FilterLog>), out JsonTypeInfo? listTypeInfo) ||
+                listTypeInfo.Kind != JsonTypeInfoKind.Enumerable) return;
+            JsonTypeInfo<JsonRpcSuccessResponse> typeInfo = (JsonTypeInfo<JsonRpcSuccessResponse>)
+                ((IJsonTypeInfoResolver)JsonRpcResponseJsonContext.Default).GetTypeInfo(typeof(JsonRpcSuccessResponse), options)!;
+            if (typeInfo.Kind == JsonTypeInfoKind.Object) TypeInfo = typeInfo;
+        }
+    }
+
+    private sealed class SerializationPipeWriter(PipeWriter inner) : PipeWriter
+    {
+        public override bool CanGetUnflushedBytes => inner.CanGetUnflushedBytes;
+        public override long UnflushedBytes => inner.UnflushedBytes;
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+        public override void Advance(int bytes) => inner.Advance(bytes);
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+        public override void Complete(Exception? exception = null) => inner.Complete(exception);
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            ValueTask<FlushResult> flush = inner.FlushAsync(cancellationToken);
+            return flush.IsCompletedSuccessfully
+                ? new(Validate(flush.Result))
+                : ValidateAsync(flush);
+        }
+
+        private static async ValueTask<FlushResult> ValidateAsync(ValueTask<FlushResult> flush) => Validate(await flush);
+
+        private static FlushResult Validate(FlushResult result) => result.IsCompleted && !result.IsCanceled
+            ? throw new IOException("The transport stopped reading the JSON-RPC response.")
+            : result;
     }
 
     /// <summary>Completes as cancelled with the <see cref="OperationCanceledException"/> itself, as an async method does.</summary>
