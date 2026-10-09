@@ -897,6 +897,24 @@ public class GCKeeperTests
         Assert.That(queued, Has.Count.EqualTo(2), "the region's 50 MB left");
     }
 
+    // Only a payload that would start a region of its own decides, so the gauges show the decision that took effect.
+    [Test]
+    public void Payload_joining_a_region_leaves_the_guard_gauges()
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        runtime.AllocatedBytes = 950 * Mb;
+        using IDisposable first = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        AssertGuardGauges(threshold: 100 * Mb, left: 50 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 0, "the first payload enters with 50 MB left");
+
+        runtime.AllocatedBytes += 10 * Mb;
+        using IDisposable second = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(1), "the second payload joins the first one's region");
+        AssertGuardGauges(threshold: 100 * Mb, left: 50 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 0, "a payload joining a region decides nothing");
+    }
+
     [Test]
     public void Collections_during_processing_are_counted_without_own_entries([Values] NoGcRegionMode mode)
     {

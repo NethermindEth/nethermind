@@ -113,25 +113,20 @@ public class GCKeeper : IDisposable
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
-        if (!eligible) return StartPayloadRegion(eligible, enter: false, out _);
+        if (!eligible) return StartPayloadRegion(eligible, NoGcRegionMode.Never, allocated: 0, out _);
 
         // Sampled before the entry is queued, so a collection the entry has to wait for counts as one in processing.
         ProcessingSample start = SampleProcessing();
         NoGcRegionMode mode = _gcStrategy.NoGCRegionMode;
         bool guard = mode == NoGcRegionMode.Guard;
-        bool enter = mode switch
-        {
-            NoGcRegionMode.Never => false,
-            NoGcRegionMode.Guard => !BudgetCoversBlock(start.Allocated),
-            _ => true,
-        };
-        IDisposable lease = StartPayloadRegion(eligible, enter, out bool skipped);
+        IDisposable lease = StartPayloadRegion(eligible, mode, start.Allocated, out bool skipped);
         return new ProcessingWindow(this, lease, start, guard, skippedByGuard: skipped && guard);
     }
 
-    /// <param name="enter"><c>false</c> to run the payload without a region of its own.</param>
-    /// <param name="skipped">Whether the payload runs without any region because <paramref name="enter"/> was <c>false</c>.</param>
-    private IDisposable StartPayloadRegion(bool eligible, bool enter, out bool skipped)
+    /// <param name="mode">Whether the payload enters a region of its own when no other payload holds one.</param>
+    /// <param name="allocated">Allocated bytes where the payload's window starts, for the guard.</param>
+    /// <param name="skipped">Whether the payload runs without any region because <paramref name="mode"/> kept it out.</param>
+    private IDisposable StartPayloadRegion(bool eligible, NoGcRegionMode mode, long allocated, out bool skipped)
     {
         skipped = false;
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
@@ -153,6 +148,14 @@ public class GCKeeper : IDisposable
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
                 return region;
             }
+            // Decided only by a payload that would start a region of its own, so the guard's gauges show decisions
+            // that took effect. The trackers' locks are taken under _lock here and never the other way round.
+            bool enter = mode switch
+            {
+                NoGcRegionMode.Never => false,
+                NoGcRegionMode.Guard => !BudgetCoversBlock(allocated),
+                _ => true,
+            };
             if (!enter)
             {
                 skipped = true;
