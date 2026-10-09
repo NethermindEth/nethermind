@@ -282,7 +282,7 @@ public class WebSocketExtensionsTests
             (int)1.MB);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await webSocketsClient.ReceiveLoopAsync(cts.Token));
         await webSocketsClient.DidNotReceive().ProcessAsync(Arg.Any<ArraySegment<byte>>(), cts.Token);
     }
 

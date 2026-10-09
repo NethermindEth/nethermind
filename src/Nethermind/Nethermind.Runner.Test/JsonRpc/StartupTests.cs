@@ -435,9 +435,9 @@ public class StartupTests
         {
             bool committed = payloadSize > 16 * 1024 && !bufferResponse;
             if (committed && jsonFailure)
-                Assert.ThrowsAsync<JsonException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
+                await Assert.ThrowsAsync<JsonException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
             else if (committed)
-                Assert.ThrowsAsync<OperationCanceledException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
+                await Assert.ThrowsAsync<OperationCanceledException>(() => startup.ProcessJsonRpcRequestCoreAsync(context, url));
             else
                 await startup.ProcessJsonRpcRequestCoreAsync(context, url);
             string response = Encoding.UTF8.GetString(responseBody.ToArray());
@@ -507,7 +507,7 @@ public class StartupTests
         }
         else if (flush)
         {
-            Assert.ThrowsAsync<HttpRequestException>(() => host.PostAsync(request, deadline.Token));
+            await Assert.ThrowsAsync<HttpRequestException>(() => host.PostAsync(request, deadline.Token));
         }
         else
         {

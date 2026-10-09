@@ -1343,14 +1343,14 @@ public class JsonRpcProcessorTests
     /// errors, which is why the guards sit inside the decode helpers rather than around request execution.
     /// </remarks>
     [TestCaseSource(nameof(ServerSideDecodeLookalikeExceptionCases))]
-    public void Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
+    public async Task Server_side_exception_after_a_request_decodes_is_not_reported_as_a_parse_error(Func<Exception> factory, RequestTransport transport)
     {
         Exception expected = factory();
         IJsonRpcService service = CreateService(_ => throw expected);
         JsonRpcProcessor processor = CreateProcessor(service);
         byte[] request = """{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray();
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
             using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, request, transport);
         });
@@ -1485,14 +1485,14 @@ public class JsonRpcProcessorTests
     /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.
     /// </remarks>
     [Test]
-    public void Complete_body_is_reported_consumed_when_dispatch_throws()
+    public async Task Complete_body_is_reported_consumed_when_dispatch_throws()
     {
         Exception expected = new InvalidOperationException("module went away");
         IJsonRpcService service = CreateService(_ => throw expected);
         JsonRpcProcessor processor = CreateProcessor(service);
         AdvanceRecordingPipeReader reader = new("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}"""u8.ToArray());
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
             using CollectedJsonRpcResponses ignored = await ProcessAsync(processor, reader, CreateHttpContext());
         });
@@ -1525,7 +1525,7 @@ public class JsonRpcProcessorTests
         JsonRpcProcessingOptions options = new(IsMultipleDocuments(transport)
             ? JsonRpcInputMode.MultipleDocuments : JsonRpcInputMode.SingleDocument);
 
-        Exception? thrown = Assert.CatchAsync(async () =>
+        Exception? thrown = await Assert.CatchAsync(async () =>
         {
             if (transport == RequestTransport.HttpMemory)
                 await processor.ProcessAsync(body.AsMemory(), context, sink, options);
