@@ -69,10 +69,13 @@ public class LogEntryDecoderTests
         Rlp rlp = Rlp.Encode(logEntry);
         RlpReader reader = new(rlp.Bytes);
         LogEntryDecoder.DecodeStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[logEntry.Data.Length];
+        decoded.CopyDataTo(destination);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Bytes.AreEqual(logEntry.Data, decoded.Data), "data");
+            Assert.That(Bytes.AreEqual(logEntry.Data, destination), "full log data must copy unchanged");
             Assert.That(logEntry.Address == decoded.Address, "address");
         }
 
@@ -95,12 +98,24 @@ public class LogEntryDecoderTests
         RlpReader reader = new(encoded);
 
         CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[80];
+        destination.Fill(0xcc);
+        LogEntryStructRef warmup = decoded;
+        warmup.CopyDataTo(destination);
+        destination.Fill(0xcc);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        decoded.CopyDataTo(destination);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         ReadOnlySpan<byte> first = decoded.Data;
         ReadOnlySpan<byte> second = decoded.Data;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Bytes.AreEqual(data, first), "leading zeros must be restored before publishing data");
+            Assert.That(decoded.DataLength, Is.EqualTo(data.Length));
+            Assert.That(Bytes.AreEqual(data, destination[..data.Length]), "the caller's buffer must contain the complete data");
+            Assert.That(destination[data.Length..].IndexOfAnyExcept((byte)0xcc), Is.EqualTo(-1), "copying must leave excess destination bytes untouched");
+            Assert.That(allocated, Is.Zero, "copying compact data must not allocate an intermediate array");
             Assert.That(first.Overlaps(second), "repeated access must reuse the materialized data");
             Assert.That(reader.Position, Is.EqualTo(encoded.Length), "the iterator must advance past the complete entry");
             Assert.That(CompactLogEntryDecoder.DecodeTopics(new RlpReader(decoded.TopicsRlp)), Is.EqualTo(logEntry.Topics));
@@ -115,10 +130,15 @@ public class LogEntryDecoderTests
         RlpReader reader = new(encoded);
 
         CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+        Span<byte> destination = stackalloc byte[1];
+        destination[0] = 0xcc;
+        decoded.CopyDataTo(destination);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Data.Length, Is.Zero);
+            Assert.That(decoded.DataLength, Is.Zero);
+            Assert.That(destination[0], Is.EqualTo(0xcc), "empty data must not modify the destination");
             Assert.That(reader.Position, Is.EqualTo(encoded.Length));
         }
     }
@@ -141,6 +161,38 @@ public class LogEntryDecoderTests
             Assert.That(allocated, Is.Zero, "address/topic filtering must not allocate rejected data");
             Assert.That(decoded.Address == logEntry.Address, "metadata must remain available before data access");
         }
+    }
+
+    [Test]
+    public void CopyDataTo_WhenDestinationIsTooShort_DoesNotModifyDestination([Values(0, 31, 64)] int zeroPrefix)
+    {
+        byte[] data = new byte[64];
+        data.AsSpan(zeroPrefix).Fill(0x42);
+        byte[] encoded = CompactLogEntryDecoder.Instance.Encode(new LogEntry(TestItem.AddressA, data, [])).Bytes;
+        byte[] destination = new byte[data.Length - 1];
+        destination.AsSpan().Fill(0xcc);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+        {
+            RlpReader reader = new(encoded);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef decoded);
+            decoded.CopyDataTo(destination);
+        });
+        Assert.That(destination, Is.All.EqualTo((byte)0xcc), "an undersized destination must be rejected before any writes");
+    }
+
+    [Test]
+    public void CopyDataTo_WhenDestinationOverlapsSuffix_PreservesExpandedData()
+    {
+        byte[] destination = new byte[64];
+        destination.AsSpan().Fill(0x42);
+        byte[] expected = new byte[64];
+        expected.AsSpan(31).Fill(0x42);
+        LogEntryStructRef log = new(TestItem.AddressA.ToStructRef(), destination.AsSpan(0, 33), default, 31);
+
+        log.CopyDataTo(destination);
+
+        Assert.That(destination, Is.EqualTo(expected), "the suffix must be copied before clearing an overlapping prefix");
     }
 
     public enum TopicDecodePath

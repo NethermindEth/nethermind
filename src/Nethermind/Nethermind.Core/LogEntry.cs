@@ -50,14 +50,23 @@ namespace Nethermind.Core
         /// </summary>
         public ReadOnlySpan<byte> TopicsRlp { get; }
 
+        public readonly int DataLength => _dataZeroPrefix + _data.Length;
+
+        public readonly void CopyDataTo(Span<byte> destination)
+        {
+            destination = destination[..DataLength];
+            _data.CopyTo(destination[_dataZeroPrefix..]);
+            destination[.._dataZeroPrefix].Clear();
+        }
+
         public ReadOnlySpan<byte> Data
         {
             get
             {
                 if (_dataZeroPrefix != 0)
                 {
-                    byte[] data = new byte[_dataZeroPrefix + _data.Length];
-                    _data.CopyTo(data.AsSpan(_dataZeroPrefix));
+                    byte[] data = new byte[DataLength];
+                    CopyDataTo(data);
                     _data = data;
                     _dataZeroPrefix = 0;
                 }

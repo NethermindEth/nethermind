@@ -426,11 +426,11 @@ public class LogFinderTests
     }
 
     [Test]
-    public void FindLogs_WhenEncodedLogsAreFiltered_ReturnsOwnedDataAndOriginalIndexes([Values] bool compact, [Values] bool filterByTopic)
+    public void FindLogs_WhenEncodedLogsAreFiltered_ReturnsOwnedDataAndOriginalIndexes([Values] bool compact, [Values] bool filterByTopic, [Values(0, 31, 64)] int zeroPrefix)
     {
         Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
         byte[] data = new byte[64];
-        data.AsSpan(31).Fill(0x42);
+        data.AsSpan(zeroPrefix).Fill(0x42);
         LogEntry rejected = new(filterByTopic ? TestItem.AddressA : TestItem.AddressB, new byte[1024], [TestItem.KeccakB]);
         LogEntry accepted = new(TestItem.AddressA, data, [TestItem.KeccakA]);
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
