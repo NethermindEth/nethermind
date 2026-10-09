@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -368,16 +370,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled)
+        public async Task GetFeeHistory_RewardPercentilesWeighEachReceiptByItsOwnGas([Values] bool eip8116Enabled)
         {
-            Transaction[] transactions = GetTestTransactions();
-            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            BlockParameter newestBlockParameter = new(0UL);
-            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+            using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+            Block headBlock = Build.A.Block.WithParent(chain.BlockTree.Head!).WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(GetTestTransactions()).TestObject;
+            // Skip processing: the chain's processor would reject this hand-built block and drop it from the tree.
+            chain.BlockTree.SuggestBlock(headBlock, BlockTreeSuggestOptions.None);
+            chain.BlockTree.TryUpdateMainChain(headBlock.Header, true, preloadedBlocks: headBlock);
+            BlockParameter newestBlockParameter = new(headBlock.Number);
             IReceiptStorage receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [10, 20, 30, 40], eip8116Enabled);
             TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, specProvider: specProvider);
+            using FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: chain.BlockTree, receiptStorage: receiptStorage, specProvider: specProvider);
 
             using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [20, 40, 60, 80.5]);
 
@@ -470,8 +473,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 gasUsedTotal += gasUsedArray[i];
                 txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = eip8116Receipts ? gasUsedArray[i] : gasUsedTotal };
             }
-            receiptStorage.Get(block).Returns(txReceiptsArray);
-            receiptStorage.Get(block, false).Returns(txReceiptsArray);
+            // Match by hash: a block read back from a real block tree is a different instance.
+            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash)).Returns(txReceiptsArray);
+            receiptStorage.Get(Arg.Is<Block>(b => b.Hash == block.Hash), false).Returns(txReceiptsArray);
             return receiptStorage;
         }
 

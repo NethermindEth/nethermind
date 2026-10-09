@@ -613,7 +613,7 @@ public class OptimismEthRpcModuleTest
         TxReceipt regularReceipt = new() { Sender = TestItem.AddressA, TxType = regularTx.Type, TxHash = regularTx.Hash!, BlockHash = block.Hash, BlockNumber = 1, Index = 1, Logs = logs };
         IReleaseSpec spec = eip8116Enabled ? new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = true } : Bogota.Instance;
 
-        TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, depositReceipt, regularReceipt), new TestSpecProvider(spec));
+        using TestRpcBlockchain rpcBlockchain = await BuildOptimismRpc(MockBlockFinder(block), MockReceiptFinder(block, depositReceipt, regularReceipt), new TestSpecProvider(spec));
 
         JToken result = JToken.Parse(await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number)))["result"]!;
         string[] secondReceiptLogIndexes = eip8116Enabled ? ["0x0", "0x1"] : ["0x2", "0x3"];
