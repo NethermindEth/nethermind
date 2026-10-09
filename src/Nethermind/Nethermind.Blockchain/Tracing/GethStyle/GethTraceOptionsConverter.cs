@@ -3,38 +3,40 @@
 
 using System;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.Json.Serialization.Metadata;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions>
 {
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> WireFallbacks = [];
-
     public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        JsonSerializer.Deserialize<WireOptions>(ref reader, WireSerializerOptions(options))!;
+        JsonSerializer.Deserialize<WireOptions>(ref reader, options)!;
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
-        JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), WireSerializerOptions(options));
+        JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), options);
 
-    private static JsonSerializerOptions WireSerializerOptions(JsonSerializerOptions options) =>
-        WireFallbacks.GetValue(options, static original => new(original)
-        {
-            TypeInfoResolver = new DefaultJsonTypeInfoResolver()
-        });
-
-    private sealed record WireOptions : GethTraceOptions
+    internal sealed record WireOptions : GethTraceOptions
     {
         public WireOptions() { }
         public WireOptions(GethTraceOptions options) : base(options) { }
 
+        [JsonConverter(typeof(RawDurationConverter))]
         public new string? Timeout
         {
             get => TimeoutText ?? (base.Timeout is { } duration ? duration.Ticks.ToString(CultureInfo.InvariantCulture) + "00ns" : null);
             init => TimeoutText = value;
         }
+    }
+
+    internal sealed class RawDurationConverter : JsonConverter<string?>
+    {
+        public override bool HandleNull => true;
+
+        public override string? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            CustomTimeDurationConverter.ReadRawString(ref reader);
+
+        public override void Write(Utf8JsonWriter writer, string? value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value);
     }
 }

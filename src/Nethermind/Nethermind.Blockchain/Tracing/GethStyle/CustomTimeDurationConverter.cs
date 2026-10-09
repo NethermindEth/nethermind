@@ -5,10 +5,13 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
+
+internal sealed class TraceDurationFormatException(string message) : FormatException(message);
 
 /// <summary>
 /// Deserializes a JSON string as a <see cref="TimeSpan"/> using Go's time.ParseDuration format
@@ -39,7 +42,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     // Largest possible Format output is "-256204778h59m59.999999999s" = 27 chars.
     private const int FormatBufferSize = 32;
 
-    private const int MaxInputChars = 64;
+    private const int MaxInputBytes = 64;
 
     private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
     private static readonly SearchValues<char> UnitTerminators = SearchValues.Create(".0123456789");
@@ -58,15 +61,28 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         if (reader.TokenType == JsonTokenType.Null) return null;
         if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
 
-        long byteLen = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (byteLen > MaxInputChars) throw new JsonException($"Duration string exceeds {MaxInputChars} characters.");
-
+        ValidateLength(ref reader);
         return ReadFromStackBuffer(ref reader);
+    }
+
+    internal static string? ReadRawString(ref Utf8JsonReader reader)
+    {
+        if (reader.TokenType == JsonTokenType.Null) return null;
+        if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected string duration or null.");
+
+        ValidateLength(ref reader);
+        return reader.GetString();
+    }
+
+    private static void ValidateLength(ref Utf8JsonReader reader)
+    {
+        long byteLen = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
+        if (byteLen > MaxInputBytes) throw new JsonException($"Duration string exceeds {MaxInputBytes} characters.");
     }
 
     private static TimeSpan ReadFromStackBuffer(ref Utf8JsonReader reader)
     {
-        Span<char> stackBuf = stackalloc char[MaxInputChars];
+        Span<char> stackBuf = stackalloc char[MaxInputBytes];
         return ParseOrThrow(stackBuf[..reader.CopyString(stackBuf)]);
     }
 
@@ -76,18 +92,24 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         {
             return Parse(value);
         }
-        catch (FormatException exception)
+        catch (TraceDurationFormatException exception)
         {
             throw new JsonException(exception.Message, exception);
         }
     }
 
-    internal static TimeSpan Parse(string value) => Parse(value.AsSpan());
+    internal static TimeSpan Parse(string value)
+    {
+        if (Encoding.UTF8.GetByteCount(value) > MaxInputBytes)
+            throw new TraceDurationFormatException($"Duration string exceeds {MaxInputBytes} characters.");
+
+        return Parse(value.AsSpan());
+    }
 
     private static TimeSpan Parse(ReadOnlySpan<char> value)
     {
         if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return result;
-        throw new FormatException($"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
+        throw new TraceDurationFormatException($"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').");
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)

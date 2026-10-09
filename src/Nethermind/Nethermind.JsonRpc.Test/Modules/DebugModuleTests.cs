@@ -82,6 +82,24 @@ public class DebugModuleTests
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
     [Test]
+    public void DebugTraceBlockByNumber_DoesNotMapHostFormatFailureToInvalidInput()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        FormatException failure = new("host state format failure");
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(_ => throw failure);
+
+        FormatException actual = Assert.Throws<FormatException>(() => CreateModule().debug_traceBlockByNumber(
+            new BlockParameter(1UL), new GethTraceOptions { Tracer = "noopTracer" }))!;
+
+        Assert.That(actual, Is.SameAs(failure));
+    }
+
+    [Test]
     public async Task DebugGetFromDb_WhenValueExists_ReturnsValue()
     {
         byte[] key = [1, 2, 3];

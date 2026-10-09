@@ -98,6 +98,18 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("valid")]
+    [TestCase("malformed")]
+    public async Task Debug_traceBlockByNumber_rejects_oversized_timeout_tokens_before_lookup(string kind)
+    {
+        using Context context = await Context.Create();
+        string timeout = kind == "valid" ? string.Concat(Enumerable.Repeat("1s", 33)) : new string('x', 65);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number + 1, new { tracer = NativeNoopTracer.NoopTracer, timeout });
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
     [TestCase("native", false)]
     [TestCase("opcode", false)]
     [TestCase("opcode", true)]
