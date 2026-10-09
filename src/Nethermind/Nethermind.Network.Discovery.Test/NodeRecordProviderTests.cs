@@ -456,7 +456,7 @@ public class NodeRecordProviderTests
         }
 
         firstResolution.SetException(new InvalidOperationException("Transient resolution failure."));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await firstCall);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await firstCall);
 
         NodeRecord record = await provider.GetCurrentAsync();
 
