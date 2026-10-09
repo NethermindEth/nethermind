@@ -17,7 +17,7 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>One immutable-at-seal diff layer of flat values and canonical node groups.</summary>
 /// <remarks>
-/// Node-group replacements require a single writer, and reads concurrent with them are unsupported.
+/// Node-group replacements require a single writer per partition, and reads concurrent with them are unsupported.
 /// Sealed content supports concurrent readers while its snapshot is leased. Reset requires exclusive ownership.
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable

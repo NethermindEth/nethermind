@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -18,6 +19,7 @@ public static class SlotRun
     /// <summary>The slots one run key spans.</summary>
     public const int Width = 16;
     private const byte IndexMask = Width - 1;
+    private const int IndexBits = 4;
 
     /// <summary>The shared all-zero run; never pooled.</summary>
     public static PackedSlotRun Empty { get; } = new EmptySlotRun();
@@ -59,6 +61,13 @@ public static class SlotRun
 
     /// <summary>The slot's position within its run: the low four bits of the storage key.</summary>
     public static int IndexOf<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => slotKey.Bytes[^1] & IndexMask;
+
+    /// <summary>The position of storage slot <paramref name="slot"/> within its run: its low four bits.</summary>
+    /// <remarks>A slot's storage key ends with the slot's low byte, offset by a multiple of <see cref="Width"/> for a header slot, so this is <see cref="IndexOf{TKey}"/> of that key.</remarks>
+    internal static int IndexOf(in UInt256 slot) => (int)(slot.u0 & IndexMask);
+
+    /// <summary>Whether storage slots <paramref name="slot"/> and <paramref name="other"/> of one address share a run.</summary>
+    internal static bool InSameRun(in UInt256 slot, in UInt256 other) => slot >> IndexBits == other >> IndexBits;
 
     /// <summary>Picks <paramref name="header"/> for header-slot runs, keyed by <see cref="PbtPath"/>, and <paramref name="storage"/> for storage-zone runs, keyed by <see cref="PbtStoragePath"/>.</summary>
     internal static T ByZone<TKey, T>(object header, object storage) where TKey : struct, IPbtKey<TKey> where T : class =>
@@ -105,6 +114,22 @@ public abstract class PackedSlotRun(int capacity) : IResettable
         valuesByIndex[index] = value;
         int bit = 1 << index;
         return SlotRun.Create((ushort)(EvmWordSlot.IsZero(value) ? _mask & ~bit : _mask | bit), valuesByIndex);
+    }
+
+    /// <summary>A new run with <paramref name="writes"/>, all into slots of this run, applied in order (zero clears a slot); this run is untouched.</summary>
+    internal PackedSlotRun With(ReadOnlySpan<SlotWrite> writes)
+    {
+        Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
+        Expand(valuesByIndex);
+        int mask = _mask;
+        foreach (SlotWrite write in writes)
+        {
+            int index = SlotRun.IndexOf(write.Slot);
+            valuesByIndex[index] = write.Value;
+            int bit = 1 << index;
+            mask = EvmWordSlot.IsZero(write.Value) ? mask & ~bit : mask | bit;
+        }
+        return SlotRun.Create((ushort)mask, valuesByIndex);
     }
 
     /// <summary>A new run holding the same slots.</summary>
@@ -179,3 +204,6 @@ internal sealed class SlotRun16() : PackedSlotRun(16)
 {
     internal override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
 }
+
+/// <summary>A write of <paramref name="Value"/> into storage slot <paramref name="Slot"/>; a zero value clears the slot.</summary>
+internal readonly record struct SlotWrite(UInt256 Slot, EvmWord Value);

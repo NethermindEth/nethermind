@@ -81,7 +81,8 @@ public sealed class PbtSnapshotBundle(
         PbtPartitionBatches changes = new();
         try
         {
-            changes.Account = _accountBatch.Build();
+            // The fold appends the code zone to the account zone's operations.
+            changes.Account = _accountBatch.Build(_codeBatch.Count);
             changes.Code = _codeBatch.Build();
             changes.Storage = _storageBatch.Build();
             return changes;
@@ -223,33 +224,43 @@ public sealed class PbtSnapshotBundle(
         if (account is { IsDelegation: false } stem && deployedCode is not null) WriteCodeChunkLeaves(stem.CodeLeaf, deployedCode);
     }
 
-    /// <summary>Sets a storage slot, reusing a precomputed <see cref="PbtStateKey.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
-    public void SetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot, in EvmWord value)
+    /// <summary>Sets storage slots of one address, reusing a precomputed <see cref="PbtStateKey.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
+    /// <remarks>
+    /// Writes are applied in order, so a later write of a slot wins. Adjacent writes into one slot run rewrite that
+    /// run once, so writes sorted by slot rewrite each run they touch once.
+    /// </remarks>
+    internal void SetSlots(Address address, in ValueHash256 addressHash, ReadOnlySpan<SlotWrite> writes)
     {
-        ValueHash256? leaf = EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
-        if (PbtStateKey.IsHeaderSlot(slot))
+        for (int start = 0, end; start < writes.Length; start = end)
         {
-            PbtPath key = PbtStateKey.HeaderStorage(addressHash, slot);
-            SetPbtLeaf(key, leaf);
-            SetRunSlot(key, addressHash, value);
-        }
-        else
-        {
-            PbtStoragePath key = PbtStateKey.Storage(address, addressHash, slot);
-            SetPbtLeaf(key, leaf);
-            SetRunSlot(key, addressHash, value);
+            for (end = start + 1; end < writes.Length && SlotRun.InSameRun(writes[start].Slot, writes[end].Slot); end++) { }
+            ReadOnlySpan<SlotWrite> runWrites = writes[start..end];
+            if (PbtStateKey.IsHeaderSlot(runWrites[0].Slot))
+            {
+                PbtPath key = default;
+                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = PbtStateKey.HeaderStorage(addressHash, write.Slot), SlotLeaf(write.Value));
+                SetRunSlots(key, addressHash, runWrites);
+            }
+            else
+            {
+                PbtStoragePath key = default;
+                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = PbtStateKey.Storage(address, addressHash, write.Slot), SlotLeaf(write.Value));
+                SetRunSlots(key, addressHash, runWrites);
+            }
         }
     }
 
-    private void SetRunSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash, in EvmWord value) where TKey : struct, IPbtKey<TKey>
+    private static ValueHash256? SlotLeaf(in EvmWord value) => EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
+
+    /// <summary>Applies <paramref name="runWrites"/>, all into the run of <paramref name="slotKey"/>, with one rewrite of that run.</summary>
+    private void SetRunSlots<TKey>(in TKey slotKey, in ValueHash256 addressHash, ReadOnlySpan<SlotWrite> runWrites) where TKey : struct, IPbtKey<TKey>
     {
         HashedKey<TKey> runKey = SlotRun.RunKey(slotKey);
-        int index = SlotRun.IndexOf(slotKey);
         PbtSnapshotContent writeBuffer = WriteBuffer;
         while (true)
         {
             PackedSlotRun current = BufferRun(writeBuffer, runKey, addressHash);
-            PackedSlotRun next = current.With(index, value);
+            PackedSlotRun next = current.With(runWrites);
             if (writeBuffer.TryReplaceRun(runKey, next, current))
             {
                 _replacedRuns.Enqueue(current);

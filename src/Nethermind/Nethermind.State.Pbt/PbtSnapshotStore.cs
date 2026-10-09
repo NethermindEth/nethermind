@@ -7,6 +7,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -21,6 +22,7 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
 {
     private static readonly PbtNodeGroupReadLabel[] _foundLabels = ReadLabels("found");
     private static readonly PbtNodeGroupReadLabel[] _nullLabels = ReadLabels("null");
+    private static readonly PbtColumns[] _partitionColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
@@ -52,12 +54,19 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
     public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
 
     /// <summary>Applies the groups every disposed concurrent writer handed over; must run on the owner thread after the workers finished.</summary>
+    /// <remarks>The write buffer keeps each partition's groups in a table of its own, so the partitions are applied concurrently.</remarks>
     public void Dispose()
     {
         try
         {
-            foreach (ArrayPoolList<BufferedNodeGroup> buffer in _handedOff)
-                foreach (BufferedNodeGroup group in buffer) bundle.SetNodeGroup(group.Path, group.Hash, group.Payload);
+            ParallelUnbalancedWork.For(0, _partitionColumns.Length, (handedOff: _handedOff, bundle, columns: _partitionColumns), static (index, state) =>
+            {
+                PbtColumns column = state.columns[index];
+                foreach (ArrayPoolList<BufferedNodeGroup> buffer in state.handedOff)
+                    foreach (BufferedNodeGroup group in buffer)
+                        if (PbtRocksDbPersistence.PartitionColumn(group.Path) == column) state.bundle.SetNodeGroup(group.Path, group.Hash, group.Payload);
+                return state;
+            });
         }
         finally
         {

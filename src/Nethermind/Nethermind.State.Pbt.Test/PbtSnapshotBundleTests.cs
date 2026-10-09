@@ -968,6 +968,29 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    public void Slot_writes_applied_together_keep_the_last_write_of_each_slot([Values] bool interleaveRuns)
+    {
+        // Slots 3, 5 and 6 share a header run and 64 and 70 a storage run; 3 is written twice and 70 is set, then cleared.
+        (uint Slot, uint Value)[] writes = interleaveRuns
+            ? [(3, 1), (64, 5), (5, 2), (70, 6), (3, 3), (1000, 7), (6, 4), (70, 0)]
+            : [(3, 1), (3, 3), (5, 2), (6, 4), (64, 5), (70, 6), (70, 0), (1000, 7)];
+        (uint Slot, uint Value)[] expected = [(3, 3), (5, 2), (6, 4), (64, 5), (70, 0), (1000, 7)];
+        using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
+        SlotWrite[] slotWrites = Array.ConvertAll(writes, write => new SlotWrite(write.Slot, ((UInt256)write.Value).ToBigEndianWord()));
+        bundle.SetSlots(TestItem.AddressA, PbtStateKey.AddressKeyHash(TestItem.AddressA), slotWrites);
+
+        Dictionary<string, byte[]> model = [];
+        foreach ((uint slot, uint value) in expected)
+            if (value != 0) PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, value);
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((uint slot, uint value) in expected)
+                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(((UInt256)value).ToBigEndianWord()), $"slot {slot}");
+            Assert.That(bundle.Fold(default), Is.EqualTo(PbtReferenceModel.Root(model)));
+        }
+    }
+
+    [Test]
     public void Shared_code_is_reapplied_for_each_holder_across_folds([Values] bool reverseOrder, [Values(1, 129, 258)] int chunkCount)
     {
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));

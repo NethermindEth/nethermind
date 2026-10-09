@@ -85,7 +85,11 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
     /// <summary>Builds an independent, single-use batch without clearing pending mutations.</summary>
     /// <remarks>Writers must be joined before building. Dispose the batch if it is not consumed by the updater.
     /// Reset only after a successful fold to retain mutations for retry.</remarks>
-    public PbtWriteBatch<TKey> Build()
+    public PbtWriteBatch<TKey> Build() => Build(0);
+
+    /// <inheritdoc cref="Build()"/>
+    /// <param name="reservedCapacity">The operations the batch's list leaves room for past its own, such as those of a zone appended to it.</param>
+    internal PbtWriteBatch<TKey> Build(int reservedCapacity)
     {
         ArrayPoolList<int> table = new(ShardCount + 1, ShardCount + 1);
         ArrayPoolList<PbtWriteOperation<TKey>>? operations = null;
@@ -101,7 +105,7 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
                 count += entries.Count;
             }
 
-            operations = new(count, count);
+            operations = new(count + reservedCapacity, count);
             int offset = 0;
             for (int shardIndex = 0; shardIndex < ShardCount; shardIndex++)
             {

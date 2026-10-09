@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Test;
 internal static class PbtSnapshotBundleTestExtensions
 {
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in EvmWord value) =>
-        bundle.SetSlot(address, PbtStateKey.AddressKeyHash(address), slot, in value);
+        bundle.SetSlots(address, PbtStateKey.AddressKeyHash(address), [new SlotWrite(slot, value)]);
 
     public static PbtSnapshot CollectSnapshot(this PbtSnapshotBundle bundle, in StateId from, in StateId to, in ValueHash256 treeRoot)
     {

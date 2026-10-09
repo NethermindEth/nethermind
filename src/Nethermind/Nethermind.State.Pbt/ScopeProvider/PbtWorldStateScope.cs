@@ -7,6 +7,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -31,6 +32,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
+    private readonly Lock _hintBalLock = new();
+    private Task? _hintBalTask;
+    private CancellationTokenSource? _hintBalCancellation;
 
     private StateId _currentStateId;
     private Hash256 _rootHash;
@@ -89,9 +93,73 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void HintGet(Address address, Account? account) => Bundle.HintAccount(address, account);
 
-    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
+    /// <summary>Starts buffering the accounts and slot runs <paramref name="bal"/> writes, so <see cref="ApplyBal"/> finds them in the write buffer.</summary>
+    /// <remarks>
+    /// The buffered values are the ones visible when read, and a buffered value never replaces a write, so the prefetch
+    /// may run alongside writes. Clearing storage could still race the prefetch of a run of the cleared account, so
+    /// clearing, like committing and disposing, stops the prefetch first.
+    /// </remarks>
+    public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    {
+        StopHintBal();
+        if (bal.AccountChanges.Count == 0) return Task.CompletedTask;
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
+        lock (_hintBalLock)
+        {
+            CancellationTokenSource cancellation = new();
+            _hintBalCancellation = cancellation;
+            return _hintBalTask = Task.Run(() => PrefetchBal(bal, cancellation.Token), cancellation.Token);
+        }
+    }
+
+    private void PrefetchBal(ReadOnlyBlockAccessList bal, CancellationToken cancellation) =>
+        ParallelUnbalancedWork.For(0, bal.AccountChanges.Count, (scope: this, bal, cancellation), static (index, state) =>
+        {
+            ReadOnlyAccountChanges accountChanges = state.bal.AccountChanges.AsSpan()[index];
+            if (!accountChanges.HasStateChanges || state.cancellation.IsCancellationRequested) return state;
+
+            PbtSnapshotBundle bundle = state.scope.Bundle;
+            Address address = accountChanges.Address;
+            // ApplyBal writes no slot of a missing account that the block leaves missing.
+            bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
+            if (bundle.GetAndPromoteAccount(address) is null && !changesAccount) return state;
+
+            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+            UInt256? bufferedSlot = null;
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (slotChanges.Changes.Length == 0 || state.cancellation.IsCancellationRequested) continue;
+                // The slots are sorted, so the slots of one run are adjacent and the run is buffered once.
+                if (bufferedSlot is { } previous && SlotRun.InSameRun(previous, slotChanges.Key)) continue;
+                bundle.GetSlot(address, addressHash, slotChanges.Key);
+                bufferedSlot = slotChanges.Key;
+            }
+            return state;
+        });
+
+    /// <summary>Cancels the running <see cref="HintBal"/> prefetch and waits for it to finish.</summary>
+    private void StopHintBal()
+    {
+        if (Volatile.Read(ref _hintBalTask) is null) return;
+        lock (_hintBalLock)
+        {
+            _hintBalCancellation?.Cancel();
+            try
+            {
+                _hintBalTask?.GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("PBT HintBal prefetch faulted", ex);
+            }
+            _hintBalCancellation?.Dispose();
+            _hintBalCancellation = null;
+            Volatile.Write(ref _hintBalTask, null);
+        }
+    }
+
+    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.ApplyConcurrently(this, bal);
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
@@ -139,6 +207,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         long commitStart = Stopwatch.GetTimestamp();
         try
         {
+            StopHintBal();
             UpdateRootHash();
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
@@ -172,6 +241,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (_logger.IsDebug) LogLifecycle("close begin");
         try
         {
+            StopHintBal();
             Bundle.Dispose();
         }
         finally
@@ -187,33 +257,49 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Set(Address key, Account? account)
         {
+            // Removing an account clears its storage.
+            if (account is null) scope.StopHintBal();
             scope.Bundle.SetAccount(key, account);
             scope._rootDirty = true;
         }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-            new StorageWriteBatch(scope, key);
+            new StorageWriteBatch(scope, key, estimatedEntries);
 
         public void Dispose() => Metrics.PbtWriteBatchTime.Observe(Stopwatch.GetTimestamp() - _start);
     }
 
-    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+    private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address, int estimatedEntries) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // One batch serves one contract on one thread, so the address hash is derived once for the whole run of slots.
         private readonly ValueHash256 _addressHash = PbtStateKey.AddressKeyHash(address);
+        // Applied together, so each slot run the writes touch is rewritten once for all of its adjacent writes.
+        private readonly ArrayPoolList<SlotWrite> _writes = new(estimatedEntries);
 
         public void Set(in UInt256 index, in UInt256 value)
         {
-            scope.Bundle.SetSlot(address, _addressHash, index, value.ToBigEndianWord());
+            _writes.Add(new SlotWrite(index, value.ToBigEndianWord()));
             scope._rootDirty = true;
         }
 
         public void Clear()
         {
+            ApplyWrites();
+            scope.StopHintBal();
             scope.Bundle.SelfDestruct(_addressHash);
             scope._rootDirty = true;
         }
 
-        public void Dispose() { }
+        public void Dispose()
+        {
+            ApplyWrites();
+            _writes.Dispose();
+        }
+
+        private void ApplyWrites()
+        {
+            scope.Bundle.SetSlots(address, _addressHash, _writes.AsSpan());
+            _writes.Clear();
+        }
     }
 }

@@ -27,7 +27,8 @@ public class MigrationBalStateChangesTests
     [Test]
     public async Task Final_deltas_match_independent_geth_roots(
         [Values("a1", "a2", "a3", "a4", "a5", "b2", "b3", "b4", "b5", "b6")] string name,
-        [Values] bool binary)
+        [Values] bool binary,
+        [Values] bool hint)
     {
         using JsonDocument blocks = JsonDocument.Parse(File.ReadAllText(Path.Combine(Eip8347FixtureState.Directory, "blocks.json")));
         JsonElement block = FindBlock(blocks, "name", name);
@@ -49,7 +50,9 @@ public class MigrationBalStateChangesTests
         using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject))
         {
             worldState.Commit(Amsterdam.Instance);
-            worldState.ApplyBal(Decode(block.GetProperty("balRlp").GetString()!));
+            ReadOnlyBlockAccessList bal = Decode(block.GetProperty("balRlp").GetString()!);
+            if (hint) await worldState.HintBal(bal);
+            worldState.ApplyBal(bal);
             worldState.RecalculateStateRoot();
             Dictionary<Address, GethGenesisAllocJson> allocations = Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name);
             using (Assert.EnterMultipleScope())
@@ -61,7 +64,7 @@ public class MigrationBalStateChangesTests
     }
 
     [Test]
-    public async Task Applies_only_final_values_and_deletes_empty_final_accounts([Values] bool binary)
+    public async Task Applies_only_final_values_and_deletes_empty_final_accounts([Values] bool binary, [Values] bool hint)
     {
         await using IContainer container = CreateContainer(binary);
         await using ILifetimeScope environment = CreateEnvironment(container);
@@ -95,6 +98,7 @@ public class MigrationBalStateChangesTests
         using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject))
         {
             worldState.Commit(Amsterdam.Instance);
+            if (hint) await worldState.HintBal(bal);
             worldState.ApplyBal(bal);
             using (Assert.EnterMultipleScope())
             {
