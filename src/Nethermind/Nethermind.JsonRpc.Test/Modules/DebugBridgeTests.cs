@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Evm.State;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Init;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -47,6 +48,60 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugBridgeTests
 {
+    public enum RawTransactionLookup { Present, ReceiptsRemoved, Unindexed, Mismatched }
+
+    [Test]
+    public async Task GetTransactionFromHash_WithStoredLocator_DoesNotReadReceiptBodies(
+        [Values] RawTransactionLookup lookup,
+        [Values(0, 1, 2)] int position,
+        [Values] bool compactIndex,
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
+    {
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(Arg.Any<Block>()).Returns(_ => throw new InvalidOperationException("Receipt bodies must not be read"));
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ReceiptConfig { TxLookupLimit = 0, CompactTxIndex = compactIndex, DeferredPersistence = false }))
+            .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, receiptFinder)
+            .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>())
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMainChain(tree, genesis);
+        Transaction[] transactions = new Transaction[3];
+        TxReceipt[] receipts = new TxReceipt[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithType(type).WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            receipts[i] = Build.A.Receipt.WithTransactionHash(transactions[i].Hash).WithIndex(i).WithLogs().TestObject;
+        }
+        Block block = Build.A.Block.WithParent(genesis).WithTransactions(transactions).TestObject;
+        AddToMainChain(tree, block);
+        IReceiptStorage storage = container.Resolve<IReceiptStorage>();
+        storage.Insert(block, receipts);
+        Hash256 hash = transactions[position].Hash!;
+        Assert.That(storage.FindBlockHash(hash), Is.EqualTo(block.Hash), "the production locator must be populated before the lookup");
+
+        if (lookup == RawTransactionLookup.ReceiptsRemoved)
+        {
+            storage.RemoveReceipts(block.Number, block.Hash!);
+            Assert.That(storage.FindBlockHash(hash), Is.EqualTo(block.Hash), "removing receipt bodies must retain the transaction locator");
+        }
+        else if (lookup == RawTransactionLookup.Unindexed)
+        {
+            hash = TestItem.KeccakA;
+        }
+        else if (lookup == RawTransactionLookup.Mismatched)
+        {
+            container.Resolve<IDbProvider>().ReceiptsDb!.GetColumnDb(ReceiptsColumns.Transactions)
+                .Set(hash.Bytes, compactIndex ? Rlp.Encode(genesis.Number).Bytes : genesis.Hash!.Bytes.ToArray());
+            Assert.That(storage.FindBlockHash(hash), Is.EqualTo(genesis.Hash), "the stale locator must point to a block without the requested transaction");
+        }
+
+        Transaction? actual = container.Resolve<IDebugBridge>().GetTransactionFromHash(hash);
+        Assert.That(actual?.Hash, Is.EqualTo(lookup is RawTransactionLookup.Present or RawTransactionLookup.ReceiptsRemoved ? hash : null));
+        receiptFinder.DidNotReceiveWithAnyArgs().Get(default(Block)!);
+    }
+
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
     public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
