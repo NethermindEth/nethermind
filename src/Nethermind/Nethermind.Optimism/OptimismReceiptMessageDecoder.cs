@@ -47,6 +47,11 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         }
         else
         {
+            if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+            {
+                ThrowUnexpectedPostStateLength(firstItem.Length);
+            }
+
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             txReceipt.GasUsedTotal = ctx.DecodeULong();
         }
@@ -71,6 +76,10 @@ public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false, bool s
         }
 
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedPostStateLength(int length)
+            => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
     }
 
     private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
