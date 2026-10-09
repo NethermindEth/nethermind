@@ -11,7 +11,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Common;
 
 /// <summary>Creates, pools and keys <see cref="PackedSlotRun"/>s.</summary>
 public static class SlotRun

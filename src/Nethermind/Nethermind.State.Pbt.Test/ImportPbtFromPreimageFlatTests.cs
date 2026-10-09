@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
@@ -60,7 +61,7 @@ public class ImportPbtFromPreimageFlatTests
                     firstHash = hash;
                 }
                 batch.SetAccount(AccountKey(i), PbtAccount.From(new Account(0, 0).WithChangedCodeHash(new Hash256(hash)), new CodeInfo(code)));
-                foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(hash, new CodeInfo(code)))
+                foreach ((PbtPath key, ValueHash256 value) in PbtStateKey.CodeLeaves(hash, new CodeInfo(code)))
                 {
                     batch.SetCodeLeaf(key, value);
                     chunks++;

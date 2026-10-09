@@ -19,6 +19,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Core;

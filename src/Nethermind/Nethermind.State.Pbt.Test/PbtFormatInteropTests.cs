@@ -12,6 +12,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;

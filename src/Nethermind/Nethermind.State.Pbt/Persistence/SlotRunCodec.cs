@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Persistence;
 

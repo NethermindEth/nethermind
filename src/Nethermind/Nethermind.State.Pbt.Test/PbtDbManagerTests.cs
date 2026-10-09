@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Modules;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;

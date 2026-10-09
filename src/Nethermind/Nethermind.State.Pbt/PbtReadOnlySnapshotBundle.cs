@@ -13,6 +13,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;

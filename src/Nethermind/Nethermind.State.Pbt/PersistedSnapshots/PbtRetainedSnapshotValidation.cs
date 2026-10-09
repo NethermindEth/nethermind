@@ -5,6 +5,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 

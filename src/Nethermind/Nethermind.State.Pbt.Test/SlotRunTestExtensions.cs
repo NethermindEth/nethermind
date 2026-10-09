@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Test;

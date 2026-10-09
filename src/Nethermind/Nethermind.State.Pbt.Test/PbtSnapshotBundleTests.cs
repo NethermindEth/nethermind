@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Monitoring.Config;
@@ -1125,7 +1126,7 @@ public class PbtSnapshotBundleTests
             [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
             [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. Delegation, .. new byte[9]]),
         };
-        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(Delegation)), Is.EquivalentTo(expected));
+        Assert.That(PbtStateKey.AccountLeaves(addressHash, account, new CodeInfo(Delegation)), Is.EquivalentTo(expected));
     }
 
     [Test]

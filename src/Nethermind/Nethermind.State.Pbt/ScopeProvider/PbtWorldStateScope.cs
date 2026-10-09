@@ -17,6 +17,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;

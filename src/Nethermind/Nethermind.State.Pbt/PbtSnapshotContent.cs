@@ -10,6 +10,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 

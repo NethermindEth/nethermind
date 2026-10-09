@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Persistence;
 

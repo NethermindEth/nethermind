@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;

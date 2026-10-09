@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 

@@ -11,6 +11,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 
@@ -338,7 +339,7 @@ public sealed class PbtSnapshotBundle(
 
     private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)
     {
-        foreach ((PbtPath key, ValueHash256 chunk) in PbtFlatState.CodeLeaves(codeHash, code)) SetPbtLeaf(key, chunk);
+        foreach ((PbtPath key, ValueHash256 chunk) in PbtStateKey.CodeLeaves(codeHash, code)) SetPbtLeaf(key, chunk);
     }
 
     /// <summary>The bytecode as a PBT layer holds it; null when no layer has it, in which case its chunk leaves are not in the tree either.</summary>

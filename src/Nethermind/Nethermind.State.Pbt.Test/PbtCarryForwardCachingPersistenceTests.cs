@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 

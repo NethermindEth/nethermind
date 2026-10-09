@@ -12,7 +12,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Steps;
 
 /// <summary>Counts persisted flat records and the shape of their stored PBT node groups.</summary>
 /// <remarks>This inventory does not verify hashes, references or reachability and performs no point reads.</remarks>

@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 
 namespace Nethermind.State.Pbt.Persistence;

@@ -270,7 +270,7 @@ internal static class PbtOfflineSource
                 code = new CodeInfo(bytes);
             }
             ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address);
-            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressKeyHash, account, code))
+            foreach ((PbtPath key, ValueHash256 value) in PbtStateKey.AccountLeaves(addressKeyHash, account, code))
                 AddLeaf((PbtVariableTreeKey)key, value);
 
             ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
