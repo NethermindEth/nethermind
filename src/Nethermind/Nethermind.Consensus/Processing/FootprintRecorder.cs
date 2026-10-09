@@ -68,6 +68,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         _effectCount = 0;
         _frameCount = 0;
         _opaque = false;
+        _probeOpaqueWhy = 0;
         Machine?.BlockContextReads = BlockContextReads.None;
         if (_accounts.Length > RetainedCapacity)
         {
@@ -115,15 +116,30 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     }
 
     /// <param name="refreshed">Whether the run refreshes an invalidated footprint.</param>
+    internal int ProbeNullReason;
+    private int _probeOpaqueWhy;
+
     public TransactionFootprint? Finish(Transaction tx, in TransactionResult result, bool refreshed = false)
     {
         _active = false;
-        if (_opaque || !result || !Outcome.HasResult) return null;
+        ProbeNullReason = 0;
+        if (_opaque)
+        {
+            ProbeNullReason = 16 | _probeOpaqueWhy;
+            return null;
+        }
 
-        // The run skipped the nonce check; only the transaction's own nonce makes it valid.
+        if (!result || !Outcome.HasResult)
+        {
+            ProbeNullReason = 32;
+            return null;
+        }
+
+        ProbeNullReason = 64;
         if (!_accountIndex.TryGetValue(tx.SenderAddress!, out int senderIndex)) return null;
         ref readonly AccountPrecondition sender = ref _accounts[senderIndex];
         if ((sender.Fields & AccountFields.Nonce) == 0 || sender.Nonce != tx.Nonce || !sender.Exists) return null;
+        ProbeNullReason = 0;
 
         // Before the accounts are copied: merging balance changes can raise an account's minimum balance.
         StateEffect[] effects = CompactEffects();
@@ -387,6 +403,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         while (i >= 0 && !SamePositions(in _frames[i].Snapshot, in snapshot)) i--;
         if (i < 0 || !IsUnambiguous(i))
         {
+            _probeOpaqueWhy |= 16384;
             _opaque = true;
             return;
         }
@@ -419,7 +436,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     public override bool TryGetAccount(Address address, out AccountStruct account)
     {
         // Exposes the storage root, which no precondition covers.
-        if (_active) _opaque = true;
+        if (_active)
+        {
+            _probeOpaqueWhy |= 8192;
+            _opaque = true;
+        }
         return base.TryGetAccount(address, out account);
     }
 
@@ -430,7 +451,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (!_active) return base.GetNonce(address);
         ref AccountPrecondition account = ref Require(address, AccountFields.Nonce);
         ulong nonce = base.GetNonce(address);
-        if (!account.Modified && account.Nonce != nonce) _opaque = true;
+        if (!account.Modified && account.Nonce != nonce) { _opaque = true; _probeOpaqueWhy |= 32768; }
         return nonce;
     }
 
@@ -440,7 +461,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         ref AccountPrecondition account = ref Require(address, AccountFields.Balance);
         account.BalanceValueReads++;
         ref readonly UInt256 balance = ref base.GetBalance(address);
-        if (!account.Modified && account.Balance != balance) _opaque = true;
+        if (!account.Modified && account.Balance != balance) { _opaque = true; _probeOpaqueWhy |= 32768; }
         return ref balance;
     }
 
@@ -449,7 +470,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (!_active) return ref base.GetCodeHash(address);
         ref AccountPrecondition account = ref Require(address, AccountFields.Code);
         ref readonly ValueHash256 codeHash = ref base.GetCodeHash(address);
-        if (!account.Modified && account.CodeHash != codeHash) _opaque = true;
+        if (!account.Modified && account.CodeHash != codeHash) { _opaque = true; _probeOpaqueWhy |= 32768; }
         return ref codeHash;
     }
 
@@ -483,7 +504,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (!_active) return base.AccountExists(address);
         ref AccountPrecondition account = ref Require(address, AccountFields.Existence);
         bool exists = base.AccountExists(address);
-        if (!account.Modified && account.Exists != exists) _opaque = true;
+        if (!account.Modified && account.Exists != exists) { _opaque = true; _probeOpaqueWhy |= 32768; }
         return exists;
     }
 
@@ -492,7 +513,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (!_active) return base.IsDeadAccount(address);
         ref AccountPrecondition account = ref Require(address, AccountFields.Liveness);
         bool isDead = base.IsDeadAccount(address);
-        if (!account.Modified && account.IsDead != isDead) _opaque = true;
+        if (!account.Modified && account.IsDead != isDead) { _opaque = true; _probeOpaqueWhy |= 32768; }
         return isDead;
     }
 
@@ -536,7 +557,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         base.GetOriginal(in storageCell, out value);
         if (!_active) return;
         ref SlotPrecondition slot = ref Slot(in storageCell, default, currentKnown: false);
-        if (slot.Value != value) _opaque = true;
+        if (slot.Value != value) { _opaque = true; _probeOpaqueWhy |= 32768; }
         slot.Read = true;
     }
 
@@ -545,7 +566,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         base.Get(in storageCell, out value);
         if (!_active) return;
         ref SlotPrecondition slot = ref Slot(in storageCell, in value, currentKnown: true);
-        if (!slot.Written && slot.Value != value) _opaque = true;
+        if (!slot.Written && slot.Value != value) { _opaque = true; _probeOpaqueWhy |= 32768; }
         slot.Read = true;
     }
 
@@ -615,7 +636,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     public override void CreateEmptyAccountIfDeleted(Address address)
     {
-        if (_active) _opaque = true;
+        if (_active) { _opaque = true; _probeOpaqueWhy |= 65536; }
         base.CreateEmptyAccountIfDeleted(address);
     }
 
@@ -690,19 +711,19 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     public override void Reset(bool resetBlockChanges = true)
     {
-        if (_active) _opaque = true;
+        if (_active) { _opaque = true; _probeOpaqueWhy |= 65536; }
         base.Reset(resetBlockChanges);
     }
 
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
-        if (_active) _opaque = true;
+        if (_active) { _opaque = true; _probeOpaqueWhy |= 65536; }
         base.Commit(releaseSpec, tracer, isGenesis, commitRoots);
     }
 
     public override bool TryApplyAccountOverlay(IStateReadOverlay overlay)
     {
-        if (_active) _opaque = true;
+        if (_active) { _opaque = true; _probeOpaqueWhy |= 65536; }
         return base.TryApplyAccountOverlay(overlay);
     }
 

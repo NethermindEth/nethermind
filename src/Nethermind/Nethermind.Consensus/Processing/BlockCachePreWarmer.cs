@@ -377,6 +377,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         Interlocked.Increment(ref _discoveryHandOffs);
+        blockState.Footprints?.ProbeMark(txIndex, 512);
         Block block = blockState.Block;
         IReleaseSpec spec = blockState.Spec;
         StrongBox<int> cells = blockState.HandOffCells;
@@ -1434,6 +1435,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
+    internal int ProbeBitsAtMain() => Volatile.Read(ref _footprints)?.ProbeBitsAt(_mainThreadTxIndex) ?? -1;
+
     public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
@@ -1796,7 +1799,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            blockState.Footprints?.ProbeMark(txIndex, 1);
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                blockState.Footprints?.ProbeMark(txIndex, 2);
+                return;
+            }
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1821,8 +1829,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             TransactionResult result;
             try
             {
-                result = (blockState.Footprints is not null || blockState.Recording is not null) && recorder is not null && BlockFootprints.IsRecordable(tx)
-                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder, tracer, cancellationToken)
+                bool probeRecords = (blockState.Footprints is not null || blockState.Recording is not null) && recorder is not null && BlockFootprints.IsRecordable(tx);
+                if (!probeRecords) blockState.Footprints?.ProbeMark(txIndex, 256);
+                result = probeRecords
+                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, recorder!, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
             }
             finally
@@ -1834,14 +1844,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
-            // Ignore, regular tx processing exceptions
+            blockState.Footprints?.ProbeMark(txIndex, 1024);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The pass ended mid-transaction; the worker disposes the scope at park without running anything else on it.
+            blockState.Footprints?.ProbeMark(txIndex, 2048);
         }
         catch (Exception ex)
         {
+            blockState.Footprints?.ProbeMark(txIndex, 1024);
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
@@ -1860,18 +1871,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        blockState.Footprints?.ProbeMark(txIndex, 4);
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            if (!result) blockState.Footprints?.ProbeMark(txIndex, 32);
             if (result && recorder.Finish(tx, in result) is { } footprint)
             {
                 if (blockState.Footprints is { } footprints) footprints.Store(txIndex, footprint);
                 else blockState.Recording!.Record(footprint, blockState.Block.Header, blockState.Spec);
             }
+            else if (result)
+            {
+                blockState.Footprints?.ProbeMark(txIndex, recorder.ProbeNullReason);
+            }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            blockState.Footprints?.ProbeMark(txIndex, 8);
             recorder.Discard();
             return TransactionResult.Ok;
         }

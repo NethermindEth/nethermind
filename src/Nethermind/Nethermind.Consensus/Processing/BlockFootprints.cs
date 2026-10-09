@@ -85,6 +85,15 @@ internal sealed class BlockFootprints(Block block)
 
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
+    internal readonly int[] ProbeBits = new int[block.Transactions.Length];
+
+    internal void ProbeMark(int index, int bit)
+    {
+        if ((uint)index < (uint)ProbeBits.Length) Interlocked.Or(ref ProbeBits[index], bit);
+    }
+
+    internal int ProbeBitsAt(int index) => (uint)index < (uint)ProbeBits.Length ? Volatile.Read(ref ProbeBits[index]) : -1;
+
     /// <remarks>
     /// Footprints are seeded while warm runs store theirs, so every store writes its footprint under the lock it indexes
     /// it under: the footprint at a position is always the one indexed for it.
@@ -108,6 +117,7 @@ internal sealed class BlockFootprints(Block block)
             // it is not stored either: the footprint at a position is always the one indexed for it.
             if (_executed[index] || (onlyIfEmpty && _footprints[index] is not null)) return false;
             Volatile.Write(ref _footprints[index], footprint);
+            ProbeMark(index, footprint.FromMempool ? 128 | 4096 : 128);
             invalidated = IndexLocked(index, footprint, seededAt);
         }
 
