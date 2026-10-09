@@ -70,10 +70,13 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.One));
-        // Running frame keeps its loaded code, but the stored code hash now matches the source.
-        AssertCodeHash(Recipient, Keccak.Compute(SourceCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.One));
+            // Running frame keeps its loaded code, but the stored code hash now matches the source.
+            AssertCodeHash(Recipient, Keccak.Compute(SourceCode));
+        }
     }
 
     private static object[] InvalidSourceCases =
@@ -91,9 +94,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), name);
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero), name);
-        AssertCodeHash(Recipient, Keccak.Compute(code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), name);
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero), name);
+            AssertCodeHash(Recipient, Keccak.Compute(code));
+        }
     }
 
     [Test]
@@ -103,8 +109,11 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     // Validity is decided by the precompile address's state, not by it being a precompile.
@@ -119,9 +128,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expected));
-        AssertCodeHash(Recipient, Keccak.Compute(expected == 1 ? precompileCode : code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expected));
+            AssertCodeHash(Recipient, Keccak.Compute(expected == 1 ? precompileCode : code));
+        }
     }
 
     [Test]
@@ -135,9 +147,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Prepare.EvmCode.Call(child, 100_000).MSTORE(0).Return(32, 0).Done);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero), "child call reverted");
-        AssertCodeHash(child, Keccak.Compute(childCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero), "child call reverted");
+            AssertCodeHash(child, Keccak.Compute(childCode));
+        }
     }
 
     [Test]
@@ -151,9 +166,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Prepare.EvmCode.DelegateCall(library, 100_000).STOP().Done);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertCodeHash(Recipient, SourceCodeHash);
-        AssertCodeHash(library, Keccak.Compute(libraryCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertCodeHash(Recipient, SourceCodeHash);
+            AssertCodeHash(library, Keccak.Compute(libraryCode));
+        }
     }
 
     [Test]
@@ -170,9 +188,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Activation, 1_000_000, code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertStorage(1, (UInt256)0x11);
-        AssertStorage(2, (UInt256)42);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertStorage(1, (UInt256)0x11);
+            AssertStorage(2, (UInt256)42);
+        }
     }
 
     [Test]
@@ -186,9 +207,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        // The static inner frame halts exceptionally, so STATICCALL reports failure.
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            // The static inner frame halts exceptionally, so STATICCALL reports failure.
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo(UInt256.Zero));
+        }
     }
 
     public enum CreationKind { Transaction, Create, Create2 }
@@ -202,10 +226,13 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         (TestAllTracerWithOutput result, Address created) = RunCreation(kind, AdoptingInitCode(0xef, 32), 0);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertCodeHash(created, SourceCodeHash);
         TestState.Get(new StorageCell(created, 0), out UInt256 observedHash);
-        Assert.That(observedHash, Is.EqualTo(new UInt256(SourceCodeHash.Bytes, true)), "EXTCODEHASH seen by the initcode");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertCodeHash(created, SourceCodeHash);
+            Assert.That(observedHash, Is.EqualTo(new UInt256(SourceCodeHash.Bytes, true)), "EXTCODEHASH seen by the initcode");
+        }
     }
 
     [Test]
@@ -216,9 +243,12 @@ public class Eip8298Tests : VirtualMachineTestsBase
         (TestAllTracerWithOutput shortReturn, Address shortCreated) = RunCreation(kind, AdoptingInitCode(0x01, 1), 0);
         (TestAllTracerWithOutput longReturn, Address longCreated) = RunCreation(kind, AdoptingInitCode(0x01, 64), 1);
 
-        AssertCodeHash(shortCreated, SourceCodeHash);
-        AssertCodeHash(longCreated, SourceCodeHash);
-        Assert.That(longReturn.GasSpent, Is.EqualTo(shortReturn.GasSpent));
+        using (Assert.EnterMultipleScope())
+        {
+            AssertCodeHash(shortCreated, SourceCodeHash);
+            AssertCodeHash(longCreated, SourceCodeHash);
+            Assert.That(longReturn.GasSpent, Is.EqualTo(shortReturn.GasSpent));
+        }
     }
 
     [Test]
@@ -233,8 +263,11 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         (TestAllTracerWithOutput result, Address created) = RunCreation(kind, initCode, 0);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
-        AssertCodeHash(created, SourceCodeHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            AssertCodeHash(created, SourceCodeHash);
+        }
     }
 
     [Test]
@@ -255,8 +288,11 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         ParityTraceAction creation = TraceCreation(kind, AdoptingInitCode(0xef, 32), 0);
 
-        Assert.That(creation.Error, Is.Null);
-        Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(creation.Error, Is.Null);
+            Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
+        }
     }
 
     [Test]
@@ -441,10 +477,13 @@ public class Eip8298Tests : VirtualMachineTestsBase
         _eip8298Enabled = false;
         (TestAllTracerWithOutput disabled, Address disabledCreated) = RunCreation(kind, initCode, 1);
 
-        Assert.That(TestState.GetCodeHash(enabledCreated), Is.EqualTo(TestState.GetCodeHash(disabledCreated)), "code hash");
-        Assert.That(enabled.StatusCode, Is.EqualTo(disabled.StatusCode), "status");
-        Assert.That(enabled.GasSpent, Is.EqualTo(disabled.GasSpent), "gas");
-        AssertCodeHash(enabledCreated, returnKind == ReturnKind.ValidCode ? SourceCodeHash : Keccak.OfAnEmptyString);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.GetCodeHash(enabledCreated), Is.EqualTo(TestState.GetCodeHash(disabledCreated)), "code hash");
+            Assert.That(enabled.StatusCode, Is.EqualTo(disabled.StatusCode), "status");
+            Assert.That(enabled.GasSpent, Is.EqualTo(disabled.GasSpent), "gas");
+            AssertCodeHash(enabledCreated, returnKind == ReturnKind.ValidCode ? SourceCodeHash : Keccak.OfAnEmptyString);
+        }
     }
 
     // Adopts the source's code, stores the EXTCODEHASH it then observes for itself, and returns data starting
@@ -543,10 +582,13 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(code);
 
-        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         const ulong measurementOverhead = GasCostOf.VeryLow + GasCostOf.Base + GasCostOf.Base;
-        Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)(expectedGas + measurementOverhead)));
-        AssertCodeHash(Recipient, Keccak.Compute(kind == SourceKind.OtherCode ? SourceCode : code));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)(expectedGas + measurementOverhead)));
+            AssertCodeHash(Recipient, Keccak.Compute(kind == SourceKind.OtherCode ? SourceCode : code));
+        }
     }
 
     public class Eip8298DisabledTests : VirtualMachineTestsBase
