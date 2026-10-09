@@ -95,7 +95,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.MSTORE] = AsTableEntry(&RawCalliHelper.ExecuteMStoreInsideBacking);
         lookup[(int)Instruction.MSTORE8] = AsTableEntry(&RawCalliHelper.ExecuteMStore8InsideActiveMemory);
         lookup[(int)Instruction.CALLDATACOPY] = AsTableEntry(&RawCalliHelper.ExecuteDataCopy<RawCalliHelper.CallDataSource>);
-        if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec))
+        // EIP-8360 redirects SLOAD in a TCREATE context, which this handler does not.
+        if (SpecFlags.Eip2929(spec) && !SpecFlags.Eip8038(spec) && !spec.IsEip8360Enabled)
             lookup[(int)Instruction.SLOAD] = AsTableEntry(&RawCalliHelper.ExecuteSLoad);
         if (spec.TransientStorageEnabled)
         {
@@ -1402,7 +1403,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
