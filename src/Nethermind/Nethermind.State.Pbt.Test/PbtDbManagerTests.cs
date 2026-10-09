@@ -3,9 +3,7 @@
 
 using System;
 using System.IO;
-using System.Reflection;
 using Snapshot = Nethermind.State.Flat.Snapshot;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Modules;
@@ -937,7 +935,7 @@ public class PbtDbManagerTests
             }
             else third.ReleaseLease();
             if (mode == TransientHandOff.Duplicate) Assert.That(returned, Does.Contain(second), "a transient that cannot reach the populator returns to the pool at once");
-            Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 2 }).After(5000, 10));
+            Assert.That(CachedCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 2 }).After(5000, 10));
             Assert.That(() => returned, Is.EquivalentTo(new[] { first, second, third }).After(5000, 10), "every transient returns to the pool exactly once, ingested or refused");
             Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);
         }
@@ -946,6 +944,13 @@ public class PbtDbManagerTests
             populatorGate.Set();
             await manager.DisposeAsync();
         }
+
+        int CachedCount() => new byte[] { 1, 2, 3 }.Count(marker =>
+        {
+            if (!cache.TryGet(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), out RefCountingMemory? payload)) return false;
+            ((IDisposable)payload).Dispose();
+            return true;
+        });
     }
 
     /// <summary>Rents a transient that stages one group and returns itself through <paramref name="returnPool"/>.</summary>
@@ -1000,8 +1005,7 @@ public class PbtDbManagerTests
             LongFinalityMaxReorgDepth = 9,
         });
         for (int b = 1; b <= head; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
-        using PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(head));
-        Assert.That(action.Persist is not null, Is.EqualTo(persists));
+        Assert.That(PersistedTo(harness, PersistenceState(head)) is not null, Is.EqualTo(persists));
     }
 
     [Test]
@@ -1019,18 +1023,16 @@ public class PbtDbManagerTests
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 2, harness.Pool));
         harness.Finalized.FinalizedBlockNumber = 6;
         harness.Finalized.SetCanonicalRoot(2, TestItem.KeccakA);
-        using (PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(6)))
-            Assert.That(action.Persist!.To, Is.EqualTo(PersistenceState(2)));
+        Assert.That(PersistedTo(harness, PersistenceState(6)), Is.EqualTo(PersistenceState(2)));
         // No boundary header exposes no canonical seed, but the independent backstop still acts.
         using PersistenceManagerHarness missing = new(harness.Config);
         for (int b = 1; b <= 6; b++) missing.Repository.TryAdd(PersistenceSnapshot(b - 1, b, missing.Pool));
         missing.Finalized.FinalizedBlockNumber = 6;
-        using PbtPersistenceManager.SnapshotAction fallback = missing.PersistenceManager.DetermineSnapshotAction(PersistenceState(6));
-        Assert.That(fallback.Persist!.To, Is.EqualTo(PersistenceState(1)));
+        Assert.That(PersistedTo(missing, PersistenceState(6)), Is.EqualTo(PersistenceState(1)));
     }
 
     [Test]
-    public void Scheduler_conversion_threshold_and_global_compacted_pass()
+    public async Task Scheduler_conversion_threshold_and_global_compacted_pass()
     {
         using PersistenceManagerHarness harness = new(new PbtConfig
         {
@@ -1039,17 +1041,22 @@ public class PbtDbManagerTests
             MinReorgDepth = 128,
             MaxInMemoryBaseSnapshotCount = 4,
         });
+        List<StateId> converted = [];
+        SchedulerLoader loader = new(memory =>
+        {
+            converted.Add(memory.To);
+            return true;
+        });
+        using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
+            harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, new SchedulerCompactor(), CancellationToken.None);
         for (int b = 1; b <= 4; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
-        using (PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(4)))
-            Assert.That(action.Convert, Is.Null, "threshold is strict and counts base snapshots");
+        await persistenceManager.CheckPersistenceAsync(PersistenceState(4));
+        Assert.That(converted, Is.Empty, "threshold is strict and counts base snapshots");
         harness.Repository.TryAdd(PersistenceSnapshot(4, 5, harness.Pool));
-        using PbtPersistenceManager.SnapshotAction selected = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(5));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(selected.ConvertRange, Is.True);
-            Assert.That(selected.Convert!.To, Is.EqualTo(PersistenceState(4)), "global compacted pass beats earlier single base");
-        }
+        await persistenceManager.CheckPersistenceAsync(PersistenceState(5));
+        Assert.That(converted, Is.EqualTo(new[] { PersistenceState(1), PersistenceState(2), PersistenceState(3), PersistenceState(4) }),
+            "the global compacted pass converts its whole range rather than the earlier single base");
     }
 
     [Test]
@@ -1063,16 +1070,14 @@ public class PbtDbManagerTests
             MinReorgDepth = 0,
             MaxReorgDepth = 2,
         });
-        for (int b = 1; b <= 5; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         StateId fork = new(1, TestItem.KeccakB.ValueHash256);
         harness.Repository.TryAdd(new(PersistenceState(0), fork, TestItem.KeccakC.ValueHash256, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
-        harness.Repository.SetLastCommittedStateId(PersistenceState(5));
-        using (PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(fork))
-            Assert.That(action.Persist, Is.Null, "supplied height, rather than longest fork, controls depth");
+        // Committed last, block 5 is the committed head.
+        for (int b = 1; b <= 5; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
+        Assert.That(PersistedTo(harness, fork), Is.Null, "supplied height, rather than longest fork, controls depth");
         harness.Finalized.FinalizedBlockNumber = 1;
         harness.Finalized.SetCanonicalRoot(1, TestItem.KeccakB);
-        using PbtPersistenceManager.SnapshotAction rejected = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(5));
-        Assert.That(rejected.Persist, Is.Null, "committed branch cannot persist a known nonfinalized root");
+        Assert.That(PersistedTo(harness, PersistenceState(5)), Is.Null, "committed branch cannot persist a known nonfinalized root");
     }
 
     [TestCase(2, false)]
@@ -1092,12 +1097,8 @@ public class PbtDbManagerTests
             snapshot.Content.Codes[TestItem.KeccakC.ValueHash256] = new CodeInfo(new byte[100]);
             harness.Repository.TryAdd(snapshot);
         }
-        using PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(head));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Repository.InMemorySnapshotBytes, Is.GreaterThan(1));
-            Assert.That(action.Persist is not null, Is.EqualTo(persists));
-        }
+        Assert.That(harness.Repository.InMemorySnapshotBytes, Is.GreaterThan(1));
+        Assert.That(PersistedTo(harness, PersistenceState(head)) is not null, Is.EqualTo(persists));
     }
 
     [Test]
@@ -1121,14 +1122,14 @@ public class PbtDbManagerTests
         SchedulerCompactor compactor = new();
         using PbtPersistenceManager persistenceManager = new(harness.Config, harness.Finalized, harness.Persistence, harness.Repository,
             harness.Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, loader, compactor, CancellationToken.None);
-        for (int b = 1; b <= 4; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         StateId fork1 = new(1, TestItem.KeccakB.ValueHash256), fork2 = new(2, TestItem.KeccakB.ValueHash256);
         harness.Repository.TryAdd(new(PersistenceState(0), fork1, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         harness.Repository.TryAdd(new(fork1, fork2, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
         StateId orphan = new(3, TestItem.KeccakC.ValueHash256);
         harness.Repository.TryAdd(new(new StateId(2, TestItem.KeccakC.ValueHash256), orphan, default, new(), harness.Pool, PbtResourcePool.Usage.MainBlockProcessing));
+        // Committed last, block 4 is the committed head.
+        for (int b = 1; b <= 4; b++) harness.Repository.TryAdd(PersistenceSnapshot(b - 1, b, harness.Pool));
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
-        harness.Repository.SetLastCommittedStateId(PersistenceState(4));
         await persistenceManager.CheckPersistenceAsync(PersistenceState(4));
         using (Assert.EnterMultipleScope())
         {
@@ -1214,8 +1215,7 @@ public class PbtDbManagerTests
             snapshot.Content.Codes[TestItem.KeccakC.ValueHash256] = new(new byte[100]);
             harness.Repository.TryAdd(snapshot);
         }
-        using (PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(3)))
-            Assert.That(action.Persist, Is.Null);
+        Assert.That(PersistedTo(harness, PersistenceState(3)), Is.Null);
         harness.Repository.Dispose();
     }
 
@@ -1316,8 +1316,7 @@ public class PbtDbManagerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(perPass, Is.LessThan(2048), "unfinalized history must not be allocated or sorted by the pruning pass");
-            using ArrayPoolList<StateId> finalized = harness.Repository.GetRetainedStatesInRange(0, 1);
-            Assert.That(finalized, Is.EqualTo(new[] { PersistenceState(1) }));
+            Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.True, "the finalized retained state survives");
             Assert.That(harness.Repository.RetainedCount, Is.EqualTo(unrelatedStates + 1));
         }
         harness.Repository.Dispose();
@@ -1420,9 +1419,9 @@ public class PbtDbManagerTests
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 5, harness.Pool));
         Assert.That(harness.PersistenceManager.DropStateNotReachableFrom(reset), Is.True);
-        using PbtPersistenceManager.SnapshotAction action = harness.PersistenceManager.DetermineSnapshotAction(PersistenceState(5));
-        Assert.That(action.Persist!.To, Is.EqualTo(reset));
+        Assert.That(harness.Repository.HasState(PersistenceState(1)), Is.False);
         Assert.That(harness.Repository.HasState(PersistenceState(5)), Is.False);
+        Assert.That(PersistedTo(harness, PersistenceState(5)), Is.EqualTo(reset));
     }
 
     [Test]
@@ -1608,7 +1607,7 @@ public class PbtDbManagerTests
     [TestCase(true, 0, 0, 4, true)]
     [TestCase(true, 1, 8, 4, false)]
     [TestCase(true, 1, 8, 4, true)]
-    public async Task Differential_histories_match_actions_ranges_tiers_and_available_states(bool longFinality, int offset, int finalized, int memoryLimit, bool bytePressure)
+    public async Task Differential_histories_match_persisted_base_tiers_and_available_states(bool longFinality, int offset, int finalized, int memoryLimit, bool bytePressure)
     {
         string path = Path.Combine(Path.GetTempPath(), "pbt-flat-differential-" + Guid.NewGuid().ToString("N"));
         PbtConfig pbtConfig = new()
@@ -1668,25 +1667,33 @@ public class PbtDbManagerTests
             for (int height = 1; height <= 12; height++)
             {
                 StateId state = PersistenceState(height);
-                AddDifferentialEdge(PersistenceState(height - 1), state, false);
-                states.Add(state);
-                if (height >= 4 && (height - offset) % 4 == 0)
-                    AddDifferentialEdge(PersistenceState(height - 4), state, true);
+                // The fork is committed before the canonical block, which stays the committed head.
                 if (height == 3)
                 {
                     StateId fork = new(3, TestItem.KeccakC.ValueHash256);
                     AddDifferentialEdge(PersistenceState(2), fork, false);
                     states.Add(fork);
-                    pbtRepository.SetLastCommittedStateId(state);
-                    flatRepository.SetLastCommittedStateId(state);
                 }
-                Assert.That(NormalizePbtAction(pbtPersistenceManager, state), Is.EqualTo(NormalizeFlatAction(flatPersistenceManager, state)), $"selected action at {state}");
+                AddDifferentialEdge(PersistenceState(height - 1), state, false);
+                states.Add(state);
+                if (height >= 4 && (height - offset) % 4 == 0)
+                    AddDifferentialEdge(PersistenceState(height - 4), state, true);
                 await pbtPersistenceManager.CheckPersistenceAsync(state);
                 await flatPersistenceManager.AddToPersistence(state);
                 Assert.That(pbtPersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(flatPersistenceManager.GetCurrentPersistedStateId()), $"base after {state}");
                 foreach (StateId known in states)
+                {
                     Assert.That(pbtRepository.HasState(known) || known == pbtPersistenceManager.GetCurrentPersistedStateId(),
                         Is.EqualTo(flatRepository.HasState(known) || known == flatPersistenceManager.GetCurrentPersistedStateId()), $"availability {known} after {state}");
+                    foreach (SnapshotTier tier in (SnapshotTier[])[SnapshotTier.InMemoryBase, SnapshotTier.InMemoryCompacted])
+                    {
+                        bool pbtHasTier = pbtRepository.TryLeaseMemoryState(known, tier, out PbtSnapshot? pbtLease);
+                        pbtLease?.Dispose();
+                        bool flatHasTier = flatRepository.TryLeaseInMemoryState(known, tier, out FlatSnapshot? flatLease);
+                        flatLease?.Dispose();
+                        Assert.That(pbtHasTier, Is.EqualTo(flatHasTier), $"{tier} presence {known} after {state}");
+                    }
+                }
             }
             StateId reset = PersistenceState(10);
             Assert.That(pbtPersistenceManager.DropStateNotReachableFrom(reset), Is.True);
@@ -1714,37 +1721,14 @@ public class PbtDbManagerTests
         finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
 
-    private readonly record struct DifferentialAction(string Kind, StateId From, StateId To, SnapshotTier Tier);
-
-    private static DifferentialAction NormalizePbtAction(PbtPersistenceManager persistenceManager, StateId state)
+    /// <summary>The state the first write <see cref="PbtPersistenceManager.CheckPersistence"/> makes for <paramref name="latest"/> persists, or null when it persists nothing.</summary>
+    private static StateId? PersistedTo(PersistenceManagerHarness harness, in StateId latest)
     {
-        using PbtPersistenceManager.SnapshotAction action = persistenceManager.DetermineSnapshotAction(state);
-        if (action.Persist is { } persist) return new("persist", persist.From, persist.To, persist.Tier);
-        if (action.Convert is { } convert) return new(action.ConvertRange ? "convert-range" : "convert", convert.From, convert.To,
-            action.ConvertRange ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
-        return default;
-    }
-
-    private static DifferentialAction NormalizeFlatAction(IPersistenceManager persistenceManager, StateId state)
-    {
-        MethodInfo method = persistenceManager.GetType().GetMethod("DetermineSnapshotAction", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        ITuple action = (ITuple)method.Invoke(persistenceManager, [state])!;
-        using PersistedSnapshot? retained = action[0] as PersistedSnapshot;
-        using FlatSnapshot? memory = action[1] as FlatSnapshot;
-        object? conversion = action[2];
-        if (retained is not null)
-        {
-            PropertyInfo tier = typeof(PersistedSnapshot).GetProperty("Tier", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            return new("persist", retained.From, retained.To, (SnapshotTier)tier.GetValue(retained)!);
-        }
-        if (memory is not null) return new("persist", memory.From, memory.To,
-            memory.To.BlockNumber - memory.From.BlockNumber > 1 ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
-        if (conversion is null) return default;
-        using FlatSnapshot? compacted = conversion.GetType().GetProperty("Compacted")!.GetValue(conversion) as FlatSnapshot;
-        using FlatSnapshot? single = conversion.GetType().GetProperty("Base")!.GetValue(conversion) as FlatSnapshot;
-        FlatSnapshot selected = compacted ?? single!;
-        return new(compacted is not null ? "convert-range" : "convert", selected.From, selected.To,
-            compacted is not null ? SnapshotTier.InMemoryCompacted : SnapshotTier.InMemoryBase);
+        harness.PersistenceManager.CheckPersistence(latest);
+        object?[]? write = harness.Persistence.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name == nameof(IPbtPersistence.CreateWriteBatch))
+            .Select(static call => call.GetArguments()).FirstOrDefault();
+        return write is null ? null : (StateId)write[1]!;
     }
 
     private static PbtSnapshot PersistenceSnapshot(int from, int to, PbtResourcePool pool) =>

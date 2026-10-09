@@ -16,13 +16,13 @@ namespace Nethermind.Pbt;
 /// <param name="LargeSubtreeMinOperationsPerWorker">The fewest operations per worker for buckets with at least <paramref name="LargeSubtreeBytes"/> stored below them.</param>
 public readonly record struct FoldFanOut(int MinOperationsPerWorker, long LargeSubtreeBytes, int LargeSubtreeMinOperationsPerWorker)
 {
-    internal const int DefaultMinOperationsPerWorker = 128;
-    internal const long DefaultLargeSubtreeBytes = 32 * 1024;
-    internal const int DefaultLargeSubtreeMinOperationsPerWorker = 16;
-    internal static readonly FoldFanOut Default = new(DefaultMinOperationsPerWorker, DefaultLargeSubtreeBytes, DefaultLargeSubtreeMinOperationsPerWorker);
+    public const int DefaultMinOperationsPerWorker = 128;
+    public const long DefaultLargeSubtreeBytes = 32 * 1024;
+    public const int DefaultLargeSubtreeMinOperationsPerWorker = 16;
+    public static readonly FoldFanOut Default = new(DefaultMinOperationsPerWorker, DefaultLargeSubtreeBytes, DefaultLargeSubtreeMinOperationsPerWorker);
 
     /// <param name="descendantBytes">The stored size below the buckets the worker would take.</param>
-    internal int MinOperationsFor(long descendantBytes) => descendantBytes < LargeSubtreeBytes ? MinOperationsPerWorker : LargeSubtreeMinOperationsPerWorker;
+    private int MinOperationsFor(long descendantBytes) => descendantBytes < LargeSubtreeBytes ? MinOperationsPerWorker : LargeSubtreeMinOperationsPerWorker;
 
     /// <summary>Groups consecutive buckets into runs, each holding the operations this fan-out asks of the descendants it absorbs.</summary>
     /// <remarks>
@@ -33,7 +33,7 @@ public readonly record struct FoldFanOut(int MinOperationsPerWorker, long LargeS
     /// <param name="counts">Operation counts per touched bucket, in ascending slot order.</param>
     /// <param name="descendantBytes">The stored size below each of those buckets, in the same order.</param>
     /// <returns>The number of runs; <paramref name="runEnds"/> holds each run's exclusive end bucket index.</returns>
-    internal int PlanBucketRuns(ReadOnlySpan<int> counts, ReadOnlySpan<long> descendantBytes, Span<int> runEnds)
+    public int PlanBucketRuns(ReadOnlySpan<int> counts, ReadOnlySpan<long> descendantBytes, Span<int> runEnds)
     {
         Debug.Assert(counts.Length == descendantBytes.Length, "Every touched bucket carries its stored size.");
         int runCount = 0;

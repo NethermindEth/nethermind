@@ -24,7 +24,7 @@ namespace Nethermind.State.Pbt;
 /// <see cref="PbtColumns.Storages"/> get their own block caches carved out of
 /// <see cref="IPbtConfig.BlockCacheSizeBudget"/> instead of competing in the shared one.
 /// </remarks>
-internal sealed class PbtRocksDbConfigAdjuster(
+public sealed class PbtRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IDbConfig dbConfig,
     IPbtConfig pbtConfig,

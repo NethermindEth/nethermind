@@ -7,11 +7,11 @@ namespace Nethermind.Pbt;
 
 /// <summary>A path to a node within a four-level group.</summary>
 /// <remarks>The low four bits hold the left-aligned path; bits 4–6 hold its length (0–4).</remarks>
-internal readonly struct NodeGroupPath
+public readonly struct NodeGroupPath
 {
     private readonly byte _value;
 
-    internal NodeGroupPath(int slot, int length)
+    public NodeGroupPath(int slot, int length)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)length, 4u);
         if ((uint)slot > 15 || (slot & ((16 >> length) - 1)) != 0)
@@ -19,16 +19,16 @@ internal readonly struct NodeGroupPath
         _value = (byte)(slot | (length << 4));
     }
 
-    internal int Slot => _value & 0xF;
-    internal int Length => (_value >> 4) & 7;
-    internal int Width => PbtFourLevelGroupGeometry.BoundarySlots >> Length;
+    public int Slot => _value & 0xF;
+    public int Length => (_value >> 4) & 7;
+    public int Width => PbtFourLevelGroupGeometry.BoundarySlots >> Length;
 
     // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
-    internal int Position => 2 * (Slot + Width) - 2 - BitOperations.PopCount((uint)Slot);
+    public int Position => 2 * (Slot + Width) - 2 - BitOperations.PopCount((uint)Slot);
 
     /// <summary>Whether a key in boundary slot <paramref name="slot"/> lies under this path; no key lies under one past the last slot.</summary>
-    internal bool Covers(int slot) => ((slot ^ Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - Length)) == 0;
+    public bool Covers(int slot) => ((slot ^ Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - Length)) == 0;
 
-    internal NodeGroupPath Left => new(Slot, Length + 1);
-    internal NodeGroupPath Right => new(Slot + Width / 2, Length + 1);
+    public NodeGroupPath Left => new(Slot, Length + 1);
+    public NodeGroupPath Right => new(Slot + Width / 2, Length + 1);
 }

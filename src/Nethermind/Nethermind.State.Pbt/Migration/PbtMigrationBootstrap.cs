@@ -22,7 +22,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// Runs after the MPT genesis is loaded. Flat is live, so it may be ahead of or behind the anchor: the BAL follower
 /// brings PBT up to the head, and main processing stays on flat until activation (see <see cref="MigrationActivation.IsBinary"/>).
 /// </remarks>
-internal sealed class PbtMigrationBootstrap(
+public sealed class PbtMigrationBootstrap(
     IDbFactory dbFactory,
     IDbProvider dbProvider,
     IPersistence flatPersistence,

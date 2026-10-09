@@ -60,7 +60,7 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    internal int PendingMutationCount => _leafChanges.Count;
+    public int PendingMutationCount => _leafChanges.Count;
 
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
@@ -74,7 +74,7 @@ public sealed class PbtSnapshotBundle(
         _leafChanges.SetLeaf(key, value);
     }
 
-    internal PbtPartitionBatches PrepareLeafChanges()
+    public PbtPartitionBatches PrepareLeafChanges()
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
@@ -86,15 +86,15 @@ public sealed class PbtSnapshotBundle(
         return _leafChanges.Build();
     }
 
-    internal void CompleteLeafChanges() => _leafChanges.Reset();
+    public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    internal void SetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    public void SetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
     {
         WriteBuffer.SetNodeGroup(groupKey, payload);
         _transientResource.NodeGroups.Set(groupHash, groupKey, payload);
     }
 
-    internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
     {
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
@@ -105,7 +105,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
-    internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         if (WriteBuffer.TryGetNodeGroup(groupKey, out payload)) return true;
         for (int index = snapshots.Count - 1; index >= 0; index--)
@@ -115,7 +115,7 @@ public sealed class PbtSnapshotBundle(
 
     /// <summary>Returns a persisted group already kept for the block, or else reads it and keeps it for <see cref="GetNodeGroup"/> until the write buffer is sealed.</summary>
     /// <remarks>Only a group that <see cref="TryGetSnapshotNodeGroup"/> did not find may be read, as the kept group is served ahead of the read-only base's snapshots.</remarks>
-    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
+    public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey) =>
         TryGetKeptNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : ReadPersistedNodeGroup(groupKey);
 
     private bool TryGetKeptNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
@@ -145,7 +145,7 @@ public sealed class PbtSnapshotBundle(
     /// <remarks>The promoted account is sealed into the next snapshot, so later heads read it from the newest layer.</remarks>
     public Account? GetAndPromoteAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: true);
 
-    internal Account? ReadAccount(in ValueHash256 addressHash, bool promote)
+    public Account? ReadAccount(in ValueHash256 addressHash, bool promote)
     {
         if (_accountsAwaitingCode.TryGetValue(addressHash, out Account? awaiting)) return awaiting;
         if (WriteBuffer.Accounts.TryGetValue(addressHash, out PbtAccount? buffered)) return buffered?.ToAccount();
@@ -179,7 +179,7 @@ public sealed class PbtSnapshotBundle(
         ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot), addressHash)
         : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
 
-    internal UInt256 GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+    public UInt256 GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
         BufferRun<TKey>(WriteBuffer, SlotRun.RunKey(slotKey), addressHash).Get(SlotRun.IndexOf(slotKey));
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
@@ -253,7 +253,7 @@ public sealed class PbtSnapshotBundle(
     /// Writes are applied in order, so a later write of a slot wins. Adjacent writes into one slot run rewrite that
     /// run once, so writes sorted by slot rewrite each run they touch once.
     /// </remarks>
-    internal void SetSlots(Address address, in ValueHash256 addressHash, ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
+    public void SetSlots(Address address, in ValueHash256 addressHash, ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
     {
         for (int start = 0, end; start < writes.Length; start = end)
         {
@@ -312,7 +312,7 @@ public sealed class PbtSnapshotBundle(
     public void SelfDestruct(in ValueHash256 addressHash) => WriteBuffer.ClearStorage(addressHash);
 
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
-    internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
+    public void SetCode(in ValueHash256 codeHash, CodeInfo code)
     {
         WriteBuffer.Codes[codeHash] = code;
         // An account registered after this scan is resolved by PrepareLeafChanges. Removing by address and code hash
@@ -328,7 +328,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>The bytecode as a PBT layer holds it; null when no layer has it, in which case its chunk leaves are not in the tree either.</summary>
-    internal CodeInfo? GetCode(in ValueHash256 codeHash)
+    public CodeInfo? GetCode(in ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString) return CodeInfo.Empty;
         if (WriteBuffer.Codes.TryGetValue(codeHash, out CodeInfo? code)) return code;

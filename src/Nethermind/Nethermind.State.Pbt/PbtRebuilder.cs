@@ -37,7 +37,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     /// <param name="expectedRoot">When set, a completed root that differs is refused before anything is published.</param>
     /// <param name="publishAfter">Publication waits for it, and is abandoned when it fails.</param>
     /// <returns>The completed canonical tree root.</returns>
-    internal async Task<ValueHash256> Rebuild(
+    public async Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,

@@ -15,10 +15,10 @@ using Nethermind.State.Pbt.Persistence;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Ingests an ascending PBT leaf stream into an empty target: stages its logical state while folding its tree.</summary>
-internal static class PbtLeafIngestion
+public static class PbtLeafIngestion
 {
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
-    internal const int BatchSize = 255;
+    public const int BatchSize = 255;
     private const string Phase = "PBT import";
 
     /// <summary>Stages the logical accounts, slots and code of the leaves while folding them into the tree, and publishes the tree
@@ -106,7 +106,7 @@ internal static class PbtLeafIngestion
     /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
     /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until
     /// <see cref="Commit"/> flushes the write buffers; the caller wipes an interrupted staging before retrying.</remarks>
-    internal sealed class LogicalBatch : IDisposable
+    public sealed class LogicalBatch : IDisposable
     {
         private readonly PbtRocksDbPersistence _target;
         private readonly CancellationTokenSource _cancellation;

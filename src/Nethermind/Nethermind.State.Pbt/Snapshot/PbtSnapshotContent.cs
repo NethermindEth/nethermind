@@ -24,26 +24,26 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// </remarks>
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
-    internal readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
+    public readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
     // Whole slot runs keyed by run key (see SlotRun.RunKey); this layer owns the runs. Header slots' runs are keyed
     // in the account zone, the rest in the storage zone. A read probes every layer with the same key; the pre-hashed
     // key pays the key hash once instead of once per layer.
-    internal readonly ConcurrentDictionary<HashedKey<PbtPath>, PackedSlotRun> HeaderStorages = new();
-    internal readonly ConcurrentDictionary<HashedKey<PbtStoragePath>, PackedSlotRun> Storages = new();
-    internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
-    internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
+    public readonly ConcurrentDictionary<HashedKey<PbtPath>, PackedSlotRun> HeaderStorages = new();
+    public readonly ConcurrentDictionary<HashedKey<PbtStoragePath>, PackedSlotRun> Storages = new();
+    public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
+    public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     // Partitioned like PbtTrieNodeCache: account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
-    internal readonly Dictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = [];
-    internal readonly Dictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = [];
-    internal readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = [];
+    public readonly Dictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = [];
+    public readonly Dictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = [];
+    public readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = [];
 
 
     /// <summary>The runs of header slots for <see cref="PbtPath"/> run keys, or of the other slots for <see cref="PbtStoragePath"/> ones.</summary>
-    internal ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
+    private ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
         SlotRun.ByZone<TKey, ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun>>(HeaderStorages, Storages);
 
     /// <summary>Drops this layer's runs of <paramref name="addressHash"/> and marks its storage cleared.</summary>
-    internal void ClearStorage(in ValueHash256 addressHash)
+    public void ClearStorage(in ValueHash256 addressHash)
     {
         ClearRuns(HeaderStorages, addressHash);
         ClearRuns(Storages, addressHash);
@@ -59,14 +59,14 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>The key a run key is filed under in a slot filter built by <see cref="AddSlotFilterKeysTo"/>.</summary>
     /// <remarks>The hash the run dictionaries already bucket on, so a probe hashes nothing new.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong SlotFilterKey<TKey>(in HashedKey<TKey> runKey) where TKey : struct, IPbtKey<TKey> => (uint)runKey.GetHashCode();
+    public static ulong SlotFilterKey<TKey>(in HashedKey<TKey> runKey) where TKey : struct, IPbtKey<TKey> => (uint)runKey.GetHashCode();
 
     /// <summary>The key a cleared address is filed under in a slot filter built by <see cref="AddSlotFilterKeysTo"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong SlotFilterKey(in ValueHash256 addressHash) => (uint)addressHash.GetHashCode();
+    public static ulong SlotFilterKey(in ValueHash256 addressHash) => (uint)addressHash.GetHashCode();
 
     /// <summary>How many keys <see cref="AddSlotFilterKeysTo"/> adds.</summary>
-    internal long SlotFilterKeyCount => HeaderStorages.Count + Storages.Count + SelfDestructedStorageAddresses.Count;
+    public long SlotFilterKeyCount => HeaderStorages.Count + Storages.Count + SelfDestructedStorageAddresses.Count;
 
     /// <summary>Adds every run key and cleared address of this layer to <paramref name="filter"/> under <see cref="SlotFilterKey{TKey}"/> and <see cref="SlotFilterKey(in ValueHash256)"/>.</summary>
     /// <remarks>
@@ -74,7 +74,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// layer cannot answer it. Requires sealed content: a run or clear added afterwards would be missing from a filter
     /// already built.
     /// </remarks>
-    internal void AddSlotFilterKeysTo(BloomFilter filter)
+    public void AddSlotFilterKeysTo(BloomFilter filter)
     {
         foreach ((HashedKey<PbtPath> runKey, _) in HeaderStorages) filter.AddUnsynchronized(SlotFilterKey(runKey));
         foreach ((HashedKey<PbtStoragePath> runKey, _) in Storages) filter.AddUnsynchronized(SlotFilterKey(runKey));
@@ -82,12 +82,12 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>
-    internal bool TryGetSlotRun<TKey>(in HashedKey<TKey> runKey, [NotNullWhen(true)] out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey> =>
+    public bool TryGetSlotRun<TKey>(in HashedKey<TKey> runKey, [NotNullWhen(true)] out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryGetValue(runKey, out run);
 
     /// <summary>Takes ownership of <paramref name="run"/> and returns the run it replaces to its pool.</summary>
     /// <remarks>Replacements of one run require caller serialization; a run being read must not be replaced.</remarks>
-    internal void SetRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
+    public void SetRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
     {
         ConcurrentDictionary<HashedKey<TKey>, PackedSlotRun> runs = Runs<TKey>();
         runs.TryGetValue(runKey, out PackedSlotRun? previous);
@@ -96,18 +96,18 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Takes ownership of <paramref name="run"/> unless the layer already holds a run of <paramref name="runKey"/>.</summary>
-    internal bool TryAddRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> => Runs<TKey>().TryAdd(runKey, run);
+    public bool TryAddRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> => Runs<TKey>().TryAdd(runKey, run);
 
     /// <summary>Takes ownership of <paramref name="run"/> if the layer still holds <paramref name="expected"/>, which the caller then owns.</summary>
     /// <remarks>
     /// The compare is by reference, so <paramref name="expected"/> must stay out of the pool while any writer may still
     /// compare against it: a re-rented instance stored back under the same key would let a stale replacement through.
     /// </remarks>
-    internal bool TryReplaceRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey> =>
+    public bool TryReplaceRun<TKey>(in HashedKey<TKey> runKey, PackedSlotRun run, PackedSlotRun expected) where TKey : struct, IPbtKey<TKey> =>
         Runs<TKey>().TryUpdate(runKey, run, expected);
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
-    internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
         switch (PbtPartitions.PartitionOfPath(groupKey))
@@ -128,7 +128,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
-    internal bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    public bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         bool found = PbtPartitions.PartitionOfPath(groupKey) switch
         {
@@ -160,7 +160,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         partition.Clear();
     }
 
-    internal PbtSnapshotPayloadSize GetPayloadSize()
+    public PbtSnapshotPayloadSize GetPayloadSize()
     {
         long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
             + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
@@ -182,4 +182,4 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public void Dispose() => Reset();
 }
 
-internal readonly record struct PbtSnapshotPayloadSize(long Leaf, long Node);
+public readonly record struct PbtSnapshotPayloadSize(long Leaf, long Node);

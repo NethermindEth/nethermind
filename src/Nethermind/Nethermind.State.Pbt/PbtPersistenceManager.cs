@@ -23,20 +23,24 @@ using Nethermind.State.Pbt.Snapshot;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Coordinates base persistence and durable snapshot conversion.</summary>
-public class PbtPersistenceManager : IDisposable
+public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
+    IPbtPersistence persistence, PbtSnapshotRepository repository, ICompactionSchedule schedule,
+    IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtRetainedSnapshotLoader loader,
+    IPbtRetainedSnapshotCompactor compactor, CancellationToken shutdown) : IDisposable
 {
-    private readonly IPbtConfig _config;
-    private readonly IStateHeaderProvider _finalized;
-    private readonly IPbtPersistence _persistence;
-    private readonly PbtSnapshotRepository _repository;
-    private readonly ICompactionSchedule _schedule;
-    private readonly IStatePersistenceBarrier _barrier;
-    private readonly IPbtRetainedSnapshotLoader _loader;
-    private readonly IPbtRetainedSnapshotCompactor _compactor;
-    private readonly CancellationToken _shutdown;
-    private readonly ILogger _logger;
+    private readonly IPbtConfig _config = config;
+    private readonly IStateHeaderProvider _finalized = finalizedStateProvider;
+    private readonly IPbtPersistence _persistence = persistence;
+    private readonly PbtSnapshotRepository _repository = repository;
+    private readonly ICompactionSchedule _schedule = schedule;
+    private readonly IStatePersistenceBarrier _barrier = persistenceBarrier;
+    private readonly IPbtRetainedSnapshotLoader _loader = loader;
+    private readonly IPbtRetainedSnapshotCompactor _compactor = compactor;
+    private readonly CancellationToken _shutdown = shutdown;
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtPersistenceManager>();
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
-    private readonly ulong _backstopReorgDepth;
+    private readonly ulong _backstopReorgDepth = Math.Max(config.EnableLongFinality ? config.LongFinalityMaxReorgDepth : (ulong)config.MaxReorgDepth,
+        (ulong)config.MinReorgDepth + (ulong)config.CompactSize);
     // StateId is wider than an atomic write; publish immutable boxes so readers cannot observe torn roots.
     private StrongBox<StateId>? _currentPersistedState;
 
@@ -47,26 +51,7 @@ public class PbtPersistenceManager : IDisposable
             NullPbtRetainedSnapshotLoader.Instance, NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None)
     { }
 
-    internal PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
-        IPbtPersistence persistence, PbtSnapshotRepository repository, ICompactionSchedule schedule,
-        IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtRetainedSnapshotLoader loader,
-        IPbtRetainedSnapshotCompactor compactor, CancellationToken shutdown)
-    {
-        _config = config;
-        _finalized = finalizedStateProvider;
-        _persistence = persistence;
-        _repository = repository;
-        _schedule = schedule;
-        _barrier = persistenceBarrier;
-        _loader = loader;
-        _compactor = compactor;
-        _shutdown = shutdown;
-        _logger = logManager.GetClassLogger<PbtPersistenceManager>();
-        _backstopReorgDepth = Math.Max(config.EnableLongFinality ? config.LongFinalityMaxReorgDepth : (ulong)config.MaxReorgDepth,
-            (ulong)config.MinReorgDepth + (ulong)config.CompactSize);
-    }
-
-    internal IPbtConfig Configuration => _config;
+    public IPbtConfig Configuration => _config;
 
     public StateId GetCurrentPersistedStateId()
     {
@@ -87,15 +72,15 @@ public class PbtPersistenceManager : IDisposable
         Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(reader.CurrentState));
     }
 
-    internal sealed class SnapshotAction : IDisposable
+    private sealed class SnapshotAction : IDisposable
     {
-        internal PbtSnapshotLease? Persist { get; init; }
-        internal PbtSnapshot? Convert { get; init; }
-        internal bool ConvertRange { get; init; }
+        public PbtSnapshotLease? Persist { get; init; }
+        public PbtSnapshot? Convert { get; init; }
+        public bool ConvertRange { get; init; }
         public void Dispose() { Persist?.Dispose(); Convert?.Dispose(); }
     }
 
-    internal SnapshotAction DetermineSnapshotAction(in StateId latest)
+    private SnapshotAction DetermineSnapshotAction(in StateId latest)
     {
         StateId persisted = GetCurrentPersistedStateId();
         ulong depth = persisted == StateId.PreGenesis ? latest.BlockNumber + 1 : latest.BlockNumber.SaturatingSub(persisted.BlockNumber);
@@ -155,7 +140,7 @@ public class PbtPersistenceManager : IDisposable
     /// <summary>Evaluates at most four persistence or conversion actions.</summary>
     public bool CheckPersistence(in StateId latestSnapshot) => CheckPersistenceAsync(latestSnapshot).GetAwaiter().GetResult();
 
-    internal async Task<bool> CheckPersistenceAsync(StateId latestSnapshot)
+    public async Task<bool> CheckPersistenceAsync(StateId latestSnapshot)
     {
         await _persistenceLock.WaitAsync();
         bool changed = false;
@@ -212,7 +197,7 @@ public class PbtPersistenceManager : IDisposable
 
     public void FlushToPersistence(CancellationToken cancellationToken) => FlushToPersistenceState(cancellationToken);
 
-    internal StateId FlushToPersistenceState(CancellationToken cancellationToken)
+    public StateId FlushToPersistenceState(CancellationToken cancellationToken)
     {
         _persistenceLock.Wait();
         try
@@ -262,7 +247,7 @@ public class PbtPersistenceManager : IDisposable
         _repository.RemoveRetainedStatesBefore(candidate.To.BlockNumber);
     }
 
-    internal bool DropStateNotReachableFrom(in StateId head)
+    public bool DropStateNotReachableFrom(in StateId head)
     {
         _persistenceLock.Wait();
         try

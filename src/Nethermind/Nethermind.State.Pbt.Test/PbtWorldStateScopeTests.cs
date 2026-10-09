@@ -33,7 +33,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtWorldStateScopeTests
 {
     [Test]
-    public async Task Override_bundles_use_the_production_cache_without_changing_canonical_state([Values] bool delete)
+    public async Task Override_commits_do_not_feed_the_shared_cache_or_change_canonical_state([Values] bool delete)
     {
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
@@ -53,10 +53,6 @@ public class PbtWorldStateScopeTests
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
-            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath.ToPath<PbtStorageNodePath>(), canonicalRoot.ValueHash256);
-            Assert.That(group, Is.Not.Null);
-            using RefCountingMemory? cached = cache.TryGet(canonicalRoot.ValueHash256, rootPath, out RefCountingMemory? payload) ? payload : null;
-            Assert.That(cached!.Memory.ToArray(), Is.EqualTo(group!.Memory.ToArray()));
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
                 batch.Set(TestItem.AddressA, delete ? null : Build.An.Account.WithBalance(2).TestObject);
             scope.Commit(2);
@@ -226,7 +222,7 @@ public class PbtWorldStateScopeTests
         Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.False);
         using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
             codeWriter.Set(codeHash.ValueHash256, code);
-        Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
+        Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.True);
 
         // The balance moves the root either way, so the code is sealed into a snapshot even when no account takes it.
         Account accountA = writeAccount ? Build.An.Account.WithBalance(1).WithCode(code).TestObject : Build.An.Account.WithBalance(1).TestObject;
@@ -236,7 +232,6 @@ public class PbtWorldStateScopeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
             Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256).ToArray(), Is.EqualTo(code));
             Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.True);
         }
@@ -262,7 +257,7 @@ public class PbtWorldStateScopeTests
         Array.Fill(code, (byte)0x01);
         Hash256 codeHash = Keccak.Compute(code);
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = ctx.BeginScope(null);
+        using PbtWorldStateScope scope = ctx.BeginScope(null, out PbtSnapshotBundle bundle);
         if (!codeAfterAccount) WriteCode();
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {
@@ -275,7 +270,7 @@ public class PbtWorldStateScopeTests
         if (codeAfterAccount) WriteCode();
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(7), Is.EqualTo((UInt256)0xab));
         scope.UpdateRootHash();
-        Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
+        Assert.That(bundle.PendingMutationCount, Is.Zero);
         Hash256 initialRoot = scope.RootHash;
         scope.UpdateRootHash();
         Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
@@ -284,9 +279,9 @@ public class PbtWorldStateScopeTests
         using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             storage.Set(updatedSlot, (UInt256)0xef);
         scope.Get(TestItem.AddressB);
-        Assert.That(scope.Bundle.PendingMutationCount, Is.EqualTo(1));
+        Assert.That(bundle.PendingMutationCount, Is.EqualTo(1));
         scope.UpdateRootHash();
-        Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
+        Assert.That(bundle.PendingMutationCount, Is.Zero);
         scope.Commit(0);
 
         using PbtReadOnlySnapshotBundle reopened = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));
@@ -312,7 +307,7 @@ public class PbtWorldStateScopeTests
     public async Task Parallel_storage_writes_and_abandoned_scope_do_not_contaminate_reused_builder([Values] bool foldBeforeAbandon)
     {
         await using PbtTestContext ctx = new();
-        using (PbtWorldStateScope abandoned = ctx.BeginScope(null))
+        using (PbtWorldStateScope abandoned = ctx.BeginScope(null, out PbtSnapshotBundle abandonedBundle))
         {
             using IWorldStateScopeProvider.IWorldStateWriteBatch batch = abandoned.StartWriteBatch(0);
             Parallel.For(0, 32, index =>
@@ -320,15 +315,15 @@ public class PbtWorldStateScopeTests
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
                 storage.Set((UInt256)(uint)(1000 + index), (UInt256)0xab);
             });
-            Assert.That(abandoned.Bundle.PendingMutationCount, Is.EqualTo(32));
+            Assert.That(abandonedBundle.PendingMutationCount, Is.EqualTo(32));
             if (foldBeforeAbandon) abandoned.UpdateRootHash();
             for (uint index = 0; index < 32; index++)
                 Assert.That(abandoned.CreateStorageTree(TestItem.AddressA).Get(1000 + index), Is.EqualTo((UInt256)0xab));
         }
-        using PbtWorldStateScope reused = ctx.BeginScope(null);
+        using PbtWorldStateScope reused = ctx.BeginScope(null, out PbtSnapshotBundle reusedBundle);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reused.Bundle.PendingMutationCount, Is.Zero);
+            Assert.That(reusedBundle.PendingMutationCount, Is.Zero);
             Assert.That(reused.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(UInt256.Zero));
         }
     }
@@ -337,14 +332,14 @@ public class PbtWorldStateScopeTests
     public async Task Account_reads_are_promoted_into_the_snapshot_and_hints_are_not()
     {
         await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = ctx.BeginScope(null);
+        using PbtWorldStateScope scope = ctx.BeginScope(null, out PbtSnapshotBundle bundle);
         Account hinted = Build.An.Account.WithBalance(1).TestObject;
         scope.Get(TestItem.AddressA);
         scope.HintGet(TestItem.AddressA, hinted);
         scope.HintGet(TestItem.AddressB, hinted);
         scope.Get(TestItem.AddressB);
 
-        using PbtSnapshot snapshot = scope.Bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.Content.Accounts.TryGetValue(PbtStateKey.AddressKeyHash(TestItem.AddressA), out PbtAccount? readA), Is.True, "a read is promoted");
@@ -420,7 +415,7 @@ public class PbtWorldStateScopeTests
                 {
                     Mutate(scope, 1);
                     scope.Commit(1);
-                    roots.Add(scope.Bundle.TreeRoot);
+                    roots.Add(scope.RootHash.ValueHash256);
                     committedRoot = scope.RootHash;
                 }
                 BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(committedRoot).TestObject;
@@ -428,7 +423,7 @@ public class PbtWorldStateScopeTests
                 {
                     Mutate(fork, 9);
                     fork.Commit(2);
-                    roots.Add(fork.Bundle.TreeRoot);
+                    roots.Add(fork.RootHash.ValueHash256);
                 }
                 using (PbtWorldStateScope scope = context.BeginScope(parent))
                 {
@@ -445,7 +440,7 @@ public class PbtWorldStateScopeTests
                         scope.UpdateRootHash();
                         Assert.That(scope.RootHash, Is.EqualTo(folded));
                         scope.Commit(generation);
-                        roots.Add(scope.Bundle.TreeRoot);
+                        roots.Add(scope.RootHash.ValueHash256);
                         AssertState(scope, generation == 3 ? 0 : generation);
                     }
                     committedRoot = scope.RootHash;
@@ -458,7 +453,8 @@ public class PbtWorldStateScopeTests
             {
                 BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
                 using PbtWorldStateScope scope = reopened.BeginScope(header);
-                Assert.That(scope.Bundle.TreeRoot, Is.EqualTo(roots[^1]));
+                using (PbtReadOnlySnapshotBundle bundle = reopened.Manager.GatherReadOnlyBundle(new StateId(header)))
+                    Assert.That(bundle.TreeRoot, Is.EqualTo(roots[^1]));
                 AssertState(scope, 4);
             }
             return roots;

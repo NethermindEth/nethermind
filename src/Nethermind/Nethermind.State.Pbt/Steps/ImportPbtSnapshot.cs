@@ -23,7 +23,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// </remarks>
 [StepCommand("import-pbt-snapshot", "Import an EIP-8347 snapshot as the PBT state.")]
 [RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
-internal sealed class ImportPbtSnapshot(
+public sealed class ImportPbtSnapshot(
     PbtAnchorImport anchorImport,
     PbtRocksDbPersistence pbtPersistence,
     IBlockTree blockTree,

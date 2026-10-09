@@ -13,7 +13,7 @@ namespace Nethermind.Pbt;
 /// Single-block BLAKE3 compression on 128-bit rows, following the reference implementation's
 /// <c>blake3_sse41.c</c> (https://github.com/BLAKE3-team/BLAKE3).
 /// </summary>
-internal static partial class Blake3Managed
+public static partial class Blake3Managed
 {
     // _MM_SHUFFLE(z, y, x, w): output lanes 0..3 take source lanes w, x, y, z.
     private const byte Shuffle2020 = (2 << 6) | (0 << 4) | (2 << 2) | 0;

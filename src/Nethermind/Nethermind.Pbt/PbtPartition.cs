@@ -3,7 +3,7 @@
 
 namespace Nethermind.Pbt;
 
-internal enum PbtPartition : byte
+public enum PbtPartition : byte
 {
     Account,
     Code,

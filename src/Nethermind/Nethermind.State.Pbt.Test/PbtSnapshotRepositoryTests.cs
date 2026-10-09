@@ -244,7 +244,9 @@ public class PbtSnapshotRepositoryTests
             Assert.That(full.Layers[0].From, Is.EqualTo(StateId.PreGenesis));
             Assert.That(partial!.Layers.Count, Is.EqualTo(1));
             Assert.That(_repository.GetLastSnapshotId(), Is.EqualTo(State(1)));
-            Assert.That(_repository.GetRetainedStates(), Is.EqualTo(new[] { State(0), State(1) }));
+            Assert.That(_repository.HasState(State(0)), Is.True);
+            Assert.That(_repository.HasState(State(1)), Is.True);
+            Assert.That(_repository.RetainedCount, Is.EqualTo(2));
         }
         _repository.Dispose();
     }
@@ -281,10 +283,10 @@ public class PbtSnapshotRepositoryTests
         using PbtRetainedSnapshot retained = Retained(store, State(0), State(1), SnapshotTier.PersistedBase);
         repository.TryAddRetained(retained);
         using PbtSnapshotChain? held = repository.TryLeaseReadChain(State(1), State(0));
-        Assert.Throws<IOException>(() => repository.RemoveRetainedExact(State(1), 1, SnapshotTier.PersistedBase));
+        Assert.Throws<IOException>(() => repository.RemoveRetainedStatesBefore(2));
         Assert.That(repository.HasState(State(1)), Is.True);
         catalog.Fail = false;
-        repository.RemoveRetainedExact(State(1), 1, SnapshotTier.PersistedBase);
+        repository.RemoveRetainedStatesBefore(2);
         Assert.That(repository.HasState(State(1)), Is.False);
         Assert.That(held!.Layers[0].Retained!.TryLease(), Is.True);
         held.Layers[0].Retained!.Dispose();
@@ -502,7 +504,7 @@ public class PbtSnapshotRepositoryTests
             Assert.That(repository.ContainsRetainedSource(wrongParent), Is.True);
             Assert.That(repository.ContainsRetainedSource(first), Is.False);
             Assert.That(repository.ContainsRetainedStorageSource(first), Is.True);
-            repository.RemoveRetainedExact(State(1), 1, SnapshotTier.PersistedBase);
+            repository.RemoveRetainedStatesBefore(2);
             Assert.That(repository.ContainsRetainedStorageSource(first), Is.False);
             using PbtRetainedSnapshot reconverted = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
             repository.TryAddRetained(reconverted);

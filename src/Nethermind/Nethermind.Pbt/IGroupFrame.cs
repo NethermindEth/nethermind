@@ -5,7 +5,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>The group a fold composes one frame against: a stored <see cref="GroupFrameReader{TKey, TPath}"/> or an <see cref="AbsentGroupFrame{TKey, TPath}"/>.</summary>
 /// <remarks>The fold is generic over the frame, so the absent case is decided once where the frame opens and costs no check per access.</remarks>
-internal interface IGroupFrame<TKey, TPath>
+public interface IGroupFrame<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {

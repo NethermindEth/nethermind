@@ -10,7 +10,7 @@ namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
 /// Reader-side view of one shard at the version of one RocksDB snapshot: the pinned generations, the version
 /// <c>V</c> the snapshot confirms and the flushed marker <c>N</c> below which the snapshot already holds the shard's content.
 /// </summary>
-internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNodeLogGeneration> pinned) : IDisposable
+public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNodeLogGeneration> pinned) : IDisposable
 {
     // Header, the longest key and a typical group fit in one read; a longer value takes a second.
     private const int ReadBufferSize = 4096;

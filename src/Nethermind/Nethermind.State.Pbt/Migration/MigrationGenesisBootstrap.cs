@@ -28,7 +28,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// source database so the anchor artifacts can be produced from a preimage layout, and checks both agree. The
 /// genesis builder drops the allocations once it has applied them, so they are captured while it runs.
 /// </remarks>
-internal sealed class MigrationGenesisBootstrap(
+public sealed class MigrationGenesisBootstrap(
     MigrationGenesisSource source,
     ChainSpec chainSpec,
     ILifetimeScope rootLifetime,

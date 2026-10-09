@@ -23,7 +23,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// (the anchor import is still running) or whose replay failed is retried, and failures are logged. Until PBT holds
 /// the activation parent, processing the activation block fails without marking it invalid.
 /// </remarks>
-internal sealed class PbtBranchFollower(
+public sealed class PbtBranchFollower(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     IPbtDbManager manager,
@@ -113,7 +113,7 @@ internal sealed class PbtBranchFollower(
     }
 
     /// <returns>True once PBT holds <paramref name="target"/> or its branch is dead; false while PBT holds no ancestor of it.</returns>
-    internal bool Follow(BlockHeader target, CancellationToken token)
+    private bool Follow(BlockHeader target, CancellationToken token)
     {
         BlockHeader? finalized = blockTree.FindFinalizedHeader();
         using ArrayPoolList<BlockHeader> path = new(1);

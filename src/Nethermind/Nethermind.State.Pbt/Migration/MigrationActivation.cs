@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Answers where the chain stands relative to the EIP-8347 activation.</summary>
-internal static class MigrationActivation
+public static class MigrationActivation
 {
     /// <summary>True once a post-activation block is finalized: the transition window is closed and the MPT may be dropped.</summary>
     public static bool IsFinal(IBlockTree blockTree, ISpecProvider specProvider) =>

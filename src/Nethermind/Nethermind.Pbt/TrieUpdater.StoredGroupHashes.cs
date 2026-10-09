@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-internal static partial class TrieUpdater<TKey, TPath>
+public static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
@@ -18,21 +18,21 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     // The only stack buffers, the branch encodings PendingPreimage rebuilds, are fully written before they are read.
     [SkipLocalsInit]
-    internal struct StoredGroupHashes
+    public struct StoredGroupHashes
     {
         private HashBuffer _hashes;
         private uint _known;
 
         /// <summary>Opens <paramref name="hashes"/> with no hash known, leaving the hash buffer unzeroed, since only known positions are read from it.</summary>
         /// <remarks>A frame opens one per group it folds, and the buffer is a kilobyte.</remarks>
-        internal static void Open(out StoredGroupHashes hashes)
+        public static void Open(out StoredGroupHashes hashes)
         {
             Unsafe.SkipInit(out hashes);
             hashes._known = 0;
         }
 
         /// <summary>The hash of the node <paramref name="frame"/> stores or leaves implicit at <paramref name="position"/>, computed once.</summary>
-        internal ValueHash256 GetHash<TFrame>(ref TFrame frame, int position)
+        public ValueHash256 GetHash<TFrame>(ref TFrame frame, int position)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
             uint bit = 1u << position;
@@ -46,10 +46,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The hash already known for <paramref name="position"/>, or default when it has not been computed or seeded.</summary>
-        internal readonly ValueHash256 KnownHash(int position) => (_known & (1u << position)) != 0 ? _hashes[position] : default;
+        public readonly ValueHash256 KnownHash(int position) => (_known & (1u << position)) != 0 ? _hashes[position] : default;
 
         /// <summary>Records the hash a parent's link holds for the node at <paramref name="position"/>, so it is never computed.</summary>
-        internal void Seed(int position, in ValueHash256 hash)
+        public void Seed(int position, in ValueHash256 hash)
         {
             _hashes[position] = hash;
             _known |= 1u << position;
@@ -60,7 +60,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// An omitted child is rebuilt from its own children first, so siblings at every level are hashed together
         /// rather than only the stored ones at the bottom.
         /// </remarks>
-        internal void GetChildHashesPaired<TFrame>(ref TFrame frame, int leftPosition, int rightPosition,
+        public void GetChildHashesPaired<TFrame>(ref TFrame frame, int leftPosition, int rightPosition,
             out ValueHash256 left, out ValueHash256 right)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {

@@ -32,7 +32,7 @@ public ref struct PbtTraversalPath
         return cursor;
     }
 
-    internal readonly ReadOnlySpan<byte> Bytes => _buffer[..PbtBitPrefix.ByteCount(BitDepth)];
+    public readonly ReadOnlySpan<byte> Bytes => _buffer[..PbtBitPrefix.ByteCount(BitDepth)];
 
     /// <summary>Gets the consumed MSB-first bit count.</summary>
     public int BitDepth { get; private set; }

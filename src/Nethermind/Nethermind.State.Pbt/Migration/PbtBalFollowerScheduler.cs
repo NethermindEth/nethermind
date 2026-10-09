@@ -10,7 +10,7 @@ using Nethermind.State.Flat;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Serializes delayed BAL catch-up and cancels obsolete targets before starting their replacements.</summary>
-internal sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToken, Task<bool>> follow, Func<string?> followerError, Func<PbtFollowerCursor?> followerCursor) : IAsyncDisposable
+public sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToken, Task<bool>> follow, Func<string?> followerError, Func<PbtFollowerCursor?> followerCursor) : IAsyncDisposable
 {
     private readonly object _gate = new();
     private CancellationTokenSource? _cancellation;

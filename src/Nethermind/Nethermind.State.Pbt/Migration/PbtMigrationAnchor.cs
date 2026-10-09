@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// <summary>Builds the EIP-8347 anchor from this node's own chain.</summary>
 /// <remarks>The artifacts carry no anchor of their own, so an importer and an exporter must describe the
 /// anchor the same way for the provenance marker of a seeded database to match the one that seeded it.</remarks>
-internal static class PbtMigrationAnchor
+public static class PbtMigrationAnchor
 {
     private const string WorkDbName = "migration-work";
 

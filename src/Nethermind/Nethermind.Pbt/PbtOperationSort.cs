@@ -12,11 +12,11 @@ namespace Nethermind.Pbt;
 /// moves 16-byte entries rather than whole operations. Runs agreeing on a chunk are refined by the next one, and short
 /// runs by full-key insertion sort; the operations are then permuted into place once, without a second batch buffer.
 /// </remarks>
-internal static class PbtOperationSort
+public static class PbtOperationSort
 {
     private const int InsertionSortThreshold = 16;
 
-    internal static void Sort<TKey>(Span<PbtWriteOperation<TKey>> operations) where TKey : unmanaged, IPbtKey<TKey>
+    public static void Sort<TKey>(Span<PbtWriteOperation<TKey>> operations) where TKey : unmanaged, IPbtKey<TKey>
     {
         if (operations.Length < 2) return;
         Entry[] entries = ArrayPool<Entry>.Shared.Rent(operations.Length);
@@ -111,8 +111,8 @@ internal static class PbtOperationSort
 
     private readonly struct Entry(ulong chunk, int index) : IComparable<Entry>
     {
-        internal readonly ulong Chunk = chunk;
-        internal readonly int Index = index;
+        public readonly ulong Chunk = chunk;
+        public readonly int Index = index;
         public int CompareTo(Entry other) => Chunk.CompareTo(other.Chunk);
     }
 }

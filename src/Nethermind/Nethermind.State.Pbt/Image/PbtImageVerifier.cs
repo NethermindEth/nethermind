@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Image;
 /// <summary>Anchor information obtained from the consumer's chain, never from an artifact.</summary>
 /// <param name="ActivationTimestamp">The chain specification's binaryTrieTime, or null when it schedules none.
 /// An anchor must precede it; there is nothing to precede when it is null.</param>
-internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, BlockHeader Header, ulong? ActivationTimestamp)
+public sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, BlockHeader Header, ulong? ActivationTimestamp)
 {
     public void Validate()
     {
@@ -31,7 +31,7 @@ internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, Block
 }
 
 /// <summary>Local buffering budget exhausted; this does not classify an artifact as invalid.</summary>
-internal sealed class PbtImageResourceLimitException(string message) : Exception(message);
+public sealed class PbtImageResourceLimitException(string message) : Exception(message);
 
 /// <summary>Verifies staged EIP-8347 state against the anchor's MPT root through the preimages.</summary>
 /// <remarks>
@@ -42,7 +42,7 @@ internal sealed class PbtImageResourceLimitException(string message) : Exception
 /// The staged state is trusted only for what the walk reads: a listed entry the state lacks fails here, while the
 /// caller compares the listed counts with the staged ones to refuse state the preimages never name.
 /// </remarks>
-internal static class PbtImageVerifier
+public static class PbtImageVerifier
 {
     private const string ReadPhase = "PBT verify preimages";
     private const string MptPhase = "PBT verify MPT";

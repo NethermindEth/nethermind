@@ -26,7 +26,7 @@ namespace Nethermind.State.Pbt.Image;
 /// the anchor on import: flat metadata alone does not prove the anchor root.
 /// <para>The scan workers share the one reader: its iterators are independent, and the source is pinned for the
 /// whole call anyway, so a reader per worker would only multiply the pinned snapshots.</para></remarks>
-internal static class PbtOfflineSource
+public static class PbtOfflineSource
 {
     /// <summary>Keccak address path, the account/slot tag, then the Keccak slot path.</summary>
     private const int PreimageKeyLength = 65;
@@ -159,7 +159,7 @@ internal static class PbtOfflineSource
     /// <remarks>Workers claim address ranges on demand; the spools restore the total order the walk does not have.</remarks>
     /// <param name="phase">Name the scan progress is logged under.</param>
     /// <param name="workers">Scan workers, each holding one writer of every spool.</param>
-    internal static ScanTotals Spool(string phase, FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
+    public static ScanTotals Spool(string phase, FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
         PbtSortedSpool leaves, PbtSortedSpool? rawKeys, int workers, ILogManager logManager, CancellationToken cancellationToken)
     {
         ScanTotals totals = new();
@@ -211,7 +211,7 @@ internal static class PbtOfflineSource
     }
 
     /// <summary>The scan's shared record counts, published by the workers and read by the progress format.</summary>
-    internal sealed class ScanTotals
+    public sealed class ScanTotals
     {
         public long Accounts;
         public long Slots;

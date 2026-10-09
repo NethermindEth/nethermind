@@ -6,9 +6,9 @@ namespace Nethermind.Pbt;
 /// <summary>Owns the independently prepared small account/code and wide storage batches.</summary>
 public sealed class PbtPartitionBatches : IDisposable
 {
-    internal PbtWriteBatch<PbtPath>? Account { get; set; }
-    internal PbtWriteBatch<PbtPath>? Code { get; set; }
-    internal PbtWriteBatch<PbtStoragePath>? Storage { get; set; }
+    public PbtWriteBatch<PbtPath>? Account { get; set; }
+    public PbtWriteBatch<PbtPath>? Code { get; set; }
+    public PbtWriteBatch<PbtStoragePath>? Storage { get; set; }
 
     /// <inheritdoc/>
     public void Dispose()

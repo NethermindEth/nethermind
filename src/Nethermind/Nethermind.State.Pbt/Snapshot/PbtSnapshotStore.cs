@@ -18,7 +18,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// The bundle's node groups are written only from the owner thread: writers hand their buffered groups over on
 /// dispose, and <see cref="Dispose"/> applies them, so they stay invisible until the store is disposed.
 /// </remarks>
-internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
+public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDisposable
 {
     private static readonly PbtNodeGroupReadLabel[] _foundLabels = ReadLabels("found");
     private static readonly PbtNodeGroupReadLabel[] _nullLabels = ReadLabels("null");
@@ -97,7 +97,7 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
             lock (store._handedOff) store._handedOff.Add(_buffer);
         }
 
-        internal static void Release(ArrayPoolList<BufferedNodeGroup> buffer)
+        public static void Release(ArrayPoolList<BufferedNodeGroup> buffer)
         {
             foreach (BufferedNodeGroup group in buffer) ((IDisposable?)group.Payload)?.Dispose();
             buffer.Dispose();

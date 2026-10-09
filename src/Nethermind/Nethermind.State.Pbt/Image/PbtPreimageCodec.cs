@@ -9,12 +9,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>One ordered offline account preimage source, with a streaming slot sequence.</summary>
-internal readonly record struct PbtAccountPreimages(Address Address, uint SlotCount, IEnumerable<ValueHash256> Slots);
+public readonly record struct PbtAccountPreimages(Address Address, uint SlotCount, IEnumerable<ValueHash256> Slots);
 
 /// <summary>Reads EIP-8347 preimages with constant memory, including accounts with arbitrarily many slots.</summary>
 /// <remarks>The caller owns the stream and must read all declared slots before advancing accounts.
 /// Reading accounts until false validates EOF. Slot values are full big-endian raw keys, not their hashes.</remarks>
-internal sealed class PbtPreimageReader(Stream source)
+public sealed class PbtPreimageReader(Stream source)
 {
     private ValueHash256? _previousAccountHash;
     private ValueHash256? _previousSlotHash;
@@ -68,7 +68,7 @@ internal sealed class PbtPreimageReader(Stream source)
 
 /// <summary>Writes already Keccak-path-ordered preimages without sorting or retaining account slot lists.</summary>
 /// <remarks>The caller owns the output. A failed/cancelled write leaves a partial, unpublished artifact.</remarks>
-internal static class PbtPreimageCodec
+public static class PbtPreimageCodec
 {
     public static void Write(Stream destination, IEnumerable<PbtAccountPreimages> accounts, CancellationToken cancellationToken = default)
     {

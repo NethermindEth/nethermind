@@ -171,8 +171,8 @@ public class PbtMetricsTests
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
-        UInt256 actualHeaderSlot = bundle.GetSlot<PbtPath>(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
-        UInt256 actualSlot = bundle.GetSlot<PbtStoragePath>(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
+        UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);
+        UInt256 actualSlot = bundle.GetSlot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PackedSlotRun headerRun = bundle.RentRun<PbtPath>(SlotRun.RunKey(headerStorageKey), addressHash);
         PackedSlotRun storageRun = bundle.RentRun<PbtStoragePath>(SlotRun.RunKey(storageKey), addressHash);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());

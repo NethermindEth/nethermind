@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Main-processing scope provider: flat before activation, PBT after.</summary>
 /// <remarks>Before activation <see cref="PbtBranchFollower"/>, not main processing, brings PBT up to the processed blocks.</remarks>
-internal sealed class MigrationScopeProvider(
+public sealed class MigrationScopeProvider(
     FlatWorldStateManager flat,
     PbtWorldStateManager pbt,
     ISpecProvider specProvider,
@@ -21,7 +21,7 @@ internal sealed class MigrationScopeProvider(
     private readonly IWorldStateScopeProvider _flat = flat.GlobalWorldState;
     private readonly IWorldStateScopeProvider _pbt = pbt.GlobalWorldState;
 
-    internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
+    private IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
         MigrationActivation.IsBinary(specProvider, baseBlock, targetBlock) ? _pbt : _flat;
 
     public bool HasRoot(BlockHeader? baseBlock) => Select(baseBlock, null).HasRoot(baseBlock);
@@ -47,7 +47,7 @@ internal sealed class MigrationScopeProvider(
 /// picks the right backend; it also survives the synthetic parent headers some readers build without a timestamp.
 /// Flat comes first because it is the authoritative tree before activation.
 /// </remarks>
-internal sealed class MigrationReadOnlyScopeProvider(IWorldStateScopeProvider flat, IWorldStateScopeProvider pbt, ISpecProvider specProvider)
+public sealed class MigrationReadOnlyScopeProvider(IWorldStateScopeProvider flat, IWorldStateScopeProvider pbt, ISpecProvider specProvider)
     : IWorldStateScopeProvider, IDisposable
 {
     private IWorldStateScopeProvider SelectForBase(BlockHeader? baseBlock) => flat.HasRoot(baseBlock) ? flat : pbt;

@@ -79,14 +79,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private void LogLifecycle(string stage) =>
         _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
 
-    internal PbtSnapshotBundle Bundle { get; }
+    private PbtSnapshotBundle Bundle { get; }
     public Hash256 RootHash => _rootHash;
 
     // PBT has no per-account storage root.
     public bool StorageRootsAreAuthoritative => false;
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
-    internal void UseAuthoritativeRoot(Hash256 root)
+    public void UseAuthoritativeRoot(Hash256 root)
     {
         _authoritativeRoot = root;
         _rootHash = root;
@@ -137,7 +137,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// Accounts are read first, so their slots know whether the account is missing: <see cref="ApplyBal"/> writes no slot of a
     /// missing account that the block leaves missing. The slots of one run are adjacent in key order, so the run is buffered once.
     /// </remarks>
-    internal static void PrefetchBal(PbtSnapshotBundle bundle, BalKeys keys, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads)
+    private static void PrefetchBal(PbtSnapshotBundle bundle, BalKeys keys, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads)
     {
         ParallelUnbalancedWork.For(0, keys.Accounts.Count, (bundle, keys, sink, reads), static (position, state) =>
         {
@@ -201,7 +201,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// remaining depth is about <c>log16</c> of that many group levels. Code leaves are left out: they are content
     /// addressed, so a deployment rarely finds their groups stored.
     /// </remarks>
-    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
+    private static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
     {
         HashSet<PbtStorageNodePath> accountGroups = [];
         foreach (PbtWriteOperation<PbtPath> account in keys.Accounts)
@@ -436,7 +436,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     /// <summary>The keys a block access list names, as EIP-8297 paths sorted per list, so the slots of one run, stem or group are adjacent.</summary>
-    internal sealed class BalKeys : IDisposable
+    private sealed class BalKeys : IDisposable
     {
         private readonly Dictionary<ValueHash256, int> _accountIndexes = [];
 

@@ -139,11 +139,13 @@ public class PbtTrieNodeLogTests
 
     private void RollBackConfirmedVersions()
     {
-        foreach (TrieNodeLogShard shard in _log.Shards)
+        // A first-level shard's directory carries its name, which keys its confirmed version.
+        foreach (string shardDirectory in Directory.GetDirectories(_directory.Path))
         {
-            byte[] version = _db.GetColumnDb(PbtColumns.Metadata).Get(shard.VersionKey)!;
+            byte[] versionKey = Keccak.Compute($"TrieNodeLogVersion:{Path.GetFileName(shardDirectory)}").BytesToArray();
+            if (_db.GetColumnDb(PbtColumns.Metadata).Get(versionKey) is not { } version) continue;
             version[^1]--;
-            _db.GetColumnDb(PbtColumns.Metadata).Set(shard.VersionKey, version);
+            _db.GetColumnDb(PbtColumns.Metadata).Set(versionKey, version);
         }
     }
 
@@ -466,7 +468,6 @@ public class PbtTrieNodeLogTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(keys.Select(key => _log.ShardIndex(PbtColumns.TopNodeGroups, key)).Distinct().Count(), Is.EqualTo(2));
             Assert.That(ShardFiles("account-0"), Is.Not.Empty);
             Assert.That(ShardFiles("account-1"), Is.Not.Empty);
             foreach (byte[] key in keys) Assert.That(Read(key), Is.EqualTo(key));

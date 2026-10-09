@@ -31,7 +31,7 @@ public readonly struct PbtPath : IPbtKey<PbtPath>
     }
 
     /// <summary>Creates a key from a prefix of at most <see cref="KeyLength"/> bytes, leaving the tail zero.</summary>
-    internal static PbtPath ZeroPad(ReadOnlySpan<byte> prefix)
+    public static PbtPath ZeroPad(ReadOnlySpan<byte> prefix)
     {
         Span<byte> padded = stackalloc byte[KeyLength];
         prefix.CopyTo(padded);

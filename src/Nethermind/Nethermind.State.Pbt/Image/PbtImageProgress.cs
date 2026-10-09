@@ -15,7 +15,7 @@ namespace Nethermind.State.Pbt.Image;
 /// An image phase streams tens of millions of records with no natural block boundary, so the caller only counts
 /// and a timer decides when a line is due. Disposing the reporter logs the phase's final line.
 /// </remarks>
-internal static class PbtImageProgress
+public static class PbtImageProgress
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
 

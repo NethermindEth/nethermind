@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,22 +118,36 @@ public class MigrationBalFollowerTests
     public async Task Branch_follower_replays_any_branch_and_drops_only_one_beside_finality()
     {
         using Harness harness = new();
-        await using PbtBranchFollower follower = harness.CreateBranchFollower();
-        Assert.That(follower.Follow(harness.Blocks["a3"].Header, default), Is.False, "PBT holds no ancestor before the anchor import");
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        await using PbtBranchFollower follower = harness.CreateBranchFollower(new OneLoggerLogManager(new ILogger(logger)));
+        follower.Start();
+        follower.Add(harness.Blocks["a1"].Header);
         await harness.Publish();
+        Assert.That(() => HasState(harness, "a1"), Is.True.After(10_000, 50), "a target queued before the anchor import is retried until PBT holds its ancestor");
         harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a1"].Hash, Hash256.Zero);
 
         Block missing = harness.Blocks["b2"];
         harness.Store.Delete(missing.Number, missing.Hash!);
-        Assert.Throws<InvalidDataException>(() => follower.Follow(harness.Blocks["b3"].Header, default));
+        follower.Add(harness.Blocks["b3"].Header);
+        Assert.That(() => logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Warn) && call.GetArguments()[0] is string message && message.Contains("No BAL")), Is.True.After(10_000, 50), "a missing BAL fails the replay");
         AssertAbsent(harness, "b2");
         harness.RestoreBal("b2");
-        Assert.That(follower.Follow(harness.Blocks["b3"].Header, default), Is.True);
+        Assert.That(() => HasState(harness, "b3"), Is.True.After(10_000, 50), "the failed replay is retried");
         AssertState(harness, "b3");
 
         harness.Canonical("b");
-        harness.BlockTree.ForkChoiceUpdated(harness.Blocks["b3"].Hash, Hash256.Zero);
-        Assert.That(follower.Follow(harness.Blocks["a3"].Header, default), Is.True, "a branch beside the finalized chain is done");
+        // A pre-activation child of b3 with an empty BAL: once it is replayed, the worker has handled the targets added before it.
+        BlockHeader b3 = harness.Blocks["b3"].Header;
+        BlockHeader child = Build.A.BlockHeader.WithParent(b3).WithStateRoot(b3.StateRoot!).WithTimestamp(b3.Timestamp + 1).TestObject;
+        byte[] emptyBal = Bytes.FromHexString("c0");
+        child.BlockAccessListHash = Keccak.Compute(emptyBal);
+        child.Hash = child.CalculateHash();
+        harness.AddCanonical(new Block(child), emptyBal);
+        harness.BlockTree.ForkChoiceUpdated(b3.Hash, Hash256.Zero);
+        follower.Add(harness.Blocks["a3"].Header);
+        follower.Add(child);
+        Assert.That(() => harness.Manager.HasStateForBlock(new StateId(child)), Is.True.After(10_000, 50));
         AssertAbsent(harness, "a2", "a3");
     }
 
@@ -195,6 +210,8 @@ public class MigrationBalFollowerTests
             Assert.That(harness.TreeRoot(header), Is.EqualTo(harness.PbtRoot(name)), name);
         }
     }
+
+    private static bool HasState(Harness harness, string name) => harness.Manager.HasStateForBlock(new StateId(harness.Blocks[name].Header));
 
     private static void AssertAbsent(Harness harness, params string[] names)
     {
@@ -307,11 +324,11 @@ public class MigrationBalFollowerTests
 
         private void Close() => _pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-        public PbtBranchFollower CreateBranchFollower() =>
-            new(_blockTree, Store, _pbt.Manager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), LimboLogs.Instance);
+        public PbtBranchFollower CreateBranchFollower(ILogManager logManager) =>
+            new(_blockTree, Store, _pbt.Manager, Replay, SpecProvider, Substitute.For<IMainProcessingContext>(), logManager);
 
         public PbtBalFollower CreateFollower(IBlockTree blockTree, BalFetcher fetcher, IBlockAccessListStore store) =>
-            new(blockTree, fetcher, store, _pbt.Manager, Replay, SpecProvider, LimboLogs.Instance) { MigrationRetryDelay = TimeSpan.Zero };
+            new(blockTree, fetcher, store, _pbt.Manager, Replay, SpecProvider, LimboLogs.Instance);
 
         public async Task Publish()
         {
@@ -402,6 +419,8 @@ public class MigrationBalFollowerTests
             byte[] stored = Bytes.FromHexString(storedHex);
             (BlockHeader from, BlockHeader to) = MigrationPair(repairable ? Bytes.FromHexString("c0") : stored);
             if (locallyStored) _balStore.Insert(to.Number, to.Hash!, stored);
+            int fetches = 0;
+            if (!repairable) _onFetch = () => { if (++fetches == 2) _balByHash.Clear(); };
             AllocatePeer(Snap2Peer());
             int consumed = 0;
 
@@ -412,7 +431,7 @@ public class MigrationBalFollowerTests
                 Assert.That(result, Is.EqualTo(repairable));
                 Assert.That(consumed, Is.EqualTo(repairable ? 1 : 0));
                 Assert.That(_balStore.Exists(to.Number, to.Hash!), Is.EqualTo(repairable));
-                Assert.That(_allocations, Has.Count.EqualTo(repairable ? 1 : 50));
+                Assert.That(_allocations, Has.Count.EqualTo(repairable ? 1 : 51));
             }
         }
 

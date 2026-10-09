@@ -24,6 +24,7 @@ using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -896,7 +897,12 @@ public class PbtProtocolStorageClearTests
             }
             finalRoot = head.StateRoot!;
             if (retained)
-                Assert.That(((PbtRetainedSnapshotCompactor)container.Resolve<IPbtRetainedSnapshotCompactor>()).DoCompactCompactSized(new StateId(head)), Is.True);
+            {
+                IPbtRetainedSnapshotCompactor compactor = container.Resolve<IPbtRetainedSnapshotCompactor>();
+                await compactor.EnqueueAsync(new ArrayPoolList<StateId>(1) { new(head) }, 0, CancellationToken.None);
+                await compactor.DisposeAsync();
+                Assert.That(container.Resolve<PbtSnapshotRepository>().HasRetained(new StateId(head), 2, SnapshotTier.PersistedCompactSized), Is.True);
+            }
             else manager.FlushCache(CancellationToken.None);
         }
         if (survives) Assert.That(codeDb[ValueKeccak.Compute(destroy).Bytes], Is.EqualTo(destroy));

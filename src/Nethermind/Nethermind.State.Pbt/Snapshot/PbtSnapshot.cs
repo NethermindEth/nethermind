@@ -23,7 +23,7 @@ public class PbtSnapshot(
     public ValueHash256 TreeRoot { get; } = treeRoot;
     public PbtSnapshotContent Content { get; } = content;
 
-    internal PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
+    public PbtSnapshotPayloadSize PayloadSize => _payloadSize ??= Content.GetPayloadSize();
 
     public bool TryLease() => TryAcquireLease();
 

@@ -6,7 +6,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.State.Pbt.Migration;
 
-internal sealed class MigrationDebugRpcModule(IMigrationTelemetry telemetry) : IMigrationDebugRpcModule
+public sealed class MigrationDebugRpcModule(IMigrationTelemetry telemetry) : IMigrationDebugRpcModule
 {
     public ResultWrapper<MigrationProgressForRpc> debug_migrationProgress() =>
         ResultWrapper<MigrationProgressForRpc>.Success(telemetry.GetProgress());

@@ -249,7 +249,7 @@ public class PbtNodeGroupTests
     {
         if (!streamingWriter) return ReadGroupCount(groupKey, payload);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(groupKey.BitDepth, new TrackingMemoryProvider());
         writer.Write(groupPath, position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.GetTrailerLength(1, 0, default)));
         using RefCountingMemory writtenPayload = writer.Detach(default, ushort.MaxValue)!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
@@ -323,7 +323,7 @@ public class PbtNodeGroupTests
         WarmReadStore persistence = new(store);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         ValueHash256 groupHash = store.GetGroupHash(groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, memory);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(groupKey.BitDepth, memory);
         Assert.That(GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.TryLoad(persistence, groupPath, groupHash, out GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader), Is.EqualTo(present));
         using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
@@ -877,7 +877,7 @@ public class PbtNodeGroupTests
         List<PbtNodeRecord> records = [];
         ReadOnlyMemory<byte>[] encodings = new ReadOnlyMemory<byte>[PbtFourLevelGroupGeometry.PositionCount];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> streamingWriter = new(groupKey.BitDepth, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtStorageNodePath> streamingWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(groupKey.BitDepth, new TrackingMemoryProvider());
         int fullLength = PbtNodeGroupCodec.HeaderLength + sizeof(uint) + PbtNodeGroupCodec.DescendantMaskLength;
         int omitted = 0;
         int positionCount = groupDepth == 0 ? 31 : 30;
@@ -894,12 +894,7 @@ public class PbtNodeGroupTests
             encodings[position] = encoding;
             fullLength += encoding.Length + sizeof(ushort);
             if (nodeKind == 0 && path.BitDepth - groupDepth is >= 1 and <= 3) omitted++;
-            if ((position & 1) == 0) streamingWriter.Write(groupPath, position, encoding);
-            else
-            {
-                encoding.CopyTo(streamingWriter.GetSpan(position, encoding.Length));
-                streamingWriter.Commit(groupPath);
-            }
+            streamingWriter.Write(groupPath, position, encoding);
         }
 
         byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
@@ -946,7 +941,7 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
         TrackingMemoryProvider provider = new();
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, provider);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(groupKey.BitDepth, provider);
         using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             int nextPosition = 0;
@@ -978,28 +973,6 @@ public class PbtNodeGroupTests
         }
     }
 
-    [Test]
-    public void Streaming_writer_commits_leaves_without_allocating(
-        [Values(0, 4, 8, 268, PbtFourLevelGroupGeometry.MaxGroupDepth)] int groupDepth)
-    {
-        PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
-        PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, new TrackingMemoryProvider());
-        int positionCount = groupDepth == 0 ? PbtFourLevelGroupGeometry.PositionCount : PbtFourLevelGroupGeometry.RootPosition;
-        for (int position = 0; position < positionCount; position++)
-        {
-            PbtStorageNodePath path = PbtTestPaths.PathOf(groupKey, position);
-            byte[] encoding = LeafBranch(path, 1);
-            encoding.CopyTo(writer.GetSpan(position, encoding.Length));
-
-            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-            writer.Commit(groupPath);
-            long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-
-            Assert.That(allocatedBytes, Is.Zero, $"position {position}");
-        }
-    }
-
     [TestCase(0, 1, false)]
     [TestCase(0, 31, false)]
     [TestCase(4, 30, false)]
@@ -1015,7 +988,7 @@ public class PbtNodeGroupTests
         TrackingMemoryProvider provider = new(slabProvider ? slab : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
         List<PbtNodeRecord> records = [];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, provider);
+        using PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(groupKey.BitDepth, provider);
         for (int index = 0; index < count; index++)
         {
             int position = count == 1 ? 30 : count == 3 ? 3 + index * 10 : index;
@@ -1024,11 +997,10 @@ public class PbtNodeGroupTests
             records.Add(new(PbtTestPaths.PathOf(groupKey, position), encoding));
             if (index % 2 == 0)
             {
-                Span<byte> destination = writer.GetSpan(position, encoding.Length);
+                Span<byte> destination = writer.Append(position, encoding.Length);
                 PbtNodeCodec.CreateBranchEncoding(destination, 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)));
                 PbtNodeCodec.WriteBranchTrailer(destination[PbtNodeCodec.BranchPreimageLength(4)..], [], []);
                 destination[3] = 0xA0;
-                writer.Commit(groupPath);
             }
             else writer.Write(groupPath, position, encoding);
         }
@@ -1069,16 +1041,14 @@ public class PbtNodeGroupTests
     public void Streaming_writer_accepts_exact_uint16_entries_limit()
     {
         TrackingMemoryProvider provider = new();
-        PbtTraversalPath groupPath = new(Span<byte>.Empty);
-        using PbtNodeGroupWriter<PbtNodePath> writer = new(0, provider);
+        using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(0, provider);
         for (int position = 0; position < 8; position++)
         {
             int length = position == 7 ? 8191 : 8192;
-            Span<byte> encoding = writer.GetSpan(position, length);
+            Span<byte> encoding = writer.Append(position, length);
             PbtNodeCodec.CreateBranchEncoding(encoding, (length - PbtNodeCodec.BranchLength(0, 0, 0)) * 8,
                 new ValueHash256(Value(1)), new ValueHash256(Value(2)));
             PbtNodeCodec.WriteBranchTrailer(encoding[^PbtNodeCodec.BranchTrailerHeaderLength..], [], []);
-            writer.Commit(groupPath);
         }
         Assert.That(writer.WrittenCount, Is.EqualTo(ushort.MaxValue));
         using RefCountingMemory payload = writer.Detach(default, ushort.MaxValue)!;
@@ -1141,7 +1111,7 @@ public class PbtNodeGroupTests
         slots[slot] = descendantBytes;
         byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, [record], slots);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        using PbtNodeGroupWriter<PbtNodePath> streamingWriter = new(0, new TrackingMemoryProvider());
+        using PbtNodeGroupWriter<PbtNodePath> streamingWriter = PbtNodeGroupWriter<PbtNodePath>.Rent(0, new TrackingMemoryProvider());
         streamingWriter.Write(groupPath, PbtFourLevelGroupGeometry.RootPosition, record.Encoding.Span);
         using RefCountingMemory streamed = streamingWriter.Detach(slots, ushort.MaxValue)!;
         long[] stored = PbtStoreTestExtensions.ReadDescendantBytes(payload);

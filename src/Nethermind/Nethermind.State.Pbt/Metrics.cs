@@ -159,16 +159,16 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtInMemorySlotFilterBuildTime { get; set; } = new NoopMetricObserver();
 
-    internal static void RecordPbtInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
+    public static void RecordPbtInMemorySlotFilterBuilt(long bytes, long elapsedTicks)
     {
         Interlocked.Add(ref _pbtInMemorySlotFilterMemory, bytes);
         Interlocked.Increment(ref _pbtInMemorySlotFilterBuilds);
         PbtInMemorySlotFilterBuildTime.Observe(elapsedTicks);
     }
 
-    internal static void RecordPbtInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _pbtInMemorySlotFilterBuildFailures);
+    public static void RecordPbtInMemorySlotFilterBuildFailed() => Interlocked.Increment(ref _pbtInMemorySlotFilterBuildFailures);
 
-    internal static void RecordPbtInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _pbtInMemorySlotFilterMemory, -bytes);
+    public static void RecordPbtInMemorySlotFilterReleased(long bytes) => Interlocked.Add(ref _pbtInMemorySlotFilterMemory, -bytes);
 
     [GaugeMetric]
     [DetailedMetric]
@@ -186,9 +186,9 @@ public static class Metrics
     [Description("Number of pbt base snapshots currently retained in snapshot repositories")]
     public static long PbtBaseSnapshotCount => Volatile.Read(ref _pbtBaseSnapshotCount);
 
-    internal static void AddPbtBaseSnapshotCount(long delta) => Interlocked.Add(ref _pbtBaseSnapshotCount, delta);
+    public static void AddPbtBaseSnapshotCount(long delta) => Interlocked.Add(ref _pbtBaseSnapshotCount, delta);
 
-    internal static void AddPbtBaseSnapshotMemory(in PbtSnapshotPayloadSize size, long direction)
+    public static void AddPbtBaseSnapshotMemory(in PbtSnapshotPayloadSize size, long direction)
     {
         PbtBaseSnapshotMemory.AddBy("leaf", direction * size.Leaf);
         PbtBaseSnapshotMemory.AddBy("trie", direction * size.Node);

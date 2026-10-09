@@ -9,7 +9,7 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Common;
 
-internal static class PbtStateKey
+public static class PbtStateKey
 {
     /// <summary>The <see cref="Eip8297KeyDerivation.AddressHash"/> of <paramref name="address"/>; the flat account/storage column key.</summary>
     public static ValueHash256 AddressKeyHash(Address address)
@@ -33,7 +33,7 @@ internal static class PbtStateKey
     }
 
     /// <summary>The canonical tree leaves of an account, derived from its whole flat value.</summary>
-    internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
+    public static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
     {
         PbtAccount stem = PbtAccount.From(account, code);
         if (stem.BasicData != default) yield return new(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), stem.BasicData);

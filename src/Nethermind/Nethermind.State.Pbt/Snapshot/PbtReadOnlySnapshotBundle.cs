@@ -65,7 +65,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     private BloomFilter? _slotFilter;
     private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, snapshots.Count);
 
-    internal PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics, double slotFilterBitsPerKey)
+    public PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics, double slotFilterBitsPerKey)
         : this(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics, slotFilterBitsPerKey)
     {
         _chain = chain;
@@ -135,7 +135,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
-    internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    public bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -156,11 +156,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         return false;
     }
 
-    /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
-    internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey) =>
-        TryGetSnapshotNodeGroup(groupKey, out RefCountingMemory? payload) ? payload : GetPersistedNodeGroup(groupKey);
-
-    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
+    public RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -176,7 +172,7 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public PbtAccount? GetAccount(Address address) => GetAccount(PbtStateKey.AddressKeyHash(address));
 
-    internal PbtAccount? GetAccount(in ValueHash256 addressHash)
+    public PbtAccount? GetAccount(in ValueHash256 addressHash)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -206,7 +202,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     private UInt256 GetSlot<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
 
     /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
-    internal UInt256 GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>
+    private UInt256 GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -229,7 +225,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>A caller-owned copy of the whole run keyed by <paramref name="runKey"/> as this view sees it.</summary>
-    internal PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+    public PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
         RentRun(runKey, addressHash, skipMemoryLayers: false);
 
     /// <summary>
@@ -242,7 +238,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     /// build take the plain loop instead of waiting. Retained layers keep their own bloom filters and are still
     /// probed on a definite miss.
     /// </remarks>
-    internal PackedSlotRun RentRunFiltered<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
+    public PackedSlotRun RentRunFiltered<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         BloomFilter? filter = Volatile.Read(ref _slotFilter)
@@ -273,7 +269,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         return persisted;
     }
 
-    internal CodeInfo? GetCode(in ValueHash256 codeHash)
+    public CodeInfo? GetCode(in ValueHash256 codeHash)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -327,14 +323,11 @@ public sealed class PbtReadOnlySnapshotBundle(
         return filter;
     }
 
-    /// <summary>The published slot filter, or <c>null</c> while none is built.</summary>
-    internal BloomFilter? SlotFilter => Volatile.Read(ref _slotFilter);
-
     /// <summary>
     /// <c>false</c> when <see cref="RentRunFiltered"/> can only fall back to the plain loop: no bits per key, fewer than
     /// two in-memory layers, or a build that failed.
     /// </summary>
-    internal bool MayFilterSlots => Volatile.Read(ref _slotFilterState) != SlotFilterSkipped;
+    public bool MayFilterSlots => Volatile.Read(ref _slotFilterState) != SlotFilterSkipped;
 
     private void ReleaseSlotFilter()
     {

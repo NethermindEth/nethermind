@@ -9,39 +9,39 @@ using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
-internal sealed class PbtRetainedPublicationGate
+public sealed class PbtRetainedPublicationGate
 {
-    internal Lock Sync { get; } = new();
+    public Lock Sync { get; } = new();
 }
 
-internal sealed class PbtRetainedStorageLifetime
+public sealed class PbtRetainedStorageLifetime
 {
-    internal IArenaManager? Arena { get; }
-    internal BlobArenaManager? Blobs { get; }
-    internal PbtRetainedStorageLifetime() { }
-    internal PbtRetainedStorageLifetime(IArenaManager arena, BlobArenaManager blobs) => (Arena, Blobs) = (arena, blobs);
+    private IArenaManager? Arena { get; }
+    private BlobArenaManager? Blobs { get; }
+    public PbtRetainedStorageLifetime() { }
+    public PbtRetainedStorageLifetime(IArenaManager arena, BlobArenaManager blobs) => (Arena, Blobs) = (arena, blobs);
 
-    internal void AbortLoad()
+    public void AbortLoad()
     {
         if (Arena is ArenaManager arena) arena.PreserveFilesOnFailure();
         Blobs?.PreserveFilesOnFailure();
     }
 }
 
-internal sealed class PbtSnapshotLease : IDisposable
+public sealed class PbtSnapshotLease : IDisposable
 {
     private int _disposed;
-    internal PbtSnapshot? Memory { get; }
-    internal PbtRetainedSnapshot? Retained { get; }
-    internal StateId From => Memory?.From ?? Retained!.From;
-    internal StateId To => Memory?.To ?? Retained!.To;
-    internal ValueHash256 TreeRoot => Memory?.TreeRoot ?? Retained!.TreeRoot;
-    internal SnapshotTier Tier { get; }
+    public PbtSnapshot? Memory { get; }
+    public PbtRetainedSnapshot? Retained { get; }
+    public StateId From => Memory?.From ?? Retained!.From;
+    public StateId To => Memory?.To ?? Retained!.To;
+    public ValueHash256 TreeRoot => Memory?.TreeRoot ?? Retained!.TreeRoot;
+    public SnapshotTier Tier { get; }
 
-    internal PbtSnapshotLease(PbtSnapshot snapshot, SnapshotTier tier) => (Memory, Tier) = (snapshot, tier);
-    internal PbtSnapshotLease(PbtRetainedSnapshot snapshot) => (Retained, Tier) = (snapshot, snapshot.Tier);
+    public PbtSnapshotLease(PbtSnapshot snapshot, SnapshotTier tier) => (Memory, Tier) = (snapshot, tier);
+    public PbtSnapshotLease(PbtRetainedSnapshot snapshot) => (Retained, Tier) = (snapshot, snapshot.Tier);
 
-    internal PbtSnapshotLease Lease()
+    public PbtSnapshotLease Lease()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (Memory is { } memory)
@@ -61,11 +61,10 @@ internal sealed class PbtSnapshotLease : IDisposable
     }
 }
 
-internal sealed class PbtSnapshotChain : IDisposable
+public sealed class PbtSnapshotChain(List<PbtSnapshotLease> layers) : IDisposable
 {
-    private List<PbtSnapshotLease>? _layers;
-    internal IReadOnlyList<PbtSnapshotLease> Layers => _layers ?? throw new ObjectDisposedException(nameof(PbtSnapshotChain));
-    internal PbtSnapshotChain(List<PbtSnapshotLease> layers) => _layers = layers;
+    private List<PbtSnapshotLease>? _layers = layers;
+    public IReadOnlyList<PbtSnapshotLease> Layers => _layers ?? throw new ObjectDisposedException(nameof(PbtSnapshotChain));
     public void Dispose()
     {
         List<PbtSnapshotLease>? layers = Interlocked.Exchange(ref _layers, null);

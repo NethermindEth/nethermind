@@ -175,8 +175,9 @@ internal static class PbtStoreTestExtensions
     internal static void Write<TPath>(this PbtNodeGroupWriter<TPath> writer, scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        encoding.CopyTo(writer.GetSpan(position, encoding.Length));
-        writer.Commit(path);
+        if (PbtNodeGroupCodec.ShouldOmit(position, encoding)) return;
+        writer.ValidateEntry(path, position, encoding);
+        encoding.CopyTo(writer.Append(position, encoding.Length));
     }
 
     internal static int NodeGroupCount(this PbtSnapshotContent content) =>
@@ -205,8 +206,7 @@ internal static class PbtStoreTestExtensions
     internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-        PbtNodeGroupCodec.ValidateNodes(cursor, payload);
+        PbtNodeGroupCodec.ValidateNodes(groupKey, payload);
         return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth);
     }
 

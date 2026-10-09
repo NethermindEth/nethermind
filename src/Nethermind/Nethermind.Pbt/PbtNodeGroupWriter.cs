@@ -16,7 +16,7 @@ namespace Nethermind.Pbt;
 /// Writable spans are borrowed until the next writer operation. The group is composed in a pooled scratch array and
 /// rented from the memory provider only once, at its final size, when detached; Detach transfers that sole output lease.
 /// </remarks>
-internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
+public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     where TPath : struct, IPbtNodePath<TPath>
 {
     private const int MaxCapacity = PbtNodeGroupCodec.MaxPayloadLength;
@@ -34,13 +34,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private ushort _descendantDeltaMask;
     private uint _availability;
     private int _written;
-    private int _pendingPosition = -1;
-    private int _pendingLength;
     private bool _disposed;
     /// <summary>Whether <see cref="Dispose"/> hands this writer back to the calling thread's cache.</summary>
     private bool _rented;
 
-    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+    private PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         _bitDepth = bitDepth;
@@ -49,7 +47,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>A writer as the constructor makes it, reused from the calling thread's cache, which <see cref="Dispose"/> returns it to.</summary>
     /// <remarks>A fold opens one writer per group it rewrites, so reusing them keeps the fold from allocating one per group.</remarks>
-    internal static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+    public static PbtNodeGroupWriter<TPath> Rent(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
         if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider) { _rented = true };
         PbtNodeGroupWriter<TPath> writer = cache.Pop();
@@ -60,53 +58,26 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         writer._descendantDeltaMask = 0;
         writer._availability = 0;
         writer._written = 0;
-        writer._pendingPosition = -1;
-        writer._pendingLength = 0;
         writer._disposed = false;
         writer._rented = true;
         return writer;
     }
 
-    internal int WrittenCount => _written;
+    public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
-    internal int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
+    public int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
-    internal long DescendantDelta(int slot) => _descendantDeltas[slot];
+    public long DescendantDelta(int slot) => _descendantDeltas[slot];
 
     /// <summary>The boundary slots a size change was folded below; every other slot's change is zero.</summary>
-    internal ushort DescendantDeltaMask => _descendantDeltaMask;
+    public ushort DescendantDeltaMask => _descendantDeltaMask;
 
     /// <summary>Records the size change of the groups folded below <paramref name="slot"/>.</summary>
-    internal void AddDescendantDelta(int slot, long delta)
+    public void AddDescendantDelta(int slot, long delta)
     {
         _descendantDeltas[slot] += delta;
         _descendantDeltaMask |= (ushort)(1 << slot);
-    }
-
-    /// <summary>Reserves the exact encoding length for the next position without committing it.</summary>
-    internal Span<byte> GetSpan(int position, int encodingLength)
-    {
-        EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + encodingLength);
-        _pendingPosition = position;
-        _pendingLength = encodingLength;
-        return _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written, encodingLength);
-    }
-
-    /// <summary>Commits the node in the last reserved span.</summary>
-    internal void Commit(scoped in PbtTraversalPath path)
-    {
-        Debug.Assert(path.BitDepth == _bitDepth);
-        ReadOnlySpan<byte> encoding = _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
-        PbtNodeGroupCodec.DebugValidateNode(path, _pendingPosition, encoding);
-        if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
-        {
-            _offsets[_pendingPosition] = (ushort)_written;
-            _availability |= 1u << _pendingPosition;
-            _written += _pendingLength;
-        }
-        _pendingPosition = -1;
-        _pendingLength = 0;
     }
 
     /// <summary>Appends an entry that composition settles later, reserving <paramref name="length"/> bytes at <paramref name="position"/>.</summary>
@@ -115,7 +86,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// known, reading it back through <see cref="Entry"/> meanwhile and removing it with <see cref="DropLast"/> if it
     /// must not stay. The group root may be appended too, since composition always drops it below depth zero.
     /// </remarks>
-    internal Span<byte> Append(int position, int length)
+    public Span<byte> Append(int position, int length)
     {
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + length);
         Span<byte> entry = _scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written, length);
@@ -126,10 +97,10 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>The entry written at <paramref name="offset"/>, borrowed until the next writer operation.</summary>
-    internal ReadOnlyMemory<byte> Entry(int offset, int length) => new(_scratch, PbtNodeGroupCodec.HeaderLength + offset, length);
+    public ReadOnlyMemory<byte> Entry(int offset, int length) => new(_scratch, PbtNodeGroupCodec.HeaderLength + offset, length);
 
     /// <summary>Removes the last entry, appended at <paramref name="position"/>, so the next one is written over it.</summary>
-    internal void DropLast(int position)
+    public void DropLast(int position)
     {
         Debug.Assert((_availability & (1u << position)) != 0, "Only an appended entry is dropped.");
         _availability &= ~(1u << position);
@@ -138,7 +109,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>Checks an appended entry once its position is final.</summary>
     [Conditional("DEBUG")]
-    internal void ValidateEntry(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
+    public void ValidateEntry(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding)
     {
         Debug.Assert(path.BitDepth == _bitDepth);
         PbtNodeGroupCodec.DebugValidateNode(path, position, encoding);
@@ -147,7 +118,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
     /// <param name="offsets">The source footer's little-endian offsets of <paramref name="positions"/>, in position order.</param>
     /// <param name="positions">The stored positions <paramref name="entries"/> holds; at least one.</param>
-    internal void CopyRange(ReadOnlySpan<byte> entries, ReadOnlySpan<byte> offsets, uint positions)
+    public void CopyRange(ReadOnlySpan<byte> entries, ReadOnlySpan<byte> offsets, uint positions)
     {
         EnsureCapacity(PbtNodeGroupCodec.HeaderLength + _written + entries.Length);
         entries.CopyTo(_scratch.AsSpan(PbtNodeGroupCodec.HeaderLength + _written));
@@ -164,7 +135,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
     /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
     /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
-    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    public RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         if (_availability == 0)
         {
@@ -205,7 +176,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     /// <summary>Sizes the scratch for a group expected to be about <paramref name="length"/> bytes.</summary>
     /// <remarks>The group's previous size is the estimate, so a rewrite of similar size never grows the scratch.</remarks>
-    internal void ReserveFirstBuffer(int length)
+    public void ReserveFirstBuffer(int length)
     {
         if (_scratch is null && length > 0) _scratch = ArrayPool<byte>.Shared.Rent(Math.Min(MaxCapacity, length));
     }

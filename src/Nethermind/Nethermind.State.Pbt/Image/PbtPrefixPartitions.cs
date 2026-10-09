@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Splits a keyspace into <paramref name="count"/> ascending ranges cut on its first two bytes.</summary>
-internal readonly struct PbtPrefixPartitions(int count)
+public readonly struct PbtPrefixPartitions(int count)
 {
     /// <summary>Distinct values of the two leading key bytes the ranges are cut on, which bounds the range count.</summary>
     public const int PrefixSpace = 1 << 16;

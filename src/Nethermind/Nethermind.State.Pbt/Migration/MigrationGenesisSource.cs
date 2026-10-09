@@ -11,9 +11,9 @@ namespace Nethermind.State.Pbt.Migration;
 /// <summary>Owns the isolated preimage-flat copy of the normally executed genesis allocation snapshot.</summary>
 /// <remarks>Registered only for explicit genesis bootstrap. The stable path preserves the source across restart;
 /// its state identity is verified against the independently loaded target genesis before conversion.</remarks>
-internal sealed class MigrationGenesisSource : IDisposable
+public sealed class MigrationGenesisSource : IDisposable
 {
-    internal const string DbName = "MigrationGenesisSource";
+    public const string DbName = "MigrationGenesisSource";
 
     public IColumnsDb<FlatDbColumns> Database { get; }
     public IPersistence Persistence { get; }

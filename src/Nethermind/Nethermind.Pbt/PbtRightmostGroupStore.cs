@@ -17,7 +17,7 @@ namespace Nethermind.Pbt;
 /// Zones and buckets fold concurrently, so a group superseded during a fold stays readable until the fold ends.
 /// </remarks>
 /// <param name="writeThrough">Receives every group the fold writes, one call at a time under this store's lock.</param>
-internal sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPbtStore, IPbtNodeGroupSink, IDisposable
+public sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
     private readonly Lock _lock = new();
     private readonly Group[] _edge = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
@@ -56,7 +56,7 @@ internal sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : I
     public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
     /// <summary>Releases the groups the last fold superseded; call once each fold ends.</summary>
-    internal void ReleaseSuperseded()
+    public void ReleaseSuperseded()
     {
         foreach (ref Group group in _superseded.AsSpan())
         {

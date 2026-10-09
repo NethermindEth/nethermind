@@ -6,9 +6,9 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
-internal static class PbtKeyOperations
+public static class PbtKeyOperations
 {
-    internal static int FirstDifferingBit(ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> other, int startBit)
+    public static int FirstDifferingBit(ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> other, int startBit)
     {
         int commonBits = Math.Min(bytes.Length, other.Length) * 8;
 
@@ -28,7 +28,7 @@ internal static class PbtKeyOperations
 
     /// <summary>Creates a key from a leading path and an inline key postfix.</summary>
     [SkipLocalsInit]
-    internal static TKey CreateKey<TKey>(scoped ReadOnlySpan<byte> prefix, scoped ReadOnlySpan<byte> postfix) where TKey : struct, IPbtKey<TKey>
+    public static TKey CreateKey<TKey>(scoped ReadOnlySpan<byte> prefix, scoped ReadOnlySpan<byte> postfix) where TKey : struct, IPbtKey<TKey>
     {
         if (prefix.IsEmpty) return TKey.Create(postfix);
         Span<byte> key = stackalloc byte[PbtVariableTreeKey.MaxLength];

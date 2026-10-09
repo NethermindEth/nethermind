@@ -14,15 +14,15 @@ namespace Nethermind.Pbt;
 /// <summary>Applies complete-key mutations to a canonical compressed EIP-8297 tree.</summary>
 public static partial class TrieUpdater
 {
-    internal static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
+    public static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
 
     /// <summary>The bit flagging a composed branch's left child as a leaf.</summary>
-    internal const byte LeftLeaf = 1;
+    public const byte LeftLeaf = 1;
     /// <summary>The bit flagging a composed branch's right child as a leaf.</summary>
-    internal const byte RightLeaf = 2;
+    public const byte RightLeaf = 2;
 
     /// <summary>Where a boundary node's complete key is read from, which is also whether it is a leaf at all.</summary>
-    internal enum LeafSource : byte
+    public enum LeafSource : byte
     {
         /// <summary>Not a leaf: the encoding is the node's own branch, or there is none.</summary>
         None,
@@ -42,7 +42,7 @@ public static partial class TrieUpdater
     /// worker takes quota outright, so the loop is charged exactly once per running worker, briefly exceeding the budget
     /// when sibling loops start together. The calling thread already holds its own slot and is not charged.
     /// </remarks>
-    internal static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
+    public static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
     {
         int next = 0;
         for (; next < count - 1 && !quota.TryRequestConcurrencyQuota(); next++)
@@ -81,7 +81,7 @@ public static partial class TrieUpdater
         }
     }
 
-    internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
+    public static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
     {
         byte value = key[groupDepth >> 3];
         return (value >> (4 - (groupDepth & 4))) & 0x0F;
@@ -89,7 +89,7 @@ public static partial class TrieUpdater
 
 }
 
-internal static partial class TrieUpdater<TKey, TPath>
+public static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
@@ -99,7 +99,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// slot. A group that stays absent stores nothing, so only the folded change survives, and the store is not told
     /// to delete a group it never held.
     /// </remarks>
-    internal static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
+    public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
         scoped in PbtTraversalPath path, in ValueHash256 hash)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -128,7 +128,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         current.IsEmpty || current.IsLeaf || current.LeafChildrenMask == (LeftLeaf | RightLeaf);
 
     /// <summary>Whether <paramref name="current"/> is a branch whose children lie beyond the group at <paramref name="bitDepth"/>, so that group cannot exist.</summary>
-    internal static bool IsAbsentGroupBelow(scoped in BoundaryNode current, int bitDepth)
+    private static bool IsAbsentGroupBelow(scoped in BoundaryNode current, int bitDepth)
     {
         Debug.Assert(bitDepth != 0, "The root group always exists.");
         return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -143,13 +143,13 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Groups are read from <see cref="Store"/> but published to <see cref="Writer"/>, which a concurrent bucket replaces
     /// with its own <see cref="IPbtStore.CreateWriter"/> so it never writes the store directly.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
+    public sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
     {
-        internal IPbtStore Store { get; } = store;
-        internal IPbtNodeGroupSink Writer { get; } = writer;
-        internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
-        internal ConcurrencyController FoldQuota { get; } = foldQuota;
-        internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
-        internal FoldFanOut FanOut { get; } = fanOut;
+        public IPbtStore Store { get; } = store;
+        public IPbtNodeGroupSink Writer { get; } = writer;
+        public IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
+        public ConcurrencyController FoldQuota { get; } = foldQuota;
+        public PbtWriteOperation<TKey>[]? Operations { get; } = operations;
+        public FoldFanOut FanOut { get; } = fanOut;
     }
 }

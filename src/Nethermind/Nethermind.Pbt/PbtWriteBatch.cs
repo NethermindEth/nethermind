@@ -7,18 +7,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Pbt;
 
 /// <summary>A single-use prepared mutation batch produced by <see cref="PbtWriteBatchBuilder{TKey}"/>.</summary>
-public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtKey<TKey>
+public sealed class PbtWriteBatch<TKey>(ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table) : IDisposable where TKey : struct, IPbtKey<TKey>
 {
-    private ArrayPoolList<PbtWriteOperation<TKey>>? _operations;
-    private ArrayPoolList<int>? _table;
+    private ArrayPoolList<PbtWriteOperation<TKey>>? _operations = operations;
+    private ArrayPoolList<int>? _table = table;
 
-    internal PbtWriteBatch(ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table)
-    {
-        _operations = operations;
-        _table = table;
-    }
-
-    internal void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)
+    public void Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table)
     {
         operations = _operations!;
         table = _table!;
@@ -35,4 +29,4 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
     }
 }
 
-internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>;
+public readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>;

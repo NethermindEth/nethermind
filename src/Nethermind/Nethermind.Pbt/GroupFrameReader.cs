@@ -16,7 +16,7 @@ namespace Nethermind.Pbt;
 /// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
 /// root's group, the only one whose existence is learned from the store, is probed with <see cref="TryLoad"/>.
 /// </remarks>
-internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
+public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
@@ -26,11 +26,11 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
 
     /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
     /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
-    internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
+    public GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
         : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth) { }
 
     /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
-    internal GroupFrameReader(RefCountingMemory lease, int bitDepth)
+    public GroupFrameReader(RefCountingMemory lease, int bitDepth)
     {
         BitDepth = bitDepth;
         _lease = lease;
@@ -54,7 +54,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     /// Only the tree root's group may be missing, when the tree is empty. Its absence cannot be derived from
     /// <paramref name="groupHash"/>, which may be stale or default when unknown, so the store is asked.
     /// </remarks>
-    internal static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash,
+    public static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash,
         out GroupFrameReader<TKey, TPath> reader)
     {
         RefCountingMemory? lease = store.GetNodeGroup(path, groupHash);
@@ -118,7 +118,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     /// A root branch is hashed from its own preimage. A root leaf cannot be, as no value is stored, so it takes
     /// <paramref name="groupHash"/>.
     /// </remarks>
-    internal readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(in ValueHash256 groupHash)
+    public readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(in ValueHash256 groupHash)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(PbtFourLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
@@ -134,7 +134,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     }
 
     /// <summary>Releases the actual mutable frame, including payloads loaded after this scope was opened.</summary>
-    internal readonly ref struct Scope(ref GroupFrameReader<TKey, TPath> reader) : IDisposable
+    public readonly ref struct Scope(ref GroupFrameReader<TKey, TPath> reader) : IDisposable
     {
         private readonly ref GroupFrameReader<TKey, TPath> _reader = ref reader;
 

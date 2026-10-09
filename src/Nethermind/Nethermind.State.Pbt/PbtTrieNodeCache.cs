@@ -33,11 +33,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
     private readonly Partition<PbtNodePath> _code = new(config.CodeTrieNodeCacheSizeBudget, "code");
     private readonly Partition<PbtStorageNodePath> _storage = new(config.StorageTrieNodeCacheSizeBudget, "storage");
 
-    /// <summary>Bytes retained for payloads; the slot tables are fixed by the configured budgets and not counted.</summary>
-    internal long MemorySize => _account.MemorySize + _code.MemorySize + _storage.MemorySize;
-
-    internal long EntryCount => _account.EntryCount + _code.EntryCount + _storage.EntryCount;
-
     /// <summary>Leases the retained group at <paramref name="path"/> whose subtree hash is <paramref name="groupHash"/>.</summary>
     /// <returns><c>true</c> when <paramref name="payload"/> holds a caller-owned lease to release with <see cref="IDisposable.Dispose"/>.</returns>
     public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
@@ -130,7 +125,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         private readonly long _shardBudget;
         private bool _disposed;
 
-        internal Partition(ulong budget, string label)
+        public Partition(ulong budget, string label)
         {
             Label = label;
             long shardBudget = (long)(budget / ShardCount);
@@ -140,19 +135,9 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
             for (int index = 0; index < _shards.Length; index++) _shards[index] = new Shard<TStored>(_setCount);
         }
 
-        internal string Label { get; }
+        public string Label { get; }
 
-        internal long MemorySize
-        {
-            get
-            {
-                long total = 0;
-                foreach (Shard<TStored> shard in _shards) total += Volatile.Read(ref shard.MemorySize);
-                return total;
-            }
-        }
-
-        internal long EntryCount
+        public long EntryCount
         {
             get
             {
@@ -165,7 +150,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         // The top hash byte selects the shard, so the set is drawn from the remaining bits.
         private int SetIndex(int hash) => (hash & 0xFFFFFF) % _setCount;
 
-        internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             int hash = path.GetHashCode();
             return _shards[ShardIndex(hash)].TryGet(SetIndex(hash), groupHash, path, out payload);
@@ -173,7 +158,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
 
         /// <summary>Admits every group staged in the child's shard <paramref name="shardIndex"/>.</summary>
         /// <returns>The change in retained bytes.</returns>
-        internal long AddShard(int shardIndex, ChildPartition<TStored> source)
+        public long AddShard(int shardIndex, ChildPartition<TStored> source)
         {
             if (Volatile.Read(ref _disposed)) return 0;
             Shard<TStored> shard = _shards[shardIndex];
@@ -189,14 +174,14 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
 
         /// <returns>The change in retained bytes.</returns>
-        internal long Clear()
+        public long Clear()
         {
             long delta = 0;
             foreach (Shard<TStored> shard in _shards) delta += shard.Clear();
             return delta;
         }
 
-        internal void StopAdmission() => Volatile.Write(ref _disposed, true);
+        public void StopAdmission() => Volatile.Write(ref _disposed, true);
     }
 
     /// <summary>Per-block staging cache that a <see cref="PbtTransientResource"/> carries until the block commits and <see cref="Add(PbtTransientResource)"/> folds it into the shared cache.</summary>
@@ -219,9 +204,9 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
             Storage = new ChildPartition<PbtStorageNodePath>(_shardSize);
         }
 
-        internal ChildPartition<PbtNodePath> Account { get; }
-        internal ChildPartition<PbtNodePath> Code { get; }
-        internal ChildPartition<PbtStorageNodePath> Storage { get; }
+        public ChildPartition<PbtNodePath> Account { get; }
+        public ChildPartition<PbtNodePath> Code { get; }
+        public ChildPartition<PbtStorageNodePath> Storage { get; }
 
         public int Count => Volatile.Read(ref Account.Count) + Volatile.Read(ref Code.Count) + Volatile.Read(ref Storage.Count);
 
@@ -233,7 +218,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         private static int ShardSize(int capacity) => (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, (capacity + ShardCount - 1) / ShardCount));
 
         /// <summary>Stages a group under its path and subtree hash; a null tombstone is ignored.</summary>
-        internal void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             if (payload is null) return;
             RefCountingMemory retained = Retain(payload);
@@ -263,16 +248,16 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
     }
 
-    internal sealed class ChildPartition<TStored>(int shardSize) where TStored : struct, IPbtNodePath<TStored>
+    public sealed class ChildPartition<TStored>(int shardSize) where TStored : struct, IPbtNodePath<TStored>
     {
-        internal ChildEntry<TStored>?[][] Shards = CreateShards(shardSize);
-        internal int Count;
+        public ChildEntry<TStored>?[][] Shards = CreateShards(shardSize);
+        public int Count;
         private int _mask = shardSize - 1;
 
         private ref ChildEntry<TStored>? Slot(int hash) => ref Shards[ShardIndex(hash)][hash & _mask];
 
         /// <summary>Stages <paramref name="retained"/> under <paramref name="path"/>, taking ownership of it.</summary>
-        internal void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory retained) where TPath : struct, IPbtNodePath<TPath>
+        public void Set<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory retained) where TPath : struct, IPbtNodePath<TPath>
         {
             int hash = path.GetHashCode();
             ref ChildEntry<TStored>? slot = ref Slot(hash);
@@ -294,7 +279,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
 
         /// <summary>Releases every payload; reallocates the tables when <paramref name="shardSize"/> differs from the current one.</summary>
-        internal void Clear(int shardSize)
+        public void Clear(int shardSize)
         {
             foreach (ChildEntry<TStored>?[] shard in Shards)
                 foreach (ref ChildEntry<TStored>? entry in shard.AsSpan())
@@ -316,26 +301,26 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
     }
 
-    internal sealed class ChildEntry<TStored>(int hash, in ValueHash256 groupHash, TStored path, RefCountingMemory payload) where TStored : struct, IPbtNodePath<TStored>
+    public sealed class ChildEntry<TStored>(int hash, in ValueHash256 groupHash, TStored path, RefCountingMemory payload) where TStored : struct, IPbtNodePath<TStored>
     {
-        internal readonly int Hash = hash;
-        internal readonly ValueHash256 GroupHash = groupHash;
-        internal readonly TStored Path = path;
-        internal readonly RefCountingMemory Payload = payload;
+        public readonly int Hash = hash;
+        public readonly ValueHash256 GroupHash = groupHash;
+        public readonly TStored Path = path;
+        public readonly RefCountingMemory Payload = payload;
 
-        internal bool Matches<TPath>(int hash, in ValueHash256 groupHash, TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        public bool Matches<TPath>(int hash, in ValueHash256 groupHash, TPath path) where TPath : struct, IPbtNodePath<TPath> =>
             Hash == hash && GroupHash == groupHash && PbtNodePathOperations.Equal(Path, path);
     }
 
     /// <remarks>Lookups are lock-free; every other member expects to be the shard's only writer.</remarks>
     private sealed class Shard<TStored>(int setCount) where TStored : struct, IPbtNodePath<TStored>
     {
-        internal long MemorySize;
-        internal long EntryCount;
+        public long MemorySize;
+        public long EntryCount;
         private readonly Entry<TStored>[] _entries = new Entry<TStored>[setCount * WaysPerSet];
         private readonly byte[] _hands = new byte[setCount];
 
-        internal bool TryGet<TPath>(int set, in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+        public bool TryGet<TPath>(int set, in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             int first = set * WaysPerSet;
             for (int slot = first; slot < first + WaysPerSet; slot++)
@@ -359,7 +344,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
 
         /// <returns>The change in retained bytes.</returns>
-        internal long Add<TPath>(int set, in ValueHash256 groupHash, TPath path, RefCountingMemory payload, long size, long budget) where TPath : struct, IPbtNodePath<TPath>
+        public long Add<TPath>(int set, in ValueHash256 groupHash, TPath path, RefCountingMemory payload, long size, long budget) where TPath : struct, IPbtNodePath<TPath>
         {
             int first = set * WaysPerSet;
             int target = -1;
@@ -399,7 +384,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         }
 
         /// <returns>The change in retained bytes.</returns>
-        internal long Clear()
+        public long Clear()
         {
             long delta = 0;
             for (int slot = 0; slot < _entries.Length; slot++)
@@ -448,10 +433,10 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
     private struct Entry<TStored> where TStored : struct, IPbtNodePath<TStored>
     {
         // Odd while a writer holds the slot open; an empty slot has a null payload.
-        internal int Version;
-        internal ValueHash256 GroupHash;
-        internal TStored Path;
-        internal RefCountingMemory? Payload;
-        internal bool Referenced;
+        public int Version;
+        public ValueHash256 GroupHash;
+        public TStored Path;
+        public RefCountingMemory? Payload;
+        public bool Referenced;
     }
 }

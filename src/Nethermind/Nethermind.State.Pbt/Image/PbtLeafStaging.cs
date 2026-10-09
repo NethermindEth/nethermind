@@ -23,13 +23,13 @@ namespace Nethermind.State.Pbt.Image;
 /// accounts for the code sizes. Requiring the reassembled code to consume every staged chunk is what stops a stream
 /// carrying code no account names.
 /// </remarks>
-internal static class PbtLeafStaging
+public static class PbtLeafStaging
 {
     /// <summary>Local byte budget for whole code plus its 32-byte chunk encoding; not a deployment-code limit.
     /// Exhaustion is retryable resource unavailability, not invalid state.</summary>
     private const ulong MaxBufferedCodeBytes = 256 * 1024 * 1024;
     private const string CodePhase = "PBT import code";
-    internal const int CodeCacheCapacity = 16_384;
+    private const int CodeCacheCapacity = 16_384;
 
     /// <returns>The staged accounts and slots, and the code chunks <see cref="RebuildCodes"/> must consume.</returns>
     public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtLeafIngestion.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,

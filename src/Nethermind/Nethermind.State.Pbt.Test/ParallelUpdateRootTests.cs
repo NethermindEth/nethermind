@@ -182,8 +182,15 @@ public class ParallelUpdateRootTests
     [TestCase(0, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes - 1, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker)]
-    public void Worker_minimum_drops_from_the_large_subtree_size(long descendantBytes, int expectedMinimum) =>
-        Assert.That(PbtTreeHarness.DefaultFanOut.MinOperationsFor(descendantBytes), Is.EqualTo(expectedMinimum));
+    public void Worker_minimum_drops_from_the_large_subtree_size(long descendantBytes, int expectedMinimum)
+    {
+        int[] runEnds = new int[2];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(PbtTreeHarness.DefaultFanOut.PlanBucketRuns([expectedMinimum - 1, FoldFanOut.DefaultMinOperationsPerWorker], [descendantBytes, 0], runEnds), Is.EqualTo(1), "one operation short of the minimum");
+            Assert.That(PbtTreeHarness.DefaultFanOut.PlanBucketRuns([expectedMinimum, FoldFanOut.DefaultMinOperationsPerWorker], [descendantBytes, 0], runEnds), Is.EqualTo(2));
+        }
+    }
 
     // One populated zone keeps the zone fan-out out of the picture, so any second thread is a bucket worker. While the
     // buckets hold less than the large-subtree size below them a 40-operation frame folds on the calling thread alone;

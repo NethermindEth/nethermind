@@ -8,11 +8,11 @@ namespace Nethermind.State.Pbt.Image;
 /// <summary>Writes the two canonical EIP-8347 streams and reports their digests.</summary>
 /// <remarks>Inputs are already sorted offline streams. Outputs must be separate, unpublished streams owned by the caller.
 /// This helper neither verifies roots nor publishes state. On failure the caller discards partial outputs.</remarks>
-internal static class PbtArtifactWriter
+public static class PbtArtifactWriter
 {
     /// <summary>Keccak over each whole stream, as EIP-8347 defines them. They let consumers agree on an
     /// artifact ahead of an expensive download; they are not roots of trust.</summary>
-    internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256? Preimages);
+    public readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256? Preimages);
 
     /// <summary>Writes one stream to <paramref name="destination"/> through <paramref name="write"/> and returns its digest.</summary>
     /// <remarks>The snapshot and preimage streams are independent, so the two may be written concurrently.</remarks>

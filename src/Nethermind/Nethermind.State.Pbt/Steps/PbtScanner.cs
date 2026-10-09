@@ -182,7 +182,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 /// <summary>Inventory of persisted PBT records, without hash or reachability verification.</summary>
 public sealed class PbtScanReport
 {
-    internal static readonly PbtColumns[] ScannedColumns = [PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups,
+    public static readonly PbtColumns[] ScannedColumns = [PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups,
         PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata];
 
     /// <summary>Stored whole-account records.</summary>
@@ -218,7 +218,7 @@ public sealed class PbtScanReport
         _ => throw new ArgumentOutOfRangeException(nameof(column)),
     };
 
-    internal void MergeFrom(PbtScanReport other)
+    public void MergeFrom(PbtScanReport other)
     {
         Accounts.MergeFrom(other.Accounts);
         Storages.MergeFrom(other.Storages);
@@ -275,17 +275,17 @@ public sealed class PbtScanReport
     public class ColumnStats
     {
         /// <summary>Number of stored records.</summary>
-        public long RecordCount { get; internal set; }
+        public long RecordCount { get; set; }
         /// <summary>Total stored key bytes.</summary>
-        public long KeyBytes { get; internal set; }
+        public long KeyBytes { get; set; }
         /// <summary>Total stored value bytes.</summary>
-        public long ValueBytes { get; internal set; }
+        public long ValueBytes { get; set; }
         /// <summary>Total stored key and value bytes.</summary>
         public long TotalBytes => KeyBytes + ValueBytes;
         /// <summary>Mean key plus value size, or zero for an empty column.</summary>
         public double AverageRecordBytes => RecordCount == 0 ? 0 : (double)TotalBytes / RecordCount;
 
-        internal void MergeFrom(ColumnStats other)
+        public void MergeFrom(ColumnStats other)
         {
             RecordCount += other.RecordCount;
             KeyBytes += other.KeyBytes;
@@ -297,13 +297,13 @@ public sealed class PbtScanReport
     public sealed class NodeGroupStats : ColumnStats
     {
         /// <summary>Number of contained nodes.</summary>
-        public long NodeCount { get; internal set; }
+        public long NodeCount { get; set; }
         /// <summary>Number of contained leaf nodes.</summary>
-        public long LeafCount { get; internal set; }
+        public long LeafCount { get; set; }
         /// <summary>Number of contained branch nodes.</summary>
-        public long BranchCount { get; internal set; }
+        public long BranchCount { get; set; }
         /// <summary>Contained encoding bytes, excluding group keys and footers.</summary>
-        public long NodeEncodingBytes { get; internal set; }
+        public long NodeEncodingBytes { get; set; }
         /// <summary>Stored groups by boundary bit depth.</summary>
         public long[] GroupsByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Whole group payload bytes by boundary bit depth.</summary>
@@ -313,9 +313,9 @@ public sealed class PbtScanReport
         /// <summary>Stored groups by the number of nodes they contain.</summary>
         public long[] GroupsByOccupancy { get; } = new long[PbtFourLevelGroupGeometry.PositionCount + 1];
         /// <summary>Stored groups with at least one nonzero descendant size.</summary>
-        public long GroupsWithDescendants { get; internal set; }
+        public long GroupsWithDescendants { get; set; }
 
-        internal void MergeFrom(NodeGroupStats other)
+        public void MergeFrom(NodeGroupStats other)
         {
             base.MergeFrom(other);
             NodeCount += other.NodeCount;

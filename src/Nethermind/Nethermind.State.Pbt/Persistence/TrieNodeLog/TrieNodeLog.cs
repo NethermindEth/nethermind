@@ -37,15 +37,15 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     // pick an index slot in any generation that fits in memory.
     private const int ShardHashShift = 32;
 
-    internal const string HitLabel = "hit";
-    internal const string ChainLabel = "chain";
-    internal const string MissLabel = "miss";
-    internal const string SecondLevelHitLabel = "second_level_hit";
-    internal const string SecondLevelChainLabel = "second_level_chain";
-    internal const string SecondLevelMissLabel = "second_level_miss";
-    internal const string ActiveLabel = "active";
-    internal const string SealedLabel = "sealed";
-    internal const string MergedPinnedLabel = "merged_pinned";
+    public const string HitLabel = "hit";
+    public const string ChainLabel = "chain";
+    public const string MissLabel = "miss";
+    public const string SecondLevelHitLabel = "second_level_hit";
+    public const string SecondLevelChainLabel = "second_level_chain";
+    public const string SecondLevelMissLabel = "second_level_miss";
+    public const string ActiveLabel = "active";
+    public const string SealedLabel = "sealed";
+    public const string MergedPinnedLabel = "merged_pinned";
 
     private readonly int[] _partitionOffset = new int[PartitionCount]; // index of a partition's first shard
     private readonly int[] _partitionMask = new int[PartitionCount]; // shard count - 1
@@ -132,8 +132,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         return config.TrieNodeLogEnabled ? new TrieNodeLog(basePath, db, config, logManager) : NullTrieNodeLog.Instance;
     }
 
-    internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
-
     private static bool SecondLevelEnabled(IPbtConfig config) => config.TrieNodeLogSecondLevelMergeLag >= 0;
 
     /// <summary>
@@ -199,10 +197,10 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
     }
 
-    internal static bool Covers(PbtColumns column) => PartitionOf(column) >= 0;
+    private static bool Covers(PbtColumns column) => PartitionOf(column) >= 0;
 
     /// <summary>The column label of a logged column's byte metrics: its partition.</summary>
-    internal static string ColumnLabel(PbtColumns column) => PartitionNames[PartitionOf(column)];
+    public static string ColumnLabel(PbtColumns column) => PartitionNames[PartitionOf(column)];
 
     private const string AccountPartitionName = "account";
     private const string StoragePartitionName = "storage";
@@ -223,7 +221,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
     /// <summary>Shard of a column key: its column's partition, then bits of the key's hash.</summary>
     /// <remarks>Group keys start with the zone byte, so their leading bytes would put most groups in one shard.</remarks>
-    internal int ShardIndex(PbtColumns column, ReadOnlySpan<byte> key)
+    private int ShardIndex(PbtColumns column, ReadOnlySpan<byte> key)
     {
         int partition = PartitionOf(column);
         return _partitionOffset[partition] + ((int)(TrieNodeLogRecord.Hash(key) >> ShardHashShift) & _partitionMask[partition]);

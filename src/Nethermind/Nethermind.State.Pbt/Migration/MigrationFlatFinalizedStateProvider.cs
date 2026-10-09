@@ -13,7 +13,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// that root is a PBT root flat holds no snapshot for, so without this clamp the states up to the activation
 /// parent would never be persisted (not even by the shutdown flush) and would vanish on restart.
 /// </remarks>
-internal sealed class MigrationFlatFinalizedStateProvider(IStateHeaderProvider inner, IBlockTree blockTree, ISpecProvider specProvider)
+public sealed class MigrationFlatFinalizedStateProvider(IStateHeaderProvider inner, IBlockTree blockTree, ISpecProvider specProvider)
     : IStateHeaderProvider
 {
     private ulong? _lastMerkleBlock;

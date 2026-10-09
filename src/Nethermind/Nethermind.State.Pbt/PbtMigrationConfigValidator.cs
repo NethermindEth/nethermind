@@ -7,15 +7,15 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.State.Pbt;
 
-internal static class PbtMigrationConfigValidator
+public static class PbtMigrationConfigValidator
 {
     /// <summary>Whether the chain specification schedules an EIP-8347 migration, i.e. a binaryTrieTime after the MPT genesis.</summary>
-    internal static bool IsScheduledMigration(ChainSpec chainSpec) =>
+    public static bool IsScheduledMigration(ChainSpec chainSpec) =>
         chainSpec.Parameters.Eip8347TransitionTimestamp is { } activation && chainSpec.Genesis is { } genesis && activation > genesis.Timestamp;
 
-    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationGenesisBootstrap;
+    public static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationGenesisBootstrap;
 
-    internal static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
+    public static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
     {
         if (config.MigrationAnchor is < 0) Fail("MigrationAnchor must not be negative.");
         ValidateExport(config, flatConfig, chainSpec, targetPath);

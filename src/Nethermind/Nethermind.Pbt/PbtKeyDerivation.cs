@@ -47,7 +47,7 @@ public static class PbtKeyDerivation
         return chunks;
     }
 
-    internal static void ChunkifyCode(ReadOnlySpan<byte> code, Span<byte> chunks)
+    private static void ChunkifyCode(ReadOnlySpan<byte> code, Span<byte> chunks)
     {
         int chunkCount = (int)CodeChunkCount(code.Length);
         chunks.Clear();

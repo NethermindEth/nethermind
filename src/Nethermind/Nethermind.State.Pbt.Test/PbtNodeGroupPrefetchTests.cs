@@ -12,8 +12,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -25,61 +28,17 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupPrefetchTests
 {
-    [Test]
-    public void BalKeys_derive_each_key_once_and_sort_every_list([Values] bool withReads)
-    {
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
-            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
-                .WithStorageChanges(7, new StorageChange(1, 1u))
-                .WithStorageChanges(1000, new StorageChange(1, 1u))
-                .WithStorageChanges(1001, new StorageChange(1, 1u))
-                .WithStorageChanges(2000, new StorageChange(1, 1u))
-                .WithStorageReads(3, 3000).TestObject,
-            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject,
-            Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(5).TestObject).TestObject;
-
-        using PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, withReads);
-
-        Address[] accounts = withReads ? [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC] : [TestItem.AddressA, TestItem.AddressB];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Entries(keys.Accounts), Is.EqualTo(Sorted(accounts.Select(address =>
-                (Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(address), PbtKeyDerivation.BasicDataLeafKey).Bytes.ToHexString(), (UInt256)IndexOf(address))))));
-            Assert.That(Entries(keys.HeaderWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 7))));
-            Assert.That(Entries(keys.StorageWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 1000), (TestItem.AddressA, 1001), (TestItem.AddressA, 2000), (TestItem.AddressB, 1000))));
-            Assert.That(Entries(keys.HeaderReads), Is.EqualTo(withReads ? SlotKeys((TestItem.AddressA, 3), (TestItem.AddressC, 5)) : []));
-            Assert.That(Entries(keys.StorageReads), Is.EqualTo(withReads ? SlotKeys((TestItem.AddressA, 3000)) : []));
-        }
-
-        int IndexOf(Address address)
-        {
-            ReadOnlySpan<ReadOnlyAccountChanges> accountChanges = bal.AccountChanges.AsSpan();
-            for (int index = 0; ; index++)
-                if (accountChanges[index].Address == address) return index;
-        }
-
-        static (string Key, UInt256 Value)[] Entries<TKey>(ArrayPoolList<PbtWriteOperation<TKey>> operations) where TKey : struct, IPbtKey<TKey> =>
-            [.. operations.Select(static operation =>
-            {
-                TKey key = operation.Key;
-                return (key.Bytes.ToHexString(), operation.Value.ToUInt256());
-            })];
-
-        static (string Key, UInt256 Value)[] SlotKeys(params (Address Address, int Slot)[] slots) => Sorted(slots.Select(static slot =>
-            (PbtStateKey.Slot(slot.Address, PbtStateKey.AddressKeyHash(slot.Address), (UInt256)slot.Slot).Bytes.ToHexString(), (UInt256)slot.Slot)));
-
-        static (string Key, UInt256 Value)[] Sorted(IEnumerable<(string Key, UInt256 Value)> entries) => [.. entries.OrderBy(static entry => entry.Key, StringComparer.Ordinal)];
-    }
-
     public enum PrefetchSkip { EmptyBal, SnapshotBacked, ReadByFold, MissingAccount }
 
     [Test]
     public void NodeGroupPrefetch_skips_empty_snapshot_backed_or_fold_read_lists([Values] PrefetchSkip skip)
     {
         AccountChangesBuilder account = Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u));
+        // The storage group of C is always prefetched, so its read shows the prefetch has run.
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
-            (skip == PrefetchSkip.MissingAccount ? account : account.WithBalanceChanges(new BalanceChange(1, 100))).TestObject).TestObject;
-        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+            (skip == PrefetchSkip.MissingAccount ? account : account.WithBalanceChanges(new BalanceChange(1, 100))).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
+        IPbtPersistence.IReader reader = Reader(skip == PrefetchSkip.MissingAccount ? [TestItem.AddressA] : []);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
         foreach (PbtStorageNodePath path in new[] { FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone) })
         {
@@ -89,16 +48,18 @@ public class PbtNodeGroupPrefetchTests
         if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
         reader.ClearReceivedCalls();
 
-        // A missing account is only found missing when the buffering reads it.
-        Prefetch(bundle, bal, new CancellationToken(skip != PrefetchSkip.MissingAccount), CancellationToken.None);
+        PbtWorldStateScope scope = HintBal(bundle, bal);
+        PbtStorageNodePath[] expected = skip == PrefetchSkip.EmptyBal ? [] : [FirstGroup(TestItem.AddressC, Eip8297KeyDerivation.StorageZone)];
+        Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expected).After(5000, 10));
+        scope.UpdateRootHash();
 
-        reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+        Assert.That(LifecycleSingleReads(reader), Is.EquivalentTo(expected));
     }
 
     [Test]
     public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(
         [Values(-1L, 0L, 1024L, 1025L, 16 * 1024L, 16 * 1024 + 1L, 1024 * 1024L)] long descendantBytes,
-        [Values] bool cancelled, [Values] bool snapshotBacked, [Values] bool readByFold)
+        [Values] bool snapshotBacked, [Values] bool readByFold)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
@@ -112,7 +73,7 @@ public class PbtNodeGroupPrefetchTests
         PbtStoragePath storagePath = PbtStateKey.Storage(TestItem.AddressA, addressHash, 1000);
         PbtStorageNodePath storageGroup = new(storagePath.Bytes[..33], 264);
         TrackingMemoryProvider memory = new();
-        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        IPbtPersistence.IReader reader = Reader();
         reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call => ReadPayload(call.Arg<PbtStorageNodePath>()));
 
         RefCountingMemory? ReadPayload(PbtStorageNodePath path)
@@ -139,10 +100,10 @@ public class PbtNodeGroupPrefetchTests
         if (readByFold)
             foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path, default))?.Dispose();
 
-        Prefetch(bundle, bal, new CancellationToken(true), new CancellationToken(cancelled));
+        PbtWorldStateScope scope = HintBal(bundle, bal);
 
-        HashSet<PbtStorageNodePath> expected = cancelled && !readByFold ? [] : firstGroups;
-        int levels = cancelled ? 0 : descendantBytes switch { <= 1024 => 0, <= 16 * 1024 => 1, <= 256 * 1024 => 2, _ => 3 };
+        HashSet<PbtStorageNodePath> expected = firstGroups;
+        int levels = descendantBytes switch { <= 1024 => 0, <= 16 * 1024 => 1, <= 256 * 1024 => 2, _ => 3 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {
             PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
@@ -158,6 +119,8 @@ public class PbtNodeGroupPrefetchTests
             expected.Remove(storageGroup);
             expected.Remove(deeperSnapshot);
         }
+        Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expected).After(5000, 10));
+        scope.UpdateRootHash();
         PbtStorageNodePath[] singles = LifecycleSingleReads(reader);
         reader.ClearReceivedCalls();
         foreach (PbtStorageNodePath path in expected)
@@ -179,28 +142,34 @@ public class PbtNodeGroupPrefetchTests
     [Test]
     public void NodeGroupPrefetch_skips_deeper_snapshot_tombstones()
     {
-        ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
+        Address[] tombstoned = [TestItem.AddressA, TestItem.AddressB];
+        // The storage group of C is always prefetched, so its read shows the prefetch has run.
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges([.. tombstoned.Append(TestItem.AddressC).Select(static address =>
+            Build.An.AccountChanges.WithAddress(address).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject)]).TestObject;
         TrackingMemoryProvider memory = new();
-        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        IPbtPersistence.IReader reader = Reader();
         using (PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader))
         {
-            foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB })
+            foreach (Address address in tombstoned)
             {
                 PbtStorageNodePath path = FirstGroup(address, Eip8297KeyDerivation.StorageZone);
                 using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 1025);
                 bundle.SetNodeGroup(path, default, payload);
             }
-            foreach (ReadOnlyAccountChanges changes in bal.AccountChanges)
+            foreach (Address address in tombstoned)
             {
-                PbtStoragePath key = PbtStateKey.Storage(changes.Address, PbtStateKey.AddressKeyHash(changes.Address), 1000);
+                PbtStoragePath key = PbtStateKey.Storage(address, PbtStateKey.AddressKeyHash(address), 1000);
                 byte[] path = key.Bytes[..34].ToArray();
                 path[^1] &= 0xF0;
                 bundle.SetNodeGroup(new PbtStorageNodePath(path, 268), default, null);
             }
 
-            Prefetch(bundle, bal, new CancellationToken(true), CancellationToken.None);
+            PbtWorldStateScope scope = HintBal(bundle, bal);
+            PbtStorageNodePath[] expected = [FirstGroup(TestItem.AddressC, Eip8297KeyDerivation.StorageZone)];
+            Assert.That(() => LifecycleSingleReads(reader), Is.EquivalentTo(expected).After(5000, 10));
+            scope.UpdateRootHash();
 
-            reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+            Assert.That(LifecycleSingleReads(reader), Is.EquivalentTo(expected));
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
     }
@@ -210,7 +179,7 @@ public class PbtNodeGroupPrefetchTests
     {
         ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
         TrackingMemoryProvider memory = new();
-        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        IPbtPersistence.IReader reader = Reader();
         int reads = 0;
         reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call =>
         {
@@ -218,15 +187,16 @@ public class PbtNodeGroupPrefetchTests
             return LifecyclePrefetchPayload(memory, call.Arg<PbtStorageNodePath>(), 1025);
         });
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
-        using Nethermind.Core.Threading.ParallelUnbalancedWork.WorkerScope workers = Nethermind.Core.Threading.ParallelUnbalancedWork.BeginWorkerScope(1);
+        InterfaceLogger logger = ErrorLogger();
 
-        Exception? error = Assert.Catch(() => Prefetch(bundle, bal, new CancellationToken(true), CancellationToken.None));
+        PbtWorldStateScope scope = HintBal(bundle, bal, logger);
+        Assert.That(() => Volatile.Read(ref reads), Is.GreaterThanOrEqualTo(2).After(5000, 10));
+        scope.UpdateRootHash();
         bundle.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error!.ToString(), Does.Contain("single prefetch read failed"));
-            Assert.That(memory.RentCount, Is.EqualTo(1));
+            Assert.That(LoggedErrors(logger), Does.Contain("single prefetch read failed"));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
     }
@@ -237,7 +207,7 @@ public class PbtNodeGroupPrefetchTests
         ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
         PbtStorageNodePath[] paths = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
         TrackingMemoryProvider memory = new();
-        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        IPbtPersistence.IReader reader = Reader();
         reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(_ => throw new System.IO.IOException("prefetch read failed"));
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
@@ -246,19 +216,50 @@ public class PbtNodeGroupPrefetchTests
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
             pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false))
         {
-            Exception? error = Assert.Catch(() => Prefetch(bundle, bal, new CancellationToken(true), CancellationToken.None));
-            Assert.That(error!.ToString(), Does.Contain("prefetch read failed"));
-            Assert.That(LifecycleSingleReads(reader), Is.EqualTo(new[] { paths[1] }));
+            InterfaceLogger logger = ErrorLogger();
+            PbtWorldStateScope scope = HintBal(bundle, bal, logger);
+            Assert.That(() => LifecycleSingleReads(reader), Is.EqualTo(new[] { paths[1] }).After(5000, 10));
+            scope.UpdateRootHash();
+            Assert.That(LoggedErrors(logger), Does.Contain("prefetch read failed"));
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "only the snapshot's reference may remain after the failed prefetch");
     }
 
-    private static void Prefetch(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken reads, CancellationToken cancellation)
+    /// <summary>Hints <paramref name="bal"/> to a scope over <paramref name="bundle"/> as block processing does, returning once its accounts and slots are buffered.</summary>
+    /// <remarks>
+    /// The node group prefetch keeps running in the background until <see cref="PbtWorldStateScope.UpdateRootHash"/> stops it.
+    /// The scope is left undisposed, as disposing it would dispose the caller's bundle.
+    /// </remarks>
+    private static PbtWorldStateScope HintBal(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, InterfaceLogger? logger = null)
     {
-        using PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, false);
-        PbtWorldStateScope.PrefetchBal(bundle, keys, null, reads);
-        PbtWorldStateScope.PrefetchNodeGroups(bundle, keys, cancellation);
+        PbtWorldStateScope scope = new(StateId.PreGenesis, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(), Substitute.For<IPbtCommitTarget>(),
+            NullPbtChildHeaderSource.Instance, PooledRefCountingMemoryProvider.Instance, new PbtConfig(), logger is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logger)));
+        scope.HintBal(bal).GetAwaiter().GetResult();
+        return scope;
     }
+
+    /// <summary>A reader holding every account but <paramref name="missing"/> and no slot, so the buffering finds the hinted accounts present.</summary>
+    private static IPbtPersistence.IReader Reader(params Address[] missing)
+    {
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.GetAccount(Arg.Any<ValueHash256>()).Returns(new Account(1, 1).ToPbtAccount());
+        foreach (Address address in missing) reader.GetAccount(PbtStateKey.AddressKeyHash(address)).Returns((PbtAccount?)null);
+        reader.GetSlotRun(Arg.Any<PbtPath>()).Returns(_ => SlotRun.Empty);
+        reader.GetSlotRun(Arg.Any<PbtStoragePath>()).Returns(_ => SlotRun.Empty);
+        return reader;
+    }
+
+    private static InterfaceLogger ErrorLogger()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        return logger;
+    }
+
+    /// <summary>Every error the scope logged, with its exception, as one text.</summary>
+    private static string LoggedErrors(InterfaceLogger logger) => string.Join(Environment.NewLine, logger.ReceivedCalls()
+        .Where(static call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Error))
+        .SelectMany(static call => call.GetArguments().Select(static argument => argument?.ToString())));
 
     private static PbtStorageNodePath FirstGroup(Address address, byte zone) => zone == Eip8297KeyDerivation.AccountZone
         ? new(Bytes.FromHexString("00" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()[..6]), 32)

@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Composes the native flat and PBT managers into the single world state the node processes on.</summary>
-internal sealed class MigrationWorldStateManager(
+public sealed class MigrationWorldStateManager(
     FlatWorldStateManager flat,
     PbtWorldStateManager pbt,
     MigrationScopeProvider mainWorldState,

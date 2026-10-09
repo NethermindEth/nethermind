@@ -13,7 +13,7 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal sealed class PbtRetainedSnapshotLoader(
+public sealed class PbtRetainedSnapshotLoader(
     PbtSnapshotRepository repository,
     PbtRetainedPublicationGate publicationGate,
     PbtRetainedStorageLifetime lifetime,

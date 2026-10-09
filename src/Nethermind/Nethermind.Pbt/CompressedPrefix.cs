@@ -20,10 +20,10 @@ public readonly ref struct CompressedPrefix
     /// <summary>Gets the borrowed, MSB-first prefix bytes without the count header.</summary>
     public ReadOnlySpan<byte> Bytes => _encoding.IsEmpty ? [] : _encoding[sizeof(ushort)..];
 
-    internal static CompressedPrefix FromValidated(ReadOnlySpan<byte> encoding) => new(encoding);
+    public static CompressedPrefix FromValidated(ReadOnlySpan<byte> encoding) => new(encoding);
 
     /// <summary>The number of leading prefix bits that match <paramref name="key"/> from bit <paramref name="keyOffset"/> on.</summary>
-    internal int MatchingBits<TKey>(TKey key, int keyOffset) where TKey : unmanaged, IPbtKey<TKey>
+    public int MatchingBits<TKey>(TKey key, int keyOffset) where TKey : unmanaged, IPbtKey<TKey>
     {
         if (BitCount == 0) return 0;
 

@@ -78,7 +78,7 @@ public class PbtSnapshotCompactorTests
         RefCountingMemory CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-            using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth, memoryProvider);
+            using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, ushort.MaxValue)!;
         }
@@ -287,7 +287,7 @@ public class PbtSnapshotCompactorTests
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
         byte[] expected;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(group.BitDepth, store.Memory))
+        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(group.BitDepth, store.Memory))
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], group);
             if (group.BitDepth != 0) path.AppendMut(0);
@@ -510,22 +510,20 @@ public class PbtSnapshotCompactorTests
         }
     }
 
-    [TestCase(4, 0, 2, 0, false, SnapshotTier.PersistedSmallCompacted, 0)]
-    [TestCase(4, 0, 4, 0, true, SnapshotTier.PersistedCompactSized, 0)]
-    [TestCase(4, 0, 8, 0, false, SnapshotTier.PersistedLargeCompacted, 0)]
-    [TestCase(4, 0, 8, 4, false, SnapshotTier.PersistedLargeCompacted, 4)]
-    [TestCase(4, 3, 5, 0, true, SnapshotTier.PersistedCompactSized, 1)]
-    [TestCase(4, 7, 1, -1, false, SnapshotTier.PersistedLargeCompacted, -1)]
-    [TestCase(1, 0, 8, 0, false, SnapshotTier.PersistedLargeCompacted, 0)]
+    [TestCase(4, 0, 2, 0, SnapshotTier.PersistedSmallCompacted, 0)]
+    [TestCase(4, 0, 4, 0, SnapshotTier.PersistedCompactSized, 0)]
+    [TestCase(4, 0, 8, 0, SnapshotTier.PersistedLargeCompacted, 0)]
+    [TestCase(4, 0, 8, 2, SnapshotTier.PersistedLargeCompacted, 2)]
+    [TestCase(4, 3, 5, 0, SnapshotTier.PersistedCompactSized, 1)]
+    [TestCase(4, 7, 1, -1, SnapshotTier.PersistedCompactSized, -1)]
+    [TestCase(4, 3, 5, -1, SnapshotTier.PersistedLargeCompacted, -1)]
+    [TestCase(1, 0, 8, 0, SnapshotTier.PersistedLargeCompacted, 0)]
     public async Task Retained_compactor_uses_shared_schedule_ranges_and_tiers(int compactSize, int offset, int target,
-        int floor, bool compactSized, SnapshotTier expectedTier, int expectedFrom)
+        int floor, SnapshotTier expectedTier, int expectedFrom)
     {
         using RetainedCompactionContext context = new(compactSize, offset);
         context.AddHistory(target, includeGenesis: expectedFrom < 0);
-        PbtRetainedSnapshotCompactor compactor = context.Compactor;
-        bool result = compactSized ? compactor.DoCompactCompactSized(CompactionState(target))
-            : compactor.DoCompactSnapshot(CompactionState(target), unchecked((ulong)floor));
-        Assert.That(result, Is.True);
+        await context.CompactAsync(unchecked((ulong)floor), target);
         Assert.That(context.Repository.TryLeaseRetained(CompactionState(target), target - expectedFrom, expectedTier, out PbtRetainedSnapshot? output), Is.True);
         using (output)
         {
@@ -538,24 +536,19 @@ public class PbtSnapshotCompactorTests
                 Assert.That(code!.CodeSpan[0], Is.EqualTo((byte)target));
             }
         }
-        await compactor.DisposeAsync();
     }
 
     [Test]
     public async Task Retained_compactor_skips_genesis_single_edges_and_clamped_windows()
     {
         using RetainedCompactionContext context = new(4, 0);
-        context.AddHistory(1, includeGenesis: true);
+        context.AddHistory(8, includeGenesis: true);
+        await context.CompactAsync(5, 0, 1, 2, 6);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(0)), Is.False);
-            Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(1)), Is.False);
-            Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(2)), Is.False);
-            Assert.That(context.Compactor.DoCompactCompactSized(CompactionState(1)), Is.False);
+            Assert.That(context.Loader.Publications, Is.Empty);
+            Assert.That(context.Repository.RetainedCount, Is.EqualTo(9));
         }
-        context.AddHistory(8, start: 2);
-        Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(8), 7), Is.False);
-        await context.Compactor.DisposeAsync();
     }
 
     [Test]
@@ -572,9 +565,9 @@ public class PbtSnapshotCompactorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pool.Returns, Is.EqualTo(1));
-            Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(2), 2L, SnapshotTier.PersistedSmallCompacted)));
-            Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(8), 4L, SnapshotTier.PersistedCompactSized)));
-            Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted)));
+            Assert.That(context.Repository.HasRetained(CompactionState(2), 2L, SnapshotTier.PersistedSmallCompacted), Is.True);
+            Assert.That(context.Repository.HasRetained(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
+            Assert.That(context.Repository.HasRetained(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
         }
         (SnapshotTier Tier, long[] Widths)[] publications = context.Loader.Publications.ToArray();
         Assert.That(publications.Where(p => p.Tier == SnapshotTier.PersistedCompactSized).Any(p => p.Widths.Contains(2)), Is.True);
@@ -600,7 +593,7 @@ public class PbtSnapshotCompactorTests
         batch.AddRange(CompactionState(2), CompactionState(4), CompactionState(8), CompactionState(16));
         await context.Compactor.EnqueueAsync(batch, 0, CancellationToken.None);
         await context.Compactor.DisposeAsync();
-        Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(16), 16L, SnapshotTier.PersistedLargeCompacted)));
+        Assert.That(context.Repository.HasRetained(CompactionState(16), 16L, SnapshotTier.PersistedLargeCompacted), Is.True);
         Assert.That(failures, Is.EqualTo(1));
     }
 
@@ -637,11 +630,13 @@ public class PbtSnapshotCompactorTests
     {
         using RetainedCompactionContext context = new(4, 0);
         context.AddHistory(2);
-        context.Loader.BeforePublish = (_, sources) =>
-            context.Repository.RemoveRetainedExact(sources[0].To, unchecked((long)(sources[0].To.BlockNumber - sources[0].From.BlockNumber)), sources[0].Tier);
-        Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(2)), Is.False);
-        Assert.That(context.Repository.GetRetainedEntries().Any(e => e.Tier != SnapshotTier.PersistedBase), Is.False);
-        await context.Compactor.DisposeAsync();
+        context.Loader.BeforePublish = (_, sources) => context.Repository.RemoveRetainedStatesBefore(sources[0].To.BlockNumber + 1);
+        await context.CompactAsync(0, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Loader.Publications, Is.Empty);
+            Assert.That(context.Repository.RetainedCount, Is.EqualTo(1), "only the base at block 2 remains");
+        }
     }
 
     [Test]
@@ -670,8 +665,8 @@ public class PbtSnapshotCompactorTests
         }
         finally { release.Set(); }
         await context.Compactor.DisposeAsync();
-        Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(8), 4L, SnapshotTier.PersistedCompactSized)));
-        Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted)));
+        Assert.That(context.Repository.HasRetained(CompactionState(8), 4L, SnapshotTier.PersistedCompactSized), Is.True);
+        Assert.That(context.Repository.HasRetained(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
     }
 
     [Test]
@@ -712,10 +707,9 @@ public class PbtSnapshotCompactorTests
     {
         using RetainedCompactionContext context = new(4, 0, maxCompactSize: 8);
         context.AddHistory(16);
-        Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(16)), Is.True);
+        await context.CompactAsync(0, 16);
         Assert.That(context.Repository.TryLeaseRetained(CompactionState(16), 8, SnapshotTier.PersistedLargeCompacted, out PbtRetainedSnapshot? output), Is.True);
         using (output) Assert.That(output!.From, Is.EqualTo(CompactionState(8)));
-        await context.Compactor.DisposeAsync();
     }
 
     private static StateId CompactionState(int number) => new((ulong)number, TestItem.KeccakA.ValueHash256);
@@ -761,10 +755,9 @@ public class PbtSnapshotCompactorTests
             Assert.That(sources.All(context.Repository.ContainsRetainedStorageSource), Is.True);
             rebound = true;
         };
-        Assert.That(context.Compactor.DoCompactSnapshot(CompactionState(8)), Is.True);
+        await context.CompactAsync(0, 8);
         Assert.That(rebound, Is.True);
-        Assert.That(context.Repository.GetRetainedEntries(), Does.Contain((CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted)));
-        await context.Compactor.DisposeAsync();
+        Assert.That(context.Repository.HasRetained(CompactionState(8), 8L, SnapshotTier.PersistedLargeCompacted), Is.True);
     }
 
     [Test]
@@ -866,6 +859,15 @@ public class PbtSnapshotCompactorTests
             }, new InitConfig { BaseDbPath = _path });
             _container.Resolve<IPbtRetainedSnapshotLoader>().Load();
             Loader = loader!;
+        }
+
+        /// <summary>Compacts <paramref name="blocks"/> as one batch and waits for every job it schedules, which retires the compactor.</summary>
+        internal async Task CompactAsync(ulong persistedBlockNumber, params int[] blocks)
+        {
+            ArrayPoolList<StateId> batch = new(blocks.Length);
+            foreach (int block in blocks) batch.Add(CompactionState(block));
+            await Compactor.EnqueueAsync(batch, persistedBlockNumber, CancellationToken.None);
+            await Compactor.DisposeAsync();
         }
 
         internal void AddHistory(int last, bool includeGenesis = false, int start = 1)

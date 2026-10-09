@@ -43,7 +43,7 @@ public class ExportPbtImage(
     private static readonly TimeSpan ReportInterval = TimeSpan.FromMinutes(1);
 
     /// <summary>How often the persisted state is re-read; there is no event for it to wait on.</summary>
-    internal TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
     private readonly ILogger _logger = logManager.GetClassLogger<ExportPbtImage>();
 

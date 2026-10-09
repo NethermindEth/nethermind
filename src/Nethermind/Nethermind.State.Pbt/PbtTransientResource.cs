@@ -14,7 +14,7 @@ public sealed class PbtTransientResource(int nodeGroupCapacity) : IDisposable, I
     /// <summary>Groups folded during this block, folded into the shared cache after the block commits.</summary>
     public PbtTrieNodeCache.ChildCache NodeGroups { get; } = new(nodeGroupCapacity);
 
-    internal void OnRented(IPbtResourcePool pool, PbtResourcePool.Usage usage)
+    public void OnRented(IPbtResourcePool pool, PbtResourcePool.Usage usage)
     {
         _returnUsage = usage;
         Volatile.Write(ref _returnPool, pool);
@@ -22,7 +22,7 @@ public sealed class PbtTransientResource(int nodeGroupCapacity) : IDisposable, I
 
     /// <summary>Returns the resource to the pool it was rented from; the owner calls this exactly once per rental.</summary>
     /// <exception cref="InvalidOperationException">The resource is not rented, e.g. it was already returned.</exception>
-    internal void ReleaseLease()
+    public void ReleaseLease()
     {
         // Claiming the pool guards against a double return putting one resource into two later rentals.
         IPbtResourcePool pool = Interlocked.Exchange(ref _returnPool, null)

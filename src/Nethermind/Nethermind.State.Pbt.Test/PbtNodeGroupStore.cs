@@ -30,7 +30,6 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         PbtNodeGroupStore store = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            Span<byte> pathBuffer = stackalloc byte[PbtVariableTreeKey.MaxLength];
             foreach (PbtPhysicalPayload payload in payloads)
             {
                 PbtStorageNodePath groupKey = payload.Key;
@@ -39,8 +38,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
 
                 ReadOnlySpan<byte> payloadSpan = payload.Payload.Span;
-                PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupKey);
-                PbtNodeGroupCodec.ValidateNodes(path, payloadSpan);
+                PbtNodeGroupCodec.ValidateNodes(groupKey, payloadSpan);
                 RefCountingMemory ownedPayload = store._memoryProvider.Rent(payloadSpan.Length);
                 try
                 {
@@ -86,8 +84,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                 throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-            if (payload is not null) PbtNodeGroupCodec.ValidateNodes(groupKey, payload.GetSpan());
             PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
+            if (payload is not null) PbtNodeGroupCodec.ValidateNodes(storagePath, payload.GetSpan());
 
             _groups.TryGetValue(storagePath, out RefCountingMemory? previous);
             if (payload is null)

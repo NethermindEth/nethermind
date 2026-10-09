@@ -13,7 +13,7 @@ namespace Nethermind.State.Pbt.Image;
 /// <remarks>The source must be a preimage-flat reader pinned at the anchor for the whole call: the caller
 /// stops the state advancing before exporting, and <paramref name="isAnchorCurrent"/> re-checks that the
 /// anchor is still the one the chain agrees on, since the export takes long enough for a reorg to land.</remarks>
-internal static class PbtOfflineExport
+public static class PbtOfflineExport
 {
     /// <param name="includePreimages">Whether to write preimages.bin beside snapshot.pbt.</param>
     /// <param name="sortBufferBytes">Sort budget per scan worker, split between the leaf and preimage spools.</param>

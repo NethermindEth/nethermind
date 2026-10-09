@@ -10,9 +10,9 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal static class PbtRetainedSnapshotValidation
+public static class PbtRetainedSnapshotValidation
 {
-    internal static void Validate(PbtSnapshot source, PbtRetainedSnapshot retained)
+    public static void Validate(PbtSnapshot source, PbtRetainedSnapshot retained)
     {
         if (source.From != retained.From || source.To != retained.To || source.TreeRoot != retained.TreeRoot) throw Mismatch();
         PbtSnapshotContent content = source.Content;

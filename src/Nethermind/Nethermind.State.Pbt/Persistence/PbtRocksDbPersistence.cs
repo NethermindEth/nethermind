@@ -30,7 +30,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
-    internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
+    public static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
     /// <remarks>
     /// Bump on any change to the persisted layout, including which prefixless branches a group omits: omission changes
     /// a group's bytes but not its hash, and the node-group caches key on the hash, so a database written with another
@@ -41,10 +41,10 @@ public class PbtRocksDbPersistence(
 
     private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
 
-    internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
+    public bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
     /// <summary>Whether a metadata key is a schema stamp, current or retired, so an otherwise empty database still counts as empty.</summary>
-    internal static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
+    public static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
         key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
 
     private static IColumnsDb<PbtColumns> EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
@@ -140,7 +140,7 @@ public class PbtRocksDbPersistence(
         _db.Flush();
     }
 
-    internal static (StateId State, ValueHash256 Root) ReadCurrentState(IReadOnlyKeyValueStore metadata)
+    private static (StateId State, ValueHash256 Root) ReadCurrentState(IReadOnlyKeyValueStore metadata)
     {
         byte[]? value = metadata.Get(CurrentStateKey);
         if (value is null) return (StateId.PreGenesis, default);
@@ -161,14 +161,14 @@ public class PbtRocksDbPersistence(
             throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
     }
 
-    internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+    public static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
         return PbtNodeGroupLayout.IsTopGroup(groupKey) ? PbtColumns.TopNodeGroups : PartitionColumn(groupKey);
     }
 
     /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>
-    internal static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
+    public static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
         PbtPartitions.PartitionOfPath(groupKey) switch
         {
             PbtPartition.Storage => PbtColumns.StorageNodeGroups,

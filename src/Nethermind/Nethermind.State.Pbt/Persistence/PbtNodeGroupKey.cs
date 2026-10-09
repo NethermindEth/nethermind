@@ -13,14 +13,14 @@ namespace Nethermind.State.Pbt.Persistence;
 /// at the front of its subtree; a nibble group's 1 sorts it after the descendants whose next byte is zero, inside its
 /// subtree's range rather than at its front.
 /// </remarks>
-internal static class PbtNodeGroupKey
+public static class PbtNodeGroupKey
 {
     private const int TrailerLength = 1;
     private const byte ByteAlignedTrailer = 0;
     private const byte NibbleAlignedTrailer = 1;
-    internal const int MaxLength = PbtVariableTreeKey.MaxLength + TrailerLength;
+    public const int MaxLength = PbtVariableTreeKey.MaxLength + TrailerLength;
 
-    internal static ReadOnlySpan<byte> Encode<TPath>(TPath groupKey, Span<byte> destination)
+    public static ReadOnlySpan<byte> Encode<TPath>(TPath groupKey, Span<byte> destination)
         where TPath : struct, IPbtNodePath<TPath>
     {
         Span<byte> key = destination[..(PbtBitPrefix.ByteCount(groupKey.BitDepth) + TrailerLength)];
@@ -29,7 +29,7 @@ internal static class PbtNodeGroupKey
         return key;
     }
 
-    internal static PbtStorageNodePath Decode(ReadOnlySpan<byte> key)
+    public static PbtStorageNodePath Decode(ReadOnlySpan<byte> key)
     {
         // The root group lives under its own metadata key, never in a node-group column.
         if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtVariableTreeKey.MaxLength)

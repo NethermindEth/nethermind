@@ -51,7 +51,7 @@ public interface IPbtStore
 public interface IPbtConcurrentWriter : IPbtNodeGroupSink, IDisposable;
 
 /// <summary>Forwards every write immediately, for stores whose own sink accepts concurrent writes.</summary>
-internal sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
+public sealed class PbtPassThroughWriter(IPbtNodeGroupSink store) : IPbtConcurrentWriter
 {
     public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) =>
         store.SetNodeGroup(groupKey, groupHash, payload);

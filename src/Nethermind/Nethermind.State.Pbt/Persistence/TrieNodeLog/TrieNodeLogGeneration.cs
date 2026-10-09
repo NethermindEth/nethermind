@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
 /// pinned the generation; the log holds its own lease until the generation has been merged into RocksDB, and the
 /// last release deletes the file unless <see cref="PreserveOnDispose"/> was set (shutdown before the merge).
 /// </remarks>
-internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
+public sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 {
     private const int MinCapacity = 1024;
 

@@ -8,9 +8,9 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal sealed class PbtSnapshotCatalog([KeyFilter(PbtSnapshotCatalog.DatabaseKey)] IDb db) : ISnapshotCatalog
+public sealed class PbtSnapshotCatalog([KeyFilter(PbtSnapshotCatalog.DatabaseKey)] IDb db) : ISnapshotCatalog
 {
-    internal const string DatabaseKey = "PbtRetainedSnapshotCatalog";
+    public const string DatabaseKey = "PbtRetainedSnapshotCatalog";
     private readonly SnapshotCatalog _catalog = new(db);
 
     public void Add(CatalogEntry entry)

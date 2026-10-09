@@ -18,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -38,6 +37,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
     private static readonly UInt256[] Slots = [0, 1, 17, 63, 64, 65, 80, 1000, 1001, 5000];
 
     [Test]
+    [NonParallelizable]
     public void Random_stacks_read_the_same_through_the_filter([Range(0, 99)] int seed, [Values(1.0, RealBitsPerKey)] double bitsPerKey)
     {
         Random random = new(seed);
@@ -59,6 +59,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
             }
         }
 
+        long builds = Metrics.PbtInMemorySlotFilterBuilds;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), layers),
             new ContentReader(persisted), recordDetailedMetrics: false, bitsPerKey);
 
@@ -67,16 +68,18 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
             foreach (Address address in addresses)
                 foreach (UInt256 slot in Slots)
                     Assert.That(ReadRun(bundle, address, slot, filtered: true), Is.EqualTo(ReadRun(bundle, address, slot, filtered: false)), $"{address} slot {slot}");
-            Assert.That(bundle.SlotFilter is not null, Is.EqualTo(layers.Length >= 2));
+            Assert.That(Metrics.PbtInMemorySlotFilterBuilds - builds, Is.EqualTo(layers.Length >= 2 ? 1 : 0), "a filtered read builds the filter whenever it may");
         }
     }
 
     [Test]
+    [NonParallelizable]
     public void Filter_is_built_only_with_bits_per_key_and_two_memory_layers([Values(0.0, RealBitsPerKey)] double bitsPerKey, [Values(1, 2)] int memoryLayers)
     {
         PbtSnapshotContent persisted = new();
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1000), 7);
         PbtSnapshotContent[] layers = [.. Enumerable.Range(0, memoryLayers).Select(layer => LayerWriting(TestItem.Addresses[layer + 1], 1000, 1))];
+        long builds = Metrics.PbtInMemorySlotFilterBuilds;
         using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), layers),
             new ContentReader(persisted), recordDetailedMetrics: false, bitsPerKey);
         bool expected = bitsPerKey > 0 && memoryLayers >= 2;
@@ -85,11 +88,12 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         {
             Assert.That(bundle.MayFilterSlots, Is.EqualTo(expected));
             Assert.That(ReadRun(bundle, TestItem.AddressA, 1000, filtered: true)[SlotRun.IndexOf((UInt256)1000)], Is.EqualTo((UInt256)7));
-            Assert.That(bundle.SlotFilter is not null, Is.EqualTo(expected));
+            Assert.That(Metrics.PbtInMemorySlotFilterBuilds - builds, Is.EqualTo(expected ? 1 : 0));
         }
     }
 
     [Test]
+    [NonParallelizable]
     public void Definite_miss_honors_in_memory_clears_and_reads_retained_layers_below([Values] bool clearInMemory)
     {
         using PbtRetainedTestStore store = new();
@@ -104,13 +108,14 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         repository.TryAdd(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, clearing, pool, PbtResourcePool.Usage.MainBlockProcessing));
         repository.TryAdd(new PbtSnapshot(new StateId(1, default), new StateId(2, default), default, LayerWriting(TestItem.AddressC, 1000, 2), pool, PbtResourcePool.Usage.MainBlockProcessing));
 
+        long builds = Metrics.PbtInMemorySlotFilterBuilds;
         using PbtReadOnlySnapshotBundle bundle = new(repository.TryLeaseReadChain(new StateId(2, default), StateId.PreGenesis)!,
             new ContentReader(new PbtSnapshotContent()), recordDetailedMetrics: false, RealBitsPerKey);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ReadRun(bundle, TestItem.AddressA, 1000, filtered: true)[SlotRun.IndexOf((UInt256)1000)], Is.EqualTo(clearInMemory ? UInt256.Zero : (UInt256)7));
-            Assert.That(bundle.SlotFilter, Is.Not.Null);
+            Assert.That(Metrics.PbtInMemorySlotFilterBuilds - builds, Is.EqualTo(1));
         }
     }
 
@@ -134,7 +139,6 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         {
             Assert.That(hit, Is.EqualTo((UInt256)2));
             Assert.That(miss, Is.EqualTo((UInt256)22));
-            Assert.That(bundle.SlotFilter, Is.Null);
             Assert.That(bundle.MayFilterSlots, Is.False);
             Assert.That(Metrics.PbtInMemorySlotFilterBuilds, Is.EqualTo(builds));
             Assert.That(Metrics.PbtInMemorySlotFilterBuildFailures - failures, Is.EqualTo(1), "one failed build, then no retry");
@@ -152,29 +156,26 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
             new ContentReader(new PbtSnapshotContent()), recordDetailedMetrics: false, RealBitsPerKey);
         Assert.That(bundle.TryLease(), Is.True);
         ReadRun(bundle, TestItem.AddressA, 1000, filtered: true);
-        BloomFilter filter = bundle.SlotFilter!;
+        long filterBytes = Metrics.PbtInMemorySlotFilterMemory - memoryBefore;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.PbtInMemorySlotFilterBuilds - buildsBefore, Is.EqualTo(1));
-            Assert.That(Metrics.PbtInMemorySlotFilterMemory - memoryBefore, Is.EqualTo(filter.DataBytes));
+            Assert.That(filterBytes, Is.Positive);
         }
 
         bundle.Dispose();
-        Assert.DoesNotThrow(() => filter.MightContain(1), "a bundle still leased keeps its filter");
+        Assert.That(Metrics.PbtInMemorySlotFilterMemory - memoryBefore, Is.EqualTo(filterBytes), "a bundle still leased keeps its filter");
 
         bundle.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.SlotFilter, Is.Null);
-            Assert.That(() => filter.MightContain(1), Throws.TypeOf<ObjectDisposedException>());
-            Assert.That(Metrics.PbtInMemorySlotFilterMemory, Is.EqualTo(memoryBefore));
-        }
+        Assert.That(Metrics.PbtInMemorySlotFilterMemory, Is.EqualTo(memoryBefore));
     }
 
     [Test]
+    [NonParallelizable]
     public void Snapshot_bundle_uses_the_filter_only_when_asked([Values] bool filterInMemorySlotReads)
     {
+        long buildsBefore = Metrics.PbtInMemorySlotFilterBuilds;
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent persisted = new();
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 5000), 22);
@@ -186,11 +187,12 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         {
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo((UInt256)1));
             Assert.That(bundle.GetSlot(TestItem.AddressA, 5000), Is.EqualTo((UInt256)22));
-            Assert.That(readOnly.SlotFilter is not null, Is.EqualTo(filterInMemorySlotReads));
+            Assert.That(Metrics.PbtInMemorySlotFilterBuilds - buildsBefore, Is.EqualTo(filterInMemorySlotReads ? 1 : 0));
         }
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Db_manager_hands_the_configured_bits_per_key_to_shared_bundles([Values(0.0, RealBitsPerKey)] double bitsPerKey)
     {
         await using PbtTestContext ctx = new(config: new PbtConfig { InMemorySnapshotBloomBitsPerKey = bitsPerKey });
@@ -203,11 +205,13 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         }
 
         StateId state = new(Build.A.BlockHeader.WithNumber(3).WithStateRoot(root).TestObject);
+        long builds = Metrics.PbtInMemorySlotFilterBuilds;
         using (PbtSnapshotBundle bundle = ctx.Manager.TryGatherBundle(state, new PbtSnapshotPooledList(0), PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true)!)
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1000), Is.EqualTo((UInt256)3));
+        Assert.That(Metrics.PbtInMemorySlotFilterBuilds - builds, Is.EqualTo(bitsPerKey > 0 ? 1 : 0));
 
         using PbtReadOnlySnapshotBundle shared = ctx.Manager.GatherReadOnlyBundle(state);
-        Assert.That(shared.SlotFilter is not null, Is.EqualTo(bitsPerKey > 0));
+        Assert.That(shared.MayFilterSlots, Is.EqualTo(bitsPerKey > 0));
     }
 
     [Test]

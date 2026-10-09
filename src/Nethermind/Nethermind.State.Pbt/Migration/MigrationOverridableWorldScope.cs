@@ -18,7 +18,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// request that crosses activation from there (an <c>eth_simulateV1</c> block list or a block override) stays on
 /// that backend; its writes are identical, only the reported state root is the other tree's.
 /// </remarks>
-internal sealed class MigrationOverridableWorldScope(FlatOverridableWorldScope flat, PbtOverridableWorldScope pbt, ISpecProvider specProvider)
+public sealed class MigrationOverridableWorldScope(FlatOverridableWorldScope flat, PbtOverridableWorldScope pbt, ISpecProvider specProvider)
     : IOverridableWorldScope
 {
     public IWorldStateScopeProvider WorldState { get; } = new MigrationReadOnlyScopeProvider(flat.WorldState, pbt.WorldState, specProvider);

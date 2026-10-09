@@ -169,7 +169,7 @@ public class PbtFormatInteropTests
         PbtPath leaf = Eip8297KeyDerivation.AccountKey(default, 0);
         PbtSnapshotContent content = new();
         byte[] expected;
-        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = new(depth, store.Memory))
+        using (PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(depth, store.Memory))
         {
             PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             if (depth != 0) cursor.AppendMut(0);
@@ -236,7 +236,7 @@ public class PbtFormatInteropTests
         PbtRetainedMetadata metadata = new(StateId.PreGenesis, new(0, TestItem.KeccakB.ValueHash256), TestItem.KeccakC.ValueHash256);
         List<(byte[] Key, byte[] Value)> records = RetainedMetadata(metadata);
         byte[] key = PbtRetainedKey.CodeEntity(TestItem.KeccakA.ValueHash256);
-        byte[] rlp = PbtRetainedSnapshotBuilder.EncodeChunk(new byte[255]);
+        byte[] rlp = [0xB8, 0xFF, .. new byte[255]];
         if (fault == "list") rlp[0] = 0xF8;
         if (fault == "length") rlp[1] = 254;
         if (fault == "truncated") rlp = [0xB9, 1, 0];

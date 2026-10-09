@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
 /// <see cref="Prev"/> so a torn (zero-filled) tail cannot pass as a commit. The value length is 32-bit because a
 /// group payload may exceed 64 KiB (<see cref="PbtNodeGroupCodec.MaxPayloadLength"/>).
 /// </remarks>
-internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int ValueLength, ulong Version, ulong Prev)
+public readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int ValueLength, ulong Version, ulong Prev)
 {
     public const byte Put = 0;
     public const byte Delete = 1;

@@ -122,10 +122,7 @@ public class PbtExportTests
             dbProvider.CodeDb.Returns(new MemDb());
 
             return new ExportPbtImage(_persistenceManager, flatPersistence, Target, dbFactory, dbProvider, _blockTree,
-                new ChainSpec { ChainId = 1 }, Config, PauseControl, Substitute.For<IProcessExitSource>(), LimboLogs.Instance)
-            {
-                PollInterval = TimeSpan.Zero
-            };
+                new ChainSpec { ChainId = 1 }, Config, PauseControl, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
         }
     }
 }

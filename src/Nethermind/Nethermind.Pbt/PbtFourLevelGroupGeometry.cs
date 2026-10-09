@@ -46,7 +46,7 @@ public static class PbtFourLevelGroupGeometry
         return depth == 0 ? 0 : (depth - 1) / LevelsPerGroup * LevelsPerGroup;
     }
 
-    internal static NodeGroupPath LocalPathOf(int position)
+    public static NodeGroupPath LocalPathOf(int position)
     {
         if ((uint)position >= PositionCount) throw new ArgumentOutOfRangeException(nameof(position));
         int length = PositionDepths[position];
@@ -54,9 +54,9 @@ public static class PbtFourLevelGroupGeometry
     }
 
     /// <summary>The position of the node at boundary slot <paramref name="slot"/>.</summary>
-    internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
+    public static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
-    internal static int WidthOf(int position) => BoundarySlots >> PositionDepths[position];
+    public static int WidthOf(int position) => BoundarySlots >> PositionDepths[position];
 
     private static ReadOnlySpan<byte> PositionNibbles => [0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 6, 7, 3, 1, 0, 8, 9, 4, 10, 11, 5, 2, 12, 13, 6, 14, 15, 7, 3, 1, 0];
 

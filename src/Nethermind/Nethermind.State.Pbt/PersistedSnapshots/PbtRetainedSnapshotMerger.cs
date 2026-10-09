@@ -10,9 +10,9 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal static class PbtRetainedSnapshotMerger
+public static class PbtRetainedSnapshotMerger
 {
-    internal static void Merge<TWriter>(ReadOnlySpan<PbtRetainedSnapshot> oldestFirst,
+    public static void Merge<TWriter>(ReadOnlySpan<PbtRetainedSnapshot> oldestFirst,
         in PbtRetainedMetadata metadata, ref TWriter writer, BloomFilter bloom,
         CancellationToken cancellationToken) where TWriter : IByteBufferWriter
     {
@@ -135,7 +135,7 @@ internal static class PbtRetainedSnapshotMerger
         private SortedTableEnumerator<WholeReadSessionReader, NoOpPin> _cursor;
         private bool _disposed;
 
-        internal MergeCursor(PbtRetainedSnapshot snapshot)
+        public MergeCursor(PbtRetainedSnapshot snapshot)
         {
             if (!snapshot.TryLease()) throw new ObjectDisposedException(nameof(snapshot));
             _snapshot = snapshot;
@@ -155,10 +155,10 @@ internal static class PbtRetainedSnapshotMerger
             }
         }
 
-        internal ReadOnlySpan<byte> Key => _cursor.CurrentKey;
-        internal Bound Value => _cursor.CurrentValue;
-        internal WholeReadSessionReader CreateReader() => _session.CreateReader();
-        internal bool MoveNext() => _cursor.MoveNext(_session.CreateReader());
+        public ReadOnlySpan<byte> Key => _cursor.CurrentKey;
+        public Bound Value => _cursor.CurrentValue;
+        public WholeReadSessionReader CreateReader() => _session.CreateReader();
+        public bool MoveNext() => _cursor.MoveNext(_session.CreateReader());
 
         public void Dispose()
         {

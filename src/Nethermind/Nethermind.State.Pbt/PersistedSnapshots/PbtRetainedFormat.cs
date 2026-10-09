@@ -17,14 +17,14 @@ namespace Nethermind.State.Pbt.PersistedSnapshots;
 /// <see cref="InlineLimit"/> bytes, or <see cref="ChunkedMarker"/> followed by the payload length and chunk count, each u32 LE,
 /// for a payload stored in <see cref="ChunkSize"/> blob chunks under <see cref="PbtRetainedKey.Chunk"/> keys.
 /// </remarks>
-internal static class PbtRetainedFormat
+public static class PbtRetainedFormat
 {
-    internal const int ChunkSize = 65536;
-    internal const int InlineLimit = 254;
-    internal const byte NullMarker = 0;
-    internal const byte InlineMarker = 1;
-    internal const byte ChunkedMarker = 2;
-    internal const int ChunkedDescriptorLength = 1 + 2 * sizeof(uint);
+    public const int ChunkSize = 65536;
+    public const int InlineLimit = 254;
+    public const byte NullMarker = 0;
+    public const byte InlineMarker = 1;
+    private const byte ChunkedMarker = 2;
+    public const int ChunkedDescriptorLength = 1 + 2 * sizeof(uint);
 
     private const byte FormatRecord = 1;
     private const byte FromRecord = 2;
@@ -35,7 +35,7 @@ internal static class PbtRetainedFormat
 
     private static ReadOnlySpan<byte> Magic => "PBTDIFF\x01\x00"u8;
 
-    internal static void WriteMetadata<TWriter>(ref SortedTableBuilder<TWriter> table, in PbtRetainedMetadata metadata)
+    public static void WriteMetadata<TWriter>(ref SortedTableBuilder<TWriter> table, in PbtRetainedMetadata metadata)
         where TWriter : IByteBufferWriter
     {
         table.Add([PbtRetainedKey.Metadata, FormatRecord], Magic);
@@ -47,18 +47,18 @@ internal static class PbtRetainedFormat
         table.Add([PbtRetainedKey.Metadata, TreeRootRecord], metadata.TreeRoot.Bytes);
     }
 
-    internal static void WriteChunkedDescriptor(Span<byte> descriptor, int length, uint chunkCount)
+    public static void WriteChunkedDescriptor(Span<byte> descriptor, int length, uint chunkCount)
     {
         descriptor[0] = ChunkedMarker;
         BinaryPrimitives.WriteUInt32LittleEndian(descriptor[1..], checked((uint)length));
         BinaryPrimitives.WriteUInt32LittleEndian(descriptor[5..], chunkCount);
     }
 
-    internal static uint ChunkCount(long length) => checked((uint)((length + ChunkSize - 1) / ChunkSize));
+    public static uint ChunkCount(long length) => checked((uint)((length + ChunkSize - 1) / ChunkSize));
 
     /// <summary>Validates <paramref name="value"/> as the descriptor of entity <paramref name="key"/>.</summary>
     /// <returns>The payload length, or -1 for a tombstone; <paramref name="chunks"/> is zero unless the payload is chunked.</returns>
-    internal static int PayloadLength(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out uint chunks)
+    public static int PayloadLength(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out uint chunks)
     {
         chunks = 0;
         if (value.IsEmpty) throw new InvalidDataException("Empty retained PBT descriptor.");
@@ -114,7 +114,7 @@ internal static class PbtRetainedFormat
     }
 
     /// <summary>Collects the metadata records of a table, rejecting unknown, repeated or malformed ones.</summary>
-    internal struct MetadataReader
+    public struct MetadataReader
     {
         private int _seen;
         private StateId _from;

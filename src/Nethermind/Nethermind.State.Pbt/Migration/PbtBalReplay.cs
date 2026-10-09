@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// produces past activation, so the two producers are interchangeable and <see cref="PbtDbManager.AddSnapshot"/>
 /// de-duplicates whichever lands second.
 /// </remarks>
-internal sealed class PbtBalReplay(
+public sealed class PbtBalReplay(
     IPbtDbManager manager,
     IRefCountingMemoryProvider nodeGroupMemory,
     [KeyFilter(DbNames.Code)] IDb codeDb,

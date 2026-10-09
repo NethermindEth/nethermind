@@ -71,7 +71,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             metricsConfig, trieNodeCache, NullPbtRetainedSnapshotLoader.Instance)
     { }
 
-    internal PbtDbManager(
+    public PbtDbManager(
         PbtSnapshotRepository repository,
         PbtPersistenceManager persistenceManager,
         IPbtPersistence persistence,

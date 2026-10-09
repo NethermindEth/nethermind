@@ -25,7 +25,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// <see cref="PbtModule"/> does) and binds the composite world state over both. Only flat's persistence sees the
 /// clamped finality (<see cref="MigrationFlatFinalizedStateProvider"/>); PBT persists on the real one.
 /// </remarks>
-internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
+public sealed class PbtMigrationModule(IPbtConfig configuration) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {

@@ -19,7 +19,7 @@ public static class SlotRun
     public const int Width = 16;
     private const byte IndexMask = Width - 1;
     private const int IndexBits = 4;
-    internal const int EncodedHeaderLength = 1 + sizeof(ushort);
+    public const int EncodedHeaderLength = 1 + sizeof(ushort);
     private const byte MaxEncodedType = 4;
 
     /// <summary>The shared all-zero run; never pooled.</summary>
@@ -36,7 +36,7 @@ public static class SlotRun
     }
 
     /// <summary>Rents the smallest run holding the slots set in <paramref name="mask"/>, taking their values packed by ascending slot from <paramref name="packedValues"/>.</summary>
-    internal static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
+    public static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
     {
         int count = BitOperations.PopCount(mask);
         if (count == 0) return Empty;
@@ -46,7 +46,7 @@ public static class SlotRun
     }
 
     /// <summary><see cref="CreatePacked(ushort, ReadOnlySpan{UInt256})"/> over the 32-byte big-endian values a persisted row holds.</summary>
-    internal static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<byte> packedValues)
+    private static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<byte> packedValues)
     {
         int count = BitOperations.PopCount(mask);
         if (count == 0) return Empty;
@@ -56,7 +56,7 @@ public static class SlotRun
     }
 
     /// <summary>Whether <paramref name="length"/> is the length of an encoded run holding at least one slot.</summary>
-    internal static bool IsValidEncodedLength(int length) =>
+    public static bool IsValidEncodedLength(int length) =>
         length is >= EncodedHeaderLength + ValueHash256.MemorySize and <= EncodedHeaderLength + Width * ValueHash256.MemorySize
         && (length - EncodedHeaderLength) % ValueHash256.MemorySize == 0;
 
@@ -65,7 +65,7 @@ public static class SlotRun
     /// <c>[type][mask u16 LE][32-byte value × popcount(mask), ascending slot]</c>, where the type byte is the
     /// log2 of the capacity that wrote it (see <see cref="PackedSlotRun.Encode"/>). An empty run is a row deletion and is never encoded.
     /// </summary>
-    internal static PackedSlotRun Decode(ReadOnlySpan<byte> encoded) => CreatePacked(ReadEncodedMask(encoded), encoded[EncodedHeaderLength..]);
+    public static PackedSlotRun Decode(ReadOnlySpan<byte> encoded) => CreatePacked(ReadEncodedMask(encoded), encoded[EncodedHeaderLength..]);
 
     private static ushort ReadEncodedMask(ReadOnlySpan<byte> encoded)
     {
@@ -97,13 +97,13 @@ public static class SlotRun
 
     /// <summary>The position of storage slot <paramref name="slot"/> within its run: its low four bits.</summary>
     /// <remarks>A slot's storage key ends with the slot's low byte, offset by a multiple of <see cref="Width"/> for a header slot, so this is <see cref="IndexOf{TKey}"/> of that key.</remarks>
-    internal static int IndexOf(in UInt256 slot) => (int)(slot.u0 & IndexMask);
+    public static int IndexOf(in UInt256 slot) => (int)(slot.u0 & IndexMask);
 
     /// <summary>Whether storage slots <paramref name="slot"/> and <paramref name="other"/> of one address share a run.</summary>
-    internal static bool InSameRun(in UInt256 slot, in UInt256 other) => slot >> IndexBits == other >> IndexBits;
+    public static bool InSameRun(in UInt256 slot, in UInt256 other) => slot >> IndexBits == other >> IndexBits;
 
     /// <summary>Picks <paramref name="header"/> for header-slot runs, keyed by <see cref="PbtPath"/>, and <paramref name="storage"/> for storage-zone runs, keyed by <see cref="PbtStoragePath"/>.</summary>
-    internal static T ByZone<TKey, T>(object header, object storage) where TKey : struct, IPbtKey<TKey> where T : class =>
+    public static T ByZone<TKey, T>(object header, object storage) where TKey : struct, IPbtKey<TKey> where T : class =>
         (T)(typeof(TKey) == typeof(PbtPath) ? header
             : typeof(TKey) == typeof(PbtStoragePath) ? storage
             : throw new NotSupportedException($"Slot runs are keyed by {nameof(PbtPath)} or {nameof(PbtStoragePath)}, not {typeof(TKey).Name}."));
@@ -150,7 +150,7 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     }
 
     /// <summary>A new run with <paramref name="writes"/>, all into slots of this run, applied in order (zero clears a slot); this run is untouched.</summary>
-    internal PackedSlotRun With(ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
+    public PackedSlotRun With(ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
     {
         Span<UInt256> valuesByIndex = stackalloc UInt256[SlotRun.Width];
         Expand(valuesByIndex);
@@ -182,7 +182,7 @@ public abstract class PackedSlotRun(int capacity) : IResettable
             packed[rank].ToBigEndian(values.Slice(rank * ValueHash256.MemorySize, ValueHash256.MemorySize));
     }
 
-    internal void Seed(ushort mask, ReadOnlySpan<UInt256> valuesByIndex)
+    public void Seed(ushort mask, ReadOnlySpan<UInt256> valuesByIndex)
     {
         _mask = mask;
         int rank = 0;
@@ -190,13 +190,13 @@ public abstract class PackedSlotRun(int capacity) : IResettable
             if ((mask & (1 << index)) != 0) _values[rank++] = valuesByIndex[index];
     }
 
-    internal void SeedPacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
+    public void SeedPacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
     {
         _mask = mask;
         packedValues.CopyTo(_values);
     }
 
-    internal void SeedPacked(ushort mask, ReadOnlySpan<byte> packedValues)
+    public void SeedPacked(ushort mask, ReadOnlySpan<byte> packedValues)
     {
         _mask = mask;
         for (int rank = 0; rank < packedValues.Length / ValueHash256.MemorySize; rank++)
@@ -215,35 +215,35 @@ public abstract class PackedSlotRun(int capacity) : IResettable
 
     void IResettable.Reset() => _mask = 0;
 
-    internal abstract void ReturnSelf();
+    public abstract void ReturnSelf();
 }
 
-internal sealed class EmptySlotRun() : PackedSlotRun(0)
+public sealed class EmptySlotRun() : PackedSlotRun(0)
 {
-    internal override void ReturnSelf() { }
+    public override void ReturnSelf() { }
 }
 
-internal sealed class SlotRun1() : PackedSlotRun(1)
+public sealed class SlotRun1() : PackedSlotRun(1)
 {
-    internal override void ReturnSelf() => StaticPool<SlotRun1>.Return(this);
+    public override void ReturnSelf() => StaticPool<SlotRun1>.Return(this);
 }
 
-internal sealed class SlotRun2() : PackedSlotRun(2)
+public sealed class SlotRun2() : PackedSlotRun(2)
 {
-    internal override void ReturnSelf() => StaticPool<SlotRun2>.Return(this);
+    public override void ReturnSelf() => StaticPool<SlotRun2>.Return(this);
 }
 
-internal sealed class SlotRun4() : PackedSlotRun(4)
+public sealed class SlotRun4() : PackedSlotRun(4)
 {
-    internal override void ReturnSelf() => StaticPool<SlotRun4>.Return(this);
+    public override void ReturnSelf() => StaticPool<SlotRun4>.Return(this);
 }
 
-internal sealed class SlotRun8() : PackedSlotRun(8)
+public sealed class SlotRun8() : PackedSlotRun(8)
 {
-    internal override void ReturnSelf() => StaticPool<SlotRun8>.Return(this);
+    public override void ReturnSelf() => StaticPool<SlotRun8>.Return(this);
 }
 
-internal sealed class SlotRun16() : PackedSlotRun(16)
+public sealed class SlotRun16() : PackedSlotRun(16)
 {
-    internal override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
+    public override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
 }

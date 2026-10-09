@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// header root, which equals its own tree root only once EIP-8347 is active, so the persisted metadata alone tells
 /// which side of the activation the pointer is on — this cannot consult the block tree, whose constructor reads it.
 /// </remarks>
-internal sealed class MigrationStateBoundary(FlatStateBoundary flat, IPbtPersistence pbtPersistence) : IStateBoundary, IFullStateFinder
+public sealed class MigrationStateBoundary(FlatStateBoundary flat, IPbtPersistence pbtPersistence) : IStateBoundary, IFullStateFinder
 {
     public ulong? RetentionWindowBlocks => null;
     public ulong? OldestStateBlock => BestPersisted();

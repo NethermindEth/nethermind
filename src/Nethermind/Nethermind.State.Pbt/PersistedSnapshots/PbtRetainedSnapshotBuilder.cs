@@ -16,13 +16,13 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal readonly record struct PbtRetainedMetadata(StateId From, StateId To, ValueHash256 TreeRoot);
+public readonly record struct PbtRetainedMetadata(StateId From, StateId To, ValueHash256 TreeRoot);
 
-internal static class PbtRetainedSnapshotBuilder
+public static class PbtRetainedSnapshotBuilder
 {
     private readonly record struct Entry(byte[] Key, object? Value);
 
-    internal static long EstimateSize(PbtSnapshot snapshot)
+    public static long EstimateSize(PbtSnapshot snapshot)
     {
         PbtSnapshotContent c = snapshot.Content;
         long entries = c.Accounts.Count + c.HeaderStorages.Count + c.Storages.Count + c.Codes.Count
@@ -33,7 +33,7 @@ internal static class PbtRetainedSnapshotBuilder
         return checked(16384 + entries * 512 + (bytes / PbtRetainedFormat.ChunkSize + entries) * 512);
     }
 
-    internal static long EstimateBlobSize(PbtSnapshot snapshot)
+    public static long EstimateBlobSize(PbtSnapshot snapshot)
     {
         // Page padding can at most double a short payload; large chunks have no page padding.
         // Include per-entity RLP headers even when payload sizing counted only logical bytes.
@@ -43,7 +43,7 @@ internal static class PbtRetainedSnapshotBuilder
         return checked(4096 + 2 * (snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node) + entries * 16);
     }
 
-    internal static void Build<TWriter>(PbtSnapshot snapshot, ref TWriter writer, BlobArenaWriter blobs, BloomFilter bloom)
+    public static void Build<TWriter>(PbtSnapshot snapshot, ref TWriter writer, BlobArenaWriter blobs, BloomFilter bloom)
         where TWriter : IByteBufferWriter
     {
         List<Entry> entries = [];
@@ -74,18 +74,6 @@ internal static class PbtRetainedSnapshotBuilder
         finally { table.Dispose(); }
     }
 
-    internal static void BuildRecords<TWriter>(IEnumerable<(byte[] Key, byte[] Value)> records, ref TWriter writer)
-        where TWriter : IByteBufferWriter
-    {
-        SortedTableBuilder<TWriter> table = new(ref writer);
-        try
-        {
-            foreach ((byte[] key, byte[] value) in records) table.Add(key, value);
-            table.Build();
-        }
-        finally { table.Dispose(); }
-    }
-
     private static byte[]? Encode(object? value)
     {
         switch (value)
@@ -107,7 +95,7 @@ internal static class PbtRetainedSnapshotBuilder
         }
     }
 
-    internal static void WriteEntity<TWriter>(ref SortedTableBuilder<TWriter> table, ReadOnlySpan<byte> key,
+    private static void WriteEntity<TWriter>(ref SortedTableBuilder<TWriter> table, ReadOnlySpan<byte> key,
         byte[]? payload, BlobArenaWriter blobs, SortedSet<ushort> owners) where TWriter : IByteBufferWriter
     {
         PbtRetainedKey.ValidateDescriptor(key);
@@ -140,7 +128,7 @@ internal static class PbtRetainedSnapshotBuilder
         }
     }
 
-    internal static byte[] EncodeChunk(ReadOnlySpan<byte> payload)
+    private static byte[] EncodeChunk(ReadOnlySpan<byte> payload)
     {
         if (payload.Length is <= 0 or > PbtRetainedFormat.ChunkSize) throw new InvalidDataException("Invalid retained PBT chunk length.");
         if (payload.Length == 1 && payload[0] < 0x80) return [payload[0]];

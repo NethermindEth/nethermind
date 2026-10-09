@@ -79,6 +79,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
     /// <summary>Opens a writable scope over <paramref name="parent"/>, or over the pre-genesis state when it is <c>null</c>.</summary>
     public PbtWorldStateScope BeginScope(BlockHeader? parent) => (PbtWorldStateScope)CreateScopeProvider().BeginScope(parent, new LocalMetrics());
 
+    /// <summary>Opens a writable scope as <see cref="BeginScope(BlockHeader?)"/> does, handing out the bundle it reads and stages through.</summary>
+    public PbtWorldStateScope BeginScope(BlockHeader? parent, out PbtSnapshotBundle bundle)
+    {
+        StateId stateId = new(parent);
+        bundle = ((IPbtDbManager)Manager).GatherBundle(stateId, PbtResourcePool.Usage.MainBlockProcessing);
+        return new PbtWorldStateScope(stateId, parent, bundle, new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(CodeDb, isPersistent: true),
+            Manager, _childHeaders, NodeGroupMemory, Config, LimboLogs.Instance);
+    }
+
     /// <summary>Builds the production container: the test Nethermind module and the PBT module.</summary>
     internal static IContainer BuildProductionContainer(PbtConfig config, Action<ContainerBuilder>? configure = null, params IConfig[] additionalConfigs)
     {

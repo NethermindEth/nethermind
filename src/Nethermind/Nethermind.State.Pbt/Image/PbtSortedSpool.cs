@@ -27,7 +27,7 @@ namespace Nethermind.State.Pbt.Image;
 /// The merged output is never materialized, and the runs outlive it, so <see cref="Read"/> may be called
 /// repeatedly.</para>
 /// </remarks>
-internal sealed class PbtSortedSpool : IDisposable
+public sealed class PbtSortedSpool : IDisposable
 {
     /// <summary>The table format's key and value ceiling, and thus the merge's scratch size.</summary>
     private const int MaxRecordFieldLength = 255;
@@ -36,13 +36,13 @@ internal sealed class PbtSortedSpool : IDisposable
     private const int MaxSpareSegments = 4;
 
     /// <summary>Runs merged at once. Bounds the simultaneously mapped runs, not the record count.</summary>
-    internal int MaxFanIn { get; init; } = 128;
+    private const int MaxFanIn = 128;
 
     /// <summary>Runs of one merge level that accrue before one background round folds them into a single run of the next level.</summary>
-    internal int PreMergeThreshold { get; init; } = 64;
+    private const int PreMergeThreshold = 64;
 
     /// <summary>Background pre-merge rounds allowed to run at once; full levels wait for a free slot.</summary>
-    internal int MaxConcurrentPreMerges { get; init; } = 1;
+    public int MaxConcurrentPreMerges { get; init; } = 1;
 
     private readonly string _name;
     private readonly string _directory;
@@ -107,7 +107,7 @@ internal sealed class PbtSortedSpool : IDisposable
     /// <summary>A producer's handle on the spool. One per thread; a single handle is not itself thread-safe.</summary>
     /// <remarks>Disposing spills whatever the handle still holds, so every writer must be disposed before
     /// <see cref="Read"/> — records left in a live segment would silently be missing from the merge.</remarks>
-    internal sealed class Writer(PbtSortedSpool spool) : IDisposable
+    public sealed class Writer(PbtSortedSpool spool) : IDisposable
     {
         private Segment? _segment;
         private bool _closed;
@@ -412,7 +412,7 @@ internal sealed class PbtSortedSpool : IDisposable
     /// comparison per level, against the binary heap's two. Leaf index <c>_k</c> is the sentinel: it seeds the
     /// tree, sorting below every real head, and marks an exhausted run, sorting above every real head.
     /// </remarks>
-    internal sealed class Cursor : IDisposable
+    public sealed class Cursor : IDisposable
     {
         private readonly MappedByteFile[] _files;
         private readonly SortedTableEnumerator<WholeReadSessionReader, NoOpPin>[] _sources;

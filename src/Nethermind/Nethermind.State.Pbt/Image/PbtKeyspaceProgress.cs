@@ -8,7 +8,7 @@ namespace Nethermind.State.Pbt.Image;
 /// <summary>Tracks how much of an address or hash keyspace concurrent workers have walked.</summary>
 /// <remarks>The keyspace is split into ascending partitions on its first two bytes. Each partition is walked by one
 /// worker at a time, which publishes the key it has reached.</remarks>
-internal sealed class PbtKeyspaceProgress(int partitionCount)
+public sealed class PbtKeyspaceProgress(int partitionCount)
 {
     /// <summary>The walked amount of a whole keyspace, at a 48-bit prefix that retains sub-partition precision.</summary>
     public const ulong Keyspace = 1UL << 48;

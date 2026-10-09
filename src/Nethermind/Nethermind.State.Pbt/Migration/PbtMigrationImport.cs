@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// blocked startup. Any other failure is logged and leaves PBT empty: flat keeps processing until activation, where
 /// processing stalls.
 /// </remarks>
-internal sealed class PbtMigrationImport(Func<CancellationToken, Task> import, IProcessExitSource processExitSource, ILogManager logManager) : IAsyncDisposable
+public sealed class PbtMigrationImport(Func<CancellationToken, Task> import, IProcessExitSource processExitSource, ILogManager logManager) : IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PbtMigrationImport>();
     private readonly CancellationTokenSource _cancellation = new();

@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
-internal static partial class TrieUpdater<TKey, TPath>
+public static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
@@ -58,33 +58,33 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     private struct ComposeFrame
     {
-        internal ValueHash256 LeftHash;
+        public ValueHash256 LeftHash;
         /// <summary>Where the left child's preimage awaiting its sibling sits in the writer.</summary>
-        internal int LeftPreimageOffset;
+        public int LeftPreimageOffset;
         /// <summary>The length of the left child's preimage awaiting its sibling, or zero when its hash is already known.</summary>
-        internal int LeftPreimageLength;
-        internal TKey LeftKey;
-        internal bool LeftIsLeaf;
+        public int LeftPreimageLength;
+        public TKey LeftKey;
+        public bool LeftIsLeaf;
     }
 
     /// <summary>A node composition has appended to the writer, read back from there by its parent.</summary>
-    internal readonly struct ComposedNode(int offset, int length, in ValueHash256 hash)
+    public readonly struct ComposedNode(int offset, int length, in ValueHash256 hash)
     {
-        internal readonly int Offset = offset;
-        internal readonly int Length = length;
+        public readonly int Offset = offset;
+        public readonly int Length = length;
         /// <summary>The node's hash, or default while its preimage waits in the writer to be hashed with its sibling's.</summary>
-        internal readonly ValueHash256 Hash = hash;
+        public readonly ValueHash256 Hash = hash;
         /// <summary>Whether the encoding is an omitted implicit branch whose child hashes were not resolved, which only <see cref="Land"/> needs.</summary>
-        internal bool ChildHashesPending { get; init; }
+        public bool ChildHashesPending { get; init; }
         /// <summary>The position the entry is appended at, while it has risen above it.</summary>
-        internal int EntryPosition { get; private init; }
+        public int EntryPosition { get; init; }
         /// <summary>The side bits the node rose over, the last one highest, still to be put in front of its compressed prefix.</summary>
-        internal byte RiseBits { get; private init; }
-        internal byte RiseBitCount { get; private init; }
-        internal bool IsEmpty => Length == 0;
+        public byte RiseBits { get; init; }
+        public byte RiseBitCount { get; init; }
+        public bool IsEmpty => Length == 0;
 
         /// <summary>Records a rise from <paramref name="childPosition"/> over an empty sibling, with the node on <paramref name="side"/>, which <see cref="Land"/> applies.</summary>
-        internal ComposedNode Rise(int childPosition, int side)
+        public ComposedNode Rise(int childPosition, int side)
         {
             Debug.Assert(RiseBitCount < PbtFourLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
             return this with

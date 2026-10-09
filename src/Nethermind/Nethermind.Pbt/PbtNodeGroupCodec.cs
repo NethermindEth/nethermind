@@ -29,8 +29,8 @@ namespace Nethermind.Pbt;
 /// </remarks>
 public static class PbtNodeGroupCodec
 {
-    internal const int HeaderLength = 1;
-    internal static ReadOnlySpan<byte> Header => "\x07"u8;
+    public const int HeaderLength = 1;
+    public static ReadOnlySpan<byte> Header => "\x07"u8;
 
     /// <summary>The number of bytes in the widest descendant-size field.</summary>
     public const int MaxDescendantBytesLength = 6;
@@ -53,7 +53,7 @@ public static class PbtNodeGroupCodec
 
     /// <summary>Checks a payload's header, footer length, availability bits and descendant sizes without parsing its nodes.</summary>
     /// <returns>The availability bitmap.</returns>
-    internal static uint ValidateFraming(int groupDepth, ReadOnlySpan<byte> payload)
+    private static uint ValidateFraming(int groupDepth, ReadOnlySpan<byte> payload)
     {
         if (payload.Length < HeaderLength || !payload[..HeaderLength].SequenceEqual(Header))
             throw new InvalidDataException("Unsupported or missing PBT node group format header.");
@@ -83,7 +83,7 @@ public static class PbtNodeGroupCodec
     /// Runs in every build, for callers whose job is to vet stored data, such as the scanner; readers trust their
     /// payloads and only check them in debug builds, through <see cref="DebugValidateNodes{TPath}"/>.
     /// </remarks>
-    internal static void ValidateNodes(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload)
+    private static void ValidateNodes(scoped in PbtTraversalPath path, ReadOnlySpan<byte> payload)
     {
         uint availability = ValidateFraming(path.BitDepth, payload);
         payload = payload[HeaderLength..];
@@ -111,30 +111,30 @@ public static class PbtNodeGroupCodec
     }
 
     /// <inheritdoc cref="ValidateNodes(in PbtTraversalPath, ReadOnlySpan{byte})"/>
-    internal static void ValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
+    public static void ValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
         ValidateNodes(PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey), payload);
 
     /// <summary>Debug-build guard for a payload entering or leaving a store; readers on the update path trust stored payloads.</summary>
     [Conditional("DEBUG")]
-    internal static void DebugValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
+    public static void DebugValidateNodes<TPath>(TPath groupKey, ReadOnlySpan<byte> payload) where TPath : struct, IPbtNodePath<TPath> =>
         ValidateNodes(groupKey, payload);
 
     /// <summary>Reads the descendant mask that ends a payload, without validating anything else.</summary>
     public static ushort ReadDescendantMask(ReadOnlySpan<byte> payload) => BinaryPrimitives.ReadUInt16LittleEndian(payload[^DescendantMaskLength..]);
 
     /// <summary>Reads the availability bitmap of a payload, with or without its header, without validating anything else.</summary>
-    internal static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
+    public static uint ReadAvailability(ReadOnlySpan<byte> payload) =>
         BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + DescendantsLength(payload))..]);
 
     /// <summary>Reads the subtree size of every boundary slot that has one into <paramref name="descendantBytes"/>, leaving the other slots untouched.</summary>
-    internal static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
+    public static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
     {
         ushort mask = ReadDescendantMask(payload);
         for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
             if ((mask & (1 << slot)) != 0) descendantBytes[slot] = ReadDescendantBytes(payload, mask, slot);
     }
 
-    internal static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
+    public static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
     {
         int width = ReadDescendantWidth(payload);
         int fieldsAfter = BitOperations.PopCount((uint)(descendantMask >> (slot + 1)));
@@ -167,16 +167,16 @@ public static class PbtNodeGroupCodec
 
     /// <summary>The footer length of a group being written.</summary>
     /// <param name="descendantMask">The <see cref="DescendantMask(ReadOnlySpan{long}, ushort)"/> of <paramref name="descendantBytes"/>.</param>
-    internal static int GetTrailerLength(uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes) =>
+    public static int GetTrailerLength(uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes) =>
         OffsetsAndAvailabilityLength(availability) + DescendantsLength(descendantMask, DescendantWidth(descendantBytes, descendantMask));
 
     /// <summary>The footer length of a stored payload, with or without its header.</summary>
-    internal static int GetTrailerLength(uint availability, ReadOnlySpan<byte> payload) =>
+    public static int GetTrailerLength(uint availability, ReadOnlySpan<byte> payload) =>
         OffsetsAndAvailabilityLength(availability) + DescendantsLength(payload);
 
     /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots; an empty span means no descendants.</summary>
     /// <param name="candidateSlots">The slots that may be nonzero; every other slot is known to be zero and is not read.</param>
-    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
+    public static ushort DescendantMask(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
         if (descendantBytes.IsEmpty) return 0;
         ushort descendantMask = 0;
@@ -192,7 +192,7 @@ public static class PbtNodeGroupCodec
     }
 
     /// <param name="descendantMask">The <see cref="DescendantMask(ReadOnlySpan{long}, ushort)"/> of <paramref name="descendantBytes"/>.</param>
-    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes)
+    public static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ushort descendantMask, ReadOnlySpan<long> descendantBytes)
     {
         int offsetIndex = 0;
         for (uint remaining = availability; remaining != 0; remaining &= remaining - 1)
@@ -221,18 +221,18 @@ public static class PbtNodeGroupCodec
 
     /// <summary>A prefixless interior branch without inline leaves is reconstructed from its children, so it need not be stored.</summary>
     /// <remarks>Relative depth 1 is width 8, depth 2 width 4 and depth 3 width 2 in <see cref="PbtFourLevelGroupGeometry.WidthOf"/>.</remarks>
-    internal static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
+    public static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
         PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots
         && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
         && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
 
     /// <summary>The most bytes a group's entries may take together, since they are addressed by little-endian uint16 offsets.</summary>
-    internal const int MaxEntriesLength = ushort.MaxValue;
+    private const int MaxEntriesLength = ushort.MaxValue;
 
     /// <summary>Debug-build check of one node at its group position: an exact encoding, and inline leaves that lie below the branch.</summary>
     /// <remarks>Release readers trust stored encodings; the group framing is still checked by <see cref="ValidateFraming"/>.</remarks>
     [Conditional("DEBUG")]
-    internal static void DebugValidateNode(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding) =>
+    public static void DebugValidateNode(scoped in PbtTraversalPath path, int position, ReadOnlySpan<byte> encoding) =>
         ValidateNode(path, position, encoding);
 
     /// <summary>Checks that a node's encoding is exact and that a branch's inline leaf keys lie below the branch's position.</summary>

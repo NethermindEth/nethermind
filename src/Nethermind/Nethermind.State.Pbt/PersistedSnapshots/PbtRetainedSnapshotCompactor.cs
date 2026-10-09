@@ -18,7 +18,7 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal sealed class PbtRetainedSnapshotCompactor(
+public sealed class PbtRetainedSnapshotCompactor(
     PbtSnapshotRepository repository,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
@@ -167,7 +167,7 @@ internal sealed class PbtRetainedSnapshotCompactor(
         while (_largeJobs.Reader.TryRead(out _)) { }
     }
 
-    internal bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0, CancellationToken cancellationToken = default)
+    private bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0, CancellationToken cancellationToken = default)
     {
         ulong width = schedule.GetPersistedSnapshotCompactSize(snapshotTo.BlockNumber);
         if (snapshotTo.BlockNumber == 0 || width <= 1 || repository.RetainedCount < 2) return false;
@@ -175,7 +175,7 @@ internal sealed class PbtRetainedSnapshotCompactor(
         return CompactRange(snapshotTo, floor, isCompactSized: false, cancellationToken);
     }
 
-    internal bool DoCompactCompactSized(StateId snapshotTo, CancellationToken cancellationToken = default)
+    private bool DoCompactCompactSized(StateId snapshotTo, CancellationToken cancellationToken = default)
     {
         if (snapshotTo.BlockNumber == 0 || !schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
             || repository.RetainedCount < 2) return false;

@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Persistence;
 /// The tree key is <c>[zone][addressHash][rest]</c>; the persisted form rotates its first 33 bytes. Lengths are
 /// unchanged (34 bytes for header slots, 66 for overflow slots).
 /// </remarks>
-internal static class PbtStorageKeyLayout
+public static class PbtStorageKeyLayout
 {
     private const int ZoneOffset = ValueHash256.MemorySize;
     private const int RestOffset = ZoneOffset + 1;

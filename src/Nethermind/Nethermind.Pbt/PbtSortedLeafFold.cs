@@ -10,10 +10,10 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Pbt;
 
 /// <summary>Builds a tree from empty out of a strictly ascending leaf stream, in bounded windows.</summary>
-internal static class PbtSortedLeafFold
+public static class PbtSortedLeafFold
 {
-    internal const int DefaultWindowSize = 2_000_000;
-    internal const int FoldChunkSize = 2048;
+    public const int DefaultWindowSize = 2_000_000;
+    public const int FoldChunkSize = 2048;
 
     /// <summary>Folds leaf chunks into a tree from empty, window by window, writing every group through to <paramref name="writeThrough"/>.</summary>
     /// <remarks>Reads are served from the tree's right edge in memory (see <see cref="PbtRightmostGroupStore"/>), never from where the groups were written.</remarks>
@@ -22,7 +22,7 @@ internal static class PbtSortedLeafFold
     /// <param name="windowSize">Maximum leaves per tree update.</param>
     /// <param name="onWindowFolded">Called with the window's leaf count once its fold ends.</param>
     /// <returns>The tree root.</returns>
-    internal static async Task<ValueHash256> FoldWindows(ChannelReader<ArrayPoolList<RebuildEntry>> source, IPbtNodeGroupSink writeThrough, int windowSize,
+    public static async Task<ValueHash256> FoldWindows(ChannelReader<ArrayPoolList<RebuildEntry>> source, IPbtNodeGroupSink writeThrough, int windowSize,
         ConcurrencyController foldQuota, FoldFanOut foldFanOut, Action<int> onWindowFolded, CancellationToken cancellationToken)
     {
         using PbtRightmostGroupStore store = new(writeThrough);
@@ -88,7 +88,7 @@ internal static class PbtSortedLeafFold
     }
 
     /// <summary>Passes the leaves through while handing each to the fold, completing the fold's input once they run out.</summary>
-    internal static IEnumerable<RebuildEntry> Teed(IEnumerable<RebuildEntry> leaves, ChannelWriter<ArrayPoolList<RebuildEntry>> fold,
+    public static IEnumerable<RebuildEntry> Teed(IEnumerable<RebuildEntry> leaves, ChannelWriter<ArrayPoolList<RebuildEntry>> fold,
         CancellationToken cancellationToken)
     {
         using (EntrySink sink = new(fold, FoldChunkSize, cancellationToken))
@@ -104,7 +104,7 @@ internal static class PbtSortedLeafFold
     }
 
     /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the fold.</summary>
-    internal sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
+    public sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
     {
         private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);
         private bool _owned = true;

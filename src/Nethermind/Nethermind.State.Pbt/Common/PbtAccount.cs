@@ -19,7 +19,7 @@ public readonly record struct PbtAccount(ValueHash256 BasicData, ValueHash256 Co
 {
     public const int MaxEncodedLength = 2 * LeafLength;
     private const int LeafLength = 32;
-    internal const int DelegationLength = 23;
+    public const int DelegationLength = 23;
 
     public uint CodeSize => PbtKeyDerivation.ReadBasicDataCodeSize(BasicData.Bytes);
 

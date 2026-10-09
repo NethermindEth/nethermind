@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -108,23 +109,20 @@ public class PbtOfflineSourceTests
         Assert.That(snapshot.Length + preimages.Length, Is.Zero);
     }
 
-    /// <summary>A fan-in or pre-merge threshold below the run count forces intermediate merge rounds.</summary>
+    /// <summary>More runs than the pre-merge threshold force background merge rounds.</summary>
     /// <remarks>The writer count exercises the concurrent path: every key must still surface exactly once,
     /// however the partitioned producers happened to spread it across runs.</remarks>
     [Test]
     public void Spool_merges_runs_in_key_order_collapsing_duplicates(
-        [Values(2, 3, 128)] int maxFanIn, [Values(2, 64)] int preMergeThreshold, [Values(1, 4)] int writerCount,
-        [Values(1, 2)] int maxConcurrentPreMerges)
+        [Values(1, 4)] int writerCount, [Values(1, 2)] int maxConcurrentPreMerges)
     {
-        // A buffer of a few records per run, so a few hundred records spill into many runs.
+        // A buffer of a few records per run, so a thousand records spill into many runs.
         using PbtSortedSpool spool = new("test", _directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
         {
-            MaxFanIn = maxFanIn,
-            PreMergeThreshold = preMergeThreshold,
             MaxConcurrentPreMerges = maxConcurrentPreMerges
         };
         SortedDictionary<ValueHash256, byte[]> expected = [];
-        for (int index = 0; index < 400; index++)
+        for (int index = 0; index < 1000; index++)
         {
             ValueHash256 key = ValueKeccak.Compute(BitConverter.GetBytes(index % 250));
             expected[key] = ValueKeccak.Compute(key.Bytes).Bytes.ToArray();
@@ -134,7 +132,7 @@ public class PbtOfflineSourceTests
         Parallel.For(0, writerCount, new ParallelOptions { MaxDegreeOfParallelism = writerCount }, worker =>
         {
             using PbtSortedSpool.Writer writer = spool.CreateWriter();
-            for (int index = worker; index < 400; index += writerCount)
+            for (int index = worker; index < 1000; index += writerCount)
             {
                 ValueHash256 key = ValueKeccak.Compute(BitConverter.GetBytes(index % 250));
                 writer.Add(key.Bytes, ValueKeccak.Compute(key.Bytes).Bytes);
@@ -157,5 +155,39 @@ public class PbtOfflineSourceTests
             }
             Assert.That(reference.MoveNext(), Is.False, "fewer merged records than distinct keys");
         }
+    }
+
+    /// <summary>More leftover runs than the merge fan-in force the final fold rounds before the first record.</summary>
+    [Test]
+    public void Spool_folds_leftover_runs_beyond_fan_in()
+    {
+        // Maximal records fill the minimal segment, so each spills its own run; 3*64*64 + 63*64 + 63 runs is the
+        // fewest that background pre-merges cannot fold below the fan-in.
+        const int recordCount = 16383;
+        using PbtSortedSpool spool = new("test", _directory, 0, 1, LimboLogs.Instance, CancellationToken.None);
+        byte[] key = new byte[255];
+        byte[] value = new byte[255];
+        using (PbtSortedSpool.Writer writer = spool.CreateWriter())
+        {
+            for (int index = recordCount - 1; index >= 0; index--)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(key, index);
+                BinaryPrimitives.WriteInt32BigEndian(value, index);
+                writer.Add(key, value);
+            }
+        }
+
+        using PbtSortedSpool.Cursor cursor = spool.Read();
+        int read = 0;
+        while (cursor.MoveNext())
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(BinaryPrimitives.ReadInt32BigEndian(cursor.Key), Is.EqualTo(read), "key");
+                Assert.That(BinaryPrimitives.ReadInt32BigEndian(cursor.Value), Is.EqualTo(read), "value");
+            }
+            read++;
+        }
+        Assert.That(read, Is.EqualTo(recordCount));
     }
 }

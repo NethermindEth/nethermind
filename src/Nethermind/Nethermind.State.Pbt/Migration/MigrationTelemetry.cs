@@ -17,7 +17,7 @@ namespace Nethermind.State.Pbt.Migration;
 /// window the header commits to PBT, the binary direction parks at the activation parent and the Merkle direction
 /// reports the MPT root <see cref="MerkleShadowFollower"/> computed for the block.
 /// </remarks>
-internal sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager manager, PbtMigrationImport import, PbtBalFollowerScheduler scheduler, IMerkleShadowFollower merkle, ISpecProvider specProvider)
+public sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager manager, PbtMigrationImport import, PbtBalFollowerScheduler scheduler, IMerkleShadowFollower merkle, ISpecProvider specProvider)
     : IMigrationTelemetry
 {
     private BlockHeader? _activationParent;

@@ -18,35 +18,35 @@ namespace Nethermind.Pbt;
 /// nodes. The only exception is a tree consisting of one leaf, whose root is stored as <c>[0x00][keyLength u8][key]</c>
 /// without a value: its hash is the tree root, which every reader of the root group already has.
 /// </remarks>
-internal static class PbtNodeCodec
+public static class PbtNodeCodec
 {
     private const byte LeafTag = 0;
     private const byte BranchTag = 1;
-    internal const int BranchTrailerHeaderLength = 2;
+    public const int BranchTrailerHeaderLength = 2;
 
     /// <summary>The length of a branch's hash preimage, which starts its encoding.</summary>
-    internal static int BranchPreimageLength(int bitCount) => 3 + PbtBitPrefix.ByteCount(bitCount) + 64;
+    public static int BranchPreimageLength(int bitCount) => 3 + PbtBitPrefix.ByteCount(bitCount) + 64;
 
     /// <summary>The longest branch preimage a tree can hold: a prefix is bounded by the longest complete key.</summary>
-    internal const int MaxBranchPreimageLength = 3 + PbtVariableTreeKey.MaxLength + 64;
+    public const int MaxBranchPreimageLength = 3 + PbtVariableTreeKey.MaxLength + 64;
 
     /// <summary>The length of a complete branch encoding.</summary>
-    internal static int BranchLength(int bitCount, int leftKeyLength, int rightKeyLength) =>
+    public static int BranchLength(int bitCount, int leftKeyLength, int rightKeyLength) =>
         BranchPreimageLength(bitCount) + BranchTrailerHeaderLength + leftKeyLength + rightKeyLength;
 
     /// <summary>The number of leading key bytes an inline leaf key omits under a branch anchored at <paramref name="anchorDepth"/>.</summary>
     /// <remarks>These are the whole bytes of the path of the group holding the branch; an odd-nibble group keeps its last nibble in the key.</remarks>
-    internal static int InlineKeyOffset(int anchorDepth) => PbtFourLevelGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
+    public static int InlineKeyOffset(int anchorDepth) => PbtFourLevelGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
 
     /// <summary>The trailer length of <paramref name="stored"/>'s inline keys once rebased from key offset <paramref name="from"/> to <paramref name="to"/>.</summary>
-    internal static int RebasedKeysLength(PbtBranchReader stored, int from, int to) =>
+    public static int RebasedKeysLength(PbtBranchReader stored, int from, int to) =>
         RebasedKeyLength(stored.LeftKeyPostfix.Length, from, to) + RebasedKeyLength(stored.RightKeyPostfix.Length, from, to);
 
     private static int RebasedKeyLength(int keyLength, int from, int to) => keyLength == 0 ? 0 : keyLength + from - to;
 
     /// <summary>Writes <paramref name="stored"/>'s inline keys as a trailer under key offset <paramref name="to"/> instead of <paramref name="from"/>.</summary>
     /// <param name="path">A path through the branch covering the bytes a shallower offset takes back.</param>
-    internal static void WriteRebasedBranchTrailer(Span<byte> trailer, PbtBranchReader stored, int from, int to, scoped ReadOnlySpan<byte> path)
+    public static void WriteRebasedBranchTrailer(Span<byte> trailer, PbtBranchReader stored, int from, int to, scoped ReadOnlySpan<byte> path)
     {
         ReadOnlySpan<byte> leftKey = stored.LeftKeyPostfix, rightKey = stored.RightKeyPostfix;
         int leftLength = RebasedKeyLength(leftKey.Length, from, to);
@@ -70,13 +70,13 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>The length of <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, encoded at the deeper <paramref name="anchorDepth"/>.</summary>
-    internal static int ReanchoredLength(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth) =>
+    public static int ReanchoredLength(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth) =>
         BranchPreimageLength(stored.Prefix.BitCount - (anchorDepth - storedAnchorDepth)) + BranchTrailerHeaderLength
         + RebasedKeysLength(stored, InlineKeyOffset(storedAnchorDepth), InlineKeyOffset(anchorDepth));
 
     /// <summary>Encodes <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, at the deeper <paramref name="anchorDepth"/> with the given child hashes.</summary>
     /// <remarks>The prefix bits in between are dropped, and so are any key bytes the deeper anchor's inline keys omit.</remarks>
-    internal static int EncodeReanchored(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
+    public static int EncodeReanchored(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
     {
         CompressedPrefix prefix = stored.Prefix;
         int skippedBits = anchorDepth - storedAnchorDepth;
@@ -91,7 +91,7 @@ internal static class PbtNodeCodec
 
     /// <summary>Hashes the branch <paramref name="stored"/> re-anchored <paramref name="skippedBits"/> deeper, without its leading prefix bits.</summary>
     [SkipLocalsInit]
-    internal static ValueHash256 HashReanchored(PbtBranchReader stored, int skippedBits)
+    public static ValueHash256 HashReanchored(PbtBranchReader stored, int skippedBits)
     {
         if (skippedBits == 0) return Blake3Hash.Hash(stored.Preimage);
         CompressedPrefix prefix = stored.Prefix;
@@ -103,35 +103,35 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>Whether <paramref name="encoding"/> is a root leaf rather than a branch.</summary>
-    internal static bool IsLeaf(ReadOnlySpan<byte> encoding) => encoding[0] == LeafTag;
+    public static bool IsLeaf(ReadOnlySpan<byte> encoding) => encoding[0] == LeafTag;
 
     /// <summary>The root leaf's complete key.</summary>
-    internal static ReadOnlySpan<byte> LeafKey(ReadOnlySpan<byte> encoding)
+    public static ReadOnlySpan<byte> LeafKey(ReadOnlySpan<byte> encoding)
     {
         Debug.Assert(IsLeaf(encoding), "The PBT node is not a leaf.");
         return encoding[2..];
     }
 
     /// <summary>The length of a root leaf encoding.</summary>
-    internal static int LeafLength(int keyLength) => 2 + keyLength;
+    public static int LeafLength(int keyLength) => 2 + keyLength;
 
     /// <summary>Validates a node path's canonical form, see <see cref="IsCanonicalPath"/>.</summary>
     /// <remarks>Debug builds only: release callers construct paths from already-canonical bytes.</remarks>
     [Conditional("DEBUG")]
-    internal static void ValidatePath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth)
+    public static void ValidatePath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth)
     {
         if (!IsCanonicalPath(path, bitDepth, maximumDepth)) throw new ArgumentException("Path is not in canonical form.", nameof(path));
     }
 
     /// <summary>Whether a node path is in canonical form: <paramref name="bitDepth"/> bits within <paramref name="maximumDepth"/>, packed into exactly as many bytes, with the unused trailing bits zero.</summary>
     /// <remarks>Checks in every build, for callers decoding untrusted keys.</remarks>
-    internal static bool IsCanonicalPath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth) =>
+    public static bool IsCanonicalPath(ReadOnlySpan<byte> path, int bitDepth, int maximumDepth) =>
         (uint)bitDepth <= (uint)maximumDepth
         && path.Length == PbtBitPrefix.ByteCount(bitDepth)
         && ((bitDepth & 7) == 0 || (path[^1] & (0xFF >> (bitDepth & 7))) == 0);
 
     /// <summary>Throws unless <paramref name="encoding"/> is exactly one structurally valid node, in every build.</summary>
-    internal static void ThrowIfNotExact(ReadOnlySpan<byte> encoding)
+    public static void ThrowIfNotExact(ReadOnlySpan<byte> encoding)
     {
         if (encoding.IsEmpty) throw new InvalidDataException("A PBT node encoding cannot be empty.");
         if (encoding[0] is not LeafTag and not BranchTag) throw new InvalidDataException("Unknown PBT node tag.");
@@ -165,17 +165,17 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>The length of the EIP-8297 leaf hash preimage for a key of <paramref name="keyLength"/> bytes.</summary>
-    internal static int LeafPreimageLength(int keyLength) => 1 + keyLength + 32;
+    public static int LeafPreimageLength(int keyLength) => 1 + keyLength + 32;
 
     /// <summary>Writes the EIP-8297 leaf hash preimage of a complete key and 32-byte value into <paramref name="preimage"/>, which is <see cref="LeafPreimageLength"/> bytes long.</summary>
-    internal static void WriteLeafPreimage(Span<byte> preimage, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    public static void WriteLeafPreimage(Span<byte> preimage, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
         preimage[0] = LeafTag;
         key.CopyTo(preimage[1..]);
         value.CopyTo(preimage[(1 + key.Length)..]);
     }
 
-    internal static void EncodeLeaf<TKey>(Span<byte> encoding, TKey key) where TKey : struct, IPbtKey<TKey>
+    public static void EncodeLeaf<TKey>(Span<byte> encoding, TKey key) where TKey : struct, IPbtKey<TKey>
     {
         encoding[0] = LeafTag;
         encoding[1] = (byte)key.Length;
@@ -184,7 +184,7 @@ internal static class PbtNodeCodec
 
     /// <summary>Writes a branch's hash preimage with a zeroed prefix for direct bit composition.</summary>
     /// <remarks>Only the first <see cref="BranchPreimageLength"/> bytes are written; the trailer follows through <see cref="WriteBranchTrailer"/>.</remarks>
-    internal static void CreateBranchEncoding(Span<byte> encoding, int bitCount, in ValueHash256 left, in ValueHash256 right)
+    public static void CreateBranchEncoding(Span<byte> encoding, int bitCount, in ValueHash256 left, in ValueHash256 right)
     {
         if ((uint)bitCount > PbtBitPrefix.MaxBitCount) throw new ArgumentOutOfRangeException(nameof(bitCount));
         if (left == default || right == default) throw new InvalidDataException("A PBT branch must have two non-empty children.");
@@ -197,7 +197,7 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>Writes the inline leaf keys, already past <see cref="InlineKeyOffset"/>, that follow a branch's preimage; an empty key declares a branch child.</summary>
-    internal static void WriteBranchTrailer(Span<byte> trailer, ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
+    public static void WriteBranchTrailer(Span<byte> trailer, ReadOnlySpan<byte> leftKey, ReadOnlySpan<byte> rightKey)
     {
         WriteBranchTrailer(trailer, leftKey.Length, rightKey.Length);
         leftKey.CopyTo(trailer[BranchTrailerHeaderLength..]);
@@ -205,7 +205,7 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>Writes the trailer's key lengths; the caller copies the keys behind them.</summary>
-    internal static void WriteBranchTrailer(Span<byte> trailer, int leftKeyLength, int rightKeyLength)
+    public static void WriteBranchTrailer(Span<byte> trailer, int leftKeyLength, int rightKeyLength)
     {
         if (leftKeyLength > PbtVariableTreeKey.MaxLength || rightKeyLength > PbtVariableTreeKey.MaxLength)
             throw new ArgumentException("An inline leaf key exceeds the maximum key length.");

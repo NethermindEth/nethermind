@@ -5,9 +5,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Pbt;
 
-internal static class PbtNodePathOperations
+public static class PbtNodePathOperations
 {
-    internal static bool Equal<TPath, TOther>(TPath path, TOther other)
+    public static bool Equal<TPath, TOther>(TPath path, TOther other)
         where TPath : struct, IPbtNodePath<TPath>
         where TOther : struct, IPbtNodePath<TOther>
     {
@@ -18,12 +18,12 @@ internal static class PbtNodePathOperations
     }
 
     /// <summary>Copies a path's canonical bytes into a zeroed destination of sufficient length.</summary>
-    internal static void CopyTo<TPath>(TPath path, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
+    public static void CopyTo<TPath>(TPath path, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath>
     {
         for (int index = 0; index < (path.BitDepth + 7) >> 3; index++) destination[index] = path.GetByte(index);
     }
 
-    internal static int Hash(ReadOnlySpan<byte> path, int bitDepth) =>
+    public static int Hash(ReadOnlySpan<byte> path, int bitDepth) =>
         // The root path equals the default path value, whose cached hash is zero.
         path.IsEmpty ? 0 : HashCode.Combine(bitDepth, path.FastHash());
 }

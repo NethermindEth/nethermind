@@ -16,7 +16,7 @@ namespace Nethermind.Pbt;
 /// under 100). Longer inputs use a correctness-oriented general path. Every stack buffer below is fully
 /// written or explicitly cleared before it is read, so the frames skip zero-initialization.</remarks>
 [SkipLocalsInit]
-internal static partial class Blake3Managed
+public static partial class Blake3Managed
 {
     private const int BlockLength = 64;
     private const int ChunkLength = 1024;

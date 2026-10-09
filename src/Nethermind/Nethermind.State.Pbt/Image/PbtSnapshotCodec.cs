@@ -16,7 +16,7 @@ namespace Nethermind.State.Pbt.Image;
 /// second pass over the header records. The artifact holds tagged records: typed account headers and stem-grouped code
 /// and storage leaves; the codec translates them to and from the ascending PBT leaf stream they derive. Writers require
 /// strictly ordered leaves; they do not sort or retain the input. Cancellation is checked per record.</remarks>
-internal static class PbtSnapshotCodec
+public static class PbtSnapshotCodec
 {
     private const byte NoCodeHeader = 0x00;
     private const byte ContractHeader = 0x01;
@@ -115,7 +115,7 @@ internal static class PbtSnapshotCodec
     }
 
     /// <summary>Fills <paramref name="buffer"/> from the artifact, reporting a stream that ends mid-record as malformed input.</summary>
-    internal static void ReadRecord(Stream source, Span<byte> buffer)
+    public static void ReadRecord(Stream source, Span<byte> buffer)
     {
         if (source.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false) != buffer.Length)
             throw new InvalidDataException("Truncated artifact record.");

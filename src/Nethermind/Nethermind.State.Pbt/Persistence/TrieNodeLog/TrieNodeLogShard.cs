@@ -29,7 +29,7 @@ namespace Nethermind.State.Pbt.Persistence.TrieNodeLog;
 /// column confirms; records of a batch whose RocksDB write did not happen are discarded, files at or below
 /// <c>N</c> are deleted.</para>
 /// </remarks>
-internal sealed class TrieNodeLogShard : IAsyncDisposable
+public sealed class TrieNodeLogShard : IAsyncDisposable
 {
     private const string FilePrefix = "gen-";
     private const string FileExtension = ".log";
@@ -112,7 +112,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     public string Name { get; }
 
     /// <summary>Whether this shard holds generations copied from a first-level shard rather than persistence batches.</summary>
-    internal bool IsSecondLevel { get; }
+    public bool IsSecondLevel { get; }
 
     /// <summary>The node-group columns this shard holds records of; a record's column follows from its key.</summary>
     public PbtColumns[] Columns { get; }
@@ -120,12 +120,12 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>Column label of this shard's byte metrics.</summary>
     public string ColumnLabel { get; }
 
-    internal byte[] VersionKey { get; }
+    public byte[] VersionKey { get; }
 
-    internal byte[] FlushedGenerationKey { get; }
+    public byte[] FlushedGenerationKey { get; }
 
     /// <summary>Metadata key of the newest generation a committed batch wrote to; its file must exist until merged.</summary>
-    internal byte[] GenerationKey { get; }
+    public byte[] GenerationKey { get; }
 
     /// <summary>Pins every live generation for a new reader; the reader must then <see cref="TrieNodeLogView.Bind"/> or dispose the view on this same thread.</summary>
     public TrieNodeLogView PinLiveGenerations()
@@ -143,7 +143,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
-    internal void EndOpening() => _retention.ExitReadLock();
+    public void EndOpening() => _retention.ExitReadLock();
 
     public TrieNodeLogWriteBatch StartWriteBatch() => StartWriteBatch(version: null);
 
@@ -168,7 +168,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// Takes the batch gate: held by an open log-backed batch, and by <see cref="DrainExclusive"/> so it neither
     /// runs under an open batch nor has a batch open under it.
     /// </summary>
-    internal void EnterExclusive()
+    public void EnterExclusive()
     {
         if (Volatile.Read(ref _poisoned) != 0)
             throw new InvalidOperationException($"Trie node log shard {Name} holds records RocksDB never confirmed; restart the node to recover");
@@ -176,16 +176,16 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             throw new InvalidOperationException($"A trie node log write batch is open on shard {Name}");
     }
 
-    internal void ExitExclusive() => Volatile.Write(ref _openBatch, 0);
+    public void ExitExclusive() => Volatile.Write(ref _openBatch, 0);
 
     /// <summary>Refuses every further batch and drain until a restart; see <see cref="ITrieNodeLog.IWriteBatch.Confirm"/>.</summary>
-    internal void Poison()
+    public void Poison()
     {
         Volatile.Write(ref _poisoned, 1);
         if (_logger.IsError) _logger.Error($"Trie node log shard {Name} holds records RocksDB never confirmed; it takes no more writes until the node is restarted");
     }
 
-    internal void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)
+    public void ReturnPending(Dictionary<ulong, TrieNodeLogWriteBatch.Pending> pending)
     {
         pending.Clear();
         Volatile.Write(ref _pendingPool, pending);
@@ -205,7 +205,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
-    internal bool HasGenerations
+    public bool HasGenerations
     {
         get
         {
@@ -218,7 +218,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     /// <summary><see cref="Drain"/> for a caller holding the gate through <see cref="EnterExclusive"/>.</summary>
-    internal void DrainExclusive()
+    public void DrainExclusive()
     {
         SealActive();
         FlushSealedGenerations(mergeLag: 0);
@@ -257,7 +257,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     }
 
     /// <summary>Pins generations added since <paramref name="alreadyPinned"/> was taken (a roll that raced the RocksDB snapshot).</summary>
-    internal void PinNewer(ArrayPoolList<TrieNodeLogGeneration> alreadyPinned)
+    public void PinNewer(ArrayPoolList<TrieNodeLogGeneration> alreadyPinned)
     {
         ulong newest = alreadyPinned.Count == 0 ? 0 : alreadyPinned[^1].Number;
         using Lock.Scope _ = _lock.EnterScope();
@@ -267,13 +267,13 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
-    internal TrieNodeLogGeneration? Active => _active;
+    public TrieNodeLogGeneration? Active => _active;
 
     /// <summary>
     /// Starts a new active generation. The previous one is not sealed here: the open batch may still hold
     /// unpublished records for it, so it is sealed by <see cref="OnBatchCommitted"/>.
     /// </summary>
-    internal TrieNodeLogGeneration Roll()
+    public TrieNodeLogGeneration Roll()
     {
         WaitForBacklog();
         using Lock.Scope _ = _lock.EnterScope();
@@ -323,7 +323,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
     }
 
-    internal bool IsFull(TrieNodeLogGeneration generation, int pendingInserts, long pendingBytes) =>
+    public bool IsFull(TrieNodeLogGeneration generation, int pendingInserts, long pendingBytes) =>
         generation.WriteFrontier + pendingBytes >= _generationBytes || generation.Occupied + pendingInserts >= generation.Capacity / 4 * 3;
 
     /// <summary>
@@ -331,7 +331,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// generation except a still-open active one, so a sealed generation only ever holds records whose version
     /// RocksDB has confirmed, and no generation older than a merged one can remain unsealed.
     /// </summary>
-    internal void OnBatchCommitted()
+    public void OnBatchCommitted()
     {
         using (_lock.EnterScope())
         {
@@ -627,7 +627,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         return generation;
     }
 
-    internal static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+    public static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
     private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable

@@ -6,7 +6,7 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Bounds for sweeping a whole sorted PBT column.</summary>
-internal static class PbtColumnSweep
+public static class PbtColumnSweep
 {
     /// <summary>An exclusive upper bound past every PBT column key, including the storage keys longer than 32 bytes.</summary>
     public static byte[] PastEveryKey()

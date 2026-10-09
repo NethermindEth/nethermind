@@ -12,12 +12,12 @@ using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
 
-internal static partial class TrieUpdater<TKey, TPath>
+public static partial class TrieUpdater<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     [Conditional("DEBUG")]
-    internal static void AssertSorted(ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+    public static void AssertSorted(ReadOnlySpan<PbtWriteOperation<TKey>> operations)
     {
         for (int index = 1; index < operations.Length; index++)
             Debug.Assert(operations[index - 1].Key.CompareTo(operations[index].Key) < 0, "Operations must be in strictly ascending key order.");
@@ -27,15 +27,15 @@ internal static partial class TrieUpdater<TKey, TPath>
     private const int MaxNodeLength = PbtNodeCodec.MaxBranchPreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + 2 * PbtVariableTreeKey.MaxLength;
 
     /// <summary>A node a fold encoded for its caller to place, anchored at the depth the caller places it at.</summary>
-    internal struct SlotNode(int length, in ValueHash256 hash)
+    public struct SlotNode(int length, in ValueHash256 hash)
     {
         /// <summary>The encoding's length, or zero when the subtree folded away.</summary>
-        internal readonly int Length = length;
+        public readonly int Length = length;
         /// <summary>The node's hash, or default when its encoding still has to be hashed.</summary>
-        internal readonly ValueHash256 Hash = hash;
+        public readonly ValueHash256 Hash = hash;
         /// <summary>The change in stored size across the groups this node was folded from, still owed to the caller's boundary slot.</summary>
-        internal long SizeDelta;
-        internal readonly bool IsEmpty => Length == 0;
+        public long SizeDelta;
+        public readonly bool IsEmpty => Length == 0;
     }
 
     /// <summary>Consumes a subtree and applies its sorted mutation range, encoding the canonical replacement.</summary>
@@ -268,7 +268,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// taking the leaf hashes off the fold's own path and batching them for <see cref="Blake3Hash.HashMany"/>.
     /// </remarks>
     /// <param name="shardTable">The used-shard mask, then each used shard's count.</param>
-    internal static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
+    public static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
     {
         int shardCount = BitOperations.PopCount((uint)shardTable[0]);
         if (shardCount < 2 || operations.Length < 2 * context.FanOut.MinOperationsPerWorker)
@@ -297,7 +297,7 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Folds the operations under boundary slot <paramref name="slot"/>, whose keys are of another type than the frame's, encoding the node the slot then holds.</summary>
     /// <param name="encoding">Receives the node the slot then holds, at least <see cref="MaxNodeLength"/> bytes.</param>
-    internal delegate SlotNode ForeignSlotFold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding);
+    public delegate SlotNode ForeignSlotFold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding);
 
     /// <summary>Rebuilds the open frame's group around its touched boundary slots, each folded by <paramref name="foldSlot"/>, leaving its root as the last entry, at the root position.</summary>
     /// <remarks>
@@ -308,7 +308,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// slot folded to a node, which is all the walk reads of them besides the slot their one-byte key names.
     /// </remarks>
     /// <param name="touchedSlots">The mask of the boundary slots <paramref name="foldSlot"/> folds.</param>
-    internal static ComposedNode WalkFrameOverForeignSlots<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes,
+    public static ComposedNode WalkFrameOverForeignSlots<TFrame>(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes,
         PbtNodeGroupWriter<TPath> writer, in BoundaryNode input, PbtTraversalPath path, int touchedSlots, ForeignSlotFold foldSlot)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
@@ -376,10 +376,10 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>One boundary slot a frame folds on a worker, with the node it then holds.</summary>
     private struct SortedSlotFold(int slot, int offset, int count, BoundaryNode boundary, long descendantBytes)
     {
-        internal readonly int Slot = slot;
-        internal SlotNode Result;
+        public readonly int Slot = slot;
+        public SlotNode Result;
 
-        internal void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead)
+        public void Fold(FoldContext context, TPath groupPath, int bitDepth, byte[] foldedAhead)
         {
             using IPbtConcurrentWriter writer = context.Store.CreateWriter();
             FoldContext workerContext = new(context.Store, writer, context.MemoryProvider, context.FoldQuota, context.Operations, context.FanOut);
@@ -395,7 +395,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// </remarks>
     /// <param name="encoding">Receives the node the slot then holds, at least <see cref="MaxNodeLength"/> bytes.</param>
     [SkipLocalsInit]
-    internal static SlotNode FoldDetachedSlot(FoldContext context, TPath groupPath, int bitDepth, int slot, in BoundaryNode boundary, long descendantBytes,
+    public static SlotNode FoldDetachedSlot(FoldContext context, TPath groupPath, int bitDepth, int slot, in BoundaryNode boundary, long descendantBytes,
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, Span<byte> encoding)
     {
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
@@ -411,7 +411,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         return new SlotNode(node.Length, hash);
     }
 
-    internal static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding).Preimage);
+    public static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding).Preimage);
 
     /// <summary>How many leaves <see cref="HashLeaves"/> hashes in one <see cref="Blake3Hash.HashMany"/> call, the widest lane count.</summary>
     private const int LeafHashBatch = 16;
@@ -872,32 +872,32 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <summary>The existing node holding every stored key under a walk position: anchored at or above it, splitting at or below it.</summary>
     private readonly struct Cover(CoverKind kind, int position, bool right = false)
     {
-        internal readonly CoverKind Kind = kind;
-        internal readonly byte Position = (byte)position;
-        internal readonly bool Right = right;
-        internal bool IsEmpty => Kind == CoverKind.Empty;
+        public readonly CoverKind Kind = kind;
+        public readonly byte Position = (byte)position;
+        public readonly bool Right = right;
+        public bool IsEmpty => Kind == CoverKind.Empty;
     }
 
     /// <summary>The frame one in-frame recursion rebuilds, and the slot results it folded ahead of the walk.</summary>
     private ref struct SortedWalk<TFrame>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        internal readonly FoldContext Context;
-        internal ref TFrame Reader;
-        internal ref StoredGroupHashes Hashes;
-        internal readonly PbtNodeGroupWriter<TPath> Writer;
-        internal readonly PbtTraversalPath Path;
-        internal readonly int BitDepth;
+        public readonly FoldContext Context;
+        public ref TFrame Reader;
+        public ref StoredGroupHashes Hashes;
+        public readonly PbtNodeGroupWriter<TPath> Writer;
+        public readonly PbtTraversalPath Path;
+        public readonly int BitDepth;
         private readonly BoundaryNode _input;
         private readonly uint _stored;
         /// <summary>The encodings of the slots folded ahead of the walk, <see cref="MaxNodeLength"/> bytes per slot.</summary>
-        internal byte[]? FoldedAhead;
-        internal SlotNode[]? FoldedAheadNodes;
-        internal int FoldedAheadMask;
+        public byte[]? FoldedAhead;
+        public SlotNode[]? FoldedAheadNodes;
+        public int FoldedAheadMask;
         /// <summary>The frame's operations, in key order.</summary>
-        internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Operations;
+        public readonly ReadOnlySpan<PbtWriteOperation<TKey>> Operations;
         /// <summary>The index of the first operation no position has consumed yet.</summary>
-        internal int Next;
+        public int Next;
         /// <summary>The boundary slot of the operation at <see cref="Next"/>, or one past the last slot once every operation is consumed.</summary>
         /// <remarks>Read only when the cursor moves, so a position checks whether it owns the next operation without reading its key.</remarks>
         private int _nextSlot;
@@ -905,19 +905,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         private int _followingSlot;
 
         /// <summary>Whether the operation at the cursor lies under <paramref name="local"/>.</summary>
-        internal readonly bool Owns(NodeGroupPath local) => local.Covers(_nextSlot);
+        public readonly bool Owns(NodeGroupPath local) => local.Covers(_nextSlot);
 
         /// <summary>Whether the operation after the cursor lies under <paramref name="local"/> too.</summary>
-        internal bool OwnsFollowing(NodeGroupPath local)
+        public bool OwnsFollowing(NodeGroupPath local)
         {
             if (_followingSlot < 0) _followingSlot = SlotAt(Next + 1);
             return local.Covers(_followingSlot);
         }
 
         /// <summary>How many operations from the cursor on lie under <paramref name="local"/>.</summary>
-        internal readonly int CountOwned(NodeGroupPath local) => CountOwned(Operations, Next, local, BitDepth);
+        public readonly int CountOwned(NodeGroupPath local) => CountOwned(Operations, Next, local, BitDepth);
 
-        internal static int CountOwned(ReadOnlySpan<PbtWriteOperation<TKey>> operations, int start, NodeGroupPath local, int bitDepth)
+        public static int CountOwned(ReadOnlySpan<PbtWriteOperation<TKey>> operations, int start, NodeGroupPath local, int bitDepth)
         {
             int end = start;
             while (end < operations.Length && local.Covers(BoundarySlot(operations[end].Key.Bytes, bitDepth))) end++;
@@ -925,11 +925,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The operations at the cursor under <paramref name="local"/>, left unconsumed.</summary>
-        internal readonly ReadOnlySpan<PbtWriteOperation<TKey>> Peek(NodeGroupPath local) => Operations.Slice(Next, CountOwned(local));
+        public readonly ReadOnlySpan<PbtWriteOperation<TKey>> Peek(NodeGroupPath local) => Operations.Slice(Next, CountOwned(local));
 
         /// <summary>Consumes the operations at the cursor in the boundary slot <paramref name="local"/>.</summary>
         /// <remarks>Each key is read once, to find where the slot ends.</remarks>
-        internal ReadOnlySpan<PbtWriteOperation<TKey>> Take(NodeGroupPath local)
+        public ReadOnlySpan<PbtWriteOperation<TKey>> Take(NodeGroupPath local)
         {
             Debug.Assert(local.Length == PbtFourLevelGroupGeometry.LevelsPerGroup && _nextSlot == local.Slot, "Only a touched boundary slot takes its operations.");
             int start = Next;
@@ -941,7 +941,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Moves the cursor past <paramref name="count"/> operations.</summary>
-        internal void Advance(int count)
+        public void Advance(int count)
         {
             Next += count;
             _nextSlot = SlotAt(Next);
@@ -949,7 +949,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>Whether any operation at the cursor under <paramref name="local"/> sets a value rather than deleting one.</summary>
-        internal readonly bool HasSet(NodeGroupPath local)
+        public readonly bool HasSet(NodeGroupPath local)
         {
             for (int index = Next, slot = _nextSlot; local.Covers(slot); slot = SlotAt(++index))
                 if (Operations[index].Value != default) return true;
@@ -957,18 +957,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The boundary slot of the operation at <paramref name="index"/>.</summary>
-        internal readonly int SlotAt(int index) =>
+        public readonly int SlotAt(int index) =>
             index >= Operations.Length ? PbtFourLevelGroupGeometry.BoundarySlots : BoundarySlot(Operations[index].Key.Bytes, BitDepth);
 
         /// <summary>The index past the operations from <paramref name="start"/> on in boundary slot <paramref name="slot"/>.</summary>
-        internal readonly int SlotEnd(int start, int slot)
+        public readonly int SlotEnd(int start, int slot)
         {
             int index = start + 1;
             while (index < Operations.Length && BoundarySlot(Operations[index].Key.Bytes, BitDepth) == slot) index++;
             return index;
         }
 
-        internal SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
+        public SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
             PbtTraversalPath path, in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
         {
             Operations = operations;
@@ -987,16 +987,16 @@ internal static partial class TrieUpdater<TKey, TPath>
                 : 0;
         }
 
-        internal readonly bool IsLeaf(Cover cover) => cover.Kind == CoverKind.InlineLeaf || (cover.Kind == CoverKind.Input && _input.IsLeaf);
+        public readonly bool IsLeaf(Cover cover) => cover.Kind == CoverKind.InlineLeaf || (cover.Kind == CoverKind.Input && _input.IsLeaf);
 
-        internal readonly TKey LeafKey(Cover cover)
+        public readonly TKey LeafKey(Cover cover)
         {
             if (cover.Kind == CoverKind.Input) return _input.LeafKey(Path);
             ReadOnlySpan<byte> keyPostfix = LeafKeyPostfix(cover, out int keyOffset);
             return PbtKeyOperations.CreateKey<TKey>(Path.Bytes[..keyOffset], keyPostfix);
         }
 
-        internal readonly ValueHash256 LeafHash(Cover cover)
+        public readonly ValueHash256 LeafHash(Cover cover)
         {
             if (cover.Kind == CoverKind.Input) return _input.Hash;
             PbtBranchReader parent = Parent(cover);
@@ -1022,7 +1022,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             : PbtBranchReader.FromValidated(Reader.GetEncoding(cover.Position).Span);
 
         /// <summary>The branch <paramref name="cover"/> holds, with the absolute depth its compressed prefix starts at.</summary>
-        internal readonly PbtBranchReader Node(Cover cover, out int anchorDepth)
+        public readonly PbtBranchReader Node(Cover cover, out int anchorDepth)
         {
             if (cover.Kind == CoverKind.Input)
             {
@@ -1034,7 +1034,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The covers of <paramref name="local"/>'s two children.</summary>
-        internal void ChildCovers(NodeGroupPath local, Cover cover, out Cover left, out Cover right)
+        public void ChildCovers(NodeGroupPath local, Cover cover, out Cover left, out Cover right)
         {
             left = default;
             right = default;
@@ -1083,7 +1083,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The cover of boundary slot <paramref name="slot"/>, descended from the frame's input.</summary>
-        internal Cover CoverAt(int slot)
+        public Cover CoverAt(int slot)
         {
             Cover cover = _input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource);
             NodeGroupPath local = default;
@@ -1098,7 +1098,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         /// <summary>The boundary node <paramref name="cover"/> holds at a boundary slot, which the fold below it consumes.</summary>
-        internal readonly BoundaryNode Boundary(Cover cover) => cover.Kind switch
+        public readonly BoundaryNode Boundary(Cover cover) => cover.Kind switch
         {
             CoverKind.Empty => default,
             CoverKind.Input => _input,

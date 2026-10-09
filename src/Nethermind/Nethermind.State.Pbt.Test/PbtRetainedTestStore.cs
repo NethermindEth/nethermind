@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence.BloomFilter;
+using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
@@ -54,11 +55,11 @@ internal sealed class PbtRetainedTestStore : IDisposable
     internal PbtRetainedSnapshot BuildRaw(PbtRetainedMetadata metadata, IReadOnlyList<(byte[] Key, byte[] Value)> records, Action<byte[]>? corrupt = null)
     {
         using ArenaWriter writer = Arena.CreateWriter(1024 * 1024);
-        if (corrupt is null) PbtRetainedSnapshotBuilder.BuildRecords(records, ref writer.GetWriter());
+        if (corrupt is null) BuildRecords(records, ref writer.GetWriter());
         else
         {
             TestTableWriter buffer = new();
-            PbtRetainedSnapshotBuilder.BuildRecords(records, ref buffer);
+            BuildRecords(records, ref buffer);
             byte[] bytes = buffer.Buffer.WrittenSpan.ToArray();
             corrupt(bytes);
             IByteBufferWriter.Copy(ref writer.GetWriter(), bytes);
@@ -69,6 +70,18 @@ internal sealed class PbtRetainedTestStore : IDisposable
             using RefCountedBloomFilter bloom = RefCountedBloomFilter.AlwaysTrue();
             return new(new(metadata.From, metadata.To, location, SnapshotTier.PersistedBase), reservation, Blobs, Memory, bloom);
         }
+    }
+
+    private static void BuildRecords<TWriter>(IEnumerable<(byte[] Key, byte[] Value)> records, ref TWriter writer)
+        where TWriter : IByteBufferWriter
+    {
+        SortedTableBuilder<TWriter> table = new(ref writer);
+        try
+        {
+            foreach ((byte[] key, byte[] value) in records) table.Add(key, value);
+            table.Build();
+        }
+        finally { table.Dispose(); }
     }
 
     private sealed class TestTableWriter : IByteBufferWriter

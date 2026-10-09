@@ -11,24 +11,22 @@ namespace Nethermind.Pbt;
 /// for an owner frame that cannot be shared across threads, where only its depth and one slot's size are read.
 /// Nothing is stored, so there is no node to take.
 /// </remarks>
-internal readonly struct AbsentGroupFrame<TKey, TPath> : IGroupFrame<TKey, TPath>
+public readonly struct AbsentGroupFrame<TKey, TPath>(int bitDepth) : IGroupFrame<TKey, TPath>
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
     private readonly ushort _descendantMask;
     private readonly long _descendantBytes;
 
-    internal AbsentGroupFrame(int bitDepth) => BitDepth = bitDepth;
-
     /// <param name="slot">The boundary slot everything stored below the group lies under.</param>
     /// <param name="descendantBytes">The summed payload lengths of the groups stored below <paramref name="slot"/>.</param>
-    internal AbsentGroupFrame(int bitDepth, int slot, long descendantBytes) : this(bitDepth)
+    public AbsentGroupFrame(int bitDepth, int slot, long descendantBytes) : this(bitDepth)
     {
         _descendantMask = descendantBytes == 0 ? (ushort)0 : (ushort)(1 << slot);
         _descendantBytes = descendantBytes;
     }
 
-    public int BitDepth { get; }
+    public int BitDepth { get; } = bitDepth;
 
     public int PayloadLength => 0;
 

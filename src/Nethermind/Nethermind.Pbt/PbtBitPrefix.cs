@@ -8,10 +8,10 @@ public static class PbtBitPrefix
 {
     public const int MaxBitCount = ushort.MaxValue;
 
-    internal static int ByteCount(int bitCount) => (bitCount + 7) >> 3;
+    public static int ByteCount(int bitCount) => (bitCount + 7) >> 3;
 
     /// <summary>Copies an MSB-first bit range into a zeroed destination range, preserving adjacent bits.</summary>
-    internal static void CopyBits(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
+    public static void CopyBits(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
     {
         int sourceShift = sourceOffset & 7;
         int destinationShift = destinationOffset & 7;

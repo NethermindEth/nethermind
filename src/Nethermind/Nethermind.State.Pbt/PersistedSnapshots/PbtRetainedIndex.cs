@@ -8,7 +8,7 @@ namespace Nethermind.State.Pbt.PersistedSnapshots;
 
 /// <summary>The retained snapshots, keyed by catalog identity, by the state and tier they end at, and the set of states they end at.</summary>
 /// <remarks>Holds one lease on every snapshot it indexes. Not thread-safe: the repository guards it with its lock.</remarks>
-internal sealed class PbtRetainedIndex(IComparer<StateId> stateOrder)
+public sealed class PbtRetainedIndex(IComparer<StateId> stateOrder)
 {
     private readonly Dictionary<(StateId To, long Depth), PbtRetainedSnapshot> _byCatalogKey = [];
     private readonly Dictionary<(StateId To, SnapshotTier Tier), SortedDictionary<long, PbtRetainedSnapshot>> _edges = [];

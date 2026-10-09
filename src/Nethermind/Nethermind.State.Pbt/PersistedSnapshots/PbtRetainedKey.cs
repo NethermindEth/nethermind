@@ -8,27 +8,27 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal static class PbtRetainedKey
+public static class PbtRetainedKey
 {
-    internal const byte Metadata = 0;
-    internal const byte Address = 0x10;
-    internal const byte Code = 0x20;
-    internal const byte AccountGroup = 0x30;
-    internal const byte CodeGroup = 0x31;
-    internal const byte StorageGroup = 0x32;
-    internal const byte Ownership = 0xF0;
-    internal const byte Clear = 0;
-    internal const byte Account = 1;
-    internal const byte HeaderRun = 2;
-    internal const byte StorageRun = 3;
+    public const byte Metadata = 0;
+    public const byte Address = 0x10;
+    public const byte Code = 0x20;
+    public const byte AccountGroup = 0x30;
+    public const byte CodeGroup = 0x31;
+    public const byte StorageGroup = 0x32;
+    public const byte Ownership = 0xF0;
+    public const byte Clear = 0;
+    public const byte Account = 1;
+    public const byte HeaderRun = 2;
+    public const byte StorageRun = 3;
 
     // The last byte of an entity's descriptor key, and of that key within its chunk keys.
     private const byte DescriptorFlag = 0;
     private const byte ChunkFlag = 1;
 
-    internal static ulong BloomHash(ReadOnlySpan<byte> descriptor) => XxHash64.HashToUInt64(descriptor);
+    public static ulong BloomHash(ReadOnlySpan<byte> descriptor) => XxHash64.HashToUInt64(descriptor);
 
-    internal static byte[] AddressEntity(in ValueHash256 address, byte tag)
+    public static byte[] AddressEntity(in ValueHash256 address, byte tag)
     {
         byte[] key = new byte[35];
         key[0] = Address;
@@ -37,7 +37,7 @@ internal static class PbtRetainedKey
         return key;
     }
 
-    internal static byte[] CodeEntity(in ValueHash256 hash)
+    public static byte[] CodeEntity(in ValueHash256 hash)
     {
         byte[] key = new byte[34];
         key[0] = Code;
@@ -45,7 +45,7 @@ internal static class PbtRetainedKey
         return key;
     }
 
-    internal static byte[] Run<TKey>(in TKey path) where TKey : struct, IPbtKey<TKey>
+    public static byte[] Run<TKey>(in TKey path) where TKey : struct, IPbtKey<TKey>
     {
         bool header = typeof(TKey) == typeof(PbtPath);
         ReadOnlySpan<byte> bytes = path.Bytes;
@@ -60,7 +60,7 @@ internal static class PbtRetainedKey
         return key;
     }
 
-    internal static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath>
+    public static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         byte family = GroupFamily(path);
         byte[] key = new byte[GroupKeyLength(path.BitDepth)];
@@ -71,7 +71,7 @@ internal static class PbtRetainedKey
         return key;
     }
 
-    internal static byte[] Chunk(ReadOnlySpan<byte> descriptor, uint index)
+    public static byte[] Chunk(ReadOnlySpan<byte> descriptor, uint index)
     {
         byte[] key = new byte[descriptor.Length + 4];
         descriptor.CopyTo(key);
@@ -80,7 +80,7 @@ internal static class PbtRetainedKey
         return key;
     }
 
-    internal static byte[] Owner(ushort id)
+    public static byte[] Owner(ushort id)
     {
         byte[] key = [Ownership, 0, 0];
         BinaryPrimitives.WriteUInt16BigEndian(key.AsSpan(1), id);
@@ -88,9 +88,9 @@ internal static class PbtRetainedKey
     }
 
     /// <summary>Whether <paramref name="key"/> is an entity's descriptor key, as opposed to a metadata, ownership or chunk record.</summary>
-    internal static bool IsEntity(ReadOnlySpan<byte> key) => key[0] is not Metadata and not Ownership && !IsChunk(key);
+    public static bool IsEntity(ReadOnlySpan<byte> key) => key[0] is not Metadata and not Ownership && !IsChunk(key);
 
-    internal static bool IsChunk(ReadOnlySpan<byte> key)
+    public static bool IsChunk(ReadOnlySpan<byte> key)
     {
         if (key.Length < 2) return false;
         int descriptorLength = key[0] switch
@@ -111,7 +111,7 @@ internal static class PbtRetainedKey
 
     private static int GroupKeyLength(int bitDepth) => 3 + PbtBitPrefix.ByteCount(bitDepth) + 1;
 
-    internal static void ValidateDescriptor(ReadOnlySpan<byte> key)
+    public static void ValidateDescriptor(ReadOnlySpan<byte> key)
     {
         if (key.Length < 2 || key[^1] != DescriptorFlag) throw new InvalidDataException("Invalid retained PBT descriptor key.");
         switch (key[0])
@@ -142,7 +142,7 @@ internal static class PbtRetainedKey
             _ => AccountGroup,
         };
 
-    internal static PbtStorageNodePath DecodeGroup(ReadOnlySpan<byte> key)
+    public static PbtStorageNodePath DecodeGroup(ReadOnlySpan<byte> key)
     {
         if (key.Length < 4) throw new InvalidDataException("Invalid retained PBT group key.");
         int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
@@ -154,7 +154,7 @@ internal static class PbtRetainedKey
         return PbtStorageNodePath.Create(path, depth);
     }
 
-    internal static PbtPath DecodeHeaderRun(ReadOnlySpan<byte> key)
+    public static PbtPath DecodeHeaderRun(ReadOnlySpan<byte> key)
     {
         Span<byte> bytes = stackalloc byte[34];
         bytes[0] = Eip8297KeyDerivation.AccountZone;
@@ -163,7 +163,7 @@ internal static class PbtRetainedKey
         return new(bytes);
     }
 
-    internal static PbtStoragePath DecodeStorageRun(ReadOnlySpan<byte> key)
+    public static PbtStoragePath DecodeStorageRun(ReadOnlySpan<byte> key)
     {
         Span<byte> bytes = stackalloc byte[66];
         bytes[0] = Eip8297KeyDerivation.StorageZone;

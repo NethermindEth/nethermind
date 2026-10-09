@@ -46,7 +46,7 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
     private PbtReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock) => GatherForRead(baseBlock, stateId => manager.TryGatherReadOnlyBundle(stateId));
 
     /// <summary>Gathers the bundle a read at <paramref name="baseBlock"/> needs, reporting state that is not available as a missing trie node.</summary>
-    internal static TBundle GatherForRead<TBundle>(BlockHeader? baseBlock, Func<StateId, TBundle?> tryGather) where TBundle : class
+    public static TBundle GatherForRead<TBundle>(BlockHeader? baseBlock, Func<StateId, TBundle?> tryGather) where TBundle : class
     {
         try
         {

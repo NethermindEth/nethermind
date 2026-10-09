@@ -18,7 +18,7 @@ using Nethermind.Synchronization.FastSync;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>The canonical block the follower has brought PBT up to, with the EIP-8297 root PBT computed for it.</summary>
-internal sealed record PbtFollowerCursor(ulong Number, Hash256 Hash, Hash256 TreeRoot)
+public sealed record PbtFollowerCursor(ulong Number, Hash256 Hash, Hash256 TreeRoot)
 {
     /// <summary>The cursor at <paramref name="header"/> with the root PBT holds for it, or the zero root when it holds none.</summary>
     public static PbtFollowerCursor At(IPbtDbManager manager, BlockHeader header)
@@ -36,7 +36,7 @@ internal sealed record PbtFollowerCursor(ulong Number, Hash256 Hash, Hash256 Tre
 /// lands on the canonical ancestor it still holds. Past activation the header commits to the PBT root, so a replayed
 /// block is also checked against it.
 /// </remarks>
-internal sealed class PbtBalFollower(
+public sealed class PbtBalFollower(
     IBlockTree blockTree,
     BalFetcher fetcher,
     IBlockAccessListStore balStore,
@@ -104,7 +104,7 @@ internal sealed class PbtBalFollower(
     private const int MaxNoProgressRounds = 50;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtBalFollower>();
 
-    internal TimeSpan MigrationRetryDelay { get; init; } = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan MigrationRetryDelay = TimeSpan.FromMilliseconds(100);
 
     /// <summary>Authenticates the BAL of <paramref name="child"/> on its captured canonical ancestry and hands it to <paramref name="apply"/>.</summary>
     /// <remarks>
@@ -113,7 +113,7 @@ internal sealed class PbtBalFollower(
     /// publication, even when this returns true.
     /// </remarks>
     /// <returns>True once <paramref name="apply"/> has run; false if ancestry changed, the headers are disconnected, or peers did not fill the gap.</returns>
-    internal async Task<bool> AcquireBal(
+    public async Task<bool> AcquireBal(
         BlockHeader parent,
         BlockHeader child,
         Action<ReadOnlyBlockAccessList> apply,
@@ -192,7 +192,7 @@ internal sealed class PbtBalFollower(
     /// <summary>Decodes <paramref name="rlp"/> when it is exactly the BAL <paramref name="header"/> commits to.</summary>
     /// <returns>The BAL, or null when <paramref name="rlp"/> encodes another one.</returns>
     /// <exception cref="RlpException"><paramref name="rlp"/> is not a single well-formed BAL.</exception>
-    internal static ReadOnlyBlockAccessList? DecodeAuthenticated(BlockHeader header, ReadOnlySpan<byte> rlp)
+    public static ReadOnlyBlockAccessList? DecodeAuthenticated(BlockHeader header, ReadOnlySpan<byte> rlp)
     {
         // The decoder hashes the bytes it consumed, which DecodeComplete pins to the whole input.
         ReadOnlyBlockAccessList? bal = BlockAccessListDecoder.Instance.DecodeComplete(rlp);

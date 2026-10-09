@@ -110,10 +110,10 @@ public static partial class TrieUpdater
         /// <summary>Each zone's operation range and the producer's shard table over it.</summary>
         private readonly List<(int Start, int Count, ArrayPoolList<int> Table)> _zones = [];
 
-        internal bool IsEmpty => _operations is null;
+        public bool IsEmpty => _operations is null;
 
         /// <summary>Takes a zone's batch, whose keys all sort after those of the zones taken before.</summary>
-        internal void Add(PbtWriteBatch<TKey>? batch)
+        public void Add(PbtWriteBatch<TKey>? batch)
         {
             if (batch is null) return;
             batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
@@ -133,7 +133,7 @@ public static partial class TrieUpdater
             operations.Dispose();
         }
 
-        internal SlotNode Fold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding)
+        public SlotNode Fold(int slot, in BoundaryNode boundary, long descendantBytes, Span<byte> encoding)
         {
             long start = Stopwatch.GetTimestamp();
             using IPbtConcurrentWriter writer = store.CreateWriter();

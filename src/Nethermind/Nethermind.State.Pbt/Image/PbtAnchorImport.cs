@@ -18,7 +18,7 @@ namespace Nethermind.State.Pbt.Image;
 /// the fast path without re-verifying the whole image, a restart with another source is refused, and an interrupted
 /// staging is wiped and redone.
 /// </remarks>
-internal sealed class PbtAnchorImport(
+public sealed class PbtAnchorImport(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
     PbtPersistenceManager persistenceManager,

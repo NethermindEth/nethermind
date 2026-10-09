@@ -23,8 +23,8 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
 
     private sealed class Shard(int capacity)
     {
-        internal readonly Lock Lock = new();
-        internal readonly Dictionary<TKey, ValueHash256> Entries = new(capacity);
+        public readonly Lock Lock = new();
+        public readonly Dictionary<TKey, ValueHash256> Entries = new(capacity);
     }
 
     /// <remarks>
@@ -69,7 +69,7 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
         lock (shard.Lock) shard.Entries[key] = value;
     }
 
-    internal void SetLeaf(TKey key, ValueHash256? value) => Set(key, value.GetValueOrDefault());
+    public void SetLeaf(TKey key, ValueHash256? value) => Set(key, value.GetValueOrDefault());
 
     /// <summary>Gets the number of pending unique mutations.</summary>
     public int Count
@@ -89,7 +89,7 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
 
     /// <inheritdoc cref="Build()"/>
     /// <param name="reservedCapacity">The operations the batch's list leaves room for past its own, such as those of a zone appended to it.</param>
-    internal PbtWriteBatch<TKey> Build(int reservedCapacity)
+    public PbtWriteBatch<TKey> Build(int reservedCapacity)
     {
         ArrayPoolList<int> table = new(ShardCount + 1, ShardCount + 1);
         ArrayPoolList<PbtWriteOperation<TKey>>? operations = null;

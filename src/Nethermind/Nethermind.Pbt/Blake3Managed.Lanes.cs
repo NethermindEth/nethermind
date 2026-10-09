@@ -10,7 +10,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Pbt;
 
-internal static partial class Blake3Managed
+public static partial class Blake3Managed
 {
     private const int OutputLength = 32;
     private const int MaxLanes = 16;

@@ -18,7 +18,7 @@ using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
+public sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
 {
     private readonly ArenaReservation _reservation;
     private readonly BlobArenaManager _blobs;
@@ -26,22 +26,22 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     private readonly RefCountedBloomFilter _bloom;
     private readonly List<BlobArenaFile> _files = [];
     private int _released;
-    internal StateId From { get; }
-    internal StateId To { get; }
-    internal ValueHash256 TreeRoot { get; }
-    internal SnapshotTier Tier { get; }
-    internal SnapshotLocation Location { get; }
+    public StateId From { get; }
+    public StateId To { get; }
+    public ValueHash256 TreeRoot { get; }
+    public SnapshotTier Tier { get; }
+    public SnapshotLocation Location { get; }
     /// <summary>The block span from <see cref="From"/> to <see cref="To"/>; with <see cref="To"/>, the snapshot's catalog key.</summary>
-    internal long Depth => unchecked((long)(To.BlockNumber - From.BlockNumber));
-    internal long Size => _reservation.Size;
-    internal RefCountedBloomFilter BloomRef => _bloom;
-    internal ArenaReservation Reservation => _reservation;
+    public long Depth => unchecked((long)(To.BlockNumber - From.BlockNumber));
+    public long Size => _reservation.Size;
+    public RefCountedBloomFilter BloomRef => _bloom;
+    public ArenaReservation Reservation => _reservation;
 
     /// <remarks>
     /// Borrows the reservation and bloom, acquiring independent references along with one lease per
     /// referenced blob file. Construction failure releases only those newly acquired references.
     /// </remarks>
-    internal PbtRetainedSnapshot(CatalogEntry entry, ArenaReservation reservation, BlobArenaManager blobs,
+    public PbtRetainedSnapshot(CatalogEntry entry, ArenaReservation reservation, BlobArenaManager blobs,
         IRefCountingMemoryProvider nodeGroupMemory, RefCountedBloomFilter bloom)
     {
         _reservation = reservation;
@@ -116,29 +116,29 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         }
     }
 
-    internal PbtRetainedSnapshot WithBloom(RefCountedBloomFilter bloom)
+    public PbtRetainedSnapshot WithBloom(RefCountedBloomFilter bloom)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         return new(this, bloom);
     }
 
-    internal bool TryLease() => TryAcquireLease();
-    internal WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true)
+    public bool TryLease() => TryAcquireLease();
+    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         return _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
     }
-    internal PbtRetainedScanner Scan() => new(this);
+    public PbtRetainedScanner Scan() => new(this);
 
     /// <summary>The bloom hash of every entity this snapshot holds.</summary>
-    internal IEnumerable<ulong> EntityBloomHashes()
+    public IEnumerable<ulong> EntityBloomHashes()
     {
         using PbtRetainedScanner scanner = Scan();
         while (scanner.MoveNext())
             if (PbtRetainedKey.IsEntity(scanner.Key)) yield return PbtRetainedKey.BloomHash(scanner.Key);
     }
 
-    internal bool TryGetAccount(in ValueHash256 addressHash, out PbtAccount? account)
+    public bool TryGetAccount(in ValueHash256 addressHash, out PbtAccount? account)
     {
         bool found = TryReadEntity(PbtRetainedKey.AddressEntity(addressHash, PbtRetainedKey.Account), out byte[]? payload);
         account = payload is null ? null : PbtAccount.Decode(payload);
@@ -147,21 +147,21 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
 
     /// <summary>Returns a caller-owned decoded run, or false when this layer has no descriptor.</summary>
     /// <remarks>Return nonempty runs through SlotRun.Return. A present empty run is not a miss.</remarks>
-    internal bool TryGetSlotRun<TKey>(in TKey runKey, out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey>
+    public bool TryGetSlotRun<TKey>(in TKey runKey, out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey>
     {
         bool found = TryReadEntity(PbtRetainedKey.Run(runKey), out byte[]? payload);
         run = !found ? null : DecodeRun(payload!);
         return found;
     }
 
-    internal bool TryGetCode(in ValueHash256 codeHash, out CodeInfo? code)
+    public bool TryGetCode(in ValueHash256 codeHash, out CodeInfo? code)
     {
         bool found = TryReadEntity(PbtRetainedKey.CodeEntity(codeHash), out byte[]? payload);
         code = found ? new CodeInfo(payload!) : null;
         return found;
     }
 
-    internal bool TryGetStorageClear(in ValueHash256 addressHash, out bool storedValue)
+    public bool TryGetStorageClear(in ValueHash256 addressHash, out bool storedValue)
     {
         bool found = TryReadEntity(PbtRetainedKey.AddressEntity(addressHash, PbtRetainedKey.Clear), out byte[]? payload);
         storedValue = found && payload![0] != 0;
@@ -169,14 +169,14 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     }
 
     /// <summary>Returns one caller-owned group reference, a found null tombstone, or an absent descriptor.</summary>
-    internal bool TryGetNodeGroup<TPath>(in TPath path, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    public bool TryGetNodeGroup<TPath>(in TPath path, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         bool found = TryReadEntity(PbtRetainedKey.Group(path), out byte[]? bytes);
         payload = bytes is null ? null : DecodeGroup(path, bytes);
         return found;
     }
 
-    internal void PersistOnShutdown()
+    public void PersistOnShutdown()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         _reservation.PersistOnShutdown();
@@ -195,7 +195,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         _reservation.Dispose();
     }
 
-    internal bool TryReadEntity(ReadOnlySpan<byte> key, out byte[]? payload)
+    private bool TryReadEntity(ReadOnlySpan<byte> key, out byte[]? payload)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         if (!_bloom.Filter.MightContain(PbtRetainedKey.BloomHash(key)))
@@ -213,7 +213,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         return true;
     }
 
-    internal byte[]? ReadPayload(ReadOnlySpan<byte> key, Bound bound)
+    public byte[]? ReadPayload(ReadOnlySpan<byte> key, Bound bound)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         ArenaByteReader reader = _reservation.CreateReader();
@@ -237,7 +237,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         return payload;
     }
 
-    internal void ApplyTo(IPbtPersistence.IWriteBatch batch, CancellationToken cancellationToken)
+    public void ApplyTo(IPbtPersistence.IWriteBatch batch, CancellationToken cancellationToken)
     {
         using PbtRetainedScanner scanner = Scan();
         while (scanner.MoveNext())
@@ -406,13 +406,13 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     }
 }
 
-internal sealed class PbtRetainedScanner : IDisposable
+public sealed class PbtRetainedScanner : IDisposable
 {
     private readonly PbtRetainedSnapshot _snapshot;
     private SortedTableEnumerator<ArenaByteReader, NoOpPin> _scanner;
     private bool _disposed;
 
-    internal PbtRetainedScanner(PbtRetainedSnapshot snapshot)
+    public PbtRetainedScanner(PbtRetainedSnapshot snapshot)
     {
         if (!snapshot.TryLease()) throw new ObjectDisposedException(nameof(snapshot));
         _snapshot = snapshot;
@@ -424,22 +424,15 @@ internal sealed class PbtRetainedScanner : IDisposable
         catch { snapshot.Dispose(); throw; }
     }
 
-    internal bool MoveNext()
+    public bool MoveNext()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArenaByteReader reader = _snapshot.Reservation.CreateReader();
         return _scanner.MoveNext(reader);
     }
-    internal ReadOnlySpan<byte> Key => _scanner.CurrentKey;
-    internal Bound Value => _scanner.CurrentValue;
-    internal byte[] ReadValue()
-    {
-        byte[] bytes = new byte[checked((int)Value.Length)];
-        ArenaByteReader reader = _snapshot.Reservation.CreateReader();
-        SortedTableValidator.Read(reader, Value.Offset, bytes);
-        return bytes;
-    }
-    internal byte[]? ReadPayload() => _snapshot.ReadPayload(Key, Value);
+    public ReadOnlySpan<byte> Key => _scanner.CurrentKey;
+    private Bound Value => _scanner.CurrentValue;
+    public byte[]? ReadPayload() => _snapshot.ReadPayload(Key, Value);
     public void Dispose()
     {
         if (_disposed) return;

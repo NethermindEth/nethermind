@@ -29,7 +29,7 @@ using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.State.Pbt;
 
-internal static class PbtCoreRegistration
+public static class PbtCoreRegistration
 {
     /// <summary>Registers the PBT state graph shared by the native and migration modes.</summary>
     public static ContainerBuilder AddPbtCore(this ContainerBuilder builder, IPbtConfig config) =>

@@ -61,10 +61,13 @@ public class MigrationScopeProviderTests
             .AddSingleton<ISpecProvider>(MigrationTestSpecs.Create())
             .Build();
         await using PbtTestContext pbt = new();
-        MigrationScopeProvider provider = new(container.Resolve<FlatWorldStateManager>(), pbt.WorldStateManager, MigrationTestSpecs.Create(), UnavailableStateHeaderProvider.Instance);
-        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
+        IStateHeaderProvider headers = Substitute.For<IStateHeaderProvider>();
+        MigrationScopeProvider provider = new(container.Resolve<FlatWorldStateManager>(), pbt.WorldStateManager, MigrationTestSpecs.Create(), headers);
+        BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).WithStateRoot(TestItem.KeccakA).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
-        BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(MigrationTestSpecs.Activation).TestObject;
+        BlockHeader activation = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(MigrationTestSpecs.Activation).TestObject;
+        BlockHeader activatedGenesisState = Build.A.BlockHeader.WithNumber(0).WithStateRoot(genesis.StateRoot!).WithTimestamp(MigrationTestSpecs.Activation).TestObject;
+        headers.FindParentHeader(Arg.Any<BlockHeader>()).Returns(genesis);
 
         // Commit genesis into PBT: before activation main processing still runs on flat alone.
         using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
@@ -73,13 +76,16 @@ public class MigrationScopeProviderTests
             ((PbtWorldStateScope)scope).UseAuthoritativeRoot(genesis.StateRoot!);
             scope.Commit(0);
         }
+        provider.TryBeginScopeAtTarget(genesis, new LocalMetrics(), out IWorldStateScopeProvider.IScope? genesisScope);
+        using (genesisScope)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pbt.Manager.HasStateForBlock(new StateId(genesis)), Is.True);
-            Assert.That(provider.Select(null, genesis), Is.TypeOf<FlatScopeProvider>(), "genesis is not written into PBT");
-            Assert.That(provider.Select(genesis, block1), Is.TypeOf<FlatScopeProvider>(), "PBT holding the base does not make main processing write to it");
-            Assert.That(provider.Select(block1, activation), Is.TypeOf<PbtScopeProvider>(), "the activation block runs on PBT");
-            Assert.That(provider.Select(activation, null), Is.TypeOf<PbtScopeProvider>());
+            Assert.That(genesisScope, Is.Not.InstanceOf<PbtWorldStateScope>(), "genesis is not written into PBT");
+            Assert.That(provider.HasRoot(genesis), Is.False, "PBT holding a pre-activation base does not make main processing read it");
+            Assert.That(provider.HasStateForTargetBlock(block1), Is.False, "PBT holding the base does not make main processing write to it");
+            Assert.That(provider.HasStateForTargetBlock(activation), Is.True, "the activation block runs on PBT");
+            Assert.That(provider.HasRoot(activatedGenesisState), Is.True);
         }
     }
 }

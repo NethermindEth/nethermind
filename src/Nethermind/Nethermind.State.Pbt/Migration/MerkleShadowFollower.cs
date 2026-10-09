@@ -13,7 +13,7 @@ using Nethermind.State.Flat.ScopeProvider;
 namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>The Merkle side of the migration after activation: the MPT roots computed for post-activation blocks.</summary>
-internal interface IMerkleShadowFollower
+public interface IMerkleShadowFollower
 {
     /// <summary>The canonical block the MPT has been brought up to, with its MPT root; null before the first replay.</summary>
     PbtFollowerCursor? Cursor { get; }
@@ -32,7 +32,7 @@ internal interface IMerkleShadowFollower
 /// selection are unaffected. A reorg or a stalled acquisition drops the scope and rebuilds from flat; a restart
 /// rebuilds from flat's persisted state. Once the activation is final the scope is released with the MPT.
 /// </remarks>
-internal sealed class MerkleShadowFollower(
+public sealed class MerkleShadowFollower(
     IBlockTree blockTree,
     FlatWorldStateManager flat,
     PbtBalFollower balAcquisition,

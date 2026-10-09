@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -55,19 +56,19 @@ public class PbtSnapshotBundleTests
         using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false, slotFilterBitsPerKey: 0);
         Assert.That(bundle.TryLease(), Is.True);
         repository.RemoveMemoryState(new StateId(1, default));
-        repository.RemoveRetainedExact(retained.To, 1, SnapshotTier.PersistedBase);
+        repository.RemoveRetainedStatesBefore(1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Null);
             Assert.That(bundle.GetCode(TestItem.KeccakA.ValueHash256)!.CodeSpan.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
-            Assert.That(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)), Is.EqualTo((UInt256)(rewrite ? 9 : clear ? 0 : 7)));
+            Assert.That(bundle.GetSlot(TestItem.AddressA, 5), Is.EqualTo((UInt256)(rewrite ? 9 : clear ? 0 : 7)));
             Assert.That(bundle.GetNodeGroup(root.ToPath<PbtStorageNodePath>()), Is.Null);
             Assert.That(reader.GroupReadCount, Is.Zero, "retained tombstone stops fallback");
             Assert.That(repository.HasState(memory.To), Is.False);
         }
         PackedSlotRun run = bundle.RentRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), address);
-        try { Assert.That(run.Get(SlotRun.IndexOf(key)), Is.EqualTo(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)))); }
+        try { Assert.That(run.Get(SlotRun.IndexOf(key)), Is.EqualTo(bundle.GetSlot(TestItem.AddressA, 5))); }
         finally { SlotRun.Return(run); }
         bundle.Dispose();
         Assert.That(reader.DisposeCount, Is.Zero, "independent bundle reference still owns the reader");
@@ -332,6 +333,7 @@ public class PbtSnapshotBundleTests
         bool admitted = budget == 1048576;
         long initialHits = Metrics.PbtTrieCacheHits["account"];
         long initialMisses = Metrics.PbtTrieCacheMisses["account"];
+        long initialMemory = Metrics.PbtTrieCacheMemory["account"];
         TrackingMemoryProvider memory = new();
         PbtNodePath path = new([], 0);
         byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
@@ -343,7 +345,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(reader.GroupReadCount, Is.EqualTo(1));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
-            Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
+            Assert.That(Metrics.PbtTrieCacheMemory["account"] - initialMemory, Is.LessThanOrEqualTo(budget));
         }
         PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
@@ -442,7 +444,6 @@ public class PbtSnapshotBundleTests
         cache.Add(retired);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(cache.EntryCount, Is.EqualTo(1));
             Assert.That(Metrics.PbtTrieCacheEntries[partition] - initialEntries, Is.EqualTo(1));
             Assert.That(cache.TryGet(firstHash, foldedPath, out _), Is.False);
             Assert.That(cache.TryGet(secondHash, foldedPath, out RefCountingMemory? folded), Is.True);
@@ -495,6 +496,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    [NonParallelizable]
     public void Trie_cache_shares_canonical_paths_across_representations(
         [Values(0, 4, 8, 12, 272)] int depth,
         [Values(Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.CodeZone, Eip8297KeyDerivation.StorageZone)] byte zone,
@@ -512,10 +514,11 @@ public class PbtSnapshotBundleTests
         where TInserted : struct, IPbtNodePath<TInserted>
         where TRequested : struct, IPbtNodePath<TRequested>
     {
+        long initialMemory = TrieCacheMemory();
         using PbtTrieNodeCache cache = new(new PbtConfig());
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         cache.Add(default, inserted, source);
-        long retainedSize = cache.MemorySize;
+        long retainedSize = TrieCacheMemory() - initialMemory;
         Assert.That(cache.TryGet(default, requested, out RefCountingMemory? first), Is.True);
         using (first)
         {
@@ -528,13 +531,15 @@ public class PbtSnapshotBundleTests
                 Assert.That(inserted.GetHashCode(), Is.EqualTo(requested.GetHashCode()));
                 Assert.That(second, Is.SameAs(first), "equivalent fill must retain the existing cache entry");
                 Assert.That(second!.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
-                Assert.That(cache.MemorySize, Is.EqualTo(retainedSize));
+                Assert.That(TrieCacheMemory() - initialMemory, Is.EqualTo(retainedSize));
                 Assert.That(cache.TryGet(new ValueHash256(Value(1)), requested, out _), Is.False);
             }
         }
     }
 
     private static readonly string[] CachePartitions = ["account", "code", "storage"];
+
+    private static long TrieCacheMemory() => CachePartitions.Sum(label => Metrics.PbtTrieCacheMemory[label]);
 
     private static PbtConfig CacheConfig(string partition, ulong budget) => new()
     {
@@ -586,7 +591,7 @@ public class PbtSnapshotBundleTests
         using (retained)
         {
             Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False);
-            long retainedSize = cache.MemorySize;
+            long retainedSize = Metrics.PbtTrieCacheMemory[partition] - initialMemory[Array.IndexOf(CachePartitions, partition)];
             Assert.That(retainedSize, Is.GreaterThan(0));
             AssertMetrics(retainedSize, 1, 1, 2);
             cache.Clear();
@@ -604,8 +609,6 @@ public class PbtSnapshotBundleTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(cache.MemorySize, Is.EqualTo(memory));
-                Assert.That(cache.EntryCount, Is.EqualTo(entries));
                 for (int index = 0; index < CachePartitions.Length; index++)
                 {
                     string label = CachePartitions[index];
@@ -640,9 +643,10 @@ public class PbtSnapshotBundleTests
     private static PbtNodePath CachePath(string partition, int index) =>
         new([CachePath(partition).GetByte(0), (byte)(index >> 8), (byte)index], 24);
 
-    [Test]
+    [Test, NonParallelizable]
     public void Trie_cache_over_budget_insert_evicts_one_entry_not_the_shard([ValueSource(nameof(CachePartitions))] string partition)
     {
+        long initialMemory = Metrics.PbtTrieCacheMemory[partition];
         using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
         using RefCountingMemory source = Memory(new byte[1600]);
         for (int count = 1; count <= 2048; count++)
@@ -659,7 +663,7 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(hits, Is.EqualTo(count - 1), "the first shard overflow evicts exactly one entry");
-                Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(1048576));
+                Assert.That(Metrics.PbtTrieCacheMemory[partition] - initialMemory, Is.LessThanOrEqualTo(1048576));
             }
             return;
         }
@@ -698,21 +702,16 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
-                long totalMemory = 0;
                 for (int index = 0; index < CachePartitions.Length; index++)
                 {
                     string label = CachePartitions[index];
                     long memory = Metrics.PbtTrieCacheMemory[label] - initialMemory[index];
                     Assert.That(memory, Is.EqualTo(entryMemory[index] + (label == partition ? larger.Capacity - source.Capacity : 0)), label);
-                    totalMemory += memory;
                 }
-                Assert.That(cache.MemorySize, Is.EqualTo(totalMemory));
-                Assert.That(cache.EntryCount, Is.EqualTo(CachePartitions.Length));
                 foreach (string label in CachePartitions) Assert.That(Metrics.PbtTrieCacheEntries[label], Is.EqualTo(1), label);
             }
             cache.Dispose();
             cache.Add(default, path, source);
-            Assert.That(cache.EntryCount, Is.Zero);
             for (int index = 0; index < CachePartitions.Length; index++)
             {
                 Assert.That(Metrics.PbtTrieCacheMemory[CachePartitions[index]], Is.EqualTo(initialMemory[index]));
@@ -723,9 +722,10 @@ public class PbtSnapshotBundleTests
         Assert.That(source.TryAcquireLease(), Is.False, "the cache released every lease it took");
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public void Trie_cache_leases_every_payload_without_copying([Values] bool rocksDbBacked)
     {
+        long initialMemory = Metrics.PbtTrieCacheMemory["account"];
         using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
         PbtNodePath path = CachePath("account");
         RefCountingMemory source = rocksDbBacked
@@ -741,13 +741,14 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(source.TryAcquireLease(), Is.False);
-            Assert.That(cache.MemorySize, Is.Zero);
+            Assert.That(Metrics.PbtTrieCacheMemory["account"] - initialMemory, Is.Zero);
         }
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public void Trie_cache_concurrent_hits_and_eviction_keep_payloads_alive()
     {
+        long initialMemory = TrieCacheMemory();
         using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
         RefCountingMemory[] sources = [Memory(Bytes.FromHexString("010203")), Memory(new byte[1600]), Memory(new byte[8])];
         (PbtNodePath Path, int Variant) Entry(int iteration) =>
@@ -771,7 +772,11 @@ public class PbtSnapshotBundleTests
             }));
         foreach (RefCountingMemory source in sources) ((IDisposable)source).Dispose();
         cache.Clear();
-        Assert.That(cache.MemorySize, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sources.Select(source => source.TryAcquireLease()), Is.All.False, "the cache released every lease it took");
+            Assert.That(TrieCacheMemory() - initialMemory, Is.Zero);
+        }
     }
 
     [Test]
