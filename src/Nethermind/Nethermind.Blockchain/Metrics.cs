@@ -62,6 +62,10 @@ public static class Metrics
     public static long PrewarmHandoffs { get; set; }
 
     [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
+
+    [CounterMetric]
     [Description("Transactions executed because state their pre-warm run read had changed")]
     public static long PrewarmHandoffsRejected { get; set; }
 
@@ -96,6 +100,14 @@ public static class Metrics
     [CounterMetric]
     [Description("Transactions block processing took over from a refreshed pre-warm run")]
     public static long PrewarmRefreshesTakenOver { get; set; }
+
+    [CounterMetric]
+    [Description("Pre-warm runs of the mempool pass stored for block processing to take over")]
+    public static long PrewarmMempoolRunsStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a pre-warm run of the mempool pass")]
+    public static long PrewarmMempoolRunsTakenOver { get; set; }
 
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]

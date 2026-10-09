@@ -1151,9 +1151,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
 
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            HasCheckedBody ? stack.Push32Bytes<TTracingInst, OffFlag>(in vm.BlockExecutionContext.PrevRandao)
-                : EvmInstructions.InstructionPrevRandao<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody) return EvmInstructions.InstructionPrevRandao<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            vm.BlockContextReads |= BlockContextReads.PrevRandao;
+            return stack.Push32Bytes<TTracingInst, OffFlag>(in vm.BlockExecutionContext.PrevRandao);
+        }
     }
 
     [SkipLocalsInit]

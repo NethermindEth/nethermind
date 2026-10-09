@@ -16,10 +16,7 @@ public static class PredeployInstaller
 {
     private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong Nonce, Func<IReleaseSpec, bool> IsActive);
 
-    private static readonly Predeploy[] Predeploys =
-    [
-        new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
-    ];
+    private static readonly Predeploy[] Predeploys = [];
 
     internal static bool HasActivePredeploys(IReleaseSpec spec)
     {

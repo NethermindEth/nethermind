@@ -2,17 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,70 +14,32 @@ namespace Nethermind.Consensus.Test;
 
 public class PredeployInstallerTests
 {
-    [TestCase(0UL, 1UL)]
-    [TestCase(5UL, 5UL)]
-    public void Nonce_manager_predeploy_installs_its_code_at_the_higher_of_its_nonce_and_one(ulong existingNonce, ulong expectedNonce)
+    private static IEnumerable<TestCaseData> DeployedSystemContractCases()
     {
-        (IReleaseSpec spec, _, IWorldState writeState) =
-            Install(static spec => spec.IsEip8250Enabled.Returns(true), Eip8250Constants.NonceManagerAddress, nonce: existingNonce, code: []);
-
-        writeState.Received().InsertCode(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, spec);
-        writeState.Received().SetNonce(Eip8250Constants.NonceManagerAddress, expectedNonce);
-        writeState.DidNotReceive().SetNonce(Eip8250Constants.NonceManagerAddress, Arg.Is<ulong>(n => n != expectedNonce));
+        foreach (bool noncanonicalPrestate in new[] { false, true })
+        {
+            yield return new TestCaseData(new Action<IReleaseSpec>(static spec => spec.IsEip8141Enabled.Returns(true)), Eip8141Constants.ExpiryVerifierAddress, noncanonicalPrestate)
+                .SetName($"Eip8141_activation_does_not_write_the_expiry_verifier({noncanonicalPrestate})");
+            yield return new TestCaseData(new Action<IReleaseSpec>(static spec => spec.IsEip8250Enabled.Returns(true)), Eip8250Constants.NonceManagerAddress, noncanonicalPrestate)
+                .SetName($"Eip8250_activation_does_not_write_the_nonce_manager({noncanonicalPrestate})");
+            yield return new TestCaseData(new Action<IReleaseSpec>(static spec => spec.IsEip8272Enabled.Returns(true)), Eip8272Constants.RecentRootAddress, noncanonicalPrestate)
+                .SetName($"Eip8272_activation_does_not_write_the_recent_root({noncanonicalPrestate})");
+        }
     }
 
-    [Test]
-    public void Activation_does_not_write_a_contract_deployed_by_transaction(
-        [Values] bool recentRoot, [Values] bool noncanonicalPrestate)
+    [TestCaseSource(nameof(DeployedSystemContractCases))]
+    public void Activation_does_not_write_a_deployed_system_contract(Action<IReleaseSpec> activate, Address contract, bool noncanonicalPrestate)
     {
-        (_, _, IWorldState writeState) = Install(
-            recentRoot
-                ? static spec => spec.IsEip8272Enabled.Returns(true)
-                : static spec => spec.IsEip8141Enabled.Returns(true),
-            recentRoot ? Eip8272Constants.RecentRootAddress : Eip8141Constants.ExpiryVerifierAddress,
+        (_, IWorldState writeState) = Install(
+            activate,
+            contract,
             nonce: noncanonicalPrestate ? 7UL : 0UL,
             code: noncanonicalPrestate ? [0x00] : []);
 
         Assert.That(writeState.ReceivedCalls(), Is.Empty);
     }
 
-    /// <remarks>The install is the only in-tree writer of a no-op nonce, so it is the only way EIP-7928's
-    /// "record a nonce change only when the nonce changes" rule can be observed from block processing.</remarks>
-    [Test]
-    public void Predeploy_already_at_its_nonce_but_missing_its_code_records_only_the_code_change()
-    {
-        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true };
-        Address predeploy = Eip8250Constants.NonceManagerAddress;
-
-        IWorldState inner = TestWorldStateFactory.CreateForTest();
-        Hash256 stateRoot;
-        using (inner.BeginScope(IWorldState.PreGenesis))
-        {
-            inner.CreateAccount(predeploy, 0, nonce: 1);
-            inner.Commit(spec, isGenesis: true);
-            inner.CommitTree(0);
-            stateRoot = inner.StateRoot;
-        }
-
-        TracedAccessWorldState traced = new(inner, parallel: false);
-        traced.SetGeneratingBlockAccessList(new());
-        using (traced.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject))
-        {
-            traced.SetIndex(0);
-
-            PredeployInstaller.Install(inner, traced, spec);
-
-            AccountChangesAtIndex changes = traced.GetGeneratingBlockAccessList().GetAccountChanges(predeploy);
-            Assert.That(changes, Is.Not.Null);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(changes.CodeChange, Is.Not.Null);
-                Assert.That(changes.NonceChange, Is.Null, "re-writing the nonce it already holds is not a state transition");
-            }
-        }
-    }
-
-    private static (IReleaseSpec Spec, IReadOnlyStateProvider ReadState, IWorldState WriteState) Install(
+    private static (IReadOnlyStateProvider ReadState, IWorldState WriteState) Install(
         Action<IReleaseSpec> activate, Address predeploy, ulong nonce, byte[] code)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
@@ -96,6 +52,6 @@ public class PredeployInstallerTests
         IWorldState writeState = Substitute.For<IWorldState>();
         PredeployInstaller.Install(readState, writeState, spec);
 
-        return (spec, readState, writeState);
+        return (readState, writeState);
     }
 }

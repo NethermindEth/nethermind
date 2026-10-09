@@ -140,6 +140,11 @@ public interface IJsonRpcConfig : IConfig
     public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
+        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` or negative to lift the limit.",
+        DefaultValue = "268435456")]
+    public long MaxBufferedTraceLogSize { get; set; }
+
+    [ConfigItem(
         Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
     public int? DebugModuleConcurrentInstances { get; set; }
 
