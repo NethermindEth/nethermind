@@ -1703,7 +1703,9 @@ public class Eth72ProtocolHandler(
             NotifiedTransactions.Set(tx.Hash.ValueHash256);
         }
 
+        // Recording validates the transaction for sampling, which recovers its sender unless it is rejected first.
         AcceptTxResult? accepted = _sparseBlobPoolPeerRegistry.RecordTransaction(this, tx);
+        OnTransactionSubmitted(tx);
         if (accepted.HasValue)
         {
             ReportReceivedTransaction(accepted.Value);

@@ -25,6 +25,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -199,6 +200,53 @@ public class Eth73ProtocolHandlerTests
         {
             _transactionPool.Received(submitted ? 1 : 0).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
             _session.Received(disconnected ? 1 : 0).InitiateDisconnect(
+                DisconnectReason.BreachOfProtocol,
+                "pooled tx does not match its announced source or nonce");
+        }
+    }
+
+    [TestCase(false, TestName = "Sparse blob tx with matching source: not disconnected")]
+    [TestCase(true, TestName = "Sparse blob tx with wrong source: disconnected after sampling validation")]
+    public void should_check_sparse_blob_tx_against_announced_source(bool wrongSource)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(5)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        tx.NetworkWrapper = wrapper with { Blobs = [], CellMask = default, Cells = null };
+        tx.ClearLengthCache();
+        tx.SenderAddress = null;
+
+        // The substitute pool stands in for MalformedTxFilter, which sampling validation runs.
+        _transactionPool.ValidateTxForBlobSampling(Arg.Any<Transaction>()).Returns(c =>
+        {
+            c.Arg<Transaction>().SenderAddress ??= TestItem.AddressA;
+            return AcceptTxResult.Accepted;
+        });
+
+        using NewPooledTransactionHashesMessage73 announcement = new(
+            [(byte)tx.Type],
+            [tx.GetLength()],
+            [tx.Hash!.ValueHash256],
+            BlobCellMask.Full.ToBytes(),
+            [wrongSource ? TestItem.AddressB : TestItem.AddressA],
+            [5UL]);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        long requestId = _deliveredMessages.OfType<GetPooledTransactionsMessage>()
+            .Single(m => m.EthMessage.Hashes.Contains(tx.Hash!.ValueHash256))
+            .RequestId;
+        using PooledTransactionsMessage66 response = new(requestId, new PooledTransactionsMessage65(new[] { tx }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _transactionPool.Received(1).ValidateTxForBlobSampling(Arg.Any<Transaction>());
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _session.Received(wrongSource ? 1 : 0).InitiateDisconnect(
                 DisconnectReason.BreachOfProtocol,
                 "pooled tx does not match its announced source or nonce");
         }

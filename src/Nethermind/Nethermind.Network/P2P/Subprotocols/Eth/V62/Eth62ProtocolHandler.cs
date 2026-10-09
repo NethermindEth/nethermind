@@ -410,7 +410,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
 
-        /// <summary>Called once the pool has processed an inbound transaction, whether or not it was accepted.</summary>
+        /// <summary>
+        /// Called once the pool has processed an inbound transaction, whether or not it was accepted. For an eth/72 sparse
+        /// blob transaction, this is once the sparse blob registry has recorded it.
+        /// </summary>
         /// <remarks>Runs before a rejected transaction is recycled, so <paramref name="tx"/> is still readable but must not be retained.</remarks>
         protected virtual void OnTransactionSubmitted(Transaction tx)
         {

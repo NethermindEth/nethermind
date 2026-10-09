@@ -28,8 +28,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 /// <summary>eth/73 (EIP-8077): eth/72 with each announced transaction's source and nonce.</summary>
 /// <remarks>
-/// A requested transaction contradicting its announcement is a protocol breach. Sparse blob transactions are submitted
-/// by the sparse blob registry, so their recovered sender is not checked.
+/// A requested transaction contradicting its announcement is a protocol breach. A sender not yet recovered on arrival is
+/// checked once the pool, or for a sparse blob transaction the sampling validation, recovers it.
 /// </remarks>
 public class Eth73ProtocolHandler(
     ISession session,
