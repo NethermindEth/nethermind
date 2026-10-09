@@ -135,6 +135,8 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private ulong _lastBlockNumber = ulong.MaxValue;
         private Hash256? _lastBlockHash;
+        // Blocks the head moved back past, waiting to have their transactions re-added. Head loop only.
+        private readonly List<Block> _rewoundBlocks = [];
 
         /// <summary>
         /// The release specification every transaction currently in the pool has been validated against, or
@@ -304,6 +306,7 @@ namespace Nethermind.TxPool
             InitializeValidatedSpec();
 
             _headInfo.HeadChanged += OnHeadChange;
+            _headInfo.BlockRemovedFromMain += OnBlockRemovedFromMain;
 
             _preHashFilters =
             [
@@ -835,6 +838,14 @@ namespace Nethermind.TxPool
             }
         }
 
+        private void OnBlockRemovedFromMain(object? sender, BlockEventArgs e)
+        {
+            if (_headInfo.IsSyncing) return;
+
+            // Queued with the head changes so it is handled in order with them.
+            _headBlocksChannel.Writer.TryWrite(new HeadChange(null, 0, e.Block));
+        }
+
         private long ObserveHeadSpec(IReleaseSpec spec)
         {
             HeadSpecObservation? observation = Volatile.Read(ref _headSpecObservation);
@@ -876,12 +887,19 @@ namespace Nethermind.TxPool
             {
                 while (_headBlocksChannel.Reader.TryRead(out HeadChange headChange))
                 {
-                    BlockReplacementEventArgs args = headChange.Args;
+                    if (headChange.RemovedBlock is not null)
+                    {
+                        _rewoundBlocks.Add(headChange.RemovedBlock);
+                        continue;
+                    }
+
+                    BlockReplacementEventArgs args = headChange.Args!;
                     try
                     {
                         bool bucketsUpdated;
                         bool revalidationRequired;
-                        bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
+                        bool reorganised = args.PreviousBlock is not null || _rewoundBlocks.Count > 0;
+                        bool extendsPreviousHead = !reorganised && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
                         (BlockHeader Head, List<Hash256> Hashes)? unreferenceable = CollectUnreferenceableRecentRootTransactions(extendsPreviousHead);
                         _newHeadLock.EnterWriteLock();
                         try
@@ -889,7 +907,7 @@ namespace Nethermind.TxPool
                             ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
                             // A reorg or a non-sequential block reports its own changes but not what the
                             // abandoned branch reverted, so the list does not describe everything that moved.
-                            bool changeListIsComplete = args.PreviousBlock is null && CanUseCache(args.Block, accountChanges);
+                            bool changeListIsComplete = !reorganised && CanUseCache(args.Block, accountChanges);
                             if (!changeListIsComplete)
                             {
                                 // Non-sequential block or reorganization detected, reset cache
@@ -910,12 +928,13 @@ namespace Nethermind.TxPool
                             _lastBlockHash = args.Block.Hash;
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
+                            ReAddRewoundTransactions(args.Block);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
-                            if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
+                            if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || reorganised)
                             {
                                 _hashCache.ClearCurrentBlockCache();
                             }
@@ -1061,6 +1080,25 @@ namespace Nethermind.TxPool
                     _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
                 }
             }
+        }
+
+        /// <summary>Re-adds the transactions of the blocks the head moved back past, which no head change reports as its
+        /// <see cref="BlockReplacementEventArgs.PreviousBlock"/>.</summary>
+        /// <remarks>They are reported tip first, ahead of the head changes of the same update. Waiting for the head just
+        /// below the lowest of them, the last of that update, re-adds every sender's nonces in ascending order.</remarks>
+        private void ReAddRewoundTransactions(Block head)
+        {
+            if (_rewoundBlocks.Count == 0) return;
+
+            _rewoundBlocks.Sort(static (a, b) => a.Number.CompareTo(b.Number));
+            if (head.Number + 1 < _rewoundBlocks[0].Number) return;
+
+            foreach (Block block in _rewoundBlocks)
+            {
+                ReAddReorganisedTransactions(block);
+            }
+
+            _rewoundBlocks.Clear();
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2954,6 +2992,7 @@ namespace Nethermind.TxPool
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
             _headInfo.HeadChanged -= OnHeadChange;
+            _headInfo.BlockRemovedFromMain -= OnBlockRemovedFromMain;
             _headBlocksChannel.Writer.Complete();
             _revalidationChannel.Writer.Complete();
             _transactions.Inserted -= OnInsertedTx;
@@ -2988,7 +3027,8 @@ namespace Nethermind.TxPool
             _accountCache.RemoveAccounts(arrayPoolList);
         }
 
-        private readonly record struct HeadChange(BlockReplacementEventArgs Args, long Generation);
+        /// <summary>A new head (<paramref name="Args"/>) or a block the head moved back past (<paramref name="RemovedBlock"/>).</summary>
+        private readonly record struct HeadChange(BlockReplacementEventArgs? Args, long Generation, Block? RemovedBlock = null);
 
         private sealed record HeadSpecObservation(IReleaseSpec Spec, long Generation);
 

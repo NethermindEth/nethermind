@@ -49,8 +49,9 @@ namespace Nethermind.Blockchain
             // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
-            blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
+            blockTree.BlockAddedToMain += OnHeadChanged;
+            blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
@@ -99,12 +100,27 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
+        public event EventHandler<BlockEventArgs>? BlockRemovedFromMain;
+
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             HeadNumber = e.Block.Number;
             HeadTimestamp = e.Block.Timestamp;
             ReadHead(e.Block.Header);
             HeadChanged?.Invoke(sender, e);
+        }
+
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e)
+        {
+            EventHandler<BlockEventArgs>? handlers = BlockRemovedFromMain;
+            if (handlers is null) return;
+
+            // The block was on main until this update, so it is near the head and normally still cached.
+            Block? block = _blockTree.FindBlock(e.Header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, e.Header.Number);
+            if (block is not null)
+            {
+                handlers(sender, new BlockEventArgs(block));
+            }
         }
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>

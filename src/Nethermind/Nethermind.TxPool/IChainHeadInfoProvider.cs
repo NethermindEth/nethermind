@@ -64,5 +64,10 @@ namespace Nethermind.TxPool
         bool IsBuildingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
+
+        /// <summary>Raised for each block taken off the canonical chain when the head moves back below it.</summary>
+        /// <remarks>Raised from the tip down, before the <see cref="HeadChanged"/> events of the same update. Such a block
+        /// is not reported again as the <see cref="BlockReplacementEventArgs.PreviousBlock"/> of a later head.</remarks>
+        event EventHandler<BlockEventArgs> BlockRemovedFromMain;
     }
 }

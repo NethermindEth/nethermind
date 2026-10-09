@@ -187,5 +187,6 @@ public class BackgroundTaskSchedulerBenchmarks
         public bool IsProcessingBlock => false;
         public bool IsBuildingBlock => false;
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged { add { } remove { } }
+        public event EventHandler<BlockEventArgs>? BlockRemovedFromMain { add { } remove { } }
     }
 }

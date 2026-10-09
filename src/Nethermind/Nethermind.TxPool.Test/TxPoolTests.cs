@@ -7459,6 +7459,68 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <summary>A forkchoice update to the parent of the head takes the head off the main chain without naming it as
+        /// the replaced block of any later head, so its transactions come back only through the removal itself.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_block_the_head_moved_back_past()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
+            Transaction b0 = GetTransaction(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            foreach (Transaction tx in new[] { a0, a1, b0 })
+            {
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block parent = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block head = Build.A.Block.WithParent(parent).WithTransactions(a0, a1, b0).TestObject;
+            await RaiseCanonicalHeadAndWait(head);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: the head's txs left the pool");
+
+            // Head moves back to the parent, then a sibling of the old head that re-includes only b0 is built on it.
+            _blockTree.RaiseBlockRemovedFromMain(head);
+            await RaiseCanonicalHeadAndWait(parent);
+            Block sibling = Build.A.Block.WithParent(parent).WithTransactions(b0).TestObject;
+            await RaiseCanonicalHeadAndWait(sibling);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(a0.Hash!, out _), Is.True);
+                Assert.That(_txPool.TryGetPendingTransaction(a1.Hash!, out _), Is.True);
+                Assert.That(_txPool.TryGetPendingTransaction(b0.Hash!, out _), Is.False, "re-included by the sibling");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+            }
+        }
+
+        /// <summary>Removed blocks are reported tip first; their transactions must still return in nonce order.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_blocks_the_head_moved_back_past_in_nonce_order()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(a1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block first = Build.A.Block.WithParent(ancestor).WithTransactions(a0).TestObject;
+            Block second = Build.A.Block.WithParent(first).WithTransactions(a1).TestObject;
+            await RaiseCanonicalHeadAndWait(first);
+            await RaiseCanonicalHeadAndWait(second);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: both blocks' txs left the pool");
+
+            List<Hash256> readded = [];
+            _txPool.NewPending += (_, e) => readded.Add(e.Transaction.Hash!);
+            _blockTree.RaiseBlockRemovedFromMain(second);
+            _blockTree.RaiseBlockRemovedFromMain(first);
+            await RaiseCanonicalHeadAndWait(ancestor);
+
+            Assert.That(readded, Is.EqualTo(new[] { a0.Hash, a1.Hash }));
+        }
+
         [Test]
         [Category("Flaky"), Retry(3)]
         public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()

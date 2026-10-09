@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -25,4 +27,16 @@ internal class TestBlockTree : BlockTreeTestDouble
     public override ulong BestKnownNumber => BestKnownNumberOverride ?? base.BestKnownNumber;
 
     public void HealCanonicalChain(Hash256 startHash, ulong maxBlockDepth) { }
+
+    private readonly Dictionary<Hash256AsKey, Block> _removedBlocks = [];
+
+    public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+        _removedBlocks.TryGetValue(blockHash, out Block? block) ? block : base.FindBlock(blockHash, options, blockNumber);
+
+    /// <summary>Takes <paramref name="block"/> off the main chain, as a head moving back below it does.</summary>
+    public void RaiseBlockRemovedFromMain(Block block)
+    {
+        _removedBlocks[block.Hash!] = block;
+        RaiseBlockRemovedFromMain(new BlockHeaderEventArgs(block.Header));
+    }
 }
