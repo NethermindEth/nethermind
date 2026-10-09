@@ -138,8 +138,8 @@ public class ProofInclusionListEnforcementTests
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
             List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric);
-            int proofPadding = scenario == "generic-compressed-union" ? Eip8288Constants.MaxMixedGuestProofBytes : 0;
-            block.Header.RecursiveStark = new(LeanProofTestEnvelope.Create(existingDependencies, proofPadding),
+            block.Header.RecursiveStark = new(scenario == "generic-compressed-union"
+                    ? LeanProofTestEnvelope.CreateMaximal(existingDependencies) : LeanProofTestEnvelope.Create(existingDependencies, 0),
                 new Hash256(Eip8288Dependencies.ComputeDepsHash(existingDependencies)));
         }
         block.Header.GasUsedPerDimension = (0, 0);
@@ -185,10 +185,10 @@ public class ProofInclusionListEnforcementTests
                 [new Withdrawal { Address = sender, AmountInGwei = 1_000_000_000 }]));
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.ForTransaction(transaction));
         List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction);
-        int inclusionPadding = scenario is "bounded-proof" or "generic-compressed-union"
-            ? Eip8288Constants.MaxMixedGuestProofBytes : 0;
+        byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
+            ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
         block.InclusionListRecursiveStark = scenario == "missing-proof" ? null
-            : new RecursiveStark(generic ? LeanProofTestEnvelope.Create(inclusionDependencies, inclusionPadding) : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
+            : new RecursiveStark(generic ? inclusionProof : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
         block.InclusionListProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;

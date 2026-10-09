@@ -24,7 +24,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(5u));
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(6u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()
@@ -47,20 +47,20 @@ public class NativeBlockValidationTests
     }
 
     [Test]
-    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool nativeEnvelope)
+    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool oldEnvelope)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        // The adapter's internal 12-byte envelope for the empty set is not the EIP-8288 empty stark_proof.
-        byte[] proof = nativeEnvelope
-            ? NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput())
-            : [];
+        // The native backend proves the empty set as the EIP-8288 empty stark_proof; the former 12-byte envelope is rejected.
+        byte[] proof = oldEnvelope
+            ? [(byte)'N', (byte)'L', (byte)'R', (byte)'3', 0, 0, 0, 0, 0, 0, 0, 0]
+            : NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
         block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
 
         bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(result, Is.EqualTo(!nativeEnvelope), error);
+        Assert.That(result, Is.EqualTo(!oldEnvelope), error);
     }
 
     private static (Block Block, BlockHeader Parent) BlockWithNativeProof(bool tamper)

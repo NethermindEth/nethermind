@@ -44,8 +44,7 @@ public class LeanProofBudgetTests
         FrameDependency second = new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute("second"), default);
         static AggregationInput Input(FrameDependency dependency) => new()
         {
-            RecursiveProofs = [new([dependency], LeanProofTestEnvelope.Create([dependency],
-                Eip8288Constants.MaxMixedGuestProofBytes))]
+            RecursiveProofs = [new([dependency], LeanProofTestEnvelope.CreateMaximal([dependency]))]
         };
         AggregationInput firstInput = Input(first), secondInput = Input(second);
         Assert.That(RecursiveStarkAggregator.InputSize(new()

@@ -9,7 +9,7 @@ fn main() {
     let (sk, pk) = sphincs::key_gen_from_seed([42; 32]);
     let message = [7; 32];
     let sig = sphincs::sign(&sk, &message);
-    save("sphincs-key.bin", &keccak(&pk.flatten()));
+    save("sphincs-key.bin", &pk.flatten());
     save("sphincs-message.bin", &message);
     save(
         "sphincs-signature.bin",

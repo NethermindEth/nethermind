@@ -258,7 +258,8 @@ public class RecursiveStarkAggregatorTests
             Discards = dependencies[1..]
         }, verifier, hash);
         Assert.That(proof, Is.EqualTo(hash.ToByteArray()));
-        Assert.That(verifier.ProofCalls, Is.GreaterThan(1));
+        // Children whose every claim is discarded are dropped rather than reproven to an empty set.
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -364,7 +365,7 @@ public class RecursiveStarkAggregatorTests
             int count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(proof[4..]);
             if (count < 0 || count > Eip8288Constants.MaxProofDependencies
                 || count > (proof.Length - 8) / Eip8288Constants.DependencyTripleLength) return false;
-            return ValueKeccak.Compute(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength)) == hash;
+            return Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Parse(proof.Slice(8, count * Eip8288Constants.DependencyTripleLength))) == hash;
         }
         public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input)
         {

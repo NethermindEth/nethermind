@@ -46,14 +46,50 @@ public class FrameDependencyTests
         Assert.That(parsed, Is.EqualTo(deps));
     }
 
-    [Test]
-    public void ComputeDepsHash_matches_keccak_of_concatenation()
+    private static FrameDependency VectorDependency(byte scheme, byte data, int keyStart, byte? keyFill = null)
     {
-        List<FrameDependency> deps = [new(Eip8288Constants.LeanSphincsScheme, Keccak.Compute("a"), Keccak.Compute("b"))];
+        byte[] key = new byte[32];
+        for (int i = 0; i < key.Length; i++) key[i] = keyFill ?? (byte)(keyStart + i);
+        return new(scheme, new ValueHash256(Enumerable.Repeat(data, 32).ToArray()), new ValueHash256(key));
+    }
 
-        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(deps);
+    private static readonly FrameDependency VectorA = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 0);
+    private static readonly FrameDependency VectorB = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x07, 1);
+    private static readonly FrameDependency VectorC = VectorDependency(Eip8288Constants.LeanSphincsScheme, 0x01, 0, 0xFF);
+    private static readonly FrameDependency VectorG1 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0);
+    private static readonly FrameDependency VectorG2 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0xA5, 0, 0x5A);
 
-        Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(Eip8288Dependencies.Serialize(deps))));
+    // Expected digests computed in Python from the EIP-8288 get_deps_hash pseudocode with hashlib.blake2s;
+    // the pinned recursive guest and tools/lean-ffi assert the same vectors.
+    private static IEnumerable<TestCaseData> DepsHashVectors()
+    {
+        yield return new TestCaseData(Array.Empty<FrameDependency>(), "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9").SetName("empty");
+        yield return new TestCaseData(new[] { VectorA }, "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6").SetName("one");
+        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13").SetName("three_with_duplicate");
+        yield return new TestCaseData(new[] { VectorG1 }, "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a").SetName("stark_only");
+        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f").SetName("mixed");
+    }
+
+    [TestCaseSource(nameof(DepsHashVectors))]
+    public void ComputeDepsHash_matches_eip_pseudocode_vectors(FrameDependency[] dependencies, string expected) =>
+        Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies).ToString(withZeroX: false), Is.EqualTo(expected));
+
+    [Test]
+    public void LeanStark_dependency_does_not_share_a_digest_with_its_sphincs_bytes() =>
+        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG1]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorA])));
+
+    [TestCase(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")]
+    [TestCase(null, "6d244e1a06ce4ef578dd0f63aff0936706735119ca9c8d22d86c801414ab9741")]
+    public void Blake2s_matches_reference_digests(byte[]? input, string expected)
+    {
+        input ??= Enumerable.Range(0, 200).Select(static i => (byte)i).ToArray();
+        Blake2s pieces = Blake2s.Create();
+        for (int offset = 0; offset < input.Length; offset += 7) pieces.Update(input.AsSpan(offset, Math.Min(7, input.Length - offset)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Blake2s.Compute(input).ToString(withZeroX: false), Is.EqualTo(expected));
+            Assert.That(pieces.Finish().ToString(withZeroX: false), Is.EqualTo(expected));
+        }
     }
 
     [Test]
@@ -139,7 +175,8 @@ public class FrameDependencyTests
         FrameDependency[] expected = dependencies.OrderBy(dep => Convert.ToHexString(Eip8288Dependencies.Serialize([dep])), StringComparer.Ordinal).ToArray();
         List<FrameDependency> reversed = [.. expected.Reverse(), .. expected];
         Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
-        Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(Eip8288Dependencies.Serialize(expected))));
+        byte[] entries = [.. expected.SelectMany(static dep => Eip8288Dependencies.Serialize([dep])[32..])];
+        Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(Blake2s.Compute(entries)));
     }
 
     [Test]
