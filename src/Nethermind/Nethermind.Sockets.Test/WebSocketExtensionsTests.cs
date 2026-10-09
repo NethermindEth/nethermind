@@ -207,7 +207,7 @@ public class WebSocketExtensionsTests
         context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
         if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
 
-        ISocketsClient client = await module.CreateClient(mock, "TestClient", context);
+        using ISocketsClient client = await module.CreateClient(mock, "TestClient", context);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await client.ReceiveLoopAsync(cts.Token);
 
