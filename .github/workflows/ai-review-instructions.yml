@@ -35,11 +35,16 @@ jobs:
             }
             const files = await github.paginate(github.rest.pulls.listFiles,
               {...context.repo, pull_number, per_page: 100});
-            if (files.length !== pr.changed_files) {
+            const allScopes = files.length === 3000 && pr.changed_files > 3000;
+            if (files.length !== pr.changed_files && !allScopes) {
               throw new Error('Could not load every changed path for review rules.');
             }
+            if (allScopes) {
+              core.warning('GitHub truncated the changed paths at 3,000 files; loading every scoped trusted rule.');
+            }
             core.setOutput('base_sha', pr.base.sha);
-            core.setOutput('paths', JSON.stringify(files.flatMap(file =>
+            core.setOutput('all_scopes', String(allScopes));
+            core.setOutput('paths', JSON.stringify(allScopes ? [] : files.flatMap(file =>
               file.previous_filename ? [file.filename, file.previous_filename] : [file.filename])));
 
       - name: Check out trusted repository rules
@@ -53,6 +58,7 @@ jobs:
         id: instructions
         env:
           CHANGED_PATHS: ${{ steps.target.outputs.paths }}
+          ALL_SCOPES: ${{ steps.target.outputs.all_scopes }}
         run: |
           python3 - <<'PY'
           import json
@@ -87,23 +93,24 @@ jobs:
           speculative concerns, duplicates, or pre-existing issues.'''
 
           paths = [PurePosixPath(value) for value in json.loads(os.environ['CHANGED_PATHS'])]
+          all_scopes = os.environ['ALL_SCOPES'] == 'true'
           csharp = [path for path in paths if path.suffix == '.cs']
           rules = {}
-          if csharp:
+          if all_scopes or csharp:
               rules.update(dict.fromkeys(['coding-style', 'robustness', 'performance']))
-          if any('Modules' in path.parts or 'Container' in path.parts or
+          if all_scopes or any('Modules' in path.parts or 'Container' in path.parts or
                  ('Nethermind.Init' in path.parts and 'Steps' in path.parts) or
                  path.name.endswith(('Module.cs', 'ContainerBuilderExtensions.cs')) or
                  any(part.endswith('Env') for part in path.parts[:-1]) for path in csharp):
               rules['di-patterns'] = ['Rules', 'Singleton vs Scoped',
                                       'Replacing or modifying a component behavior', 'Anti-pattern']
-          if any(any('Test' in part or 'Benchmark' in part for part in path.parts[:-1]) for path in csharp):
+          if all_scopes or any(any('Test' in part or 'Benchmark' in part for part in path.parts[:-1]) for path in csharp):
               rules.setdefault('di-patterns', []).append('Test setup pattern (preferred: direct DI)')
               rules['test-infrastructure'] = ['DI anti-pattern — never manually new up infrastructure',
                                                'Running tests (.NET 10 / Microsoft.Testing.Platform)']
-          if any(path.suffix in {'.csproj', '.props', '.targets', '.sln', '.slnx'} for path in paths):
+          if all_scopes or any(path.suffix in {'.csproj', '.props', '.targets', '.sln', '.slnx'} for path in paths):
               rules['package-management'] = None
-          if any(path.parts[0] == '.github' and path.suffix in {'.yml', '.yaml'} for path in paths if path.parts):
+          if all_scopes or any(path.parts[0] == '.github' and path.suffix in {'.yml', '.yaml'} for path in paths if path.parts):
               rules['github-workflows'] = None
           for name, headings in rules.items():
               source = Path('.agents/rules') / f'{name}.md'
