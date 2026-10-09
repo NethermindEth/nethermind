@@ -1,0 +1,155 @@
+name: Windows arm64 smoke test
+
+on:
+  push:
+    branches: [feature/win-arm64]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build win-arm64 package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Publish
+        # Same as scripts/build/build.sh
+        working-directory: src/Nethermind/Nethermind.Runner
+        run: |
+          dotnet restore --locked-mode
+          dotnet publish -c release -r win-arm64 -o ${{ runner.temp }}/nethermind --no-restore --sc \
+            -p:DebugType=embedded \
+            -p:IncludeAllContentForSelfExtract=true \
+            -p:PublishSingleFile=true \
+            -p:SourceRevisionId=$GITHUB_SHA
+
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-win-arm64
+          path: ${{ runner.temp }}/nethermind
+          retention-days: 1
+
+  run:
+    name: Run on windows-11-arm
+    runs-on: windows-11-arm
+    needs: build
+    timeout-minutes: 30
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind-win-arm64
+          path: ${{ runner.temp }}/nethermind
+
+      - name: Run Nethermind
+        shell: pwsh
+        env:
+          NETHERMIND_DIR: ${{ runner.temp }}/nethermind
+          EXPECTED_MACHINE: AA64
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $extractDir = Join-Path $env:RUNNER_TEMP 'extract'
+          $log = Join-Path $env:RUNNER_TEMP 'nethermind.log'
+          $env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = $extractDir
+
+          $proc = Start-Process (Join-Path $env:NETHERMIND_DIR 'nethermind.exe') -PassThru -NoNewWindow `
+            -RedirectStandardOutput $log -RedirectStandardError "$log.err" `
+            -ArgumentList '-c', 'sepolia', '-dd', (Join-Path $env:RUNNER_TEMP 'data'), '--JsonRpc.EnabledModules', '[Eth,Net,Web3,Debug]'
+
+          function Invoke-Rpc([string]$method, [object[]]$params = @()) {
+            $body = ConvertTo-Json -Depth 10 -Compress @{ jsonrpc = '2.0'; id = 1; method = $method; params = $params }
+            $response = Invoke-RestMethod -Uri http://127.0.0.1:8545 -Method Post -ContentType 'application/json' -Body $body
+            if ($response.error) { throw "$method failed: $(ConvertTo-Json -Compress $response.error)" }
+            return $response.result
+          }
+
+          function Assert-Running {
+            if ($proc.HasExited) { throw "Nethermind exited with code $($proc.ExitCode)" }
+          }
+
+          try {
+            $deadline = (Get-Date).AddMinutes(5)
+            while ($true) {
+              Assert-Running
+              try { $clientVersion = Invoke-Rpc web3_clientVersion; break } catch { }
+              if ((Get-Date) -gt $deadline) { throw 'JSON-RPC did not come up in time' }
+              Start-Sleep -Seconds 5
+            }
+            Write-Host "Client version: $clientVersion"
+
+            $chainId = Invoke-Rpc eth_chainId
+            if ($chainId -ne '0xaa36a7') { throw "Unexpected chain id: $chainId" }
+
+            # secp256k1: ecrecover precompile
+            $recovered = Invoke-Rpc eth_call @(@{
+              to = '0x0000000000000000000000000000000000000001'
+              data = '0x18c547e4f7b0f325ad1e56f57e26c745b09a3e503d86e00e5255ff7f715d3d1c000000000000000000000000000000000000000000000000000000000000001c73b1693892219d736caba55bdb67216e485557ea6b6af75f37096c9aa6a5a75feeb940b1d03b21e36b0e47e79769f095fe2ab855bd91e3a38756b7d75a9c4549'
+            }, 'latest')
+            if ($recovered -ne '0x000000000000000000000000a94f5374fce5edbc8e2a8697c15331677e6ebf0b') { throw "Unexpected ecrecover result: $recovered" }
+            Write-Host 'ecrecover: OK'
+
+            # ClearScript V8: JavaScript tracer over PUSH1 1 PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
+            $ops = Invoke-Rpc debug_traceCall @(
+              @{ data = '0x600160005260206000f3' },
+              'latest',
+              @{ tracer = '{ ops: [], fault: function() {}, step: function(log) { this.ops.push(log.op.toString()); }, result: function() { return this.ops; } }' })
+            if (($ops -join ',') -ne 'PUSH1,PUSH1,MSTORE,PUSH1,PUSH1,RETURN') { throw "Unexpected JavaScript tracer result: $($ops -join ',')" }
+            Write-Host 'JavaScript tracer: OK'
+
+            $deadline = (Get-Date).AddMinutes(5)
+            while ($true) {
+              Assert-Running
+              $peers = [Convert]::ToInt32((Invoke-Rpc net_peerCount), 16)
+              if ($peers -gt 0) { break }
+              if ((Get-Date) -gt $deadline) { throw 'No peers connected in time' }
+              Start-Sleep -Seconds 10
+            }
+            Write-Host "Peers: $peers"
+
+            Start-Sleep -Seconds 60
+            Assert-Running
+          }
+          finally {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+            Get-Content $log, "$log.err" -ErrorAction SilentlyContinue | Select-Object -Last 100
+          }
+
+          $failures = Select-String -Path $log, "$log.err" -Pattern 'DllNotFoundException|BadImageFormatException|EntryPointNotFoundException|TypeInitializationException|Unhandled exception'
+          if ($failures) {
+            $failures | ForEach-Object { Write-Host "::error::$($_.Line)" }
+            throw 'Native interop failures found in the log'
+          }
+          Select-String -Path $log -Pattern '\|ERROR\||\bERROR\b' | ForEach-Object { Write-Host "::warning::$($_.Line)" }
+
+          # Single-file bundle extracts native libraries on startup; all of them must be arm64
+          $natives = Get-ChildItem $extractDir -Recurse -Filter *.dll -ErrorAction SilentlyContinue | Where-Object {
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            $pe = [BitConverter]::ToInt32($bytes, 0x3C)
+            $dataDirectories = $pe + 24 + ([BitConverter]::ToUInt16($bytes, $pe + 24) -eq 0x20b ? 112 : 96)
+            [BitConverter]::ToUInt32($bytes, $dataDirectories + 14 * 8) -eq 0
+          } | ForEach-Object {
+            $bytes = [IO.File]::ReadAllBytes($_.FullName)
+            [pscustomobject]@{ Name = $_.Name; Machine = '{0:X4}' -f [BitConverter]::ToUInt16($bytes, [BitConverter]::ToInt32($bytes, 0x3C) + 4) }
+          }
+          $natives | Format-Table -AutoSize | Out-String | Write-Host
+          if (-not $natives) { throw 'No extracted native libraries found' }
+          $foreign = $natives | Where-Object Machine -ne $env:EXPECTED_MACHINE
+          if ($foreign) { throw "Non-$env:EXPECTED_MACHINE native libraries: $($foreign.Name -join ', ')" }
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-win-arm64-logs
+          path: ${{ runner.temp }}/nethermind.log*
+          retention-days: 3
