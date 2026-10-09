@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -229,10 +229,10 @@ internal static class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        ulong limb3 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 8)));
-        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 16)));
-        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref source, 24)));
+        ulong limb3 = ZkEvmBitOperations.ReadUInt64BigEndian(ref source);
+        ulong limb2 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 8));
+        ulong limb1 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 16));
+        ulong limb0 = ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref source, 24));
         slot = limb0;
         Unsafe.Add(ref slot, 1) = limb1;
         Unsafe.Add(ref slot, 2) = limb2;

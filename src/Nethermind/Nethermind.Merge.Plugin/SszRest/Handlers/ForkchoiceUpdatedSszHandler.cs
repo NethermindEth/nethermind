@@ -51,7 +51,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
             return null;
 
         IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
-        string? payloadForkSegment = SszRestPaths.GetEngineApiForkName(payloadSpec);
+        string payloadForkSegment = SszRestPaths.GetEngineApiForkName(payloadSpec);
         return string.Equals(payloadForkSegment, requestedFork, StringComparison.OrdinalIgnoreCase)
             ? null
             : $"Eth-Execution-Version fork '{requestedFork}' does not match the fork for timestamp {timestamp.Value}";

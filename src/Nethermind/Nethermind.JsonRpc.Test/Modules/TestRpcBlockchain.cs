@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReceiptConfig ReceiptConfig { get; private set; } = new ReceiptConfig();
 
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName()));
-        public IWallet TestWallet { get; } =
+        public IWallet TestWallet { get; private set; } =
             new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 LimboLogs.Instance);
 
@@ -115,6 +115,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             public Builder<T> WithTxSender(ITxSender txSender)
             {
                 _blockchain.TxSender = txSender;
+                return this;
+            }
+
+            public Builder<T> WithWallet(IWallet wallet)
+            {
+                _blockchain.TestWallet = wallet;
                 return this;
             }
 
@@ -210,7 +216,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
-            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory());
+            @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+            @this.Container.ResolveOptional<HashesOnlyBlockReader>());
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
