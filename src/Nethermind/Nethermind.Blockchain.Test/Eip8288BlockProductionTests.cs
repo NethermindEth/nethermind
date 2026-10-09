@@ -361,6 +361,85 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Canceled_production_releases_the_producer_while_its_native_proof_finishes_for_reuse()
+    {
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        CountingVerifier verifier = new() { OnProof = () => { entered.Set(); release.Wait(); } };
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("detached"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
+        try
+        {
+            using CancellationTokenSource improvement = new();
+            Task<Block?> canceled = Task.Run(() => chain.BlockProducer.BuildBlock(cancellationToken: improvement.Token));
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            improvement.Cancel();
+            Assert.That(async () => await canceled.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>(),
+                "a canceled improvement returns while its native call is still active");
+            Block? next = await Task.Run(() => chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock)).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(next, Is.Not.Null, "the next payload is not held behind the noninterruptible call");
+        }
+        finally
+        {
+            release.Set();
+        }
+        verifier.OnProof = null;
+        Block? retried = await chain.BlockProducer.BuildBlock();
+        Assert.That(retried, Is.Not.Null);
+        Assert.That(retried!.Transactions, Has.Length.EqualTo(1));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1), "the retry reuses the proof the canceled improvement started");
+    }
+
+    [Test]
+    public async Task Producer_waiting_behind_background_aggregation_is_served_after_one_native_call()
+    {
+        FrameDependency[] dependencies = new FrameDependency[8];
+        ReadOnlyMemory<byte>[] witnesses = new ReadOnlyMemory<byte>[8];
+        for (int i = 0; i < dependencies.Length; i++)
+        {
+            dependencies[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"background:{i}"), default);
+            witnesses[i] = new byte[] { 1 };
+        }
+        ValueHash256 backgroundHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        FrameDependency produced = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("producer"), default);
+        ValueHash256 producedHash = Eip8288Dependencies.ComputeDepsHash([produced]);
+        using SemaphoreSlim started = new(0);
+        using SemaphoreSlim permits = new(0);
+        CountingVerifier verifier = new() { OnProof = () => { started.Release(); permits.Wait(); } };
+        ProductionProofCache cache = new(verifier);
+        Task<byte[]> background = Task.Run(() =>
+        {
+            using (ProductionProofCache.Background(default))
+                return RecursiveStarkAggregator.Prove(new() { Deps = dependencies, Witnesses = witnesses }, cache, backgroundHash);
+        });
+        try
+        {
+            Assert.That(await started.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            using CancellationTokenSource improvement = new();
+            Task<byte[]> producer = Task.Run(() => ProductionProofCache.Prove(cache, producedHash, Eip8288Constants.AggregatedVk,
+                new() { Deps = [produced], Witnesses = [new byte[] { 1 }] }, improvement.Token));
+            await Task.Delay(100);
+            Assert.That(producer.IsCompleted, Is.False, "the active background call is noninterruptible");
+            permits.Release();
+            Assert.That(async () => await background.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<InvalidOperationException>(),
+                "background aggregation yields its remaining native calls to the waiting producer");
+            Assert.That(await started.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            permits.Release();
+            Assert.That(await producer.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(producedHash.ToByteArray()));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        }
+        finally
+        {
+            permits.Release(dependencies.Length);
+            await Task.WhenAny(background, Task.Delay(TimeSpan.FromSeconds(5)));
+        }
+    }
+
+    [Test]
     public void Production_step_cache_releases_old_proofs_under_byte_pressure()
     {
         CountingVerifier verifier = new() { ProofPaddingBytes = Eip8288Constants.MaxProofBytes - 32 };

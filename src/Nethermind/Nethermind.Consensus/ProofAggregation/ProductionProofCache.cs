@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -95,8 +96,31 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         aggregatedVk = keyBytes;
         ValueHash256 key = Key(in statement, aggregatedVk, input);
         if (TryGet(key, out byte[]? cached)) return cached!;
+        bool background = request?.Background == true;
+        if (background || !cancellationToken.CanBeCanceled)
+            return ProveExclusive(key, statement, keyBytes, input, background, cancellationToken);
+        Task<byte[]> proving = Task.Factory.StartNew(() => ProveExclusive(key, statement, keyBytes, input, false, cancellationToken),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        try { return proving.WaitAsync(cancellationToken).GetAwaiter().GetResult(); }
+        catch (OperationCanceledException)
+        {
+            _ = proving.ContinueWith(static task => task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
+    }
+
+    /// <summary>Runs one gated native proof and caches its verified result.</summary>
+    /// <remarks>
+    /// A canceled producer returns while its started native call finishes here, so the noninterruptible call
+    /// holds only the proving gate, not the caller's block production; the verified proof stays cached for a retry.
+    /// </remarks>
+    private byte[] ProveExclusive(ValueHash256 key, ValueHash256 statement, byte[] aggregatedVk, AggregationInput input,
+        bool background, CancellationToken cancellationToken)
+    {
         bool entered = false;
-        if (request?.Background == true)
+        if (background)
         {
             if (Volatile.Read(ref _producersWaiting) != 0 || !Monitor.TryEnter(_provingLock))
                 throw new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
@@ -114,9 +138,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (request?.Background == true && Volatile.Read(ref _producersWaiting) != 0)
+            if (background && Volatile.Read(ref _producersWaiting) != 0)
                 throw new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
-            if (TryGet(key, out cached)) return cached!;
+            if (TryGet(key, out byte[]? cached)) return cached!;
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
             byte[] proof = verifier.ProveRecursiveStark(in statement, aggregatedVk, input);
             if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
