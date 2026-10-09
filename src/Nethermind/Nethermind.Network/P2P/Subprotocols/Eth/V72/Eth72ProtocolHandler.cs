@@ -97,8 +97,10 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
     private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
-    private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
-    private readonly ClockCache<ValueHash256, DateTimeOffset> _partialCellResponseBackoff = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
+    private readonly Lazy<ClockCache<ValueHash256, BlobCellMask>> _announcedBlobTransactionMasks = new(
+        static () => new(MemoryAllowance.TxHashCacheSize, lockPartition: 1));
+    private readonly Lazy<ClockCache<ValueHash256, DateTimeOffset>> _partialCellResponseBackoff = new(
+        static () => new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1));
     private readonly Queue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly Queue<CellStateKey> _sentCellRequestOrder = new();
     private readonly Lock _cellStateLock = new();
@@ -329,13 +331,14 @@ public class Eth72ProtocolHandler(
         }
 
         ValueHash256 hash = tx.Hash.ValueHash256;
-        if (_announcedBlobTransactionMasks.TryGet(hash, out BlobCellMask announcedMask)
+        ClockCache<ValueHash256, BlobCellMask> announcedMasks = _announcedBlobTransactionMasks.Value;
+        if (announcedMasks.TryGet(hash, out BlobCellMask announcedMask)
             && (announcedMask & mask) == mask)
         {
             return false;
         }
 
-        _announcedBlobTransactionMasks.Set(hash, announcedMask | mask);
+        announcedMasks.Set(hash, announcedMask | mask);
         NotifiedTransactions.Set(hash);
         return true;
     }
@@ -843,7 +846,8 @@ public class Eth72ProtocolHandler(
 
     private bool IsCellAnnouncementBackedOff(ValueHash256 hash)
     {
-        if (!_partialCellResponseBackoff.TryGet(hash, out DateTimeOffset retryAt))
+        if (!_partialCellResponseBackoff.IsValueCreated
+            || !_partialCellResponseBackoff.Value.TryGet(hash, out DateTimeOffset retryAt))
         {
             return false;
         }
@@ -853,7 +857,7 @@ public class Eth72ProtocolHandler(
             return true;
         }
 
-        _partialCellResponseBackoff.Delete(hash);
+        _partialCellResponseBackoff.Value.Delete(hash);
         return false;
     }
 
@@ -1311,7 +1315,7 @@ public class Eth72ProtocolHandler(
     private void ParkCellRequest(ValueHash256 key, BlobCellMask parkMask, BlobCellMask restoreMask)
     {
         DateTimeOffset retryAt = _timestamper.UtcNowOffset + PartialCellResponseBackoff;
-        _partialCellResponseBackoff.Set(key, retryAt);
+        _partialCellResponseBackoff.Value.Set(key, retryAt);
         AddPendingCellRequest(key, parkMask, retryAt, restoreMask);
     }
 
