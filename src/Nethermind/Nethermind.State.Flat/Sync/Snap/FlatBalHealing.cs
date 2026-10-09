@@ -43,6 +43,8 @@ public class FlatBalHealing(
 
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
     {
+        // A new healing run starts here; hashes from an abandoned run may no longer be referenced.
+        _missingCode.Clear();
         Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorages, token);
         if (reassembledRoot is null)
         {
@@ -85,7 +87,7 @@ public class FlatBalHealing(
             _missingCode.Remove(codeHash);
         }
 
-        if (_missingCode.Count > 0 && _logger.IsInfo) _logger.Info($"BAL healing: {_missingCode.Count} adopted bytecodes still missing, retrying.");
+        if (_missingCode.Count > 0 && _logger.IsDebug) _logger.Debug($"BAL healing: {_missingCode.Count} adopted bytecodes still missing, retrying.");
         return _missingCode.Count == 0;
     }
 
