@@ -479,7 +479,7 @@ public class DebugRpcModule(
                 {
                     _ = effective.Timeout;
                 }
-                catch (FormatException exception)
+                catch (TraceDurationFormatException exception)
                 {
                     return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
                 }
@@ -507,7 +507,7 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.InvalidInput);
         }
-        catch (FormatException exception)
+        catch (TraceDurationFormatException exception)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }

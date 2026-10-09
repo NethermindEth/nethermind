@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Tracing;
 /// and for the traces and receipts the trace store and trace dumps write.
 /// </summary>
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(GethTraceOptionsConverter.WireOptions))]
 [JsonSerializable(typeof(GethLikeCustomTrace))]
 [JsonSerializable(typeof(GethLikeCustomTrace.EmptyValue))]
 [JsonSerializable(typeof(GethLikeTxTraceCollection))]
