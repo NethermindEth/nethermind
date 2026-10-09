@@ -139,7 +139,7 @@ public class Eip8141ScenarioTests
 
         Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
         Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(_stateProvider.GetCode(smartSender), Is.EqualTo(runtimeCode),
+        Assert.That(_stateProvider.GetCode(smartSender), Is.SequenceEqualTo(runtimeCode),
             "the deploy frame must install the smart-account code at the sender address");
         Assert.That(receipt.Payer, Is.EqualTo(smartSender));
         Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1_000));
@@ -868,6 +868,47 @@ public class Eip8141ScenarioTests
         Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
             "an inner-call reversal that is itself reverted must not reduce the creating frame's state gas");
         AssertStorage(slotOwner, 0, 1, "the inner-call reversal is rolled back");
+    }
+
+    // The reverting inner call runs in the depth-1 call frame the committed creating call just used, so its journal
+    // checkpoint must be its own entry position: restoring to the previous user's would also drop the committed
+    // ownership record, and the later reversal would then refund nobody.
+    [Test]
+    public void CrossFrameReversal_AfterARevertInAReusedCallFrame_StillRefundsTheCommittedCreator()
+    {
+        Address slotOwner = TestItem.AddressD;
+        Address creator = TestItem.AddressE;
+        Address innerReverter = TestItem.AddressF;
+        Address driver = new("0x00000000000000000000000000000000008141d1");
+        DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
+        DeployContract(slotOwner, ToggleSlotZeroCode());
+        DeployContract(creator, ToggleSlotZeroCode());
+        DeployContract(innerReverter, Prepare.EvmCode
+            .Call(slotOwner, 200_000)
+            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(driver, Prepare.EvmCode
+            .Call(creator, 200_000)
+            .Call(innerReverter, 300_000).Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(Sender, nonce: 0,
+            SelfVerifyFrame(),
+            new TxFrame(FrameMode.Sender, 0, slotOwner, 200_000, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, driver, 800_000, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, creator, 200_000, 0, UInt256.Zero, default));
+
+        TxReceipt receipt = ProcessBlock(tx)[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FrameStatuses(receipt), Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(receipt.FrameReceipts![1].StateGasUsed, Is.EqualTo((ulong)GasCostOf.SSetState),
+                "the reverted inner reversal leaves frame 1's state gas intact");
+            Assert.That(receipt.FrameReceipts![2].StateGasUsed, Is.Zero,
+                "frame 3 reversed the slot frame 2 created, which refunds frame 2");
+            Assert.That(receipt.FrameReceipts![3].StateGasUsed, Is.Zero, "the reversing frame is credited nothing");
+            AssertStorage(slotOwner, 0, 1, "the inner reversal is rolled back");
+            AssertStorage(creator, 0, 0, "frame 3 cleared the slot");
+        }
     }
 
     [Test]

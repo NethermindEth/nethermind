@@ -63,11 +63,4 @@ public class Eip4844Tests : VirtualMachineTestsBase
             Throws.TypeOf<InvalidOperationException>()
                 .With.Message.EqualTo("Blob versioned hashes must not contain null elements."));
     }
-
-    protected override TestAllTracerWithOutput CreateTracer()
-    {
-        TestAllTracerWithOutput tracer = base.CreateTracer();
-        tracer.IsTracingAccess = false;
-        return tracer;
-    }
 }

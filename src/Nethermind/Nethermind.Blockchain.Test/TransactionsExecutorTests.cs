@@ -690,9 +690,9 @@ namespace Nethermind.Blockchain.Test
                 return true;
             }
 
-            public byte[] GetCode(Address address) => [];
+            public ReadOnlyMemory<byte> GetCode(Address address) => Array.Empty<byte>();
 
-            public byte[] GetCode(in ValueHash256 codeHash) => [];
+            public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash) => Array.Empty<byte>();
 
             public bool IsContract(Address address) => false;
 

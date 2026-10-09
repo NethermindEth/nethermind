@@ -186,25 +186,9 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _rocksDb.SetOptions(_columnFamily, options);
     }
 
-    public byte[]? FirstKey
-    {
-        get
-        {
-            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
-            iterator.SeekToFirst();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? FirstKey => _mainDb.GetEdgeKey(first: true, _columnFamily);
 
-    public byte[]? LastKey
-    {
-        get
-        {
-            using Iterator iterator = _mainDb.CreateIterator(_mainDb.CreateReadOptions(), ch: _columnFamily);
-            iterator.SeekToLast();
-            return iterator.Valid() ? iterator.GetKeySpan().ToArray() : null;
-        }
-    }
+    public byte[]? LastKey => _mainDb.GetEdgeKey(first: false, _columnFamily);
 
     public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKey, ReadOnlySpan<byte> lastKey, ReadFlags flags = ReadFlags.None) =>
         _mainDb.GetViewBetween(firstKey, lastKey, _columnFamily, flags);

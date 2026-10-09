@@ -30,6 +30,8 @@ public class GCKeeper : IDisposable
     private Task _gcScheduleTask = Task.CompletedTask;
     private CancellationTokenSource? _pendingGcCts;
     private bool _disposed;
+    private int _pendingEntries;
+    private TaskCompletionSource? _entriesDrained;
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
@@ -56,6 +58,29 @@ public class GCKeeper : IDisposable
             region = _region;
         }
         region?.ForceRelease();
+    }
+
+    /// <summary>Stops the keeper and waits for queued region entry and collection to finish.</summary>
+    internal async Task StopAsync()
+    {
+        Dispose();
+        Task entries;
+        Task collection;
+        lock (_lock)
+        {
+            entries = _pendingEntries == 0 && _region is null ? Task.CompletedTask
+                : (_entriesDrained ??= new(TaskCreationOptions.RunContinuationsAsynchronously)).Task;
+            collection = _gcScheduleTask;
+        }
+        await Task.WhenAll(entries, collection).ConfigureAwait(false);
+    }
+
+    private void CompleteEntry()
+    {
+        lock (_lock)
+        {
+            if (--_pendingEntries == 0 && _region is null) _entriesDrained?.TrySetResult();
+        }
     }
 
     /// <summary>Cancels the delayed collection if it has not yet been claimed for execution.</summary>
@@ -91,6 +116,7 @@ public class GCKeeper : IDisposable
                 return region;
             }
             _region = region;
+            _pendingEntries++;
         }
 
         try
@@ -100,6 +126,7 @@ public class GCKeeper : IDisposable
         catch
         {
             region.Dispose();
+            CompleteEntry();
             throw;
         }
         return region;
@@ -110,6 +137,7 @@ public class GCKeeper : IDisposable
         lock (_lock)
         {
             if (ReferenceEquals(_region, region)) _region = null;
+            if (_pendingEntries == 0 && _region is null) _entriesDrained?.TrySetResult();
         }
     }
 
@@ -144,6 +172,18 @@ public class GCKeeper : IDisposable
         }
 
         public void Execute()
+        {
+            try
+            {
+                ExecuteEntry();
+            }
+            finally
+            {
+                keeper.CompleteEntry();
+            }
+        }
+
+        private void ExecuteEntry()
         {
             lock (_stateLock)
             {

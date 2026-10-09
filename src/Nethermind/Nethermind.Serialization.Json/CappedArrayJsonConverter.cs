@@ -16,7 +16,7 @@ public sealed class CappedArrayJsonConverter<T> : JsonConverter<CappedArray<T>> 
         if (reader.TokenType == JsonTokenType.Null) return default;
         if (reader.TokenType != JsonTokenType.StartArray) throw new JsonException("Expected JSON array");
 
-        JsonConverter<T> elementConverter = (JsonConverter<T>)options.GetConverter(typeof(T));
+        JsonConverter<T> elementConverter = (JsonConverter<T>)TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter;
 
         T[] buffer = ArrayPool<T>.Shared.Rent(16);
         int count = 0;
@@ -48,7 +48,7 @@ public sealed class CappedArrayJsonConverter<T> : JsonConverter<CappedArray<T>> 
     public override void Write(Utf8JsonWriter writer, CappedArray<T> value, JsonSerializerOptions options)
     {
         if (value.IsNull) { writer.WriteNullValue(); return; }
-        JsonConverter<T> elementConverter = (JsonConverter<T>)options.GetConverter(typeof(T));
+        JsonConverter<T> elementConverter = (JsonConverter<T>)TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter;
         writer.WriteStartArray();
         ReadOnlySpan<T> span = value.AsSpan();
         for (int i = 0; i < span.Length; i++) elementConverter.Write(writer, span[i], options);

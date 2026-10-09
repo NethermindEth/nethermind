@@ -58,6 +58,21 @@ public static partial class IReleaseSpecExtensions
         public bool CLZEnabled => spec.IsEip7939Enabled;
         public bool BlockLevelAccessListsEnabled => spec.IsEip7928Enabled;
 
+        // Each fork is detected by one marker EIP it introduces, so a chain enabling EIPs selectively
+        // counts as being at the fork once that marker is on.
+        /// <summary>Whether Shanghai is active, marked by EIP-4895 withdrawals.</summary>
+        public bool IsShanghaiEnabled => spec.WithdrawalsEnabled;
+        /// <summary>Whether Cancun is active, marked by EIP-4844 blob transactions.</summary>
+        public bool IsCancunEnabled => spec.IsEip4844Enabled;
+        /// <summary>Whether Prague is active, marked by the EIP-7685 execution requests.</summary>
+        public bool IsPragueEnabled => spec.RequestsEnabled;
+        /// <summary>Whether Osaka is active, marked by EIP-7594 PeerDAS.</summary>
+        public bool IsOsakaEnabled => spec.IsEip7594Enabled;
+        /// <summary>Whether Amsterdam is active, marked by EIP-7928 block-level access lists.</summary>
+        public bool IsAmsterdamEnabled => spec.BlockLevelAccessListsEnabled;
+        /// <summary>Whether Bogota is active, marked by EIP-7805 inclusion lists.</summary>
+        public bool IsBogotaEnabled => spec.InclusionListsEnabled;
+
         /// <summary>The per-transaction gas limit cap.</summary>
         /// <remarks>
         /// EIP-8037's absolute cap on <c>tx.gas</c> across both gas dimensions, EIP-7825's execution-gas

@@ -13,6 +13,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -67,15 +69,18 @@ public class RpcModuleTests
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
         _rewardsStore = Substitute.For<IRewardsStore>();
 
-        _rpcModule = new XdcRpcModule(
-            _blockTree,
-            _snapshotManager,
-            _specProvider,
-            _epochSwitchManager,
-            _votesManager,
-            _timeoutCertificateManager,
-            _rewardsStore);
+        _rpcModule = CreateRpcModule(new XdcHeaderDecoder());
     }
+
+    private XdcRpcModule CreateRpcModule(IHeaderDecoder headerDecoder) => new(
+        _blockTree,
+        _snapshotManager,
+        _specProvider,
+        _epochSwitchManager,
+        _votesManager,
+        _timeoutCertificateManager,
+        _rewardsStore,
+        headerDecoder);
 
     [Test]
     public void BuildRpcSnapshot_ShouldUseSnapshotIdentity()
@@ -705,6 +710,30 @@ public class RpcModuleTests
         }
     }
 
+    /// <remarks>
+    /// The XDC checkpoint contract hashes <c>EncodedRLP</c> as the block hash, so a subnet node must encode with the
+    /// subnet layout, which carries <c>NextValidators</c>.
+    /// </remarks>
+    [Test]
+    public void GetV2BlockByNumber_ShouldEncodeSubnetHeaderMatchingItsHash()
+    {
+        XdcSubnetBlockHeader header = Build.A.XdcSubnetBlockHeader()
+            .WithNextValidators([TestItem.AddressA, TestItem.AddressB])
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        header.Hash = header.CalculateHash().ToHash256();
+        _blockTree.FindHeader(header.Number).Returns(header);
+        _blockTree.IsMainChain(header).Returns(true);
+        _blockTree.FinalizedHash.Returns(header.Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(header.Number);
+
+        ResultWrapper<V2BlockInfo> result = CreateRpcModule(new XdcSubnetHeaderDecoder())
+            .XDPoS_getV2BlockByNumber(new BlockParameter(header.Number));
+
+        Assert.That(result.Data?.EncodedRLP, Is.Not.Null);
+        Assert.That(Keccak.Compute(Convert.FromBase64String(result.Data!.EncodedRLP!)), Is.EqualTo(header.Hash));
+    }
+
     /// <summary>
     /// Sets up a chain whose head is two rounds ahead of the committed (finalized) tip, as the XDPoS 2.0 commit rule
     /// leaves it. Each header carries its own block number as its round.
@@ -876,14 +905,46 @@ public class RpcModuleTests
             Assert.That(missedRounds[1].ParentBlockHash, Is.EqualTo(block1802.Hash));
             Assert.That(missedRounds[1].ParentBlockNum, Is.EqualTo((UInt256)1802));
         }
-
-        static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
-            Build.A.XdcBlockHeader()
-                .WithNumber(number)
-                .WithParentHash(parentHash)
-                .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
-                .TestObject;
     }
+
+    [Test]
+    public void GetMissedRoundsInEpochByBlockNum_FirstEpoch_TreatsSwitchBlockWithoutExtraDataAsRoundZero()
+    {
+        XdcBlockHeader genesis = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+        XdcBlockHeader block1 = BuildHeader(1, 2, genesis.Hash!);
+        XdcBlockHeader block2 = BuildHeader(2, 3, block1.Hash!);
+        Address[] masternodes = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+
+        _blockTree.FindHeader(2).Returns(block2);
+        _blockTree.FindHeader(block1.Hash!).Returns(block1);
+        _blockTree.FindHeader(genesis.Hash!).Returns(genesis);
+        _epochSwitchManager.GetEpochSwitchInfo(block2).Returns(new EpochSwitchInfo(
+            masternodes,
+            [],
+            [],
+            new BlockRoundInfo(genesis.Hash!, 0, 0)));
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(XdcTestHelper.CreateXdcReleaseSpec(epochLength: 900, switchBlock: 0));
+
+        ResultWrapper<PublicApiMissedRoundsMetadata> result =
+            _rpcModule.XDPoS_getMissedRoundsInEpochByBlockNum(new BlockParameter(2));
+
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        MissedRoundInfo[] missedRounds = result.Data!.MissedRounds!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missedRounds, Has.Length.EqualTo(1));
+            Assert.That(missedRounds[0].Round, Is.EqualTo(1));
+            Assert.That(missedRounds[0].Miner, Is.EqualTo(TestItem.AddressB));
+            Assert.That(missedRounds[0].ParentBlockHash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    private static XdcBlockHeader BuildHeader(ulong number, ulong round, Hash256 parentHash) =>
+        Build.A.XdcBlockHeader()
+            .WithNumber(number)
+            .WithParentHash(parentHash)
+            .WithExtraConsensusData(new ExtraFieldsV2(round, Build.A.QuorumCertificate().TestObject))
+            .TestObject;
 
     [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()

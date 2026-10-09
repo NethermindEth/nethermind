@@ -81,6 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
+                    _getAccountRangeRequests.ThrowIfNotRequested(message.Content);
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
                     ReportIn(accountRangeMessage, size);
                     Handle(accountRangeMessage, size);
@@ -90,6 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
+                    _getStorageRangeRequests.ThrowIfNotRequested(message.Content);
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
                     ReportIn(storageRangesMessage, size);
                     Handle(storageRangesMessage, size);
@@ -99,6 +101,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
+                    _getByteCodesRequests.ThrowIfNotRequested(message.Content);
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
                     ReportIn(byteCodesMessage, size);
                     Handle(byteCodesMessage, size);
@@ -108,6 +111,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
+                    _getTrieNodesRequests.ThrowIfNotRequested(message.Content);
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
                     ReportIn(trieNodesMessage, size);
                     Handle(trieNodesMessage, size);

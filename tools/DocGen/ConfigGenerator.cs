@@ -18,9 +18,8 @@ internal static class ConfigGenerator
         string startMark = "<!--[start autogen]-->";
         string endMark = "<!--[end autogen]-->";
         IEnumerable<string> excluded = [];
-        IOrderedEnumerable<Type> types = Directory
-            .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
-            .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
+        IOrderedEnumerable<Type> types = NethermindAssemblies
+            .GetExportedTypes()
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);

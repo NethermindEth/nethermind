@@ -5,7 +5,6 @@ using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -107,12 +106,16 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             throw;
         }
 
+        // Everything this scope executes is read-only (calls, simulations, traces, proofs, Flashbots block validation,
+        // receipt regeneration and the transaction changeset index), so its slot reads may use the in-memory
+        // snapshots' negative filter.
         return new SnapshotBundle(
             readOnlySnapshotBundle,
             _trieNodeCache,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
-            snapshots
+            snapshots,
+            filterInMemorySlotReads: true
         );
     }
 
@@ -212,8 +215,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                     baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
             }
 
-            ConcurrencyController concurrency = new(1);
-            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
+            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle);
 
             PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);

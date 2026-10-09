@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -44,14 +45,14 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Prepare.EvmCode.Create(Prepare.EvmCode.STOP().Done, InnerValue).STOP().Done;
     }
 
-    private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong position) => new(
+    private static NativeCallTracerLogEntry ExpectedTransferLog(Address from, Address to, byte value, ulong index, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
-        topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], position
+        topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], index, position
     );
 
-    private static NativeCallTracerLogEntry ExpectedSelfDestructLog(Address account, byte value, ulong position) => new(
+    private static NativeCallTracerLogEntry ExpectedSelfDestructLog(Address account, byte value, ulong index, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
-        topics: [TransferLog.SelfDestructSignature, new(account.ToHash())], position
+        topics: [TransferLog.SelfDestructSignature, new(account.ToHash())], index, position
     );
 
     public sealed record TransferLogScenario(byte[]? RecipientCode, bool ExpectsChildFrame, string? Config = WithLog);
@@ -62,7 +63,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = TraceValueTransfer(scenario.RecipientCode, scenario.Config);
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer());
@@ -72,7 +73,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         if (scenario.ExpectsChildFrame)
         {
             NativeCallTracerCallFrame childFrame = topFrame.Calls[0];
-            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 0UL);
+            NativeCallTracerLogEntry expectedInner = ExpectedTransferLog(Recipient, childFrame.To!, InnerValue, 1UL, 0UL);
             Assert.That(childFrame.Logs, Is.EqualTo([expectedInner]).UsingPropertiesComparer());
         }
     }
@@ -88,7 +89,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
 
         NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful parent frame must keep its log");
@@ -110,7 +111,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         NativeCallTracerCallFrame childFrame = topFrame.Calls.AssertSingle();
         NativeCallTracerCallFrame grandchildFrame = childFrame.Calls.AssertSingle();
 
-        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL);
+        NativeCallTracerLogEntry expectedTop = ExpectedTransferLog(Sender, Recipient, TopValue, 0UL, 0UL);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Logs, Is.EqualTo([expectedTop]).UsingPropertiesComparer(), "successful top frame must keep its log");
@@ -149,10 +150,10 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
-            Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, initBalance, 0UL)]).UsingPropertiesComparer(), "CREATE endowment log on create frame");
-            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame (position follows the SELFDESTRUCT child frame recorded first; geth records AddLog before the child frame, so cross-client position differs here)");
-            Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
-            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
+            Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, initBalance, 0UL, 0UL)]).UsingPropertiesComparer(), "CREATE endowment log on create frame");
+            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL, 1UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame (position follows the SELFDESTRUCT child frame recorded first; geth records AddLog before the child frame, so cross-client position differs here)");
+            Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 2UL, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
+            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
         }
     }
 
@@ -171,8 +172,8 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         using GethLikeTxTrace trace = tracer.BuildResult();
         NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
 
-        NativeCallTracerLogEntry[] expected = Array.ConvertAll(scenario.InDestroyOrder, static destroyed =>
-            ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition));
+        NativeCallTracerLogEntry[] expected = scenario.InDestroyOrder.Select(static (destroyed, i) =>
+            ExpectedSelfDestructLog(destroyed.Account, destroyed.Funds, MultiDestroyFinalizationPosition + (ulong)i, MultiDestroyFinalizationPosition)).ToArray();
 
         Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in destroy order");
     }
@@ -223,9 +224,9 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
     // with residual balance emit Burn logs after PayFees (rather than inline SelfDestruct logs).
     protected override ISpecProvider SpecProvider => new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true, IsEip8037Enabled = true });
 
-    private static NativeCallTracerLogEntry ExpectedBurnLog(Address account, byte value, ulong position) => new(
+    private static NativeCallTracerLogEntry ExpectedBurnLog(Address account, byte value, ulong index, ulong position) => new(
         TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
-        topics: [TransferLog.BurnSignature, new(account.ToHash())], position
+        topics: [TransferLog.BurnSignature, new(account.ToHash())], index, position
     );
 
     [Test(Description = "Deferred Burn finalization log must reach log tracers, not just receipts")]
@@ -244,7 +245,7 @@ public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
-            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
+            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, Eip7708SelfDestructScenario.FundedAfter, 3UL, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
         }
     }
 

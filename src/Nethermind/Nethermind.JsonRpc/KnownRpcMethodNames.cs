@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -48,13 +49,19 @@ internal static class KnownRpcMethodNames
 
     public static string? Intern(JsonElement methodElement)
     {
-        string[] methods = Volatile.Read(ref _all);
-        for (int i = 0; i < methods.Length; i++)
+        // The raw value of a string element includes its quotes
+        int methodLength = JsonMarshal.GetRawUtf8Value(methodElement).Length - 2;
+
+        Dictionary<int, MethodName[]> methodNamesByLength = Volatile.Read(ref _methodNamesByLength);
+        if (methodNamesByLength.TryGetValue(methodLength, out MethodName[]? methodNames))
         {
-            string methodName = methods[i];
-            if (methodElement.ValueEquals(methodName))
+            for (int i = 0; i < methodNames.Length; i++)
             {
-                return methodName;
+                MethodName methodName = methodNames[i];
+                if (methodElement.ValueEquals(methodName.Utf8))
+                {
+                    return methodName.Name;
+                }
             }
         }
 

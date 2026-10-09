@@ -68,7 +68,7 @@ internal struct ExecutionMetricsCounters
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Flush()
+    public readonly void Flush()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         if (SLoad != 0) Metrics.AddSLoadOpcode(SLoad);
@@ -78,5 +78,31 @@ internal struct ExecutionMetricsCounters
         if (EmptyCalls != 0) Metrics.AddEmptyCalls(EmptyCalls);
         if (Creates != 0) Metrics.AddCreates(Creates);
         if (SelfDestructs != 0) Metrics.AddSelfDestructs(SelfDestructs);
+        Metrics.AddCaptured(in this);
+    }
+
+    public void Add(in ExecutionMetricsCounters other)
+    {
+        SLoad += other.SLoad;
+        SStore += other.SStore;
+        StorageDeleted += other.StorageDeleted;
+        Calls += other.Calls;
+        EmptyCalls += other.EmptyCalls;
+        Creates += other.Creates;
+        SelfDestructs += other.SelfDestructs;
+    }
+}
+
+/// <summary>What one transaction's execution added to the execution counters.</summary>
+internal struct ExecutionCounts
+{
+    public long OpCodes;
+    public ExecutionMetricsCounters Counters;
+
+    /// <summary>Adds the counts to the counters of the current thread, as executing the transaction here would.</summary>
+    public readonly void Flush()
+    {
+        if (OpCodes != 0) Metrics.IncrementOpCodes((int)OpCodes);
+        Counters.Flush();
     }
 }

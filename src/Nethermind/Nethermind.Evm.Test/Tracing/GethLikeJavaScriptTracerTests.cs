@@ -99,15 +99,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("noSuchTracer.js")]
     [TestCase("_bigInteger")]
     [TestCase("../JSTracers/callTracer_legacy")]
+    [TestCase("callTracer_legacy.tracer")]
+    [TestCase(null)]
     [TestCase("{ ) }")]
-    public void Unusable_tracer_is_refused_without_an_engine(string tracer) =>
-        Assert.That(() => Engine.ValidateTracer(tracer), Throws.ArgumentException);
+    public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
+        Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
 
     [TestCase("callTracer_legacy")]
     [TestCase(" opcountTracer.js ")]
     [TestCase("{ result: function(ctx, db) { return null } }")]
-    public void Usable_tracer_is_accepted_without_an_engine(string tracer) =>
-        Assert.That(() => Engine.ValidateTracer(tracer), Throws.Nothing);
+    public void Usable_tracer_is_accepted_on_construction(string tracer) =>
+        Assert.That(() => GetTracer(tracer).Dispose(), Throws.Nothing);
 
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
@@ -231,10 +233,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void post_step_fires_once_per_step()
     {
-        // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
-        // instruction, and the CALL handler reports it once more itself before the child frame runs, so
-        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
-        // opcode, so no instruction picks up the extra end-of-code report either.
         string userTracer = @"{
                     steps: 0,
                     postSteps: 0,
@@ -263,7 +261,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         string[] counts = ResultJson(traces).Trim('"').Split(':');
         int steps = int.Parse(counts[0]);
         Assert.That(steps, Is.GreaterThan(0));
-        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
+        Assert.That(int.Parse(counts[1]), Is.EqualTo(steps), "postStep must fire once per step");
     }
 
     [TestCase("5f5f20", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:KECCAK256,P2:KECCAK256,S3:STOP,P3:STOP", 0, TestName = "Callbacks_ordered_fallthrough_to_implicit_stop")]
@@ -273,7 +271,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("00", "S0:STOP,P0:STOP", 0, TestName = "Callbacks_ordered_explicit_stop")]
     [TestCase("5f5ff3", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:RETURN,P2:RETURN", 0, TestName = "Callbacks_ordered_explicit_return")]
     // REVERT faults from SetOperationStack, so its marker lands between step and postStep;
-    // every other failure faults from EndInstructionTraceError, i.e. after postStep.
+    // every other failure faults from EndInstructionTrace, i.e. after postStep.
     [TestCase("5f5ffd", "S0:PUSH0,P0:PUSH0,S1:PUSH0,P1:PUSH0,S2:REVERT,F2:REVERT,P2:REVERT", 1, TestName = "Callbacks_ordered_explicit_revert")]
     [TestCase("5fff", "S0:PUSH0,P0:PUSH0,S1:SELFDESTRUCT,P1:SELFDESTRUCT", 0, TestName = "Callbacks_ordered_explicit_self_destruct")]
     // Other implementations call only step (with the error set) and no fault for stack underflow and out of gas; these rows pin current behaviour.
@@ -721,6 +719,26 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Tracer_reused_across_block_traces_traces_every_block()
+    {
+        const string stepAndIndexTracer = @"{
+                    steps: 0,
+                    step: function(log, db) { this.steps++; },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { steps: this.steps, txIndex: ctx.txIndex }; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = GetTracer(stepAndIndexTracer);
+
+        for (int block = 0; block < 2; block++)
+        {
+            ExecuteTwoTransactionBlock(tracer);
+
+            Assert.That(ResultJsons(tracer.BuildResult()),
+                Is.EqualTo(new[] { """{"steps":7,"txIndex":0}""", """{"steps":7,"txIndex":1}""" }), $"block {block}");
+        }
+    }
+
+    [Test]
     public void Disposing_one_transaction_trace_keeps_the_sibling_result_readable()
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(StepCountingTracer));
@@ -795,70 +813,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [NonParallelizable]
-    public void Engine_construction_failing_under_a_pending_violation_leaves_later_engines_usable()
+    public void Engine_in_another_runtime_stays_usable_while_a_violation_is_pending()
     {
-        using (Engine hoarder = new(Shanghai.Instance))
+        using Engine hoarder = new(Shanghai.Instance);
+        dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
+        try
         {
-            dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
-            try
+            Action hoard = () =>
             {
-                Action hoard = () =>
+                for (int i = 0; i < 400; i++)
                 {
-                    for (int i = 0; i < 400; i++)
-                    {
-                        hoardingTracer.step(null, null);
-                    }
-                };
-                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
-                Assert.That(() => new Engine(Shanghai.Instance).Dispose(), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the hoard still holds the heap over the limit");
-            }
-            finally
-            {
-                ((object)hoardingTracer as IDisposable)?.Dispose();
-            }
+                    hoardingTracer.step(null, null);
+                }
+            };
+            Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+
+            using Engine bystander = new(Shanghai.Instance);
+            dynamic probe = bystander.CreateTracer("{ result: function(ctx, db) { return 7; } }");
+
+            Assert.That((int)probe.result(), Is.EqualTo(7), "an engine in another runtime is unaffected");
+            Assert.That(() => hoarder.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
+                "the violation stands in the hoarder's own runtime while it is alive");
         }
-
-        using Engine recovered = new(Shanghai.Instance);
-        dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
-
-        Assert.That((int)probe.result(), Is.EqualTo(7));
-    }
-
-    [Test]
-    [NonParallelizable]
-    public void Releasing_an_unrelated_engine_does_not_lift_a_pending_violation()
-    {
-        using (Engine bystander = new(Shanghai.Instance))
-        using (Engine offender = new(Shanghai.Instance))
+        finally
         {
-            dynamic hoardingTracer = offender.CreateTracer(HoardingTracer);
-            try
-            {
-                Action hoard = () =>
-                {
-                    for (int i = 0; i < 400; i++)
-                    {
-                        hoardingTracer.step(null, null);
-                    }
-                };
-                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
-            }
-            finally
-            {
-                ((object)hoardingTracer as IDisposable)?.Dispose();
-            }
-
-            bystander.Dispose();
-
-            Assert.That(() => offender.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
-                "the violation must still stand after an unrelated engine was released while the offender is alive");
+            ((object)hoardingTracer as IDisposable)?.Dispose();
         }
-
-        using Engine recovered = new(Shanghai.Instance);
-        dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
-
-        Assert.That((int)probe.result(), Is.EqualTo(7));
     }
 
     private const string HoardingTracer = @"{

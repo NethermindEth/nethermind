@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
@@ -162,6 +163,189 @@ public class TransactionsMessageSerializerTests
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
         }
+    }
+
+    [TestCaseSource(nameof(OversizedItemCases))]
+    public void Skips_an_oversized_item_instead_of_decoding_it(int maxTxSize, byte[] oversizedItem)
+    {
+        Transaction validTxBefore = SimpleSignedTx();
+        Transaction validTxAfter = SimpleSignedTx(1);
+        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
+
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(2), "only the two well-formed txs should survive");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTxBefore.Hash), "the tx before the skip should decode unaffected");
+            Assert.That(deserialized.Transactions[1].Hash, Is.EqualTo(validTxAfter.Hash), "cursor should have resynchronised on the tx after the skip");
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(1), "the oversized item should be counted as skipped");
+        }
+    }
+
+    [Test]
+    public void Keeps_a_typed_tx_whose_size_is_exactly_the_configured_max()
+    {
+        Transaction typedTx = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+            .TestObject;
+        RlpReader probe = new(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm).Bytes);
+        (int _, int contentLength) = probe.PeekPrefixAndContentLength();
+
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = contentLength });
+        using TransactionsMessage message = new(new[] { typedTx }.ToPooledList());
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a tx exactly at the cap must be kept, not skipped");
+    }
+
+    [Test]
+    public void Never_skips_a_blob_tx_even_when_its_size_exceeds_the_cap()
+    {
+        // A blob tx's mempool-form sidecar is far above this cap, but eth/68 forbids broadcasting one and a
+        // pooled one is already policed by announced size and ValidateSizeAndType, so this guard must not skip it.
+        Transaction blobTx = Build.A.Transaction
+            .WithTo(TestItem.AddressA)
+            .WithShardBlobTxTypeAndFields(1)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+            .TestObject;
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 500 });
+
+        using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions.Count, Is.EqualTo(1));
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(0));
+        }
+    }
+
+    // Each prefix declares 55 content bytes the buffer does not carry: 0xb7 as a byte string, 0xf7 as a
+    // sequence. A cap below the short-form maximum would let the byte string reach the type-byte peek and the
+    // sequence reach the unchecked skip, both of which run past the end of the buffer - letting the sender pick
+    // the exception an unguarded decode would have raised as an RLP error.
+    [TestCase((byte)0xb7, TestName = "A truncated short-form byte string under a tiny cap still fails as an RLP error")]
+    [TestCase((byte)0xf7, TestName = "A truncated short-form sequence under a tiny cap still fails as an RLP error")]
+    public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails(byte itemPrefix)
+    {
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new[] { itemPrefix })).AsDisposable();
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 10 });
+
+        Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Null_config_keeps_every_transaction_regardless_of_size()
+    {
+        List<Transaction> transactions = GetTransactions().ElementAt(1).ToList();
+        using TransactionsMessage message = new(transactions.ToPooledList());
+        TransactionsMessageSerializer serializer = new();
+
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions.Count, Is.EqualTo(transactions.Count));
+            Assert.That(deserialized.SkippedCount, Is.EqualTo(0));
+        }
+    }
+
+    internal static Transaction SimpleSignedTx(ulong nonce = 0) =>
+        Build.A.Transaction
+            .WithNonce(nonce)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+            .TestObject;
+
+    /// <summary>
+    /// Builds a well-formed RLP long-form byte string (prefix 0xb9, a 2-byte length) declaring
+    /// <paramref name="contentLength"/> content bytes: <paramref name="typeByte"/> followed by 0xff, which is
+    /// not a valid start of the nested RLP structure a real decode would expect next - so attempting to decode
+    /// this item throws, distinguishing a test that skipped it from one that decoded it and happened to succeed.
+    /// </summary>
+    internal static byte[] EncodeOversizedTypedItem(int contentLength, byte typeByte)
+    {
+        byte[] item = new byte[3 + contentLength];
+        item[0] = 0xb9;
+        item[1] = (byte)(contentLength >> 8);
+        item[2] = (byte)contentLength;
+        item[3] = typeByte;
+        item[4] = 0xff;
+        return item;
+    }
+
+    /// <summary>
+    /// Builds a well-formed RLP long-form sequence (prefix 0xf9, a 2-byte length) declaring
+    /// <paramref name="contentLength"/> content bytes starting with 0xff, which is not a valid start of a
+    /// legacy transaction's field list - so attempting to decode this item throws, distinguishing a test that
+    /// skipped it from one that decoded it and happened to succeed. Its total on-wire size - the measure the
+    /// guard applies to a sequence item - is three bytes beyond <paramref name="contentLength"/>.
+    /// </summary>
+    private static byte[] EncodeOversizedSequenceItem(int contentLength)
+    {
+        byte[] item = new byte[3 + contentLength];
+        item[0] = 0xf9;
+        item[1] = (byte)(contentLength >> 8);
+        item[2] = (byte)contentLength;
+        item[3] = 0xff;
+        return item;
+    }
+
+    private static IEnumerable<TestCaseData> OversizedItemCases()
+    {
+        const int maxTxSize = 500;
+
+        yield return new TestCaseData(maxTxSize, EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559))
+            .SetName("Skips a typed item whose content length exceeds the cap");
+        // A sequence item is measured the way SizeTxFilter measures a decoded legacy tx, prefix included, so
+        // content exactly at the cap is already over it.
+        yield return new TestCaseData(maxTxSize, EncodeOversizedSequenceItem(maxTxSize))
+            .SetName("Skips a sequence item its RLP prefix pushes over the cap");
+    }
+
+    /// <summary>Concatenates already-encoded RLP items behind a single outer sequence (list) prefix.</summary>
+    internal static byte[] EncodeAsSequence(params byte[][] items)
+    {
+        int contentLength = 0;
+        foreach (byte[] item in items) contentLength += item.Length;
+
+        byte[] result = new byte[Rlp.LengthOfSequence(contentLength)];
+        int prefixLength = result.Length - contentLength;
+        if (prefixLength == 1)
+        {
+            result[0] = (byte)(0xc0 + contentLength);
+        }
+        else
+        {
+            int lengthOfLength = prefixLength - 1;
+            result[0] = (byte)(0xf7 + lengthOfLength);
+            int remaining = contentLength;
+            for (int i = lengthOfLength; i >= 1; i--)
+            {
+                result[i] = (byte)remaining;
+                remaining >>= 8;
+            }
+        }
+
+        int offset = prefixLength;
+        foreach (byte[] item in items)
+        {
+            item.CopyTo(result, offset);
+            offset += item.Length;
+        }
+        return result;
     }
 
     [Test, NonParallelizable]

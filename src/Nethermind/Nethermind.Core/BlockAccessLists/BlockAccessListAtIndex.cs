@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
@@ -129,17 +130,18 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             : null;
     }
 
-    public void AddCodeChange(Address address, byte[] before, ReadOnlyMemory<byte> after)
+    public void AddCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        if (before.AsSpan().SequenceEqual(after.Span))
+        if (before.Span.SequenceEqual(after.Span))
         {
             return;
         }
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
 
-        bool isFirstCall = accountChanges.PreTxCode is null;
-        byte[] preTxCode = accountChanges.PreTxCode ??= before;
+        bool isFirstCall = accountChanges.PreTxCode.IsNull();
+        if (isFirstCall) accountChanges.PreTxCode = before.IsNull() ? Array.Empty<byte>() : before;
+        ReadOnlyMemory<byte> preTxCode = accountChanges.PreTxCode;
 
         CodeChange? previous = accountChanges.CodeChange;
         if (previous.HasValue) _previousCodeChanges.Add(previous.Value);
@@ -150,7 +152,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             HasPrevious = previous.HasValue,
         });
 
-        accountChanges.CodeChange = isFirstCall || !preTxCode.AsSpan().SequenceEqual(after.Span)
+        accountChanges.CodeChange = isFirstCall || !preTxCode.Span.SequenceEqual(after.Span)
             ? new CodeChange(Index, after.ToArray())
             : null;
     }

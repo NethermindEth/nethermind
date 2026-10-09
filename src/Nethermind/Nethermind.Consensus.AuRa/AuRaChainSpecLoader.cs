@@ -49,7 +49,7 @@ public static class AuRaChainSpecLoader
         return true;
     }
 
-    private sealed class AuRaGenesisSealJson
+    internal sealed class AuRaGenesisSealJson
     {
         public ulong Step { get; set; }
         public byte[]? Signature { get; set; }

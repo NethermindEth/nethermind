@@ -22,7 +22,7 @@ public class GetInclusionListTransactionsHandlerTests
     private static GetInclusionListTransactionsHandler BuildHandler(bool focilScheduled)
     {
         ITxPool pool = Substitute.For<ITxPool>();
-        pool.GetPendingTransactionsBySender(Arg.Any<bool>(), Arg.Any<UInt256>()).Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(new Dictionary<AddressAsKey, Transaction[]>());
 
         IReleaseSpec preBogota = Substitute.For<IReleaseSpec>();
         preBogota.IsEip7805Enabled.Returns(false);

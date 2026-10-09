@@ -16,6 +16,9 @@ public interface IStreamableResult
     ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken);
 }
 
+/// <summary>A result whose execution can still produce an RPC error while its JSON is being written.</summary>
+internal interface IDeferredExecutionResult : IStreamableResult { }
+
 internal interface IBatchAwareStreamableResult : IStreamableResult
 {
     ValueTask WriteToAsync(PipeWriter writer, bool isBatch, CancellationToken cancellationToken);

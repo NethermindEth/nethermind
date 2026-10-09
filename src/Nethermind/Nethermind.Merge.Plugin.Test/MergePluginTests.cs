@@ -97,6 +97,7 @@ public class MergePluginTests
                 configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
+                null,
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())

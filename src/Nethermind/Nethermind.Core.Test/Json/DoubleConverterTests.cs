@@ -21,6 +21,9 @@ public class DoubleConverterTests
     [TestCase(0.0105, "0.0105")]
     [TestCase(0.0, "0")]
     [TestCase(1.0, "1")]
+    [TestCase(1e-7, "1E-07")]
+    [TestCase(double.Epsilon, "5E-324")]
+    [TestCase(-double.MaxValue, "-1.7976931348623157E+308")]
     public void Write_PreservesFullIeee754Precision(double value, string expected)
     {
         string json = JsonSerializer.Serialize(value, Options);

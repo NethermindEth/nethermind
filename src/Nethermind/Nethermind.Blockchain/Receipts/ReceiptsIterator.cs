@@ -21,17 +21,20 @@ namespace Nethermind.Blockchain.Receipts
         private int _receiptIndex;
 
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
+        private readonly Func<IReceiptsRecovery.IRecoveryContext>? _logRecoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder,
+            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null)
         {
             _reader = new RlpReader(receiptsData);
             _blocksDb = blocksDb;
             _receipts = null;
             _receiptIndex = 0;
             _recoveryContextFactory = recoveryContextFactory;
+            _logRecoveryContextFactory = logRecoveryContextFactory ?? recoveryContextFactory;
             _recoveryContextConfigured = false;
             _recoveryContext = null;
             _receiptRefDecoder = receiptRefDecoder;
@@ -91,11 +94,20 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
 
-        public void RecoverIfNeeded(ref TxReceiptStructRef current)
+        public void RecoverIfNeeded(ref TxReceiptStructRef current) => RecoverIfNeeded(ref current, _recoveryContextFactory);
+
+        /// <summary>
+        /// Recovers only the block hash and number, transaction index and transaction hash, which is all a log carries;
+        /// the other receipt fields stay as decoded for the rest of the iteration.
+        /// </summary>
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current) =>
+            RecoverIfNeeded(ref current, _logRecoveryContextFactory);
+
+        private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
             if (_recoveryContextConfigured) return;
 
-            _recoveryContext = _recoveryContextFactory?.Invoke();
+            _recoveryContext = recoveryContextFactory?.Invoke();
             if (_recoveryContext is not null)
             {
                 // Need to replay the context.

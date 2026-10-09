@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -16,6 +15,8 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -128,7 +129,7 @@ public class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -138,6 +139,8 @@ public class TrieStoreScopeProvider(
         }
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
@@ -162,7 +165,7 @@ public class TrieStoreScopeProvider(
                 return Task.CompletedTask;
             }
 
-            // Copy the span into a pooled array so the Parallel.For body can capture it.
+            // Copy the span into a pooled array so the parallel loop can capture it.
             ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
 
             _hintBalCts = new CancellationTokenSource();
@@ -171,12 +174,13 @@ public class TrieStoreScopeProvider(
             return _hintBalTask = Task.Run(() =>
             {
                 // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
-                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
+                // so each parallel iteration must own its StateTree / StorageTree — slots per
                 // account are read sequentially on the worker that owns it.
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
                 try
                 {
-                    Parallel.For(0, accountCount, parallelOptions, (i) =>
+                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
+                    ParallelUnbalancedWork.For(0, accountCount, parallelOptions, (i) =>
                     {
                         if (token.IsCancellationRequested) return;
                         ReadOnlyAccountChanges ac = accountChanges[i];
@@ -258,8 +262,8 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -273,9 +277,10 @@ public class TrieStoreScopeProvider(
 
         public void Commit(ulong blockNumber)
         {
+            using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
-            if (Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            if (Core.Cpu.RuntimeInformation.IsSingleProcessor || !blockCommitter.SupportsParallelCommit || _storages.Count < 2)
             {
                 foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
                 {
@@ -284,28 +289,14 @@ public class TrieStoreScopeProvider(
             }
             else
             {
-                // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
-                // may make it worst. Always check on mainnet.
-                using ArrayPoolListRef<Task> commitTask = new(_storages.Count);
-                foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-                {
-                    if (blockCommitter.TryRequestConcurrencyQuota())
+                using ArrayPoolList<StorageTree> storages = new(_storages.Count);
+                foreach (StorageTree storage in _storages.Values) storages.Add(storage);
+                ParallelUnbalancedWork.For(0, storages.Count, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                    storages, static (i, trees) =>
                     {
-                        commitTask.Add(Task.Factory.StartNew((ctx) =>
-                        {
-                            StorageTree st = ctx as StorageTree
-                                ?? throw new InvalidOperationException("A storage commit task requires a storage tree.");
-                            st.Commit();
-                            blockCommitter.ReturnConcurrencyQuota();
-                        }, storage.Value, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default));
-                    }
-                    else
-                    {
-                        storage.Value.Commit();
-                    }
-                }
-
-                Task.WaitAll(commitTask.AsSpan());
+                        trees[i].Commit();
+                        return trees;
+                    });
             }
 
             _backingStateTree.Commit();
@@ -368,6 +359,9 @@ public class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
+#if ZK_EVM
+            SetEachAccount(scope._backingStateTree, _dirtyAccounts);
+#else
             if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
                 scope._backingStateTree.SetAccounts(_dirtyAccounts);
@@ -380,6 +374,7 @@ public class TrieStoreScopeProvider(
                     stateSetter.Set(kv.Key, kv.Value);
                 }
             }
+#endif
 
             scope.ClearLoadedAccounts();
 
@@ -387,6 +382,27 @@ public class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
+
+#if ZK_EVM
+        /// <summary>Writes the changed accounts into <paramref name="stateTree"/> one at a time, deletions last.</summary>
+        /// <remarks>
+        /// The guest's counterpart of the bulk set: on its one core, sorting the entries and recursing over them
+        /// costs more than the shared descent saves. Deletions go last, as storage writes do in
+        /// <c>ProcessStorageChanges</c>, so a branch is only collapsed once every insert has landed.
+        /// </remarks>
+        private static void SetEachAccount(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts)
+        {
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
+            {
+                if (kv.Value is not null) stateTree.Set(kv.Key.Value, kv.Value);
+            }
+
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
+            {
+                if (kv.Value is null) stateTree.Set(kv.Key.Value, null);
+            }
+        }
+#endif
     }
 
     public class StorageTreeBulkWriteBatch(
@@ -394,16 +410,30 @@ public class TrieStoreScopeProvider(
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
         AddressAsKey address,
-        bool commit = false) : IWorldStateScopeProvider.IStorageWriteBatch
+        bool commit = false,
+        int minWritesToHashInParallel = StorageTreeBulkWriteBatch.MinWritesToHashInParallel) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // Slight optimization on small contract as the index hash can be precalculated in some case.
         public const int MIN_ENTRIES_TO_BATCH = 16;
 
+        /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
+        private const int MinWritesToHashInParallel = 64;
+
+        /// <summary>Estimated entries above which the writes are applied together through <see cref="PatriciaTree.BulkSet"/>.</summary>
+        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there. The guest's
+        /// <c>PatriciaTree.IsUnchangedPendingLevel</c> relies on its writes going one at a time.</remarks>
+#if ZK_EVM
+        private const int BulkWriteThreshold = int.MaxValue;
+#else
+        private const int BulkWriteThreshold = MIN_ENTRIES_TO_BATCH;
+#endif
+
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
+        private int _writes;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
+            estimatedEntries > BulkWriteThreshold
                 ? new(estimatedEntries)
                 : null;
 
@@ -433,6 +463,7 @@ public class TrieStoreScopeProvider(
             bool isZero = value.IsZero;
             ReadOnlySpan<byte> encoded = isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word);
             _wasSetCalled = true;
+            _writes++;
             if (_bulkWrite is null)
             {
                 storageTree.Set(index, encoded, isZero);
@@ -466,10 +497,12 @@ public class TrieStoreScopeProvider(
             _hasSelfDestruct = true;
         }
 
+        /// <summary>Updates the root on dispose even if no slot was set.</summary>
+        public void MarkSet() => _wasSetCalled = true;
+
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;
-            int bulkCount = 0;
             if (_bulkWrite is not null)
             {
                 if (_hasSelfDestruct)
@@ -479,7 +512,6 @@ public class TrieStoreScopeProvider(
 
                 _pendingHashes?.Batch.Flush(_bulkWrite.AsSpan());
                 _pendingHashes = null;
-                bulkCount = _bulkWrite.Count;
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = _bulkWrite.ToRef();
                 storageTree.BulkSet(asRef);
             }
@@ -492,7 +524,7 @@ public class TrieStoreScopeProvider(
                 }
                 else
                 {
-                    storageTree.UpdateRootHash(bulkCount > 64);
+                    storageTree.UpdateRootHash(_writes > minWritesToHashInParallel);
                 }
                 onRootUpdated(address, storageTree.RootHash);
             }
@@ -510,7 +542,25 @@ public class TrieStoreScopeProvider(
         private readonly AssociativeKeyCache<ValueHash256>? _persistedHint
             = isPersistent ? new AssociativeKeyCache<ValueHash256>(1_024) : null;
 
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes];
+        /// <remarks>
+        /// Reads a native store's slice straight into executable code memory, the one copy a cache-busting block
+        /// pays per load. Loaded code is cached above as CodeInfo, so a block-cache copy is redundant; a block of
+        /// distinct 64 KiB contracts would otherwise evict on every read.
+        /// </remarks>
+        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        {
+            if (codeDb is not IReadOnlyNativeKeyValueStore native) return codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
+
+            ReadOnlySpan<byte> slice = native.GetNativeSlice(codeHash.Bytes, out nint handle, ReadFlags.HintCacheMiss);
+            try
+            {
+                return slice.IsNull() ? default : ExecutableCodeMemory.Copy(slice);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
+        }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 

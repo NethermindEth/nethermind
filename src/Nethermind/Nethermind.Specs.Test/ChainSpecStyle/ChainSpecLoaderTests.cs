@@ -9,6 +9,7 @@ using System.Text;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -175,6 +176,33 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
 
         Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
+    }
+
+    [Test]
+    public void Genesis_requests_hash_matches_builder_request_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "eip8282TransitionTimestamp": "0x{{transitionTimestamp:x}}" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+        bool activeAtGenesis = transitionTimestamp == 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip8282Enabled, Is.EqualTo(activeAtGenesis));
+            Assert.That(chainSpec.Genesis!.Header.RequestsHash, Is.EqualTo(activeAtGenesis ? ExecutionRequestExtensions.EmptyRequestsHash : null));
+        }
     }
 
     [Test]

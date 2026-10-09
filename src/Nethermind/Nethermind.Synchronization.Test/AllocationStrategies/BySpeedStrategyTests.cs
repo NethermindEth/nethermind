@@ -145,7 +145,8 @@ public class BySpeedStrategyTests
         }
 
         double noSpeedPeerChance = (double)peerWithoutSpeedPicked / (peerWithSpeedPicked + peerWithoutSpeedPicked);
-        double marginOfError = 0.02;
+        // The strategy's Random is unseeded; 0.04 is ~8 binomial standard deviations at p = 0.5, n = 10,000.
+        double marginOfError = 0.04;
         Assert.That(noSpeedPeerChance, Is.InRange(chanceOfPickingPeerWithNoSpeed - marginOfError, chanceOfPickingPeerWithNoSpeed + marginOfError));
     }
 

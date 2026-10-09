@@ -11,10 +11,14 @@ GUEST_LIBC := zisk
 # The only target whose bindings library is not named after its libc.
 GUEST_EXTLIB := libziskos
 
+# The JUMPDEST bitmap precompile is a csrs/add pair the transpiler fuses only while
+# adjacent, which no compiler emits, so the guest links it as assembly.
+GUEST_OBJECTS := jump_dest.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-ZISK_IMAGE ?= nethermindeth/zisk:1.3.0-alpha@sha256:0dbfd467305a76442b06a1c2c454ed50d3b34632e70247d71139b63519cff11f
+ZISK_IMAGE ?= nethermindeth/zisk:1.3.1-alpha@sha256:992e95afa5e7096c7365c85114ae9222e485d485acec709b4309d2e407fa01b6
 
 run:
 	@$(REQUIRE_INPUT)
@@ -22,3 +26,14 @@ run:
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(ZISK_IMAGE) \
 		ziskemu -e /n/nethermind -i /n/$(INPUT)
+
+# Step count and the prover cost model for one input. Both are exact - the emulator is
+# deterministic - so a single run is the measurement, with no warm-up or repetition.
+stats:
+	@$(REQUIRE_INPUT)
+	docker run --rm -e RUST_BACKTRACE=full \
+		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
+		$(ZISK_IMAGE) \
+		ziskemu -e /n/nethermind -i /n/$(INPUT) -X --no-thousands-sep
+
+.PHONY: stats

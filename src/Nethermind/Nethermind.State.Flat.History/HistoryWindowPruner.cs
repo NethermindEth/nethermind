@@ -29,6 +29,9 @@ public sealed class HistoryWindowPruner(
 {
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
+    // An iterator step is roughly an order of magnitude cheaper than a seek, so a key's live tail is only worth
+    // seeking past once it has shown this many rows.
+    internal const int LiveRowsBeforeSkip = 16;
     private const double DeadWeightCompactionRatio = 0.5;
     private const int OwedDrainWarnEveryNFailures = 10;
     private static readonly TimeSpan DeadWeightCompactionMinInterval = TimeSpan.FromHours(1);
@@ -36,7 +39,6 @@ public sealed class HistoryWindowPruner(
     private static ReadOnlySpan<byte> AccountCursorKey => "history:prune:cursor:account"u8;
     private static ReadOnlySpan<byte> StorageCursorKey => "history:prune:cursor:storage"u8;
     private static ReadOnlySpan<byte> ClearsCursorKey => "history:prune:cursor:clears"u8;
-    private static ReadOnlySpan<byte> BlocksCursorKey => "history:prune:cursor:blocks"u8;
     private readonly IDb _availableBlocks = history.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
     private readonly IDb _accountHistory = history.GetColumnDb(FlatHistoryColumns.AccountHistory);
     private readonly IDb _storageHistory = history.GetColumnDb(FlatHistoryColumns.StorageHistory);
@@ -53,6 +55,7 @@ public sealed class HistoryWindowPruner(
     private bool _blocksSwept;
     private ulong _cycleFloor;
     private ulong _cycleMarkersAndClearsFloor;
+    private ulong _markersPrunedBelow;
     private long _owedDrainGeneration;
     private long _owedDrainFailedPasses;
     private long _lastDeadWeightCheckAt;
@@ -219,13 +222,12 @@ public sealed class HistoryWindowPruner(
     private TimeSpan PassBudget() => TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
 
     /// <summary>Internal so tests can drive a cycle instead of racing the wake-signal loop.</summary>
-    internal bool RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
+    internal bool RunOnePass(CancellationToken token, IPruneBudget? budget = null)
     {
         _lastPassCompactionTime = TimeSpan.Zero;
         TimeSpan passBudget = PassBudget();
-        Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
-        if (RunReadPathWindowPass(passBudget, newBudget, token)) return true;
+        if (RunReadPathWindowPass(passBudget, budget, token)) return true;
 
         Metrics.FlatHistoryPrunePassesYielded++;
         return false;
@@ -233,7 +235,7 @@ public sealed class HistoryWindowPruner(
 
     /// <summary>A floor advance must publish before draining old scopes and before any delete. Returns whether
     /// this pass finished all four columns.</summary>
-    private bool RunReadPathWindowPass(TimeSpan passBudget, Func<IPruneBudget> newBudget, CancellationToken token)
+    private bool RunReadPathWindowPass(TimeSpan passBudget, IPruneBudget? budget, CancellationToken token)
     {
         ulong retention = config.HistoryRetentionBlocks;
         if (retention == 0) return true;
@@ -307,10 +309,19 @@ public sealed class HistoryWindowPruner(
         // Retained down to the deepest scope floor, so a sliced address stays answerable. Coarse, never wrong.
         ulong markersAndClearsFloor = _cycleMarkersAndClearsFloor;
 
-        if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
-        if (!_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
-        if (!_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
-        if (!_blocksSwept) _blocksSwept = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
+        // Started after the drains: they have their own timeout, and counting them here could leave the sweeps none.
+        budget ??= new WallClockBudget(passBudget);
+
+        // A sweep yields only once the shared budget or the token runs out, so a column after a yielded one would
+        // seek just to yield again.
+        if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, budget, token);
+        if (_accountSwept && !_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, budget, token);
+        if (_storageSwept && !_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, budget, token);
+        if (_clearsSwept && !_blocksSwept)
+        {
+            PruneBlockMarkers(markersAndClearsFloor);
+            _blocksSwept = true;
+        }
 
         bool completed = _accountSwept && _storageSwept && _clearsSwept && _blocksSwept;
 
@@ -322,7 +333,7 @@ public sealed class HistoryWindowPruner(
                 ? $"Flat history sweep cycle finished, each column swept once at or below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass.{scopeNote}"
                 : $"Flat history pruning below #{floor}, retaining {retention} blocks; {deleted} rows deleted this pass, "
                   + $"accounts {SweepProgress(_accountSwept, AccountCursorKey)}, storage {SweepProgress(_storageSwept, StorageCursorKey)}, "
-                  + $"clears {(_clearsSwept ? "done" : "running")}, markers {(_blocksSwept ? "done" : "running")}.{scopeNote}");
+                  + $"clears {(_clearsSwept ? "done" : "running")}.{scopeNote}");
         }
 
         if (completed)
@@ -366,7 +377,9 @@ public sealed class HistoryWindowPruner(
     }
 
     /// <summary>Under v3 every row at or below the floor is dead, since a forward-seek only returns rows strictly
-    /// above the query - and the pruner only ever runs windowed, which forces v3.</summary>
+    /// above the query - and the pruner only ever runs windowed, which forces v3. The v3 suffix ascends, so once a
+    /// key shows <see cref="LiveRowsBeforeSkip"/> live rows the rest of its rows are live too and the view seeks
+    /// past them instead of reading every one on every cycle.</summary>
     private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
         int flatKeyLength = keyLayout.FlatKeyLength;
@@ -376,9 +389,15 @@ public sealed class HistoryWindowPruner(
         Span<byte> upperBound = stackalloc byte[flatKeyLength + BlockBytes + 1];
         upperBound.Fill(0xFF);
 
+        // Sorts after every row of the current key and at or before the first row of the next one.
+        Span<byte> pastGroupKey = stackalloc byte[flatKeyLength + BlockBytes + 1];
+        pastGroupKey[flatKeyLength..].Fill(0xFF);
+        pastGroupKey[^1] = 0;
+
         Span<byte> currentGroupKey = stackalloc byte[flatKeyLength];
         bool hasGroup = false;
         ulong currentGroupFloor = floor;
+        int liveRowsInGroup = 0;
         Span<byte> addressKey = stackalloc byte[HistoryKeyLayout.ScopeKeyLength];
         int sinceFlush = 0;
 
@@ -386,7 +405,8 @@ public sealed class HistoryWindowPruner(
         IWriteBatch batch = column.StartWriteBatch();
         try
         {
-            while (view.MoveNext())
+            bool hasRow = view.MoveNext();
+            while (hasRow)
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
@@ -398,13 +418,18 @@ public sealed class HistoryWindowPruner(
                 }
 
                 ReadOnlySpan<byte> key = view.CurrentKey;
-                if (key.Length != flatKeyLength + BlockBytes) continue;
+                if (key.Length != flatKeyLength + BlockBytes)
+                {
+                    hasRow = view.MoveNext();
+                    continue;
+                }
 
                 ReadOnlySpan<byte> keyPrefix = key[..flatKeyLength];
                 if (!hasGroup || !keyPrefix.SequenceEqual(currentGroupKey))
                 {
                     keyPrefix.CopyTo(currentGroupKey);
                     hasGroup = true;
+                    liveRowsInGroup = 0;
 
                     // With no slices configured neither ExtractAddressKey nor ResolveScope is ever called.
                     if (hasScopes)
@@ -421,6 +446,14 @@ public sealed class HistoryWindowPruner(
                     Metrics.FlatHistoryPrunedRows++;
                     sinceFlush = FlushBatchIfNeeded(column, ref batch, sinceFlush);
                 }
+                else if (++liveRowsInGroup == LiveRowsBeforeSkip && view is ISeekableSortedView seekable)
+                {
+                    currentGroupKey.CopyTo(pastGroupKey);
+                    hasRow = seekable.SeekTo(pastGroupKey);
+                    continue;
+                }
+
+                hasRow = view.MoveNext();
             }
         }
         finally
@@ -487,44 +520,25 @@ public sealed class HistoryWindowPruner(
     }
 
     /// <summary>Any marker strictly below the floor is dead: a capture connect point never verifies below it.</summary>
-    private bool PruneBlockMarkers(ulong floor, IPruneBudget budget, CancellationToken token)
+    /// <remarks>Markers are keyed by the big-endian block number and every reserved key in the column starts with
+    /// <c>history:</c> (0x68), so <c>[0, floor)</c> holds markers only for any floor below 0x68 &lt;&lt; 56. A floor
+    /// already deleted below is skipped: a slice scope pins it, and every repeated range delete would leave another
+    /// tombstone each marker read consults until compaction.</remarks>
+    private void PruneBlockMarkers(ulong floor)
     {
-        ISortedKeyValueStore sorted = (ISortedKeyValueStore)_availableBlocks;
-        byte[]? cursor = ReadCursor(BlocksCursorKey);
+        if (floor <= _markersPrunedBelow) return;
 
+        Span<byte> lowerBound = stackalloc byte[BlockBytes];
         Span<byte> upperBound = stackalloc byte[BlockBytes];
+        BinaryPrimitives.WriteUInt64BigEndian(lowerBound, 0);
         BinaryPrimitives.WriteUInt64BigEndian(upperBound, floor);
 
-        int sinceFlush = 0;
-        using ISortedView view = sorted.GetViewBetween(cursor ?? ReadOnlySpan<byte>.Empty, upperBound, ReadFlags.HintCacheMiss);
-        IWriteBatch batch = _availableBlocks.StartWriteBatch();
-        try
-        {
-            while (view.MoveNext())
-            {
-                if (budget.Exhausted || token.IsCancellationRequested)
-                {
-                    batch.Dispose();
-                    batch = _availableBlocks.StartWriteBatch();
-                    WriteCursor(BlocksCursorKey, view.CurrentKey);
-                    return false;
-                }
-
-                ReadOnlySpan<byte> key = view.CurrentKey;
-                if (key.Length != BlockBytes) continue; // reserved (non-block) keys are longer; never touched
-
-                batch.Remove(key);
-                Metrics.FlatHistoryPrunedRows++;
-                sinceFlush = FlushBatchIfNeeded(_availableBlocks, ref batch, sinceFlush);
-            }
-        }
-        finally
-        {
-            batch.Dispose();
-        }
-
-        ClearCursor(BlocksCursorKey);
-        return true;
+        // A range tombstone barely moves the dead-weight ratio the completed-cycle compaction checks, so the space
+        // under it is handed back here instead.
+        IRangeRemovableKeyValueStore markers = (IRangeRemovableKeyValueStore)_availableBlocks;
+        markers.RemoveRange(lowerBound, upperBound);
+        markers.ReclaimRange(lowerBound, upperBound);
+        _markersPrunedBelow = floor;
     }
 
     private static int FlushBatchIfNeeded(IDb column, ref IWriteBatch batch, int sinceFlush)

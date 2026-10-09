@@ -54,6 +54,7 @@ public class SpecFlagsTests
         ("Eip8037", nameof(IReleaseSpec.IsEip8037Enabled), static s => s.IsEip8037Enabled),
         ("Eip8038", nameof(IReleaseSpec.IsEip8038Enabled), static s => s.IsEip8038Enabled),
         ("Eip8246", "RemoveSelfdestructBurn", static s => s.RemoveSelfdestructBurn),
+        ("Eip8279", nameof(IReleaseSpec.IsEip8279Enabled), static s => s.IsEip8279Enabled),
         ("NetGasMetering", "UseNetGasMetering", static s => s.UseNetGasMetering),
     ];
 

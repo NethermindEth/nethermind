@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -28,7 +29,7 @@ public class TraceStackTests
         Assert.That(stack.ToRawBytes(), Is.EqualTo(bigEndian));
         for (int i = 0; i < Words.Length; i++)
         {
-            Assert.That(stack[i].Span.ToArray(), Is.EqualTo(bigEndian.AsSpan(i * EvmStack.WordSize, EvmStack.WordSize).ToArray()));
+            Assert.That(stack[i], Is.SequenceEqualTo(bigEndian.AsSpan(i * EvmStack.WordSize, EvmStack.WordSize)));
             Assert.That(stack.PeekUInt256(Words.Length - 1 - i), Is.EqualTo(Words[i]));
         }
     }

@@ -43,7 +43,7 @@ public readonly ref struct TransactionSubstate
     }.ToFrozenDictionary();
 
     private readonly JournalSet<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry> _logs;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -52,7 +52,7 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs;
+    public JournalCollection<LogEntry>? Logs => _logs;
     public JournalSet<Address>? DestroyList => _destroyList;
     internal bool ShouldRestoreRipemdTouch { get; init; }
 
@@ -82,7 +82,7 @@ public readonly ref struct TransactionSubstate
         Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
-        _logs = logs ?? [];
+        _logs = logs;
         ShouldRevert = shouldRevert;
         EvmExceptionType = evmExceptionType;
 
@@ -106,7 +106,7 @@ public readonly ref struct TransactionSubstate
 
     public bool DestroyListContains(Address? address) => address is not null && _destroyList?.Contains(address) == true;
 
-    public LogEntry[] LogsToArray() => _logs.ToArray();
+    public LogEntry[] LogsToArray() => _logs is null ? [] : _logs.ToArray();
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {

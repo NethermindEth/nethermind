@@ -54,9 +54,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope
     {
-        public void HintWarmAccount(in ValueAddress address) => innerScope.HintWarmAccount(in address);
+        public void HintWarmAccount(Address address) => innerScope.HintWarmAccount(address);
 
-        public void HintWarmSlot(in ValueAddress address, in UInt256 index) => innerScope.HintWarmSlot(in address, in index);
+        public void HintWarmSlot(Address address, in UInt256 index) => innerScope.HintWarmSlot(address, in index);
 
         public void Dispose()
         {
@@ -84,6 +84,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
             => innerScope.HintBal(bal, sink);
+
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+            => innerScope.ApplyBal(bal);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 
@@ -121,6 +124,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
+
+        public void HintSet(in UInt256 index, in UInt256 value) => storageTree.HintSet(in index, in value);
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

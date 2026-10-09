@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp;
@@ -34,6 +35,13 @@ public partial class Rlp
         }
 
         return snapshot;
+    }
+
+    private static bool RegisterDefaultDecoders()
+    {
+        RegisterDecoders(typeof(Rlp).Assembly);
+        RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        return true;
     }
 
     public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders)

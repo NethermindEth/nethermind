@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
@@ -68,6 +69,7 @@ public static class PersistedSnapshotBuilder
 
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
         // (off-heap) and re-fetch the TrieNode value from the source ConcurrentDictionary
         // at write time. PooledSet is used for the small Address dedup map so its
@@ -78,7 +80,8 @@ public static class PersistedSnapshotBuilder
         NativeMemoryList<ValueAddress> uniqueAddresses = null!;
 
         // Parallel extraction + sort: three independent jobs over disjoint dictionaries.
-        Parallel.Invoke(
+        Action[] jobs =
+        [
             () =>
             {
                 NativeMemoryList<TreePath> top = new(0);
@@ -94,10 +97,8 @@ public static class PersistedSnapshotBuilder
                     kv.Value.IsPersisted = true;
                     kv.Value.PrunePersistedRecursively(1);
                 }
-                Parallel.Invoke(
-                    () => top.Sort(StateNodeComparer),
-                    () => compact.Sort(StateNodeComparer),
-                    () => fallback.Sort(StateNodeComparer));
+                ParallelUnbalancedWork.For(0, 3, i =>
+                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StateNodeComparer));
                 stateTopKeys = top; stateCompactKeys = compact; stateFallbackKeys = fallback;
             },
             () =>
@@ -116,10 +117,8 @@ public static class PersistedSnapshotBuilder
                     kv.Value.IsPersisted = true;
                     kv.Value.PrunePersistedRecursively(1);
                 }
-                Parallel.Invoke(
-                    () => top.Sort(StorageNodeComparer),
-                    () => compact.Sort(StorageNodeComparer),
-                    () => fallback.Sort(StorageNodeComparer));
+                ParallelUnbalancedWork.For(0, 3, i =>
+                    (i switch { 0 => top, 1 => compact, _ => fallback }).Sort(StorageNodeComparer));
                 storTopKeys = top; storCompactKeys = compact; storFallbackKeys = fallback;
             },
             () =>
@@ -148,7 +147,13 @@ public static class PersistedSnapshotBuilder
 
                 sortedStorages = storages;
                 uniqueAddresses = addresses;
-            });
+            }
+        ];
+        ParallelUnbalancedWork.For(0, jobs.Length, jobs, static (i, actions) =>
+        {
+            actions[i]();
+            return actions;
+        });
 
         SortedTableBuilder<TWriter> table = new(ref writer);
         try

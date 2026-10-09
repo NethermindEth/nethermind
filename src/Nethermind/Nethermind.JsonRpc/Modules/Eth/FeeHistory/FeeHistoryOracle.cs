@@ -221,9 +221,27 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
+            // An unavailable ancestor ends the walk early; the leading slots were never filled,
+            // so drop them to keep index 0 aligned with oldestBlock.
+            if (historyInfo is null && effectiveBlockCount > 0)
+            {
+                DropLeading(baseFeePerGas, effectiveBlockCount);
+                DropLeading(baseFeePerBlobGas, effectiveBlockCount);
+                DropLeading(gasUsedRatio, effectiveBlockCount);
+                DropLeading(blobGasUsedRatio, effectiveBlockCount);
+                if (rewards is not null) DropLeading(rewards, effectiveBlockCount);
+            }
+
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        private static void DropLeading<T>(ArrayPoolList<T> list, int count)
+        {
+            Span<T> items = list.AsSpan();
+            items[count..].CopyTo(items);
+            list.Truncate(items.Length - count);
         }
 
         private void TryRunCleanup()

@@ -21,4 +21,28 @@ public interface IFrameTxReceiptTracer
     /// enter the VM, so the action callbacks alone do not say which frame produced which observations.</remarks>
     /// <param name="error">The EVM error that ended the frame, or <c>null</c> when it succeeded.</param>
     void ReportFrameEnd(int frameIndex, EvmExceptionType? error) { }
+
+    /// <summary>Reports that the frames from <paramref name="fromFrameIndex"/> up to the failed frame at
+    /// <paramref name="toFrameIndex"/> had their state and logs rolled back, by an atomic batch unroll or a failed
+    /// <c>POST_TX</c> frame.</summary>
+    /// <remarks>The rolled-back frames keep their success status, and where a <c>POST_TX</c> rollback starts
+    /// depends on when the payer was approved, so the receipts alone do not say which frames were discarded.</remarks>
+    /// <param name="fromFrameIndex">The first rolled-back frame.</param>
+    /// <param name="toFrameIndex">The frame whose failure caused the rollback, which already reported its end.</param>
+    void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) { }
+
+    /// <summary>The first tracer in <paramref name="tracer"/>'s wrapper chain that takes EIP-8141 frame reports,
+    /// or <see langword="null"/> when none does.</summary>
+    /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
+    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
+    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
+    static IFrameTxReceiptTracer? FindIn(ITxTracer tracer)
+    {
+        while (true)
+        {
+            if (tracer is IFrameTxReceiptTracer frameTxTracer) return frameTxTracer;
+            if (tracer is not ITxTracerWrapper wrapper) return null;
+            tracer = wrapper.InnerTracer;
+        }
+    }
 }

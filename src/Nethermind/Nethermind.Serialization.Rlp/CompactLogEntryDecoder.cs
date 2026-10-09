@@ -31,6 +31,12 @@ namespace Nethermind.Serialization.Rlp
             int untilPosition = position + topicsLength;
 
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
+            if (position < untilPosition)
+            {
+                rlp.DecodeZeroPrefixLogTopic0(ref position, out Hash256 topic0);
+                topics.Add(topic0);
+            }
+
             while (position < untilPosition)
             {
                 rlp.DecodeZeroPrefixKeccakNonNull(ref position, out Hash256 topic);
@@ -74,6 +80,11 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = reader.ReadSequenceLength();
             int untilPosition = reader.Position + sequenceLength;
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
+            if (reader.Position < untilPosition)
+            {
+                topics.Add(reader.DecodeZeroPrefixLogTopic0());
+            }
+
             while (reader.Position < untilPosition)
             {
                 topics.Add(reader.DecodeZeroPrefixKeccakNonNull());

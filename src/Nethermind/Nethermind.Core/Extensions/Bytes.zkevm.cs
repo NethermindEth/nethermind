@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Core.Extensions;
 
@@ -12,9 +17,10 @@ public static unsafe partial class Bytes
     /// Reverses the byte order of a 64-bit word.
     /// </summary>
     /// <remarks>
-    /// RISC-V has no byte-swap instruction, so the BCL's <c>ReverseEndianness</c> expands to a
-    /// byte-at-a-time shuffle; <see cref="ZkEvmBitOperations.Bswap64"/> does it with three masked
-    /// shift/or pairs on whole words. See <c>Bytes.std.cs</c> for the host form.
+    /// Without Zbb, RISC-V has no byte-swap instruction, so the BCL's <c>ReverseEndianness</c> expands
+    /// to a byte-at-a-time shuffle; <see cref="ZkEvmBitOperations.Bswap64"/> does it with three masked
+    /// shift/or pairs on whole words, or with <c>rev8</c> in a guest whose zkVM has Zbb. See
+    /// <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong Bswap64(ulong value) => ZkEvmBitOperations.Bswap64(value);
@@ -45,6 +51,58 @@ public static unsafe partial class Bytes
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal ulong Bswap64(ulong value) => ZkEvmBitOperations.Swap(value, _m8, _m16);
     }
+
+    /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
+    /// <see cref="ZiskMemmoveFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
+    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
+    {
+        if (!ZiskMemmoveFlag.IsActive)
+        {
+            source.CopyTo(destination);
+            return;
+        }
+
+        if ((uint)source.Length > (uint)destination.Length) ThrowDestinationTooShort();
+        Memmove(
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(destination)),
+            Unsafe.AsPointer(ref MemoryMarshal.GetReference(source)),
+            (nuint)source.Length);
+    }
+
+    /// <summary>Copies <paramref name="length"/> bytes from <paramref name="source"/> to <paramref name="destination"/>,
+    /// which may overlap.</summary>
+    /// <remarks>
+    /// Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
+    /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
+    /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
+    /// callee is a two-instruction thunk.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memmove(void* destination, void* source, nuint length)
+    {
+        if (ZiskMemmoveFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        else Buffer.MemoryCopy(source, destination, length, length);
+    }
+
+    /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
+    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
+    /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void Memset(void* destination, byte value, nuint length)
+    {
+        if (ZiskMemmoveFlag.IsActive) Accelerators.Memset(destination, value, length);
+        else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowDestinationTooShort() => throw new ArgumentException("Destination is too short.", "destination");
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
     /// <remarks>

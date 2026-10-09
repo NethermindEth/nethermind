@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Core;
@@ -31,7 +32,11 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
     /// <summary>Draws candidate transactions for the list, round-robin across the drawn senders.</summary>
     /// <remarks>Restricted to each sender's appendable run, since nothing else could be appended. Drawn
-    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.</remarks>
+    /// uniformly, not by fee: a fee-ordered draw drops what a builder passes over.
+    /// Not gated on pool revalidation: the ready-tx snapshot applies no per-transaction spec check, so around a
+    /// fork the draw can include entries the new spec rejects — either because the pool's background revalidation
+    /// is still catching up, or because the target block is the activation slot itself, whose timestamp is
+    /// not known from the parent header. The only cost is wasted list bytes.</remarks>
     private ArrayPoolListRef<Transaction> SampleAppendableTxs(BlockHeader? parent)
     {
         const int capacity = SenderSampleCapacity;
@@ -42,8 +47,9 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         // state read: only the drawn senders below pay for one.
         using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
         int seen = 0;
-        // Blob txs cannot appear here: TxPool routes them to a separate pool this snapshot does not read.
-        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee).Values)
+        // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
+        // mixed sender buckets and are removed below.
+        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
         {
             if (drawn.Count < capacity)
             {
@@ -170,13 +176,19 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         try
         {
             int size = 0;
+            // The sample orders each sender's run by ascending nonce, so once one entry is skipped the rest
+            // of that run is excused whenever the skipped one is absent: budget spent for no extra coverage.
+            HashSet<AddressAsKey>? droppedSenders = null;
             foreach (Transaction tx in txs)
             {
+                if (droppedSenders is not null && droppedSenders.Contains(tx.SenderAddress!)) continue;
+
                 ArrayPoolList<byte> txBytes = InclusionListDecoder.EncodePooled(tx);
 
                 if (size + txBytes.Count > Eip7805Constants.MaxBytesPerInclusionList)
                 {
                     txBytes.Dispose();
+                    (droppedSenders ??= []).Add(tx.SenderAddress!);
                     continue;
                 }
 

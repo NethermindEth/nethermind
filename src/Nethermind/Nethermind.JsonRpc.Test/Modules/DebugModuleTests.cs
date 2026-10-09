@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -120,7 +122,7 @@ public class DebugModuleTests
         _debugBridge.GetBlock(new BlockParameter(0UL)).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(block.Header).Bytes));
     }
 
     [TestCaseSource(nameof(RawBlockCases))]
@@ -130,7 +132,7 @@ public class DebugModuleTests
         _debugBridge.GetBlock(blockParameter).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawBlock", requestParameter);
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan().ToArray(), Is.EqualTo(new BlockDecoder().Encode(block).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block).Bytes));
     }
 
     [Test]
@@ -434,6 +436,38 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugTraceCall_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(new GethLikeTxTrace { ReturnValue = [] });
+        GethTraceOptions options = new()
+        {
+            StateOverrides = withOverrides ? new() { [TestItem.AddressA] = new() { Nonce = 66 } } : null
+        };
+        TransactionForRpc call = new LegacyTransactionForRpc { To = TestItem.AddressA };
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceCall(call, selector, options);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingSingleResult)actual.Data).WriteAsJson(writer);
+        }
+        _debugBridge.Received(1).GetTransactionTrace(Arg.Any<Transaction>(),
+            Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
+            Arg.Is<GethTraceOptions>(o => o.StateOverrides == options.StateOverrides), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        _blockchainBridge.Received(1).HasStateForBlock(validated.Header);
+    }
+
+    [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
@@ -560,6 +594,17 @@ public class DebugModuleTests
 
         Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
         _debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
+    }
+
+    [Test]
+    public async Task DebugSetHead_PassesParameterAndReportsRewindResult([Values] bool updated)
+    {
+        _debugBridge.UpdateHeadBlock(new BlockParameter(2UL)).Returns(updated);
+
+        string response = await SerializedRequest("debug_setHead", "0x2");
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
+        _debugBridge.Received().UpdateHeadBlock(new BlockParameter(2UL));
     }
 
     [Test]

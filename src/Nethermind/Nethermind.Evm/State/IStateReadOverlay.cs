@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -37,6 +38,15 @@ public interface IStateReadOverlay
     /// <summary>Whether the overlay holds any slot of the account, so a read of its storage must reach the overlay
     /// even where the underlying account has none.</summary>
     bool HasStorage(Address address);
+
+    /// <summary>The bytes of code the overlay itself carries, for a code hash an overlaid account points at that the
+    /// code database need not hold: code a prefix deployed and replaced within one block may never have been
+    /// written there. Asked only when the code database misses.</summary>
+    bool TryGetCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
+    {
+        code = null;
+        return false;
+    }
 }
 
 /// <summary>The overlay armed for the scope in flight, if any. One per read-only processing environment.</summary>
@@ -45,6 +55,7 @@ public sealed class StateReadOverlaySlot
     private IStateReadOverlay? _current;
     private IDisposable? _lease;
     private BlockReadCache? _cache;
+    private IStateReadOverlay? _parentState;
 
     /// <summary>The borrowed overlay for the current scope; null when disarmed.</summary>
     public IStateReadOverlay? Current => _current;
@@ -52,13 +63,21 @@ public sealed class StateReadOverlaySlot
     /// <summary>Reads of the state underneath the overlay, shared by every transaction armed from the same block.</summary>
     public BlockReadCache? Cache => _cache;
 
+    /// <summary>Answers part of the state underneath the overlay from memory, ahead of the scope; it is read behind
+    /// <see cref="Cache"/> and what it answers is cached like a read of the scope.</summary>
+    /// <remarks>Because its answers land in the cache every worker of the block shares, it must be a copy of the state
+    /// the scope stands on, never a change laid over it, and every <see cref="Arm"/> that passes the same
+    /// <see cref="BlockReadCache"/> must pass the same parent state, or none.</remarks>
+    public IStateReadOverlay? ParentState => _parentState;
+
     /// <summary>Takes ownership of the lease, replacing and releasing any previous one.</summary>
-    public void Arm(IStateReadOverlay overlay, IDisposable lease, BlockReadCache? cache = null)
+    public void Arm(IStateReadOverlay overlay, IDisposable lease, BlockReadCache? cache = null, IStateReadOverlay? parentState = null)
     {
         Disarm();
         _current = overlay;
         _lease = lease;
         _cache = cache;
+        _parentState = parentState;
     }
 
     /// <summary>Clears the overlay and releases its lease. Repeated calls are harmless.</summary>
@@ -66,6 +85,7 @@ public sealed class StateReadOverlaySlot
     {
         _current = null;
         _cache = null;
+        _parentState = null;
         _lease?.Dispose();
         _lease = null;
     }

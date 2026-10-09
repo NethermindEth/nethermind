@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
@@ -343,7 +344,7 @@ public class SszCodecTests
             Assert.That(payload.Timestamp, Is.EqualTo(1_700_000_100));
             Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
 
-            Assert.That(blockAccessListSpan.ToArray(), Is.EqualTo(blockAccessList));
+            Assert.That(blockAccessListSpan, Is.SequenceEqualTo(blockAccessList));
             Assert.That(payload.SlotNumber, Is.EqualTo(slotNumber));
             Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
             Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
@@ -394,9 +395,9 @@ public class SszCodecTests
         UInt256 decodedBaseFee = new(payload.Slice(440, 32), isBigEndian: false);
         Assert.That(decodedBaseFee, Is.EqualTo(ep.BaseFeePerGas), "baseFeePerGas must be encoded at byte offset 440 of the inner payload per the Ethereum consensus spec");
 
-        Assert.That(payload.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash must be the first 32 bytes of the inner payload");
+        Assert.That(payload.Slice(0, 32), Is.SequenceEqualTo(ep.ParentHash!.Bytes), "parent_hash must be the first 32 bytes of the inner payload");
 
-        Assert.That(payload.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash must be encoded at byte offset 472 of the inner payload per the Ethereum consensus spec");
+        Assert.That(payload.Slice(472, 32), Is.SequenceEqualTo(ep.BlockHash!.Bytes), "block_hash must be encoded at byte offset 472 of the inner payload per the Ethereum consensus spec");
     }
 
     [Test]
@@ -433,17 +434,17 @@ public class SszCodecTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(buf.Slice(0, 32).ToArray(), Is.EqualTo(ep.ParentHash!.Bytes.ToArray()), "parent_hash @ offset 0");
+            Assert.That(buf.Slice(0, 32), Is.SequenceEqualTo(ep.ParentHash!.Bytes), "parent_hash @ offset 0");
 
-            Assert.That(buf.Slice(32, 20).ToArray(), Is.EqualTo(ep.FeeRecipient!.Bytes.ToArray()), "fee_recipient @ offset 32");
+            Assert.That(buf.Slice(32, 20), Is.SequenceEqualTo(ep.FeeRecipient!.Bytes), "fee_recipient @ offset 32");
 
-            Assert.That(buf.Slice(52, 32).ToArray(), Is.EqualTo(ep.StateRoot!.Bytes.ToArray()), "state_root @ offset 52");
+            Assert.That(buf.Slice(52, 32), Is.SequenceEqualTo(ep.StateRoot!.Bytes), "state_root @ offset 52");
 
-            Assert.That(buf.Slice(84, 32).ToArray(), Is.EqualTo(ep.ReceiptsRoot!.Bytes.ToArray()), "receipts_root @ offset 84");
+            Assert.That(buf.Slice(84, 32), Is.SequenceEqualTo(ep.ReceiptsRoot!.Bytes), "receipts_root @ offset 84");
 
-            Assert.That(buf.Slice(116, 256).ToArray(), Is.EqualTo(Bloom.Empty.Bytes.ToArray()), "logs_bloom @ offset 116");
+            Assert.That(buf.Slice(116, 256), Is.SequenceEqualTo(Bloom.Empty.Bytes), "logs_bloom @ offset 116");
 
-            Assert.That(buf.Slice(372, 32).ToArray(), Is.EqualTo(ep.PrevRandao!.Bytes.ToArray()), "prev_randao @ offset 372");
+            Assert.That(buf.Slice(372, 32), Is.SequenceEqualTo(ep.PrevRandao!.Bytes), "prev_randao @ offset 372");
 
             Assert.That(BitConverter.ToUInt64(buf.Slice(404, 8)), Is.EqualTo(ep.BlockNumber), "block_number @ offset 404");
 
@@ -458,7 +459,7 @@ public class SszCodecTests
 
             Assert.That(new UInt256(buf.Slice(440, 32), isBigEndian: false), Is.EqualTo(ep.BaseFeePerGas), "base_fee_per_gas @ offset 440");
 
-            Assert.That(buf.Slice(472, 32).ToArray(), Is.EqualTo(ep.BlockHash!.Bytes.ToArray()), "block_hash @ offset 472");
+            Assert.That(buf.Slice(472, 32), Is.SequenceEqualTo(ep.BlockHash!.Bytes), "block_hash @ offset 472");
 
             uint txOffset = BitConverter.ToUInt32(buf.Slice(504, 4));
             Assert.That(txOffset, Is.GreaterThanOrEqualTo(508u), "transactions variable-length offset @ offset 504 must point past the fixed section");
@@ -486,7 +487,7 @@ public class SszCodecTests
         uint veOffset = BitConverter.ToUInt32(buf.Slice(5, 4));
         Assert.That(veOffset, Is.GreaterThanOrEqualTo(9u), "validation_error variable-length offset @ 5 must point past the 9-byte fixed section");
 
-        Assert.That(buf.Slice((int)lvhOffset, 32).ToArray(), Is.EqualTo(TestItem.KeccakA.Bytes.ToArray()), "latest_valid_hash bytes must land at the offset encoded in the fixed section");
+        Assert.That(buf.Slice((int)lvhOffset, 32), Is.SequenceEqualTo(TestItem.KeccakA.Bytes), "latest_valid_hash bytes must land at the offset encoded in the fixed section");
     }
 
     [Test]
@@ -517,7 +518,7 @@ public class SszCodecTests
         int pidEnd = (int)pidOffset + 8;
         Assert.That(buf.Length, Is.GreaterThanOrEqualTo(pidEnd), "encoded buffer must be large enough to hold the payload_id bytes");
 
-        Assert.That(buf.Slice((int)pidOffset, 8).ToArray(), Is.EqualTo(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }), "payload_id bytes must match the original hex string");
+        Assert.That(buf.Slice((int)pidOffset, 8), Is.SequenceEqualTo(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 }), "payload_id bytes must match the original hex string");
     }
 
     private static void AssertGetPayloadResponseHeaderOffsets(
@@ -813,7 +814,7 @@ public class SszCodecTests
         Assert.That(decoded.Commitments, Is.Not.Null);
         Assert.That(decoded.Commitments!.Length, Is.EqualTo(proofs.Length));
         for (int i = 0; i < proofs.Length; i++)
-            Assert.That(decoded.Commitments![i].AsSpan().ToArray(), Is.EqualTo(proofs[i]), $"commitment {i} bytes must round-trip exactly");
+            Assert.That(decoded.Commitments![i].AsSpan(), Is.SequenceEqualTo(proofs[i]), $"commitment {i} bytes must round-trip exactly");
     }
 
     [TestCase(PayloadStatus.Valid, true, true)]
@@ -850,7 +851,7 @@ public class SszCodecTests
         int offWitness = BinaryPrimitives.ReadInt32LittleEndian(buf.Slice(4, 4));
         Assert.That(offStatus, Is.EqualTo(8), "two-offset container header is 8 bytes");
 
-        Assert.That(buf.Slice(offStatus, offWitness - offStatus).ToArray(), Is.EqualTo(standalone),
+        Assert.That(buf.Slice(offStatus, offWitness - offStatus), Is.SequenceEqualTo(standalone),
             "the witness response must reuse the regular PayloadStatus encoding");
         Assert.That(offWitness, Is.EqualTo(buf.Length),
             "the witness Optional is an empty List[_, 1] (no bytes) when no witness was produced");
@@ -1062,8 +1063,8 @@ public class SszCodecTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Transactions, Is.Not.Null.And.Length.EqualTo(2));
-            Assert.That(decoded.Transactions![0].Bytes.ToArray(), Is.EqualTo(tx1));
-            Assert.That(decoded.Transactions[1].Bytes.ToArray(), Is.EqualTo(tx2));
+            Assert.That(decoded.Transactions![0].Bytes, Is.SequenceEqualTo(tx1));
+            Assert.That(decoded.Transactions[1].Bytes, Is.SequenceEqualTo(tx2));
         }
     }
 }

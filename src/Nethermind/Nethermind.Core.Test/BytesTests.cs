@@ -193,6 +193,13 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Hex_lookup_holds_both_lowercase_digits_of_every_byte([Range(0, 255)] int value)
+        {
+            string hex = value.ToString("x2");
+            Assert.That(Bytes.Lookup32[value], Is.EqualTo(hex[0] + ((uint)hex[1] << 16)));
+        }
+
+        [Test]
         public void Stream_hex_works()
         {
             byte[] bytes = new byte[] { 15, 16, 255 };
@@ -1309,6 +1316,27 @@ namespace Nethermind.Core.Test
             }
         }
 
+        /// <summary>
+        /// The scalar loop the vector paths leave only a short tail to on the host: lengths span several of its
+        /// lane-count chunks, and the fills hit the byte values its per-lane carry logic distinguishes.
+        /// </summary>
+        [Test]
+        public void CountZerosWordAtATime_matches_naive(
+            [Values(0, 7, 8, 247, 248, 249, 255, 256, 257, 496, 1000, 2049)] int length,
+            [Values(-1, 0x00, 0x01, 0x7F, 0x80, 0xFF)] int fill)
+        {
+            Random rng = new(length);
+            byte[] data = new byte[length];
+            int expected = 0;
+            for (int i = 0; i < length; i++)
+            {
+                data[i] = fill >= 0 ? (byte)fill : rng.Next(3) == 0 ? (byte)0 : (byte)rng.Next(256);
+                if (data[i] == 0) expected++;
+            }
+
+            Assert.That(Bytes.CountZerosWordAtATime(data), Is.EqualTo(expected));
+        }
+
         private static IEnumerable<TestCaseData> LeadingZerosCountCases()
         {
             yield return new TestCaseData(Array.Empty<byte>(), 0).Returns(0).SetName("empty");
@@ -1343,5 +1371,27 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(WithoutLeadingZerosCases))]
         public byte[] WithoutLeadingZeros_cases(byte[] bytes) =>
             new ReadOnlySpan<byte>(bytes).WithoutLeadingZeros().ToArray();
+
+        [TestCase("default", true)]
+        [TestCase("null array", true)]
+        [TestCase("empty array", false)]
+        [TestCase("empty slice", false)]
+        [TestCase("memory manager", false)]
+        public void ReadOnlyMemory_IsNull_tells_missing_from_empty(string source, bool expected)
+        {
+            // Code reads return default when not served and empty memory for an account without code; confusing the
+            // two would skip the by-address fallback or run nothing.
+            byte[]? none = null;
+            ReadOnlyMemory<byte> memory = source switch
+            {
+                "default" => default,
+                "null array" => none,
+                "empty array" => Array.Empty<byte>(),
+                "empty slice" => new byte[] { 1, 2 }.AsMemory(2),
+                _ => Nethermind.Core.Buffers.ArrayMemoryManager.From([1])!.Memory,
+            };
+
+            Assert.That(memory.IsNull(), Is.EqualTo(expected));
+        }
     }
 }

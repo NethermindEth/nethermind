@@ -77,16 +77,29 @@ public class ProtocolHandlerBaseTests
         }
     }
 
-    private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
-    {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
-            where TReq : notnull, IBackgroundTaskRequest<TReq> => true;
-    }
-
     private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
     {
         public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new TestResponseMessage());
+    }
+
+    /// <summary>
+    /// Records the runner delegate the most recently scheduled task was dispatched with.
+    /// </summary>
+    /// <remarks>
+    /// A cached runner is handed to the scheduler by reference, so repeated scheduling yielding the same
+    /// instance is what proves no per-call wrapper delegate is allocated.
+    /// </remarks>
+    private sealed class RunnerCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public Delegate? CapturedRunner { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            CapturedRunner = fulfillFunc;
+            return true;
+        }
     }
 
     /// <summary>Records the name each scheduled task is reported under.</summary>
@@ -126,8 +139,14 @@ public class ProtocolHandlerBaseTests
     {
         NameCapturingBackgroundTaskScheduler scheduler = new();
         TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
-        TestRequestMessage request = new();
 
+        Schedule(handler, path, new TestRequestMessage());
+
+        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
+    }
+
+    private static void Schedule(TestProtocolHandler handler, SchedulingPath path, TestRequestMessage request)
+    {
         switch (path)
         {
             case SchedulingPath.SyncServeTask:
@@ -143,8 +162,6 @@ public class ProtocolHandlerBaseTests
                 handler.ScheduleBackgroundTaskFor(request);
                 break;
         }
-
-        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
     }
 
     private sealed class TestResponseMessage : P2PMessage
@@ -192,35 +209,22 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
-    public void Sync_serve_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Scheduling_does_not_allocate_wrapper_delegate([Values] SchedulingPath path)
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
+        RunnerCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+        Schedule(handler, path, request);
+        Delegate? firstRunner = scheduler.CapturedRunner;
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Schedule(handler, path, request);
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
-    }
-
-    [Test]
-    public void Sync_serve_value_task_scheduling_does_not_allocate_wrapper_delegate()
-    {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
-        TestRequestMessage request = new();
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRunner, Is.Not.Null);
+            Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        }
     }
 
     [Test]

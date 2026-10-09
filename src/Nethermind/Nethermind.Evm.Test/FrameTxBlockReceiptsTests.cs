@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -176,44 +183,8 @@ public class FrameTxBlockReceiptsTests
     [Test]
     public void Execute_PostTxReverts_FailedReceiptKeepsThePrefixLogs()
     {
-        ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-        IReleaseSpec spec = specProvider.GenesisSpec;
-
-        Deploy(stateProvider, spec, Sender, Approve(FrameFlags.ApproveExecution), 1.Ether);
-        Deploy(stateProvider, spec, Payer, Approve(FrameFlags.ApprovePayment), 1.Ether);
-        Deploy(stateProvider, spec, Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done);
-        Deploy(stateProvider, spec, Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            Nonce = 0,
-            SenderAddress = Sender,
-            Frames =
-            [
-                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
-                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
-                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
-                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
-                new TxFrame(FrameMode.PostTx, 0, Asserter, 200_000, UInt256.Zero, default),
-            ],
-            FrameSignatures = [],
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1,
-        };
-
-        Block block = Build.A.Block.WithNumber(1)
-            .WithBaseFeePerGas(0)
-            .WithTransactions(tx)
-            .WithGasLimit(30_000_000).TestObject;
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
+        using IDisposable _ = scope;
 
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
@@ -233,6 +204,113 @@ public class FrameTxBlockReceiptsTests
             Assert.That(receipt.FrameReceipts[3].Logs, Is.Empty, "the body's log goes with the state that produced it");
             Assert.That(receipt.Logs, Has.Length.EqualTo(1), "receipt logs must stay the union of frame logs");
         }
+    }
+
+    // A failed transaction's receipt still carries the prefix log, so the next transaction's callTracer
+    // indexes must continue after it.
+    [Test]
+    public void Execute_PostTxReverts_CallTracerLogIndexCountsThePrefixLogs()
+    {
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx();
+        using IDisposable _ = scope;
+        BlockLogIndex logIndex = new();
+
+        (TxReceipt receipt, GethLikeTxTrace trace) = TraceWithLog(processor, tx, block, spec, logIndex);
+        using GethLikeTxTrace __ = trace;
+
+        Assert.That(logIndex.Next, Is.EqualTo(receipt.Logs!.Length));
+    }
+
+    // An unrolled atomic batch keeps its frames' success status but drops their logs, so a frame after
+    // the batch must number its logs as the receipt does.
+    [Test]
+    public void Execute_AtomicBatchUnrolls_CallTracerLogIndexSkipsTheUnrolledLogs()
+    {
+        (IDisposable scope, EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec) = LoggingFrameTx(
+        [
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, Observer, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Asserter, 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+        ]);
+        using IDisposable _ = scope;
+
+        (TxReceipt receipt, GethLikeTxTrace trace) = TraceWithLog(processor, tx, block, spec, new BlockLogIndex());
+        using GethLikeTxTrace __ = trace;
+
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.FrameReceipts![2].Logs, Is.Empty, "the unrolled frame's log goes with its state");
+            Assert.That(root.Calls[2].Logs, Is.Null);
+            Assert.That(root.Calls[4].Logs!.Single().Index, Is.EqualTo(0UL));
+        }
+    }
+
+    private static (TxReceipt Receipt, GethLikeTxTrace Trace) TraceWithLog(EthereumTransactionProcessor processor, Transaction tx, Block block, IReleaseSpec spec, BlockLogIndex logIndex)
+    {
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = NativeCallTracer.CallTracer,
+            TracerConfig = JsonSerializer.Deserialize<JsonElement>("""{"withLog":true}"""),
+            LogIndex = logIndex
+        };
+        GethLikeBlockNativeTracer callTracer = new(txHash: null, (_, t) => new NativeCallTracer(t, spec, options));
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(callTracer.WithCancellation(CancellationToken.None));
+        receiptsTracer.StartNewBlockTrace(block);
+        using ITxTracer txTracer = receiptsTracer.StartNewTxTrace(tx);
+        processor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        return (receiptsTracer.TxReceipts[0], callTracer.BuildResult().Single());
+    }
+
+    private static (IDisposable Scope, EthereumTransactionProcessor Processor, Transaction Tx, Block Block, IReleaseSpec Spec) LoggingFrameTx(TxFrame[]? frames = null)
+    {
+        ISpecProvider specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true });
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        IReleaseSpec spec = specProvider.GenesisSpec;
+
+        Deploy(stateProvider, spec, Sender, Approve(FrameFlags.ApproveExecution), 1.Ether);
+        Deploy(stateProvider, spec, Payer, Approve(FrameFlags.ApprovePayment), 1.Ether);
+        Deploy(stateProvider, spec, Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done);
+        Deploy(stateProvider, spec, Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            Nonce = 0,
+            SenderAddress = Sender,
+            Frames = frames ??
+            [
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.PostTx, 0, Asserter, 200_000, UInt256.Zero, default),
+            ],
+            FrameSignatures = [],
+            GasPrice = 1,
+            DecodedMaxFeePerGas = 1,
+        };
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBaseFeePerGas(0)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000).TestObject;
+
+        return (scope, processor, tx, block, spec);
     }
 
     private static byte[] Approve(FrameFlags scope) =>

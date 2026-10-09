@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Caching;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -45,6 +46,23 @@ public class LogEntryDecoderTests
     }
 
     [Test]
+    public void Length_matches_the_encoding([Values(0, 1, 4)] int topicCount)
+    {
+        Hash256[] topics = new Hash256[topicCount];
+        for (int i = 0; i < topics.Length; i++) topics[i] = Keccak.Compute([(byte)i]);
+        LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, topics);
+
+        Rlp rlp = LogEntryDecoder.Instance.Encode(logEntry);
+        RlpReader ctx = new(rlp.Bytes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LogEntryDecoder.Instance.GetLength(logEntry), Is.EqualTo(rlp.Bytes.Length));
+            Assert.That(LogEntryDecoder.Instance.Decode(ref ctx), Is.EqualTo(logEntry).UsingPropertiesComparer());
+        }
+    }
+
+    [Test]
     public void Can_do_roundtrip_ref_struct()
     {
         LogEntry logEntry = CreateSampleLogEntry();
@@ -65,6 +83,67 @@ public class LogEntryDecoderTests
             iterator.TryGetNext(out Hash256StructRef keccak);
             Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]");
         }
+    }
+
+    public enum TopicDecodePath
+    {
+        Full,
+        Compact,
+        CompactTopicsOnly,
+    }
+
+    [Test, NonParallelizable]
+    public void Decoded_logs_share_the_topic_0_instance_only([Values] TopicDecodePath path)
+    {
+        LogEntry logEntry = new(TestItem.AddressA, [1, 2, 3], [Keccak.Compute(nameof(Decoded_logs_share_the_topic_0_instance_only)), TestItem.KeccakB]);
+
+        Hash256[] first = DecodeTopics(logEntry, path);
+        Hash256[] second = DecodeTopics(logEntry, path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(logEntry.Topics));
+            Assert.That(second, Is.EqualTo(logEntry.Topics));
+            Assert.That(second[0], Is.SameAs(first[0]));
+            Assert.That(second[1], Is.Not.SameAs(first[1]));
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Topic_0_values_sharing_a_cache_slot_decode_to_their_own_value([Values] TopicDecodePath path)
+    {
+        (byte[] a, byte[] b) = LogTopicCacheTests.CollidingPair();
+        LogEntry logA = new(TestItem.AddressA, [], [new Hash256(a), TestItem.KeccakB]);
+        LogEntry logB = new(TestItem.AddressA, [], [new Hash256(b), TestItem.KeccakB]);
+
+        Hash256[] fromA = DecodeTopics(logA, path);
+        Hash256[] fromB = DecodeTopics(logB, path);
+        Hash256[] fromAAgain = DecodeTopics(logA, path);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromA, Is.EqualTo(logA.Topics));
+            Assert.That(fromB, Is.EqualTo(logB.Topics));
+            Assert.That(fromAAgain, Is.EqualTo(logA.Topics));
+        }
+    }
+
+    private static Hash256[] DecodeTopics(LogEntry logEntry, TopicDecodePath path)
+    {
+        if (path == TopicDecodePath.Full)
+        {
+            RlpReader ctx = new(LogEntryDecoder.Instance.Encode(logEntry).Bytes);
+            return LogEntryDecoder.Instance.Decode(ref ctx)!.Topics;
+        }
+
+        RlpReader reader = new(CompactLogEntryDecoder.Instance.Encode(logEntry).Bytes);
+        if (path == TopicDecodePath.Compact)
+        {
+            return CompactLogEntryDecoder.Instance.Decode(ref reader)!.Topics;
+        }
+
+        CompactLogEntryDecoder.DecodeLogEntryStructRef(ref reader, RlpBehaviors.None, out LogEntryStructRef structRef);
+        return CompactLogEntryDecoder.DecodeTopics(new RlpReader(structRef.TopicsRlp));
     }
 
     [Test]

@@ -106,6 +106,16 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     bool IsTracingReturnData { get; }
 
     /// <summary>
+    /// The memory in a CALL-family operation's output window after the call returns
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <c>ReportMemoryChange</c> for the output window, which is read only when this is set.
+    /// Depends on <see cref="IsTracingInstructions"/>.
+    /// </remarks>
+    bool IsTracingCallOutputMemory => false;
+
+    /// <summary>
     /// Code deployment
     /// </summary>
     /// <remarks>
@@ -267,7 +277,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="returnData">The current return-data buffer.</param>
     /// <remarks>Depends on <see cref="IsTracingReturnData"/></remarks>
-    void SetOperationReturnData(ReadOnlyMemory<byte> returnData);
+    void SetOperationReturnData(ReadOnlySpan<byte> returnData);
 
     /// <summary>
     ///
@@ -401,6 +411,28 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportActionRemainingGas(ulong gas) { }
 
     /// <summary>
+    /// Reports a CALL-family or CREATE operation that entered no frame: it failed its depth or balance precheck, which
+    /// returns <paramref name="gas"/> to the caller at once, or its creation address collided, which consumes it.
+    /// </summary>
+    /// <param name="gas">Gas the frame would have received, including a value call's stipend.</param>
+    /// <param name="gasLeft">Gas returned to the caller: all of <paramref name="gas"/> after a failed precheck, none after a collision.</param>
+    /// <param name="value">Value the operation would have transferred.</param>
+    /// <param name="from">The calling or creating account.</param>
+    /// <param name="to">The callee, or the creation address; <c>null</c> for a creation that failed its precheck, whose address is not derived.</param>
+    /// <param name="input">Call data or init code.</param>
+    /// <param name="callType">The CALL-family or CREATE operation.</param>
+    /// <param name="error"><see cref="EvmExceptionType.NotEnoughBalance"/>, <see cref="EvmExceptionType.CallDepthExceeded"/> or <see cref="EvmExceptionType.TransactionCollision"/>.</param>
+    /// <param name="isPrecompileCall">Whether <paramref name="to"/> is a precompile.</param>
+    /// <remarks>
+    /// Depends on <see cref="IsTracingActions"/>. The action is complete when reported, so no action end or error
+    /// follows. From EIP-8037 a creation runs its precheck in the creating operation, so only its collision is reported.
+    /// The default implementation drops it.
+    /// </remarks>
+    void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
+    { }
+
+    /// <summary>
     ///
     /// </summary>
     /// <param name="gas"></param>
@@ -424,11 +456,21 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
-    /// Special case for VM trace in Parity but we consider removing support for it
+    /// Reports gas remaining for an instruction that is not currently open, so
+    /// <see cref="ReportOperationRemainingGas"/> would pair with no <see cref="StartOperation"/>.
     /// </summary>
-    /// <param name="refund"></param>
-    /// <param name="gasAvailable"></param>
-    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    /// <param name="refund">Gas credited back to the frame, or <c>0</c> when the update carries no refund.</param>
+    /// <param name="gasAvailable">Gas remaining once the update is applied.</param>
+    /// <remarks>
+    /// Raised when a call or create frame returns and the parent instruction resumes, when gas is credited back to a
+    /// call that could not proceed, and immediately before <see cref="ReportOperationError"/> when execution fails
+    /// with no instruction start open (the start was filtered out, CREATE already completed, or execution failed
+    /// outside any instruction, such as a precompile).
+    /// A tracer that follows gas checkpoints has to observe this alongside
+    /// <see cref="ReportOperationRemainingGas"/>; the parity <c>vmTrace</c> uses it to amend the operation's
+    /// recorded gas without recomputing its cost.
+    /// <para>Depends on <see cref="IsTracingInstructions"/>.</para>
+    /// </remarks>
     void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable);
 
     /// <summary>

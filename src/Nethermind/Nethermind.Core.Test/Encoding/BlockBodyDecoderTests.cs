@@ -22,9 +22,7 @@ public class BlockBodyDecoderTests
             ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
             : BlockBodyDecoder.Instance.Encode(body).Bytes;
 
-        HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
-        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
-        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
         RlpReader reader = new(bytes);
         RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
@@ -41,6 +39,33 @@ public class BlockBodyDecoderTests
             Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
             Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format is "body" or "unwrapped-body" && !skipPooledTransactions));
         }
+    }
+
+    [Test, NonParallelizable]
+    public void Decode_failure_returns_owned_transactions(
+        [Values("uncles", "withdrawals", "trailing", "transaction", "null-transaction")] string malformedField)
+    {
+        Rlp transactions = Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject)]);
+        byte[] bytes = malformedField switch
+        {
+            "transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), new Rlp([0xc1, 0x80])]), Rlp.OfEmptyList).Bytes,
+            "null-transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), Rlp.OfEmptyList]), Rlp.OfEmptyList).Bytes,
+            "uncles" => Rlp.Encode(transactions, Rlp.OfEmptyByteArray).Bytes,
+            "withdrawals" => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes,
+            _ => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes
+        };
+        HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
+
+        Assert.Throws<RlpException>(() => DecodeMalformed(bytes));
+
+        TransactionPoolTestHelper.AssertAllReturned(pooled);
+    }
+
+    private static void DecodeMalformed(byte[] bytes)
+    {
+        RlpReader reader = new(bytes);
+        reader.ReadSequenceLength();
+        BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, usePooledTransactions: true);
     }
 
     [TestCaseSource(nameof(ValidBodies))]

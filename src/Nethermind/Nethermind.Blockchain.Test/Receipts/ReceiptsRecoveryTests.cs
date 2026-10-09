@@ -71,6 +71,35 @@ public class ReceiptsRecoveryTests
         Assert.That(receipt.ContractAddress, Is.EqualTo(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b")));
     }
 
+    // The stored sender deliberately differs from the signer: if recovery ran, the signer would win.
+    [Test]
+    public void TryRecover_should_take_the_stored_sender_instead_of_recovering_it()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).Signed(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).WithSender(TestItem.AddressB).TestObject;
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressB), "a stored sender must be used without running ecrecover");
+    }
+
+    [Test]
+    public void TryRecover_should_recover_the_sender_when_the_receipt_stores_none()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).Signed(TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).WithSender(null!).TestObject;
+
+        _receiptsRecovery.TryRecover(block, [receipt]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.SenderAddress, Is.EqualTo(TestItem.AddressA), "without a stored sender the signer must be recovered");
+            Assert.That(receipt.Sender, Is.EqualTo(TestItem.AddressA), "the recovered sender must be written back onto the receipt");
+        }
+    }
+
     // A frame transaction can fail while carrying the logs of the frames that succeeded, so recovery's
     // log-count heuristic would otherwise report success where the executing node reported failure.
     [Test]

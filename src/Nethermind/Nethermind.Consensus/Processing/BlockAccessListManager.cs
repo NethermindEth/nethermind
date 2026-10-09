@@ -5,13 +5,12 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -28,7 +27,7 @@ namespace Nethermind.Consensus.Processing;
 /// Implementation is split across partial files by concern:
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
-///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
+///   * BlockAccessListManager.StateChanges.cs          — SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
@@ -47,7 +46,9 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    IExecutionRequestsProcessorFactory? executionRequestsProcessorFactory = null)
+    ZeroNonceStorageAccountsTransition? zeroNonceStorageAccountsTransition = null,
+    ISpecProvider? specProvider = null,
+    IHeaderFinder? headerFinder = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();
@@ -70,10 +71,6 @@ public partial class BlockAccessListManager(
     private readonly bool _hasParentReaderPool =
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
-
-    // Pre-state root of the block being processed, captured before any consensus-specific pre-processing
-    // touches the state; the parallel workers' parent readers are checked against it.
-    private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
     // suggested index is built once at PrepareForProcessing; the generated index mirrors its
@@ -171,7 +168,6 @@ public partial class BlockAccessListManager(
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
-            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
@@ -227,7 +223,7 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
             _postExecutionReadAllowance = _suggestedChargeableStorageReads > 0ul
                 ? PostExecutionReadAllowance(_blockExecutionContext.Value.Spec)
                 : 0ul;
@@ -287,6 +283,10 @@ public partial class BlockAccessListManager(
         {
             _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
+        if (_sequentialTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _sequentialTxProcessorWithWorldStateManager.Value.Dispose();
+        }
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);
     }
@@ -320,7 +320,6 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
-        _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,7 +21,7 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
+public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
@@ -89,11 +88,19 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
-        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
-        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
-        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
-        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+        SetSystemCallHashes();
     }
+
+    /// <summary>Stamps the system calls with their transaction hashes.</summary>
+    /// <remarks>
+    /// Implemented in <c>ExecutionRequestsProcessor.std.cs</c> only. The zkEVM guest leaves the hashes unset, as
+    /// the EIP-4788 beacon root system call always does: executing a system call does not read its hash, while
+    /// computing one resolves the transaction encoder's generic virtual methods through the NativeAOT type loader.
+    /// That is sound while the hashes reach nothing the guest outputs or validates: the calls get no receipt, run only
+    /// under the private <c>CallOutputTracer</c> in <c>ReadRequests</c>, and the block access list keys their changes
+    /// by block access index rather than by transaction.
+    /// </remarks>
+    partial void SetSystemCallHashes();
 
     /// <inheritdoc/>
     /// <remarks>
@@ -174,28 +181,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
                     BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
-            RecordRequests(block, ref requests);
+            block.ExecutionRequests = [.. requests];
+            block.Header.RequestsHash =
+                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
         }
         finally
         {
             requests.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Records the requests derived from execution onto the block and computes the requests hash.
-    /// </summary>
-    /// <remarks>
-    /// The request system calls are always executed (their state effects matter); this only controls
-    /// whether the derived requests are written back to the block header. Stateless validation
-    /// overrides this to a no-op so the block keeps the consensus-layer-provided requests hash, which
-    /// the statelessly re-executed state transition does not re-derive.
-    /// </remarks>
-    protected virtual void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
-    {
-        block.ExecutionRequests = [.. requests];
-        block.Header.RequestsHash =
-            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
     private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)

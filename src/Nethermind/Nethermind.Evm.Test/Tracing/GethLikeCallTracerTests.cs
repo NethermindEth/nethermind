@@ -77,6 +77,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_log_indices_include_hidden_children_and_discard_reverts([Values] bool onlyTopCall, [Values] bool childReverts)
+    {
+        byte[] childCode = childReverts
+            ? Prepare.EvmCode.Log(0, 0).Log(0, 0).Revert(0, 0).Done
+            : Prepare.EvmCode.Log(0, 0).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code, onlyTopCall ? WithLogAndOnlyTopCall : WithLog));
+        JsonElement root = trace.RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x0"));
+            Assert.That(root.GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo(childReverts ? "0x1" : "0x3"));
+            if (!onlyTopCall && !childReverts)
+            {
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x1"));
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo("0x2"));
+            }
+        }
+    }
+
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]
@@ -130,6 +154,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         public bool GasMatches { get; private set; } = true;
         public int Errors { get; private set; }
         public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
+        public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable) => _instructionGas = gasAvailable;
         public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
 
         public override void ReportActionError(EvmExceptionType evmExceptionType)
@@ -249,6 +274,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x2"
     }
   ],
@@ -267,6 +293,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x0",
           "position": "0x1"
         }
       ],
@@ -297,6 +324,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
           "data": "0x",
           "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
           ],
+          "index": "0x1",
           "position": "0x1"
         }
       ],
@@ -357,12 +385,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x2",
       "position": "0x0"
     }
   ]
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Test_CallTrace_WithLog_LogIndexStart_OffsetsIndex()
+    {
+        byte[] code = CreateNestedCallsCode();
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog) with { LogIndex = new BlockLogIndex(5) });
+        using GethLikeTxTrace trace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls[0].Logs!.AssertSingle().Index, Is.EqualTo(5UL));
+            Assert.That(topFrame.Calls[1].Logs!.AssertSingle().Index, Is.EqualTo(6UL));
+            Assert.That(topFrame.Logs!.AssertSingle().Index, Is.EqualTo(7UL));
+        }
     }
 
     [Test]
@@ -448,6 +494,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
       "data": "0x",
       "topics": [],
+      "index": "0x0",
       "position": "0x2"
     }
   ],
@@ -536,6 +583,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
             Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
             Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+            Assert.That(catcherLog.Index, Is.EqualTo(0UL));
 
             Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
             Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));
@@ -607,6 +655,51 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    public enum RejectedAction { CallBalance, CreateBalance, Create2Collision }
+
+    [Test]
+    public void Test_CallTrace_RejectedAction_RecordsFailedFrame([Values] RejectedAction scenario)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+        byte[] salt = Bytes.FromHexString("0x01").PadLeft(32);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        // The transaction runs at AddressB; an account with code already sits at its CREATE2 address.
+        Address collision = ContractAddress.From(TestItem.AddressB, salt, initCode);
+        TestState.CreateAccount(collision, 0);
+        TestState.InsertCode(collision, Prepare.EvmCode.Op(Instruction.STOP).Done, Spec);
+        Prepare rejectedAction = scenario switch
+        {
+            RejectedAction.CallBalance => Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50000, 1000.Ether),
+            RejectedAction.CreateBalance => Prepare.EvmCode.Create(initCode, 1000.Ether),
+            _ => Prepare.EvmCode.Create2(initCode, salt, 0),
+        };
+        byte[] code = rejectedAction.Op(Instruction.POP).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code));
+
+        JsonElement calls = trace.RootElement.GetProperty("calls");
+        JsonElement rejected = calls[0];
+        bool collided = scenario == RejectedAction.Create2Collision;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.GetArrayLength(), Is.EqualTo(1), "calls");
+            Assert.That(rejected.GetProperty("type").GetString(), Is.EqualTo(scenario switch
+            {
+                RejectedAction.CallBalance => "CALL",
+                RejectedAction.CreateBalance => "CREATE",
+                _ => "CREATE2",
+            }), "type");
+            Assert.That(rejected.GetProperty("error").GetString(),
+                Is.EqualTo(collided ? "contract address collision" : "insufficient balance for transfer"), "error");
+            // A failed precheck returns all the gas; a collision consumes it.
+            Assert.That(rejected.GetProperty("gasUsed").GetString(),
+                Is.EqualTo(collided ? rejected.GetProperty("gas").GetString() : "0x0"), "gasUsed");
+            Assert.That(rejected.TryGetProperty("to", out _), Is.EqualTo(scenario == RejectedAction.CallBalance), "to");
+            Assert.That(rejected.TryGetProperty("calls", out _), Is.False, "nested calls");
+        }
     }
 
     [Test]

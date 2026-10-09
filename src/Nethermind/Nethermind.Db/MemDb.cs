@@ -120,7 +120,7 @@ namespace Nethermind.Db
         }
 
         public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            => Get(key).AsSpan();
+            => Get(key, flags).AsSpan();
 
         public virtual void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {

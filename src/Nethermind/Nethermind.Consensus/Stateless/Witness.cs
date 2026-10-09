@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -71,13 +72,16 @@ public static class WitnessExtensions
 
                     decodedHeaders[i] = Decoder.Decode(ref reader)
                         ?? throw new InvalidOperationException($"No header decoded at index {i}");
+                    reader.CheckEnd();
 
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
                         throw new InvalidOperationException("Witness headers are not contiguous");
 
                     if (i + 1 < headersSpan.Length)
                     {
-                        previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                        // The decoder hashes the header's own RLP, which is the whole of headers[i] once CheckEnd passed.
+                        previousHeaderHash = decodedHeaders[i].Hash?.ValueHash256 ?? ValueKeccak.Compute(headers[i]);
+                        Debug.Assert(previousHeaderHash == ValueKeccak.Compute(headers[i]), "Header decoder must set Hash to the keccak of the RLP it consumed");
                     }
                 }
 

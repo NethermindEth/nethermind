@@ -132,9 +132,9 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (StateProvider.HasStateForBlock(parent))
+            Block block = PrepareBlock(parent, payloadAttributes, flags);
+            if (StateProvider.HasStateForTargetBlock(block.Header))
             {
-                Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);

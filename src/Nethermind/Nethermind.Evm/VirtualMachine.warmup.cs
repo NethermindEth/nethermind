@@ -173,7 +173,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
                 using VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(
                     TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, accessTracker, state.TakeSnapshot());
                 vm.VmState = vmState;
-                vmState.InitializeStacks(txTracer, codeInfo.CodeSpan, out EvmStack stack);
+                vmState.InitializeStacks(txTracer, codeInfo.ExecutionCodeSpan, out EvmStack stack);
+                if (vm._useCallDestinations) stack.UseCallDestinations();
 
                 for (int stackItem = 0; stackItem < 20; stackItem++)
                     stack.PushOne<TTracingInst>();
@@ -192,6 +193,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         code[0] = (byte)instruction;
         if (instruction is Instruction.JUMP or Instruction.JUMPI)
             code[1] = (byte)Instruction.JUMPDEST;
+        else if (instruction is Instruction.CALLSUB)
+            code[1] = (byte)Instruction.CALLDEST;
         else if (instruction is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
             code[1] = 0x80;
         return new CodeInfo(code);

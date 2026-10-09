@@ -2,12 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using NUnit.Framework;
+
+// Bound concurrent execution while fixture conversion and test bodies hold large object graphs.
+[assembly: LevelOfParallelism(4)]
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
@@ -35,7 +45,7 @@ public abstract class PyspecBlockchainFixtureBase(bool parallel, bool batchRead,
 public abstract class PyspecBlockchainTestFixture<TSelf>() : PyspecBlockchainFixtureBase(parallel: false, batchRead: false, heavy: false)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests", "BlockchainTests");
@@ -49,7 +59,7 @@ public abstract class PyspecLinuxX64BlockchainFixture(bool parallel, bool batchR
 public abstract class PyspecEngineBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_engine", "EngineBlockchainTests");
@@ -61,7 +71,7 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf>() : PyspecLinuxX6
 public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
@@ -71,38 +81,36 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64B
 public abstract class PyspecBogotaEngineBlockchainTestFixture() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
-        PyspecLoader.ToTestCases(new TestsSourceLoader(
+        PyspecLoader.LoadCases<BlockchainTest>(
             new LoadPyspecTestsStrategy
             {
                 ArchiveVersion = Constants.FOCIL_ARCHIVE_VERSION,
                 ArchiveName = Constants.FOCIL_ARCHIVE_NAME,
             },
-            "fixtures/blockchain_tests_engine/for_bogota").LoadTests<BlockchainTest>());
+            "fixtures/blockchain_tests_engine/for_bogota");
 }
 
 // Loads only `for_amsterdam` because parallel-BAL execution is gated on EIP-7928.
 public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
-        PyspecLoader.ToTestCases(new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>());
+        PyspecLoader.LoadCases<BlockchainTest>(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam");
 }
 
 // Engine-payload variant of the Amsterdam fixture; loads from `for_amsterdam` engine tree.
 public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(PyspecTestRef testRef) => Assert.That((await RunTest(PyspecLoader.LoadTest<BlockchainTest>(testRef))).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
-        PyspecLoader.ToTestCases(new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>());
+        PyspecLoader.LoadCases<BlockchainTest>(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam");
 }
 
 [TestFixture]
@@ -113,7 +121,7 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
 
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
+    public void Test(PyspecTestRef testRef) => Assert.That(RunTest(PyspecLoader.LoadTest<GeneralStateTest>(testRef)).Pass, Is.True);
 
     public static IEnumerable<TestCaseData> LoadTests() =>
         PyspecLoader.LoadCases<GeneralStateTest, TSelf>("state_tests", "StateTests");
@@ -128,9 +136,9 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
     public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
 
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(TransactionTest test)
+    public void Test(PyspecTestRef testRef)
     {
-        Result result = RunTest(test);
+        Result result = RunTest(PyspecLoader.LoadTest<TransactionTest>(testRef));
         Assert.That((bool)result, Is.True, result.Error);
     }
 
@@ -138,31 +146,278 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
         PyspecLoader.LoadCases<TransactionTest, TSelf>("transaction_tests", "TransactionTests");
 }
 
+/// <summary>
+/// NUnit-retained handle to a single fixture case. The full test object is materialized
+/// on demand inside the test body via <see cref="PyspecLoader.LoadTest{T}"/>, so discovery
+/// only retains these small handles instead of every parsed fixture for the whole run.
+/// </summary>
+public sealed record PyspecTestRef(string File, long Offset, int Length, int Index, TestType TestType);
+
+/// <summary>
+/// NUnit-retained handle to a single zkEVM stateless case (one block of one fixture).
+/// </summary>
+public sealed record PyspecStatelessRef(string File, long Offset, int Length, int Index, int BlockIndex);
+
 internal static class PyspecLoader
 {
-    public static IEnumerable<T> Load<T, TSelf>(string root, string suffix) where T : EthereumTest =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}").LoadTests<T>();
+    private static readonly ConcurrentDictionary<string, Lazy<IReadOnlyList<RefEntry>>> s_refsCache = new();
+    private static readonly ConcurrentDictionary<string, Lazy<IReadOnlyList<StatelessEntry>>> s_statelessCache = new();
+
+    // Bounded parallel expansion over fixture files, concatenated in file order so chunking
+    // and test names match a sequential pass. Parallelism is capped well below ProcessorCount:
+    // each in-flight file transiently holds its raw JSON plus the expanded object graph, and
+    // single fixture files reach hundreds of megabytes.
+    private static readonly int s_discoveryParallelism = Math.Max(1, Math.Min(4, Environment.ProcessorCount));
+
+    private sealed record RefEntry(PyspecTestRef Ref, string Name, string Category);
+    private sealed record StatelessEntry(PyspecStatelessRef Ref, string DisplayName);
 
     public static IEnumerable<TestCaseData> LoadCases<T, TSelf>(string root, string suffix) where T : EthereumTest =>
-        ToTestCases(Load<T, TSelf>(root, suffix));
+        LoadCases<T>(new LoadPyspecTestsStrategy(),
+            $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}");
 
-    public static IEnumerable<TestCaseData> ToTestCases<T>(IEnumerable<T> tests) where T : EthereumTest
+    public static IEnumerable<TestCaseData> LoadCases<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
     {
         int index = 0;
-        foreach (T test in tests)
+        foreach (RefEntry entry in TestChunkFilter.FilterByChunk(GetRefs<T>(strategy, testsDir)))
         {
-            yield return new TestCaseData(test).SetName(GetTestCaseName(test, index++));
+            yield return new TestCaseData(entry.Ref).SetName(GetTestCaseName(entry.Name, entry.Category, index++));
         }
     }
 
-    private static string GetTestCaseName(EthereumTest test, int index)
+    /// <summary>
+    /// Materializes the fixture case referenced by <paramref name="testRef"/> from its
+    /// top-level JSON property. The converted object is released after the test finishes.
+    /// </summary>
+    public static T LoadTest<T>(PyspecTestRef testRef) where T : EthereumTest
     {
-        string name = test.Name ?? test.ToString() ?? test.GetType().Name;
-        return string.IsNullOrEmpty(test.Category)
-            ? $"{name}#{index}"
-            : $"{test.Category}/{name}#{index}";
+        if (testRef.Length == 0)
+        {
+            ThrowIfFileFails(testRef.File, testRef.TestType);
+            throw new InvalidDataException($"Pyspec fixture '{testRef.File}' could not be loaded during discovery.");
+        }
+
+        try
+        {
+            using FileStream stream = File.OpenRead(testRef.File);
+            stream.Seek(testRef.Offset, SeekOrigin.Begin);
+            byte[] property = new byte[testRef.Length];
+            stream.ReadExactly(property);
+            List<T> tests = ConvertProperty<T>(testRef.File, Path.GetDirectoryName(testRef.File) ?? string.Empty, testRef.TestType, property);
+            if ((uint)testRef.Index >= (uint)tests.Count)
+                throw new InvalidOperationException($"Pyspec fixture '{testRef.File}' property holds {tests.Count} tests but case #{testRef.Index} was requested.");
+            return tests[testRef.Index];
+        }
+        catch (Exception e) when (e is IOException or JsonException)
+        {
+            // A changed file can invalidate a saved byte range; re-read only on failure to report the fixture's load error.
+            ThrowIfFileFails(testRef.File, testRef.TestType);
+            throw new InvalidDataException($"Pyspec fixture '{testRef.File}': {e}", e);
+        }
     }
+
+    public static IEnumerable<TestCaseData> LoadZkEvmStatelessCases(LoadPyspecTestsStrategy strategy, string testsDir)
+    {
+        foreach (StatelessEntry entry in TestChunkFilter.FilterByChunk(GetStatelessRefs(strategy, testsDir)))
+        {
+            yield return new TestCaseData(entry.Ref).SetName(entry.DisplayName);
+        }
+    }
+
+    public static (string InputBytes, string OutputBytes) LoadZkEvmStatelessBytes(PyspecStatelessRef statelessRef)
+    {
+        BlockchainTest test = LoadTest<BlockchainTest>(new PyspecTestRef(statelessRef.File, statelessRef.Offset, statelessRef.Length, statelessRef.Index, TestType.Blockchain));
+        if (test.Blocks is not { Length: > 0 } blocks || (uint)statelessRef.BlockIndex >= (uint)blocks.Length)
+            throw new InvalidOperationException($"Pyspec fixture '{statelessRef.File}' case #{statelessRef.Index} has no block #{statelessRef.BlockIndex}.");
+        TestBlockJson block = blocks[statelessRef.BlockIndex];
+        if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
+            throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {statelessRef.BlockIndex}.");
+        return (block.StatelessInputBytes, block.StatelessOutputBytes);
+    }
+
+    public static BlockchainTest LoadZkEvmTest(PyspecTestRef testRef) =>
+        ZkEvmFixtures.ZkEvmMutatedWitnessIndex.StampMutatedBlocks([LoadTest<BlockchainTest>(testRef)]).First();
+
+    private static IReadOnlyList<RefEntry> GetRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
+    {
+        string key = $"{strategy.ArchiveVersion}\0{strategy.ArchiveName}\0{testsDir}\0{typeof(T).FullName}";
+        return s_refsCache.GetOrAdd(key, _ => new(() => BuildRefs<T>(strategy, testsDir), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    // One pass over the fixture set: parse each file, record a small handle per case,
+    // then drop the parsed objects. Only the handles are retained, so discovery holds
+    // megabytes instead of the whole parsed set, and fixture variants sharing a
+    // directory share the cached result.
+    private static IReadOnlyList<RefEntry> BuildRefs<T>(LoadPyspecTestsStrategy strategy, string testsDir) where T : EthereumTest
+    {
+        string rootDir = strategy.ResolveTestsRoot(testsDir);
+        if (!Directory.Exists(rootDir))
+            return [];
+
+        TestType testType = LoadPyspecTestsStrategy.GetTestType(testsDir);
+        return ExpandFiles(rootDir, testType, (file, directory, type) =>
+        {
+            if (!TryLoadSlicedTests<T>(file, directory, type, out List<SlicedTest<T>> tests))
+                return [new RefEntry(new PyspecTestRef(file, 0, 0, 0, type), UnloadableCaseName(rootDir, file), string.Empty)];
+
+            List<RefEntry> refs = [];
+            foreach (SlicedTest<T> sliced in tests)
+            {
+                T test = sliced.Test;
+                string name = test.Name ?? test.ToString() ?? test.GetType().Name;
+                refs.Add(new RefEntry(new PyspecTestRef(file, sliced.Offset, sliced.Length, sliced.Index, type), name, test.Category ?? string.Empty));
+            }
+
+            return refs;
+        });
+    }
+
+    private static IReadOnlyList<StatelessEntry> GetStatelessRefs(LoadPyspecTestsStrategy strategy, string testsDir)
+    {
+        string key = $"{strategy.ArchiveVersion}\0{strategy.ArchiveName}\0{testsDir}\0stateless";
+        return s_statelessCache.GetOrAdd(key, _ => new(() => BuildStatelessRefs(strategy, testsDir), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    private static IReadOnlyList<StatelessEntry> BuildStatelessRefs(LoadPyspecTestsStrategy strategy, string testsDir)
+    {
+        string rootDir = strategy.ResolveTestsRoot(testsDir);
+        if (!Directory.Exists(rootDir))
+            return [];
+
+        TestType testType = LoadPyspecTestsStrategy.GetTestType(testsDir);
+        return ExpandFiles(rootDir, testType, (file, directory, type) =>
+        {
+            if (!TryLoadSlicedTests<BlockchainTest>(file, directory, type, out List<SlicedTest<BlockchainTest>> tests))
+                return [new StatelessEntry(new PyspecStatelessRef(file, 0, 0, 0, 0), UnloadableCaseName(rootDir, file))];
+
+            List<StatelessEntry> refs = [];
+            foreach (SlicedTest<BlockchainTest> sliced in tests)
+            {
+                BlockchainTest test = sliced.Test;
+                if (test.Blocks is { Length: > 0 } blocks)
+                {
+                    for (int i = 0; i < blocks.Length; i++)
+                    {
+                        TestBlockJson block = blocks[i];
+                        if (block.StatelessInputBytes is null && block.StatelessOutputBytes is null)
+                            continue;
+                        if (block.StatelessInputBytes is null || block.StatelessOutputBytes is null)
+                            throw new InvalidDataException($"Incomplete stateless fixture data in {test.Name}, block {i}.");
+                        refs.Add(new StatelessEntry(new PyspecStatelessRef(file, sliced.Offset, sliced.Length, sliced.Index, i), $"{test.Name}_stateless_block_{i}"));
+                    }
+                }
+            }
+
+            return refs;
+        });
+    }
+
+    private static List<TOut> ExpandFiles<TOut>(string rootDir, TestType testType, Func<string, string, TestType, List<TOut>> expandFile)
+    {
+        List<(string File, string Directory)> files = [.. LoadPyspecTestsStrategy.EnumerateTestFiles(rootDir)];
+        if (files.Count == 0)
+            return [];
+        if (files.Count == 1)
+            return expandFile(files[0].File, files[0].Directory, testType);
+
+        List<TOut>[] perFile = new List<TOut>[files.Count];
+        ExceptionDispatchInfo[] failures = new ExceptionDispatchInfo[files.Count];
+        Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = s_discoveryParallelism }, i =>
+        {
+            try
+            {
+                perFile[i] = expandFile(files[i].File, files[i].Directory, testType);
+            }
+            catch (Exception e)
+            {
+                perFile[i] = [];
+                failures[i] = ExceptionDispatchInfo.Capture(e);
+            }
+        });
+
+        for (int i = 0; i < failures.Length; i++)
+            failures[i]?.Throw();
+
+        List<TOut> result = [];
+        foreach (List<TOut> list in perFile)
+            result.AddRange(list);
+        return result;
+    }
+
+    // Re-reads the whole file only to surface FileTestsSource's original load error.
+    private static void ThrowIfFileFails(string file, TestType testType)
+    {
+        foreach (EthereumTest test in new FileTestsSource(file).LoadTests(testType))
+        {
+            if (test is FailedToLoadTest failed)
+                throw new InvalidDataException($"Pyspec fixture '{file}': {failed.LoadFailure}");
+        }
+    }
+
+    private sealed record SlicedTest<T>(T Test, long Offset, int Length, int Index) where T : EthereumTest;
+
+    private static bool TryLoadSlicedTests<T>(string file, string directory, TestType testType, out List<SlicedTest<T>> tests) where T : EthereumTest
+    {
+        tests = [];
+        if (Path.GetFileName(file).StartsWith('.'))
+            return true;
+
+        try
+        {
+            byte[] json = File.ReadAllBytes(file);
+            Utf8JsonReader reader = new(json);
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+                throw new JsonException("Expected a fixture object.");
+
+            while (reader.Read() && reader.TokenType == JsonTokenType.PropertyName)
+            {
+                long offset = reader.TokenStartIndex;
+                if (!reader.Read())
+                    throw new JsonException("Missing fixture value.");
+                reader.Skip();
+                int length = checked((int)(reader.BytesConsumed - offset));
+                List<T> propertyTests = ConvertProperty<T>(file, directory, testType, json.AsSpan((int)offset, length));
+                for (int index = 0; index < propertyTests.Count; index++)
+                    tests.Add(new SlicedTest<T>(propertyTests[index], offset, length, index));
+            }
+
+            if (reader.TokenType != JsonTokenType.EndObject || reader.Read())
+                throw new JsonException("Invalid fixture object.");
+            return true;
+        }
+        catch (Exception)
+        {
+            tests = [];
+            return false;
+        }
+    }
+
+    // Same per-file pipeline as TestLoadStrategy.LoadTestsFromDirectories: parse, apply
+    // fixture exclusions (inside FileTestsSource), then default the category to the directory.
+    private static List<T> ConvertProperty<T>(string file, string directory, TestType testType, ReadOnlySpan<byte> property) where T : EthereumTest
+    {
+        byte[] json = new byte[property.Length + 2];
+        json[0] = (byte)'{';
+        property.CopyTo(json.AsSpan(1));
+        json[^1] = (byte)'}';
+
+        List<T> tests = [];
+        foreach (EthereumTest test in new FileTestsSource(file).LoadTests(json, testType))
+        {
+            if (test is T typed)
+            {
+                typed.Category ??= directory;
+                tests.Add(typed);
+            }
+        }
+        return tests;
+    }
+
+    private static string UnloadableCaseName(string rootDir, string file) =>
+        $"{Path.GetRelativePath(rootDir, file).Replace('\\', '/')}_failed_to_load";
+
+    private static string GetTestCaseName(string name, string category, int index) =>
+        string.IsNullOrEmpty(category) ? $"{name}#{index}" : $"{category}/{name}#{index}";
 }
 
 // Skips heavy tests in CI on runners that are too slow or running variant builds.

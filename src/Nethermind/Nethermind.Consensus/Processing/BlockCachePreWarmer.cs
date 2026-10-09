@@ -3,10 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -25,6 +27,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -32,7 +35,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
+public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessingProgress
 {
     private const int MinTransactionsForReactiveWarming = 3;
 
@@ -56,6 +59,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly BlockCodeCache? _blockCodeCache;
+    private readonly bool _handoff;
+    private BlockFootprints? _footprints;
 
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
@@ -77,6 +83,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _mainThreadTxIndex = -1;
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
+    int IBlockProcessingProgress.MainThreadTxIndex => MainThreadTxIndex;
 
     // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
     private readonly Lock _speculativeLock = new();
@@ -96,7 +103,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        ISenderRecoveryTracker? senderRecovery = null
+        ISenderRecoveryTracker? senderRecovery = null,
+        BlockCodeCache? blockCodeCache = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -106,9 +114,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
-        senderRecovery)
+        senderRecovery,
+        handoff: envFactory.RecordsFootprints)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _blockCodeCache = blockCodeCache;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
     }
@@ -122,9 +132,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
-        ISenderRecoveryTracker? senderRecovery = null)
+        ISenderRecoveryTracker? senderRecovery = null,
+        bool handoff = false)
     {
         _senderRecovery = senderRecovery;
+        _handoff = handoff;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -141,6 +153,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
+        Volatile.Write(ref _footprints, null);
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
         if (_preBlockCaches is null)
@@ -189,25 +202,56 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             CancellationToken token = session.Token;
+            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
+            // Transactions the mempool pass warmed run again: their footprints are only taken here.
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
-                suggestedBlock, spec, speculativelyWarmed, recovery, _concurrencyLevel, token, warmSystemAccessLists: true);
+                suggestedBlock, spec, footprints is null ? speculativelyWarmed : null, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
+                warmCalldataAddresses: true, handColdChainsToDiscovery: true);
+            if (footprints is not null)
+            {
+                blockState.Footprints = footprints;
+                Volatile.Write(ref _footprints, footprints);
+            }
             // A block access list already enumerates the block's reads; discovery adds nothing.
             List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
+            blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
-                using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(_concurrencyLevel);
+                using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
                     0, 1, HelperOptions, _ => ((IThreadPoolWorkItem)addressWarmer).Execute());
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
                     : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
-                PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
-                    suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
-                discoveryWork?.WaitForCompletion();
-            }, addressWarmer);
+                try
+                {
+                    PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
+                        suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
+                    if (footprints is not null)
+                    {
+                        footprints.EndWarmPass();
+                        // A block whose workers never ran out of jobs starts its refresh worker here.
+                        StartRefreshing(blockState);
+                    }
+
+                    discoveryWork?.WaitForCompletion();
+                }
+                finally
+                {
+                    try
+                    {
+                        // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.
+                        blockState.JoinDiscoveryHandOffs();
+                    }
+                    finally
+                    {
+                        blockState.JoinRefreshing();
+                    }
+                }
+            }, addressWarmer, footprints is null ? null : footprints.StopWaitingForBlockProcessing);
             return session;
         }
         catch
@@ -217,17 +261,51 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    private void DiscoverAndWarmStorageSafely(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
+        CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
     {
         try
         {
-            DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken);
+            DiscoverAndWarmStorage(candidates, block, spec, recovery, cancellationToken, sharedCells);
         }
         catch (Exception ex)
         {
             _logger.DebugWarn($"Error discovering storage reads for block {block.Number}. {ex}");
         }
     }
+
+    /// <summary>Backing-store slot reads after which a warm hands its transaction to storage discovery.</summary>
+    internal const int ColdReadsBeforeDiscovery = 24;
+
+    /// <summary>How many warms handed their transaction to discovery; for tests.</summary>
+    internal int DiscoveryHandOffCount => Volatile.Read(ref _discoveryHandOffs);
+    private int _discoveryHandOffs;
+
+    /// <summary>Starts storage discovery for one transaction whose warm is caught in a chain of cold reads.</summary>
+    /// <remarks>
+    /// A transaction in the block's up-front discovery is left to it. A block hands off at most
+    /// <see cref="MaxDiscoveryCandidates"/> transactions, and its hand-offs share one budget of
+    /// <see cref="MaxDiscoveredCells"/> cells, the limits the up-front discovery has.
+    /// </remarks>
+    private void HandToDiscovery(int txIndex, Transaction tx, BlockState blockState)
+    {
+        CancellationToken token = blockState.Token;
+        if (MainThreadTxIndex >= txIndex || token.IsCancellationRequested || tx.SenderAddress is null || !blockState.HandsColdChainsToDiscovery
+            || blockState.IsDiscoveredUpFront(txIndex) || !blockState.TryClaimDiscoveryHandOff())
+        {
+            return;
+        }
+
+        Interlocked.Increment(ref _discoveryHandOffs);
+        Block block = blockState.Block;
+        IReleaseSpec spec = blockState.Spec;
+        StrongBox<int> cells = blockState.HandOffCells;
+        blockState.AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
+            _ => DiscoverAndWarmStorageSafely([(txIndex, tx)], block, spec, null, token, cells)));
+    }
+
+    /// <summary>Whether the up-front discovery may select <paramref name="tx"/>; it takes at most <see cref="MaxDiscoveryCandidates"/>.</summary>
+    private static bool IsUpFrontDiscoveryCandidate(Transaction tx) => tx.GasLimit > StorageDiscoveryGasThreshold && tx.To is not null;
 
     internal static List<(int Index, Transaction Tx)>? SelectDiscoveryCandidates(Block block, ISet<Hash256>? speculativelyWarmed)
     {
@@ -239,7 +317,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Transaction tx = transactions[i];
             // Deliberately not filtered on the sender: selection runs while recovery is still in flight, and
             // dropping a heavy transaction here would switch discovery off for it for the whole block.
-            if (tx.GasLimit <= StorageDiscoveryGasThreshold || tx.To is null) continue;
+            if (!IsUpFrontDiscoveryCandidate(tx)) continue;
             if (speculativelyWarmed is not null && tx.Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) continue;
 
             (candidates ??= new(MaxDiscoveryCandidates)).Add((i, tx));
@@ -249,7 +327,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return candidates;
     }
 
-    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery, CancellationToken cancellationToken)
+    /// <param name="sharedCells">Cells left in a budget this discovery shares with others; it stops once the budget is spent.</param>
+    internal void DiscoverAndWarmStorage(List<(int Index, Transaction Tx)> candidates, Block block, IReleaseSpec spec, ISenderRecoveryProgress? recovery,
+        CancellationToken cancellationToken, StrongBox<int>? sharedCells = null)
     {
         if (cancellationToken.IsCancellationRequested) return;
 
@@ -293,7 +373,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
-            DiscoveryRound roundState = new(block, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
+            if (sharedCells is not null) cellBudget = Math.Min(cellBudget, Volatile.Read(ref sharedCells.Value));
+            if (cellBudget <= 0) return;
+            // A shared budget is charged as cells are captured, so concurrent discoveries can't overrun it together.
+            StrongBox<int> remainingCaptureCells = sharedCells ?? new StrongBox<int>(cellBudget);
+            DiscoveryRound roundState = new(block, spec, cellBudget, remainingCaptureCells, roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, admitted.Count),
@@ -310,7 +394,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 return;
             }
 
+            int capturedCount = roundCells.Count;
             roundCells.ExceptWith(allDiscoveredCells);
+            // Cells an earlier round already found were charged again by this round's captures.
+            int rediscovered = capturedCount - roundCells.Count;
+            if (rediscovered > 0) Interlocked.Add(ref remainingCaptureCells.Value, rediscovered);
             if (cancellationToken.IsCancellationRequested) return;
 
             int productive = nextRoundCandidates.Count - awaiting;
@@ -318,6 +406,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             {
                 allDiscoveredCells.UnionWith(roundCells);
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
+                // An exhausted shared budget ends discovery at the next round's budget check.
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
@@ -427,6 +516,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly Lock CellsLock = cellsLock;
         public readonly List<(int Index, Transaction Tx)> NextRoundCandidates = nextRoundCandidates;
         public readonly CancellationToken CancellationToken = cancellationToken;
+        public readonly CancellationTxTracer Tracer = new(NullTxTracer.Instance, cancellationToken);
     }
 
     /// <summary>
@@ -484,52 +574,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         IPrewarmerEnv env = _envPool.Get();
         try
         {
-            using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
-            using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
-            scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
-
-            try
-            {
-                IWorldState worldState = scope.WorldState;
-                Address senderAddress = tx.SenderAddress!;
-                if (!worldState.AccountExists(senderAddress))
-                {
-                    worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
-                }
-
-                // Access-list cells are not warmed here: the normal warm task covers them, and reading
-                // them under the capture would re-record already-covered cells as discovered.
-                scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
-            }
-            catch (Exception ex) when (ex is EvmException or OverflowException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Discovery execution of {tx.Hash} stopped on {ex.GetType().Name}");
-            }
-
-            if (capture.Cells.Count == 0) return;
-
-            using (round.CellsLock.EnterScope())
-            {
-                round.NextRoundCandidates.Add(candidate);
-                int added = 0;
-                bool roundFull = false;
-                foreach (StorageCell cell in capture.Cells)
-                {
-                    if (round.Cells.Count >= round.CellBudget)
-                    {
-                        roundFull = true;
-                        break;
-                    }
-
-                    if (round.Cells.Add(cell)) added++;
-                }
-
-                // Refund cells that did not extend the round (duplicates across captures), so overlapping
-                // candidates of one heavy contract don't multiply-charge the shared budget — but not when
-                // the round is saturated, or concurrent captures would keep recording cells only to be discarded.
-                int unused = capture.Cells.Count - added;
-                if (unused > 0 && !roundFull) Interlocked.Add(ref round.RemainingCaptureCells.Value, unused);
-            }
+            // A packed slot read as 1 has every field but the lowest zero, which trips divide-by-zero checks and ends a
+            // loop over such slots at its first one; 0x01 in every byte keeps each byte-aligned field non-zero.
+            if (CaptureRun(env, candidate, round, UInt256.One) && !round.CancellationToken.IsCancellationRequested)
+                CaptureRun(env, candidate, round, EveryBytePlaceholder);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -539,6 +587,89 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _envPool.Return(env);
         }
+    }
+
+    private static readonly UInt256 EveryBytePlaceholder = new(0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL, 0x0101010101010101UL);
+
+    /// <summary>One speculative run of a candidate with <paramref name="placeholder"/> for every skipped read; its cells join the round.</summary>
+    /// <returns>Whether the run halted, panicked or threw: the failures a placeholder can cause and another can avoid.</returns>
+    private bool CaptureRun(IPrewarmerEnv env, (int Index, Transaction Tx) candidate, DiscoveryRound round, UInt256 placeholder)
+    {
+        Transaction tx = candidate.Tx;
+        using PreBlockCaches.StorageReadCapture capture = _preBlockCaches.BeginStorageReadCapture(round.RemainingCaptureCells);
+        capture.Placeholder = placeholder;
+        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(round.Block.Header);
+        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(round.Block.Header, round.Spec));
+
+        PlaceholderFailureTracer status = new();
+        bool failed;
+        try
+        {
+            IWorldState worldState = scope.WorldState;
+            Address senderAddress = tx.SenderAddress!;
+            if (!worldState.AccountExists(senderAddress))
+            {
+                worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+            }
+
+            // Access-list cells are not warmed here: the normal warm task covers them, and reading
+            // them under the capture would re-record already-covered cells as discovered.
+            scope.TransactionProcessor.Warmup(tx, new CancellationTxTracer(status, round.CancellationToken));
+            failed = status.Failed;
+        }
+        catch (Exception ex) when (ex is EvmException or OverflowException)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discovery execution of {tx.Hash} stopped on {ex.GetType().Name}");
+            failed = true;
+        }
+
+        if (capture.Cells.Count == 0) return failed;
+
+        using (round.CellsLock.EnterScope())
+        {
+            if (!round.NextRoundCandidates.Contains(candidate)) round.NextRoundCandidates.Add(candidate);
+            int added = 0;
+            bool roundFull = false;
+            foreach (StorageCell cell in capture.Cells)
+            {
+                if (round.Cells.Count >= round.CellBudget)
+                {
+                    roundFull = true;
+                    break;
+                }
+
+                if (round.Cells.Add(cell)) added++;
+            }
+
+            // Refund cells that did not extend the round (duplicates across captures), so overlapping
+            // candidates of one heavy contract don't multiply-charge the shared budget — but not when
+            // the round is saturated, or concurrent captures would keep recording cells only to be discarded.
+            int unused = capture.Cells.Count - added;
+            if (unused > 0 && !roundFull) Interlocked.Add(ref round.RemainingCaptureCells.Value, unused);
+        }
+
+        return failed;
+    }
+
+    /// <summary>
+    /// Records whether a speculative run ended in a halt, such as the invalid opcode older compilers emit on division by
+    /// zero, or in a <c>Panic(uint256)</c> revert, which newer ones use for it and for overflow and out-of-bounds access.
+    /// </summary>
+    /// <remarks>
+    /// Any other revert (a failed <c>require</c>, a passed deadline, slippage) is not counted: the run fails the same way
+    /// whatever the placeholder, so repeating it would only double its cost.
+    /// </remarks>
+    internal sealed class PlaceholderFailureTracer : TxTracer
+    {
+        public bool Failed { get; private set; }
+        public override bool IsTracingReceipt => true;
+        public override bool IsCollectingLogs => false;
+
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
+
+        // A revert hands over its data, and one without data reports the revert sentinel; a halt has neither.
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) =>
+            Failed = output.AsSpan().StartsWith(TransactionSubstate.PanicFunctionSelector) || (output.Length == 0 && error != TransactionSubstate.Revert);
     }
 
     private bool WarmDiscoveredStorage(BlockHeader target, PooledSet<StorageCell> discoveredCells, CancellationToken cancellationToken)
@@ -611,8 +742,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <returns>Whether the system-contract hints were warmed; false when they were requested but the pass did not reach them.</returns>
     private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, CancellationToken token)
     {
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(_speculativeConcurrencyLevel);
         // The delta comes from the txpool, where every sender is already recovered, so there is no recovery to wait on.
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists);
+        // The address warmer runs inline ahead of the delta's transaction warming, so the calldata pass is left to the
+        // block: it repeats the scan anyway, with the full fan-out, and here it would only delay the warming.
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
+            delta, spec, speculativelyWarmed: null, recovery: null, _speculativeConcurrencyLevel, token, warmSystemAccessLists,
+            warmCalldataAddresses: false, handColdChainsToDiscovery: false);
         // Run inline rather than through the pool: this pass is going to block on the warmer anyway, and the block
         // that ends the gap joins this thread, so a queued item would put thread-pool dispatch latency on its path.
         ((IThreadPoolWorkItem)addressWarmer).Execute();
@@ -629,16 +765,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return addressWarmer.SystemAccessListsWarmed;
     }
 
-    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists)
+    private (BlockState BlockState, ParallelOptions ParallelOptions, AddressWarmer AddressWarmer) PrepareWarm(Block block, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, ISenderRecoveryProgress? recovery, int maxDegreeOfParallelism, CancellationToken token, bool warmSystemAccessLists, bool warmCalldataAddresses, bool handColdChainsToDiscovery)
     {
-        BlockState blockState = new(this, block, spec, speculativelyWarmed, recovery);
-        // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
-        Volatile.Write(ref _mainThreadTxIndex, -1);
-        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
         ReadOnlyBlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? block.BlockAccessList : null;
-        AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, this, bal);
+        BlockState blockState = new(this, block, spec, speculativelyWarmed, recovery)
+        {
+            // A block access list already enumerates the block's reads, so discovery adds nothing; a block without one,
+            // such as a block being produced, is warmed by executing its transactions and hands off like any other.
+            HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
+            Token = token
+        };
+        // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
+        Volatile.Write(ref _mainThreadTxIndex, -1);
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
+        AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, warmCalldataAddresses, this, bal);
         return (blockState, parallelOptions, addressWarmer);
     }
 
@@ -672,7 +814,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private void RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
+    private async Task RunSpeculativeLoop(Hash256 headHash, BlockHeader head, IReleaseSpec spec, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken token)
     {
         // _warmedTxHashes is reused across sessions (cleared at session start); only the small marker is per-session.
         WarmMarker marker = new(headHash, spec, _warmedTxHashes);
@@ -718,7 +860,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
-                if (token.WaitHandle.WaitOne(delay)) break;
+                await Task.Delay(delay, token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             }
         }
         catch (OperationCanceledException)
@@ -796,14 +938,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
     public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
+    /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
+    /// <returns>Whether the transaction can have one at all.</returns>
+    internal bool TryFindFootprint(Transaction tx, BlockHeader header, out TransactionFootprint? footprint)
+    {
+        BlockFootprints? footprints = Volatile.Read(ref _footprints);
+        footprint = footprints?.Find(_mainThreadTxIndex, tx, header);
+        return footprints is not null && BlockFootprints.IsRecordable(tx);
+    }
+
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
+        Volatile.Write(ref _footprints, null);
         CancelAndJoinSpeculative();
         ClearWarmMarker();
         // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
+        _blockCodeCache?.ClearBlock();
         CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
@@ -1149,6 +1302,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Transaction tx,
         int txIndex,
         BlockState blockState,
+        FootprintRecorder? recorder,
+        CancellationTxTracer tracer,
         CancellationToken cancellationToken)
     {
         try
@@ -1171,7 +1326,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            // A run that keeps reading cold slots one after another is a chain this warm cannot get ahead of; discovery
+            // collects the slots behind placeholders and reads them side by side instead.
+            bool watched = blockState.HandsColdChainsToDiscovery;
+            if (watched) ColdReadWatch.Arm(ColdReadsBeforeDiscovery, blockState, txIndex, tx);
+
+            TransactionResult result;
+            try
+            {
+                result = blockState.Footprints is { } footprints && recorder is not null && BlockFootprints.IsRecordable(tx)
+                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, footprints, recorder, tracer, cancellationToken)
+                    : scope.TransactionProcessor.Warmup(tx, tracer);
+            }
+            finally
+            {
+                if (watched) ColdReadWatch.Disarm();
+            }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -1179,13 +1349,270 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // Ignore, regular tx processing exceptions
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
+        }
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
     }
 
-    private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
+    private static TransactionResult WarmupWithFootprint(
+        IReadOnlyTxProcessingScope scope,
+        Transaction tx,
+        int txIndex,
+        BlockState blockState,
+        BlockFootprints footprints,
+        FootprintRecorder recorder,
+        CancellationTxTracer tracer,
+        CancellationToken cancellationToken)
+    {
+        TransactionResult result;
+        // A heavy sender's transactions are warmed apart on the parent state; each starts at its own nonce.
+        Address sender = tx.SenderAddress!;
+        if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
+        recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        try
+        {
+            result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
+                ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            if (result && recorder.Finish(tx, in result) is { } footprint) footprints.Store(txIndex, footprint);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            recorder.Discard();
+            return TransactionResult.Ok;
+        }
+        finally
+        {
+            recorder.Stop();
+        }
+
+        // A sender the parent state cannot fund fails before anything runs; warm it as before.
+        return result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance
+            ? scope.TransactionProcessor.Warmup(tx, tracer)
+            : result;
+    }
+
+    /// <summary>
+    /// Starts the block's refresh worker once its warm pass has handed out every job, so the refreshes take the capacity
+    /// the pass leaves idle rather than a share of the pass.
+    /// </summary>
+    private void StartRefreshing(BlockState blockState)
+    {
+        if (blockState.Footprints is not { } footprints || blockState.Token.IsCancellationRequested || !blockState.TryClaimRefreshing()) return;
+        CancellationToken token = blockState.Token;
+        blockState.SetRefreshing(ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => RefreshInvalidated(blockState, footprints, token)));
+    }
+
+    /// <summary>
+    /// Refreshes the footprints the block's earlier transactions invalidate, nearest to block processing first, and takes
+    /// the writes block processing reports, until block processing starts the block's last transaction.
+    /// </summary>
+    private void RefreshInvalidated(BlockState blockState, BlockFootprints footprints, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                footprints.ApplyExecuted();
+                // The next transaction is the one block processing reaches next; it is left to execution.
+                if (footprints.TryTakeInvalidated(MainThreadTxIndex + 1, out int position))
+                {
+                    // Held only while there are refreshes to run.
+                    IPrewarmerEnv env = _envPool.Get();
+                    try
+                    {
+                        do
+                        {
+                            Refresh(env, blockState, footprints, position, token);
+                            if (token.IsCancellationRequested) return;
+                            footprints.ApplyExecuted();
+                        }
+                        while (footprints.TryTakeInvalidated(MainThreadTxIndex + 1, out position));
+                    }
+                    finally
+                    {
+                        _envPool.Return(env);
+                    }
+                }
+
+                int processing = MainThreadTxIndex;
+                // Checked only when the worker wakes: block processing moving on signals nothing, so after the last report
+                // the worker waits for the session to end, holding no env.
+                if (processing >= footprints.Count - 1) return;
+                // A pass waited on before block processing ends with what it has refreshed.
+                if (processing < 0 && !footprints.WaitsForBlockProcessing && footprints.WarmPassEnded && !footprints.HasWork) return;
+                footprints.WaitForWork(token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Block processing finished its transactions.
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Error refreshing invalidated footprints", ex);
+        }
+    }
+
+    /// <summary>Runs the transaction at <paramref name="position"/> again on the slot values the footprints before it leave.</summary>
+    private static void Refresh(IPrewarmerEnv env, BlockState blockState, BlockFootprints footprints, int position, CancellationToken token)
+    {
+        Blockchain.Metrics.PrewarmRefreshes++;
+        if (footprints.Get(position) is not { } invalidated || env.Recorder is not { } recorder || footprints.ReadsUntrackedSlot(invalidated))
+        {
+            Blockchain.Metrics.PrewarmRefreshesSkipped++;
+            return;
+        }
+
+        Transaction tx = invalidated.Transaction;
+        BlockHeader header = blockState.Block.Header;
+        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(header);
+        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, blockState.Spec));
+        IWorldState state = scope.WorldState;
+        bool running = false;
+        try
+        {
+            int seededAt = footprints.WritesVersion;
+            bool moved = false;
+            foreach (ref readonly SlotPrecondition slot in invalidated.Slots)
+            {
+                if (footprints.ValueBefore(in slot.Cell, position) is { } value)
+                {
+                    moved |= value != slot.Value;
+                    state.Set(in slot.Cell, in value);
+                }
+                else if (!moved)
+                {
+                    // No footprint before it writes the slot, which is at its parent value; the run may have read another.
+                    state.Get(in slot.Cell, out UInt256 parent);
+                    moved = parent != slot.Value;
+                }
+            }
+
+            if (!moved)
+            {
+                Blockchain.Metrics.PrewarmRefreshesSkipped++;
+                return;
+            }
+
+            footprints.CountRefresh();
+            // A heavy sender's transactions are warmed apart on the parent state; each starts at its own nonce.
+            Address sender = tx.SenderAddress!;
+            if (state.GetNonce(sender) < tx.Nonce) state.SetNonce(sender, tx.Nonce);
+            // Committed, so the run's EIP-2200 originals are the values it starts from, as in block processing.
+            state.Commit(blockState.Spec, NullStateTracer.Instance, commitRoots: false);
+
+            recorder.Start(blockState.PreWarmer, position, token);
+            running = true;
+            TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
+                ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
+            {
+                footprints.Store(position, footprint, seededAt);
+                Blockchain.Metrics.PrewarmRefreshesStored++;
+            }
+            else
+            {
+                Blockchain.Metrics.PrewarmRefreshesFailed++;
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            // Block processing reached the transaction.
+            if (running) recorder.Discard();
+            Blockchain.Metrics.PrewarmRefreshesCancelled++;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A run that fails leaves the block's other refreshes to go, as a warm run does.
+            if (running) recorder.Discard();
+            Blockchain.Metrics.PrewarmRefreshesFailed++;
+            if (ex is not (EvmException or OverflowException)) blockState.PreWarmer._logger.DebugError($"Error refreshing the pre-warm run of tx[{position}] {tx.Hash}", ex);
+        }
+        finally
+        {
+            if (running) recorder.Stop();
+        }
+    }
+
+    /// <summary>Hands the storage writes of the transaction block processing just executed to the block's footprints; null when it wrote none.</summary>
+    internal void ReportExecutedWrites(List<(StorageCell Cell, UInt256 Value)>? writes) =>
+        Volatile.Read(ref _footprints)?.QueueExecuted(_mainThreadTxIndex, writes);
+
+    /// <summary>Whether the block's footprints take the writes of the transactions block processing executes.</summary>
+    internal bool TakesExecutedWrites => Volatile.Read(ref _footprints) is not null;
+
+    /// <summary>For tests.</summary>
+    internal BlockFootprints? Footprints => Volatile.Read(ref _footprints);
+
+    internal const int MinCalldataWordsForAddressWarm = 8;
+    internal const int MaxCalldataAddressesPerBlock = 4096;
+
+    /// <summary>The distinct addresses the block's large calldata names as ABI words, in calldata order; the caller disposes the list.</summary>
+    /// <remarks>
+    /// Words are deduplicated as they are: an ABI address word is the address left-padded to 32 bytes, the
+    /// <see cref="ValueHash256"/> that <see cref="Address.ToHash"/> builds, so a repeated word allocates nothing.
+    /// Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.
+    /// Once <paramref name="cancellationToken"/> is cancelled, the scan stops and returns what it has collected.
+    /// </remarks>
+    internal static ArrayPoolList<Address>? CollectCalldataAddresses(Block block, CancellationToken cancellationToken = default)
+    {
+        PooledSet<ValueHash256>? seen = null;
+        ArrayPoolList<Address>? addresses = null;
+        try
+        {
+            int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+            for (int i = 0; i < count; i++)
+            {
+                if (cancellationToken.IsCancellationRequested) return addresses;
+                ReadOnlySpan<byte> data = AddressWarmer.TransactionAt(block, i).Data.Span;
+                if (data.Length < 4 + MinCalldataWordsForAddressWarm * 32) continue;
+                for (int offset = 4; offset + 32 <= data.Length; offset += 32)
+                {
+                    if (cancellationToken.IsCancellationRequested) return addresses;
+                    ReadOnlySpan<byte> word = data.Slice(offset, 32);
+                    if (!IsAddressWord(word) || !(seen ??= new PooledSet<ValueHash256>(64)).Add(new ValueHash256(word))) continue;
+                    (addresses ??= new ArrayPoolList<Address>(64)).Add(new Address(word[12..]));
+                    if (addresses.Count == MaxCalldataAddressesPerBlock) return addresses;
+                }
+            }
+
+            return addresses;
+        }
+        finally
+        {
+            seen?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Reads the accounts in <paramref name="addresses"/> from <paramref name="start"/> up to <paramref name="end"/>, stopping
+    /// once <paramref name="cancellationToken"/> is cancelled: the prewarming session drains this work before it ends.
+    /// </summary>
+    internal static void WarmCalldataRange<TState>(ArrayPoolList<Address> addresses, int start, int end, TState state,
+        Action<TState, Address> warmUp, CancellationToken cancellationToken)
+    {
+        for (int i = start; i < end; i++)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+            warmUp(state, addresses[i]);
+        }
+    }
+
+    /// <summary>Whether a 32-byte word is an ABI address: the top twelve bytes zero and the address's top four bytes not all zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsAddressWord(ReadOnlySpan<byte> word)
+    {
+        // Bit i is set when byte i is zero.
+        uint zeros = Vector256.Equals(Vector256.Create(word), Vector256<byte>.Zero).ExtractMostSignificantBits();
+        return (zeros & 0xFFFu) == 0xFFFu && (zeros & 0xF000u) != 0xF000u;
+    }
+
+    private class AddressWarmer(ParallelOptions parallelOptions, Block block, IReleaseSpec spec, bool warmSystemAccessLists, bool warmCalldataAddresses, BlockCachePreWarmer preWarmer, ReadOnlyBlockAccessList? bal = null)
         : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
@@ -1302,6 +1729,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             return state;
                         },
                         WarmingState<(Block, int, int)>.FinallyAction);
+
+                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
             }
             catch (OperationCanceledException)
@@ -1311,7 +1740,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
-        private static Transaction TransactionAt(Block block, int i)
+        internal static Transaction TransactionAt(Block block, int i)
         {
             Transaction[] txs = block.Transactions;
             return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
@@ -1351,7 +1780,41 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             return warmed;
         }
 
-        private static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
+        /// <summary>
+        /// Reads the accounts that large calldata names as ABI address words, all of them across the fan-out.
+        /// </summary>
+        /// <remarks>
+        /// A batch transfer lists its recipients in calldata and touches each one, and the transaction warm reads them
+        /// one after another in a single job, which a chain of such transactions leaves far behind the main thread. A
+        /// word counts as an address when its top twelve bytes are zero and the address's top four bytes are not. This is
+        /// a heuristic that excludes small integers, which is what offsets, lengths and most amounts are; a larger value
+        /// can still pass (a uint256 of 2^128 does), and a word that only looks like an address costs one account read.
+        /// </remarks>
+        private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
+        {
+            CancellationToken token = parallelOptions.CancellationToken;
+            if (token.IsCancellationRequested) return;
+            using ArrayPoolList<Address>? addresses = CollectCalldataAddresses(block, token);
+            if (addresses is null || token.IsCancellationRequested) return;
+
+            int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
+            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize, CancellationToken Token)> baseState = new(envPool, (addresses, rangeSize, token), block.Header);
+            ParallelUnbalancedWork.For(
+                0,
+                (addresses.Count + rangeSize - 1) / rangeSize,
+                parallelOptions,
+                baseState.InitThreadState,
+                static (range, state) =>
+                {
+                    (ArrayPoolList<Address> addresses, int rangeSize, CancellationToken token) = state.Payload;
+                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), state.Scope!.WorldState,
+                        static (worldState, address) => AddressWarmer.WarmupSender(address, null, worldState), token);
+                    return state;
+                },
+                WarmingState<(ArrayPoolList<Address>, int, CancellationToken)>.FinallyAction);
+        }
+
+        internal static void WarmupSender(Address? sender, Address? to, IWorldState worldState)
         {
             try
             {
@@ -1428,7 +1891,87 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <param name="Recovery">The sender recovery still running for the block, or <c>null</c> when every sender is final.</param>
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null, ISenderRecoveryProgress? Recovery = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null, ISenderRecoveryProgress? Recovery = null)
+        : IColdReadHandler
+    {
+        private ConcurrentQueue<ParallelUnbalancedWork.BackgroundWork>? _discoveryHandOffs;
+        private StrongBox<int>? _handOffCells;
+        private int _handOffClaims;
+
+        /// <summary>Whether a warm caught in cold reads hands its transaction to discovery.</summary>
+        public bool HandsColdChainsToDiscovery { get; init; }
+
+        /// <summary>The token the block's warms and their hand-offs stop on.</summary>
+        public CancellationToken Token { get; init; }
+
+        public BlockFootprints? Footprints { get; set; }
+
+        void IColdReadHandler.OnColdReads(int index, object? item) => PreWarmer.HandToDiscovery(index, (Transaction)item!, this);
+
+        /// <summary>Created on the first hand-off: most blocks have none.</summary>
+        public void AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundWork work) =>
+            LazyInitializer.EnsureInitialized(ref _discoveryHandOffs).Enqueue(work);
+
+        /// <summary>The transactions the block's up-front discovery runs; set before any warm starts.</summary>
+        public List<(int Index, Transaction Tx)>? UpFrontDiscovery { get; set; }
+
+        public bool IsDiscoveredUpFront(int txIndex)
+        {
+            if (UpFrontDiscovery is not { } candidates) return false;
+            foreach ((int index, Transaction _) in candidates)
+            {
+                if (index == txIndex) return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Whether the block may hand one more transaction to discovery.</summary>
+        public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= MaxDiscoveryCandidates;
+
+        private int _refreshingClaimed;
+        private ParallelUnbalancedWork.BackgroundWork? _refreshing;
+
+        /// <summary>Whether this caller starts the block's refresh worker; only the first does.</summary>
+        public bool TryClaimRefreshing() => Interlocked.Exchange(ref _refreshingClaimed, 1) == 0;
+
+        public void SetRefreshing(ParallelUnbalancedWork.BackgroundWork work) => Volatile.Write(ref _refreshing, work);
+
+        /// <summary>Waits for the refresh worker, if one started; it ends with the block's transactions, or once it has nothing left in a pass waited on before them.</summary>
+        public void JoinRefreshing()
+        {
+            if (Interlocked.Exchange(ref _refreshing, null) is not { } work) return;
+            using (work) work.WaitForCompletion();
+        }
+
+        /// <summary>The cells the block's hand-offs may still discover between them.</summary>
+        public StrongBox<int> HandOffCells => LazyInitializer.EnsureInitialized(ref _handOffCells, static () => new StrongBox<int>(MaxDiscoveredCells));
+
+        /// <summary>Waits for every hand-off; one that faults is rethrown only after the rest are joined.</summary>
+        public void JoinDiscoveryHandOffs()
+        {
+            ConcurrentQueue<ParallelUnbalancedWork.BackgroundWork>? handOffs = Volatile.Read(ref _discoveryHandOffs);
+            if (handOffs is null) return;
+            List<Exception>? faults = null;
+            while (handOffs.TryDequeue(out ParallelUnbalancedWork.BackgroundWork? work))
+            {
+                try
+                {
+                    work.WaitForCompletion();
+                }
+                catch (Exception e)
+                {
+                    (faults ??= []).Add(e);
+                }
+                finally
+                {
+                    work.Dispose();
+                }
+            }
+
+            if (faults is not null) throw new AggregateException(faults);
+        }
+    }
 
     /// <summary>
     /// What the transaction-warming workers share, owned by the prewarmer and loaded with one block at a time: the
@@ -1452,6 +1995,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The loaded block. Cleared on unload so the queue pins nothing between blocks.
         public BlockState BlockState { get; private set; } = null!;
         public CancellationToken Token { get; private set; }
+        public CancellationTxTracer Tracer { get; private set; } = null!;
         public int Degree { get; private set; }
         private Transaction[] _txs = [];
         private ISet<Hash256>? _speculativelyWarmed;
@@ -1480,6 +2024,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             BlockState = blockState;
             Token = parallelOptions.CancellationToken;
+            Tracer = new(NullTxTracer.Instance, Token);
             int maxDegree = parallelOptions.MaxDegreeOfParallelism;
             Degree = maxDegree > 0 ? maxDegree : PreWarmer._concurrencyLevel;
             _txs = blockState.Block.Transactions;
@@ -1556,6 +2101,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             _scratch.ReturnJobs();
             BlockState = null!;
             Token = default;
+            Tracer = null!;
             _txs = [];
             _speculativelyWarmed = null;
             _claimed = [];
@@ -1919,6 +2465,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
 
+                // The jobs are all handed out: the refresh worker takes what this worker leaves idle.
+                preWarmer.StartRefreshing(queue.BlockState);
+
                 if (far) return;
 
                 bool waiter = false;
@@ -2008,11 +2557,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
+            CancellationTxTracer tracer = _queue.Tracer;
+            FootprintRecorder? recorder = _env.Recorder;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, token);
+                WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
             }
         }
 

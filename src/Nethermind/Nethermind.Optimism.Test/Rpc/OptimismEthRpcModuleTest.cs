@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -27,10 +29,12 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using NSubstitute;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -43,8 +47,8 @@ public class OptimismEthRpcModuleTest
     public void Setup()
     {
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-        TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new LegacyTxDecoder(allowEmptySignature: true));
     }
 
     private static IBlockFinder MockBlockFinder(Block block)
@@ -132,8 +136,40 @@ public class OptimismEthRpcModuleTest
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
     }
 
+    private const string ForwardedHash = "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760";
+    private const string FailedToForward = """{"jsonrpc":"2.0","error":{"code":-32603,"message":"Failed to forward transaction"},"id":67}""";
+
+    [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"nonce too low"}}""",
+        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""",
+        TestName = "Forwarded transaction rejected by the sequencer returns its error")]
+    [TestCase($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""",
+        $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""",
+        TestName = "Forwarded transaction accepted by the sequencer returns its hash")]
+    [TestCase("", FailedToForward, TestName = "Empty sequencer response returns failed to forward")]
+    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, TestName = "Non-JSON sequencer response returns failed to forward")]
+    public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected)
+    {
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+        sequencer.Post("eth_sendRawTransaction", Arg.Any<object?[]>()).Returns(sequencerResponse);
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
+
+        Assert.That(serialized, Is.EqualTo(expected));
+    }
+
     [Test]
-    public async Task Send_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
+    public async Task Send_transaction_without_a_sender_it_can_recover_reports_an_unknown_account()
     {
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ITxSealer sealer = Substitute.For<ITxSealer>();
@@ -159,9 +195,64 @@ public class OptimismEthRpcModuleTest
         sealer.DidNotReceive().TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
-            Assert.That(result.Result.Error, Is.EqualTo(TxPoolErrorMessages.FailedToRecoverSender));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput), "a request with no sender comes from no account this node holds");
+            Assert.That(result.Result.Error, Is.EqualTo("unknown account"), "a request with no sender comes from no account this node holds");
         }
+    }
+
+    [TestCase("0x7e5f4552091a69125d5dfcb7b8c2659029395bdf", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Send_transaction_from_a_held_account_reports_the_fee_rule_it_breaks")]
+    [TestCase("0x000000000000000000000000000000000000dead", "unknown account", TestName = "Send_transaction_from_an_account_the_node_does_not_hold_reports_an_unknown_account")]
+    public async Task Send_transaction_checks_fees_and_account_like_the_base_module(string from, string expected)
+    {
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: null,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+        object? request = JsonSerializer.Deserialize<object>(
+            $$"""{"type":"0x2","from":"{{from}}","to":"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c","gas":"0x76c0","nonce":"0x0","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""");
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", request);
+
+        sealer.DidNotReceive().TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected),
+            "the request is checked as the base module checks it, before it is signed and forwarded");
+    }
+
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Send_transaction_from_a_key_the_account_list_misses_reports_the_fee_rule_it_breaks")]
+    [TestCase("""{"gasPrice":"0x9184e72a000"}""", "authentication needed: password or unlock", TestName = "Send_transaction_from_a_locked_key_the_account_list_misses_needs_authentication")]
+    public async Task Send_transaction_from_a_key_the_account_list_misses_keeps_the_real_error(string feeFields, string expected)
+    {
+        Address unlisted = TestItem.AddressD;
+        IWallet wallet = Substitute.For<IWallet>();
+        wallet.GetAccounts().Returns([]);
+        wallet.HasKey(unlisted).Returns(true);
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithWallet(wallet)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: null,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+        JsonObject fields = JsonNode.Parse(feeFields)!.AsObject();
+        fields["from"] = unlisted.ToString();
+        fields["to"] = "0x2d44c0e097f6cd0f514edac633d82e01280b4a5c";
+        fields["gas"] = "0x76c0";
+        fields["nonce"] = "0x0";
+        object? request = JsonSerializer.Deserialize<object>(fields.ToJsonString());
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", request);
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected),
+            "the wallet holds a key for the account, so its real error must not become an unknown account");
     }
 
     [Test]

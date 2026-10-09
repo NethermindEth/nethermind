@@ -101,14 +101,18 @@ namespace Nethermind.Hive.Test
         }
 
         [Test]
-        public void Skips_evm_warmup_for_hive()
+        public void Skips_warmup_for_hive()
         {
             using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(new InitConfig()))
                 .AddModule(new HiveModule())
                 .Build();
 
-            Assert.That(container.Resolve<IInitConfig>().EvmWarmupEnabled, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(container.Resolve<IInitConfig>().EvmWarmupEnabled, Is.False);
+                Assert.That(container.Resolve<IInitConfig>().PipelineWarmupEnabled, Is.False);
+            }
         }
 
         [Test]

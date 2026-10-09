@@ -322,6 +322,37 @@ public class BlockDecoderTests
         }
     }
 
+    [TestCase(true, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_encoded_transactions")]
+    [TestCase(false, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_block_transactions")]
+    public void Receipt_recovery_value_hash_matches_the_transaction_hash(bool fromEncoded)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
+        BlockDecoder decoder = new();
+        ReceiptRecoveryBlock recovery = fromEncoded
+            ? decoder.DecodeToReceiptRecoveryBlock(null, decoder.Encode(block).Bytes, RlpBehaviors.None)
+                ?? throw new AssertionException("encoded block should decode for receipt recovery")
+            : new ReceiptRecoveryBlock(block);
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionValueHash(), Is.EqualTo(transactions[i].Hash!.ValueHash256), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
     [Test]
     public void Receipt_recovery_calculates_a_missing_in_memory_transaction_hash()
     {

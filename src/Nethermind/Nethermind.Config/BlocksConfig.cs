@@ -68,6 +68,11 @@ namespace Nethermind.Config
 
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
+        // Off: with parallel execution, reading code ahead has not beaten reading it on demand.
+        public bool PrefetchBlockAccessListCode { get; set; }
+
+        public bool PreWarmHandoff { get; set; } = true;
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;

@@ -40,6 +40,7 @@ public sealed class FrameTxPrefixSimulator(
     private readonly Lock _lock = new();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
+    private readonly ulong _maxVerifyGas = Math.Max(txPoolConfig.FrameTxMaxVerifyGas, Eip8141Constants.MaxVerifyGas);
     private readonly long _headBudgetTicks =
         (long)(txPoolConfig.FrameTxSimulationBudgetPerHeadMs / 1000d * (timeProvider ?? TimeProvider.System).TimestampFrequency);
     private IReadOnlyTxProcessorSource? _source;
@@ -48,7 +49,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null)
     {
         token.ThrowIfCancellationRequested();
 
@@ -78,13 +79,19 @@ public sealed class FrameTxPrefixSimulator(
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head");
         }
 
+        if (preempt?.Invoke() == true)
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted");
+        }
+
         // No wait for gossip: that admission runs on a small pool of background threads which also serve
         // sync. A local submission is on the RPC thread instead, so shedding it protects nothing and would
         // hand a peer the exemption from the per-head budget it was given.
         if (!_lock.TryEnter(local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
-            return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulator busy");
         }
 
         try
@@ -105,7 +112,7 @@ public sealed class FrameTxPrefixSimulator(
             long startedAt = _time.GetTimestamp();
             try
             {
-                return SimulateLocked(tx, head, signaturesPreValidated, token);
+                return SimulateLocked(tx, head, signaturesPreValidated, token, preempt);
             }
             finally
             {
@@ -120,7 +127,7 @@ public sealed class FrameTxPrefixSimulator(
         }
     }
 
-    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token)
+    private FrameTxSimulationResult SimulateLocked(Transaction tx, BlockHeader head, bool signaturesPreValidated, CancellationToken token, Func<bool>? preempt)
     {
         FrameTxValidationTracer? tracer = null;
         try
@@ -130,10 +137,10 @@ public sealed class FrameTxPrefixSimulator(
             IReadOnlyTxProcessorSource source = _source ??= envFactory.Create();
             using IReadOnlyTxProcessingScope scope = source.Build(head);
             ITransactionProcessor processor = scope.TransactionProcessor;
-            processor.SetBlockExecutionContext(head);
+            processor.SetBlockExecutionContext(AtCurrentSlot(head));
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token, preempt, _maxVerifyGas);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);
@@ -159,6 +166,12 @@ public sealed class FrameTxPrefixSimulator(
             // The tracer aborted the interpreter on a rule violation.
             Interlocked.Increment(ref Metrics.FrameTxSimulations);
             return FrameTxSimulationResult.Reject(tracer.ViolationReason!);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Preempted: true })
+        {
+            Interlocked.Increment(ref Metrics.FrameTxSimulations);
+            Interlocked.Increment(ref Metrics.FrameTxSimulationsPreempted);
+            return FrameTxSimulationResult.RejectYielded("validation-prefix simulation preempted");
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { TimedOut: true })
         {
@@ -199,6 +212,17 @@ public sealed class FrameTxPrefixSimulator(
                 ? FrameTxSimulationResult.RejectIndeterminate("validation-prefix processing env unavailable")
                 : FrameTxSimulationResult.Reject("validation-prefix simulation error");
         }
+    }
+
+    /// <summary>The head with its slot advanced to the public mempool's <c>current_slot</c>, EIP-8272's
+    /// <c>head.slotNumber + 1</c>, the slot a <c>recent_root_verify</c> frame reads through <c>SLOTNUM</c>.</summary>
+    private static BlockHeader AtCurrentSlot(BlockHeader head)
+    {
+        if (head.SlotNumber is null) return head;
+
+        BlockHeader header = head.Clone();
+        header.SlotNumber = head.SlotNumber + 1;
+        return header;
     }
 
     /// <summary>Whether an exception indicts the node rather than the transaction.</summary>

@@ -149,6 +149,7 @@ class RpcRunnerWorkspaceTests(unittest.TestCase):
         containerd_root.mkdir(exist_ok=True)
         self.env.update(
             BENCH_TEMP=to_bash(self.root / "output"),
+            SCRATCH_ROOT=to_bash(self.root / "data disk"),
             TEST_OUTPUT_BYTES=str(int(output_gb * 1024**3)),
             TEST_DOCKER_ROOT=to_bash(docker_root),
             TEST_ROOT_BYTES=str(int(root_gb * 1024**3)),

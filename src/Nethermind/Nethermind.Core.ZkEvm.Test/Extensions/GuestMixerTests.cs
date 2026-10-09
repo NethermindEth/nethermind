@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -243,7 +242,8 @@ public class GuestMixerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(UInt256Comparer.GetOptimized(), Is.SameAs(UInt256Comparer.Instance));
-            Assert.That(UInt256Comparer.Instance.GetHashCode(slot), Is.EqualTo(((ReadOnlySpan<byte>)slot.ToLittleEndian()).FastHash()));
+            ulong hash = SpanExtensions.MixSlotIndex(ref Unsafe.As<UInt256, byte>(ref slot));
+            Assert.That(UInt256Comparer.Instance.GetHashCode(slot), Is.EqualTo((int)(hash ^ (hash >> 32))));
         }
     }
 
@@ -345,6 +345,15 @@ public class GuestMixerTests
     {
         BigInteger product = (BigInteger)a * b;
         return (ulong)(product & ulong.MaxValue) ^ (ulong)(product >> 64);
+    }
+
+    [Test]
+    public void Multiply_fold_matches_full_width_product(
+        [Values(0UL, 1UL, 0xffffffffUL, 0x100000000UL, 0xffffffff00000000UL, 0x8000000000000000UL, ulong.MaxValue)] ulong a,
+        [Values(0UL, 1UL, 0xffffffffUL, 0x100000000UL, 0xffffffff00000000UL, 0x8000000000000000UL, ulong.MaxValue)] ulong b)
+    {
+        ulong actual = (ulong)SpanExtensions.MumFold(a ^ 0x9E3779B97F4A7C15UL, b ^ 0xBF58476D1CE4E5B9UL);
+        Assert.That(actual, Is.EqualTo(ReferenceFold(a, b)));
     }
 
     /// <summary>Recomputes the 32-byte lane mixer in <see cref="BigInteger"/> arithmetic.</summary>

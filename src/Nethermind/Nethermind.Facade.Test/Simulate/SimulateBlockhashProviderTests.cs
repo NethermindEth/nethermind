@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Facade.Simulate;
@@ -69,7 +70,7 @@ public class SimulateBlockhashProviderTests
         SimulateBlockhashProvider sut = new(inner, blockTree);
 
         Assert.That(sut.TryGetBlockhash(current, 40, spec, out ReadOnlySpan<byte> hash), Is.True);
-        Assert.That(hash.ToArray(), Is.EqualTo(TestItem.KeccakA.Bytes.ToArray()));
+        Assert.That(hash, Is.SequenceEqualTo(TestItem.KeccakA.Bytes));
         // The memo-bearing overload must never be consulted: the simulate scope reuses one provider across
         // virtual blocks whose overridden states differ, so a memoized value would leak between them. The
         // allocating overload reads the same store with no memo, which is why it is the one used here.
@@ -110,7 +111,7 @@ public class SimulateBlockhashProviderTests
 
         // 150 > best-known 100 clamps to (BestSuggestedHeader, BestKnownNumber) on this overload too.
         Assert.That(sut.TryGetBlockhash(Build.A.BlockHeader.WithNumber(151).TestObject, 150, spec, out ReadOnlySpan<byte> hash), Is.True);
-        Assert.That(hash.ToArray(), Is.EqualTo(TestItem.KeccakB.Bytes.ToArray()));
+        Assert.That(hash, Is.SequenceEqualTo(TestItem.KeccakB.Bytes));
         Assert.That(inner.GetBlockhashCalledWith, Is.EqualTo((bestSuggested, 100ul)));
     }
 

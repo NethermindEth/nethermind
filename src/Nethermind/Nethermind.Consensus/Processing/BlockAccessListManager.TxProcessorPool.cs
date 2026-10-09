@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -11,7 +10,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Cpu;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -39,7 +37,7 @@ public partial class BlockAccessListManager
 {
     private interface ITxProcessorWithWorldStateManager : IDisposable
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0u);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -66,7 +64,6 @@ public partial class BlockAccessListManager
         }
 
         private Block? _currentBlock;
-        private Hash256? _parentStateRoot;
         private BlockExecutionContext _currentCtx;
         private int _lastBalIndex;
         private BalReadStoragePlan? _readPlan;
@@ -104,12 +101,11 @@ public partial class BlockAccessListManager
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             _readPlan = readPlan;
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
-            _parentStateRoot = parentStateRoot;
 
             int previousSize = _lastBalIndex + 1;
             int newLastBalIndex = block.Transactions.Length + 1;
@@ -213,7 +209,19 @@ public partial class BlockAccessListManager
 
         public void Rollback() { }
 
-        public void Dispose() => (_parentReaderEnvPool as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
+            foreach (TxProcessorWithWorldState? processor in _inUse)
+            {
+                processor?.Dispose();
+            }
+
+            while (_processors.TryDequeue(out TxProcessorWithWorldState? processor))
+            {
+                processor.Dispose();
+            }
+        }
 
         private int ClampBalIndex(uint balIndex)
             => (int)uint.Min(balIndex, (uint)_lastBalIndex);
@@ -236,6 +244,7 @@ public partial class BlockAccessListManager
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
                 Interlocked.Decrement(ref _processorCount);
+                p.Dispose();
                 return;
             }
             _processors.Enqueue(p);
@@ -255,7 +264,6 @@ public partial class BlockAccessListManager
                 ThrowParentStateUnavailable(targetBlock);
             }
 
-            Debug.Assert(scope.WorldState.StateRoot == _parentStateRoot, "parent readers must read the pre-state the block executes on");
             return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
 
@@ -314,7 +322,7 @@ public partial class BlockAccessListManager
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot, BalReadStoragePlan? readPlan)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, BalReadStoragePlan? readPlan)
         {
             if (readPlan is not null)
                 ThrowReadCoverageUnavailable();
@@ -336,7 +344,7 @@ public partial class BlockAccessListManager
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void Dispose() { }
+        public void Dispose() => _txProcessorWithWorldState.Dispose();
 
         public void MergeAndReturnBal(uint _, GeneratedBlockAccessList? target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
@@ -346,11 +354,12 @@ public partial class BlockAccessListManager
         }
     }
 
-    private class TxProcessorWithWorldState
+    private class TxProcessorWithWorldState : IDisposable
     {
         public readonly TracedAccessWorldState WorldState;
         public readonly ITransactionProcessor TxProcessor;
         public readonly ITransactionProcessorAdapter TxProcessorAdapter;
+        private readonly IDisposable _virtualMachine;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
         private ParentReaderLease? _parentReader;
         private BalReadCoverage? _readCoverage;
@@ -371,8 +380,11 @@ public partial class BlockAccessListManager
                 worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
-            (TxProcessor, TxProcessorAdapter) = txProcessorFactory.Create(WorldState, parallel);
+            (TxProcessor, TxProcessorAdapter, _virtualMachine) = txProcessorFactory.Create(WorldState, parallel);
         }
+
+        /// <summary>Hands the data stacks the processor's virtual machine keeps back to the shared pool.</summary>
+        public void Dispose() => _virtualMachine.Dispose();
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader, BalReadStoragePlan? readPlan = null)
         {

@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Nullable>annotations</Nullable>
     <GenerateRpcJsonContext>true</GenerateRpcJsonContext>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

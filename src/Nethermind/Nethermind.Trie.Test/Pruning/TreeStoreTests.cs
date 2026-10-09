@@ -858,7 +858,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             CappedArray<byte> origRlp = originalNode.FullRlp;
             CappedArray<byte> readOnlyRlp = readOnlyNode.FullRlp;
-            Assert.That(readOnlyRlp.AsSpan().ToArray(), Is.EqualTo(origRlp.AsSpan().ToArray()));
+            Assert.That(readOnlyRlp.AsSpan(), Is.SequenceEqualTo(origRlp.AsSpan()));
             Assert.That(readOnlyRlp.UnderlyingArray, Is.Not.SameAs(origRlp.UnderlyingArray));
 
             byte firstReadOnlyByte = readOnlyRlp[0];

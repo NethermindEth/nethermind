@@ -454,6 +454,8 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
+        public long GetRemovalGeneration(Address sender) => _persistentTxs.GetRemovalGeneration(sender);
+
         public bool AddPeer(ITxPoolPeer peer) => _peers.TryAdd(peer.Id, peer);
 
         public bool RemovePeer(PublicKey nodeId) => _peers.TryRemove(nodeId, out _);

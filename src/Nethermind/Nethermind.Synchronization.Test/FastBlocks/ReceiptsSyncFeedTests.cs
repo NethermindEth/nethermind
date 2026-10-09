@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -330,7 +331,7 @@ public class ReceiptsSyncFeedTests
     private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
 
-    private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
+    private void LoadScenario(Scenario scenario, ISyncConfig syncConfig, ISpecProvider? specProvider = null)
     {
         _syncConfig = syncConfig;
         _syncConfig.PivotNumber = _pivotNumber;
@@ -339,7 +340,7 @@ public class ReceiptsSyncFeedTests
         _syncPointers = Substitute.For<ISyncPointers>();
 
         _feed = new ReceiptsSyncFeed(
-            _specProvider,
+            specProvider ?? _specProvider,
             _blockTree,
             _receiptStorage,
             _syncPointers,
@@ -428,6 +429,29 @@ public class ReceiptsSyncFeedTests
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
 
         _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Validates_receipts_root_with_timestamp_activated_eip7668()
+    {
+        // A number-only lookup misses a timestamp fork, so it would expect 256-byte blooms in the root.
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(static ci => ci.Arg<ForkActivation>().Timestamp is null
+            ? Bogota.Instance
+            : new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true });
+        LoadScenario(new Scenario(specProvider, 1024, 1), _syncConfig, specProvider);
+
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+        batch!.ResponseSourcePeer = peerInfo;
+        int requested = batch.Infos.Length;
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
     }
 
     private static void FillBatchResponses(ReceiptsSyncBatch batch)

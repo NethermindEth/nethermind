@@ -14,11 +14,10 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore, IHeaderDecoder headerDecoder) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -571,7 +570,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         // Encode header to RLP
-        XdcHeaderDecoder headerDecoder = new();
         byte[] encodedBytes;
         try
         {

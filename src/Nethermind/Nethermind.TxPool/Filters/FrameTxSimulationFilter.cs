@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -16,9 +17,12 @@ namespace Nethermind.TxPool.Filters;
 /// head read lock, so the simulator has to bound its own wait.
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
-/// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.</remarks>
-internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
+/// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
+/// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.</remarks>
+internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger, IChainHeadInfoProvider? headInfo = null) : IIncomingTxFilter
 {
+    private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
+
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         // Fast path: legible prefixes resolved natively (payer already set) never reach the EVM.
@@ -33,10 +37,12 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
             return AcceptTxResult.Accepted;
         }
 
+        bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
         FrameTxSimulationResult result = simulator.Simulate(
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
-            local: (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0);
+            local: local,
+            preempt: local ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
@@ -46,6 +52,7 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
                 if (result.NodeBound)
                 {
                     Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
+                    state.FrameSimulationYielded = result.Yielded && !local && !tx.CarriesBlobs;
                     if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash}, this node's validation-prefix simulation bounds were spent: {result.Reason}.");
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }

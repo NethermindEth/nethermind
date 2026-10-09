@@ -6,6 +6,7 @@ using System;
 using System.Buffers.Binary;
 #endif
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -15,6 +16,11 @@ namespace Nethermind.Trie.Test;
 [Parallelizable(ParallelScope.All)]
 public class TreePathTests
 {
+    // A hash and a length; 64 bytes if ValueHash256 were 32-byte aligned again.
+    [Test]
+    public void TreePath_holds_its_hash_without_alignment_padding() =>
+        Assert.That(Unsafe.SizeOf<TreePath>(), Is.EqualTo(40));
+
     [TestCase(false, false)]
     [TestCase(true, false)]
     [TestCase(true, true)]
@@ -106,6 +112,14 @@ public class TreePathTests
         {
             Assert.That(path[i], Is.EqualTo((byte)(i % 16)));
         }
+    }
+
+    [Test]
+    public void Index_outside_the_path_throws([Values(-2, -1, 64)] int index)
+    {
+        TreePath path = new(Keccak.Zero, 64);
+        Assert.Throws<IndexOutOfRangeException>(() => _ = path[index]);
+        Assert.Throws<IndexOutOfRangeException>(() => path[index] = 1);
     }
 
     [Test]

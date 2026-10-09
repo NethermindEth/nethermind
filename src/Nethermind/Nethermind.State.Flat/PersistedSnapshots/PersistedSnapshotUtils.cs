@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -68,7 +69,7 @@ internal static class PersistedSnapshotUtils
         }
         dump["storageNodes"] = storageNodes;
 
-        File.WriteAllText(filename, JsonSerializer.Serialize(dump));
+        File.WriteAllText(filename, JsonSerializer.Serialize(dump, SnapshotDumpJsonContext.Default.DictionaryStringObject));
     }
 
     internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, bool dumpWhenFailed = true)
@@ -144,3 +145,8 @@ internal static class PersistedSnapshotUtils
         }
     }
 }
+
+[JsonSerializable(typeof(Dictionary<string, object>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(Dictionary<string, bool>))]
+internal partial class SnapshotDumpJsonContext : JsonSerializerContext;

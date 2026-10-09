@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -21,9 +22,12 @@ namespace Nethermind.TxPool.Collections
         public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
         public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
 
+        private const int RemovalGenerationStripes = 256;
+
         private readonly UpdateTransactionDelegate _updateTx;
         private readonly List<Transaction> _transactionsToRemove = [];
         private readonly Dictionary<AddressAsKey, int> _keyedNonceCounts = [];
+        private readonly long[] _removalGenerations = new long[RemovalGenerationStripes];
         protected int _poolCapacity;
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
@@ -55,6 +59,21 @@ namespace Nethermind.TxPool.Collections
             return true;
         }
 
+        protected override bool Remove(ValueHash256 key, out Transaction? value)
+        {
+            if (!base.Remove(key, out value))
+            {
+                return false;
+            }
+
+            if (value is not null)
+            {
+                CountRemoval(value);
+            }
+
+            return true;
+        }
+
         /// <inheritdoc/>
         /// <remarks>The keyed count tracks bucket membership rather than the pool's removal attempt: a removal the
         /// group comparer cannot locate leaves the entry in the bucket, and capacity eviction drops one from the
@@ -66,6 +85,7 @@ namespace Nethermind.TxPool.Collections
                 return false;
             }
 
+            CountRemoval(value);
             if (KeyedNonceManager.UsesKeyedNonce(value))
             {
                 AddressAsKey groupKey = MapToGroup(value);
@@ -84,6 +104,21 @@ namespace Nethermind.TxPool.Collections
 
             return true;
         }
+
+        /// <summary>Counts removals of <paramref name="sender"/>'s transactions, and of every sender sharing its stripe.</summary>
+        /// <remarks>Counted where key and bucket membership shrink, the only two places either does, so an unchanged
+        /// count proves the sender lost nothing. Both run under the pool lock, which serializes the writers and which
+        /// every membership query takes, so a reader that sees a new count sees the removal behind it.</remarks>
+        internal long GetRemovalGeneration(Address sender) =>
+            Volatile.Read(ref _removalGenerations[RemovalGenerationStripe(sender)]);
+
+        private void CountRemoval(Transaction value)
+        {
+            ref long generation = ref _removalGenerations[RemovalGenerationStripe(value.SenderAddress!)];
+            Volatile.Write(ref generation, generation + 1);
+        }
+
+        private static int RemovalGenerationStripe(Address sender) => sender.GetHashCode() & (RemovalGenerationStripes - 1);
 
         /// <summary>Number of a sender's pending transactions that consume its account nonce.</summary>
         /// <remarks>An EIP-8250 keyed transaction shares the sender's bucket but spends no account nonce, so an

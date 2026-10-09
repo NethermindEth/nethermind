@@ -104,6 +104,14 @@ public class PerTableDbConfigTests
     }
 
     [Test]
+    public void CodeDb_has_no_row_cache_by_default()
+    {
+        // Code is cached above as CodeInfo; a row cache copies every loaded contract, up to 64 KiB, again.
+        PerTableDbConfig config = new(new DbConfig(), DbNames.Code);
+        Assert.That(config.RowCacheSize ?? 0, Is.Zero);
+    }
+
+    [Test]
     public void AllDbConfigMemberMustBeDeclaredInIDbConfig()
     {
         Type dbConfigType = typeof(DbConfig);

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -51,6 +52,8 @@ namespace Nethermind.Blockchain.Receipts
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 
+        public IReceiptsRecovery.IRecoveryContext CreateLogRecoveryContext(ReceiptRecoveryBlock block) => new LogRecoveryContext(block);
+
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true, bool recoverSenderOnly = false)
         {
             if (receipts is null || receipts.Length == 0 || (recoverSenderOnly && !forceRecoverSender)) return false;
@@ -94,7 +97,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 if (transaction.SenderAddress is null && _forceRecoverSender)
                 {
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
+                    transaction.SenderAddress = receipt.Sender ?? _ecdsa.RecoverAddress(transaction, !_releaseSpec.ValidateChainId);
                 }
 
                 receipt.TxType = transaction.Type;
@@ -154,6 +157,41 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _transactionIndex++;
                 _gasUsedBefore = gasUsedTotal;
+            }
+
+            public void Dispose() => _block.Dispose();
+        }
+
+        /// <summary>Takes each transaction hash from its encoding instead of decoding the transaction.</summary>
+        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.IRecoveryContext
+        {
+            private ReceiptRecoveryBlock _block = block;
+            private int _transactionIndex;
+
+            public void RecoverReceiptData(TxReceipt receipt)
+            {
+                receipt.TxHash = NextTransactionHash();
+                receipt.BlockHash = _block.Hash;
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = _transactionIndex++;
+            }
+
+            public void RecoverReceiptData(ref TxReceiptStructRef receipt)
+            {
+                receipt.TxHash = NextTransactionHash().ToStructRef();
+                receipt.BlockHash = _block.Hash!.ToStructRef();
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = _transactionIndex++;
+            }
+
+            private Hash256 NextTransactionHash()
+            {
+                if (_transactionIndex >= _block.TransactionCount)
+                {
+                    throw new InvalidOperationException("Trying to recover more receipt that transaction");
+                }
+
+                return _block.GetNextTransactionHash();
             }
 
             public void Dispose() => _block.Dispose();

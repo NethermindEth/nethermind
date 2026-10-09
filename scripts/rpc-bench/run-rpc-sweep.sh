@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Sweep one Nethermind image per CLIENTS entry over the same flat snapshot, one node at a time:
+# Sweep one node per CLIENTS entry, one at a time, each client type on its own snapshot set at SNAPSHOT_BLOCK:
 # json-bench cells per rps (isolated + mixed, or private eth_call corpus cells with parity/timings).
 
 set -uo pipefail
@@ -17,7 +17,7 @@ source "$here/lib.sh"
 : "${SNAPSHOT_BLOCK:?shared head all clients are pinned to}"
 : "${JB_BENCHMARK_CONFIG:?mixed (all-scenario) benchmark config, repo-relative}"
 
-CLIENTS="${CLIENTS:-nethermind}"            # entries: ctype or ctype@image
+CLIENTS="${CLIENTS:-nethermind}"            # entries: ctype[@image][#K=V[,K=V]][+flag[;flag]]
 ROUNDS="${ROUNDS:-1}"                       # >1 repeats CLIENTS, reversing order on even rounds (2 = ABBA)
 RPS_LIST="${RPS_LIST-100 250 500}"          # explicitly empty = no k6 cells (parity/timings only)
 ISO_CONFIGS="${ISO_CONFIGS:-}"
@@ -113,11 +113,51 @@ snap_path() {
     *)          printf '%s' "${SNAPSHOT_ROOT}/$1-${SNAPSHOT_BLOCK}" ;;
   esac
 }
+# A CLIENTS entry is `ctype[@image][#K=V[,K=V]][+flag[;flag]]`. An image ref holds neither '#' nor '+', so the image
+# ends at the first of them. The flag list is last and split off first, so a flag value may carry '@', ',' or '=';
+# it may not carry '#' (validated below), which is what keeps an env suffix written after the flags from silently
+# becoming part of a flag. Sets ENTRY_SPEC (ctype[@image]), ENTRY_ENV and ENTRY_FLAGS.
+split_entry() {
+  local rest="$1"
+  ENTRY_FLAGS=""; ENTRY_ENV=""
+  if [[ "$rest" == *+* ]]; then ENTRY_FLAGS="${rest#*+}"; rest="${rest%%+*}"; fi
+  if [[ "$rest" == *#* ]]; then ENTRY_ENV="${rest#*#}"; rest="${rest%%#*}"; fi
+  ENTRY_SPEC="$rest"
+}
+# Validate every entry before any node starts, so a malformed arm cannot leave a one-arm matrix behind.
+if [[ "$CLIENTS" == *$'\n'* || "$CLIENTS" == *$'\r'* ]]; then
+  echo "::error::clients must be a single line of whitespace-delimited entries"; exit 1
+fi
+read -ra entries <<< "$CLIENTS"
+(( ${#entries[@]} > 0 )) || { echo "::error::clients must contain at least one entry"; exit 1; }
+arm_flag_re='^--[^[:space:];#]+$'
+declare -A SWEEP_CTYPES=()
+for entry in "${entries[@]}"; do
+  split_entry "$entry"
+  ctype="${ENTRY_SPEC%%@*}"
+  [[ -n "$ctype" ]] || { echo "::error::malformed sweep client entry '${entry}'"; exit 1; }
+  [[ "$ENTRY_SPEC" != *@ ]] || { echo "::error::sweep client entry '${entry}' has an empty image"; exit 1; }
+  if [[ "$entry" == *+* ]]; then
+    [[ -n "$ENTRY_FLAGS" ]] || { echo "::error::empty arm flag list in '${entry}'"; exit 1; }
+    if [[ "$ENTRY_FLAGS" == ';'* || "$ENTRY_FLAGS" == *';' || "$ENTRY_FLAGS" == *';;'* ]]; then
+      echo "::error::malformed flag list in '${entry}' — use one non-empty flag per ';'"; exit 1
+    fi
+    IFS=';' read -ra arm_flag_list <<< "$ENTRY_FLAGS"
+    for arm_flag in "${arm_flag_list[@]}"; do
+      [[ "$arm_flag" =~ $arm_flag_re ]] || {
+        echo "::error::malformed arm flag '${arm_flag}' in '${entry}' — a flag starts with '--' and holds no whitespace, ';' or '#' (a #K=V env suffix goes before the '+')"
+        exit 1
+      }
+    done
+  fi
+  SWEEP_CTYPES["$ctype"]=1
+done
 # A client whose set is absent reaches start-node.sh with a DB_SOURCE that does not exist, which is only a
 # per-client warning there: the sweep would report a partly empty matrix as success and, in corpus mode, a
-# baseline with no candidate. Check every requested type up front instead.
-declare -A SWEEP_CTYPES=()
-for entry in $CLIENTS; do entry="${entry%%#*}"; SWEEP_CTYPES["${entry%%@*}"]=1; done
+# baseline with no candidate. Check every requested type up front instead. Scratch is wiped between arms, so it
+# must also stay disjoint from every snapshot the sweep will open, compared on canonical (symlink-free) paths.
+SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
+assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 for ctype in "${!SWEEP_CTYPES[@]}"; do
   case "$ctype" in
     nethermind|geth|reth) ;;
@@ -128,7 +168,23 @@ for ctype in "${!SWEEP_CTYPES[@]}"; do
     ls -1d "${SNAPSHOT_ROOT}"/*-"${SNAPSHOT_BLOCK}" 2>/dev/null | sed 's|^|::error::  present: |' || true
     exit 1
   fi
+  snap_real="$(realpath -e -- "$(snap_path "$ctype")")" || {
+    echo "::error::cannot canonicalize ${ctype} snapshot at $(snap_path "$ctype")"; exit 1
+  }
+  [[ "$snap_real" != "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT must not equal the ${ctype} snapshot"; exit 1; }
+  case "$snap_real/" in
+    "$SCRATCH_ROOT"/*) echo "::error::SCRATCH_ROOT must not contain the ${ctype} snapshot"; exit 1 ;;
+  esac
+  case "$SCRATCH_ROOT/" in
+    "$snap_real"/*) echo "::error::SCRATCH_ROOT must not be inside the ${ctype} snapshot"; exit 1 ;;
+  esac
 done
+# Created as the runner user where it can be, so later per-arm scratch and cell output stay user-owned.
+if [[ ! -d "$SCRATCH_ROOT" ]] && ! mkdir -p -- "$SCRATCH_ROOT" 2>/dev/null && ! as_root mkdir -p -- "$SCRATCH_ROOT"; then
+  echo "::error::failed to create SCRATCH_ROOT '$SCRATCH_ROOT'"; exit 1
+fi
+[[ -d "$SCRATCH_ROOT" ]] || { echo "::error::SCRATCH_ROOT '$SCRATCH_ROOT' is not a directory"; exit 1; }
+SCRATCH_ROOT="$(realpath -e -- "$SCRATCH_ROOT")" || { echo "::error::cannot canonicalize SCRATCH_ROOT"; exit 1; }
 # direct bind-mounts the expb-shared snapshot read-write; one such run replaces the fixture every later benchmark uses.
 if [[ "$DB_ISOLATION_ALL" == "direct" && "$DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION" != "true" ]]; then
   echo "::error::DB_ISOLATION_ALL=direct mutates the shared snapshot; use 'copy', or set DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION=true on a private snapshot"; exit 1
@@ -365,8 +421,7 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   fi
 fi
 
-read -ra entries <<< "$CLIENTS"
-schedule=()
+schedule=()   # `entries` was read and validated up front
 for (( round = 1; round <= ROUNDS; round++ )); do
   if (( round % 2 )); then schedule+=("${entries[@]}")
   else for (( i = ${#entries[@]} - 1; i >= 0; i-- )); do schedule+=("${entries[i]}"); done; fi
@@ -375,10 +430,10 @@ echo "Schedule (${ROUNDS} round(s)): ${schedule[*]}"
 log_system_provenance
 
 for entry in "${schedule[@]}"; do
-  # ctype[@image][#K=V[,K=V]] — the optional env suffix reaches only this arm's node (on top of NODE_ENV_VARS), so
-  # one sweep can compare config values of the same image; it is folded into the label so arms stay distinct.
-  arm_env=""; spec="$entry"
-  if [[ "$spec" == *#* ]]; then arm_env="${spec#*#}"; spec="${spec%%#*}"; fi
+  # ctype[@image][#K=V[,K=V]][+flag[;flag]] — the optional env suffix (docker -e, on top of NODE_ENV_VARS) and flag
+  # list (node command-line flags) reach only this arm's node, so one sweep can compare config values or flags of the
+  # same image; both are folded into the label so arms stay distinct.
+  split_entry "$entry"; spec="$ENTRY_SPEC"; arm_env="$ENTRY_ENV"; arm_flag_spec="$ENTRY_FLAGS"
   ctype="${spec%%@*}"
   img="$(arm_image "$entry")"
   if [[ -n "$img" ]]; then label="$(arm_label "$ctype" "$img")"
@@ -387,8 +442,55 @@ for entry in "${schedule[@]}"; do
     label="${label}_$(printf '%s' "$arm_env" | sed -E 's/NETHERMIND_[A-Z]+CONFIG_//g' | tr -c 'a-zA-Z0-9' '_' | tr -s '_' | sed 's/_$//')"
     arm_env="${arm_env//,/ }"
   fi
+  arm_flags=""
+  if [[ -n "$arm_flag_spec" ]]; then
+    IFS=';' read -ra arm_flag_list <<< "$arm_flag_spec"
+    arm_flags="${arm_flag_list[*]}"
+    # A readable prefix, but uniqueness from a hash of the whole unexpanded list: a prefix alone made flag lists
+    # sharing their first 24 characters collide and become _rN repeats of one arm.
+    label="${label}_$(printf '%s' "$arm_flag_spec" | tr -c 'a-zA-Z0-9' '_' | cut -c1-24)_$(printf '%s' "$arm_flag_spec" | sha256sum | cut -c1-12)"
+  fi
   LABEL_SEEN["$label"]=$(( ${LABEL_SEEN["$label"]:-0} + 1 ))
   (( LABEL_SEEN["$label"] > 1 )) && label="${label}_r${LABEL_SEEN["$label"]}"
+  # `{ARM_SCRATCH}` in a flag expands to an empty per-arm host directory, bind-mounted at the same path in the
+  # container and wiped here rather than inherited from an earlier arm, round or dispatch: a flag pointing a node's
+  # storage there measures every arm from the same starting state instead of the one its predecessor left behind.
+  arm_scratch_dir=""
+  if [[ "$arm_flag_spec" == *"{ARM_SCRATCH}"* ]]; then
+    arm_root="$SCRATCH_ROOT/arm"
+    if [[ -L "$arm_root" ]]; then
+      echo "::error::per-arm scratch root '$arm_root' must not be a symlink"; exit 1
+    fi
+    if [[ ! -d "$arm_root" ]] && ! as_root mkdir -p -- "$arm_root"; then
+      echo "::error::failed to create per-arm scratch root '$arm_root'"; exit 1
+    fi
+    [[ -d "$arm_root" && ! -L "$arm_root" ]] || {
+      echo "::error::per-arm scratch root '$arm_root' is not a directory"; exit 1
+    }
+    arm_root="$(realpath -e -- "$arm_root")" || {
+      echo "::error::cannot canonicalize per-arm scratch root"; exit 1
+    }
+    [[ "$arm_root/" == "$SCRATCH_ROOT/"* ]] || {
+      echo "::error::per-arm scratch root must be inside SCRATCH_ROOT"; exit 1
+    }
+    arm_scratch_dir="$arm_root/$label"
+    assert_sane_dir "$arm_scratch_dir" "ARM_SCRATCH_DIR"
+    assert_no_mounts_under "$arm_scratch_dir"
+    if ! as_root rm -rf -- "$arm_scratch_dir"; then
+      echo "::error::failed to wipe per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if ! as_root mkdir -p -- "$arm_scratch_dir"; then
+      echo "::error::failed to recreate per-arm scratch directory '$arm_scratch_dir'"; exit 1
+    fi
+    if ! as_root chmod 0777 -- "$arm_scratch_dir"; then
+      echo "::error::failed to make per-arm scratch directory '$arm_scratch_dir' writable"; exit 1
+    fi
+    if [[ ! -d "$arm_scratch_dir" || -L "$arm_scratch_dir" || ! -w "$arm_scratch_dir" ]]; then
+      echo "::error::per-arm scratch path '$arm_scratch_dir' is not a writable, non-symlink directory after recreation"; exit 1
+    fi
+    arm_flags="${arm_flags//\{ARM_SCRATCH\}/$arm_scratch_dir}"
+  fi
+  [[ -z "$arm_flags" ]] || echo "arm flags: $arm_flags"
   docker pull "$img" >/dev/null 2>&1 || echo "pull failed — assuming $img is local"
   cst="$STATE_ROOT/$label"; mkdir -p "$cst"
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
@@ -396,7 +498,8 @@ for entry in "${schedule[@]}"; do
   echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
-       LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="" HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
+       LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="$arm_flags" ARM_SCRATCH_DIR="$arm_scratch_dir" \
+       HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
        RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then

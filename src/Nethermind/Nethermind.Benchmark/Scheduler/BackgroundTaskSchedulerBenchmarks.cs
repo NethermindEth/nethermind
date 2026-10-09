@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
@@ -169,14 +170,22 @@ public class BackgroundTaskSchedulerBenchmarks
     {
         public IChainHeadSpecProvider SpecProvider => null!;
         public IReadOnlyStateProvider ReadOnlyStateProvider => null!;
+        public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
+        {
+            head = null;
+            state = null;
+            return false;
+        }
         public ulong HeadNumber => 0;
         public ulong HeadTimestamp => 0;
         public ulong? BlockGasLimit => null;
         public UInt256 CurrentBaseFee => UInt256.Zero;
+        public UInt256 NextBaseFee => UInt256.Zero;
         public UInt256 CurrentFeePerBlobGas => UInt256.Zero;
         public ProofVersion CurrentProofVersion => ProofVersion.V0;
         public bool IsSyncing => false;
         public bool IsProcessingBlock => false;
+        public bool IsBuildingBlock => false;
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged { add { } remove { } }
     }
 }

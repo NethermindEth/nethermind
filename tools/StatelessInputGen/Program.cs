@@ -35,6 +35,11 @@ Command CreateRpcCommand()
         HelpName = "url",
         DefaultValueFactory = r => "http://localhost:8545"
     };
+    Option<string?> beaconUrlOption = new("--beacon-url")
+    {
+        Description = "An optional beacon node REST endpoint. When set, execution requests are read from the beacon block instead of being recovered by replaying the block.",
+        HelpName = "url"
+    };
     Option<string> blockOption = new("--block", "-b")
     {
         Description = "The block number to generate input from. Also allows `earliest`, `finalized`, `latest`, `pending`, or `safe`.",
@@ -46,6 +51,13 @@ Command CreateRpcCommand()
     {
         if (!Uri.TryCreate(optionResult.GetValueOrDefault<string>(), UriKind.Absolute, out _))
             optionResult.AddError($"{urlOption.Name} must be a valid absolute URL");
+    });
+
+    beaconUrlOption.Validators.Add(optionResult =>
+    {
+        string? value = optionResult.GetValueOrDefault<string?>();
+        if (value is not null && !Uri.TryCreate(value, UriKind.Absolute, out _))
+            optionResult.AddError($"{beaconUrlOption.Name} must be a valid absolute URL");
     });
 
     blockOption.Validators.Add(optionResult =>
@@ -72,12 +84,14 @@ Command CreateRpcCommand()
     Command command = new("rpc");
     command.Options.Add(urlOption);
     command.Options.Add(blockOption);
+    command.Options.Add(beaconUrlOption);
     command.Options.Add(noZiskOption);
     command.Options.Add(outputOption);
 
     command.SetAction((parseResult, cancellationToken) => RunCommand(() => InputGenerator.Generate(
         parseResult.GetValue(blockOption)!,
         new Uri(parseResult.GetValue(urlOption)!, UriKind.Absolute),
+        parseResult.GetValue(beaconUrlOption) is { } beaconUrl ? new Uri(beaconUrl.TrimEnd('/') + '/', UriKind.Absolute) : null,
         parseResult.GetValue(outputOption)!,
         !parseResult.GetValue(noZiskOption),
         cancellationToken

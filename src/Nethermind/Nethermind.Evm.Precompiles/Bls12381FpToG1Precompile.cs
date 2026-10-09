@@ -24,6 +24,9 @@ public partial class Bls12381FpToG1Precompile : IPrecompile<Bls12381FpToG1Precom
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        ValidateInputLength(inputData) ? inputData : ReadOnlyMemory<byte>.Empty;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
     private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) => inputData.Length == Eip2537.LenFp;
