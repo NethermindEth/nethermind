@@ -225,7 +225,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
         for (int i = 0; i < iterations; i++) ReadAll(overlay, underlying);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-        Assert.That(allocated, Is.LessThan(iterations * maxBytesPerIteration),"slot reads, storage probes, code lookups and reads of accounts the prefix left alone must not allocate");
+        Assert.That(allocated, Is.LessThan(iterations * maxBytesPerIteration), "slot reads, storage probes, code lookups and reads of accounts the prefix left alone must not allocate");
 
         static void ReadAll(BlockAccessListReadOverlay overlay, Account underlying)
         {
