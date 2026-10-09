@@ -78,7 +78,18 @@ public partial class DebugRpcModuleTests
     [TestCase("noncallable", -1)]
     [TestCase("unknown", -1)]
     [TestCase("syntax", -1)]
-    public async Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt)
+    public Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt) =>
+        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, null);
+
+    [TestCase("result", 1, 1, TestName = "Debug_traceBlockByNumber_txHash_recovers_middle_result_failure")]
+    [TestCase("step", 2, 2, TestName = "Debug_traceBlockByNumber_txHash_recovers_last_step_failure")]
+    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_preserves_selected_context_after_nonselected_failure")]
+    [TestCase("unknown", -1, 2, TestName = "Debug_traceBlockByNumber_txHash_reports_constructor_failure_for_selected_transaction")]
+    [TestCase("result", 0, -1, TestName = "Debug_traceBlockByNumber_unknown_txHash_returns_no_trace")]
+    public Task Debug_traceBlockByNumber_recovers_js_errors_for_txHash(string failure, int failAt, int selectedAt) =>
+        AssertTraceBlockByNumberJavaScriptRecovery(failure, failAt, selectedAt);
+
+    private async Task AssertTraceBlockByNumberJavaScriptRecovery(string failure, int failAt, int? selectedAt)
     {
         JsRecoveryObservations observations = new();
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -138,21 +149,29 @@ public partial class DebugRpcModuleTests
             "unknown" => "unknown-js-tracer",
             _ => "{result:}"
         };
-        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, new { tracer });
+        Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
+        object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
         JArray entries = (JArray)actual["result"]!;
+        JsRecoveryState[] observedStates = observations.States.ToArray();
+        JsRecoveryState[] replayedStates = selectedAt >= 0 ? expectedStates[..(selectedAt.Value + 1)] : expectedStates;
+        int expectedCount = selectedAt is null ? 3 : selectedAt >= 0 ? 1 : 0;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(entries, Has.Count.EqualTo(3));
-            Assert.That(observations.States.ToArray(), Is.EqualTo(expectedStates), "each transaction executes once with canonical storage, nonce and balance");
+            Assert.That(entries, Has.Count.EqualTo(expectedCount));
+            Assert.That(observedStates, Is.EqualTo(replayedStates), selectedAt is null
+                ? "each transaction executes once with canonical storage, nonce and balance"
+                : "each executed transaction uses canonical storage, nonce and balance");
         }
         for (int index = 0; index < entries.Count; index++)
         {
+            int transactionIndex = selectedAt ?? index;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That((string?)entries[index]["txHash"], Is.EqualTo(block.Transactions[index].Hash!.ToString()));
-                if (failAt < 0 || index == failAt)
+                Assert.That((string?)entries[index]["txHash"], Is.EqualTo(block.Transactions[transactionIndex].Hash!.ToString()));
+                if (failAt < 0 || transactionIndex == failAt)
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
                     Assert.That(entries[index]["result"], Is.Null);
@@ -169,9 +188,11 @@ public partial class DebugRpcModuleTests
                     if (failure is "fault" or "exit" or "postStep" or "precedence")
                         Assert.That((string?)entries[index]["error"], Does.Contain(failure == "precedence" ? "first failure" : failure + " failure"));
                 }
-                else Assert.That(JToken.DeepEquals(entries[index], baseline["result"]![index]), Is.True, response);
+                else Assert.That(JToken.DeepEquals(entries[index], baseline["result"]![transactionIndex]), Is.True, response);
             }
         }
+        if (selectedAt is not null) return;
+
         observations.Enabled = false;
         string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
         Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
@@ -1516,8 +1537,9 @@ public partial class DebugRpcModuleTests
 
     private static ScriptEngineException CreateException(bool fatal, bool started, object? scriptValue, Exception? inner = null)
     {
-        ConstructorInfo constructor = typeof(ScriptEngineException).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null,
-            [typeof(string), typeof(string), typeof(string), typeof(int), typeof(bool), typeof(bool), typeof(object), typeof(Exception)], null)!;
-        return (ScriptEngineException)constructor.Invoke(["classifier-test", "failure", "failure", 0, fatal, started, scriptValue, inner]);
+        ConstructorInfo? constructor = typeof(ScriptEngineException).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [typeof(string), typeof(string), typeof(string), typeof(int), typeof(bool), typeof(bool), typeof(object), typeof(Exception)], null);
+        Assert.That(constructor, Is.Not.Null);
+        return (ScriptEngineException)constructor!.Invoke(["classifier-test", "failure", "failure", 0, fatal, started, scriptValue, inner]);
     }
 }
