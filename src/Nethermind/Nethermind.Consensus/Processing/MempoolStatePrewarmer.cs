@@ -14,6 +14,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
@@ -219,6 +220,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         header.Beneficiary = parent.GasBeneficiary ?? Address.Zero;
         header.MixHash = parent.MixHash;
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+        header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
         header.ParentBeaconBlockRoot = parent.ParentBeaconBlockRoot;
 
         return header;

@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -201,6 +202,31 @@ public class MempoolStatePrewarmerTests
     }
 
     /// <summary>
+    /// A run on the predicted header is taken over only where its blob gas is the block's: the block's is set by its
+    /// parent, so the prediction must be too, or no run would be taken after Cancun.
+    /// </summary>
+    [Test]
+    public async Task PreWarmFromMempool_PredictsTheExcessBlobGasTheParentSets()
+    {
+        BlockHeader parentHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithHash(TestItem.KeccakB)
+            .WithExcessBlobGas(Cancun.Instance.TargetBlobCount * Eip4844Constants.GasPerBlob * 2)
+            .WithBlobGasUsed(Cancun.Instance.MaxBlobCount * Eip4844Constants.GasPerBlob)
+            .WithBaseFee(7).TestObject;
+        DeltaCapturingPreWarmer preWarmer = new();
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, parentHeader, out IBlockTree blockTree, out _, out _, Cancun.Instance);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(parentHeader)));
+
+        BlockHeader deltaHeader = await preWarmer.CapturedHeader.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        ulong? expected = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, Cancun.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Is.Not.Null.And.Not.Zero, "precondition: the parent sets a non-zero excess");
+            Assert.That(deltaHeader.ExcessBlobGas, Is.EqualTo(expected));
+        }
+    }
+
+    /// <summary>
     /// The session's token must reach selection: a block queued mid-pass stops the pull from the producer's source, and
     /// the pass yields no delta rather than warming a partial one.
     /// </summary>
@@ -361,7 +387,7 @@ public class MempoolStatePrewarmerTests
 
     /// <summary>A prewarmer whose clock reads the head's timestamp, so the head is fresh enough to warm from.</summary>
     private static MempoolStatePrewarmer CreatePrewarmer(IBlockCachePreWarmer preWarmer, BlockHeader head, out IBlockTree blockTree,
-        out ITxSource txSource, out IBlockProcessingQueue processingQueue)
+        out ITxSource txSource, out IBlockProcessingQueue processingQueue, IReleaseSpec spec = null)
     {
         txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
@@ -373,7 +399,7 @@ public class MempoolStatePrewarmerTests
         IBlockProcessingQueue queue = processingQueue = Substitute.For<IBlockProcessingQueue>();
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(London.Instance);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? London.Instance);
 
         DateTime headTime = DateTimeOffset.FromUnixTimeSeconds((long)head.Timestamp).UtcDateTime;
         ITimestamper timestamper = Substitute.For<ITimestamper>();
