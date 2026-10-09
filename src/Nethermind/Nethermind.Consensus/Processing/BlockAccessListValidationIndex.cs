@@ -146,7 +146,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
             if (accountChanges.CodeChange is { } code)
             {
-                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddCode(row, accountOrdinal, code.CodeHash), code.Index, accountChanges.Address);
+                if (TryGetRow(code.Index, _lastIndex, out int row)) RecordIfOverflow(_lanes.TryAddCode(row, accountOrdinal, in code), code.Index, accountChanges.Address);
                 else _hasOutOfRangeChange = true;
             }
 

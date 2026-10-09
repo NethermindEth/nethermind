@@ -377,25 +377,47 @@ public class Eip8298Tests : VirtualMachineTestsBase
             eip8298Enabled ? Is.EqualTo(SourceCode) : Is.Null);
     }
 
+    // EIP-8298: adopted code enters the block access list as [index, b"", new_code_hash], never as bytecode.
     [Test]
-    public void BlockAccessList_RecordsSourceReadAndCodeChange([Values] bool eip8298Enabled, [Values] bool parallel)
+    public void BlockAccessList_RecordsSourceReadAndAdoptedCodeHash([Values] bool eip8298Enabled, [Values] bool parallel)
     {
         _eip8298Enabled = eip8298Enabled;
         DeploySource();
+        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
+
+        BlockAccessListAtIndex accessList = ExecuteRecordingBlockAccessList(block, tx, parallel);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accessList.GetAccountChanges(Source), eip8298Enabled ? Is.Not.Null : Is.Null, "source read");
+            Assert.That(accessList.GetAccountChanges(Recipient)?.CodeChange,
+                eip8298Enabled ? Is.EqualTo(CodeChange.Adopted(accessList.Index, SourceCodeHash.ValueHash256)) : Is.Null, "code change");
+        }
+    }
+
+    // Adopted code stands in for the deposit, so the created account's change is hash-only as well.
+    [Test]
+    public void BlockAccessList_InitcodeAdoption_RecordsAdoptedCodeHash([Values] CreationKind kind)
+    {
+        DeploySource();
+        (Block block, Transaction tx, Address created) = PrepareCreation(kind, AdoptingInitCode(0xef, 32), 0);
+
+        BlockAccessListAtIndex accessList = ExecuteRecordingBlockAccessList(block, tx, parallel: false);
+
+        Assert.That(accessList.GetAccountChanges(created)?.CodeChange, Is.EqualTo(CodeChange.Adopted(accessList.Index, SourceCodeHash.ValueHash256)));
+    }
+
+    /// <summary>Executes <paramref name="tx"/>, recording a block access list over <see cref="VirtualMachineTestsBase.TestState"/>.</summary>
+    private BlockAccessListAtIndex ExecuteRecordingBlockAccessList(Block block, Transaction tx, bool parallel)
+    {
         TracedAccessWorldState tracedState = new(TestState, parallel);
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, Machine,
             new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
-        (Block block, Transaction tx) = PrepareTx(Activation, 1_000_000, Prepare.EvmCode.SETCODEFROM(Source).STOP().Done);
 
         processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        BlockAccessListAtIndex accessList = tracedState.GetGeneratingBlockAccessList()!;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(accessList.GetAccountChanges(Source), eip8298Enabled ? Is.Not.Null : Is.Null, "source read");
-            Assert.That(accessList.GetAccountChanges(Recipient)?.CodeChange?.Code, eip8298Enabled ? Is.EqualTo(SourceCode) : Is.Null, "code change");
-        }
+        return tracedState.GetGeneratingBlockAccessList()!;
     }
 
     // Creation completion only consults EIP-8298 once SETCODEFROM has run, so plain creations must not change.

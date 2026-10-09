@@ -709,11 +709,11 @@ public static partial class EvmInstructions
         if (state.GetCodeHash(executingAccount) != codeHash)
         {
             if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
-            // EIP-8279: the adopted code joins the block access list as the executing account's code change, metered
-            // like a code deposit; an adopted creation never reaches the deposit, so this is its only metering.
-            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData((ulong)code.Length)) goto OutOfGas;
+            // EIP-8279: the executing account's code change enters the block access list as the adopted code hash
+            // (EIP-8298), never as bytecode; an adopted creation never reaches the deposit, so this is its only metering.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData(Eip8279Constants.AdoptedCodeHashBytes)) goto OutOfGas;
             // Install by the known hash, passing the code so the adopted hash always resolves.
-            state.InsertCode(executingAccount, in codeHash, code, spec);
+            state.AdoptCode(executingAccount, in codeHash, code, spec);
         }
 
         return stack.PushOne<TTracingInst>();

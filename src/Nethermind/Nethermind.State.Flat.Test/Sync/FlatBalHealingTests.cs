@@ -151,6 +151,40 @@ public class FlatBalHealingTests
         Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code));
     }
 
+    // EIP-8298: an adoption records only a hash; its bytecode comes from the change that deposited it, even when
+    // the depositor's final code differs.
+    [Test]
+    public async Task Heals_when_bal_adopts_code_its_depositor_replaces()
+    {
+        byte[] code = [0x60, 0x00, 0x60, 0x00];
+        byte[] replacement = [0x60, 0x01];
+        Hash256 codeHash = Keccak.Compute(code);
+
+        SeedInitialState(Acc(TestItem.AddressA, 100));
+        Hash256 expected = BuildRoot(Acc(TestItem.AddressA, 100, code: code), Acc(TestItem.AddressB, 500, code: replacement));
+
+        BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
+        ReadOnlyAccountChanges adopter = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithCodeChanges(CodeChange.Adopted(2, codeHash.ValueHash256))
+            .TestObject;
+        ReadOnlyAccountChanges depositor = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressB)
+            .WithBalanceChanges(new BalanceChange(1, 500))
+            .WithCodeChanges(new CodeChange(1, code), new CodeChange(3, replacement))
+            .TestObject;
+        BlockHeader lastPivot = SetupBlock(firstPivot, expected, Bal(adopter, depositor));
+
+        bool result = await RunOnce(_healing, firstPivot, lastPivot, [], default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True, "healed");
+            Assert.That(_codeDb.Get(codeHash.Bytes), Is.EqualTo(code), "adopted code");
+            Assert.That(_codeDb.Get(Keccak.Compute(replacement).Bytes), Is.EqualTo(replacement), "replaced code");
+        }
+    }
+
     [Test]
     public async Task Heals_when_bal_updates_storage()
     {

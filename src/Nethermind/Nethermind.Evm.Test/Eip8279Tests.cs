@@ -100,14 +100,14 @@ public class Eip8279Tests : VirtualMachineTestsBase
         yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8 + 8);
         yield return Case("CREATE with endowment", Prepare.EvmCode.Create([], 1), 20 + 8 + 8 + 64);
         yield return Case("CREATE deploying code", Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf([1, 2, 3, 4, 5]).Done, 0), 20 + 8 + 8 + 5);
-        // SETCODEFROM meters the source on first touch and the adopted code as the executing account's code change.
-        yield return Case("SETCODEFROM adopting code", Prepare.EvmCode.SETCODEFROM(CodeSource), 20 + 7);
-        yield return Case("SETCODEFROM of an already touched source", Prepare.EvmCode.PushData(CodeSource).Op(Instruction.BALANCE).SETCODEFROM(CodeSource), 20 + 7);
-        yield return Case("Repeated SETCODEFROM meters the source and code once", Prepare.EvmCode.SETCODEFROM(CodeSource).SETCODEFROM(CodeSource), 20 + 7);
+        // SETCODEFROM meters the source on first touch and, per EIP-8298, the adopted code hash as the executing account's code change.
+        yield return Case("SETCODEFROM adopting code", Prepare.EvmCode.SETCODEFROM(CodeSource), 20 + 32);
+        yield return Case("SETCODEFROM of an already touched source", Prepare.EvmCode.PushData(CodeSource).Op(Instruction.BALANCE).SETCODEFROM(CodeSource), 20 + 32);
+        yield return Case("Repeated SETCODEFROM meters the source and code once", Prepare.EvmCode.SETCODEFROM(CodeSource).SETCODEFROM(CodeSource), 20 + 32);
         yield return Case("SETCODEFROM of its own code writes no code bytes", Prepare.EvmCode.SETCODEFROM(Executing), 20);
         yield return Case("SETCODEFROM of a source without code", Prepare.EvmCode.SETCODEFROM(ColdAccount), 20);
         // An adopted creation skips the code deposit, so the adopted code is metered only by SETCODEFROM.
-        yield return Case("CREATE adopting code", Prepare.EvmCode.Create(Prepare.EvmCode.SETCODEFROM(CodeSource).STOP().Done, 0), 20 + 8 + 8 + 20 + 7);
+        yield return Case("CREATE adopting code", Prepare.EvmCode.Create(Prepare.EvmCode.SETCODEFROM(CodeSource).STOP().Done, 0), 20 + 8 + 8 + 20 + 32);
 
         static TestCaseData Case(string name, Prepare code, int bytes) => new TestCaseData(code.STOP().Done, (ulong)bytes).SetName(name);
     }
@@ -155,8 +155,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(Eip8279Constants.AddressBytes + 7, true, TestName = "SETCODEFROM within the floor limit adopts the code")]
-    [TestCase(Eip8279Constants.AddressBytes + 6, false, TestName = "SETCODEFROM code meter out of gas aborts before the code write")]
+    [TestCase(Eip8279Constants.AddressBytes + Eip8279Constants.AdoptedCodeHashBytes, true, TestName = "SETCODEFROM within the floor limit adopts the code")]
+    [TestCase(Eip8279Constants.AddressBytes + Eip8279Constants.AdoptedCodeHashBytes - 1, false, TestName = "SETCODEFROM code meter out of gas aborts before the code write")]
     [TestCase(Eip8279Constants.AddressBytes - 1, false, TestName = "SETCODEFROM source meter out of gas aborts before the source access")]
     public void Setcodefrom_meter_out_of_gas_leaves_no_code_change(ulong affordableBytes, bool affordable)
     {
@@ -186,7 +186,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         (ulong gasSpent, _, _, _) = Execute(block, tx);
 
         Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas
-            + (Eip8279Constants.AddressBytes + (ulong)AdoptedCode.Length) * Eip8131Constants.FloorGasPerByte));
+            + (Eip8279Constants.AddressBytes + Eip8279Constants.AdoptedCodeHashBytes) * Eip8131Constants.FloorGasPerByte));
     }
 
     [Test]

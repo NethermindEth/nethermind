@@ -160,6 +160,15 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
+    /// <summary>Sets the account's code to code adopted from another account by EIP-8298 <c>SETCODEFROM</c>.</summary>
+    /// <remarks>
+    /// Same state effect as <see cref="InsertCode"/>. Kept apart so a block access list records the change by its
+    /// code hash rather than its bytecode, as EIP-8298 requires.
+    /// </remarks>
+    /// <returns>As <see cref="InsertCode"/>.</returns>
+    bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => InsertCode(address, in codeHash, code, spec);
+
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>

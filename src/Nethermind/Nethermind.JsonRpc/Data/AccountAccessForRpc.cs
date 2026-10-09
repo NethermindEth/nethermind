@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -47,7 +48,7 @@ public class AccountAccessForRpc
             StorageReads = Map(account.StorageReads, static r => r.ToValueHash()),
             BalanceChanges = Map(account.BalanceChanges, static c => new BalanceChangeForRpc { Index = c.Index, Value = c.Value }),
             NonceChanges = Map(account.NonceChanges, static c => new NonceChangeForRpc { Index = c.Index, Value = c.Value }),
-            CodeChanges = Map(account.CodeChanges, static c => new CodeChangeForRpc { Index = c.Index, Code = c.Code }),
+            CodeChanges = Map(account.CodeChanges, static c => new CodeChangeForRpc { Index = c.Index, Code = c.Code, CodeHash = c.IsAdopted ? c.CodeHash : null }),
         };
 
     /// <summary>Projects each element of <paramref name="source"/>, reusing a shared empty array when empty.</summary>
@@ -93,4 +94,8 @@ public readonly struct CodeChangeForRpc
 {
     public required ulong Index { get; init; }
     public required byte[] Code { get; init; }
+
+    /// <summary>The code hash adopted by EIP-8298 <c>SETCODEFROM</c>, whose change carries empty <see cref="Code"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ValueHash256? CodeHash { get; init; }
 }

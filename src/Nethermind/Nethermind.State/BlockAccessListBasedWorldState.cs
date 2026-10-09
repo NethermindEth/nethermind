@@ -238,6 +238,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => true;
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
@@ -294,7 +297,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.Code
+            ? codeChange.IsAdopted ? GetAdoptedCode(codeChange.CodeHash) : codeChange.Code
             : _parentReader is WorldState worldState
                 ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
                 : _parentReader!.GetCode(address);
@@ -347,7 +350,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
         {
             codeHash = codeChange.CodeHash;
-            hasPriorChange |= codeChange.Code.Length != 0;
+            hasPriorChange |= codeChange.IsAdopted || codeChange.Code.Length != 0;
         }
 
         if (!exists && !hasPriorChange)
@@ -509,6 +512,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _contextAccount = address;
         return accountChanges;
     }
+
+    /// <remarks>EIP-8298: adopted bytecode is declared at a lower block access index or is in the pre-block state.</remarks>
+    private ReadOnlyMemory<byte> GetAdoptedCode(in ValueHash256 codeHash)
+        => TryGetDeclaredCode(in codeHash, out byte[]? code) ? code : GetParentReader().GetCode(in codeHash);
 
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
     {
