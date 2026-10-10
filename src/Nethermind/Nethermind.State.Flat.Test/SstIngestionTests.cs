@@ -831,6 +831,69 @@ public class SstIngestionTests
     }
 
     [Test]
+    public void Roll_forward_skips_an_ingested_column_whose_earlier_chunk_was_not_unlinked()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        byte[] accountKey = ValueKeccak.Compute("rewritten-across-chunks"u8).ToByteArray();
+        byte[] storageKey = ValueKeccak.Compute("pending-storage"u8).ToByteArray();
+
+        ISstIngestWriteBatch accountBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account)).StartSstIngestBatch();
+        ISstIngestWriteBatch storageBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Storage)).StartSstIngestBatch();
+        try
+        {
+            accountBatch.Set(accountKey, [0x01]);
+            byte[] filler = new byte[64 * 1024];
+            Span<byte> key = stackalloc byte[32];
+            for (int i = 0; i < 2100; i++)
+            {
+                BitConverter.TryWriteBytes(key, i);
+                key[8] = 0xff;
+                accountBatch.Set(key, filler);
+            }
+            accountBatch.Set(accountKey, [0x02]);
+            storageBatch.Set(storageKey, [0xb2]);
+
+            string[] accountFiles = [.. accountBatch.SealToStagedFiles()];
+            Assert.That(accountFiles, Has.Length.GreaterThan(1));
+            List<string> stagedFiles = [.. accountFiles, .. storageBatch.SealToStagedFiles()];
+
+            using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
+                BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
+            _db.Flush(onlyWal: true);
+
+            string firstChunkCopy = accountFiles[0] + ".copy";
+            File.Copy(accountFiles[0], firstChunkCopy);
+            accountBatch.IngestStagedFiles();
+            File.Move(firstChunkCopy, accountFiles[0]);
+        }
+        finally
+        {
+            accountBatch.Dispose();
+            storageBatch.Dispose();
+        }
+
+        Reopen();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0x02 }));
+            Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
+            using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            }
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+            Assert.That(StagedSstFiles(), Is.Empty);
+        }
+    }
+
+    [Test]
     public void Startup_sweep_deletes_orphaned_staged_files_without_marker()
     {
         StateId s1 = State(1, 1);

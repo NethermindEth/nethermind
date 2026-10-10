@@ -414,9 +414,20 @@ public class RocksDbPersistence : IPersistence, IDisposable
         return true;
     }
 
+    /// <summary>Completes a pending SST-ingest commit: re-ingests every column that is not live yet and advances the pointer.</summary>
+    /// <remarks>
+    /// Each column is ingested by a single atomic <c>IngestExternalFiles</c> call, and move-ingest unlinks the sources
+    /// only after that call succeeds. The staging directory is fsynced before the marker, so a listed file can only be
+    /// absent because its column went live. A column with any file absent is therefore skipped as a whole, and its
+    /// remaining files are deleted: a source whose unlink failed after a successful ingest must not be re-ingested
+    /// alone, because it would restore a key that a later chunk of the same column overwrote. A column with every file
+    /// present is re-ingested as the same set in the same order, which gives the same result whether or not it already
+    /// went live.
+    /// </remarks>
     private static void RollForwardPendingIngest(IColumnsDb<FlatDbColumns> db, string stagingDir, (StateId To, string[] Files) pending, ILogger logger)
     {
         Dictionary<FlatDbColumns, List<string>> byColumn = [];
+        HashSet<FlatDbColumns> liveColumns = [];
         foreach (string name in pending.Files)
         {
             int cut = name.LastIndexOf('_');
@@ -424,9 +435,11 @@ public class RocksDbPersistence : IPersistence, IDisposable
                 throw new InvalidOperationException($"Flat DB SST ingest marker references unrecognized staged file '{name}'");
 
             string path = Path.Combine(stagingDir, name);
-            // A missing file was already ingested: move-ingest deletes its source on success, and the staging
-            // directory is fsynced before the marker, so a listed file cannot be absent for any other reason.
-            if (!File.Exists(path)) continue;
+            if (!File.Exists(path))
+            {
+                liveColumns.Add(column);
+                continue;
+            }
 
             if (!byColumn.TryGetValue(column, out List<string>? files)) byColumn[column] = files = [];
             files.Add(path);
@@ -435,6 +448,12 @@ public class RocksDbPersistence : IPersistence, IDisposable
         int reingested = 0;
         foreach ((FlatDbColumns column, List<string> files) in byColumn)
         {
+            if (liveColumns.Contains(column))
+            {
+                DeleteLeftoverStagedFiles(files, logger);
+                continue;
+            }
+
             ((ISstIngestible)db.GetColumnDb(column)).IngestStagedFiles(files);
             reingested += files.Count;
         }
@@ -449,6 +468,21 @@ public class RocksDbPersistence : IPersistence, IDisposable
 
         if (logger.IsInfo)
             logger.Info($"Rolled interrupted flat DB persist forward to {pending.To}: re-ingested {reingested} of {pending.Files.Length} staged SST file(s)");
+    }
+
+    private static void DeleteLeftoverStagedFiles(List<string> files, ILogger logger)
+    {
+        foreach (string file in files)
+        {
+            try
+            {
+                File.Delete(file);
+            }
+            catch (Exception e)
+            {
+                if (logger.IsDebug) logger.Debug($"Failed to delete leftover staged SST file '{file}' of an already ingested column; it will be swept on next startup. {e}");
+            }
+        }
     }
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
