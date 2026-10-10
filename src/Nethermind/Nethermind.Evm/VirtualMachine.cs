@@ -336,8 +336,8 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingAccess = DispatchFlags.ConstTracing && txTracer.IsTracingAccess;
         IsTracingOpLevelStorage = DispatchFlags.ConstTracing && txTracer.IsTracingOpLevelStorage;
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
-        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
-            && !txTracer.IsTracingInstructions
+        _tracerAllowsReturnScratch = !IsTracingActions
+            && !(DispatchFlags.ConstTracing && txTracer.IsTracingInstructions)
             && !txTracer.IsTracingMemory
             && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);

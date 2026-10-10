@@ -105,7 +105,7 @@ namespace Nethermind.Evm.TransactionProcessing
             public readonly bool IsTracingState = tracer.IsTracingState;
             public readonly bool IsTracingReceipt = tracer.IsTracingReceipt;
             public readonly bool IsCollectingLogs = tracer.IsCollectingLogs;
-            // A build without tracing skips these reads: the virtual machine's DispatchFlags.Validate rejects a tracer that sets them.
+            // A build without tracing skips these reads: its tracer sets none, which DispatchFlags.Validate checks on every EVM-executed transaction.
             public readonly bool IsTracingLogs = DispatchFlags.ConstTracing && tracer.IsTracingLogs;
             public readonly bool IsTracingInstructions = DispatchFlags.ConstTracing && tracer.IsTracingInstructions;
             public readonly bool IsTracingMemory = tracer.IsTracingMemory;
