@@ -384,7 +384,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.Header.Timestamp;
+        {
+            vm.BlockContextReads |= BlockContextReads.Timestamp;
+            return vm.BlockExecutionContext.Header.Timestamp;
+        }
     }
 
     /// <summary>
@@ -404,7 +407,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static ulong Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.GasLimit;
+        {
+            vm.BlockContextReads |= BlockContextReads.GasLimit;
+            return vm.BlockExecutionContext.GasLimit;
+        }
     }
 
     /// <summary>
@@ -514,7 +520,10 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         public static Address Operation(VirtualMachine<TGasPolicy> vm)
-            => vm.BlockExecutionContext.Coinbase;
+        {
+            vm.BlockContextReads |= BlockContextReads.Coinbase;
+            return vm.BlockExecutionContext.Coinbase;
+        }
     }
 
     /// <summary>
@@ -554,13 +563,11 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
-        bool meterAccess = TSpec.IsEip8279Enabled && vm.IsColdBalAccess(address);
-
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
 
-        // EIP-8279: the account enters the block access list on this first touch, metered after its charge.
-        if (meterAccess && !vm.TryMeterBalData(Eip8279Constants.AddressBytes)) goto OutOfGas;
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
         ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
         return PushBalance<TTracingInst, OnFlag>(ref stack, in result);
@@ -629,10 +636,10 @@ public static partial class EvmInstructions
 
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
-        // EIP-8279: the account enters the block access list on this first touch, metered before its charge.
-        if (TSpec.IsEip8279Enabled && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
         // Check if enough gas for account access and charge accordingly.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address)) goto OutOfGas;
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
 
@@ -674,6 +681,7 @@ public static partial class EvmInstructions
     {
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        vm.BlockContextReads |= BlockContextReads.PrevRandao;
         return stack.Push32Bytes<TTracingInst, OnFlag>(in vm.BlockExecutionContext.PrevRandao);
     }
 
