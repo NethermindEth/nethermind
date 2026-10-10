@@ -1132,7 +1132,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         private readonly List<OptimizedDictionary<TKey, TValue>> _retained = [];
         private int _retainedEntries;
 
-        /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
         public OptimizedDictionary<TKey, TValue> Rent(int minCapacity)
         {
             lock (_lock)
@@ -1141,7 +1140,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 for (int i = 0; i < _retained.Count; i++)
                 {
                     int capacity = _retained[i].Capacity;
-                    if (capacity >= minCapacity && (best < 0 || capacity < _retained[best].Capacity)) best = i;
+                    if (capacity >= minCapacity && (best < 0 || capacity > _retained[best].Capacity)) best = i;
                 }
 
                 if (best >= 0)
