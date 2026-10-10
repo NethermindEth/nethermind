@@ -51,7 +51,7 @@ public class GuestOpenVmSha256Tests
     public void Swapping_bytes_in_halves_matches_reversing_and_rotating([Values(0UL, 0x0123456789abcdefUL, ulong.MaxValue, 0x8000000000000001UL)] ulong value) =>
         Assert.That(Merkle.SwapBytesInHalves(value), Is.EqualTo(BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(value), 32)));
 
-    // OpenVM's SHA-256 compression (openvm sha2 guest, zkvm_sha256_impl): the state as eight 32-bit words in
+    // zkvm_sha256_compress, the sha2 extension's compression instruction: the state as eight 32-bit words in
     // little-endian order, the block as FIPS 180-4 reads it.
     private static void Compress(ulong[] packedState, ReadOnlySpan<byte> block)
     {
