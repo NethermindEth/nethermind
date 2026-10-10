@@ -304,6 +304,25 @@ public class AddressTests
         }
     }
 
+    [Test]
+    public void Storage_cell_hash_matches_address_and_slot([Values(0UL, 1UL, ulong.MaxValue)] ulong word)
+    {
+        UInt256 index = new(word, word, word, word);
+        Address address = new(TestItem.AddressA.Bytes);
+        StorageCell cell = new(address, in index);
+        StorageCell equalCell = new(new Address(address.Bytes), in index);
+        long expected = address.GetHashCode64(in index);
+        ulong hash = (ulong)expected;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cell.GetHashCode64(), Is.EqualTo(expected));
+            Assert.That(cell.GetHashCode(), Is.EqualTo((int)(hash ^ (hash >> 32))));
+            Assert.That(equalCell.Equals(in cell), Is.True);
+            Assert.That(equalCell.GetHashCode64(), Is.EqualTo(expected));
+        }
+    }
+
     public static IEnumerable PointEvaluationPrecompileTestCases
     {
         get
