@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -56,6 +57,15 @@ public class NativeBlockProductionTests
             Assert.That(wrapper.IsSuccess, Is.True, wrapper.Error);
         }
         int callsBeforeProduction = verifier.ProofCalls;
+        if (!preAggregate)
+        {
+            // A pass with a deadline never waits for native proving; it schedules the statement off the production path.
+            using CancellationTokenSource deadline = new();
+            Block first = (await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token))!;
+            Assert.That(first.Transactions, Is.Empty);
+            List<FrameDependency> deps = Eip8288Dependencies.Canonicalize([signature, stark]);
+            Assert.That(() => proofs.TryGetRecursiveProof(deps, out _), Is.True.After(180_000, 100));
+        }
         Block block = await chain.Container.Resolve<TestBlockchainUtil>()
             .AddBlock(TestBlockchainUtil.AddBlockFlags.MayHaveExtraTx, provingBudget.Token);
         ValueHash256 commitment = Eip8288Dependencies.ComputeBlockDepsHash(block);
