@@ -242,10 +242,15 @@ public partial class BlockProcessor(
                         // Only the unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
                         {
-                            // Extending the largest proven subset folds only the new dependencies into one recursive child.
-                            RecursiveProofInput? parent = proven.Length != 0 && leanProofStore.TryGetRecursiveProof(proven, out byte[]? parentProof)
-                                ? new RecursiveProofInput(proven, parentProof!) : null;
-                            _productionProofCache.TrySchedule(deps, depsHash, RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, parent), leanProofStore);
+                            AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                            // Extending the largest proven subset replaces its witnesses with one recursive child; that pays off
+                            // only when the child saves more folding than the extra merge costs.
+                            if (proven.Length != 0 && leanProofStore.TryGetRecursiveProof(proven, out byte[]? parentProof))
+                            {
+                                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, new RecursiveProofInput(proven, parentProof!));
+                                if (RecursiveStarkAggregator.EstimatedCost(extended) < RecursiveStarkAggregator.EstimatedCost(scheduled)) scheduled = extended;
+                            }
+                            _productionProofCache.TrySchedule(deps, depsHash, scheduled, leanProofStore);
                         }
                         throw new LeanProofNotReadyException(ChooseProvenLimit(block, leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))));
                     }

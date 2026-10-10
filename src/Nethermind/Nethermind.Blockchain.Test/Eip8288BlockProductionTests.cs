@@ -598,31 +598,38 @@ public class Eip8288BlockProductionTests
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
-    [Test]
-    public async Task Scheduled_production_proof_extends_the_largest_proven_subset()
+    [TestCase(1, false)]
+    [TestCase(8, true)]
+    public async Task Scheduled_production_proof_extends_a_proven_subset_only_when_cheaper(int provenCount, bool extended)
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
-        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-proven"), default);
+        FrameDependency[] proven = new FrameDependency[provenCount];
+        for (int i = 0; i < proven.Length; i++)
+        {
+            proven[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"extend-proven:{i}"), default);
+            proofs.AddVerified([proven[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+        List<FrameDependency> provenSet = Eip8288Dependencies.Canonicalize(proven);
+        proofs.AddCachedRecursive(provenSet, Eip8288Dependencies.ComputeDepsHash(provenSet).ToByteArray());
         FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
-        proofs.AddVerified([proven], [[1]], null);
         proofs.AddVerified([added], [[1]], null);
-        proofs.AddCachedRecursive([proven], Eip8288Dependencies.ComputeDepsHash([proven]).ToByteArray());
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven, [1]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [2]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
         using CancellationTokenSource deadline = new();
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
 
-        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([proven, added]);
+        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([.. proven, added]);
         Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call extends the proven statement");
-            Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(1));
-            Assert.That(verifier.LastInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(new[] { proven }));
-            Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }), "the proven dependency's witness is not folded again");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call proves the statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(extended ? 1 : 0));
+            Assert.That(verifier.LastInput.Deps, Is.EqualTo(extended ? new[] { added } : full.ToArray()),
+                extended ? "eight proven signatures cost more to fold again than one merge" : "one signature is cheaper to fold than to merge");
         }
     }
 

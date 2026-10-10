@@ -26,6 +26,25 @@ public static class RecursiveStarkAggregator
             : proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
                 && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
 
+    // Relative native proving costs measured on a two-core devnet node: folding one leanSPHINCS signature into a leaf
+    // costs about 2.2 s and each recursive merge of two proofs about 20 s, so a merge costs about nine signatures.
+    private const int SignatureCost = 1;
+    private const int GenericLeafCost = 2;
+    private const int MergeCost = 9;
+
+    /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
+    /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
+    /// needs one recursive merge; the estimate only ranks alternative inputs for the same statement.</remarks>
+    public static long EstimatedCost(AggregationInput input)
+    {
+        int signatures = 0, generics = 0;
+        foreach (FrameDependency dependency in input.Deps)
+            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
+            else signatures++;
+        long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + generics + input.RecursiveProofs.Count;
+        return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + Math.Max(0, nodes - 1) * MergeCost;
+    }
+
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)
     {
