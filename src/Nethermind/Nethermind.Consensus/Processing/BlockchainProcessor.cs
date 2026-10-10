@@ -682,7 +682,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                _deadlineBlockHash = blockRef.BlockHash;
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), deadline?.Token ?? CancellationToken, out string? error);
 
                 if (processedBlock is null)
