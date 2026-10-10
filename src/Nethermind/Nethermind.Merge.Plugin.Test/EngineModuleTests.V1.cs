@@ -585,6 +585,32 @@ public partial class EngineModuleTests
         Assert.That(resultWrapper.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
+    /// <summary>
+    /// A block whose processing failed without a verdict stays in the tree unprocessed; a forkchoice update naming it
+    /// as head queues it again, and once it is processed the next one moves the head to it.
+    /// </summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_processes_again_a_head_left_unprocessed_on_a_processed_parent()
+    {
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
+            .Build(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        Hash256 parentHash = chain.BlockTree.HeadHash;
+
+        branchProcessor.ExceptionToThrow = new Exception("unexpected exception");
+        ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        Assert.That((await rpc.engine_newPayloadV1(executionPayload)).Result.ResultType, Is.EqualTo(ResultType.Failure));
+        branchProcessor.ExceptionToThrow = null;
+
+        ForkchoiceStateV1 forkchoiceState = new(executionPayload.BlockHash, parentHash, parentHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(() => chain.BlockTree.WasProcessed(executionPayload.BlockNumber, executionPayload.BlockHash), Is.True.After(10_000, 50));
+
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(executionPayload.BlockHash));
+    }
+
 
     [TestCase(true)]
     [TestCase(false)]
