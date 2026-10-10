@@ -18,7 +18,7 @@ public sealed partial class LeanObjectTransport
 {
     private static readonly TimeSpan SidecarRetry = TimeSpan.FromMilliseconds(250);
 
-    private void OnWrapperValidated(byte[] wrapper) =>
+    private void OnWrapperValidated(byte[] wrapper, IReadOnlyList<Transaction> resolved) =>
         PublishInBackground(() => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, null, announce: true));
 
     private void OnInclusionListValidated(byte[] package) =>

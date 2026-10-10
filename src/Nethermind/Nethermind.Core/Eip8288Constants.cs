@@ -59,8 +59,24 @@ public static class Eip8288Constants
     /// <summary>Mempool aggregation cadence in milliseconds.</summary>
     public const int AggregationInterval = 1_000;
 
+    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper; EIP-8437 <c>MAX_DIRECT_SIGS_PER_WRAPPER</c>.</summary>
     public const int MaxLeanSigDepsPerWrapper = 16;
+
+    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper; EIP-8437 <c>MAX_DIRECT_STARKS_PER_WRAPPER</c>.</summary>
     public const int MaxLeanStarkDepsPerWrapper = 1;
+
+    /// <summary>Mode-1 (aggregate) dependencies per wrapper; mode-0 witness limits do not apply to an aggregate.</summary>
+    public const int MaxDepsPerAggregate = 4096;
+
+    /// <summary>Mode-1 (aggregate) leanSTARK dependencies per wrapper, counted within <see cref="MaxDepsPerAggregate"/>.</summary>
+    public const int MaxLeanStarkDepsPerAggregate = 16;
+
+    /// <summary>Transactions per wrapper, in either mode.</summary>
+    public const int MaxTxsPerWrapper = 4096;
+
+    /// <summary>Serialized wrapper ceiling, in either mode, using the EIP-8437 kind-1 encoding.</summary>
+    /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
+    public const int MaxWrapperBytes = 64 * 1024 * 1024;
 
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;

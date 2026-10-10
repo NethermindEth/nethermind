@@ -216,6 +216,25 @@ public static class Eip8288Dependencies
         return result;
     }
 
+    /// <summary>
+    /// EIP-8288 <c>discard_dependencies</c>: the dependencies covered by the input proofs that no retained transaction
+    /// declares, in canonical order.
+    /// </summary>
+    /// <remarks>Wrapper pruning, FOCIL merging and block assembly all use this rule, so a dependency shared with any retained
+    /// transaction is kept even when another transaction declaring it is removed.</remarks>
+    /// <param name="inputDeps">The union of the dependencies the input proofs cover.</param>
+    /// <param name="retainedDeps">The dependency union of the selected transactions.</param>
+    /// <exception cref="ArgumentException">A retained dependency is not covered by the input proofs.</exception>
+    public static List<FrameDependency> DiscardDependencies(IEnumerable<FrameDependency> inputDeps, IEnumerable<FrameDependency> retainedDeps)
+    {
+        HashSet<FrameDependency> inputs = [.. inputDeps];
+        HashSet<FrameDependency> retained = [.. retainedDeps];
+        if (!retained.IsSubsetOf(inputs))
+            throw new ArgumentException("Retained dependencies must be covered by the input proofs.", nameof(retainedDeps));
+        inputs.ExceptWith(retained);
+        return Canonicalize(inputs);
+    }
+
     /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>
     public static (int Sphincs, int Stark) CountByScheme(IReadOnlyList<FrameDependency> dependencies)
     {

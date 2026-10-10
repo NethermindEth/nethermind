@@ -116,6 +116,34 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Discard_set_keeps_dependencies_shared_with_retained_transactions()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        // A removed transaction also declared b; a retained one still needs it.
+        Assert.That(Eip8288Dependencies.DiscardDependencies([c, a, b, b], [b, c]), Is.EqualTo(new[] { a }));
+        Assert.That(Eip8288Dependencies.DiscardDependencies([a, b], [a, b]), Is.Empty);
+        Assert.That(() => Eip8288Dependencies.DiscardDependencies([a, b], [b, Sphincs("d")]), Throws.ArgumentException,
+            "retained dependencies absent from the inputs need another proof");
+    }
+
+    [Test]
+    public void Pruning_a_recursive_input_discards_only_dependencies_no_retained_transaction_needs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        LeanProofStore store = new();
+        store.AddVerified([a, b, c], null, [1]);
+        Assert.That(store.TryGetInput([c, b], out AggregationInput input), Is.True);
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
+        }
+    }
+
+    [Test]
     public void Proof_store_rejects_missing_dependencies()
     {
         LeanProofStore store = new();

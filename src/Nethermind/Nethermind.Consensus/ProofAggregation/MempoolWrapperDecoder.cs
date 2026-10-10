@@ -22,7 +22,8 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
     public static readonly MempoolWrapperDecoder Instance = new();
     private const byte FullEntry = 0;
     private const byte HashEntry = 1;
-    private const int MaxWrapperDependencies = Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper;
+    /// <summary>Mode-0 dependency and witness count bound: the direct per-scheme limits together.</summary>
+    private const int MaxDirectDependencies = Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper;
 
     protected override MempoolWrapper DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -56,13 +57,15 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
         decoderContext.Check(txCheck);
         if (transactions.Count == 0) throw new RlpException("Proof wrapper must carry at least one transaction.");
         byte mode = decoderContext.DecodeByte();
+        // Counts are bounded per mode before allocation: direct witnesses by the mode-0 limits, aggregates by MAX_DEPS_PER_AGGREGATE.
+        int maxDependencies = mode == MempoolWrapper.ModeDirect ? MaxDirectDependencies : Eip8288Constants.MaxDepsPerAggregate;
 
         int contentCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         int depsCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
         List<FrameDependency> deps = [];
         while (decoderContext.Position < depsCheck)
         {
-            if (deps.Count == MaxWrapperDependencies) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
+            if (deps.Count == maxDependencies) throw new RlpException("Proof wrapper exceeds the dependency count limit.");
             byte[] triple = decoderContext.DecodeByteArray(RlpLimit.For<MempoolWrapper>(Eip8288Constants.DependencyTripleLength, nameof(MempoolWrapper.Deps)));
             if (triple.Length != Eip8288Constants.DependencyTripleLength || !triple.AsSpan(0, 31).IsZero()
                 || !Eip8288Dependencies.IsAcceptedScheme(triple[31]))
@@ -79,7 +82,7 @@ public sealed class MempoolWrapperDecoder : RlpDecoder<MempoolWrapper>
             proofs = [];
             while (decoderContext.Position < proofsCheck)
             {
-                if (proofs.Count == MaxWrapperDependencies)
+                if (proofs.Count == MaxDirectDependencies)
                     throw new RlpException("Proof wrapper exceeds the witness count limit.");
                 proofs.Add(decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(MempoolWrapper.Proofs))));
             }

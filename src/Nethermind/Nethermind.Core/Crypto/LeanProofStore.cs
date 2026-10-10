@@ -10,9 +10,10 @@ namespace Nethermind.Core.Crypto;
 /// <summary>Bounded, thread-safe storage of verified dependency witnesses for block production.</summary>
 public sealed class LeanProofStore
 {
-    // Leave room for Snappy's worst-case expansion within the 16 MiB inbound frame cap.
+    /// <summary>Local wrapper size limit, below <see cref="Eip8288Constants.MaxWrapperBytes"/>.</summary>
+    /// <remarks>Leaves room for Snappy's worst-case expansion within the 16 MiB inbound frame cap of whole-object RPC paths.</remarks>
     public const int MaxWrapperBytes = 10 * 1024 * 1024;
-    public const int MaxWrapperTransactions = 4096;
+    public const int MaxWrapperTransactions = Eip8288Constants.MaxTxsPerWrapper;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;
     /// <summary>Distinct witness records a sender may retain through pending transactions.</summary>
@@ -496,7 +497,7 @@ public sealed class LeanProofStore
         List<ReadOnlyMemory<byte>> witnesses = [];
         List<RecursiveProofInput> recursive = [];
         HashSet<ProofRecord> selected = [];
-        HashSet<FrameDependency> discards = [];
+        HashSet<FrameDependency> covered = [];
         lock (_lock)
         {
             foreach (FrameDependency dep in required)
@@ -507,16 +508,22 @@ public sealed class LeanProofStore
                     int index = Array.IndexOf(record.Dependencies, dep);
                     directDeps.Add(dep);
                     witnesses.Add(record.Witnesses[index]);
+                    covered.Add(dep);
                 }
                 else if (selected.Add(record))
                 {
                     recursive.Add(record.RecursiveInput);
-                    foreach (FrameDependency nestedDep in record.Dependencies)
-                        if (!required.Contains(nestedDep)) discards.Add(nestedDep);
+                    covered.UnionWith(record.Dependencies);
                 }
             }
         }
-        input = new() { Deps = directDeps, Witnesses = witnesses, RecursiveProofs = recursive, Discards = [.. discards] };
+        input = new()
+        {
+            Deps = directDeps,
+            Witnesses = witnesses,
+            RecursiveProofs = recursive,
+            Discards = Eip8288Dependencies.DiscardDependencies(covered, required)
+        };
         return true;
     }
 }
