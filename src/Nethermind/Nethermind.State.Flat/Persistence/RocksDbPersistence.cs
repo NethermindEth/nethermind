@@ -182,6 +182,7 @@ public class RocksDbPersistence : IPersistence, IDisposable
     {
         int columnsIngested = 0;
         bool markerWritten = false;
+        bool committed = false;
         try
         {
             // The marker is a single-slot redo record owned by one commit at a time. A marker left by an earlier
@@ -276,8 +277,15 @@ public class RocksDbPersistence : IPersistence, IDisposable
             {
                 _ingestGate.ExitWriteLock();
             }
+
+            // The committed pointer/marker WriteBatch is already visible to new snapshots; fsyncing the WAL only
+            // adds durability, so it runs after releasing the gate to keep reader snapshot creation off the
+            // exclusive section. A crash before this fsync leaves the redo marker on disk (its clear was not yet
+            // durable) and reopen rolls the commit forward to the same `to`.
+            committed = true;
+            _db.Flush(onlyWal: true);
         }
-        catch (Exception e)
+        catch (Exception e) when (!committed)
         {
             // Rollback is only safe while no column has been ingested; after that the already-live columns
             // cannot be un-ingested, so the marker and remaining staged files must survive for a retried
@@ -292,12 +300,6 @@ public class RocksDbPersistence : IPersistence, IDisposable
             }
             throw;
         }
-
-        // The committed pointer/marker WriteBatch is already visible to new snapshots; fsyncing the WAL only
-        // adds durability, so it runs after releasing the gate to keep reader snapshot creation off the
-        // exclusive section. A crash before this fsync leaves the redo marker on disk (its clear was not yet
-        // durable) and reopen rolls the commit forward to the same `to`.
-        _db.Flush(onlyWal: true);
 
         // The L0 throttle stays outside the gate so reader snapshot creation is not stalled behind compaction.
         // The persist is already durable here (pointer advanced, marker cleared), so this backpressure is
