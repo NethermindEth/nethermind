@@ -18,7 +18,7 @@ public sealed partial class LeanObjectTransport
 {
     private static readonly TimeSpan SidecarRetry = TimeSpan.FromMilliseconds(250);
 
-    private void OnWrapperValidated(byte[] wrapper, IReadOnlyList<Transaction> resolved) =>
+    private void OnWrapperValidated(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction> resolved) =>
         PublishInBackground(() => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, null, announce: true, resolved));
 
     private void OnInclusionListValidated(byte[] package) =>
@@ -54,14 +54,10 @@ public sealed partial class LeanObjectTransport
     }
 
     /// <summary>Adds a fully validated object to the served store and announces it to peers not known to hold it.</summary>
-    /// <param name="kind">The object kind.</param>
-    /// <param name="context">The kind's canonical context.</param>
-    /// <param name="body">The canonical body.</param>
-    /// <param name="skeleton">The header skeleton of a kind-2 object.</param>
-    /// <param name="announce">Whether to announce the object.</param>
-    /// <param name="resolved">Transactions that resolved a kind-1 body's hash entries. A wrapper is offered with hash
+    /// <param name="resolved">Transactions, by hash, that resolved a kind-1 body's hash entries. A wrapper is offered with hash
     /// entries only while their envelopes stay recoverable through GetTransactions, so each is retained with it.</param>
-    private bool Publish(byte kind, byte[] context, byte[] body, LeanHeaderSkeleton? skeleton, bool announce, IReadOnlyList<Transaction>? resolved = null)
+    private bool Publish(byte kind, byte[] context, byte[] body, LeanHeaderSkeleton? skeleton, bool announce,
+        IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
     {
         if (!IsEnabled || body.Length == 0 || (ulong)body.Length > LeanLimits.MaxObjectBytes) return false;
         ValueHash256[] transactions = [];
@@ -95,18 +91,13 @@ public sealed partial class LeanObjectTransport
     /// <summary>The canonical envelope of a resolved hash entry, if it fits a Transactions response.</summary>
     /// <remarks>An envelope too large for GetTransactions is recoverable only through a full-entry wrapper, so a wrapper
     /// offering it by hash is not relayed.</remarks>
-    private static byte[]? RetainableEnvelope(IReadOnlyList<Transaction>? resolved, in ValueHash256 hash)
+    private static byte[]? RetainableEnvelope(IReadOnlyDictionary<ValueHash256, Transaction>? resolved, in ValueHash256 hash)
     {
-        if (resolved is null) return null;
-        foreach (Transaction transaction in resolved)
-        {
-            if (transaction.Hash?.ValueHash256 != hash) continue;
-            byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
-            return ValueKeccak.Compute(envelope) == hash
-                && TransactionsMessageSerializer.EncodeResult(LeanResultStatus.Ok, envelope).Length <= LeanProtocol.MaxTxResponseBytes - ResponseOverhead
-                ? envelope : null;
-        }
-        return null;
+        if (resolved is null || !resolved.TryGetValue(hash, out Transaction? transaction)) return null;
+        byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+        return ValueKeccak.Compute(envelope) == hash
+            && TransactionsMessageSerializer.EncodeResult(LeanResultStatus.Ok, envelope).Length <= LeanProtocol.MaxTxResponseBytes - ResponseOverhead
+            ? envelope : null;
     }
 
     private void AnnounceToPeers(LeanDescriptor descriptor, Outbox outbox)

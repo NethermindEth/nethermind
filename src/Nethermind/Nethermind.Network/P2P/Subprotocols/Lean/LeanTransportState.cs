@@ -62,10 +62,6 @@ internal sealed class LeanBoundedSet(int capacity)
 /// <remarks>Only objects that passed reconstruction and kind validation, or were produced locally, are added.</remarks>
 internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, int maxObjects = LeanLimits.MaxStoreObjects)
 {
-    /// <param name="descriptor">The object's descriptor.</param>
-    /// <param name="body">The canonical body.</param>
-    /// <param name="tree">The body's chunk tree.</param>
-    /// <param name="skeleton">The kind-2 header skeleton.</param>
     /// <param name="transactions">Hashes of the kind-1 body's full entries, answering transaction-hash lookups.</param>
     /// <param name="envelopes">Envelopes retained for the kind-1 body's hash entries, so the transactions it offers by hash
     /// stay recoverable through GetTransactions after leaving the pool.</param>

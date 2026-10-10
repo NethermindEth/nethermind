@@ -24,10 +24,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Local scheduling target for leanSPHINCS dependencies in one produced mode-1 batch.</summary>
     /// <remarks>Not a validity limit: received aggregates may carry up to <see cref="Eip8288Constants.MaxDepsPerAggregate"/>.</remarks>
-    public const int MaxBatchSigDependencies = 16;
+    private const int MaxBatchSigDependencies = 16;
 
     /// <summary>Local scheduling target for leanSTARK dependencies in one produced mode-1 batch.</summary>
-    public const int MaxBatchStarkDependencies = 1;
+    private const int MaxBatchStarkDependencies = 1;
 
     private const string LocalAggregateCapacity = "Aggregate exceeds the local proof capacity.";
     private const int MaxRememberedVerifications = 128;
@@ -46,9 +46,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
     /// <summary>Raised with the encoded wrapper once it is fully validated, whether or not the pool admitted its transactions.</summary>
-    /// <remarks>The second argument holds the transactions that resolved the wrapper's hash entries, so a relay can keep
-    /// serving the envelopes it offers by hash.</remarks>
-    public event Action<byte[], IReadOnlyList<Transaction>>? WrapperValidated;
+    /// <remarks>The second argument maps each of the wrapper's hash entries to the transaction that resolved it, so a relay
+    /// can keep serving the envelopes it offers by hash. It is not modified after the event is raised.</remarks>
+    public event Action<byte[], IReadOnlyDictionary<ValueHash256, Transaction>>? WrapperValidated;
 
     /// <summary>Raised with the encoded inclusion-list package once its proof validated.</summary>
     public event Action<byte[]>? InclusionListValidated;
@@ -129,7 +129,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 RememberVerification(wrapperHash, null);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
-            WrapperValidated?.Invoke(wrapper, [.. resolved.Values]);
+            WrapperValidated?.Invoke(wrapper, resolved);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;

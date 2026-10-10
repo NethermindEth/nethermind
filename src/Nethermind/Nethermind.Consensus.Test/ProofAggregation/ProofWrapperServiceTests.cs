@@ -831,7 +831,7 @@ public class ProofWrapperServiceTests
         service.WrapperValidated += (encoded, transactions) =>
         {
             validated.Add(encoded);
-            resolved.AddRange(transactions);
+            resolved.AddRange(transactions.Values);
         };
 
         ProofWrapperAcceptance unresolved = await service.AcceptDetailedAsync(wrapper);
