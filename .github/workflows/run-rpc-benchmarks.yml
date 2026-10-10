@@ -785,11 +785,8 @@ jobs:
           # The baseline cache restores into the shared workspace, which checkout no longer cleans, so a previous run's
           # tree would otherwise be extracted over.
           rm -rf rpcbench-corpus-baseline
-          output_parent="${RUNNER_TEMP}"
-          # ARM's small root disk cannot hold corpus copies or profiling archives.
-          if [[ "${RUNNER_LABEL}" == 'reproducible-benchmarks-arm' ]]; then
-            output_parent="${BENCH_SCRATCH_ROOT}"
-          fi
+          # Large response comparisons and profiling archives belong on the scratch disk.
+          output_parent="${BENCH_SCRATCH_ROOT}"
           mkdir -p "${output_parent}"
           bench_temp="$(mktemp -d "${output_parent}/rpcbench.XXXXXX")"
           mkdir -p "${bench_temp}/out" "${bench_temp}/state"
@@ -1040,6 +1037,21 @@ jobs:
             du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
             exit 1
           fi
+
+      - name: Verify benchmark disk headroom
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_space() {
+            local path="$1" minimum="$2" available
+            available="$(df -B1 --output=avail -- "${path}" | tail -n 1 | tr -d '[:space:]')"
+            if [[ ! "${available}" =~ ^[0-9]+$ ]] || (( available < minimum * 1024 * 1024 * 1024 )); then
+              echo "::error::Insufficient disk space at ${path}: need ${minimum} GiB free."
+              return 1
+            fi
+          }
+          check_space / 1
+          check_space "${BENCH_TEMP}" 8
 
       - name: Prepare Docker image
         env:

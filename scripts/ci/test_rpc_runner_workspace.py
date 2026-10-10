@@ -212,8 +212,25 @@ journalctl() { :; }
                 if expected:
                     self.assertIn("Insufficient free space at", result.stdout)
 
+    def test_benchmark_headroom_preserves_runner_and_output_space(self):
+        self.assertNotRegex(self.step("Verify benchmark disk headroom"), r"(?m)^        if:")
+        self.assertLess(self.job.index("- name: Reclaim root disk before pulling"),
+                        self.job.index("- name: Verify benchmark disk headroom"))
+        self.assertLess(self.job.index("- name: Verify benchmark disk headroom"),
+                        self.job.index("- name: Prepare Docker image"))
+        for root_gb, output_gb, expected in ((1, 8, 0), (0.9, 100, 1), (100, 7.9, 1)):
+            with self.subTest(root=root_gb, output=output_gb):
+                body = self.maintenance_body("Verify benchmark disk headroom", root_gb=root_gb,
+                                             output_gb=output_gb)
+                self.run_body(body, self.workspace, expected=expected)
+        for override in ('df() { return 1; }', 'df() { printf "Avail\\ninvalid\\n"; }'):
+            with self.subTest(df=override):
+                body = self.maintenance_body("Verify benchmark disk headroom")
+                body = body.replace('check_space() {', override + '\ncheck_space() {')
+                self.run_body(body, self.workspace, expected=1)
+
     def test_output_placement_and_cleanup_are_isolated_per_run(self):
-        for label, parent in (("reproducible-benchmarks", self.runner_temp),
+        for label, parent in (("reproducible-benchmarks", self.root / "data disk"),
                               ("reproducible-benchmarks-arm", self.root / "data disk")):
             with self.subTest(runner=label):
                 self.env["RUNNER_LABEL"] = label

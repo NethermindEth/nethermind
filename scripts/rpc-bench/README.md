@@ -25,9 +25,9 @@ those limits against the selected runner, and the benchmark job's
 mount exists before anything is pulled.
 
 Benchmark output and profiling archives are staged in a per-run directory
-(`rpcbench.XXXXXX`) that the job removes at the end: under the runner's
-temporary directory on amd64, and on the scratch volume on arm64, whose small
-root disk cannot hold them. The ARM disk guard requires 6 GiB free on each
+(`rpcbench.XXXXXX`) that the job removes at the end: on the scratch volume on both runners, keeping large response comparisons
+and profiling archives off the root disk. The benchmark requires 8 GiB free
+on the output filesystem and 1 GiB on `/` before image preparation. The ARM disk guard requires 6 GiB free on each
 Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
 and sweeps per-run directories that a killed job left on the scratch volume.
 
