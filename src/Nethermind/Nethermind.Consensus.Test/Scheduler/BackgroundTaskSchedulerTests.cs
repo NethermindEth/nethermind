@@ -65,7 +65,7 @@ public class BackgroundTaskSchedulerTests
     {
         BackgroundTaskScheduler scheduler = new(_branchProcessor, _chainHeadInfo, 1, 65536, LimboLogs.Instance);
 
-        Assert.DoesNotThrowAsync(
+        await Assert.DoesNotThrowAsync(
             async () => await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
             "DisposeAsync did not complete within timeout - possible deadlock in background task scheduler");
     }
