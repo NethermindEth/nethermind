@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
