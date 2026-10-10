@@ -36,7 +36,7 @@ internal sealed class BlockAccessListPrefix
         TransactionCount = transactionCount;
         _accessList = accessList;
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = accessList.AccountChanges.AsSpan();
-        _firstStorageWrites = new Dictionary<AddressAsKey, uint>(accounts.Length);
+        _firstStorageWrites = [with(accounts.Length)];
         _deployedCode = [];
         foreach (ReadOnlyAccountChanges changes in accounts)
         {

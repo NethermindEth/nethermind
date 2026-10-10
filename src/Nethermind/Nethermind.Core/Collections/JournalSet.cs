@@ -22,7 +22,7 @@ namespace Nethermind.Core.Collections
     public sealed partial class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
     {
         private readonly List<T> _items = [];
-        private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
+        private readonly OptimizedHashSet<T> _set = [with(GenericEqualityComparer.GetOptimized(equalityComparer))];
 
         public int TakeSnapshot() => Position;
 

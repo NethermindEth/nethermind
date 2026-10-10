@@ -70,7 +70,7 @@ public class ReadOnlySnapshotBundleBenchmark
             config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
             resourcePool, new SnapshotRepository(null!, null!, NullSnapshotCatalog.Instance, config, null!, NullLogManager.Instance),
             NullLogManager.Instance);
-        List<FlatSnapshot> allSnapshots = new(SnapshotCount);
+        List<FlatSnapshot> allSnapshots = [with(SnapshotCount)];
         StateId currentStateId = new(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;
@@ -208,9 +208,9 @@ public class ReadOnlySnapshotBundleBenchmark
         }
 
         // Collect state/storage trie nodes from all snapshots
-        List<TreePath> shortPaths = new(ArraySize);
-        List<TreePath> longPaths = new(ArraySize);
-        List<(Hash256, TreePath)> storageNodesList = new(ArraySize);
+        List<TreePath> shortPaths = [with(ArraySize)];
+        List<TreePath> longPaths = [with(ArraySize)];
+        List<(Hash256, TreePath)> storageNodesList = [with(ArraySize)];
 
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
@@ -249,7 +249,7 @@ public class ReadOnlySnapshotBundleBenchmark
             _sameAccountSlots[i] = (sameAddr, (UInt256)(ulong)(i + 1));
 
         Hash256 sameAddrHash = Keccak.Compute(sameAddr.Bytes);
-        List<(Hash256, TreePath)> sameAccountNodesList = new(ArraySize);
+        List<(Hash256, TreePath)> sameAccountNodesList = [with(ArraySize)];
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
             foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)

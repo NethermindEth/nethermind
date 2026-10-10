@@ -183,7 +183,7 @@ public class SnapStateServer : ISnapStateServer
             ? new StateTree(new CachedTrieStore(_storeWithReadFlag), _logManager)
             : new StateTree(_storeWithReadFlag, _logManager);
 
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = [with(accounts.Count)];
         for (int i = 0; i < accounts.Count; i++)
         {
             if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)

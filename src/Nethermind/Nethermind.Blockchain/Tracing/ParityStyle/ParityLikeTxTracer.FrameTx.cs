@@ -153,7 +153,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             EnsureRoot();
             int frameCount = Math.Min(frameReceipts.Length, _frames.Length);
             // The processor reports every frame's end before the receipts, so each dispatched frame is claimed here.
-            List<ParityTraceAction> ordered = new(frameCount);
+            List<ParityTraceAction> ordered = [with(frameCount)];
             for (int i = 0; i < frameCount; i++)
             {
                 ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(_frames[i], frameReceipts[i], _frameErrors?[i]);

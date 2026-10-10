@@ -18,9 +18,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 /// </summary>
 internal sealed class BlockBuilder(int restartInterval, int expectedBytes = 4096) : IDisposable
 {
-    private readonly NativeMemoryList<byte> _body = new(Math.Max(64, expectedBytes));
-    private readonly NativeMemoryList<int> _restarts = new(64);
-    private readonly NativeMemoryList<byte> _prevKey = new(256);
+    private readonly NativeMemoryList<byte> _body = [with(Math.Max(64, expectedBytes))];
+    private readonly NativeMemoryList<int> _restarts = [with(64)];
+    private readonly NativeMemoryList<byte> _prevKey = [with(256)];
     // Previous index value; only used by AddChangedPrefixValue to find which low bytes changed.
     private ulong _prevValue;
     private int _recordCount;

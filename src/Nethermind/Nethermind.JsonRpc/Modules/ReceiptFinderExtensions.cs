@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules
             TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             int count = Math.Min(receipts.Length, transactions.Length);
-            ReceiptsForRpc<ReceiptForRpc> result = new(count);
+            ReceiptsForRpc<ReceiptForRpc> result = [with(count)];
             try
             {
                 // A running sum equals the per-receipt scan only when every index is its position.

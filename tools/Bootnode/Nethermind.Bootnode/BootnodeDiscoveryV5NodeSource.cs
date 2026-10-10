@@ -187,7 +187,7 @@ internal sealed class BootnodeDiscoveryV5NodeSource(
     private sealed class RecentNodeFilter<TKey>(int maxCount)
         where TKey : notnull
     {
-        private readonly Dictionary<TKey, long> _nodes = new(maxCount);
+        private readonly Dictionary<TKey, long> _nodes = [with(maxCount)];
         private readonly Lock _lock = new();
         private Queue<(TKey NodeId, long Generation)> _recentNodes = new(maxCount);
         private long _generation;

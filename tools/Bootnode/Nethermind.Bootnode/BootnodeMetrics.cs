@@ -175,7 +175,7 @@ internal sealed class BootnodeMetrics
     {
         lock (_bucketMetricsLock)
         {
-            HashSet<BucketMetricKey> currentBuckets = new(buckets.Count);
+            HashSet<BucketMetricKey> currentBuckets = [with(buckets.Count)];
             for (int i = 0; i < buckets.Count; i++)
             {
                 BootnodeKademliaBucketSnapshot bucket = buckets[i];

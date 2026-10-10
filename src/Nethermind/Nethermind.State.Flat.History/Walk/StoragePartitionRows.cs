@@ -19,9 +19,9 @@ internal sealed class StoragePartitionRows : IDisposable
     public readonly List<ValueHash256> Identities = [];
     public readonly HashSet<(int Contract, ValueHash256 Slot)> StreamedSlots = [];
 
-    public ArrayPoolList<StorageRowRef> Start { get; private set; } = new(InitialCapacity);
+    public ArrayPoolList<StorageRowRef> Start { get; private set; } = [with(InitialCapacity)];
 
-    public ArrayPoolList<StorageRowRef> Deltas { get; private set; } = new(InitialCapacity);
+    public ArrayPoolList<StorageRowRef> Deltas { get; private set; } = [with(InitialCapacity)];
 
     public RowArena Arena { get; private set; } = new();
 
@@ -42,8 +42,8 @@ internal sealed class StoragePartitionRows : IDisposable
     public void Reset()
     {
         Dispose();
-        Start = new ArrayPoolList<StorageRowRef>(InitialCapacity);
-        Deltas = new ArrayPoolList<StorageRowRef>(InitialCapacity);
+        Start = [with(InitialCapacity)];
+        Deltas = [with(InitialCapacity)];
         Arena = new RowArena();
     }
 

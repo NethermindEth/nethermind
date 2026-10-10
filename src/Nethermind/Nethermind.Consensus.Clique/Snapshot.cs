@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Clique
             new Snapshot(Number,
                 Hash,
                 new SortedList<Address, ulong>(Signers, GenericComparer.GetOptimized<Address>()),
-                new Dictionary<Address, Tally>(Tally))
+                [with(Tally)])
             {
                 Votes = [.. Votes]
             };

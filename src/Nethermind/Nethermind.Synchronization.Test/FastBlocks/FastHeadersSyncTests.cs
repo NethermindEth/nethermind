@@ -574,7 +574,7 @@ public class FastHeadersSyncTests
         void FillBatch(HeadersSyncBatch batch, ulong start, bool applyNulls)
         {
             int c = count;
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = [with(batch.RequestSize)];
             ulong current = start;
             for (int j = 0; j < batch.RequestSize; j++, current++)
             {
@@ -679,7 +679,7 @@ public class FastHeadersSyncTests
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
         string[] tokens = offsets.Split(',');
-        ArrayPoolList<BlockHeader?> response = new(tokens.Length);
+        ArrayPoolList<BlockHeader?> response = [with(tokens.Length)];
         foreach (string token in tokens)
         {
             response.Add(token == "x"
@@ -712,7 +712,7 @@ public class FastHeadersSyncTests
 
         // Every header claims EndNumber. The highest is then correct for its position, no upward
         // jump trips the old gap check, and the first pushes the upper bound past the response.
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             ulong number = i == 0 ? dependentBatch.EndNumber + 1 : dependentBatch.EndNumber;
@@ -743,7 +743,7 @@ public class FastHeadersSyncTests
         TestableHeadersSyncFeed feed = scenario.Feed;
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -772,7 +772,7 @@ public class FastHeadersSyncTests
         TestableHeadersSyncFeed feed = scenario.Feed;
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -844,7 +844,7 @@ public class FastHeadersSyncTests
 
     private static void RespondWithChainHeaders(DependentBatchScenario scenario, HeadersSyncBatch batch)
     {
-        ArrayPoolList<BlockHeader?> headers = new(batch.RequestSize);
+        ArrayPoolList<BlockHeader?> headers = [with(batch.RequestSize)];
         for (ulong number = batch.StartNumber; number <= batch.EndNumber; number++)
         {
             headers.Add(scenario.PeerChain.FindBlock(number, BlockTreeLookupOptions.None)?.Header);
@@ -864,7 +864,7 @@ public class FastHeadersSyncTests
         using DependentBatchScenario scenario = new();
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -901,7 +901,7 @@ public class FastHeadersSyncTests
         using DependentBatchScenario scenario = new();
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -934,7 +934,7 @@ public class FastHeadersSyncTests
             HeadersSyncBatch dependentBatch = scenario.DependentBatch;
             Assert.That(dependentBatch.RequestSize, Is.EqualTo(requestSize), "stubbed request size did not take");
 
-            ArrayPoolList<BlockHeader?> response = new(requestSize);
+            ArrayPoolList<BlockHeader?> response = [with(requestSize)];
             for (int i = 0; i < requestSize; i++)
             {
                 response.Add((mask & (1 << i)) != 0
@@ -972,7 +972,7 @@ public class FastHeadersSyncTests
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
         Assert.That(dependentBatch.StartNumber, Is.Zero, "batch should reach genesis");
 
-        ArrayPoolList<BlockHeader?> response = new(dependentBatch.RequestSize);
+        ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
             response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
@@ -1011,7 +1011,7 @@ public class FastHeadersSyncTests
 
         void FillBatch(HeadersSyncBatch batch)
         {
-            List<BlockHeader?> list = new(batch.RequestSize);
+            List<BlockHeader?> list = [with(batch.RequestSize)];
             ulong current = batch.StartNumber;
             for (int j = 0; j < batch.RequestSize; j++, current++)
             {
@@ -1315,7 +1315,7 @@ public class FastHeadersSyncTests
         HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
         feed.InitializeFeed();
         HeadersSyncBatch batch = (await feed.PrepareRequest())!;
-        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize + 1);
+        ArrayPoolList<BlockHeader?> response = [with(batch.RequestSize + 1)];
         if (rejection == RejectedResponse.TooLong)
         {
             response.AddRange(headers);
@@ -1484,10 +1484,11 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
 
         HeadersSyncBatch batch = (await feed.PrepareRequest())!;
-        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize)
-        {
+        ArrayPoolList<BlockHeader?> response =
+        [
+            with(batch.RequestSize),
             Build.A.BlockHeader.WithNumber(batch.StartNumber).TestObject
-        };
+        ];
         batch.Response = response;
         GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse")(batch);
         feed.ThrowOnInsert = new OperationCanceledException();

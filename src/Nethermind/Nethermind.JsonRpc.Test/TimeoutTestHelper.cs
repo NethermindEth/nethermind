@@ -13,7 +13,7 @@ internal static class TimeoutTestHelper
     internal static TrackingCancellationTokenSource RentTrackingTimeoutSourceForNextRequest()
     {
         JsonRpcConfig config = new();
-        List<CancellationTokenSource> rentedTimeouts = new(TimeoutCancellationTokenPoolSize);
+        List<CancellationTokenSource> rentedTimeouts = [with(TimeoutCancellationTokenPoolSize)];
         for (int i = 0; i < TimeoutCancellationTokenPoolSize; i++)
         {
             rentedTimeouts.Add(config.BuildTimeoutCancellationToken());

@@ -26,7 +26,7 @@ public sealed class TransactionIndexGenesisBootstrap(
         Dictionary<Address, ChainSpecAllocation>? allocations = chainSpec.Allocations
             ?? new ChainSpecFileLoader(serializer, logs).LoadEmbeddedOrFromFile(config.ChainSpecPath).Allocations;
         if (allocations is null) return false;
-        List<KeyValuePair<Address, Account>> accounts = new(allocations.Count);
+        List<KeyValuePair<Address, Account>> accounts = [with(allocations.Count)];
         foreach ((Address address, ChainSpecAllocation allocation) in allocations)
         {
             token.ThrowIfCancellationRequested();

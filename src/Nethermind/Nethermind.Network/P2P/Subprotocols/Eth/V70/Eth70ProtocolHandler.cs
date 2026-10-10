@@ -99,7 +99,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+        ArrayPoolList<TxReceipt[]> txReceipts = [with(Math.Min(hashes.Length, MaxReceiptsLookups))];
         bool lastBlockIncomplete = false;
 
         try
@@ -256,7 +256,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     /// <param name="token">Cancels the requests.</param>
     private async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendGetReceiptsWithPaging(IOwnedReadOnlyList<Hash256> blockHashes, ReadOnlyMemory<int> expectedReceiptCounts, CancellationToken token)
     {
-        ArrayPoolList<TxReceipt[]> aggregated = new(blockHashes.Count);
+        ArrayPoolList<TxReceipt[]> aggregated = [with(blockHashes.Count)];
         ArrayPoolList<TxReceipt>? partialReceipts = null;
         ulong partialReceiptsGas = 0;
         ulong partialReceiptsLogsGas = 0;
@@ -416,8 +416,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                             ReceiptsValidationResult validationResult = ValidateBlockReceipts(blockReceipts, blockExpectedGasUsed,
                                 blockGasLimit, transactions, receiptBehaviors, validateGasUpperBound, validateGasEqual, firstBlockReceiptIndex,
                                 false, partialReceiptsGas, partialReceiptsLogsGas, partialReceiptsContentSize);
-                            partialReceipts = new ArrayPoolList<TxReceipt>(blockReceipts.Length + firstBlockReceiptIndex);
-                            partialReceipts.AddRange(blockReceipts);
+                            partialReceipts = [with(blockReceipts.Length + firstBlockReceiptIndex), .. blockReceipts];
                             firstBlockReceiptIndex = partialReceipts.Count;
 
                             partialReceiptsGas = validationResult.GasUsedTotal;

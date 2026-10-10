@@ -14,7 +14,7 @@ public sealed class PersistedSnapshotList : IDisposable, IEnumerable<PersistedSn
 {
     private readonly ArrayPoolList<PersistedSnapshot> _list;
 
-    public PersistedSnapshotList(int initial) => _list = new ArrayPoolList<PersistedSnapshot>(initial);
+    public PersistedSnapshotList(int initial) => _list = [with(initial)];
 
     private PersistedSnapshotList(ArrayPoolList<PersistedSnapshot> list) => _list = list;
 

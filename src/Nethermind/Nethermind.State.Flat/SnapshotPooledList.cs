@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat;
 public sealed class SnapshotPooledList : IDisposable, IEnumerable<Snapshot>
 {
     private readonly ArrayPoolList<Snapshot> _list;
-    public SnapshotPooledList(int initial) => _list = new ArrayPoolList<Snapshot>(initial);
+    public SnapshotPooledList(int initial) => _list = [with(initial)];
     private SnapshotPooledList(ArrayPoolList<Snapshot> list) => _list = list;
     public int Count => _list.Count;
     public Snapshot this[int index] => _list[index];

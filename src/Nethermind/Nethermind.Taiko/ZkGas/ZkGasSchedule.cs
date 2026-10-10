@@ -79,7 +79,7 @@ public static class ZkGasSchedule
             return FrozenDictionary<AddressAsKey, ushort>.Empty;
         }
 
-        Dictionary<AddressAsKey, ushort> table = new(entries.Count);
+        Dictionary<AddressAsKey, ushort> table = [with(entries.Count)];
         foreach ((string addressHex, long multiplier) in entries)
         {
             Address address;

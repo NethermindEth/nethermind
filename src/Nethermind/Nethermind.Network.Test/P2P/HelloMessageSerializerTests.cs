@@ -100,7 +100,7 @@ public class HelloMessageSerializerTests
     {
         static ArrayPoolList<Capability> CreateCapabilities(int count)
         {
-            ArrayPoolList<Capability> caps = new(count);
+            ArrayPoolList<Capability> caps = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 caps.Add(new Capability($"p{i:D3}", 1));

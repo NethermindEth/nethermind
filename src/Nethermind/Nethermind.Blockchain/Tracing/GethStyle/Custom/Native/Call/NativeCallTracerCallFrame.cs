@@ -39,7 +39,7 @@ public class NativeCallTracerCallFrame : IDisposable
 
     public string? RevertReason { get; set; }
 
-    public ArrayPoolList<NativeCallTracerCallFrame> Calls { get; } = new(8);
+    public ArrayPoolList<NativeCallTracerCallFrame> Calls { get; } = [with(8)];
 
     public ArrayPoolList<NativeCallTracerLogEntry>? Logs { get; set; }
 

@@ -92,7 +92,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         int checkPosition = ctx.Position + blockAccessListsContentLength;
         int entryCount = ctx.PeekNumberOfItemsRemaining(checkPosition, GethSyncLimits.MaxBodyFetch + 1);
         Rlp.GuardLimit(entryCount, blockAccessListsContentLength, RlpLimit);
-        ArrayPoolList<byte[]?> blockAccessLists = new(entryCount);
+        ArrayPoolList<byte[]?> blockAccessLists = [with(entryCount)];
 
         try
         {

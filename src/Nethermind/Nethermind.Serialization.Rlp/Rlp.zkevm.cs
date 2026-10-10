@@ -33,7 +33,7 @@ public partial class Rlp
         Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
         if (snapshot is null)
         {
-            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            snapshot = [with(_decoderBuilder)];
             Volatile.Write(ref _decodersSnapshot, snapshot);
         }
 

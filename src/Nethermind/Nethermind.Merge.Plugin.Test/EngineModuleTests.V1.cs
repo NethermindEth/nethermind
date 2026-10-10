@@ -1165,9 +1165,17 @@ public partial class EngineModuleTests
         Block head = blockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
+        // Execution waits for the answer: a block executed before the request checks its spent budget is answered VALID.
+        using ManualResetEventSlim answered = new();
+        chain.BranchProcessor.BlockProcessing += (_, e) =>
+        {
+            if (e.Block.Hash == block.Hash) answered.Wait(GateTimeout);
+        };
+
         if (suggestPending) blockTree.BlockAcceptingNewBlocks();
         ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
         if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+        answered.Set();
 
         // A verdict in hand beats a budget that also ran out, so a block processed before the request awaits its
         // verdict is answered VALID.
@@ -3162,6 +3170,15 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(default);
         Assert.That(result.Data, Is.EqualTo([new ClientVersionV1()]));
+    }
+
+    [Test]
+    public async Task Should_return_only_own_ClientVersionV1_when_consensus_client_omits_code()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        string result = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, nameof(IEngineRpcModule.engine_getClientVersionV1), new { name = "Lighthouse" });
+        using JsonDocument response = JsonDocument.Parse(result);
+        Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(1));
     }
 
     [Test]

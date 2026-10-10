@@ -302,7 +302,7 @@ public class GeneratedJsonWriterTests
         // STJ keeps metadata, converters included, only for read-only options.
         foreach (JsonSerializerOptions options in all) options.MakeReadOnly();
         BlockForRpc block = new(Blocks().First().Block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
-        Dictionary<JsonSerializerOptions, (System.Text.Json.Serialization.JsonConverter Block, System.Text.Json.Serialization.JsonConverter Transactions, object? State, byte[] Json)> first = new(ReferenceEqualityComparer.Instance);
+        Dictionary<JsonSerializerOptions, (System.Text.Json.Serialization.JsonConverter Block, System.Text.Json.Serialization.JsonConverter Transactions, object? State, byte[] Json)> first = [with(ReferenceEqualityComparer.Instance)];
 
         for (int round = 0; round < 3; round++)
         {

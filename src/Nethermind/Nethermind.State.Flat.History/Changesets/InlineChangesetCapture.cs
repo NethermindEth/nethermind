@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 public sealed class InlineChangesetCapture(TransactionChangesetIndex index, IInlineCapturePolicy policy, ILogManager logManager) : IParallelSafeBlockTracer
 {
     private readonly ILogger _logger = logManager.GetClassLogger<InlineChangesetCapture>();
-    private readonly Dictionary<Transaction, int> _positions = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Transaction, int> _positions = [with(ReferenceEqualityComparer.Instance)];
     private ChangesetCollector?[] _collectors = [];
     private ChangesetTxTracer?[] _tracers = [];
     private Block? _block;
