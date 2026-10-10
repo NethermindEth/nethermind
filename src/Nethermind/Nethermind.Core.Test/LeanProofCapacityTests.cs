@@ -64,6 +64,58 @@ public class LeanProofCapacityTests
         Assert.That(LeanProofCapacity.CreateAppendBudget(new HashSet<FrameDependency>()).CapacityError(duplicates), Is.Null);
     }
 
+    [Test]
+    public void Block_capacity_matches_the_consensus_limits()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanProofCapacity.Block, Is.EqualTo(new LeanProofCapacity.Limits(4096, 16)));
+            Assert.That(LeanProofCapacity.Block.Dependencies, Is.GreaterThanOrEqualTo(LeanProofCapacity.Proof.Dependencies));
+        }
+    }
+
+    // EIP-8288 test case 11: 4,096 distinct dependencies with 16 leanSTARK fit; a 4,097th or a 17th leanSTARK does not,
+    // while dependencies already in the block still fit.
+    [Test]
+    public void Block_capacity_counts_the_distinct_union([Values] bool leanStark)
+    {
+        HashSet<FrameDependency> block = Distinct(Eip8288Constants.MaxDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock);
+        FrameDependency present = Generic(0);
+        FrameDependency added = leanStark ? Generic(-1) : Sphincs(-1);
+        LeanProofCapacity.AppendBudget budget = LeanProofCapacity.CreateAppendBudget(block, LeanProofCapacity.Block);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanProofCapacity.FitsBlock(block), Is.True);
+            Assert.That(budget.CapacityError([present, present, Sphincs(Eip8288Constants.MaxDepsPerBlock - 1)]), Is.Null);
+            Assert.That(budget.CapacityError([added]), Is.Not.Null);
+            Assert.That(LeanProofCapacity.FitsBlock([.. block, added]), Is.False);
+        }
+
+        HashSet<FrameDependency> belowTotal = Distinct(Eip8288Constants.MaxDepsPerBlock - 1, Eip8288Constants.MaxLeanStarkDepsPerBlock);
+        Assert.That(LeanProofCapacity.CreateAppendBudget(belowTotal, LeanProofCapacity.Block).CapacityError([added]),
+            leanStark ? Is.EqualTo("Generic STARK proof count limit exceeded") : Is.Null);
+    }
+
+    [Test]
+    public void Proof_envelope_does_not_bound_block_capacity()
+    {
+        HashSet<FrameDependency> block = Distinct(Eip8288Constants.MaxProofDependencies, 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanProofCapacity.CreateAppendBudget(block).CapacityError([Sphincs(-1)]), Is.Not.Null);
+            Assert.That(LeanProofCapacity.CreateAppendBudget(block, LeanProofCapacity.Block).CapacityError([Sphincs(-1)]), Is.Null);
+        }
+    }
+
+    private static HashSet<FrameDependency> Distinct(int count, int leanStark)
+    {
+        HashSet<FrameDependency> dependencies = [];
+        for (int i = 0; i < count; i++) dependencies.Add(i < leanStark ? Generic(i) : Sphincs(i));
+        return dependencies;
+    }
+
+    private static FrameDependency Sphincs(int value) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(value.ToString()), default);
+
     private sealed class CountingSet(HashSet<FrameDependency> values) : IReadOnlySet<FrameDependency>
     {
         public int Enumerations { get; private set; }

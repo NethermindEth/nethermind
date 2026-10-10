@@ -106,7 +106,8 @@ public class BlockValidator(
     /// <summary>
     /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
     /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the aggregated verification key, or be empty when there are none.
+    /// STARK must verify against the aggregated verification key, or be empty when there are none. The
+    /// dependencies must also fit the block capacity, checked before the verifier runs.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -131,6 +132,13 @@ public class BlockValidator(
         {
             error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
             if (_logger.IsWarn) _logger.Warn($"Block deps hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {recursiveStark.BlockDepsHash}, got {computed}");
+            return false;
+        }
+
+        if (!LeanProofCapacity.FitsBlock(dependencies))
+        {
+            error = BlockErrorMessages.DependencyCapacityExceeded;
+            if (_logger.IsWarn) _logger.Warn($"Dependency capacity exceeded in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 

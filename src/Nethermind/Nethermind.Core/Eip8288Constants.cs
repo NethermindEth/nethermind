@@ -21,7 +21,14 @@ public static class Eip8288Constants
 
     public const int MaxDependenciesPerFrame = 256;
 
+    /// <summary>Consensus bound on a block's distinct dependencies (<c>MAX_DEPS_PER_BLOCK</c>).</summary>
+    public const int MaxDepsPerBlock = 4096;
+
+    /// <summary>Consensus bound on a block's distinct leanSTARK dependencies (<c>MAX_LEANSTARK_DEPS_PER_BLOCK</c>).</summary>
+    public const int MaxLeanStarkDepsPerBlock = 16;
+
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
+    /// <remarks>Below <see cref="MaxDepsPerBlock"/>: a local proving bound, not a consensus or FOCIL omission bound.</remarks>
     public const int MaxProofDependencies = 256;
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
