@@ -34,6 +34,9 @@ public class JsonRpcConfig : IJsonRpcConfig
 
     public bool RestrictIpcSocketPermissions { get; set; } = true;
 
+    /// <inheritdoc/>
+    public string[]? IpcEnabledModules { get; set; } = null;
+
     public string[] EnabledModules
     {
         get => _enabledModules;

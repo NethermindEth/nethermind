@@ -1131,6 +1131,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         static (int? ErrorType, string ErrorMessage, bool OperatorActionable) GetErrorResult(string methodName, JsonRpcContext context, ModuleResolution result, string module) => result switch
         {
             ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), false),
+            ModuleResolution.Disabled when context.RpcEndpoint == RpcEndpoint.IPC => (ErrorCodes.InvalidRequest,
+                $"The method '{methodName}' is found but the namespace '{module}' is disabled for IPC. Consider adding the namespace '{module}' to JsonRpc.IpcEnabledModules, or to JsonRpc.EnabledModules when IpcEnabledModules is unset or empty.", true),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest,
                 $"The method '{methodName}' is found but the namespace '{module}' is disabled for {context.Url?.ToString() ?? "n/a"}. Consider adding the namespace '{module}' to JsonRpc.AdditionalRpcUrls for an additional URL, or to JsonRpc.EnabledModules for the default URL.", true),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest,
