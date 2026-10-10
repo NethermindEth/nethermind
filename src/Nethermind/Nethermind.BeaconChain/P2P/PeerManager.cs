@@ -703,7 +703,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>Dials discovered candidates, at most <see cref="IBeaconChainConfig.MaxConcurrentOutboundDials"/> at once, while the pool has room; returns once every dial has ended.</summary>
-    internal Task DialDiscoveredPeersAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, CancellationToken token)
+    public Task DialDiscoveredPeersAsync(IAsyncEnumerable<BeaconPeerCandidate> candidates, CancellationToken token)
         => ScheduleDialsAsync(candidates, Math.Max(1, _config.MaxConcurrentOutboundDials), WaitForAdmissionCapacityAsync, DialCandidateAsync,
             (candidate, e) => { if (_logger.IsDebug) _logger.Debug($"Dialing discovered beacon chain peer {candidate.Multiaddress} failed: {DescribeFailure(e)}"); }, token);
 
@@ -1761,6 +1761,10 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     {
         public const string BlocksByRange = "Blocks-by-range";
         public const string BlocksByRoot = "Blocks-by-root";
+        public const string LightClientBootstrap = "Light-client-bootstrap";
+        public const string LightClientUpdate = "Light-client-update";
+        public const string LightClientFinality = "Light-client-finality";
+        public const string LightClientOptimistic = "Light-client-optimistic";
         public const string ColumnsByRange = "Data-column-sidecars-by-range";
         public const string ColumnsByRoot = "Data-column-sidecars-by-root";
         public const string EnvelopesByRange = "Execution-payload-envelopes-by-range";
@@ -2427,6 +2431,18 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 
         public Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
             Served(RequestName.BlocksByRoot, timing => p2p.RequestBlocksByRootAsync(Session, roots, token, timing), token);
+
+        public Task<LightClientBootstrap> RequestLightClientBootstrapAsync(Hash256 root, CancellationToken token) =>
+            Served(RequestName.LightClientBootstrap, timing => p2p.RequestLightClientBootstrapAsync(Session, root, token, timing), token);
+
+        public Task<LightClientUpdate> RequestLightClientUpdateAsync(ulong period, CancellationToken token) =>
+            Served(RequestName.LightClientUpdate, timing => p2p.RequestLightClientUpdateAsync(Session, period, token, timing), token);
+
+        public Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(CancellationToken token) =>
+            Served(RequestName.LightClientFinality, timing => p2p.RequestLightClientFinalityAsync(Session, token, timing), token);
+
+        public Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(CancellationToken token) =>
+            Served(RequestName.LightClientOptimistic, timing => p2p.RequestLightClientOptimisticAsync(Session, token, timing), token);
 
         public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) =>
             Served(RequestName.ColumnsByRange, timing => p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token, timing), token);
