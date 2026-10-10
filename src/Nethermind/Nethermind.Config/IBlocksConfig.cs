@@ -18,6 +18,14 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "null")]
     ulong? TargetBlockGasLimit { get; set; }
 
+    /// <summary>Gets or sets the diagnostic formats dumped for every block build. Defaults to <see cref="ProducedBlockDumpOptions.None"/>.</summary>
+    /// <remarks>Includes payload rebuilds. Keeps the newest 256 files in the system temp directory's <c>nethermind-produced-blocks</c> subdirectory. Geth traces include EVM memory and can consume gigabytes per block.</remarks>
+    [ConfigItem(
+        Description = "Dumps diagnostic traces of every block this node builds, including each payload rebuild, to the `nethermind-produced-blocks` subdirectory of the system temp directory, keeping the newest 256 files. Accepts `None`, `Receipts`, `Parity`, `Geth`, `Rlp`, `RlpLog`, `Default` (receipts and RLP), or `All` (all traces and RLP); flags can be combined. For debugging only: Geth-style traces include EVM memory and can take gigabytes per block.",
+        HiddenFromDocs = true,
+        DefaultValue = "None")]
+    ProducedBlockDumpOptions DumpProducedBlocks { get; set; }
+
     [ConfigItem(
         Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
         DefaultValue = "1")]
