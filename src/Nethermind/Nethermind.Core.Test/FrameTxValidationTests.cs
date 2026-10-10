@@ -127,6 +127,15 @@ public class FrameTxValidationTests
         yield return Case("ExemptRunFollowedByNonExempt_Valid",
             static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt), Frame(mode: FrameMode.Sender), Frame(mode: FrameMode.PostTx)],
             null);
+        yield return Case("ExemptBehindANonApprovingVerifyAfterPayment_Valid",
+            static tx => tx.Frames =
+            [
+                Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecutionAndPayment),
+                Frame(mode: FrameMode.Verify, target: TestItem.AddressB),
+                Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt),
+                Frame(mode: FrameMode.PostTx),
+            ],
+            null);
 
         // assert frame.mode == SENDER or frame.value == 0
         yield return Case("ValueOnDefaultFrame_ValueOutsideSenderMode",
