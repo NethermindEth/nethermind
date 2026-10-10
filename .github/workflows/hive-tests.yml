@@ -182,13 +182,13 @@ jobs:
         env:
           LIMIT: ${{ matrix.limit }}
         run: |
-          HIVE_ARGS="--client nethermind
-            --sim ${{ matrix.suite }}
-            --sim.loglevel $LOG_LEVEL
-            --sim.parallelism ${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
-          [[ -n "$LIMIT" ]] && HIVE_ARGS+=" --sim.limit $LIMIT"
-          [[ -n "$BUILDARG" ]] && HIVE_ARGS+=" --sim.buildarg \"$BUILDARG\""
-          ./hive $HIVE_ARGS
+          hive_args=(--client nethermind
+            --sim "${{ matrix.suite }}"
+            --sim.loglevel "$LOG_LEVEL"
+            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
+          [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
+          [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
+          ./hive "${hive_args[@]}"
 
       - name: Upload results
         uses: actions/upload-artifact@v7
