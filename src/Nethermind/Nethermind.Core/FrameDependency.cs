@@ -148,53 +148,24 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
-    private static readonly ValueHash256 EmptyDepsHash = Blake2s.Compute([]);
-
-    // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
-    private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
-
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against.</summary>
-    /// <remarks>
-    /// <c>DEPS_HASH</c> is BLAKE2s-256 over each canonical dependency's 64-byte <c>data_hash || verification_key</c>.
-    /// EIP-8288 defines it for leanSPHINCS lists only. With <see cref="Eip8288Constants.LeanStarkPrototypeEnabled"/>,
-    /// a list holding leanSTARK dependencies hashes <c>get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) ||
-    /// "eip8288/leanstark-deps\0"</c> zero-padded to 96 bytes, as the pinned recursive guest does.
-    /// Unknown schemes are rejected before hashing and fall in the second list.
-    /// </remarks>
+    /// <remarks><c>DEPS_HASH</c> is BLAKE2s-256 over the canonical dependencies' 96-byte encodings, scheme included.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
-    {
-        if (dependencies.Count == 0) return EmptyDepsHash;
+        => Blake2s.Compute(Serialize(Canonicalize(dependencies)));
 
-        List<FrameDependency> canonical = Canonicalize(dependencies);
-        int split = 0;
-        while (split < canonical.Count && canonical[split].Scheme == Eip8288Constants.LeanSphincsScheme) split++;
-        ValueHash256 sphincs = ListDepsHash(canonical, 0, split);
-        if (split == canonical.Count) return sphincs;
-
-        ValueHash256 stark = ListDepsHash(canonical, split, canonical.Count);
-        Blake2s hasher = Blake2s.Create();
-        hasher.Update(sphincs.Bytes);
-        hasher.Update(stark.Bytes);
-        hasher.Update(LeanStarkDepsDomain);
-        return hasher.Finish();
-    }
-
-    private static ValueHash256 ListDepsHash(List<FrameDependency> canonical, int start, int end)
-    {
-        Blake2s hasher = Blake2s.Create();
-        Span<byte> triple = stackalloc byte[Eip8288Constants.DependencyTripleLength];
-        for (int i = start; i < end; i++)
-        {
-            canonical[i].WriteTo(triple);
-            hasher.Update(triple[32..]);
-        }
-        return hasher.Finish();
-    }
-
-    /// <summary>Whether a dependency scheme is accepted: leanSPHINCS, and leanSTARK while the prototype switch is on.</summary>
-    internal static bool IsAcceptedScheme(byte scheme) =>
+    /// <summary>Whether a dependency scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
+    /// <remarks><see cref="Eip8288Constants.AggregatedVk"/> fixes the set, so it is also the EIP-8437 profile's scheme set.</remarks>
+    public static bool IsAcceptedScheme(byte scheme) =>
         scheme == Eip8288Constants.LeanSphincsScheme
-        || (Eip8288Constants.LeanStarkPrototypeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
+        || (Eip8288Constants.LeanStarkSchemeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
+
+    /// <summary>Whether every dependency's scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
+    public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
+    {
+        for (int i = 0; i < dependencies.Count; i++)
+            if (!IsAcceptedScheme(dependencies[i].Scheme)) return false;
+        return true;
+    }
 
     /// <summary>Sorts and deduplicates dependencies for the EIP-8288 commitment.</summary>
     public static List<FrameDependency> Canonicalize(IEnumerable<FrameDependency> dependencies)
@@ -214,6 +185,25 @@ public static class Eip8288Dependencies
         }
         result.RemoveRange(unique, result.Count - unique);
         return result;
+    }
+
+    /// <summary>
+    /// EIP-8288 <c>discard_dependencies</c>: the dependencies covered by the input proofs that no retained transaction
+    /// declares, in canonical order.
+    /// </summary>
+    /// <remarks>Wrapper pruning, FOCIL merging and block assembly all use this rule, so a dependency shared with any retained
+    /// transaction is kept even when another transaction declaring it is removed.</remarks>
+    /// <param name="inputDeps">The union of the dependencies the input proofs cover, including mode-0 direct witnesses.</param>
+    /// <param name="retainedDeps">The dependency union of the selected transactions.</param>
+    /// <exception cref="ArgumentException">A retained dependency is not covered by the input proofs.</exception>
+    public static List<FrameDependency> DiscardDependencies(IEnumerable<FrameDependency> inputDeps, IEnumerable<FrameDependency> retainedDeps)
+    {
+        HashSet<FrameDependency> inputs = [.. inputDeps];
+        HashSet<FrameDependency> retained = [.. retainedDeps];
+        if (!retained.IsSubsetOf(inputs))
+            throw new ArgumentException("Retained dependencies must be covered by the input proofs.", nameof(retainedDeps));
+        inputs.ExceptWith(retained);
+        return Canonicalize(inputs);
     }
 
     /// <summary>Counts dependencies per scheme (leanSPHINCS, leanSTARK) for the mempool/tx limits.</summary>

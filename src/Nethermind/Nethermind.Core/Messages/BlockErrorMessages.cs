@@ -143,6 +143,9 @@ public static class BlockErrorMessages
     public const string InvalidRecursiveStark =
         "InvalidRecursiveStark: EIP-8288 recursive STARK failed verification.";
 
+    public const string DependencyCapacityExceeded =
+        "DependencyCapacityExceeded: EIP-8288 block dependencies exceed MAX_DEPS_PER_BLOCK or MAX_LEANSTARK_DEPS_PER_BLOCK.";
+
 
     public const string WithdrawalsContractEmpty =
         "WithdrawalsEmpty: Contract is not deployed.";

@@ -90,6 +90,38 @@ public class RecursiveStarkAggregatorTests
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
     }
 
+    [TestCase("direct")]
+    [TestCase("recursive")]
+    [TestCase("discard")]
+    public void Aggregate_rejects_unknown_schemes_in_every_list(string list)
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency unknown = new(0x12, a.DataHash, a.VerificationKey);
+        AggregationInput input = list switch
+        {
+            "direct" => new() { Deps = [unknown], Witnesses = [new byte[] { 1 }] },
+            "recursive" => new() { RecursiveProofs = [new RecursiveProofInput([a, unknown], [9])], Discards = [unknown] },
+            _ => new() { Deps = [a], Witnesses = [new byte[] { 1 }], Discards = [unknown] },
+        };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Discard_keeps_the_same_data_and_key_under_the_other_scheme()
+    {
+        FrameDependency sphincs = Sphincs("a");
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, sphincs.DataHash, sphincs.VerificationKey);
+        AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([sphincs, stark], [9])], Discards = [stark] };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filtered, Is.EqualTo(new[] { sphincs }));
+            Assert.That(hash, Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([stark])));
+        }
+    }
+
     [Test]
     public void Proof_store_prunes_recursive_dependencies_and_copies_witnesses([Values] bool recursive)
     {
@@ -112,6 +144,58 @@ public class RecursiveStarkAggregatorTests
         {
             Assert.That(input.Deps, Is.EqualTo(new[] { b }));
             Assert.That(input.Witnesses[0].ToArray(), Is.EqualTo(new byte[] { 2 }));
+        }
+    }
+
+    [Test]
+    public void Discard_set_keeps_dependencies_shared_with_retained_transactions()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        // A removed transaction also declared b; a retained one still needs it.
+        Assert.That(Eip8288Dependencies.DiscardDependencies([c, a, b, b], [b, c]), Is.EqualTo(new[] { a }));
+        Assert.That(Eip8288Dependencies.DiscardDependencies([a, b], [a, b]), Is.Empty);
+        Assert.That(() => Eip8288Dependencies.DiscardDependencies([a, b], [b, Sphincs("d")]), Throws.ArgumentException,
+            "retained dependencies absent from the inputs need another proof");
+    }
+
+    // EIPs#12473: input_deps includes dependencies covered only by mode-0 direct witnesses.
+    [Test]
+    public void Direct_witness_dependencies_count_as_discard_inputs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        AggregationInput input = new()
+        {
+            Deps = [a],
+            Witnesses = [new byte[] { 1 }],
+            RecursiveProofs = [new RecursiveProofInput([b, c], [9])],
+            Discards = Eip8288Dependencies.DiscardDependencies([a, b, c], [b, c])
+        };
+        AggregationInput combined = RecursiveStarkAggregator.Combine(
+            [new() { Deps = [c], Witnesses = [new byte[] { 1 }] }, new() { RecursiveProofs = [new RecursiveProofInput([a, b], [9])] }], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
+            Assert.That(combined.Deps, Is.EqualTo(new[] { c }), "a retained dependency covered only by a direct witness is an input");
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+        }
+    }
+
+    [Test]
+    public void Pruning_a_recursive_input_discards_only_dependencies_no_retained_transaction_needs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        LeanProofStore store = new();
+        store.AddVerified([a, b, c], null, [1]);
+        Assert.That(store.TryGetInput([c, b], out AggregationInput input), Is.True);
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
         }
     }
 
@@ -657,6 +741,26 @@ public class RecursiveStarkAggregatorTests
             Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
             Assert.That(combined.Discards, Is.Empty);
             Assert.That(RecursiveStarkAggregator.InputSize(combined), Is.EqualTo(RecursiveStarkAggregator.InputSize(input)));
+        }
+    }
+
+    // EIP-8288 discard_dependencies: the FOCIL proof covers {a, b}; the omitted entry declared a and b, the included
+    // one declares a, so only b leaves the claim.
+    [Test]
+    public void Pruning_an_omitted_focil_entry_retains_dependencies_shared_with_included_transactions()
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency b = Sphincs("b");
+        AggregationInput focil = new() { RecursiveProofs = [new([a, b], [1])] };
+        AggregationInput included = new() { Deps = [a], Witnesses = [new byte[] { 2 }] };
+        AggregationInput combined = RecursiveStarkAggregator.Combine([focil, included], [a]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.Discards, Is.EqualTo(new[] { b }));
+            Assert.That(combined.Deps, Is.Empty);
+            Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(combined, Accepting, out IReadOnlyList<FrameDependency> proven, out _), Is.True);
+            Assert.That(proven, Is.EqualTo(new[] { a }));
         }
     }
 

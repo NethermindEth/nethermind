@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/d4ce2a68235457a242f4aea681bdf99b50462d2d),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/e2500781943f061da7b4f36e2af8a548b3526451),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims and generic leanVM programs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
@@ -102,16 +102,17 @@ Every supplied raw witness and child proof is authenticated even when another in
 covers the same claim. An unchanged verified statement can reuse its parent proof without
 executing another recursive proving step.
 
-`get_deps_hash` is BLAKE2s-256 over each dependency's 64-byte `data_hash || verification_key`,
-one guest compression per entry. EIP-8288 reserves leanSTARK (`0x11`) until `get_deps_hash`
-covers it; behind `Eip8288Constants.LeanStarkPrototypeEnabled` (on), a list with leanSTARK
-entries commits to `BLAKE2s(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) ||
-"eip8288/leanstark-deps\0" padded to 32 bytes)`. That 96-byte preimage is never a list of
-64-byte entries, so the two forms cannot collide, and an all-leanSPHINCS list keeps the EIP digest.
-The guest checks every entry's scheme against its run.
+`get_deps_hash` is BLAKE2s-256 over the canonical dependencies' full 96-byte
+`scheme || data_hash || verification_key` entries, so the same data and key under another
+scheme is another dependency. The guest's `enabled_schemes` are leanSPHINCS (`0x10`) and
+leanSTARK (`0x11`), matching `Eip8288Constants.LeanStarkSchemeEnabled`; it checks every entry
+of the selected list and of each child list, discarded entries included. Its leanSTARK profile
+is a generic leanVM CPU proof whose `verification_key_hash` is Keccak-256 of the 32-byte tag
+`eip8288/leanstark-vk/leanvm-cpu` and the canonical program encoding.
 
 This profile is incompatible with the earlier ABI 5 `NLR3` profile, its Keccak commitment and
-guest key, and with older `NLR2` captures. Startup checks ABI 6, the new key and all nine bounds
+guest key, with older `NLR2` captures, and with the 64-byte-entry ABI 6 guest, whose key differs.
+Startup checks ABI 6, the new key and all nine bounds
 together; lean status checks the pinned key before proof transfer. New devnets require fresh
 chain and database namespaces.
 

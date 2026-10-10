@@ -64,10 +64,10 @@ public class FrameDependencyTests
     private static IEnumerable<TestCaseData> DepsHashVectors()
     {
         yield return new TestCaseData(Array.Empty<FrameDependency>(), "69217a3079908094e11121d042354a7c1f55b6482ca1a51e1b250dfd1ed0eef9").SetName("empty");
-        yield return new TestCaseData(new[] { VectorA }, "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6").SetName("one");
-        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13").SetName("three_with_duplicate");
-        yield return new TestCaseData(new[] { VectorG1 }, "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a").SetName("stark_only");
-        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f").SetName("mixed");
+        yield return new TestCaseData(new[] { VectorA }, "aef5a1c0fbd299e930670837a1d8525a37ebfbb3139edfa972cb84788484afe6").SetName("one");
+        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "db319771cd52a8a6eadb4273e07df5fbf2a405592e956e3fe6f3121f9cb3b897").SetName("three_with_duplicate");
+        yield return new TestCaseData(new[] { VectorG1 }, "2eacc579313017124720641cf33287809cb02437e8f381c427e0f5aa8162db93").SetName("stark_only");
+        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "2523de87398f08d0bb08e78b1ff651b0452a1c12fe8dbae806a4c8ffe7fbaf31").SetName("mixed");
     }
 
     [TestCaseSource(nameof(DepsHashVectors))]
@@ -75,8 +75,23 @@ public class FrameDependencyTests
         Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies).ToString(withZeroX: false), Is.EqualTo(expected));
 
     [Test]
-    public void LeanStark_dependency_does_not_share_a_digest_with_its_sphincs_bytes() =>
+    public void Same_data_and_key_under_another_scheme_is_another_digest() =>
         Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorG1]), Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([VectorA])));
+
+    [TestCase(Eip8288Constants.LeanSphincsScheme, true)]
+    [TestCase(Eip8288Constants.LeanStarkScheme, Eip8288Constants.LeanStarkSchemeEnabled)]
+    [TestCase((byte)0x00, false)]
+    [TestCase((byte)0x12, false)]
+    [TestCase((byte)0xFF, false)]
+    public void Only_enabled_schemes_are_accepted(byte scheme, bool accepted)
+    {
+        FrameDependency sphincs = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.IsAcceptedScheme(scheme), Is.EqualTo(accepted));
+            Assert.That(Eip8288Dependencies.AreSchemesEnabled([sphincs, new FrameDependency(scheme, default, default)]), Is.EqualTo(accepted));
+        }
+    }
 
     [TestCase(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")]
     [TestCase(null, "6d244e1a06ce4ef578dd0f63aff0936706735119ca9c8d22d86c801414ab9741")]
@@ -175,7 +190,7 @@ public class FrameDependencyTests
         FrameDependency[] expected = dependencies.OrderBy(dep => Convert.ToHexString(Eip8288Dependencies.Serialize([dep])), StringComparer.Ordinal).ToArray();
         List<FrameDependency> reversed = [.. expected.Reverse(), .. expected];
         Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
-        byte[] entries = [.. expected.SelectMany(static dep => Eip8288Dependencies.Serialize([dep])[32..])];
+        byte[] entries = Eip8288Dependencies.Serialize(expected);
         Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(Blake2s.Compute(entries)));
     }
 

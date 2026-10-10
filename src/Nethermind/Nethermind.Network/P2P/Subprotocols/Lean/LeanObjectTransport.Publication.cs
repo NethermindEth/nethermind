@@ -18,8 +18,8 @@ public sealed partial class LeanObjectTransport
 {
     private static readonly TimeSpan SidecarRetry = TimeSpan.FromMilliseconds(250);
 
-    private void OnWrapperValidated(byte[] wrapper) =>
-        PublishInBackground(() => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, null, announce: true));
+    private void OnWrapperValidated(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction> resolved) =>
+        PublishInBackground(() => Publish(LeanProtocol.KindWrapper, LeanDescriptor.WrapperContext(), wrapper, null, announce: true, resolved));
 
     private void OnInclusionListValidated(byte[] package) =>
         PublishInBackground(() => Publish(LeanProtocol.KindInclusionList, LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)),
@@ -54,22 +54,31 @@ public sealed partial class LeanObjectTransport
     }
 
     /// <summary>Adds a fully validated object to the served store and announces it to peers not known to hold it.</summary>
-    private bool Publish(byte kind, byte[] context, byte[] body, LeanHeaderSkeleton? skeleton, bool announce)
+    /// <param name="resolved">Transactions, by hash, that resolved a kind-1 body's hash entries. A wrapper is offered with hash
+    /// entries only while their envelopes stay recoverable through GetTransactions, so each is retained with it.</param>
+    private bool Publish(byte kind, byte[] context, byte[] body, LeanHeaderSkeleton? skeleton, bool announce,
+        IReadOnlyDictionary<ValueHash256, Transaction>? resolved = null)
     {
         if (!IsEnabled || body.Length == 0 || (ulong)body.Length > LeanLimits.MaxObjectBytes) return false;
         ValueHash256[] transactions = [];
+        Dictionary<ValueHash256, byte[]>? envelopes = null;
         if (kind == LeanProtocol.KindWrapper)
         {
             List<LeanBodies.WrapperEntry> entries = LeanBodies.ParseWrapper(body);
             List<ValueHash256> full = new(entries.Count);
-            foreach (LeanBodies.WrapperEntry entry in entries) if (entry.IsFull) full.Add(entry.Hash);
+            foreach (LeanBodies.WrapperEntry entry in entries)
+            {
+                if (entry.IsFull) full.Add(entry.Hash);
+                else if (RetainableEnvelope(resolved, entry.Hash) is { } envelope) (envelopes ??= [])[entry.Hash] = envelope;
+                else return false;
+            }
             transactions = [.. full];
         }
         LeanDescriptor descriptor = LeanDescriptor.Create(kind, LocalProfile, context, body, out LeanChunkTree tree);
         Outbox outbox = new();
         lock (_gate)
         {
-            if (_disposed || !_store.TryAdd(new LeanObjectStore.Entry(descriptor, body, tree, skeleton, transactions))) return false;
+            if (_disposed || !_store.TryAdd(new LeanObjectStore.Entry(descriptor, body, tree, skeleton, transactions, envelopes))) return false;
             _tombstones.Remove(descriptor.ObjectId);
             if (announce) AnnounceToPeers(descriptor, outbox);
         }
@@ -77,6 +86,18 @@ public sealed partial class LeanObjectTransport
         LeanMetrics.Record(kind, LeanEvent.Published);
         if (_logger.IsDebug) _logger.Debug($"lean/1 published {descriptor}");
         return true;
+    }
+
+    /// <summary>The canonical envelope of a resolved hash entry, if it fits a Transactions response.</summary>
+    /// <remarks>An envelope too large for GetTransactions is recoverable only through a full-entry wrapper, so a wrapper
+    /// offering it by hash is not relayed.</remarks>
+    private static byte[]? RetainableEnvelope(IReadOnlyDictionary<ValueHash256, Transaction>? resolved, in ValueHash256 hash)
+    {
+        if (resolved is null || !resolved.TryGetValue(hash, out Transaction? transaction)) return null;
+        byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+        return ValueKeccak.Compute(envelope) == hash
+            && TransactionsMessageSerializer.EncodeResult(LeanResultStatus.Ok, envelope).Length <= LeanProtocol.MaxTxResponseBytes - ResponseOverhead
+            ? envelope : null;
     }
 
     private void AnnounceToPeers(LeanDescriptor descriptor, Outbox outbox)
@@ -135,12 +156,20 @@ public sealed partial class LeanObjectTransport
     /// Local sources come first: proofs of blocks this node built, served block proofs and known headers. Otherwise peers
     /// that announced the block are asked first, then the rest, until the caller's deadline. The sidecar's context must
     /// match the block's number, transactions root and <c>get_deps_hash(dependencies(block))</c>, and the header rebuilt
-    /// from its skeleton must hash to the block hash.
+    /// from its skeleton must hash to the block hash. No proof is returned for a block whose dependencies use a scheme the
+    /// profile does not enable or fail EIP-8288 <c>dependencies_fit_block</c>.
     /// </remarks>
     public async Task<RecursiveStark?> TryGetAsync(Block block, CancellationToken cancellationToken)
     {
         if (block.Hash is not { } hash || block.Header.TxRoot is not { } transactionsRoot) return null;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        // Such a block is invalid under the profile's circuit or EIP-8288's block limits, whatever proof a peer offers.
+        if (!Eip8288Dependencies.AreSchemesEnabled(dependencies) || !LeanProofCapacity.FitsBlock(dependencies))
+        {
+            if (_logger.IsDebug) _logger.Debug($"lean/1 no sidecar for {block.ToString(Block.Format.Short)}: dependencies outside the profile or block limits");
+            return null;
+        }
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         LeanSelector selector = new(LeanProtocol.KindBlockProof, LocalProfile, LeanProtocol.LookupPrimary, hash.ValueHash256);
         lock (_gate)
         {

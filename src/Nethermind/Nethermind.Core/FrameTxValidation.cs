@@ -50,7 +50,7 @@ public static class FrameTxValidation
     public const string DependencyFrameDataLength = "dependency verification frame data must be a non-empty multiple of 96 bytes";
     public const string TooManyDependenciesPerFrame = "dependency verification frame must declare at most 256 dependencies";
     public const string DependencyPaddingNotZero = "each dependency must begin with 31 zero bytes before the scheme id";
-    public const string InvalidDependencyScheme = "dependency scheme must be LEANSPHINCS or LEANSTARK";
+    public const string InvalidDependencyScheme = "dependency scheme is not enabled";
     public const string DependencyFrameGasMismatch = "dependency verification frame gas limit must equal the sum of per-scheme verification gas";
     public const string KeyedNoncesNotEnabled = "keyed nonces are not enabled";
     public const string LegacyNonceNotAllowed = "legacy nonce is not allowed";
@@ -871,18 +871,15 @@ public static class FrameTxValidation
                 return false;
             }
 
-            switch (triple[31])
+            if (!Eip8288Dependencies.IsAcceptedScheme(triple[31]))
             {
-                case Eip8288Constants.LeanSphincsScheme:
-                    expectedGas += Eip8288Constants.LeanSphincsVerificationGas;
-                    break;
-                case Eip8288Constants.LeanStarkScheme when Eip8288Constants.LeanStarkPrototypeEnabled:
-                    expectedGas += Eip8288Constants.LeanStarkVerificationGas;
-                    break;
-                default:
-                    error = InvalidDependencyScheme;
-                    return false;
+                error = InvalidDependencyScheme;
+                return false;
             }
+
+            expectedGas += triple[31] == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkVerificationGas
+                : Eip8288Constants.LeanSphincsVerificationGas;
         }
 
         if (frame.StateGasLimit != 0 || frame.ExecutionGasLimit != expectedGas)

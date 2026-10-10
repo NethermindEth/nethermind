@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -103,7 +104,13 @@ public class LeanTransportTests
     public void Profile_id_is_the_domain_separated_keccak_of_the_aggregated_key()
     {
         byte[] preimage = [.. "lean/1/profile"u8, 0, .. Eip8288Constants.AggregatedVk];
-        Assert.That(LeanObjectTransport.LocalProfile, Is.EqualTo(ValueKeccak.Compute(preimage)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanObjectTransport.LocalProfile, Is.EqualTo(ValueKeccak.Compute(preimage)));
+            // Pinned with the LeanVM guest: a different enabled_schemes set needs a new key and so a new profile.
+            Assert.That(LeanObjectTransport.LocalProfile.ToString(false),
+                Is.EqualTo("d4822e0deca6b14894dcfbd137b2bcaf9dd225f869afd47fc942afc015e0d370"));
+        }
     }
 
     [TestCase(1)]
@@ -164,6 +171,124 @@ public class LeanTransportTests
             LeanRlp.EncodeBytes((field == "content" ? other : descriptor.ContentHash).Bytes),
             LeanRlp.EncodeBytes(descriptor.ChunkRoot.Bytes)));
         Assert.That(new LeanBranchVerifier(changed).Verify(0, body.AsSpan(0, LeanProtocol.ChunkBytes), tree.GetBranch(0)), Is.False);
+    }
+
+    /// <summary>The boundary sizes of the EIP's <c>check_vectors.py</c>, both sides of chunk and tree boundaries up to the maximum geometry.</summary>
+    [TestCase(1)]
+    [TestCase(LeanProtocol.ChunkBytes - 1)]
+    [TestCase(LeanProtocol.ChunkBytes)]
+    [TestCase(LeanProtocol.ChunkBytes + 1)]
+    [TestCase(2 * LeanProtocol.ChunkBytes)]
+    [TestCase(2 * LeanProtocol.ChunkBytes + 1)]
+    [TestCase(4 * LeanProtocol.ChunkBytes + 1)]
+    [TestCase((int)LeanProtocol.MaxObjectBytes)]
+    public void Boundary_geometry_verifies_and_tampering_does_not(int size)
+    {
+        byte[] body = VectorBody(size);
+        LeanDescriptor descriptor = VectorDescriptor(body, out LeanChunkTree tree);
+        LeanBranchVerifier verifier = new(descriptor);
+        int count = descriptor.ChunkCount;
+        Assert.That(descriptor.Encoded.Length, Is.LessThanOrEqualTo(LeanProtocol.MaxDescriptorBytes));
+        foreach (int index in new SortedSet<int> { 0, count / 2, count - 1 })
+        {
+            byte[] chunk = body.AsSpan(index * LeanProtocol.ChunkBytes, descriptor.ChunkLength(index)).ToArray();
+            ValueHash256[] branch = tree.GetBranch(index);
+            byte[] changed = [.. chunk];
+            changed[0] ^= 1;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(verifier.Verify(index, chunk, branch), Is.True, $"chunk {index}");
+                Assert.That(verifier.Verify(count, chunk, branch), Is.False, "index equal to N");
+                Assert.That(verifier.Verify(index, chunk.AsSpan(0, chunk.Length - 1), branch), Is.False, "short chunk");
+                Assert.That(verifier.Verify(index, changed, branch), Is.False, "changed chunk");
+                Assert.That(verifier.Verify(index, chunk, [.. branch, default]), Is.False, "extra sibling");
+                if (branch.Length > 0)
+                {
+                    ValueHash256[] bad = [.. branch];
+                    byte[] sibling = bad[0].ToByteArray();
+                    sibling[0] ^= 1;
+                    bad[0] = new ValueHash256(sibling);
+                    Assert.That(verifier.Verify(index, chunk, bad), Is.False, "changed sibling");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void Every_descriptor_field_is_bound_to_the_commitment()
+    {
+        int size = 2 * LeanProtocol.ChunkBytes + 1;
+        byte[] body = VectorBody(size);
+        LeanDescriptor descriptor = VectorDescriptor(body, out LeanChunkTree tree);
+        int last = descriptor.ChunkCount - 1;
+        byte[] chunk = body.AsSpan(last * LeanProtocol.ChunkBytes).ToArray();
+        ValueHash256[] branch = tree.GetBranch(last);
+        byte[] profile = new byte[32];
+        profile[0] = 1;
+        static byte[] Encode(byte kind, ReadOnlySpan<byte> profileId, byte[] context, ulong length, in ValueHash256 content, in ValueHash256 root) =>
+            LeanRlp.EncodeList(LeanRlp.EncodeUInt(kind), LeanRlp.EncodeBytes(profileId), context, LeanRlp.EncodeUInt(length),
+                LeanRlp.EncodeBytes(content.Bytes), LeanRlp.EncodeBytes(root.Bytes));
+        byte[] wrapper = LeanDescriptor.WrapperContext();
+        ValueHash256 content = descriptor.ContentHash, root = descriptor.ChunkRoot;
+        byte[][] altered =
+        [
+            Encode(LeanProtocol.KindBlockProof, descriptor.ProfileId.Bytes,
+                LeanDescriptor.BlockProofContext(default, 0, default, default, default), (ulong)size, content, root),
+            Encode(LeanProtocol.KindWrapper, profile, wrapper, (ulong)size, content, root),
+            Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, LeanDescriptor.InclusionListContext(content), (ulong)size, content, root),
+            Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper, (ulong)size + 1, content, root),
+            Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper, (ulong)size + LeanProtocol.ChunkBytes, content, root),
+            Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper, (ulong)size, default, root),
+            Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper, (ulong)size, content, default)
+        ];
+        foreach (byte[] encoded in altered)
+        {
+            LeanDescriptor changed;
+            try { changed = LeanDescriptor.Decode(encoded); }
+            catch (RlpException) { continue; }
+            Assert.That(new LeanBranchVerifier(changed).Verify(last, chunk, branch), Is.False, encoded.ToHexString());
+        }
+        Assert.Throws<RlpException>(() => LeanDescriptor.Decode(Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper, 0, content, root)));
+        Assert.Throws<RlpException>(() => LeanDescriptor.Decode(Encode(LeanProtocol.KindWrapper, descriptor.ProfileId.Bytes, wrapper,
+            LeanProtocol.MaxObjectBytes + 1, content, root)));
+    }
+
+    [Test]
+    public void Other_kinds_and_profiles_use_the_same_commitment()
+    {
+        byte[] body = VectorBody(2 * LeanProtocol.ChunkBytes + 1);
+        ValueHash256 profile = ValueKeccak.Compute("profile"u8);
+        (byte Kind, byte[] Context)[] contexts =
+        [
+            (LeanProtocol.KindBlockProof, LeanDescriptor.BlockProofContext(default, 42, default, default, default)),
+            (LeanProtocol.KindInclusionList, LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)))
+        ];
+        foreach ((byte kind, byte[] context) in contexts)
+        {
+            LeanDescriptor descriptor = LeanDescriptor.Create(kind, profile, context, body, out LeanChunkTree tree);
+            Assert.That(new LeanBranchVerifier(descriptor).Verify(0, body.AsSpan(0, LeanProtocol.ChunkBytes), tree.GetBranch(0)), Is.True);
+        }
+    }
+
+    [Test]
+    public void Maximum_chunk_and_announcement_fit_the_message_ceiling()
+    {
+        ChunkMessage chunk = new(ulong.MaxValue, default, LeanProtocol.MaxChunkCount - 1, new byte[LeanProtocol.ChunkBytes],
+            new ValueHash256[LeanCommitment.Depth(LeanProtocol.MaxChunkCount)]);
+        byte[] context = LeanDescriptor.BlockProofContext(default, ulong.MaxValue, default, default, default);
+        byte[] descriptor = LeanRlp.EncodeList(LeanRlp.EncodeUInt(LeanProtocol.KindBlockProof), LeanRlp.EncodeBytes(new byte[32]), context,
+            LeanRlp.EncodeUInt(LeanProtocol.MaxObjectBytes), LeanRlp.EncodeBytes(new byte[32]), LeanRlp.EncodeBytes(new byte[32]));
+        LeanDescriptor decoded = LeanDescriptor.Decode(descriptor);
+        LeanDescriptor[] announced = new LeanDescriptor[LeanProtocol.MaxAnnouncements];
+        Array.Fill(announced, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ChunkMessageSerializer().Encode(chunk).Length, Is.LessThan(LeanProtocol.MaxMessageBytes));
+            Assert.That(descriptor.Length, Is.LessThanOrEqualTo(LeanProtocol.MaxDescriptorBytes));
+            Assert.That(decoded.Depth, Is.EqualTo(10));
+            Assert.That(new AnnounceObjectsMessageSerializer().Encode(new AnnounceObjectsMessage(announced)).Length,
+                Is.LessThan(LeanProtocol.MaxMessageBytes));
+        }
     }
 
     private static IEnumerable<TestCaseData> MessageRoundTrips()
@@ -285,6 +410,10 @@ public class LeanTransportTests
             .SetName("Oversized transaction request");
         yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
             LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(1), LeanRlp.EncodeBytes([1])))).ToHexString()).SetName("Envelope with non-OK status");
+        yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
+            LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(3), LeanRlp.EncodeBytes([])))).ToHexString()).SetName("Transactions status 3");
+        yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
+            LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(5), LeanRlp.EncodeBytes([])))).ToHexString()).SetName("Transactions unknown status");
         yield return new TestCaseData(new ObjectsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
             LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(0), small.Encoded, LeanRlp.EncodeBytes([1])))).ToHexString())
             .SetName("Auxiliary for kind 1");
@@ -342,12 +471,40 @@ public class LeanTransportTests
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 2)).SetName("Unknown mode");
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0,
             LeanRlp.EncodeList(LeanRlp.EncodeBytes(new byte[95])))).SetName("Dependency not 96 bytes");
+        byte[] Dependency(byte scheme, byte padding = 0)
+        {
+            byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+            dependency[0] = padding;
+            dependency[31] = scheme;
+            return LeanRlp.EncodeList(LeanRlp.EncodeBytes(dependency));
+        }
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0, Dependency(0x12)))
+            .SetName("Dependency scheme outside the profile");
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0, Dependency(0x00)))
+            .SetName("Dependency scheme zero");
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0,
+            Dependency(Eip8288Constants.LeanSphincsScheme, padding: 1))).SetName("Dependency with nonzero scheme padding");
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 1, null, LeanRlp.EncodeList()))
             .SetName("Mode 1 with proof list");
+        byte[][] hashEntries = [.. Enumerable.Range(0, Eip8288Constants.MaxTxsPerWrapper + 1)
+            .Select(i => ValueKeccak.Compute(BitConverter.GetBytes(i)).Bytes.ToArray()).Order(Bytes.Comparer).Select(h => ByHash(LeanRlp.EncodeBytes(h)))];
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(hashEntries))).SetName("Kind 1 above MAX_TXS_PER_WRAPPER");
+        yield return new TestCaseData(LeanProtocol.KindInclusionList, LeanRlp.EncodeList(
+            LeanRlp.EncodeList([.. Enumerable.Repeat(envelope, LeanProtocol.MaxTxsPerPackage + 1)]), LeanRlp.EncodeList(LeanRlp.EncodeBytes([]), hash)))
+            .SetName("Kind 3 above MAX_TXS_PER_PACKAGE");
         yield return new TestCaseData(LeanProtocol.KindBlockProof, LeanRlp.EncodeList(LeanRlp.EncodeBytes([1]), LeanRlp.EncodeBytes([1])))
             .SetName("Kind 2 extra field");
         yield return new TestCaseData(LeanProtocol.KindInclusionList, LeanRlp.EncodeList(LeanRlp.EncodeList(envelope),
             LeanRlp.EncodeList(LeanRlp.EncodeBytes([1])))).SetName("Kind 3 without deps hash");
+    }
+
+    [Test]
+    public void Kind_3_body_at_MAX_TXS_PER_PACKAGE_is_canonical()
+    {
+        byte[] envelope = LeanRlp.EncodeBytes([0x7f, 0x00]);
+        byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeList([.. Enumerable.Repeat(envelope, LeanProtocol.MaxTxsPerPackage)]),
+            LeanRlp.EncodeList(LeanRlp.EncodeBytes([]), LeanRlp.EncodeBytes(TestItem.KeccakA.Bytes)));
+        Assert.DoesNotThrow(() => LeanBodies.Check(LeanProtocol.KindInclusionList, body));
     }
 
     [TestCaseSource(nameof(InvalidBodies))]

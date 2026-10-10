@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>Wire constants of EIP-8437, proof object transport over devp2p.</summary>
-/// <remarks>These are wire limits; local limits in <see cref="LeanLimits"/> may be lower.</remarks>
+/// <remarks>These are transport and mempool policy ceilings, not consensus validity limits; local limits in
+/// <see cref="LeanLimits"/> may be lower.</remarks>
 public static class LeanProtocol
 {
     public const string Code = "lean";
@@ -21,7 +23,9 @@ public static class LeanProtocol
     public const int MaxLookups = 16;
     public const int MaxChunksPerRequest = 32;
     public const int MaxRequestsPerPeer = 4;
-    public const int MaxTxsPerObject = 4096;
+    /// <summary>Transaction envelopes in a kind-3 body (<c>MAX_TXS_PER_PACKAGE</c>).</summary>
+    /// <remarks>Kind 1 uses EIP-8288's wrapper limits, such as <see cref="Eip8288Constants.MaxTxsPerWrapper"/>, unchanged.</remarks>
+    public const int MaxTxsPerPackage = 4096;
     public const int MaxTxsPerRequest = 16;
     public const int MaxTxResponseBytes = 64 * 1024;
     public const int MaxMetadataResponseBytes = 64 * 1024;

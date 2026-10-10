@@ -17,9 +17,10 @@ public static class RecursiveStarkAggregator
     private const int MaxRecursiveChildren = 2;
     private const int DirectBatchSize = 4;
 
-    /// <summary>Runs the EIP-8288 STARK check of <paramref name="proof"/> against a dependency list.</summary>
-    /// <remarks>An empty dependency list carries an empty <c>stark_proof</c>; any other list needs a proof that
-    /// verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>.</remarks>
+    /// <summary>Runs the STARK check of a block proof, inclusion-list package or mode-1 wrapper against a dependency list.</summary>
+    /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
+    /// a proof that verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. A mode-1
+    /// wrapper never has an empty list: one with empty <c>deps</c> uses mode 0.</remarks>
     public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
         => dependencyCount == 0
             ? proof.IsEmpty
@@ -54,7 +55,6 @@ public static class RecursiveStarkAggregator
         List<ReadOnlyMemory<byte>> witnesses = [];
         List<RecursiveProofInput> recursive = [];
         HashSet<FrameDependency> wanted = [.. required];
-        HashSet<FrameDependency> discards = [];
         HashSet<FrameDependency> covered = [];
         HashSet<ValueHash256> seenProofs = [];
         foreach (AggregationInput input in inputs)
@@ -64,11 +64,7 @@ public static class RecursiveStarkAggregator
                 if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(inputs));
                 if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
-                foreach (FrameDependency dep in child.InnerDeps)
-                {
-                    covered.Add(dep);
-                    if (!wanted.Contains(dep)) discards.Add(dep);
-                }
+                covered.UnionWith(child.InnerDeps);
             }
         }
         foreach (AggregationInput input in inputs)
@@ -81,7 +77,15 @@ public static class RecursiveStarkAggregator
                 witnesses.Add(input.Witnesses[i]);
             }
         }
-        return new() { Deps = direct, Witnesses = witnesses, RecursiveProofs = recursive, Discards = [.. discards] };
+        // A required dependency no input covers is left to the statement check of the proof built from this input.
+        wanted.IntersectWith(covered);
+        return new()
+        {
+            Deps = direct,
+            Witnesses = witnesses,
+            RecursiveProofs = recursive,
+            Discards = Eip8288Dependencies.DiscardDependencies(covered, wanted)
+        };
     }
 
     /// <summary>Folds inputs in bounded batches before generating the final recursive proof.</summary>
@@ -228,6 +232,13 @@ public static class RecursiveStarkAggregator
         depsHash = default;
 
         if (input.Deps.Count != input.Witnesses.Count) return false;
+        // Every list the circuit reads holds enabled schemes only, discarded dependencies included.
+        if (!Eip8288Dependencies.AreSchemesEnabled(input.Deps) || !Eip8288Dependencies.AreSchemesEnabled(input.Discards)) return false;
+        foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
+        {
+            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
+            if (!Eip8288Dependencies.AreSchemesEnabled(recursiveProof.InnerDeps)) return false;
+        }
 
         List<FrameDependency> allDeps = [];
         for (int i = 0; i < input.Deps.Count; i++)
@@ -246,7 +257,6 @@ public static class RecursiveStarkAggregator
 
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
-            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
             if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);

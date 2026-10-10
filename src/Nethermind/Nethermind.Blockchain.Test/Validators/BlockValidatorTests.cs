@@ -117,6 +117,29 @@ public class BlockValidatorTests
         Assert.That(result, Is.True, error);
     }
 
+    // EIP-8288 rule 4: a block must satisfy dependencies_fit_block, checked before the proof verifier runs.
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, true)]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock + 1, Eip8288Constants.MaxLeanStarkDepsPerBlock, false)]
+    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock + 1, Eip8288Constants.MaxLeanStarkDepsPerBlock + 1, false)]
+    public void Eip8288_enforces_block_dependency_capacity(int dependencies, int leanStark, bool valid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize)
+            .WithTransactions(DependencyTx(dependencies, leanStark)).TestObject;
+        block.Header.RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
+        FixedLeanProofVerifier verifier = new(true);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(dependencies));
+            Assert.That(result, Is.EqualTo(valid), error);
+            Assert.That(error, Is.EqualTo(valid ? null : BlockErrorMessages.DependencyCapacityExceeded));
+            Assert.That(verifier.RecursiveCalls, Is.EqualTo(valid ? 1 : 0));
+        }
+    }
+
     [Test]
     public void Eip8288_rejects_block_without_recursive_stark()
     {
@@ -236,6 +259,23 @@ public class BlockValidatorTests
         return (builder.TestObject, parent);
     }
 
+    private static Transaction DependencyTx(int dependencies, int leanStark)
+    {
+        FrameDependency[] all = new FrameDependency[dependencies];
+        for (int i = 0; i < dependencies; i++)
+            all[i] = new(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        Transaction depTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = all.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                .Select(static chunk => new TxFrame(FrameMode.DepVerify, 0, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(chunk))).ToArray(),
+            FrameSignatures = [],
+        };
+        depTx.Hash = depTx.CalculateHash();
+        return depTx;
+    }
+
     private static Transaction DependencyTx()
     {
         byte[] depData = new byte[Eip8288Constants.DependencyTripleLength];
@@ -262,11 +302,18 @@ public class BlockValidatorTests
 
     private sealed class FixedLeanProofVerifier(bool result) : ILeanProofVerifier
     {
+        public int RecursiveCalls { get; private set; }
+
         public void EnsureAvailable() { }
 
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => result;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        {
+            RecursiveCalls++;
+            return result;
+        }
+
         public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 

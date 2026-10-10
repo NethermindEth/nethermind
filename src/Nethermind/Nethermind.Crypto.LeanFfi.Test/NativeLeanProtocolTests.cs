@@ -133,7 +133,7 @@ public class NativeLeanProtocolTests
         ValueHash256 profile = mismatch switch
         {
             "guest" => default,
-            "old-guest" => LeanCommitment.ProfileId(Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387")),
+            "old-guest" => LeanCommitment.ProfileId(Convert.FromHexString("6deed6ff48d7e4af71132fb8cdc5224d16574d0358a94d274af5caee648c80ad")),
             _ => valid.Profiles[0]
         };
         context.Handler.Init();

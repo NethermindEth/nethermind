@@ -827,7 +827,12 @@ public class ProofWrapperServiceTests
             Proofs = [[1]]
         }).Bytes;
         List<byte[]> validated = [];
-        service.WrapperValidated += validated.Add;
+        List<Transaction> resolved = [];
+        service.WrapperValidated += (encoded, transactions) =>
+        {
+            validated.Add(encoded);
+            resolved.AddRange(transactions.Values);
+        };
 
         ProofWrapperAcceptance unresolved = await service.AcceptDetailedAsync(wrapper);
         ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper,
@@ -839,7 +844,136 @@ public class ProofWrapperServiceTests
             Assert.That(recovered.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), recovered.Result.Error);
             Assert.That(validated, Has.Count.EqualTo(1));
             Assert.That(validated[0], Is.EqualTo(wrapper), "the validated object keeps its hash entry");
+            Assert.That(resolved, Is.EqualTo(new[] { transaction }), "the relay is handed the envelope it offers by hash");
             pool.Received(1).SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        }
+    }
+
+    [TestCase(LeanProofStore.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.LocalFailure)]
+    [TestCase(Eip8288Constants.MaxWrapperBytes + 1, ProofWrapperAcceptanceStatus.Invalid)]
+    public async Task Wrapper_size_above_the_local_limit_is_refused_and_above_max_wrapper_bytes_is_invalid(int size, ProofWrapperAcceptanceStatus expected)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        Assert.That((await service.AcceptDetailedAsync(new byte[size])).Status, Is.EqualTo(expected));
+        Assert.That(verifier.VerificationCalls, Is.Zero);
+    }
+
+    // EIPs#12473 and EIP-8437: an aggregate within EIP-8288's limits that the local verifier cannot check is refused
+    // locally, not invalid; one beyond those limits is still invalid.
+    [TestCase(false, ProofWrapperAcceptanceStatus.Refused)]
+    [TestCase(true, ProofWrapperAcceptanceStatus.Invalid)]
+    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(bool aboveLeanStarkLimit,
+        ProofWrapperAcceptanceStatus expected)
+    {
+        int leanStark = aboveLeanStarkLimit ? Eip8288Constants.MaxLeanStarkDepsPerAggregate + 1 : 0;
+        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(i => new FrameDependency(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
+                Keccak.Compute(i.ToString()).ValueHash256, default))];
+        List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(TestItem.KeccakA)],
+            Deps = canonical,
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(canonical)))
+        }).Bytes;
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(expected));
+            if (!aboveLeanStarkLimit)
+                Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Inclusion_list_beyond_the_local_proof_capacity_is_refused_without_verification()
+    {
+        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, Keccak.Compute(i.ToString()).ValueHash256, default))];
+        static TxFrame Frame(FrameDependency[] frameDeps) => new(FrameMode.DepVerify, FrameFlags.None, null,
+            (ulong)frameDeps.Length * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize(frameDeps));
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Frames = [Frame(deps[..Eip8288Constants.MaxDependenciesPerFrame]), Frame(deps[Eip8288Constants.MaxDependenciesPerFrame..])]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
+        {
+            Transactions = [transaction],
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
+        }).Bytes;
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+
+        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused), result.Result.Error);
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Preliminary_proof_check_precedes_recovery_and_is_not_repeated(bool proofValid)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Hash = transaction.CalculateHash();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        FakeLeanProofVerifier verifier = new(proofValid);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, pool: pool);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
+        }).Bytes;
+
+        ProofWrapperAcceptance claims = await service.VerifyClaimedProofsAsync(wrapper);
+        Assert.That(claims.Status, Is.EqualTo(proofValid ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.Invalid));
+        if (!proofValid) return;
+        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper,
+            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), recovered.Result.Error);
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1), "the claimed proof is verified once");
+        }
+    }
+
+    [Test]
+    public async Task Empty_inclusion_list_dependencies_accept_an_empty_proof_without_the_verifier([Values] bool emptyProof)
+    {
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
+        {
+            Transactions = [transaction],
+            RecursiveStark = new RecursiveStark(emptyProof ? [] : [1], new Hash256(Eip8288Dependencies.ComputeDepsHash([])))
+        }).Bytes;
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier, pool: pool);
+        List<byte[]> published = [];
+        service.InclusionListValidated += published.Add;
+
+        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.HasValidProof, Is.EqualTo(emptyProof), result.Result.Error);
+            Assert.That(published, Has.Count.EqualTo(emptyProof ? 1 : 0), "a valid empty-proof package is a kind-3 object");
+            Assert.That(verifier.VerificationCalls, Is.Zero);
         }
     }
 

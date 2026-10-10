@@ -6,9 +6,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -187,7 +189,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Cancelled_fetch_discards_late_responses_without_penalty()
+    public async Task Cancelled_fetch_discards_late_responses_without_penalty([Values] bool corrupt)
     {
         using LeanTestNode node = new();
         FakeLink a = new();
@@ -200,13 +202,276 @@ public class LeanObjectTransportTests
 
         await cancellation.CancelAsync();
         Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
-        Serve(node, peer, request, descriptor, body, tree);
+        Assert.That(peer.Live.Keys, Is.EqualTo(new[] { request.RequestId }), "a cancelled request keeps its slot until its terminal response");
+        // EIP-8437: post-cancellation chunks are discarded without hashing, so a bad branch is never seen.
+        byte[] served = corrupt ? [.. body.Select(static b => (byte)~b)] : body;
+        Serve(node, peer, request, descriptor, served, tree);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(peer.Live, Is.Empty, "Served crossing Cancel releases the slot");
             Assert.That(a.Sent<CancelMessage>().Select(m => m.RequestId), Is.EqualTo(new[] { request.RequestId }));
             Assert.That(a.Penalties, Is.Empty, "a response to an issued request that is no longer live is discarded");
             Assert.That(node.Transport.AssemblyCount, Is.Zero);
             Assert.That(node.Transport.IncompleteBytes, Is.Zero, "discarded before allocation");
+        }
+    }
+
+    [TestCase("objects")]
+    [TestCase("transactions")]
+    public async Task Responses_after_cancellation_release_the_slot_without_using_their_data(string kind)
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        using CancellationTokenSource cancellation = new();
+        Task response = kind == "objects"
+            ? node.Transport.RequestObjectsAsync(peer, [new LeanSelector(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile,
+                LeanProtocol.LookupPrimary, TestItem.KeccakA.ValueHash256)], cancellation.Token)
+            : node.Transport.RequestTransactionsAsync(peer, [TestItem.KeccakA.ValueHash256], cancellation.Token);
+        await cancellation.CancelAsync();
+        await response.WaitAsync(Timeout);
+        Assert.That(peer.Live, Has.Count.EqualTo(1), "a cancelled request keeps its slot");
+
+        // Unchecked after cancellation: a descriptor not matching its selector, or an envelope not matching its hash.
+        if (kind == "objects")
+            node.Transport.OnObjects(peer, new ObjectsMessage(1, [new LeanObjectResult(LeanResultStatus.Ok, Describe(OpaqueWrapperBody(10), out _), null)]));
+        else
+            node.Transport.OnTransactions(peer, new TransactionsMessage(1, [(LeanResultStatus.Ok, [1, 2, 3])]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Sent<CancelMessage>().Select(m => m.RequestId), Is.EqualTo(new[] { 1UL }));
+            Assert.That(peer.Live, Is.Empty, "the terminal response releases the slot");
+            Assert.That(a.Penalties, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Held_object_of_a_kind_the_peer_does_not_support_is_not_served()
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a, LeanTestNode.Status(kinds: 1));
+        byte[] package = InclusionList(10, FrameTransaction(14));
+        Assert.That((await node.Wrappers.AcceptInclusionListDetailedAsync(package)).HasValidProof, Is.True);
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
+        await Until(() => node.Transport.IsStored(descriptor.ObjectId));
+
+        node.Transport.OnGetChunks(peer, new GetChunksMessage(1, descriptor.ObjectId, [0]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Sent<AnnounceObjectsMessage>(), Is.Empty, "objects are announced only in kinds both peers support");
+            Assert.That(a.Sent<CompleteMessage>().Single().Status, Is.EqualTo(LeanCompleteStatus.Unsupported));
+            Assert.That(a.Chunks, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Envelopes_offered_by_hash_stay_recoverable_after_leaving_the_pool()
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        Transaction transaction = FrameTransaction(15);
+        node.Pending.Add(transaction);
+        byte[] wrapper = Wrapper(10, true, transaction);
+        Assert.That((await node.Wrappers.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
+        await Until(() => node.Transport.IsStored(Describe(wrapper, out _).ObjectId));
+        node.Pending.Clear();
+
+        node.Transport.OnGetTransactions(peer, new GetTransactionsMessage(1, [transaction.Hash!.ValueHash256]));
+        (LeanResultStatus status, byte[] envelope) = a.Sent<TransactionsMessage>().Single().Results.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status, Is.EqualTo(LeanResultStatus.Ok));
+            Assert.That(envelope, Is.EqualTo(Envelope(transaction)));
+        }
+    }
+
+    [Test]
+    public async Task Invalid_claimed_proof_is_rejected_before_any_transaction_is_fetched()
+    {
+        using LeanTestNode node = new();
+        node.Verifier.Valid = false;
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        byte[] body = Wrapper(ChunkBytes, true, FrameTransaction(16));
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+
+        await Until(() => node.Transport.IsTombstoned(descriptor.ObjectId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty);
+            Assert.That(a.Penalties, Is.Not.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Recovered_transactions_must_match_the_claimed_dependencies()
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        Transaction transaction = FrameTransaction(17);
+        List<FrameDependency> claimed = [Dependency(99)];
+        byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Deps = claimed,
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark(Proof(ChunkBytes), new Hash256(Eip8288Dependencies.ComputeDepsHash(claimed)))
+        }).Bytes;
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+        await Until(() => a.Sent<GetTransactionsMessage>().Length == 1);
+
+        node.Transport.OnTransactions(peer, new TransactionsMessage(a.Sent<GetTransactionsMessage>()[0].RequestId,
+            [(LeanResultStatus.Ok, Envelope(transaction))]));
+        await Until(() => node.Transport.IsTombstoned(descriptor.ObjectId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
+            Assert.That(node.Pending, Is.Empty);
+            Assert.That(a.Penalties, Is.Not.Empty, "the preliminary proof check does not validate the wrapper");
+        }
+    }
+
+    [TestCase((byte)0x12)]
+    [TestCase((byte)0x00)]
+    public async Task Wrapper_with_a_scheme_outside_the_profile_is_rejected_before_verification(byte scheme)
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        Transaction transaction = FrameTransaction(18);
+        // The transport commitment and deps_hash match the claimed list; the scheme alone makes it invalid.
+        List<FrameDependency> claimed = [new(scheme, ValueKeccak.Compute([18]), default)];
+        byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Deps = claimed,
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark(Proof(ChunkBytes), new Hash256(Eip8288Dependencies.ComputeDepsHash(claimed)))
+        }).Bytes;
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+
+        await Until(() => node.Transport.IsTombstoned(descriptor.ObjectId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Penalties, Has.One.Contains("not enabled by the profile"), "rejected by the transport's body check");
+            Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False, "rejected before proof verification");
+            Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty, "nothing is recovered for an invalid wrapper");
+        }
+    }
+
+    // EIPs#12473 and EIP-8437: an object within EIP-8288's limits that the local verifier cannot check is refused locally.
+    [TestCase("wrapper by hash")]
+    [TestCase("wrapper")]
+    [TestCase("package")]
+    public async Task Object_beyond_the_local_verifier_capacity_is_refused_without_penalty_or_tombstone(string kind)
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        // Each transaction within MAX_SIGS_PER_TX; together above the native capacity, within MAX_DEPS_PER_AGGREGATE.
+        Transaction[] transactions = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1).Select(t =>
+        {
+            FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxSigsPerTx)
+                .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(t * 1000 + i)), default))];
+            Transaction transaction = new()
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)deps.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize(deps))]
+            };
+            transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
+            return transaction;
+        })];
+        byte[] body = kind == "package" ? InclusionList(ChunkBytes, transactions) : Wrapper(ChunkBytes, kind == "wrapper by hash", transactions);
+        LeanDescriptor descriptor = kind == "package"
+            ? LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+                LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)), body, out LeanChunkTree tree)
+            : Describe(body, out tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+
+        await Until(() => node.Transport.CompletionBytes == 0 && node.Transport.AssemblyCount == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Penalties, Is.Empty);
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.False);
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False, "neither admitted nor relayed");
+            Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False, "refused before proof verification");
+            Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty, "a refused wrapper is not recovered");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockDependencySets()
+    {
+        static FrameDependency Sphincs(int i) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default);
+        static FrameDependency Stark(int i) => new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default);
+        int maxStark = Eip8288Constants.MaxLeanStarkDepsPerBlock;
+        int maxDeps = Eip8288Constants.MaxDepsPerBlock;
+        yield return new TestCaseData(Enumerable.Range(0, maxStark).Select(Stark).Concat(Enumerable.Range(0, maxDeps - maxStark).Select(Sphincs)).ToArray(), true)
+            .SetName("At MAX_DEPS_PER_BLOCK and MAX_LEANSTARK_DEPS_PER_BLOCK");
+        yield return new TestCaseData(Enumerable.Range(0, maxDeps + 1).Select(Sphincs).ToArray(), false).SetName("Above MAX_DEPS_PER_BLOCK");
+        yield return new TestCaseData(Enumerable.Range(0, maxStark + 1).Select(Stark).ToArray(), false).SetName("Above MAX_LEANSTARK_DEPS_PER_BLOCK");
+        yield return new TestCaseData(new[] { Sphincs(0), new FrameDependency(0x12, default, default) }, false).SetName("Scheme outside the profile");
+    }
+
+    [TestCaseSource(nameof(BlockDependencySets))]
+    public async Task Sidecar_is_sought_only_for_blocks_within_the_profile_and_block_limits(FrameDependency[] dependencies, bool sought)
+    {
+        using LeanTestNode node = new(manualTime: false);
+        FakeLink a = new();
+        node.Connect(a);
+        BlockHeader header = LeanTransportTests.ProofHeader([]);
+        header.RecursiveStark = null;
+        // dependencies(block) is read from the frames alone, so one frame may carry the whole set.
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+        };
+
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(sought ? 2 : 10));
+        Task<RecursiveStark?> fetch = node.Transport.TryGetAsync(new Block(header, new BlockBody([transaction], [])), deadline.Token);
+        if (sought) await Until(() => a.Sent<GetObjectsMessage>().Length > 0);
+
+        Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
+        Assert.That(a.Sent<GetObjectsMessage>(), sought ? Is.Not.Empty : Is.Empty);
+    }
+
+    [Test]
+    public async Task Completed_body_awaiting_validation_expires_at_its_deadline()
+    {
+        using LeanTestNode node = new();
+        using ManualResetEventSlim gate = new(false);
+        node.Verifier.Gate = gate;
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        byte[] body = Wrapper(ChunkBytes, false, FrameTransaction(18));
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+        await node.Verifier.Entered.Task.WaitAsync(Timeout);
+
+        node.Tick(LeanProtocol.MaxAssemblyIdle);
+        gate.Set();
+        await Until(() => node.Transport.CompletionBytes == 0 && node.Transport.AssemblyCount == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False);
+            Assert.That(node.Pending, Is.Empty, "expiry cancels admission of a body still being validated");
+            Assert.That(a.Penalties, Is.Empty);
         }
     }
 
@@ -228,6 +493,8 @@ public class LeanObjectTransportTests
         yield return new TestCaseData("branch depth").SetName("Wrong branch depth");
         yield return new TestCaseData("bad branch").SetName("Bad branch");
         yield return new TestCaseData("duplicate in request").SetName("Second chunk for one index in a request");
+        yield return new TestCaseData("out of order").SetName("Chunk skips the next requested index");
+        yield return new TestCaseData("wrong response type").SetName("Objects answers a GetChunks request");
         yield return new TestCaseData("other object").SetName("Chunk names another object");
         yield return new TestCaseData("served missing").SetName("Served with chunks missing");
         yield return new TestCaseData("complete other object").SetName("Complete names another object");
@@ -267,6 +534,12 @@ public class LeanObjectTransportTests
                 break;
             case "other object":
                 Deliver(node, peer, new ChunkMessage(1, other.ObjectId, 0, body.AsMemory(0, ChunkBytes), tree.GetBranch(0)));
+                break;
+            case "out of order":
+                Deliver(node, peer, Chunk(1, descriptor, body, tree, request.Indices[1]));
+                break;
+            case "wrong response type":
+                node.Transport.OnObjects(peer, new ObjectsMessage(1, [LeanObjectResult.Of(LeanResultStatus.Busy)]));
                 break;
             case "served missing":
                 Serve(node, peer, request, descriptor, body, tree, count: 1);

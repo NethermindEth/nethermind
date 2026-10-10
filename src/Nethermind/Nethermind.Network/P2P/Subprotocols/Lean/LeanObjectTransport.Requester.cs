@@ -126,11 +126,13 @@ public sealed partial class LeanObjectTransport
             if (FindLive<LeanChunksRequest>(peer, chunk.RequestId, outbox) is { } live)
             {
                 LeanDescriptor descriptor = live.Assembly.Descriptor;
-                position = Array.IndexOf(live.Indices, chunk.Index, live.Next);
-                if (chunk.ObjectId != descriptor.ObjectId || position < 0)
-                    Violation(peer, $"unrequested chunk {chunk.Index} of {chunk.ObjectId.ToShortString()}", outbox);
+                // Chunks arrive in request order, so each must be the next expected index; skipped or repeated ones are violations.
+                position = live.Next;
+                if (chunk.ObjectId != descriptor.ObjectId || position >= live.Indices.Length || live.Indices[position] != chunk.Index)
+                    Violation(peer, $"chunk {chunk.Index} of {chunk.ObjectId.ToShortString()} is not the next requested index", outbox);
                 else if (chunk.Data.Length != descriptor.ChunkLength(chunk.Index) || chunk.Branch.Length != descriptor.Depth)
                     Violation(peer, $"chunk {chunk.Index} geometry does not match {descriptor}", outbox);
+                else if (live.Cancelled) Answer(live, position);
                 else request = live;
             }
         }
@@ -147,6 +149,13 @@ public sealed partial class LeanObjectTransport
         outbox.Flush();
     }
 
+    /// <summary>Consumes a request's credit for the next index of a cancelled request, whose payload is discarded unhashed.</summary>
+    private static void Answer(LeanChunksRequest request, int position)
+    {
+        request.Next = position + 1;
+        request.Answered[position] = true;
+    }
+
     private void AcceptChunk(LeanPeer peer, LeanChunksRequest request, int position, in LeanChunkView chunk, bool valid, Outbox outbox)
     {
         LeanAssembly assembly = request.Assembly;
@@ -155,15 +164,21 @@ public sealed partial class LeanObjectTransport
             Violation(peer, $"bad branch for chunk {chunk.Index} of {assembly.Descriptor}", outbox);
             return;
         }
-        request.Next = position + 1;
-        request.Answered[position] = true;
+        Answer(request, position);
+        if (request.Cancelled) return;
         int index = chunk.Index;
         if (assembly.InFlight[index] == peer) assembly.InFlight[index] = null;
         Interlocked.Increment(ref _stats.ChunksReceived);
+        // A valid first response for a requested index advances the request, even when another peer already supplied the
+        // chunk; only a newly verified missing chunk advances the assembly.
+        long now = _clock.GetTimestamp();
+        request.LastProgress = now;
+        request.Progressed = true;
+        peer.Stalls = 0;
         if (assembly.Dropped || assembly.Queued) return;
         if (assembly.Chunks[index] is { } existing)
         {
-            // An identical duplicate is neither allocated again nor counted as progress.
+            // An identical duplicate is neither allocated again nor counted as assembly progress.
             if (!existing.AsSpan().SequenceEqual(chunk.Data)) Violation(peer, $"conflicting chunk {index} of {assembly.Descriptor}", outbox);
             return;
         }
@@ -178,11 +193,10 @@ public sealed partial class LeanObjectTransport
         assembly.Chunks[index] = chunk.Data.ToArray();
         assembly.ChargedTo[index] = peer;
         assembly.Received++;
-        long now = _clock.GetTimestamp();
         assembly.Updated = now;
-        request.LastProgress = now;
-        request.Progressed = true;
-        peer.Stalls = 0;
+        // A new chunk of a direct recovery object also advances the wrappers waiting on it.
+        foreach (LeanAssembly dependent in assembly.Dependents)
+            if (!dependent.Dropped) dependent.Updated = now;
         LeanMetrics.ChunkReceived();
         if (assembly.IsComplete) TryComplete(assembly, outbox);
     }
@@ -200,6 +214,12 @@ public sealed partial class LeanObjectTransport
                 if (message.ObjectId != assembly.Descriptor.ObjectId) Violation(peer, "Complete names another object", outbox);
                 else if (message.Status == LeanCompleteStatus.Served && Array.IndexOf(request.Answered, false) >= 0)
                     Violation(peer, "Served with chunks missing", outbox);
+                else if (request.Cancelled)
+                {
+                    // Any terminal status releases a cancelled request's slot, including Served crossing Cancel.
+                    peer.Live.Remove(request.Id);
+                    Schedule(outbox, _clock.GetTimestamp());
+                }
                 else
                 {
                     long now = _clock.GetTimestamp();
@@ -230,7 +250,10 @@ public sealed partial class LeanObjectTransport
             LeanObjectsRequest? request = FindLive<LeanObjectsRequest>(peer, message.RequestId, outbox);
             if (request is not null)
             {
-                string? error = CheckObjects(request.Selectors, message.Results);
+                // After cancellation only the terminal structure is checked; returned descriptors are neither checked nor used.
+                string? error = request.Cancelled
+                    ? message.Results.Length != request.Selectors.Length ? "Objects results do not match selectors" : null
+                    : CheckObjects(request.Selectors, message.Results);
                 if (error is not null) Violation(peer, error, outbox);
                 else
                 {
@@ -268,7 +291,8 @@ public sealed partial class LeanObjectTransport
             if (request is not null)
             {
                 string? error = message.Results.Length != request.Hashes.Length ? "Transactions results do not match hashes" : null;
-                for (int i = 0; error is null && i < message.Results.Length; i++)
+                // After cancellation the envelopes are discarded without hashing.
+                for (int i = 0; error is null && !request.Cancelled && i < message.Results.Length; i++)
                     if (message.Results[i].Status == LeanResultStatus.Ok && ValueKeccak.Compute(message.Results[i].Envelope) != request.Hashes[i])
                         error = "transaction envelope does not match its hash";
                 if (error is not null) Violation(peer, error, outbox);
@@ -329,16 +353,24 @@ public sealed partial class LeanObjectTransport
         }
     }
 
+    /// <summary>Sends Cancel and marks the request; it keeps its slot until a terminal response or its local expiry.</summary>
     private void Cancel(LeanPeer peer, LeanOutgoingRequest request)
     {
         Outbox outbox = new();
         lock (_gate)
         {
-            if (peer.Closed || !peer.Live.Remove(request.Id)) return;
-            Fail(request, peer);
-            outbox.Send(peer, new CancelMessage(request.Id));
+            if (peer.Closed || !peer.Live.TryGetValue(request.Id, out LeanOutgoingRequest? live) || live != request) return;
+            MarkCancelled(peer, request, outbox);
         }
         outbox.Flush();
+    }
+
+    private void MarkCancelled(LeanPeer peer, LeanOutgoingRequest request, Outbox outbox)
+    {
+        if (request.Cancelled) return;
+        request.Cancelled = true;
+        Fail(request, peer);
+        outbox.Send(peer, new CancelMessage(request.Id));
     }
 
     private void Tick()
@@ -376,9 +408,11 @@ public sealed partial class LeanObjectTransport
             foreach (LeanOutgoingRequest request in expired)
             {
                 peer.Live.Remove(request.Id);
+                LeanMetrics.Record(0, LeanEvent.RequestExpired);
+                // A cancelled request already released its work and told the responder; expiry only frees its slot.
+                if (request.Cancelled) continue;
                 Fail(request, peer);
                 if (request is LeanChunksRequest) outbox.Send(peer, new CancelMessage(request.Id));
-                LeanMetrics.Record(0, LeanEvent.RequestExpired);
                 if (request.Progressed) continue;
                 // Isolated stalls are tolerated; repeated stalls throttle the source for a while.
                 if (++peer.Stalls >= LeanLimits.MaxStalledRequests)
@@ -391,19 +425,31 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Expires assemblies on a timer independent of incoming messages; only a newly verified chunk refreshes idleness.</summary>
+    /// <summary>Expires assemblies on a timer independent of incoming messages.</summary>
+    /// <remarks>
+    /// Only retrieval progress refreshes idleness: a newly verified missing chunk, a newly resolved missing transaction, or a
+    /// new chunk of an object recovering one. Completed bodies awaiting validation or recovery keep their deadlines: expiry
+    /// releases a body still queued and cancels the work of one being processed.
+    /// </remarks>
     private void ExpireAssemblies(long now, Outbox outbox)
     {
         List<LeanAssembly>? expired = null;
         foreach (LeanAssembly assembly in _assemblies.Values)
-            if (!assembly.Queued && (_clock.GetElapsedTime(assembly.Updated, now) >= LeanProtocol.MaxAssemblyIdle
+            if (!assembly.Dropped && (_clock.GetElapsedTime(assembly.Updated, now) >= LeanProtocol.MaxAssemblyIdle
                 || _clock.GetElapsedTime(assembly.Created, now) >= LeanProtocol.MaxAssemblyAge))
                 (expired ??= []).Add(assembly);
         if (expired is null) return;
         foreach (LeanAssembly assembly in expired)
         {
+            if (assembly.Started)
+            {
+                // The processing task releases the body and the assembly once its cancelled work unwinds.
+                if (assembly.Processing is { IsCancellationRequested: false } processing) outbox.Cancel(processing);
+                continue;
+            }
             _assemblies.Remove(assembly.Descriptor.ObjectId);
             CancelRequestsFor(assembly, outbox);
+            if (assembly.Queued) ReleaseCompletion(assembly);
             Drop(assembly);
             Interlocked.Increment(ref _stats.Expired);
             LeanMetrics.Record(assembly.Descriptor.Kind, LeanEvent.Expired);
@@ -418,14 +464,9 @@ public sealed partial class LeanObjectTransport
         {
             cancelled?.Clear();
             foreach (LeanOutgoingRequest request in peer.Live.Values)
-                if (request is LeanChunksRequest chunks && chunks.Assembly == assembly) (cancelled ??= []).Add(chunks);
+                if (request is LeanChunksRequest { Cancelled: false } chunks && chunks.Assembly == assembly) (cancelled ??= []).Add(chunks);
             if (cancelled is null) continue;
-            foreach (LeanChunksRequest request in cancelled)
-            {
-                peer.Live.Remove(request.Id);
-                ReleaseInFlight(request, peer);
-                outbox.Send(peer, new CancelMessage(request.Id));
-            }
+            foreach (LeanChunksRequest request in cancelled) MarkCancelled(peer, request, outbox);
         }
     }
 
