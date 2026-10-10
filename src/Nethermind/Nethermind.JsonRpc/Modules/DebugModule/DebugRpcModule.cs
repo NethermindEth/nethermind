@@ -449,6 +449,10 @@ public class DebugRpcModule(
         BlockHeader? header = TryGetHeaderAndCheckState(blockNumber, out ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>? headerError);
         if (headerError is not null)
         {
+            if (headerError.ErrorCode == ErrorCodes.ResourceNotFound
+                && headerError.Result.Error == BlockFinderExtensions.HeaderNotFound
+                && blockNumber.Type == BlockParameterType.BlockNumber)
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound, headerError.IsTemporary);
             return headerError;
         }
 
