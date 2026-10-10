@@ -123,7 +123,7 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
         }
         _statusReceived = true;
         ReceivedProtocolInitMsg(status);
-        LeanPeer? peer = _transport.Accept(this, status);
+        LeanPeer? peer = _transport.Accept(this, status, Session.Node?.Id);
         if (peer is null)
         {
             // A well-formed incompatible Status disables only this capability; other protocols keep the connection.

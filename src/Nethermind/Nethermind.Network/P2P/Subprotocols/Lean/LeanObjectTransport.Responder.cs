@@ -35,7 +35,7 @@ public sealed partial class LeanObjectTransport
                 outbox.Flush();
                 return;
             }
-            bool busy = !enabled || peer.Serving.Count >= LeanProtocol.MaxRequestsPerPeer;
+            bool busy = !enabled || peer.ServingFull;
             LeanSelector[] selectors = message.Selectors;
             LeanObjectResult[] results = new LeanObjectResult[selectors.Length];
             int remaining = LeanProtocol.MaxMetadataResponseBytes - ResponseOverhead - selectors.Length * NonOkResultBytes;
@@ -77,7 +77,7 @@ public sealed partial class LeanObjectTransport
                 return;
             }
             LeanCompleteStatus? status = null;
-            if (!enabled || peer.Serving.Count >= LeanProtocol.MaxRequestsPerPeer) status = LeanCompleteStatus.Busy;
+            if (!enabled || peer.ServingFull) status = LeanCompleteStatus.Busy;
             else if (!_store.TryGet(message.ObjectId, out entry)) status = LeanCompleteStatus.Unavailable;
             else if (message.Indices[^1] >= entry.Descriptor.ChunkCount)
             {
@@ -192,7 +192,7 @@ public sealed partial class LeanObjectTransport
                 outbox.Flush();
                 return;
             }
-            busy = !IsEnabled || peer.Serving.Count >= LeanProtocol.MaxRequestsPerPeer;
+            busy = !IsEnabled || peer.ServingFull;
         }
 
         ValueHash256[] hashes = message.Hashes;
