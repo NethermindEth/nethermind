@@ -635,7 +635,7 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
-    public async Task Scheduled_production_proof_extends_a_statement_whose_transactions_were_partly_included()
+    public async Task Stale_production_statement_is_narrowed_to_its_pending_transactions_and_then_extended()
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new();
@@ -648,24 +648,36 @@ public class Eip8288BlockProductionTests
             Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, pending[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.Accepted));
         }
-        // A statement proven for a body whose first transaction a block has since included.
+        // A statement proven for an earlier body, one of whose transactions a block has since included.
         FrameDependency included = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-included"), default);
         List<FrameDependency> stale = Eip8288Dependencies.Canonicalize([.. pending, included]);
         proofs.AddCachedRecursive(stale, Eip8288Dependencies.ComputeDepsHash(stale).ToByteArray());
         FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-added"), default);
         proofs.AddVerified([added], [[1]], null);
         Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-
-        using CancellationTokenSource deadline = new();
-        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
-
+        List<FrameDependency> narrowed = Eip8288Dependencies.Canonicalize(pending);
         List<FrameDependency> full = Eip8288Dependencies.Canonicalize([.. pending, added]);
+        using CancellationTokenSource deadline = new();
+
+        Block? first = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+        Assert.That(() => proofs.TryGetRecursiveProof(narrowed, out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first!.Transactions, Is.Empty);
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one discarding call narrows the stale statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { stale }));
+            Assert.That(verifier.LastInput.Discards, Is.EqualTo(new[] { included }));
+            Assert.That(verifier.LastInput.Deps, Is.Empty);
+        }
+
+        Block? next = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
         Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call extends the stale statement");
-            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { stale }));
-            Assert.That(verifier.LastInput.Discards, Is.EqualTo(new[] { included }));
+            Assert.That(next!.Transactions, Has.Length.EqualTo(pending.Length), "the narrowed statement makes its transactions includable");
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one native call extends the narrowed statement to the whole body");
+            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { narrowed }));
+            Assert.That(verifier.LastInput.Discards, Is.Empty);
             Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }));
         }
     }
