@@ -137,7 +137,7 @@ public partial struct SszWitnessCodes
     public WitnessCode Bytes { get; set; }
 }
 
-/// <summary>A witness code.</summary>
+/// <summary>Contract code from the witness, held in executable code memory when decoded so the EVM runs it in place.</summary>
 public sealed class WitnessCode
 {
     /// <summary>Copies <paramref name="code"/> into executable code memory, which the EVM runs it from without another copy.</summary>

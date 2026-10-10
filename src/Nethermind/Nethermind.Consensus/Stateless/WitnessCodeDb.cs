@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -35,4 +36,10 @@ internal sealed class WitnessCodeDb : MemDb, IWorldStateScopeProvider.ICodeDb
         _codes.TryGetValue(codeHash, out ReadOnlyMemory<byte> code) ? code : _deployed.GetCode(in codeHash);
 
     public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => _deployed.BeginCodeWrite();
+
+    /// <remarks>Also serves the witness codes, copied out, so a key-value reader sees the same codes as <see cref="GetCode"/>.</remarks>
+    public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+        key.Length == ValueHash256.MemorySize && _codes.TryGetValue(new ValueHash256(key), out ReadOnlyMemory<byte> code)
+            ? code.ToArray()
+            : base.Get(key, flags);
 }

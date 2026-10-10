@@ -108,7 +108,8 @@ public class WitnessTests
         using Witness witness = decoded.ToWitness();
         IReadOnlyList<ReadOnlyMemory<byte>> decodedCodes = (IReadOnlyList<ReadOnlyMemory<byte>>)witness.Codes;
 
-        TrieStoreScopeProvider provider = new(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        IKeyValueStoreWithBatching codeDb = witness.CreateCodeDb();
+        TrieStoreScopeProvider provider = new(new RawTrieStore(witness.CreateNodeStorage()), codeDb, UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
         Assert.That(provider.TryBeginScope(null, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         using IWorldStateScopeProvider.IScope opened = scope;
 
@@ -124,6 +125,7 @@ public class WitnessTests
                 ReadOnlyMemory<byte> code = opened.CodeDb.GetCode(ValueKeccak.Compute(codes[i]));
                 Assert.That(code.ToArray(), Is.EqualTo(codes[i]));
                 Assert.That(code.Equals(decodedCodes[i]), Is.True, "served as decoded rather than copied");
+                Assert.That(codeDb.Get(ValueKeccak.Compute(codes[i]).Bytes), Is.EqualTo(codes[i]), "key-value view");
             }
 
             Assert.That(opened.CodeDb.GetCode(deployedHash).ToArray(), Is.EqualTo(deployed));
