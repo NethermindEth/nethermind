@@ -206,7 +206,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private Result<Transaction> ToCallTransaction(TransactionForRpc call, BlockHeader header)
         {
             IReleaseSpec spec = specProvider.GetSpec(header);
-            Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: spec);
+            Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
             if (!result.Success(out Transaction? tx, out _))
                 return result;
 

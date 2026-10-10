@@ -381,6 +381,10 @@ public partial class EthRpcModule(
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
             return Task.FromResult(feeError);
 
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return Task.FromResult(ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput));
+        rpcTx = (SignableTransactionForRpc)requested;
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
@@ -423,6 +427,10 @@ public partial class EthRpcModule(
         {
             return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
         }
+
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return ResultWrapper<SignTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
+        rpcTx = (SignableTransactionForRpc)requested;
 
         Result<Transaction> txResult = rpcTx.ToSignableTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
@@ -506,6 +514,10 @@ public partial class EthRpcModule(
 
     public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return ResultWrapper<FillTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
+        rpcTx = (SignableTransactionForRpc)requested;
+
         BlockHeader? head = _blockFinder.Head?.Header;
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
@@ -555,7 +567,7 @@ public partial class EthRpcModule(
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
@@ -563,7 +575,10 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
-            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
+            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
+                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
+                rpcTx, BlockParameter.Latest, stateOverride: null);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 

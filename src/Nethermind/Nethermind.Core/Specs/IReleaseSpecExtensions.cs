@@ -51,6 +51,20 @@ public static partial class IReleaseSpecExtensions
         public bool MCopyIncluded => spec.IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => spec.IsEip4844Enabled;
         public bool IsAuthorizationListEnabled => spec.IsEip7702Enabled;
+
+        /// <summary>Whether a transaction of <paramref name="type"/> is valid under this spec; types without a fork flag, such as
+        /// chain-specific ones, are left to their own validation.</summary>
+        public bool IsTxTypeEnabled(TxType type) => type switch
+        {
+            TxType.AccessList => spec.IsEip2930Enabled,
+            TxType.EIP1559 => spec.IsEip1559Enabled,
+            TxType.Blob => spec.IsEip4844Enabled,
+            TxType.SetCode => spec.IsEip7702Enabled,
+            // Without this arm a pooled frame transaction is the one type that survives a head not enabling EIP-8141.
+            TxType.FrameTx => spec.IsEip8141Enabled,
+            _ => true,
+        };
+
         public bool RequestsEnabled => spec.ConsolidationRequestsEnabled || spec.WithdrawalRequestsEnabled || spec.DepositsEnabled || spec.BuilderRequestsEnabled;
         public bool InclusionListsEnabled => spec.IsEip7805Enabled;
 

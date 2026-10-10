@@ -1384,7 +1384,7 @@ public partial class EthRpcModuleTests
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
         transaction.GasPrice = null;
 
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
@@ -1405,7 +1405,7 @@ public partial class EthRpcModuleTests
             .WithData(code)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
-        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        LegacyTransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
 
         transaction.GasPrice = null;
 
