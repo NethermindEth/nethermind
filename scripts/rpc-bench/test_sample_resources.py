@@ -13,6 +13,9 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -159,6 +162,29 @@ class NormalizeTests(unittest.TestCase):
             sample_resources.normalize(str(self.path), 500)
         summary = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertEqual(summary["cpu_ms_per_request"], 90.0)
+
+    @unittest.skipUnless(os.name != "nt" and shutil.which("bash") and shutil.which("jq"), "POSIX bash and jq required")
+    def test_jsonbench_normalizes_flat_and_nested_completed_request_counts(self):
+        here = Path(__file__).parent
+        source = (here / "run-jsonbench.sh").read_text(encoding="utf-8")
+        start = source.index('  if [[ -n "${RESOURCE_SAMPLER_OUT:-}" && -s "$RESOURCE_SAMPLER_OUT" ]]; then')
+        block = source[start:source.index('\n  {', start)]
+        for metric, expected in (({"count": 1000}, 1000), ({"values": {"count": 1000}}, 1000), ({}, 0), ({"count": 0}, 0)):
+            with self.subTest(metric=metric):
+                self._write()
+                (self.path.parent / "summary.json").write_text(json.dumps({"metrics": {"http_reqs": metric}}), encoding="utf-8")
+                result = subprocess.run(
+                    ["bash", "-c", 'source "$1"; ' + block, "bash", str(here / "lib.sh")],
+                    env={**os.environ, "HERE": str(here), "OUT_DIR": str(self.path.parent), "RESOURCE_SAMPLER_OUT": str(self.path)},
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                summary = json.loads(self.path.read_text(encoding="utf-8"))
+                self.assertEqual(summary["requests"], expected)
+                if expected:
+                    self.assertEqual(summary["cpu_ms_per_request"], 45.0)
+                else:
+                    self.assertNotIn("cpu_ms_per_request", summary)
 
     def test_a_non_summary_file_is_rejected_without_a_traceback(self):
         self.path.write_text(json.dumps({"not": "a summary"}), encoding="utf-8")

@@ -218,7 +218,7 @@ run_cell() {
 # Percentiles above the failure rate describe failures, not latency — say so per cell.
 report_fail_rate() {
   local rate
-  rate="$(json_number "$1/summary.json" '.metrics.http_req_failed.values.rate * 100' "")"
+  rate="$(json_number "$1/summary.json" '(.metrics.http_req_failed.values.rate // .metrics.http_req_failed.rate // .metrics.http_req_failed.value) * 100' "")"
   [[ -n "$rate" ]] || return 0
   if awk -v r="$rate" -v m="${JB_MAX_FAIL_RATE_PCT:-1}" 'BEGIN{exit !(r > m)}'; then
     echo "::warning::$2: ${rate}% of requests failed — percentiles at or above p$(awk -v r="$rate" 'BEGIN{printf "%d", 100-r}') describe failures, not latency"
@@ -259,7 +259,7 @@ warm_node() {
       echo "::warning::warmup for $2 failed — measured cells may be cold"; return 0
     fi
     WARMED_SECONDS="$WARMUP_SECONDS"
-    got="$(json_number "$warm_cell/summary.json" '.metrics.http_reqs.values.count' 0)"
+    got="$(json_number "$warm_cell/summary.json" '(.metrics.http_reqs.values.count // .metrics.http_reqs.count)' 0)"
     if (( got > 0 )); then
       WARMED_RPS=$(( got / WARMUP_SECONDS ))
       (( got * 10 >= warm_rps * WARMUP_SECONDS * 8 )) || echo "::warning::warmup for $2 delivered ${got} of $(( warm_rps * WARMUP_SECONDS )) requests — cells may be under-warmed"
@@ -518,16 +518,17 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
+    [[ -z "$RPS_LIST" ]] || warm_node "generic" "$label" "" "$ctype"
     for rps in $RPS_LIST; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
         echo "-- ISO ${label} ${scen} @ rps=${rps} --"
-        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" "" "$cname" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
       mcell="$OUT_DIR/mix/${label}/${rps}"
       echo "-- MIX ${label} @ rps=${rps} --"
-      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" "" "$cname" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
     done
   fi

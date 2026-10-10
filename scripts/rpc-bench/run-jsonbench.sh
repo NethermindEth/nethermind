@@ -458,7 +458,7 @@ PY
   fi
 
   if [[ -n "${RESOURCE_SAMPLER_OUT:-}" && -s "$RESOURCE_SAMPLER_OUT" ]]; then
-    delivered="$(json_number "$OUT_DIR/summary.json" '.metrics.http_reqs.values.count' 0)"
+    delivered="$(json_number "$OUT_DIR/summary.json" '(.metrics.http_reqs.values.count // .metrics.http_reqs.count)' 0)"
     if [[ "$delivered" =~ ^[0-9]+$ && "$delivered" -gt 0 ]]; then
       python3 "$HERE/sample-resources.py" normalize --out "$RESOURCE_SAMPLER_OUT" --requests "$delivered" || true
     else
