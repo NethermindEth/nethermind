@@ -70,7 +70,7 @@ jobs:
     name: Build ZisK guest
     runs-on: ubuntu-latest
     env:
-      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -79,9 +79,9 @@ jobs:
         uses: actions/setup-dotnet@v6
 
       - name: Log in to Docker Hub
-        # Skipped wherever the secret is unavailable (forks, Dependabot, callers
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
         # that don't pass it); those runs pull anonymously as before.
-        if: env.DOCKER_HUB_USERNAME != ''
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
@@ -154,7 +154,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.matrix.outputs.shards) }}
     env:
-      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
       GAS: ${{ matrix.gas }}
       SHARD: ${{ matrix.shard }}
       SHARDS: ${{ matrix.shards }}
@@ -217,9 +217,9 @@ jobs:
           mv "$RUNNER_TEMP/manifest.run.json" "$RUNNER_TEMP/manifest.json"
 
       - name: Log in to Docker Hub
-        # Skipped wherever the secret is unavailable (forks, Dependabot, callers
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
         # that don't pass it); those runs pull anonymously as before.
-        if: env.DOCKER_HUB_USERNAME != ''
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
