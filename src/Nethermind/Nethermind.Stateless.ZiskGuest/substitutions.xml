@@ -48,9 +48,10 @@
     <type fullname="Nethermind.Core.Extensions.ZkEvmBitOperations">
       <method signature="System.Boolean get_HasByteReverse()" body="stub" value="true" />
     </type>
-    <!-- Only a virtual ToString() reaches these, and the guest stringifies a block, header, transaction or
-         signature solely into a failure message it never publishes; the formatting closure (DateTime, time
-         zones, number formats) is ~180 KB of code. Stubs cannot return a string, so they throw instead. -->
+    <!-- Formatting a block, header, transaction or signature pulls in DateTime, time zone and number
+         formatting. The guest reaches these only from log sites behind a NullLogManager and from failure
+         messages it never publishes; a throw exits through ZkvmThrow with the same failure output. Stubs
+         cannot return a string, so they throw instead. -->
     <type fullname="Nethermind.Core.Block">
       <method signature="System.String ToString(Nethermind.Core.Block/Format)" body="remove" />
     </type>
