@@ -1446,16 +1446,17 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(ulong number, Hash256 blockHash)
         {
+            // Recalculating progress can publish a bound below a concurrently advanced head.
+            // The captured canonical head is already downloaded, regardless of that stale bound.
+            Block? head = Head;
+            if (head is not null && blockHash == head.Hash)
+            {
+                return number == head.Number;
+            }
+
             if (number > BestKnownNumber)
             {
                 return false;
-            }
-
-            // IsKnownBlock will be mainly called when new blocks are incoming
-            // and these are very likely to be all at the head of the chain
-            if (blockHash == Head?.Hash)
-            {
-                return true;
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, false);
