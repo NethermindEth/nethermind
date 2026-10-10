@@ -958,7 +958,6 @@ jobs:
           echo "Snapshot sets: ${db_sources[*]}${REFERENCE_DB_SOURCE:+ (reference: ${REFERENCE_DB_SOURCE})}; outputs under ${BENCH_TEMP} and ${DIAG_DIR}"
 
       - name: Reclaim root disk before pulling
-        if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
         # Filling the disk docker writes to kills the daemon and takes the runner with it. Docker and containerd may
         # live on /data: check their filesystems for image space while reserving headroom on / for the runner;
@@ -967,6 +966,7 @@ jobs:
           KEEP_IMAGES: |
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
+            ${{ needs.resolve.outputs.baseline_image }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
         run: |

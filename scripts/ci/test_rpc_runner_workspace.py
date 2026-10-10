@@ -185,6 +185,8 @@ journalctl() { :; }
         return preamble + body
 
     def test_disk_reclaim_preserves_active_job_files(self):
+        self.assertNotRegex(self.step("Reclaim root disk before pulling"), r"(?m)^        if:")
+        self.assertIn("needs.resolve.outputs.baseline_image", self.step("Reclaim root disk before pulling"))
         temp = self.root / "actions-runner/_work/_temp"
         temp.mkdir(parents=True)
         for name in ("Reclaim root disk before pulling", "Reclaim root disk after the run"):
