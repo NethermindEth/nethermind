@@ -39,8 +39,8 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
             [LondonBlockNumber] = LondonGnosis.Instance,
             [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
             [CancunTimestamp] = CancunGnosis.Instance,
-            [PragueTimestamp] = PragueGnosis.Instance,
-            [OsakaTimestamp] = OsakaGnosis.Instance,
+            [PragueTimestamp] = new PragueGnosis { DepositContractAddress = Eip6110Constants.GnosisDepositContractAddress },
+            [OsakaTimestamp] = new OsakaGnosis { DepositContractAddress = Eip6110Constants.GnosisDepositContractAddress },
         },
         // 8626000000000000000000058750000000000000000000
         terminalTotalDifficulty: new UInt256(15847367919172845568ul, 12460455203863319017ul, 25349535ul)) =>
