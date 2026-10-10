@@ -40,10 +40,31 @@ public class MaterializedLogsResponseWriterTests
         {
             Assert.That(writer.Bytes, Is.EqualTo(expected.WrittenSpan.ToArray()));
             Assert.That(writer.FlushCount > 1, Is.EqualTo(count >= 128 && !indented));
-            if (count >= 128 && !indented) Assert.That(writer.PeakUnflushedBytes, Is.LessThan(expected.WrittenCount / 2));
+            if (count >= 128 && !indented) Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(64 * 1024 + 1024));
         }
         using JsonDocument document = JsonDocument.Parse(writer.Bytes);
         Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(count));
+    }
+
+    [TestCase(false, TestName = "MaterializedLogs_NullEntriesPreserveBytes")]
+    [TestCase(true, TestName = "MaterializedLogs_OversizedEntryPreservesBytesAndBackpressure")]
+    public async Task Materialized_logs_unusual_entries_preserve_exact_bytes(bool oversized)
+    {
+        using JsonRpcResponse response = CreateLogsResponse(128, typed: true, new JsonRpcId(42), oversizedDataBytes: oversized ? 128 * 1024 : 0);
+        ArrayPoolList<FilterLog> logs = (ArrayPoolList<FilterLog>)((ResultWrapper<IEnumerable<FilterLog>>)response).Data!;
+        logs[0] = null!;
+        ArrayBufferWriter<byte> expected = new();
+        JsonRpcResponseWriter.Write(expected, response, EthereumJsonSerializer.JsonOptions);
+        RecordingPipeWriter writer = new();
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.Bytes, Is.EqualTo(expected.WrittenSpan.ToArray()));
+            Assert.That(writer.FlushCount, Is.GreaterThan(1));
+            Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(64 * 1024 + (oversized ? 256 * 1024 : 0) + 1024));
+        }
     }
 
     private static IEnumerable<TestCaseData> MaterializedLogIdCases()
@@ -84,6 +105,8 @@ public class MaterializedLogsResponseWriterTests
             {
                 Assert.That(write.IsCompleted, Is.False);
                 Assert.That(writer.FlushCount, Is.EqualTo(1));
+                Assert.That(writer.FirstFlushBytes, Is.LessThanOrEqualTo(16 * 1024 + 1024));
+                Assert.That(Encoding.UTF8.GetString(writer.Bytes), Does.Not.Contain("\"id\":42"));
                 Assert.That(pool.Returns, Is.Zero);
             }
             writer.Gate.SetResult(new FlushResult(false, false));
@@ -124,6 +147,30 @@ public class MaterializedLogsResponseWriterTests
                 Assert.That(pool.Returns, Is.Zero);
                 Assert.That(writer.FlushCount, Is.EqualTo(1));
                 Assert.That(Encoding.UTF8.GetString(writer.Bytes), Does.Not.EndWith("\"id\":42}"));
+            }
+        }
+        finally
+        {
+            response.Dispose();
+        }
+        Assert.That(pool.Returns, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Materialized_logs_buffer_commit_failure_does_not_retry_on_dispose()
+    {
+        TrackingLogPool pool = new();
+        JsonRpcResponse response = CreateLogsResponse(128, typed: true, new JsonRpcId(42), pool);
+        RecordingPipeWriter writer = new() { FailAdvance = true };
+        try
+        {
+            await Assert.ThrowsAsync<IOException>(async () =>
+                await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(writer.AdvanceCount, Is.EqualTo(1));
+                Assert.That(writer.FlushCount, Is.Zero);
+                Assert.That(pool.Returns, Is.Zero);
             }
         }
         finally
@@ -265,12 +312,12 @@ public class MaterializedLogsResponseWriterTests
         Assert.That(writer.FlushCount, Is.Zero);
     }
 
-    private static JsonRpcResponse CreateLogsResponse(int count, bool typed, JsonRpcId id, TrackingLogPool? pool = null, int shape = 0)
+    private static JsonRpcResponse CreateLogsResponse(int count, bool typed, JsonRpcId id, TrackingLogPool? pool = null, int shape = 0, int oversizedDataBytes = 0)
     {
         ArrayPoolList<FilterLog> logs = new(pool ?? (ArrayPool<FilterLog>)ArrayPool<FilterLog>.Shared, count);
         for (int i = 0; i < count; i++)
         {
-            byte[] data = new byte[64];
+            byte[] data = new byte[i == count / 2 && oversizedDataBytes > 0 ? oversizedDataBytes : 64];
             data[0] = (byte)i;
             data[^1] = 255;
             logs.Add(new FilterLog(i, 123, 456, TestItem.KeccakA, i / 2, TestItem.KeccakB, TestItem.AddressA,
@@ -310,8 +357,11 @@ public class MaterializedLogsResponseWriterTests
         private readonly ArrayBufferWriter<byte> _buffer = new();
         private int _flushed;
         public int FlushCount { get; private set; }
+        public int FirstFlushBytes { get; private set; }
         public long PeakUnflushedBytes { get; private set; }
         public int Failure { get; init; }
+        public bool FailAdvance { get; init; }
+        public int AdvanceCount { get; private set; }
         public bool SupportsUnflushedBytes { get; init; } = true;
         public CancellationToken LastToken { get; private set; }
         public TaskCompletionSource<FlushResult>? Gate { get; init; }
@@ -322,6 +372,8 @@ public class MaterializedLogsResponseWriterTests
         public override Span<byte> GetSpan(int sizeHint = 0) => _buffer.GetSpan(sizeHint);
         public override void Advance(int bytes)
         {
+            AdvanceCount++;
+            if (FailAdvance) throw new IOException("Buffer commit failed");
             _buffer.Advance(bytes);
             PeakUnflushedBytes = Math.Max(PeakUnflushedBytes, _buffer.WrittenCount - _flushed);
         }
@@ -332,6 +384,7 @@ public class MaterializedLogsResponseWriterTests
             cancellationToken.ThrowIfCancellationRequested();
             LastToken = cancellationToken;
             FlushCount++;
+            if (FlushCount == 1) FirstFlushBytes = _buffer.WrittenCount;
             _flushed = _buffer.WrittenCount;
             if (Failure == 1) throw new IOException("Transport failed");
             if (Gate is not null && FlushCount == 1) return new(Gate.Task);
