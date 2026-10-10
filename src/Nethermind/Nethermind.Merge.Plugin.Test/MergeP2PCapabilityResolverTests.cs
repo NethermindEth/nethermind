@@ -81,6 +81,26 @@ public class MergeP2PCapabilityResolverTests
     }
 
     [Test]
+    public void Resolve_advertises_eth73_only_when_enabled_alongside_eth72([Values] bool eip7594Enabled, [Values] bool announceTxSourceAndNonce)
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        releaseSpec.IsEip7594Enabled.Returns(eip7594Enabled);
+        specProvider.GetCurrentHeadSpec().Returns(releaseSpec);
+        using MergeP2PCapabilityResolver resolver = new(
+            poSSwitcher,
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.StorageWithReorgs, AnnounceTxSourceAndNonce = announceTxSourceAndNonce },
+            specProvider);
+
+        HashSet<Capability> capabilities = [];
+        resolver.Resolve(capabilities);
+
+        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(eip7594Enabled && announceTxSourceAndNonce));
+    }
+
+    [Test]
     public void Raises_Changed_when_eip7594_activation_changes()
     {
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();

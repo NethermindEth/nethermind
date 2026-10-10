@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -157,7 +158,7 @@ public class Eth72ProtocolHandler(
                 {
                     if (IsTransactionGossipAllowed())
                     {
-                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = DeserializeNewPooledTransactionHashes(message.Content);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -286,6 +287,15 @@ public class Eth72ProtocolHandler(
             default:
                 return base.HandleMessageCore(message);
         }
+    }
+
+    /// <summary>Decodes a received <c>NewPooledTransactionHashes</c> message in this protocol version's format.</summary>
+    protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
+        Deserialize<NewPooledTransactionHashesMessage72>(content);
+
+    /// <summary>Called when the transaction at <paramref name="index"/> of a received announcement is requested from this peer.</summary>
+    protected virtual void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
+    {
     }
 
     protected override void SendNewTransactionCore(Transaction tx)
@@ -473,6 +483,7 @@ public class Eth72ProtocolHandler(
                 && (_blobSupportEnabled || !supportsBlobs))
             {
                 TxShapeAnnouncements.Set(hash, (txSize, txType));
+                OnPooledTransactionRequested(msg, i);
                 hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
@@ -1696,7 +1707,9 @@ public class Eth72ProtocolHandler(
             NotifiedTransactions.Set(tx.Hash.ValueHash256);
         }
 
+        // Recording validates the transaction for sampling, which recovers its sender unless it is rejected first.
         AcceptTxResult? accepted = _sparseBlobPoolPeerRegistry.RecordTransaction(this, tx);
+        OnTransactionSubmitted(tx);
         if (accepted.HasValue)
         {
             ReportReceivedTransaction(accepted.Value);
@@ -1874,14 +1887,42 @@ public class Eth72ProtocolHandler(
         return BlobCellMask.Full;
     }
 
-    private void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
+    protected virtual void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
     {
         int count = txs.Count;
         ArrayPoolList<byte> types = new(count);
         ArrayPoolList<int> sizes = new(count);
         ArrayPoolList<ValueHash256> hashes = new(count);
+        NewPooledTransactionHashesMessage72 message = new(types, sizes, hashes, cellMask);
+        bool isTransferred = false;
+        try
+        {
+            AddAnnouncedTransactions(txs, types, sizes, hashes);
+            if (hashes.Count != 0)
+            {
+                // The session disposes the message on every path.
+                isTransferred = true;
+                Send(message);
+            }
+        }
+        finally
+        {
+            if (!isTransferred) message.Dispose();
+        }
+    }
 
-        for (int i = 0; i < count; i++)
+    /// <summary>Appends the announceable transactions of <paramref name="txs"/> to the announcement fields.</summary>
+    /// <param name="sources">When set, also collects each transaction's source address, skipping transactions without one.</param>
+    /// <param name="nonces">Collects each transaction's nonce; required when <paramref name="sources"/> is set.</param>
+    protected static void AddAnnouncedTransactions(
+        IReadOnlyList<Transaction> txs,
+        ArrayPoolList<byte> types,
+        ArrayPoolList<int> sizes,
+        ArrayPoolList<ValueHash256> hashes,
+        ArrayPoolList<Address>? sources = null,
+        ArrayPoolList<ulong>? nonces = null)
+    {
+        for (int i = 0; i < txs.Count; i++)
         {
             Transaction tx = txs[i];
             int announcementSize = GetAnnouncementSize(tx);
@@ -1890,21 +1931,24 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
+            if (sources is not null)
+            {
+                // Pool transactions always have a resolved sender. One without would never be announced to this peer,
+                // as ShouldNotifyTransactionCore has already marked it notified.
+                Debug.Assert(tx.SenderAddress is not null, $"Announced transaction {tx.Hash} has no resolved sender.");
+                if (tx.SenderAddress is not { } source)
+                {
+                    continue;
+                }
+
+                sources.Add(source);
+                nonces!.Add(tx.Nonce);
+            }
+
             types.Add((byte)tx.Type);
             sizes.Add(announcementSize);
             hashes.Add(tx.Hash!.ValueHash256);
             TxPool.Metrics.PendingTransactionsHashesSent++;
-        }
-
-        if (hashes.Count != 0)
-        {
-            Send(new NewPooledTransactionHashesMessage72(types, sizes, hashes, cellMask));
-        }
-        else
-        {
-            types.Dispose();
-            sizes.Dispose();
-            hashes.Dispose();
         }
     }
 

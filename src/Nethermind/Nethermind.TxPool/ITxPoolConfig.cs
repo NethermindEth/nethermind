@@ -25,6 +25,9 @@ public interface ITxPoolConfig : IConfig
         Description = "The EIP-8070 full-provider selection probability for normal sparse blob-pool nodes, in percent. Values are clamped to the protocol-compliant range `15..100`. Nodes with at least 64 custody columns act as supernodes and request every announced cell.")]
     int SparseBlobProviderProbabilityPercent { get; set; }
 
+    [ConfigItem(DefaultValue = "false", Description = "Whether to advertise the draft eth/73 protocol (EIP-8077), whose transaction announcements also carry each transaction's source address and nonce. Offered only alongside eth/72. Experimental.")]
+    bool AnnounceTxSourceAndNonce { get; set; }
+
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }
 
