@@ -50,6 +50,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly bool _blockAccessListsEverEnabled;
 
     private SyncStatusList _syncStatusList;
+    private bool _barrierFallbackLogged;
 
     private bool ShouldFinish => !_syncConfig.DownloadBlockAccessListsInFastSync || !_blockAccessListsEverEnabled || AllDownloaded;
     private bool AllDownloaded => (_syncPointers.LowestInsertedBlockAccessListBlockNumber ?? ulong.MaxValue) <= _barrier;
@@ -85,20 +86,78 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         }
 
         _pivotNumber = 0; // First reset in `InitializeFeed`.
+        // Resolved before `InitializeFeed` so that `IsFinished` holds after a restart without reactivating the feed.
+        _barrier = ResolveBarrier(logFallback: false);
     }
 
     public override void InitializeFeed()
     {
-        if (_pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != _syncConfig.AncientBlockAccessListsBarrierCalc)
+        ulong barrier = ResolveBarrier(logFallback: true);
+        if (_syncStatusList is null || _pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != barrier)
         {
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
-            _barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+            _barrier = barrier;
             if (_logger.IsInfo) _logger.Info($"Changed pivot in block access lists sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
             ResetSyncStatusList();
             InitializeMetadataDb();
         }
         base.InitializeFeed();
-        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - _syncConfig.AncientBlockAccessListsBarrierCalc);
+        _syncReport.FastBlockAccessLists.Reset(0, _pivotNumber - _barrier);
+    }
+
+    /// <summary>
+    /// Returns the configured barrier, raised to the last block before EIP-7928 activation when that is higher.
+    /// </summary>
+    /// <remarks>
+    /// No block below the activation has an access list, so the sync stops there instead of walking down to genesis.
+    /// The activation is found by a binary search over canonical headers, which covers both block number and timestamp
+    /// activations. When the pivot predates activation or a header in the search is missing, the configured barrier is kept.
+    /// </remarks>
+    private ulong ResolveBarrier(bool logFallback)
+    {
+        ulong barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+        BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out _);
+        if (pivotHeader is null || barrier >= pivotNumber || !_specProvider.GetSpec(pivotHeader).BlockLevelAccessListsEnabled)
+        {
+            return barrier;
+        }
+
+        if (!TryGetBlockAccessListsEnabled(barrier, out bool enabled))
+            return KeepConfiguredBarrier(barrier, barrier, logFallback);
+        if (enabled) return barrier;
+
+        ulong lastBeforeActivation = barrier;
+        ulong firstAfterActivation = pivotNumber;
+        while (firstAfterActivation - lastBeforeActivation > 1)
+        {
+            ulong middle = lastBeforeActivation + (firstAfterActivation - lastBeforeActivation) / 2;
+            if (!TryGetBlockAccessListsEnabled(middle, out enabled))
+                return KeepConfiguredBarrier(barrier, middle, logFallback);
+            if (enabled) firstAfterActivation = middle;
+            else lastBeforeActivation = middle;
+        }
+
+        return lastBeforeActivation;
+    }
+
+    private ulong KeepConfiguredBarrier(ulong barrier, ulong missingHeaderNumber, bool logFallback)
+    {
+        if (logFallback && !_barrierFallbackLogged && _logger.IsInfo)
+        {
+            _logger.Info($"Block access lists sync cannot find the EIP-7928 activation because header {missingHeaderNumber} is missing; keeping barrier {barrier}");
+            _barrierFallbackLogged = true;
+        }
+        return barrier;
+    }
+
+    private bool TryGetBlockAccessListsEnabled(ulong blockNumber, out bool enabled)
+    {
+        enabled = false;
+        if (_blockTree.FindCanonicalBlockInfo(blockNumber) is not { } blockInfo ||
+            _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockNumber) is not { } header)
+            return false;
+        enabled = _specProvider.GetSpec(header).BlockLevelAccessListsEnabled;
+        return true;
     }
 
     private void ResetSyncStatusList() =>
@@ -106,7 +165,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             _blockTree,
             _pivotNumber,
             _syncPointers.LowestInsertedBlockAccessListBlockNumber,
-            _syncConfig.AncientBlockAccessListsBarrier);
+            _barrier);
 
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;
@@ -136,7 +195,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private void PostFinishCleanUp()
     {
-        _syncReport.FastBlockAccessLists.Update(_pivotNumber);
+        _syncReport.FastBlockAccessLists.Update(_pivotNumber - _barrier);
         _syncReport.FastBlockAccessLists.MarkEnd();
     }
 
