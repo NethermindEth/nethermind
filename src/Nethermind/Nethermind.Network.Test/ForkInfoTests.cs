@@ -174,8 +174,10 @@ public class ForkInfoTests
     [TestCase(6_000_000ul, HoodiSpecProvider.BPO1Timestamp - 1, "0xe7e0e7ff", HoodiSpecProvider.BPO1Timestamp, "Future Osaka timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO1Timestamp, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "First BPO1 timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO2Timestamp - 1, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "Future BPO1 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", 0ul, "First BPO2 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp + 100000, "0x23aa1351", 0ul, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp - 1, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp, "0x3d068b59", 0ul, "First Amsterdam timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp + 100000, "0x3d068b59", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
