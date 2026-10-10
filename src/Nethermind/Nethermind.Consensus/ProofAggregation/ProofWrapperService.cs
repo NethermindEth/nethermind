@@ -90,6 +90,8 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             if (recovered is { Count: > 0 }) decoded = WithRecovered(decoded, recovered);
             // Envelopes resolving the received hash entries, from the pool or recovered from peers.
             Dictionary<ValueHash256, Transaction> resolved = [];
+            string? currentStateError = null;
+            int admissible = 0;
             for (int i = 0; i < decoded.Transactions.Count; i++)
             {
                 WrapperTransaction entry = decoded.Transactions[i];
@@ -100,7 +102,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                         or FrameTxValidation.RecentRootReferencesNotEnabled or FrameTxValidation.LegacyNonceNotAllowed
                         ? ProofWrapperAcceptance.LocalFailure(frameError) : ProofWrapperAcceptance.Invalid(frameError!);
                 if (received[i].Hash is { } hash) resolved[hash.ValueHash256] = transaction;
+                if (RecentRootError(transaction) is { } rootError) currentStateError ??= rootError;
+                else admissible++;
             }
+            // Admission is per transaction; a wrapper none of whose transactions could be admitted now is refused before
+            // verification, without judging its proof.
+            if (admissible == 0 && currentStateError is not null) return ProofWrapperAcceptance.LocalFailure(currentStateError);
             ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
             if (!_verifiedWrappers.TryGetValue(wrapperHash, out string? error))
             {
@@ -296,6 +303,13 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         };
     }
 
+    /// <summary>Why a transaction's recent-root references cannot be admitted against the current head, if they cannot.</summary>
+    private string? RecentRootError(Transaction transaction) =>
+        transaction.RecentRootReferences is not { Length: > 0 } ? null
+        : headInfo is null ? "Recent-root state is unavailable."
+        : AreAdmissionRootsValid(transaction) ? null
+        : TxPoolErrorMessages.FrameTxRecentRootUnmet;
+
     private void RememberVerification(ValueHash256 hash, string? error)
     {
         if (_verifiedWrappers.ContainsKey(hash)) return;
@@ -328,18 +342,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             Hash256 hash = entry.Full.Hash!;
             hashes[i] = hash;
             // Admission is per transaction: a current-state rejection leaves the proof and the other transactions intact.
-            if (entry.Full.RecentRootReferences is { Length: > 0 })
+            if (RecentRootError(entry.Full) is { } rootError)
             {
-                if (headInfo is null)
-                {
-                    firstError ??= "Recent-root state is unavailable.";
-                    continue;
-                }
-                if (!AreAdmissionRootsValid(entry.Full))
-                {
-                    firstError ??= TxPoolErrorMessages.FrameTxRecentRootUnmet;
-                    continue;
-                }
+                firstError ??= rootError;
+                continue;
             }
             AcceptTxResult result = txPool.SubmitTx(entry.Full, TxHandlingOptions.PersistentBroadcast);
             if (result != AcceptTxResult.Accepted) firstError ??= result.ToString();
