@@ -723,13 +723,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             GrowOriginalsIntoLarge();
         }
 
-        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
-        if (!exists)
-        {
-            slot = value;
-        }
+        UInt256 original = _originalValues.TryAdd(cell, value) ? value : _originalValues[cell];
         _lastCapturedCell = cell;
-        _lastCapturedOriginal = slot;
+        _lastCapturedOriginal = original;
     }
 
     private void GrowOriginalsIntoLarge()
