@@ -159,4 +159,13 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "true", Description = "When filtering discovery nodes by recent IP, bucket discovery node IPs by subnet (e.g., IPv4 /24, IPv6 /64) so multiple discovery node IPs in the same subnet share a single entry. If false, use exact IP addresses only.")]
     bool FilterDiscoveryNodesBySameSubnet { get; set; }
+
+    [ConfigItem(Description = "Whether to also carry EIP-8437 `lean/1` proof objects over the optional ethp2p QUIC binding. It stays inactive until EIP-8288 activates and needs libmsquic; RLPx `lean/1` is unaffected.", DefaultValue = "false")]
+    bool LeanEthp2pEnabled { get; set; }
+
+    [ConfigItem(Description = $"The UDP port of the ethp2p QUIC binding, advertised in the ENR as `leanq`. Used only when `{nameof(LeanEthp2pEnabled)}` is set.", DefaultValue = "30304", IsPortOption = true)]
+    int LeanEthp2pPort { get; set; }
+
+    [ConfigItem(Description = $"A comma-separated list of signed ENRs (`enr:...`) to dial over the ethp2p QUIC binding. Each must advertise `leanq`; its `secp256k1` key must match the peer's TLS identity. Used only when `{nameof(LeanEthp2pEnabled)}` is set.", DefaultValue = "null")]
+    string? LeanEthp2pStaticPeers { get; set; }
 }
