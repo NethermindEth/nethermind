@@ -42,4 +42,6 @@ public partial class PatriciaTree
     private static bool IsUnchangedPendingLevel(TrieNode parent, int childIndex, TrieNode? originalChild, TrieNode? child) =>
         // The parent's hash first: a node read from the witness has one, and it fails most levels on the first load.
         parent.Keccak is null && child is not null && ReferenceEquals(originalChild, child) && parent.IsPendingWith(childIndex, child);
+
+    partial void AdjustBulkSetFlags(ref Flags flags) => flags |= Flags.DoNotParallelize;
 }

@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
@@ -48,4 +49,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     }
 
     public object? ReturnData { get; set; }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> SelectInitializeFrame(IReleaseSpec spec) =>
+        SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
 }
