@@ -108,7 +108,8 @@ public sealed class LeanProofStore
             {
                 FrameDependency dependency = dependencies[i];
                 if (records.ContainsKey(dependency)) continue;
-                if (!_coverage.TryGetValue(dependency, out ProofRecord? record))
+                // A direct witness replaces recursive coverage: folding it is far cheaper than merging a recursive child.
+                if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || witnesses is not null && record.Witnesses is null)
                 {
                     record = witnesses is null
                         ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
@@ -282,7 +283,7 @@ public sealed class LeanProofStore
             if (!declared.Contains(dependency)) throw new ArgumentException("Admitted dependencies must be covered by the proof.");
         lock (_lock)
         {
-            if (HasCoverage(coverage)) return;
+            if (HasCoverage(coverage, witnesses is not null)) return;
             // Active admission already owns immutable snapshots and capacity. Publish only accepted entries.
             if (_admission.Value is { } scope)
             {
@@ -302,7 +303,8 @@ public sealed class LeanProofStore
             for (int i = 0; i < dependencies.Count; i++)
             {
                 FrameDependency dependency = dependencies[i];
-                if (!admitted.Contains(dependency) || _coverage.ContainsKey(dependency) || requested.ContainsKey(dependency)) continue;
+                if (!admitted.Contains(dependency) || requested.ContainsKey(dependency)
+                    || _coverage.TryGetValue(dependency, out ProofRecord? existing) && (witnesses is null || existing.Witnesses is not null)) continue;
                 ProofRecord record = witnesses is null
                     ? recursive ??= CreateRecord(dependencies, null, recursiveProof)
                     : CreateRecord([dependency], [witnesses[i]], null);
@@ -358,7 +360,11 @@ public sealed class LeanProofStore
     {
         if (_coverage.TryGetValue(dependency, out ProofRecord? previous))
         {
-            if (previous.Pins != 0 || ReferenceEquals(previous, record)) return;
+            if (ReferenceEquals(previous, record)) return;
+            // Pinned recursive coverage may give way to a direct witness, which pinned transactions do not lose: their own
+            // pins keep the recursive record stored. Direct coverage is never replaced by a recursive proof.
+            bool upgrade = previous.Witnesses is null && record.Witnesses is not null;
+            if (!upgrade && (previous.Pins != 0 || previous.Witnesses is not null && record.Witnesses is null)) return;
             previous.CoveredDependencies--;
         }
         _coverage[dependency] = record;
@@ -431,10 +437,10 @@ public sealed class LeanProofStore
         return new(deps, copies, recursive, size, ValueKeccak.Compute(identityBytes), dependencyHash, proofHash);
     }
 
-    private bool HasCoverage(IReadOnlyList<FrameDependency> dependencies)
+    private bool HasCoverage(IReadOnlyList<FrameDependency> dependencies, bool direct = false)
     {
         foreach (FrameDependency dependency in dependencies)
-            if (!_coverage.ContainsKey(dependency)) return false;
+            if (!_coverage.TryGetValue(dependency, out ProofRecord? record) || direct && record.Witnesses is null) return false;
         return true;
     }
 
