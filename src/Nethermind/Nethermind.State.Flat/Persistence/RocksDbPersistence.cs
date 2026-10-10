@@ -34,8 +34,8 @@ public class RocksDbPersistence : IPersistence, IDisposable
     private readonly string? _stagingDir;
     private readonly CancellationToken _exitToken;
 
-    // Total budget for post-commit L0 backpressure across all ingest columns, so a graceful shutdown is not held
-    // for minutes when compaction is behind.
+    /// <summary>Total budget for the L0 backpressure wait across all ingest columns.</summary>
+    /// <remarks>Bounded so a graceful shutdown is not held for minutes when compaction is behind.</remarks>
     private static readonly TimeSpan IngestBackpressureBudget = TimeSpan.FromSeconds(30);
 
     public RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig? config = null, IProcessExitSource? exitSource = null)
@@ -180,6 +180,8 @@ public class RocksDbPersistence : IPersistence, IDisposable
 
     private void CommitIngest(ISstIngestWriteBatch[] batches, in StateId to)
     {
+        WaitForIngestCompactionHeadroom(to);
+
         int columnsIngested = 0;
         bool markerWritten = false;
         bool committed = false;
@@ -300,16 +302,20 @@ public class RocksDbPersistence : IPersistence, IDisposable
             }
             throw;
         }
+    }
 
-        // The L0 throttle stays outside the gate so reader snapshot creation is not stalled behind compaction.
-        // The persist is already durable here (pointer advanced, marker cleared), so this backpressure is
-        // best-effort: a throw must not surface a committed persist as a failure to the caller.
+    /// <summary>Waits, within <see cref="IngestBackpressureBudget"/>, for L0 of the ingest columns to drain before the next ingest adds to it.</summary>
+    /// <remarks>
+    /// Runs when a commit starts rather than after the previous one finished, so a throttled persist does not keep its
+    /// already durable range resident while it waits, and outside the reader gate, so snapshot creation is not stalled
+    /// behind compaction. Best-effort: a failure is logged and the persist proceeds. All columns share one deadline,
+    /// because each polling up to its own cap could hold a graceful shutdown for minutes, and a shutdown request drops
+    /// the remaining wait immediately.
+    /// </remarks>
+    private void WaitForIngestCompactionHeadroom(in StateId to)
+    {
         try
         {
-            // Best-effort L0 backpressure, bounded as a whole: without a single deadline six columns each polling
-            // up to the per-column cap could hold a graceful shutdown for minutes. The state is already durable, so
-            // a shared budget just trades a little compaction headroom for a bounded stop, and a shutdown request
-            // drops the remaining headroom wait immediately rather than after the budget.
             using CancellationTokenSource backpressure = CancellationTokenSource.CreateLinkedTokenSource(_exitToken);
             backpressure.CancelAfter(IngestBackpressureBudget);
             foreach (FlatDbColumns column in IngestColumns)
@@ -317,7 +323,7 @@ public class RocksDbPersistence : IPersistence, IDisposable
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Ingest compaction backpressure after persisting {to} failed; the state is already durable, continuing. {e}");
+            if (_logger.IsWarn) _logger.Warn($"Ingest compaction backpressure before persisting {to} failed; continuing without compaction headroom. {e}");
         }
     }
 

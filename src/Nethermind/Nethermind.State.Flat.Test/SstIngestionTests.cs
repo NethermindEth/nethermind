@@ -364,6 +364,9 @@ public class SstIngestionTests
 
         public ConcurrentQueue<CancellationToken> HeadroomWaitTokens { get; } = [];
 
+        /// <summary>The headroom waits and batch ingests, by method name, in the order the persist made them.</summary>
+        public ConcurrentQueue<string> IngestCalls { get; } = [];
+
         public bool FailWalFlush { get; set; }
 
         /// <summary>Runs <paramref name="fault"/> with the staged files before every ingest into <paramref name="column"/>;
@@ -442,8 +445,11 @@ public class SstIngestionTests
             public void WaitForIngestCompactionHeadroom(CancellationToken cancellationToken)
             {
                 owner.HeadroomWaitTokens.Enqueue(cancellationToken);
+                owner.IngestCalls.Enqueue(nameof(WaitForIngestCompactionHeadroom));
                 Ingestible.WaitForIngestCompactionHeadroom(cancellationToken);
             }
+
+            private void RecordBatchIngest() => owner.IngestCalls.Enqueue(nameof(IngestStagedFiles));
 
             private void RunFault(IReadOnlyList<string> files)
             {
@@ -482,6 +488,7 @@ public class SstIngestionTests
 
                 public void IngestStagedFiles()
                 {
+                    column.RecordBatchIngest();
                     if (_stagedFiles.Count > 0) column.RunFault(_stagedFiles);
                     inner.IngestStagedFiles();
                 }
@@ -1125,7 +1132,7 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Process_exit_cancels_the_post_commit_headroom_wait()
+    public void Process_exit_cancels_the_headroom_wait()
     {
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         exitSource.Token.Returns(new CancellationToken(canceled: true));
@@ -1138,6 +1145,29 @@ public class SstIngestionTests
 
         Assert.That(faulting.HeadroomWaitTokens, Is.Not.Empty);
         Assert.That(faulting.HeadroomWaitTokens.All(static t => t.IsCancellationRequested), Is.True);
+    }
+
+    [Test]
+    public void Headroom_wait_runs_before_the_ingests_of_a_persist_and_not_after_its_commit()
+    {
+        const int ColumnCount = 6;
+        FaultingColumnsDb faulting = WrapWithFaults();
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(200));
+        }
+
+        IEnumerable<string> persist = Enumerable.Repeat("WaitForIngestCompactionHeadroom", ColumnCount)
+            .Concat(Enumerable.Repeat("IngestStagedFiles", ColumnCount));
+        Assert.That(faulting.IngestCalls, Is.EqualTo(persist.Concat(persist)));
     }
 
     [Test]
