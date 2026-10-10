@@ -258,6 +258,7 @@ public class InitializeNetwork : IStep
         if (!_initConfig.PeerManagerEnabled)
         {
             if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+            return;
         }
 
         if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
