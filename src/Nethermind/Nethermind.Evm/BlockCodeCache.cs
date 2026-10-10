@@ -169,12 +169,12 @@ public sealed class BlockCodeCache : ICodeCache
         public void Dispose() => _cache.EndTransaction(_transaction, _previous, _firstStamp);
     }
 
-    private sealed class Entry(in ValueHash256 hash, CodeInfo code, long charge, long transaction, int block)
+    private sealed class Entry(in ValueHash256 hash, CodeInfo code, long charge, long transaction, object block)
     {
         public readonly ValueHash256 Hash = hash;
         public readonly CodeInfo Code = code;
         public readonly long Charge = charge;
-        public readonly int Block = block;
+        public readonly object Block = block;
 
         /// <summary>The latest transaction to use the code, or 0 if only code outside a transaction has.</summary>
         public long Transaction = transaction;
@@ -195,11 +195,11 @@ public sealed class BlockCodeCache : ICodeCache
 
         private readonly Lock _sweepLock = new();
         private int _evictableHead;
-        private int _block;
+        private object _block = new();
         public long Bytes;
 
-        /// <summary>The number of times the block's code was cleared.</summary>
-        public int Block => Volatile.Read(ref _block);
+        /// <summary>Identifies this cache's block until its code is cleared.</summary>
+        public object Block => Volatile.Read(ref _block);
 
         /// <summary>Queues an entry loaded outside a transaction.</summary>
         public void Enqueue(Entry entry)
@@ -218,8 +218,10 @@ public sealed class BlockCodeCache : ICodeCache
             {
                 for (int i = first; i < stamped.Count; i++)
                 {
-                    // An entry of a block cleared while the transaction ran is gone already; queuing it would only keep it alive.
-                    if (stamped[i].Block == _block) _evictable.Add((stamped[i], transaction));
+                    // Queuing would only keep alive an entry this queue cannot evict: one of a block cleared while the
+                    // transaction ran, or of another cache. One a later transaction stamped since is that one's to queue.
+                    Entry entry = stamped[i];
+                    if (entry.Block == _block && entry.Transaction == transaction) _evictable.Add((entry, transaction));
                 }
             }
         }
@@ -228,7 +230,7 @@ public sealed class BlockCodeCache : ICodeCache
         {
             lock (_evictable)
             {
-                _block++;
+                Volatile.Write(ref _block, new object());
                 _evictable.Clear();
                 _evictableHead = 0;
             }

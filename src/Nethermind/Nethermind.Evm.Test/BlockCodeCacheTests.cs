@@ -240,10 +240,51 @@ public class BlockCodeCacheTests
             cache.ClearBlock();
         }
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        Assert.That(code.IsAlive, Is.False);
+        AssertCollected(code);
+    }
+
+    [Test]
+    public void Code_another_cache_loads_in_a_transaction_is_not_kept_alive_by_this_one()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance);
+        BlockCodeCache other = new(NoopCodeCache.Instance);
+        WeakReference code;
+        using (cache.BeginTransaction()) code = LoadUnreferenced(other);
+
+        other.ClearBlock();
+        AssertCollected(code);
+    }
+
+    [Test]
+    public void Code_evicted_before_the_end_of_the_queue_is_not_kept_alive()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 2 * LargeCodeCharge);
+        WeakReference evicted;
+        using (cache.BeginTransaction())
+        {
+            evicted = LoadUnreferenced(cache);
+            Load(cache, count: 1, first: 1);
+        }
+
+        // Evicts code 0 only; code 1's copy stays queued behind it.
+        using (cache.BeginTransaction()) Load(cache, count: 1, first: 2);
+
+        AssertCollected(evicted);
+    }
+
+    [Test]
+    public void Code_evicted_while_an_earlier_user_runs_is_not_kept_alive_when_it_finishes()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: LargeCodeCharge);
+        WeakReference evicted;
+        using (cache.BeginTransaction())
+        {
+            evicted = LoadUnreferenced(cache);
+            using (cache.BeginTransaction()) Hit(cache, 0);
+            using (cache.BeginTransaction()) Load(cache, count: 1, first: 1);
+        }
+
+        AssertCollected(evicted);
     }
 
     [Test]
@@ -282,6 +323,21 @@ public class BlockCodeCacheTests
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference LoadUnreferenced(BlockCodeCache cache) => new(Load(cache, count: 1)[0]);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Hit(BlockCodeCache cache, int i)
+    {
+        ValueHash256 hash = Hash(i);
+        cache.Get(in hash);
+    }
+
+    private static void AssertCollected(WeakReference code)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(code.IsAlive, Is.False);
+    }
 
     private static ValueHash256 Hash(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
 }
