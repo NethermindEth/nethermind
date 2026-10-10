@@ -8,9 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -37,7 +39,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private const int FloorBindingCalldataBytes = 20_000;
     private const ulong GasLimit = 2_000_000;
 
-    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true };
+    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true, IsEip8151Enabled = true };
     private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
     private static readonly Address Executing = TestItem.AddressB;
     private static readonly Address ColdAccount = TestItem.AddressC;
@@ -47,12 +49,16 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private static readonly Address StarvedWriter = new("0x00000000000000000000000000000000000c0de6");
     private static readonly Address StarvedCopier = new("0x00000000000000000000000000000000000c0de7");
     private static readonly Address Precompile = new("0x0000000000000000000000000000000000000004");
+    private static readonly PrivateKey EcRecoverSigner = TestItem.PrivateKeys[9];
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
     protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(Spec8279);
 
     private static Prepare SStore(int key, int value) => Prepare.EvmCode.PushData(value).PushData(key).Op(Instruction.SSTORE);
+
+    private static Prepare EcRecover() => Prepare.EvmCode
+        .DynamicCallWithInput(Instruction.STATICCALL, PrecompiledAddresses.ECRecover.Value, 50_000, Eip8151Tests.CreateInput(EcRecoverSigner));
 
     private static IEnumerable<TestCaseData> MeteredBytesCases()
     {
@@ -79,6 +85,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
         yield return Case("CALLCODE with value adds no balance bytes", Prepare.EvmCode.CallCode(ColdAccount, 50_000, 1), 20);
         yield return Case("DELEGATECALL", Prepare.EvmCode.DelegateCall(ColdAccount, 50_000), 20);
         yield return Case("STATICCALL", Prepare.EvmCode.StaticCall(ColdAccount, 50_000), 20);
+        // EIP-8151: ecRecover touches the recovered account as well as the precompile.
+        yield return Case("ecRecover meters the recovered address", EcRecover(), 20 + 20);
         yield return Case("Reverted CALL with value is not rewound", Prepare.EvmCode.CallWithValue(Callee, 50_000, 1), 20 + 64 + 32);
         yield return Case("SLOAD in a reverted frame is not rewound", Prepare.EvmCode.Call(Callee, 50_000), 20 + 32);
         // The reverted frame's slot turns cold again, but its key was already metered for the transaction.
@@ -141,6 +149,25 @@ public class Eip8279Tests : VirtualMachineTestsBase
             Assert.That(tracer.StatusCode, Is.EqualTo(affordable ? StatusCode.Success : StatusCode.Failure));
             Assert.That(gasSpent, Is.EqualTo(gasLimit));
             Assert.That(bal.GetAccountChanges(ColdAccount), affordable ? Is.Not.Null : Is.Null);
+        }
+    }
+
+    [TestCase(false, TestName = "ecRecover meter out of gas fails the precompile before the block access list entry")]
+    [TestCase(true, TestName = "ecRecover meter within the gas limit records the block access list entry")]
+    public void Ecrecover_meter_out_of_gas_leaves_no_block_access_list_entry(bool affordable)
+    {
+        byte[] code = EcRecover().PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+        // The precompile's and the recovered account's address bytes, short by one gas when unaffordable.
+        tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas + 2 * Eip8279Constants.AddressBytes * Eip8131Constants.FloorGasPerByte - (affordable ? 0UL : 1UL);
+
+        (_, CallOutputTracer tracer, BlockAccessListAtIndex bal, _) = Execute(block, tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo((affordable ? UInt256.One : UInt256.Zero).ToBigEndian()), "ecRecover call success");
+            Assert.That(bal.GetAccountChanges(EcRecoverSigner.Address), affordable ? Is.Not.Null : Is.Null);
         }
     }
 

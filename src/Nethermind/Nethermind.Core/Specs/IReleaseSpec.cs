@@ -342,6 +342,11 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-8151: ecRecover returns the recovered address only when its raw code is empty or an EIP-7702 delegation.
+        /// </summary>
+        bool IsEip8151Enabled { get; }
+
+        /// <summary>
         /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
         /// </summary>
         /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>

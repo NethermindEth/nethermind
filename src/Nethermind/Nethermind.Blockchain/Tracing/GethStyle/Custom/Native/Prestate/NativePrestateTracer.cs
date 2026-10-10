@@ -162,6 +162,14 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         IsTracingStack = RequiresStack(_op);
     }
 
+    /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output. The VM reports it, so the
+    /// account is found wherever a state override moved ecRecover, and only when the read happened.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
+    {
+        base.ReportPrecompileAccountRead(address);
+        if (_error is null) LookupAccount(address);
+    }
+
     public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         base.SetOperationMemory(memoryTrace);

@@ -478,6 +478,18 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
+    public void ReportPrecompileAccountRead(Address address)
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+            {
+                innerTracer.ReportPrecompileAccountRead(address);
+            }
+        }
+    }
+
     public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
