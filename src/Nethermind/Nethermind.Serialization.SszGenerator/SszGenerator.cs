@@ -780,6 +780,11 @@ internal static partial class SszCodecHelpers
     private static bool IsByteList(SszProperty property) =>
         property.Kind == Kind.List && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
+    /// <summary>Whether <paramref name="property"/> is a byte list held in a collection that is built from a span of its bytes.</summary>
+    private static bool IsConstructedByteList(SszProperty property) =>
+        property.Kind == Kind.List && property is { HasCollectionAsSpan: true, CanConstructCollectionFromReadOnlySpan: true, CollectionTypeReferenceName: not null }
+        && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
+
     private static bool IsByteVector(SszProperty property) =>
         property.Kind == Kind.Vector && (property.IsArrayProperty || property.IsMemoryLikeProperty) && property.Type is { Name: nameof(Byte), IsSszBasicType: true };
 
@@ -807,6 +812,12 @@ internal static partial class SszCodecHelpers
         {
             string assignment = DecodeAssignmentExpression(property, variableName, sourceIsArray: true);
             return $"{{ byte[] {variableName} = DecodeSszByteList({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = {assignment}; }}";
+        }
+
+        if (IsConstructedByteList(property))
+        {
+            // Built from the slice itself: the collection takes its own copy, so an intermediate array would copy twice.
+            return $"ValidateSszListLimit({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
         }
 
         if (IsByteVector(property))
