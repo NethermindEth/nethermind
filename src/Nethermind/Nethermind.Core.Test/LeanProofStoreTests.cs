@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
@@ -112,6 +113,25 @@ public class LeanProofStoreTests
             Assert.That(direct.Deps, Is.EqualTo(new[] { shared }));
             Assert.That(store.Covers(pending), Is.True);
         }
+    }
+
+    [Test]
+    public void Proven_overlaps_rank_shared_dependencies_and_then_fewer_discards()
+    {
+        LeanProofStore store = new();
+        FrameDependency a = Dependency(1), b = Dependency(2), c = Dependency(3), d = Dependency(4), x = Dependency(5), y = Dependency(6);
+        FrameDependency[] smaller = [.. Eip8288Dependencies.Canonicalize([a, b, x])];
+        FrameDependency[] larger = [.. Eip8288Dependencies.Canonicalize([a, b, x, y])];
+        FrameDependency[] best = [.. Eip8288Dependencies.Canonicalize([a, b, c, y])];
+        store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([a, x]), [1]);
+        store.AddCachedRecursive(larger, [2]);
+        store.AddCachedRecursive(smaller, [3]);
+        store.AddCachedRecursive(best, [4]);
+
+        List<RecursiveProofInput> overlaps = store.ProvenOverlaps(new HashSet<FrameDependency> { a, b, c, d }, 2);
+
+        Assert.That(overlaps.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { best, smaller }),
+            "a set sharing one dependency is never worth a merge, and among equal overlaps the one with fewer discards wins");
     }
 
     private static FrameDependency Dependency(int index) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(index.ToString()), default);

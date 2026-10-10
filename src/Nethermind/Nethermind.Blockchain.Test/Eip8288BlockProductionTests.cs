@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -630,6 +631,42 @@ public class Eip8288BlockProductionTests
             Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(extended ? 1 : 0));
             Assert.That(verifier.LastInput.Deps, Is.EqualTo(extended ? new[] { added } : full.ToArray()),
                 extended ? "eight proven signatures cost more to fold again than one merge" : "one signature is cheaper to fold than to merge");
+        }
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_extends_a_statement_whose_transactions_were_partly_included()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency[] pending = new FrameDependency[8];
+        for (int i = 0; i < pending.Length; i++)
+        {
+            pending[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"stale-pending:{i}"), default);
+            proofs.AddVerified([pending[i]], [[1]], null);
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, pending[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+                Is.EqualTo(AcceptTxResult.Accepted));
+        }
+        // A statement proven for a body whose first transaction a block has since included.
+        FrameDependency included = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-included"), default);
+        List<FrameDependency> stale = Eip8288Dependencies.Canonicalize([.. pending, included]);
+        proofs.AddCachedRecursive(stale, Eip8288Dependencies.ComputeDepsHash(stale).ToByteArray());
+        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("stale-added"), default);
+        proofs.AddVerified([added], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
+
+        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([.. pending, added]);
+        Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call extends the stale statement");
+            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { stale }));
+            Assert.That(verifier.LastInput.Discards, Is.EqualTo(new[] { included }));
+            Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }));
         }
     }
 

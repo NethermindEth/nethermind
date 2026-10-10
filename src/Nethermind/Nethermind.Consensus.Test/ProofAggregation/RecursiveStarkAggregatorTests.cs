@@ -660,4 +660,40 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    [Test]
+    public void Extending_a_parent_discards_its_dependencies_outside_the_required_set()
+    {
+        FrameDependency kept = Sphincs("kept");
+        FrameDependency other = Sphincs("other");
+        FrameDependency gone = Sphincs("gone");
+        FrameDependency added = Sphincs("added");
+        RecursiveProofInput parent = new(Eip8288Dependencies.Canonicalize([kept, other, gone]), [3]);
+        AggregationInput witnesses = new() { Deps = [kept, other, added], Witnesses = [new byte[] { 1 }, new byte[] { 1 }, new byte[] { 1 }] };
+
+        AggregationInput extended = RecursiveStarkAggregator.Combine([witnesses], [kept, other, added], parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(extended.RecursiveProofs, Is.EqualTo(new[] { parent }));
+            Assert.That(extended.Deps, Is.EqualTo(new[] { added }), "the parent covers its retained dependencies");
+            Assert.That(extended.Discards, Is.EqualTo(new[] { gone }));
+        }
+    }
+
+    [Test]
+    public void Estimated_cost_counts_a_discarding_call_only_when_the_input_needs_several()
+    {
+        FrameDependency gone = Sphincs("gone");
+        RecursiveProofInput parent = new([Sphincs("kept"), gone], [3]);
+        AggregationInput single = new() { RecursiveProofs = [parent], Discards = [gone] };
+        AggregationInput several = new() { RecursiveProofs = [parent, new([Sphincs("r1")], [4]), new([Sphincs("r2")], [5])], Discards = [gone] };
+        AggregationInput kept = new() { RecursiveProofs = [parent, new([Sphincs("r1")], [4]), new([Sphincs("r2")], [5])] };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(single), Is.EqualTo(RecursiveStarkAggregator.EstimatedCost(new() { RecursiveProofs = [parent, parent] })),
+                "a lone discarding parent is one native call");
+            Assert.That(RecursiveStarkAggregator.EstimatedCost(several) - RecursiveStarkAggregator.EstimatedCost(kept),
+                Is.EqualTo(RecursiveStarkAggregator.EstimatedCost(single)), "a discarding child in a tree needs its own call");
+        }
+    }
 }

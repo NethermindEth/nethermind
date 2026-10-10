@@ -34,7 +34,8 @@ public static class RecursiveStarkAggregator
 
     /// <summary>Estimates the relative native proving cost of an input from its leaves and recursive merges.</summary>
     /// <remarks>Signatures fold four to a leaf, each generic proof is its own leaf, and every node beyond the first
-    /// needs one recursive merge; the estimate only ranks alternative inputs for the same statement.</remarks>
+    /// needs one recursive merge; a recursive child losing dependencies needs a call of its own unless the whole input
+    /// fits one. The estimate only ranks alternative inputs for the same statement.</remarks>
     public static long EstimatedCost(AggregationInput input)
     {
         int signatures = 0, generics = 0;
@@ -42,7 +43,23 @@ public static class RecursiveStarkAggregator
             if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generics++;
             else signatures++;
         long nodes = (signatures + DirectBatchSize - 1) / DirectBatchSize + generics + input.RecursiveProofs.Count;
-        return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + Math.Max(0, nodes - 1) * MergeCost;
+        long calls = Math.Max(0, nodes - 1);
+        if (input.Discards.Count != 0)
+        {
+            if (input.RecursiveProofs.Count <= MaxRecursiveChildren && input.Deps.Count <= DirectBatchSize) calls = Math.Max(calls, 1);
+            else
+            {
+                HashSet<FrameDependency> discards = [.. input.Discards];
+                foreach (RecursiveProofInput child in input.RecursiveProofs)
+                    foreach (FrameDependency dependency in child.InnerDeps)
+                        if (discards.Contains(dependency))
+                        {
+                            calls++;
+                            break;
+                        }
+            }
+        }
+        return (long)signatures * SignatureCost + (long)generics * GenericLeafCost + calls * MergeCost;
     }
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
@@ -70,8 +87,9 @@ public static class RecursiveStarkAggregator
     /// <param name="inputs">The selected witnesses and recursive proofs.</param>
     /// <param name="required">The final dependency set.</param>
     /// <param name="parent">
-    /// An already proven subset of <paramref name="required"/>; selected inputs it fully covers are left out, so a growing
-    /// set is proven by extending its previous statement instead of re-folding every witness.
+    /// An already proven statement; selected inputs it fully covers are left out and its dependencies outside
+    /// <paramref name="required"/> are discarded, so a changing set is proven by extending a previous statement instead of
+    /// re-folding every witness.
     /// </param>
     public static AggregationInput Combine(IReadOnlyList<AggregationInput> inputs, IReadOnlyList<FrameDependency> required,
         RecursiveProofInput? parent = null)
@@ -90,8 +108,8 @@ public static class RecursiveStarkAggregator
             recursive.Add(proven);
             foreach (FrameDependency dep in proven.InnerDeps)
             {
-                if (!wanted.Contains(dep)) throw new ArgumentException("The proven parent must be a subset of the required set.", nameof(parent));
                 covered.Add(dep);
+                if (!wanted.Contains(dep)) discards.Add(dep);
             }
         }
         foreach (AggregationInput input in inputs)

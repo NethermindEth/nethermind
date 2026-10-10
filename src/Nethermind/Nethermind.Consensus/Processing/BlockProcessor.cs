@@ -238,21 +238,11 @@ public partial class BlockProcessor(
                     // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
                     if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
                     {
-                        FrameDependency[] proven = leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps));
+                        HashSet<FrameDependency> limit = ChooseProvenLimit(block, leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps)));
                         // Only the unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
-                        {
-                            AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                            // Extending the largest proven subset replaces its witnesses with one recursive child; that pays off
-                            // only when the child saves more folding than the extra merge costs.
-                            if (proven.Length != 0 && leanProofStore.TryGetRecursiveProof(proven, out byte[]? parentProof))
-                            {
-                                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, new RecursiveProofInput(proven, parentProof!));
-                                if (RecursiveStarkAggregator.EstimatedCost(extended) < RecursiveStarkAggregator.EstimatedCost(scheduled)) scheduled = extended;
-                            }
-                            _productionProofCache.TrySchedule(deps, depsHash, scheduled, leanProofStore);
-                        }
-                        throw new LeanProofNotReadyException(ChooseProvenLimit(block, leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))));
+                            ScheduleProductionProof(producing, deps, depsHash, leanProofStore);
+                        throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
@@ -267,6 +257,27 @@ public partial class BlockProcessor(
             // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
             block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
         }
+    }
+
+    private const int MaxExtensionCandidates = 4;
+
+    /// <summary>Schedules this body's statement with the cheapest input.</summary>
+    /// <remarks>
+    /// The input either folds every witness again or extends a verified overlapping statement, discarding its dependencies
+    /// that the body no longer needs: a statement loses transactions to blocks included while it is being proven, and folding
+    /// the rest again costs a recursive merge per child where the extension costs one discarding call.
+    /// </remarks>
+    private void ScheduleProductionProof(BlockToProduce producing, List<FrameDependency> deps, in ValueHash256 depsHash, LeanProofStore store)
+    {
+        AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+        long cost = RecursiveStarkAggregator.EstimatedCost(scheduled);
+        foreach (RecursiveProofInput parent in store.ProvenOverlaps(new HashSet<FrameDependency>(deps), MaxExtensionCandidates))
+        {
+            AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, parent);
+            long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
+            if (extendedCost < cost) (scheduled, cost) = (extended, extendedCost);
+        }
+        _productionProofCache.TrySchedule(deps, depsHash, scheduled, store);
     }
 
     /// <summary>Picks the proven dependency set that keeps the most of this body's transactions includable.</summary>

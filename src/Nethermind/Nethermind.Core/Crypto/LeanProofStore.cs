@@ -493,25 +493,36 @@ public sealed class LeanProofStore
         return false;
     }
 
-    /// <summary>Finds the largest dependency set inside <paramref name="within"/> that already has a verified recursive proof.</summary>
-    /// <remarks>A producer that cannot wait for proving restricts its body to this set, whose proof it reuses unchanged.</remarks>
-    public FrameDependency[] LargestProvenSubset(IReadOnlySet<FrameDependency> within)
+    /// <summary>Lists verified recursive proofs sharing at least two dependencies with <paramref name="within"/>, most shared first.</summary>
+    /// <remarks>
+    /// A producer extends one of them, discarding the dependencies it no longer needs, instead of folding every witness again:
+    /// a statement can lose some of its transactions to a peer's block while it is being proven.
+    /// </remarks>
+    public List<RecursiveProofInput> ProvenOverlaps(IReadOnlySet<FrameDependency> within, int limit)
     {
-        FrameDependency[] best = [];
+        List<(int Shared, ProofRecord Record)> overlaps = [];
+        HashSet<ValueHash256> seen = [];
         lock (_lock)
         {
             foreach (ProofRecord record in _recursiveCache) Consider(record);
             foreach (ProofRecord record in _records)
                 if (record.RecursiveProof is not null) Consider(record);
         }
-        return best.Length == 0 ? best : [.. best];
+        // Fewer extra dependencies mean fewer discards for the same reuse.
+        overlaps.Sort(static (x, y) => x.Shared != y.Shared
+            ? y.Shared.CompareTo(x.Shared)
+            : x.Record.Dependencies.Length.CompareTo(y.Record.Dependencies.Length));
+        List<RecursiveProofInput> result = new(Math.Min(limit, overlaps.Count));
+        for (int i = 0; i < overlaps.Count && i < limit; i++) result.Add(overlaps[i].Record.RecursiveInput);
+        return result;
 
         void Consider(ProofRecord record)
         {
-            if (record.Dependencies.Length <= best.Length || record.Dependencies.Length > within.Count) return;
+            if (!seen.Add(record.DependencyHash)) return;
+            int shared = 0;
             foreach (FrameDependency dependency in record.Dependencies)
-                if (!within.Contains(dependency)) return;
-            best = record.Dependencies;
+                if (within.Contains(dependency)) shared++;
+            if (shared >= 2) overlaps.Add((shared, record));
         }
     }
 
