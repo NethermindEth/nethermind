@@ -56,14 +56,14 @@ public static unsafe partial class Bytes
     /// <remarks>
     /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
     /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
-    /// <see cref="ZiskMemmoveFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
+    /// <see cref="ZiskFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
     /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (!ZiskMemmoveFlag.IsActive)
+        if (!ZiskFlag.IsActive)
         {
             source.CopyTo(destination);
             return;
@@ -79,7 +79,7 @@ public static unsafe partial class Bytes
     /// <summary>Copies <paramref name="length"/> bytes from <paramref name="source"/> to <paramref name="destination"/>,
     /// which may overlap.</summary>
     /// <remarks>
-    /// Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
+    /// Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
     /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
     /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
     /// callee is a two-instruction thunk.
@@ -87,17 +87,17 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length)
     {
-        if (ZiskMemmoveFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        if (ZiskFlag.IsActive) Accelerators.Memmove(destination, source, length);
         else Buffer.MemoryCopy(source, destination, length, length);
     }
 
     /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
-    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
+    /// <remarks>Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
     /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memset(void* destination, byte value, nuint length)
     {
-        if (ZiskMemmoveFlag.IsActive) Accelerators.Memset(destination, value, length);
+        if (ZiskFlag.IsActive) Accelerators.Memset(destination, value, length);
         else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
     }
 
