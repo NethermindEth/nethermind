@@ -22,7 +22,11 @@ for passed in "true" "false"; do
     | .[]' \
     --argjson p "$passed" -r $1)
   IFS=$'\n' results=($(sort -f <<<"${tmp[*]}")); unset IFS
-  total_cases=$(( ${total_cases:-0} + ${#results[@]} ))
+  for each in "${results[@]}"; do
+    if [[ "$each" != "$launch_test" ]]; then
+      total_cases=$(( ${total_cases:-0} + 1 ))
+    fi
+  done
 
   if [[ "$passed" == "true" ]]; then
     echo -e "\nPassed ${#results[@]}:\n"
@@ -53,7 +57,8 @@ for passed in "true" "false"; do
   fi
 done
 
-# A simulator that never started leaves no results, which would otherwise read as zero failures.
+# A simulator that never started, or stopped after launching the client, leaves no test results,
+# which would otherwise read as zero failures.
 if [[ ${total_cases:-0} -eq 0 ]]; then
   echo "Hive ran no test cases."
   exit 1
