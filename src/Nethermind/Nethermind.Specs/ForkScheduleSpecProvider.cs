@@ -24,9 +24,11 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
     public IEnumerable<string> AvailableForks => _availableForks.Value;
 #if ZK_EVM
-    // A guest looks up one fork per run, so building the name index over the whole schedule costs more than a scan.
-    // The scan starts from the newest fork, the one inputs pin: each fork is its own spec type, and every new
-    // receiver type at the Name call site costs an interface dispatch resolution.
+    /// <inheritdoc/>
+    /// <remarks>A guest looks up one fork per run, so building the name index over the whole schedule costs more than a scan.
+    /// The scan starts from the newest fork, the one inputs pin: each fork is its own spec type, and every new
+    /// receiver type at the Name call site costs an interface dispatch resolution. Starting there also keeps the
+    /// name index's rule that the last of duplicate names wins.</remarks>
     public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
     {
         ForkSpec[] schedule = ForkSchedule;
