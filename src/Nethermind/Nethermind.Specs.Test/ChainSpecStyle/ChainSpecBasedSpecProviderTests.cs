@@ -691,7 +691,6 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
                      .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                      .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-                     .Where(p => isMainnet || expectedSpec.IsEip6110Enabled || p.Name != nameof(IReleaseSpec.DepositContractAddress))
 
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
