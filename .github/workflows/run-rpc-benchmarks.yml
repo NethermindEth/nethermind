@@ -1058,8 +1058,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          baseline_sha=0e016e5d2aaf110599ca7dc2f80a40d47ca117f5
-          baseline_image=nethermind-rpcbench:storage-map-baseline-0e016e5
+          baseline_sha=3791d66da156f868aea70c8f72988c28a703e0d9
+          baseline_image=nethermind-rpcbench:storage-map-baseline-3791d66
           revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
           if [[ "$revision" != "$baseline_sha" ]]; then
             git fetch --depth=1 origin "$baseline_sha"
