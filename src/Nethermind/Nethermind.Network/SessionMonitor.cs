@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -132,7 +133,7 @@ namespace Nethermind.Network
                 {
                     if (!session.IsClosing)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                        if (_logger.IsTrace) TraceNoPongReceived(pingTime, session);
                         if (pingTime - session.LastPongUtc > MissedPongIntervalsBeforeDisconnect * _pingInterval)
                         {
                             session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "no pong received");
@@ -149,6 +150,10 @@ namespace Nethermind.Network
             }
 
             return true;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceNoPongReceived(DateTime pingSentAt, ISession monitoredSession) =>
+                _logger.Trace($"No pong received in response to the {pingSentAt:T} ping at {monitoredSession.Node:c} | last pong time {monitoredSession.LastPongUtc:T}");
         }
 
         private void StartPingTimer()

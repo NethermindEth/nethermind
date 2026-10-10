@@ -95,11 +95,26 @@ runs:
           echo "Also tagging as: $master_tag"
         fi
 
+        # The OCI version label. release.yml reads the same properties with xmlstarlet, which is
+        # not on the runner image and has to be installed first; version.sh needs no dependencies
+        # and validates what it read, so an unusable version fails here instead of being published.
+        if ! version=$(scripts/version.sh src/Nethermind/Directory.Build.props); then
+          echo "::error::Could not determine the version for the image labels"
+          exit 1
+        fi
+
+        # The OCI created label must be RFC 3339 and must come from the same commit timestamp as
+        # SOURCE_DATE_EPOCH, or the image stops being reproducible.
+        source_date_epoch=$(git log -1 --format=%ct)
+        build_timestamp=$(date -u -d @"${source_date_epoch}" +%Y-%m-%dT%H:%M:%SZ)
+
         # Add build arguments
         build_cmd="${build_cmd} --build-arg BUILD_CONFIG=${BUILD_CONFIG}"
         build_cmd="${build_cmd} --build-arg CI=${CI}"
         build_cmd="${build_cmd} --build-arg COMMIT_HASH=${GITHUB_SHA}"
-        build_cmd="${build_cmd} --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)"
+        build_cmd="${build_cmd} --build-arg VERSION=${version}"
+        build_cmd="${build_cmd} --build-arg SOURCE_DATE_EPOCH=${source_date_epoch}"
+        build_cmd="${build_cmd} --build-arg BUILD_TIMESTAMP=${build_timestamp}"
         build_cmd="${build_cmd} --push"
 
         echo "Executing: $build_cmd"

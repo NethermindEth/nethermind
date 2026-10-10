@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!canBeShared && !_allowExclusive)
             {
-                throw new InvalidOperationException($"{nameof(SingletonModulePool<T>)} can only return shareable modules");
+                throw new InvalidOperationException($"{nameof(SingletonModulePool<>)} can only return shareable modules");
             }
 
             return _onlyInstanceAsTask;

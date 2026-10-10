@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -47,18 +48,28 @@ public partial class Metrics
 {
     private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
 
+    [ThreadStatic] private static StrongBox<ExecutionCounts>? _capture;
+
+    /// <summary>While set, also adds to <paramref name="capture"/> what executions on this thread count.</summary>
+    internal static void Capture(StrongBox<ExecutionCounts>? capture) => _capture = capture;
+
+    internal static void AddCaptured(in ExecutionMetricsCounters counters) => _capture?.Value.Counters.Add(in counters);
+
+    // Fires per code lookup, i.e. per call frame: the single shared "other" word made this a
+    // contended cross-core RMW for every concurrent RPC/prewarm thread — striped instead.
     [CounterMetric]
     [Description("Number of Code DB cache reads.")]
-    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Value;
+    public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Sum;
     private static CacheLinePaddedLong _mainCodeDbCache;
-    private static CacheLinePaddedLong _otherCodeDbCache;
+    private static readonly StripedLong _otherCodeDbCache = new();
     [Description("Number of Code DB cache reads on main processing thread.")]
     public static long MainThreadCodeDbCache => _mainCodeDbCache.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void IncrementCodeDbCache()
     {
         if (!ExecutionMetricsFlag.IsActive) return;
-        Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache.Value : ref _otherCodeDbCache.Value);
+        if (IsBlockProcessingThread) Interlocked.Increment(ref _mainCodeDbCache.Value);
+        else _otherCodeDbCache.Increment();
     }
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
@@ -76,6 +87,7 @@ public partial class Metrics
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes.Value : ref _otherOpCodes.Value, count);
+        if (_capture is { } capture) capture.Value.OpCodes += count;
     }
 
     internal static void AddSLoadOpcode(long count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainSLoadOpcode.Value : ref _otherSLoadOpcode.Value, count);
@@ -130,6 +142,7 @@ public partial class Metrics
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls.Value : ref _otherEmptyCalls.Value);
+        if (_capture is { } capture) capture.Value.Counters.EmptyCalls++;
     }
 
     [CounterMetric]
@@ -144,6 +157,7 @@ public partial class Metrics
     {
         if (!ExecutionMetricsFlag.IsActive) return;
         Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates.Value : ref _otherCreates.Value);
+        if (_capture is { } capture) capture.Value.Counters.Creates++;
     }
 
     [Description("Number of contracts' code analysed for jump destinations.")]

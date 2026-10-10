@@ -13,8 +13,6 @@ namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
-        public TestAllTracerWithOutput() => IsTracingAccess = true;
-
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
         public override bool IsTracingOpLevelStorage => true;
@@ -26,6 +24,7 @@ namespace Nethermind.Evm.Test
         public override bool IsTracingState => true;
         public override bool IsTracingStorage => true;
         public override bool IsTracingBlockHash => true;
+        /// <summary>Enables access-list simulation, which pre-warms accesses before charging gas.</summary>
         public new bool IsTracingAccess { get { return base.IsTracingAccess; } set { base.IsTracingAccess = value; } }
         public override bool IsTracingFees => true;
 
@@ -42,9 +41,19 @@ namespace Nethermind.Evm.Test
 
         public long Refund { get; private set; }
 
+        public int AccessReportCount { get; private set; }
+
+        public List<Address> AccessedAddresses { get; } = [];
+
         public readonly record struct ActionTrace(ulong Gas, UInt256 Value, Address From, Address To, ExecutionType CallType, bool IsPrecompileCall);
 
         public List<ActionTrace> Actions { get; } = [];
+
+        /// <summary>Output of every action frame that ended successfully; a create frame contributes its deployed code.</summary>
+        public List<byte[]> ActionOutputs { get; } = [];
+
+        /// <summary>Output of every action frame that ended with REVERT.</summary>
+        public List<byte[]> ActionRevertOutputs { get; } = [];
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = [];
 
@@ -69,9 +78,23 @@ namespace Nethermind.Evm.Test
 
         public override void ReportActionError(EvmExceptionType exceptionType) => ReportedActionErrors.Add(exceptionType);
 
-        public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => ReportedActionErrors.Add(EvmExceptionType.Revert);
+        public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => ActionOutputs.Add(output.ToArray());
+
+        public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => ActionOutputs.Add(deployedCode.ToArray());
+
+        public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+        {
+            ReportedActionErrors.Add(EvmExceptionType.Revert);
+            ActionRevertOutputs.Add(output.ToArray());
+        }
 
         public override void ReportRefund(long refund) => Refund += refund;
+
+        public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
+        {
+            AccessReportCount++;
+            AccessedAddresses.AddRange(accessedAddresses);
+        }
 
         public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
             => Actions.Add(new ActionTrace(gas, value, from, to, callType, isPrecompileCall));

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -54,12 +55,20 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
         IOverridableEnv<ReceiptsRegenerationEnv> inner,
         IDisposable scope) : IOverridableEnv<ReceiptsRegenerationEnv>, IDisposable
     {
-        public Scope<ReceiptsRegenerationEnv> BuildAndOverride(
+        public bool TryBuildAndOverride(
             BlockHeader? header,
-            Dictionary<Address, AccountOverride>? stateOverride = null,
-            IReleaseSpec? specOverride = null,
-            BlockOverride? blockOverride = null) =>
-            inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+            Dictionary<Address, AccountOverride>? stateOverride,
+            IReleaseSpec? specOverride,
+            BlockOverride? blockOverride,
+            [NotNullWhen(true)] out Scope<ReceiptsRegenerationEnv>? scope) =>
+            inner.TryBuildAndOverride(header, stateOverride, specOverride, blockOverride, out scope);
+
+        public bool TryBuildAndOverrideAtTarget(
+            BlockHeader targetBlock,
+            Dictionary<Address, AccountOverride>? stateOverride,
+            IReleaseSpec? specOverride,
+            [NotNullWhen(true)] out Scope<ReceiptsRegenerationEnv>? scope) =>
+            inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);
 
         public void Dispose() => scope.Dispose();
     }

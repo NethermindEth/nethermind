@@ -11,7 +11,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
+public sealed class HealingStorageTree(IScopedTrieStore trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
 {
     private readonly INodeStorage _nodeStorage = nodeStorage;
     private readonly Address _address = address;
@@ -58,19 +58,16 @@ public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage
 
     private bool Recover(in TreePath missingNodePath, Hash256 hash, Hash256 fullPath)
     {
-        if (_recovery is not null)
+        using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+        if (rlps is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
-            if (rlps is not null)
+            Hash256 addressHash = _address.ToAccountPath.ToCommitment();
+            foreach ((TreePath, byte[]) kv in rlps)
             {
-                Hash256 addressHash = _address.ToAccountPath.ToCommitment();
-                foreach ((TreePath, byte[]) kv in rlps)
-                {
-                    ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
-                    _nodeStorage.Set(addressHash, kv.Item1, nodeHash, kv.Item2);
-                }
-                return true;
+                ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
+                _nodeStorage.Set(addressHash, kv.Item1, nodeHash, kv.Item2);
             }
+            return true;
         }
 
         return false;

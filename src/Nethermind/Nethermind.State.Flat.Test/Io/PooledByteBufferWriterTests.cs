@@ -8,9 +8,8 @@ namespace Nethermind.State.Flat.Test.Io;
 [TestFixture]
 public class PooledByteBufferWriterTests
 {
-    [TestCase(1)]
-    [TestCase(5000)]
-    public void ZeroCapacity_GrowsToFitFirstWrite(int size)
+    [Test]
+    public void ZeroCapacity_GrowsToFitFirstWrite([Values(1, 5000)] int size)
     {
         using PooledByteBufferWriter pooled = new(initialCapacity: 0);
         ref PooledByteBufferWriter.Writer w = ref pooled.GetWriter();

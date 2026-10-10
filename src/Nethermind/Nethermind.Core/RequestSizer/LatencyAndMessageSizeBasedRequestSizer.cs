@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 
@@ -20,12 +19,14 @@ public class LatencyAndMessageSizeBasedRequestSizer(
     TimeSpan upperLatencyWatermark,
     long maxResponseSize,
     int? initialRequestSize,
-    double adjustmentFactor = 1.5
+    double adjustmentFactor = 1.5,
+    TimeProvider? timeProvider = null
     )
 {
     private readonly TimeSpan _upperLatencyWatermark = upperLatencyWatermark;
     private readonly TimeSpan _lowerLatencyWatermark = lowerLatencyWatermark;
     private readonly long _maxResponseSize = maxResponseSize;
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private readonly AdaptiveRequestSizer _requestSizer = new(
             minRequestLimit,
             maxRequestLimit,
@@ -48,13 +49,13 @@ public class LatencyAndMessageSizeBasedRequestSizer(
     /// <returns></returns>
     public Task<TResponse> Run<TResponse, TRequest, TResponseItem>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem> => _requestSizer.Run(async (adjustedRequestSize) =>
     {
-        long startTime = Stopwatch.GetTimestamp();
+        long startTime = _timeProvider.GetTimestamp();
         long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
         IReadOnlyList<TRequest> cappedRequest = affectiveRequestSize == request.Count
             ? request
             : request.Slice(0, (int)affectiveRequestSize);
         (TResponse result, long messageSize) = await func(cappedRequest);
-        TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
+        TimeSpan duration = _timeProvider.GetElapsedTime(startTime);
         if (messageSize > _maxResponseSize)
         {
             return (result, AdaptiveRequestSizer.Direction.Decrease);

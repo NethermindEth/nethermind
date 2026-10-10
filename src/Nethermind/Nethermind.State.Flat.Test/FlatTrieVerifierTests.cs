@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -223,6 +224,29 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         AssertAccountStats(verifier, accountCount: 3, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
     }
 
+    [Test]
+    public void Verify_AccountsAtAddressRangeEdges_Match()
+    {
+        // Edges of the preimage key range; the all-0xFF address sits on the iterator's exclusive upper bound.
+        (Address address, Account account)[] accounts =
+        [
+            (new Address("0x0000000000000000000000000000000000000000"), new Account(1, 100)),
+            (new Address("0xfffffffffffffffffffffffffffffffffffffffe"), new Account(2, 200)),
+            (new Address("0xffffffffffffffffffffffffffffffffffffffff"), new Account(3, 300)),
+        ];
+        foreach ((Address address, Account account) in accounts) _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        WriteAccountsToFlat(accounts, new StateId(1, stateRoot));
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        AssertAccountStats(verifier, accountCount: 3, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
+    }
+
     [TestCase(1UL, 100UL, 1UL, 200UL, Description = "Mismatched balance")]
     [TestCase(5UL, 100UL, 10UL, 100UL, Description = "Mismatched nonce")]
     public void Verify_MismatchedAccount_DetectsMismatch(ulong trieNonce, ulong trieBalance, ulong flatNonce, ulong flatBalance)
@@ -367,6 +391,106 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.SlotCount, Is.EqualTo(1));
         Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
+    }
+
+    // Enough slots that the root and all 16 children are full branches, triggering the partitioned path.
+    private const int LargeStorageSlotCount = 4096;
+
+    private static (UInt256 slot, byte[] value)[] CreateLargeStorageSlots(int count = LargeStorageSlotCount)
+    {
+        (UInt256 slot, byte[] value)[] slots = new (UInt256, byte[])[count];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            slots[i] = ((UInt256)i, [(byte)(i % 255 + 1)]);
+        }
+        return slots;
+    }
+
+    private Hash256 SetUpLargeStorageAccount(Address address, (UInt256 slot, byte[] value)[] slots)
+    {
+        StorageTree storageTree = CreateStorageTree(address, slots);
+        Account account = new(1, 100, storageTree.RootHash, Keccak.Compute([1]));
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        WriteAccountToFlat(address, account, new StateId(1, stateRoot));
+        return stateRoot;
+    }
+
+    [TestCase(4, ExpectedResult = false)]
+    [TestCase(512, ExpectedResult = false)]
+    [TestCase(LargeStorageSlotCount, ExpectedResult = true)]
+    public bool ShouldSplitStorage_SplitsOnlyLargeTries(int slotCount)
+    {
+        Address address = TestItem.AddressA;
+        StorageTree storageTree = CreateStorageTree(address, CreateLargeStorageSlots(slotCount));
+        IScopedTrieStore storageTrieStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(Keccak.Compute(address.Bytes));
+        return FlatTrieVerifier.ShouldSplitStorage(storageTrieStore, storageTree.RootHash);
+    }
+
+    [Test]
+    public void Verify_Storage_LargeTrie_AllMatch()
+    {
+        Address address = TestItem.AddressA;
+        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots);
+        foreach ((UInt256 slot, byte[] value) in slots)
+        {
+            WriteStorageDirectToDb(address, slot, value);
+        }
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+            // Exact count also guards against double-counting at partition boundaries
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(LargeStorageSlotCount));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(0));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
+    public void Verify_Storage_LargeTrie_DetectsIssues([Values] bool spillPreimageSlotsToDisk)
+    {
+        Address address = TestItem.AddressA;
+        (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
+        Hash256 stateRoot = SetUpLargeStorageAccount(address, slots);
+        // Slot 0 omitted from flat -> missing in flat
+        for (int i = 1; i < slots.Length; i++)
+        {
+            WriteStorageDirectToDb(address, slots[i].slot, slots[i].value);
+        }
+        WriteStorageDirectToDb(address, slots[1].slot, [0xFF]); // Wrong value -> mismatched
+        WriteStorageDirectToDb(address, LargeStorageSlotCount, [0xAB]); // Not in trie -> missing in trie
+
+        // Hashed mode logs from concurrent partitions, which TestLogger does not support.
+        TestLogger testLogger = new();
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(IsPreimage ? new OneLoggerLogManager(new ILogger(testLogger)) : _logManager)
+        {
+            PreimageSlotsInMemory = spillPreimageSlotsToDisk ? 64 : int.MaxValue
+        };
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verifier.Stats.SlotCount, Is.EqualTo(LargeStorageSlotCount + 1));
+            Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
+            Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+            if (IsPreimage)
+            {
+                Assert.That(testLogger.LogList, Has.One.StartsWith("Storage slot in trie not in flat"));
+                Assert.That(testLogger.LogList, Has.One.StartsWith("Storage slot in flat not in trie").And.EndsWith($"Slot: {new ValueHash256(((UInt256)LargeStorageSlotCount).ToBigEndian())}"));
+            }
+        }
     }
 
     [Test]

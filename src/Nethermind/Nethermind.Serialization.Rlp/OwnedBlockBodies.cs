@@ -15,19 +15,24 @@ namespace Nethermind.Core;
 /// BlockBody may contain `Memory<byte>` that is explicitly managed. Reusing `BlockBody` from this object after Dispose
 /// is likely to cause corrupted `BlockBody`.
 /// </summary>
-public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOwner = null) : IDisposable, IReadOnlyList<BlockBody?>
+/// <param name="bodies">Bodies whose lifetimes are managed by this owner.</param>
+/// <param name="memoryOwner">Optional backing memory released on disposal or disowning.</param>
+/// <param name="ownsPooledTransactions">Whether disposal returns the exclusively owned transactions to the pool.</param>
+public class OwnedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null, bool ownsPooledTransactions = false) : IDisposable, IReadOnlyList<BlockBody?>
 {
-    private readonly BlockBody?[]? _rawBodies = bodies;
+    private readonly BlockBody?[] _rawBodies = bodies;
 
     private IMemoryOwner<byte>? _memoryOwner = memoryOwner;
+    private bool _ownsPooledTransactions = ownsPooledTransactions;
 
-    public BlockBody?[]? Bodies => _rawBodies;
+    public BlockBody?[] Bodies => _rawBodies;
 
     /// <summary>
     /// Disown the `BlockBody`, copying any `Memory<byte>` so that it does not depend on the `_memoryOwner.`
     /// </summary>
     public void Disown()
     {
+        _ownsPooledTransactions = false;
         if (_memoryOwner is null) return;
 
         foreach (BlockBody? blockBody in Bodies)
@@ -47,14 +52,16 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
 
     public void Dispose()
     {
-        if (_memoryOwner is null) return;
-
-        foreach (BlockBody? blockBody in Bodies)
+        if (_ownsPooledTransactions)
         {
-            if (blockBody is null) continue;
-            foreach (Transaction tx in blockBody.Transactions)
+            _ownsPooledTransactions = false;
+            foreach (BlockBody? blockBody in Bodies)
             {
-                TxDecoder.TxObjectPool.Return(tx);
+                if (blockBody is null) continue;
+                foreach (Transaction tx in blockBody.Transactions)
+                {
+                    TxDecoder.TxObjectPool.Return(tx);
+                }
             }
         }
 
@@ -64,7 +71,7 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
 
     public IEnumerator<BlockBody?> GetEnumerator()
     {
-        foreach (BlockBody blockBody in _rawBodies)
+        foreach (BlockBody? blockBody in _rawBodies)
         {
             yield return blockBody;
         }

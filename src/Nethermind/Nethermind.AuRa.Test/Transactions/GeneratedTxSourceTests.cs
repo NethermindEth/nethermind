@@ -25,14 +25,15 @@ namespace Nethermind.AuRa.Test.Transactions
             IStateReader stateReader = Substitute.For<IStateReader>();
 
             BlockHeader parent = Build.A.BlockHeader.TestObject;
+            BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
             ulong gasLimit = ulong.MaxValue;
             Transaction poolTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject;
             GeneratedTransaction generatedTx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressB).TestObject;
-            innerSource.GetTransactions(parent, gasLimit).Returns(new[] { poolTx, generatedTx });
+            innerSource.GetTransactions(parent, targetBlock, gasLimit).Returns(new[] { poolTx, generatedTx });
 
             GeneratedTxSource txSource = new(innerSource, txSealer, stateReader, LimboLogs.Instance);
 
-            txSource.GetTransactions(parent, gasLimit).ToArray();
+            txSource.GetTransactions(parent, targetBlock, gasLimit).ToArray();
 
             txSealer.Received().TrySeal(generatedTx, TxHandlingOptions.ManagedNonce | TxHandlingOptions.AllowReplacingSignature);
             txSealer.DidNotReceive().TrySeal(poolTx, Arg.Any<TxHandlingOptions>());

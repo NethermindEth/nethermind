@@ -39,9 +39,10 @@ public interface IReceiptConfig : IConfig
 
     [ConfigItem(Description =
         """
-        The maximum block range (toBlock - fromBlock + 1) allowed in a single `eth_getLogs` request.
-        Requests exceeding this range are rejected with an "invalid params" (-32602) error.
-        Set to 0 to disable the limit. Value is ignored (no limits) if log index is enabled.
-        """, DefaultValue = "1000")]
+        The maximum number of blocks a single `eth_getLogs` or `eth_getFilterLogs` request may read receipts of
+        one by one. Blocks the log index can answer for do not count towards it, so on an indexed node the limit
+        only bounds what falls back to a sequential read. Requests exceeding it are rejected with an
+        "invalid params" (-32602) error. Set to 0 to disable the limit.
+        """, DefaultValue = "10000")]
     int MaxBlockDepth { get; set; }
 }

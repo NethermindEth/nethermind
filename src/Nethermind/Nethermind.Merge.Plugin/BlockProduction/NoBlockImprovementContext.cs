@@ -9,8 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime)
-    : NoBlockProductionContext(currentBestBlock, blockFees), IBlockImprovementContext
+public class NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFees, DateTimeOffset startDateTime) : IBlockImprovementContext
 {
     void IDisposable.Dispose() { }
 
@@ -18,6 +17,7 @@ public class NoBlockImprovementContext(Block? currentBestBlock, UInt256 blockFee
 
     public bool Disposed => true;
 
+    public BlockProductionSnapshot Best { get; } = new(currentBestBlock, blockFees);
     public Task<Block?> ImprovementTask { get; } = Task.FromResult(currentBestBlock);
     public DateTimeOffset StartDateTime { get; } = startDateTime;
 }

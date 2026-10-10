@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
@@ -47,27 +46,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return estimate;
         }
 
-        public static ulong EstimateSize(TxReceipt receipt)
-        {
-            ulong estimate = Bloom.ByteLength; // receipt is mostly Bloom + Logs
-            for (int i = 0; i < receipt.Logs.Length; i++)
-            {
-                estimate += (ulong)receipt.Logs[i].Data.Length + (ulong)receipt.Logs[i].Topics.Length * Hash256.Size;
-            }
-
-            return estimate;
-        }
-
         public static ulong EstimateSize(TxReceipt[] receipts)
         {
+            IRlpDecoder<TxReceipt> decoder = Rlp.GetDecoderOrThrow<TxReceipt>();
             ulong estimate = 0;
 
             for (int i = 0; i < receipts.Length; i++)
             {
-                estimate += EstimateSize(receipts[i]);
+                // Exact encoded length so log addresses and RLP framing aren't under-counted. Receipts
+                // without a post-transaction state encode the same length under either EIP-658 behavior.
+                estimate += (ulong)decoder.GetLength(receipts[i], RlpBehaviors.None);
             }
 
-            return estimate;
+            // A block's receipts go on the wire inside their own sequence.
+            return estimate > int.MaxValue ? estimate : (ulong)Rlp.LengthOfSequence((int)estimate);
         }
     }
 }

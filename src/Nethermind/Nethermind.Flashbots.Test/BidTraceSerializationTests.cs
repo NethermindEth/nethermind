@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Flashbots.Data;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -38,6 +41,23 @@ namespace Nethermind.Flashbots.Test
             Assert.That(trace.ProposerPublicKey.Bytes.Length, Is.EqualTo(64));
             Assert.That(trace.BuilderPublicKey.Bytes, Is.EqualTo(builderKeyBytes));
             Assert.That(trace.ProposerPublicKey.Bytes, Is.EqualTo(proposerKeyBytes));
+        }
+
+        [Test]
+        public void BidTrace_WithLeadingZeroPublicKeys_SerializesFullWidth()
+        {
+            // The first hex digit is zero. A public key is DATA per EIP-1474. All 128 digits must survive.
+            const string builderKey = "0a9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+            const string proposerKey = "0b9ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec4";
+            BidTrace trace = new(12345, Hash256.Zero, Hash256.Zero, new PublicKey(builderKey), new PublicKey(proposerKey), Address.Zero, 0, 0, UInt256.Zero);
+
+            string json = _serializer.Serialize(trace);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json, Does.Contain($"\"builder_public_key\":\"0x{builderKey}\""));
+                Assert.That(json, Does.Contain($"\"proposer_public_key\":\"0x{proposerKey}\""));
+            }
         }
     }
 }

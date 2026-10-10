@@ -30,11 +30,8 @@ public class SharedCancellationTokenSourceTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(10)]
-    [TestCase(50)]
-    public void CancelAndDispose_returns_true_exactly_once(int threadCount)
+    [Test]
+    public void CancelAndDispose_returns_true_exactly_once([Values(1, 2, 10, 50)] int threadCount)
     {
         SharedCancellationTokenSource shared = new(new CancellationTokenSource());
         using ManualResetEventSlim gate = new();

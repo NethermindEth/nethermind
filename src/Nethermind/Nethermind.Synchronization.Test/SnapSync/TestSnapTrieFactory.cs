@@ -12,7 +12,12 @@ internal class TestSnapTrieFactory(
     Func<ISnapTree<PathWithAccount>> createStateTree,
     Func<ISnapTree<PathWithStorageSlot>>? createStorageTree = null) : ISnapTrieFactory
 {
+    private bool _rangePhaseFinished;
+
     public ISnapTree<PathWithAccount> CreateStateTree() => createStateTree();
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath) =>
         createStorageTree is not null ? createStorageTree() : throw new NotSupportedException("No storage tree factory provided");
+
+    public bool IsRangePhaseFinished() => _rangePhaseFinished;
+    public void MarkRangePhaseFinished() => _rangePhaseFinished = true;
 }

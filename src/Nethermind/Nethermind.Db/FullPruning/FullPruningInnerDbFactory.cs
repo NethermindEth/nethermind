@@ -14,6 +14,7 @@ namespace Nethermind.Db.FullPruning
     {
         private readonly IDbFactory _dbFactory;
         private readonly IFileSystem _fileSystem;
+        private readonly string _path;
         private int _index; // current index of the inner db
 
         /// <summary>
@@ -26,7 +27,39 @@ namespace Nethermind.Db.FullPruning
         {
             _dbFactory = dbFactory;
             _fileSystem = fileSystem;
+            _path = path;
             _index = GetStartingIndex(path); // we need to read the current state of inner DB's
+        }
+
+        /// <summary>
+        /// Deletes every indexed inner DB directory other than the live one on disk.
+        /// </summary>
+        /// <remarks>
+        /// An interrupted full pruning leaves its half-written copy next to the live inner DB, and the next
+        /// pruning clears it when it starts. A caller that is discarding the whole state has no next pruning,
+        /// so it reclaims the copy here. The live DB is re-read from disk rather than taken from this factory's
+        /// index, which <see cref="CreateDb"/> and <see cref="GetFullDbPath"/> both advance, so what it deletes
+        /// does not depend on what was called before it and a repeated call deletes nothing more.
+        /// </remarks>
+        /// <returns>The number of directories deleted.</returns>
+        public int DeleteStaleInnerDbs()
+        {
+            string fullPath = _dbFactory.GetFullDbPath(new DbSettings(string.Empty, _path));
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
+            if (!directory.Exists) return 0;
+
+            int currentIndex = GetStartingIndex(_path) + 1; // GetRocksDbSettings increments before it opens
+            int deleted = 0;
+            foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
+            {
+                if (int.TryParse(subDirectory.Name, out int index) && index >= 0 && index != currentIndex)
+                {
+                    subDirectory.Delete(true);
+                    deleted++;
+                }
+            }
+
+            return deleted;
         }
 
         /// <inheritdoc />

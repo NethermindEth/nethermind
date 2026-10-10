@@ -180,7 +180,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
-        return _blockBodyDecoder.Decode(ref ctx)!;
+        return _blockBodyDecoder.Decode(ref ctx, RlpBehaviors.SkipPooledTransactions)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
@@ -192,8 +192,8 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
         RlpReader ctx = new(buffer.Span);
-        // ReceiptMessageDecoder returns null for empty-list (0xC0) items
-        return ctx.DecodeArray<TxReceipt>(_receiptDecoder, allowNulls: true);
+        // Era1 receipts are part of the block root commitment; reject empty-list placeholders.
+        return ctx.DecodeNonNullArray<TxReceipt>(_receiptDecoder);
     }
 
     public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();

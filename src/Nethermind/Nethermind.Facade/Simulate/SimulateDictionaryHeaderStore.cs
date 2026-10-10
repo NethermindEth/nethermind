@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -16,7 +17,7 @@ namespace Nethermind.Facade.Simulate;
 ///  - Improve performance to get faster local caching without re-encoding of data in Simulate blocks
 /// </summary>
 /// <param name="readonlyBaseHeaderStore"></param>
-public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore
+public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore) : IHeaderStore, IClearableCache
 {
     private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = [];
     private readonly Dictionary<Hash256AsKey, ulong> _blockNumberDict = [];
@@ -83,4 +84,10 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     }
 
     public BlockHeader? Get(Hash256 blockHash, ulong? blockNumber = null) => Get(blockHash, true, blockNumber);
+
+    void IClearableCache.ClearCache()
+    {
+        _headerDict.Clear();
+        _blockNumberDict.Clear();
+    }
 }

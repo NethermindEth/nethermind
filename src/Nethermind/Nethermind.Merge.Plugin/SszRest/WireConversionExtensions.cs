@@ -91,7 +91,7 @@ internal static class WireConversionExtensions
     private static byte[][] BuildExecutionRequests(SszTransaction[] reqs)
     {
         byte[][] result = new byte[reqs.Length][];
-        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes ?? [];
+        for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes.ToByteArray();
         return result;
     }
 

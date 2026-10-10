@@ -66,10 +66,8 @@ public class EraExporterTests
             "epoch already present as .erae must be skipped, not re-exported as a duplicate .ere");
     }
 
-    [TestCase("checksums_sha256.txt")]
-    [TestCase("checksums.txt")]
-    [TestCase("accumulators.txt")]
-    public async Task Export_WhenCalled_CreatesMetadataFile(string fileName)
+    [Test]
+    public async Task Export_WhenCalled_CreatesMetadataFile([Values("checksums_sha256.txt", "checksums.txt", "accumulators.txt")] string fileName)
     {
         await using IContainer container = EraETestModule.BuildContainerBuilderWithBlockTreeOfLength(32).Build();
 

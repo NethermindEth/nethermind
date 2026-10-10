@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -79,7 +80,8 @@ namespace Nethermind.Network.Test
 
             NetworkConfig networkConfig = new();
             networkConfig.P2PPingInterval = 200;
-            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
+            TestLogger logger = new() { IsDebug = false };
+            SessionMonitor sessionMonitor = new(networkConfig, new OneLoggerLogManager(new(logger)));
             sessionMonitor.AddSession(responsive);
             sessionMonitor.AddSession(unresponsive);
             responsive.LastPongUtc = DateTime.UtcNow;
@@ -100,6 +102,8 @@ namespace Nethermind.Network.Test
             {
                 sessionMonitor.Stop();
             }
+
+            Assert.That(logger.LogList, Has.Some.Contains("No pong received in response"));
         }
 
         [Test]

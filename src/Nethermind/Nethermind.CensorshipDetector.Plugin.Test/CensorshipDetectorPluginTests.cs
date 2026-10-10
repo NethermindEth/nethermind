@@ -18,9 +18,8 @@ namespace Nethermind.CensorshipDetector.Plugin.Test;
 
 public class CensorshipDetectorPluginTests
 {
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Plugin_enabled_follows_config(bool enabled)
+    [Test]
+    public void Plugin_enabled_follows_config([Values] bool enabled)
     {
         CensorshipDetectorPlugin plugin = new(new CensorshipDetectorConfig { Enabled = enabled });
 

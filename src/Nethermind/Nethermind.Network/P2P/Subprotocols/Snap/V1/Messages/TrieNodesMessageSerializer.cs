@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 ctx.ReadSequenceLength();
                 long requestId = ctx.DecodeLong();
 
-                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.TrieNodesRlpLimit);
                 memoryOwner = null;
                 byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 

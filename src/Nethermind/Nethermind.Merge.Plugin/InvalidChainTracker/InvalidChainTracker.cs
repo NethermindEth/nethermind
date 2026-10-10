@@ -34,16 +34,16 @@ public class InvalidChainTracker(
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = [];
 
-    public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
+    public void SetupBlockchainProcessorInterceptor(IBlockProcessingQueue processingQueue)
     {
-        blockchainProcessor.InvalidBlock += OnBlockchainProcessorInvalidBlock;
+        processingQueue.InvalidBlock += OnBlockchainProcessorInvalidBlock;
         _disposables.Add(() =>
         {
-            blockchainProcessor.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
+            processingQueue.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
         });
     }
 
-    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
     public void SetChildParent(Hash256 child, Hash256 parent)
     {

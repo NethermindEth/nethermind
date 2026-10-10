@@ -13,6 +13,13 @@ public enum ReaderFlags
 {
     None = 0,
     Sync = 1,
+
+    /// <summary>
+    /// The reader serves long sequential scans (e.g. flat-trie verification): backing snapshots may enable
+    /// readahead iterators for <see cref="ReadFlags.HintReadAhead"/> reads, and the shared reader cache in
+    /// <see cref="CachedReaderPersistence"/> is bypassed so the hint reaches the storage layer.
+    /// </summary>
+    FullScan = 2,
 }
 
 public interface IPersistence
@@ -30,14 +37,14 @@ public interface IPersistence
 
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
-        bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
         StateId CurrentState { get; }
         byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
         byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
-        bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
+        bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value);
 
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
@@ -48,7 +55,7 @@ public interface IPersistence
     {
         void SelfDestruct(Address addr);
         void SetAccount(Address addr, Account? account);
-        void SetStorage(Address addr, in UInt256 slot, in SlotValue? value);
+        void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
@@ -79,6 +86,12 @@ public interface IPersistence
     /// <summary>
     /// Iterator for iterating over flat storage key-value pairs. This is mainly used in verifytrie.
     /// </summary>
+    /// <remarks>
+    /// <see cref="CurrentValue"/> may point into the underlying store's buffer and is only valid
+    /// until the next <see cref="MoveNext"/> or <see cref="IDisposable.Dispose"/> call.
+    /// Reading <see cref="CurrentKey"/> or <see cref="CurrentValue"/> before the first
+    /// <see cref="MoveNext"/>, or after one returned <c>false</c>, is undefined.
+    /// </remarks>
     public interface IFlatIterator : IDisposable
     {
         bool MoveNext();

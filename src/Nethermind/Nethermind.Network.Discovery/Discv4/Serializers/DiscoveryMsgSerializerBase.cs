@@ -104,7 +104,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
 
         if (!Bytes.AreEqual(mdc.Bytes, computedMdc))
         {
-            throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
+            throw new NetworkingException("Invalid packet hash", NetworkExceptionType.Validation);
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);
@@ -120,6 +120,28 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
         }
 
         return new ValueHash256(hash);
+    }
+
+    protected static bool IsNextEnrSequence(RlpReader ctx)
+    {
+        byte prefix = ctx.PeekByte();
+        return prefix switch
+        {
+            >= 1 and < 128 or 128 => true,
+            > 128 and <= 136 => IsCanonicalMultiByteInteger(ctx, prefix - 128),
+            _ => false
+        };
+    }
+
+    private static bool IsCanonicalMultiByteInteger(RlpReader ctx, int length)
+    {
+        if (length >= ctx.Length - ctx.Position)
+        {
+            throw new RlpException("Truncated discovery ENR sequence.");
+        }
+
+        byte firstByte = ctx.Peek(1, 1)[0];
+        return length == 1 ? firstByte >= 128 : firstByte != 0;
     }
 
     protected static void Encode<TWriter>(ref TWriter writer, IPEndPoint address, int length)
@@ -188,7 +210,7 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
             ThrowInvalidIP(ip);
         }
 
-        return new IPEndPoint(new IPAddress(ip), port);
+        return new IPEndPoint(new IPAddress(ip).NormalizeMappedIPv4(), port);
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowInvalidPort(int port) => throw new NetworkingException($"Invalid discovery port {port}.", NetworkExceptionType.Validation);

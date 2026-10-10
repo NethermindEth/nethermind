@@ -209,7 +209,7 @@ public class PeerManagerFilteringIntegrationTests
             return exactOnly;
         }
 
-        public Task<bool> ConnectAsync(Node node)
+        public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
             ConnectedNodeIds.Add(node.Id);
             FirstConnect.TrySetResult(node);
@@ -239,7 +239,7 @@ public class PeerManagerFilteringIntegrationTests
             return true;
         }
 
-        public Task<bool> ConnectAsync(Node node)
+        public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
         {
             CallsToConnectAsync.Add(node);
             FirstConnect.TrySetResult(node);

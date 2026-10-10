@@ -13,14 +13,18 @@ public interface IPersistedSnapshotCompactor : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Takes ownership of <paramref name="batch"/> and disposes it once the batch has been
-    /// processed (or drained on cancellation). Asynchronously awaits a free slot when the internal
-    /// queue is full, providing backpressure to the block-processing pipeline without blocking a
-    /// thread.
+    /// processed, rejected during enqueue, or drained on cancellation. Asynchronously awaits a free
+    /// slot when the internal queue is full, providing backpressure to the block-processing pipeline
+    /// without blocking a thread.
     /// </remarks>
     /// <param name="batch">The converted states to compact; ownership transfers to the compactor.</param>
     /// <param name="persistedBlockNumber">The current persistence point (RocksDB persisted state block).
     /// Compaction windows are clamped to not reach below it — snapshots below are already in RocksDB,
     /// so merging them would be wasted work.</param>
     /// <param name="cancellationToken">Releases the backpressure wait when the producer is shutting down.</param>
+    /// <exception cref="ObjectDisposedException">The compactor has been disposed. This check precedes cancellation;
+    /// <paramref name="batch"/> is returned to its pool before the exception is propagated.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was canceled before or while
+    /// waiting to enqueue; <paramref name="batch"/> is returned to its pool before the exception is propagated.</exception>
     ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken);
 }

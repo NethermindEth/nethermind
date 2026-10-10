@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,8 +29,10 @@ public abstract class KademliaDiscoveryApp(
     private Task? _runningTask;
     private Task? _stopTask;
     private Task? _disposeTask;
-    private readonly object _lifetimeLock = new();
-    private int _activationStarted;
+    private readonly Lock _lifetimeLock = new();
+    private int _channelActive;
+    private int _initialized;
+    private bool _activationStarted;
 
     protected ILogger Logger { get; } = logger;
 
@@ -42,6 +43,7 @@ public abstract class KademliaDiscoveryApp(
         try
         {
             await Initialize(_stopCts.Token);
+            Volatile.Write(ref _initialized, 1);
             TryStartActivation();
         }
         catch (Exception e)
@@ -61,8 +63,6 @@ public abstract class KademliaDiscoveryApp(
 
     private async Task StopAsyncInternal()
     {
-        DetachEventHandlers();
-
         await _stopCts.CancelAsync();
 
         try
@@ -94,7 +94,17 @@ public abstract class KademliaDiscoveryApp(
 
     string IStoppableService.Description => _description;
 
-    public abstract void InitializeChannel(IChannel channel);
+    /// <summary>
+    /// Attaches the protocol to the bound discovery socket.
+    /// </summary>
+    /// <param name="socket">The socket shared by all discovery protocols.</param>
+    /// <param name="forward">Passes a received datagram this protocol does not handle on to the next protocol.</param>
+    internal abstract void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward);
+
+    /// <summary>
+    /// Handles a datagram received on the discovery socket, taking ownership of it.
+    /// </summary>
+    internal abstract void Receive(PooledUdpReceiveResult datagram);
 
     public virtual void AddNodeToDiscovery(Node node) => Kademlia.AddOrRefresh(node);
 
@@ -135,6 +145,12 @@ public abstract class KademliaDiscoveryApp(
         _kademlia.OnNodeRemoved += OnKademliaNodeRemoved;
     }
 
+    private protected static void PreserveDiscoveryState(Node replacement, Node current)
+    {
+        replacement.IsBootnode = current.IsBootnode;
+        replacement.MergeEnrStateFrom(current);
+    }
+
     protected virtual async Task Initialize(CancellationToken cancellationToken)
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
@@ -144,7 +160,7 @@ public abstract class KademliaDiscoveryApp(
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }
 
-    protected void OnChannelActivated(object? sender, EventArgs e)
+    protected void OnChannelActivated()
     {
         if (Logger.IsDebug) Logger.Debug("Activated discovery channel.");
 
@@ -153,22 +169,26 @@ public abstract class KademliaDiscoveryApp(
             return;
         }
 
+        Volatile.Write(ref _channelActive, 1);
         TryStartActivation();
     }
 
     private void TryStartActivation()
     {
-        if (_stopCts.IsCancellationRequested ||
-            Interlocked.CompareExchange(ref _activationStarted, 1, 0) != 0)
+        lock (_lifetimeLock)
         {
-            return;
+            if (_stopTask is not null ||
+                _stopCts.IsCancellationRequested ||
+                Volatile.Read(ref _channelActive) == 0 ||
+                Volatile.Read(ref _initialized) == 0 ||
+                _activationStarted)
+            {
+                return;
+            }
+
+            _activationStarted = true;
+            _runningTask = StartActivationAsync(_stopCts.Token);
         }
-
-        _runningTask = StartActivationAsync(_stopCts.Token);
-    }
-
-    protected virtual void DetachEventHandlers()
-    {
     }
 
     protected virtual Task StopAsyncCore() => Task.CompletedTask;

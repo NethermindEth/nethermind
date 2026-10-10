@@ -49,6 +49,10 @@ internal class XdcTransactionProcessor(
     {
         IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)spec;
 
+        // Randomize gas is charged in BuyGas but burned, not paid out: the reference client guards its
+        // whole fee payment with !types.IsSpecialTx(msg.To), see XinFinOrg/XDPoSChain
+        // https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L505
+        // Sign transactions never reach here — Execute routes them to ExecuteSpecialTransaction.
         if (tx.IsSpecialTransaction(xdcSpec)) return;
 
         if (!xdcSpec.IsTipTrc21FeeEnabled)
@@ -62,8 +66,7 @@ internal class XdcTransactionProcessor(
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 feeEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-        UInt256 fee = feeEffectiveGasPrice * spentGas;
+        UInt256 fee = effectiveGasPrice * spentGas;
 
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
@@ -71,19 +74,16 @@ internal class XdcTransactionProcessor(
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment,
-        out UInt256 blobBaseFee)
-    {
-        if (tx.RequiresSpecialHandling((XdcReleaseSpec)spec) || tx.IsSpecialTransaction((XdcReleaseSpec)spec))
-        {
-            premiumPerGas = 0;
-            senderReservedGasPayment = 0;
-            blobBaseFee = 0;
-            return TransactionResult.Ok;
-        }
-        return base.BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out premiumPerGas, out senderReservedGasPayment, out blobBaseFee);
-    }
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A randomize transaction carries a zero gas price yet must execute, so the reference client waives the
+    /// EIP-1559 floor for it - the floor only: gas is still bought and refunded. The premium is left to the base
+    /// calculation, which clamps it to zero. See <c>preCheck</c> in
+    /// https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L356
+    /// </remarks>
+    protected override bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
+        base.TryCalculatePremiumPerGas(tx, in baseFee, out premiumPerGas)
+        || tx.IsSpecialTransaction((IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec);
 
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
     {
@@ -151,24 +151,6 @@ internal class XdcTransactionProcessor(
             return TransactionResult.Ok;
         }
         return base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate);
-    }
-
-    protected override UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
-    {
-        // IMPORTANT: if we override the effective gas price to 0, we must also set opcodeGasPrice to 0.
-        // TxExecutionContext is created with opcodeGasPrice and is later used for refunding, tracing, etc.
-        //
-        // Also: IsSpecialTransaction requires the IXdcReleaseSpec to decide Randomize vs BlockSigner, so
-        // we need the current block spec here.
-        IXdcReleaseSpec xdcSpec = (IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec;
-
-        if (tx.IsSpecialTransaction(xdcSpec))
-        {
-            opcodeGasPrice = UInt256.Zero;
-            return UInt256.Zero;
-        }
-
-        return base.CalculateEffectiveGasPrice(tx, eip1559Enabled, in baseFee, out opcodeGasPrice);
     }
 
     protected override IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec, ulong blockGasLimit) =>

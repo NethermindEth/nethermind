@@ -28,6 +28,7 @@ public class PosForwardHeaderProviderCacheTests
     private IChainLevelHelper _chainLevelHelper = null!;
     private IBeaconPivot _beaconPivot = null!;
     private IBlockTree _blockTree = null!;
+    private ISealValidator _sealValidator = null!;
     private PosForwardHeaderProvider _provider = null!;
 
     [SetUp]
@@ -45,8 +46,8 @@ public class PosForwardHeaderProviderCacheTests
         _beaconPivot.BeaconPivotExists().Returns(true);
         _beaconPivot.ProcessDestination = BuildHeader(1_000, TestItem.KeccakA);
 
-        ISealValidator sealValidator = Substitute.For<ISealValidator>();
-        sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        _sealValidator = Substitute.For<ISealValidator>();
+        _sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
 
         _blockTree = Substitute.For<IBlockTree>();
         _blockTree.BestKnownNumber.Returns(0UL);
@@ -55,7 +56,7 @@ public class PosForwardHeaderProviderCacheTests
             _chainLevelHelper,
             poSSwitcher,
             _beaconPivot,
-            sealValidator,
+            _sealValidator,
             _blockTree,
             Substitute.For<ISyncPeerPool>(),
             new NullSyncReport(),
@@ -84,6 +85,34 @@ public class PosForwardHeaderProviderCacheTests
         between(first!);
         using IOwnedReadOnlyList<BlockHeader?>? _ = await Get(secondSkip, secondMax);
         AssertChainLevelCalls(expected);
+    }
+
+    [Test]
+    public async Task Hints_each_batch_range_before_validating_its_seals()
+    {
+        // This branch never reaches RequestHeaders, so the hint must come from ValidateSeals itself; without it
+        // Ethash refuses every forced pre-merge PoW seal and sync from genesis stalls. Cover both entry points:
+        // the freshly fetched batch and the cache-served slice. ValidateSeals runs its checks in parallel, so
+        // record the sequence explicitly instead of relying on a matcher over the interleaving.
+        List<string> events = [];
+        Lock eventsLock = new();
+        _sealValidator.When(v => v.HintValidationRange(Arg.Any<Guid>(), Arg.Any<ulong>(), Arg.Any<ulong>()))
+            .Do(ci => { lock (eventsLock) events.Add($"hint {ci.ArgAt<ulong>(1)}-{ci.ArgAt<ulong>(2)}"); });
+        _sealValidator.When(v => v.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()))
+            .Do(_ => { lock (eventsLock) events.Add("seal"); });
+
+        using IOwnedReadOnlyList<BlockHeader?>? fresh = await Get();
+        int afterFresh = events.Count;
+        using IOwnedReadOnlyList<BlockHeader?>? cached = await Get();
+
+        string sequence = string.Join(", ", events);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(events[0], Is.EqualTo($"hint 0-{CachedBatchSize - 1}"), sequence);
+            Assert.That(events.GetRange(1, afterFresh - 1), Has.All.EqualTo("seal"), sequence);
+            Assert.That(events[afterFresh], Is.EqualTo($"hint 0-{Requested - 1}"), sequence);
+            Assert.That(events.GetRange(afterFresh + 1, events.Count - afterFresh - 1), Has.All.EqualTo("seal"), sequence);
+        }
     }
 
     [Test]

@@ -1,0 +1,63 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Crypto;
+using Nethermind.State.Flat.History.Proofs;
+using Nethermind.Trie;
+
+namespace Nethermind.State.Flat.History.Walk;
+
+internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKey? key, SeriesWriter writer) : IDisposable
+{
+    private readonly ChildVector _lastChildren = ChildVector.Rent();
+    private NodeViewKind _lastKind = NodeViewKind.Empty;
+    private ValueHash256 _lastHash;
+    private bool _published;
+    private int _scratchRowsSinceFullVector;
+
+    public bool IsNew(in ValueHash256 hash) => !_published || hash != _lastHash;
+
+    public void Publish(ulong block, in NodeView view, CommitmentEmitter? emitter)
+    {
+        ushort changed = 0;
+        if (view.Kind == NodeViewKind.Branch)
+        {
+            ChildVector children = view.Children!;
+            ushort presence = children.Presence;
+            changed = _lastKind == NodeViewKind.Branch ? children.ChangedSince(_lastChildren) : presence;
+            if (key is { Scratch: true } branchKey)
+            {
+                bool fullVector = _scratchRowsSinceFullVector == 0;
+                _scratchRowsSinceFullVector = (_scratchRowsSinceFullVector + 1) % CommitmentDepthPolicy.FullVectorEvery;
+                writer.WriteBranch(branchKey, block, presence, fullVector ? presence : changed, children);
+            }
+        }
+        else if (key is { Scratch: true } otherKey)
+        {
+            if (view.Kind == NodeViewKind.Whole) writer.WriteWhole(otherKey, block, view.Rlp);
+            else writer.WriteEmpty(otherKey, block);
+        }
+
+        if (emitter is not null) scope.Record(emitter, path, view, changed);
+
+        Seed(view);
+    }
+
+    public void Seed(in NodeView view)
+    {
+        if (view.Kind == NodeViewKind.Branch) _lastChildren.CopyFrom(view.Children!);
+        _lastKind = view.Kind;
+        _lastHash = view.Hash;
+        _published = true;
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+        ChildVector.Return(_lastChildren);
+    }
+}

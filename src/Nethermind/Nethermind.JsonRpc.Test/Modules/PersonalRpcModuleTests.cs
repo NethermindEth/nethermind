@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Security;
 using System.Threading.Tasks;
@@ -39,6 +40,31 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
             string expectedAccounts = string.Join(',', _wallet.GetAccounts().Select(static a => $"\"{a}\""));
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":[{expectedAccounts}],\"id\":67}}"));
+        }
+
+        [Test]
+        public async Task Personal_list_accounts_reports_wallet_failure()
+        {
+            const string failureMessage = "Wallet account enumeration failed.";
+            InvalidOperationException exception = new(failureMessage);
+            IWallet wallet = Substitute.For<IWallet>();
+            wallet.GetAccounts().Returns(_ => throw exception);
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(
+                _ecdsa,
+                wallet,
+                _keyStore,
+                new OneLoggerLogManager(new ILogger(logger)));
+
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_listAccounts");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Does.Contain("\"error\""));
+                Assert.That(serialized, Does.Not.Contain(failureMessage));
+                logger.Received(1).Error("Error while getting key addresses from wallet.", exception);
+            }
         }
 
         [Test]
@@ -92,7 +118,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IKeyStore keyStore = Substitute.For<IKeyStore>();
             keyStore.GetKey(address, Arg.Any<SecureString>())
-                .Returns<(PrivateKey, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
+                .Returns<(PrivateKey?, Result)>(ci => ci.Arg<SecureString>().Unsecure() == correctPassphrase
                     ? (new PrivateKey(privateKeyHex), Result.Success)
                     : (null!, Result.Fail("authentication failed")));
 

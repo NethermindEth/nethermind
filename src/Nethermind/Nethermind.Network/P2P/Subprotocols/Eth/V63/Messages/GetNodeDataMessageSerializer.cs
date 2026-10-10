@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            ArrayPoolList<Hash256>? keys = DeserializeHashesArrayPool(byteBuffer, RlpLimit);
+            ArrayPoolList<Hash256> keys = DeserializeHashesArrayPool(byteBuffer, RlpLimit);
             return new GetNodeDataMessage(keys);
         }
     }

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 
 public interface IChainSpecEngineParameters
 {
-    string? EngineName { get; }
+    string EngineName { get; }
     string? SealEngineType { get; }
     void ApplyToChainSpec(ChainSpec chainSpec) { }
     void AddTransitions(SortedSet<ulong> blockNumbers, SortedSet<ulong> timestamps) { }

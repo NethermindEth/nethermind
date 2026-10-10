@@ -123,7 +123,7 @@ public class BlockDecoderTests
     {
         BlockDecoder decoder = new();
         Rlp result = decoder.Encode((Block?)null);
-        Block decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
+        Block? decoded = Rlp.Decode<Block>(result.Bytes.AsSpan());
         Assert.That(decoded, Is.Null);
     }
 
@@ -241,7 +241,11 @@ public class BlockDecoderTests
         Block blockWithEncoded = new(block.Header, block.Body) { EncodedTransactions = encodedTxs };
         Rlp fast = decoder.Encode(blockWithEncoded);
 
-        Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Bytes.ToHexString(), Is.EqualTo(standard.Bytes.ToHexString()));
+            Assert.That(decoder.GetLength(blockWithEncoded, RlpBehaviors.None), Is.EqualTo(standard.Bytes.Length));
+        }
     }
 
     [Test]
@@ -311,6 +315,37 @@ public class BlockDecoderTests
             }
 
             Assert.Throws<RlpException>(() => recovery.GetNextTransactionHash());
+        }
+        finally
+        {
+            recovery.Dispose();
+        }
+    }
+
+    [TestCase(true, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_encoded_transactions")]
+    [TestCase(false, TestName = "Receipt_recovery_value_hash_matches_the_hash_from_block_transactions")]
+    public void Receipt_recovery_value_hash_matches_the_transaction_hash(bool fromEncoded)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithNonce(1).WithType(TxType.Legacy).Signed().TestObject,
+            Build.A.Transaction.WithNonce(2).WithType(TxType.EIP1559).Signed().TestObject,
+        ];
+        Block block = Build.A.Block.WithNumber(1).WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
+        BlockDecoder decoder = new();
+        ReceiptRecoveryBlock recovery = fromEncoded
+            ? decoder.DecodeToReceiptRecoveryBlock(null, decoder.Encode(block).Bytes, RlpBehaviors.None)
+                ?? throw new AssertionException("encoded block should decode for receipt recovery")
+            : new ReceiptRecoveryBlock(block);
+
+        try
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Assert.That(recovery.GetNextTransactionValueHash(), Is.EqualTo(transactions[i].Hash!.ValueHash256), $"transaction {i}");
+            }
+
+            Assert.Throws<RlpException>(() => recovery.GetNextTransactionValueHash(), "no transaction remains");
         }
         finally
         {

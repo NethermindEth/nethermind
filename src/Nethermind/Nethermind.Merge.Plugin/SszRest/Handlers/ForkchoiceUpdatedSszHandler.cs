@@ -13,7 +13,7 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v2/forkchoice</c>, the SSZ-REST equivalent of
+/// Handles <c>POST /engine/v1/forkchoice</c>, the SSZ-REST equivalent of
 /// <c>engine_forkchoiceUpdatedV{N}</c> (the version is selected by the <c>Eth-Execution-Version</c>
 /// header). Generic over a per-version descriptor so adding V5 is one new descriptor struct + one
 /// DI line — no version switch.
@@ -51,7 +51,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
             return null;
 
         IReleaseSpec payloadSpec = specProvider.GetSpec(ForkActivation.TimestampOnly(timestamp.Value));
-        string? payloadForkSegment = SszRestPaths.GetEngineApiForkName(payloadSpec);
+        string payloadForkSegment = SszRestPaths.GetEngineApiForkName(payloadSpec);
         return string.Equals(payloadForkSegment, requestedFork, StringComparison.OrdinalIgnoreCase)
             ? null
             : $"Eth-Execution-Version fork '{requestedFork}' does not match the fork for timestamp {timestamp.Value}";

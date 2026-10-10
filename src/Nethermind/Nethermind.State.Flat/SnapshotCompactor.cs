@@ -144,27 +144,29 @@ public class SnapshotCompactor(
             }
         }
 
-        Func<int, HashedKey<(Address, UInt256)>, bool> slotKeep =
-            (i, key) => !(slotClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
-        Func<int, HashedKey<(Hash256, TreePath)>, bool> nodeKeep =
-            (i, key) => !(nodeClearBoundary.TryGetValue(key.Key.Item1, out int boundary) && i < boundary);
-
         SortedSnapshotContent content = _resourcePool.GetSortedSnapshotContent(usage);
         try
         {
             using ArrayPoolListRef<Task> compactTask = new(4);
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts, null)));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages, slotKeep)));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes, null)));
-            compactTask.Add(Task.Run(() => MergeInto(
-                content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes, nodeKeep)));
+            try
+            {
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedAccounts, snapshots, default(AddressKeyComparer), static m => m.SortedAccounts, static c => c.Accounts)));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStorages, snapshots, default(StorageKeyComparer), static m => m.SortedStorages, static c => c.Storages,
+                    new StorageBoundaryKeep<Address, UInt256>(slotClearBoundary))));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStateNodes, snapshots, default(StateNodeKeyComparer), static m => m.SortedStateNodes, static c => c.StateNodes)));
+                compactTask.Add(Task.Run(() => MergeInto(
+                    content.SortedStorageNodes, snapshots, default(StorageNodeKeyComparer), static m => m.SortedStorageNodes, static c => c.StorageNodes,
+                    new StorageBoundaryKeep<Hash256, TreePath>(nodeClearBoundary))));
 
-            content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
-
-            Task.WaitAll(compactTask.AsSpan());
+                content.SortedSelfDestructs.BuildFromUnsorted(selfDestructMerged, default(AddressKeyComparer));
+            }
+            finally
+            {
+                Task.WaitAll(compactTask.AsSpan());
+            }
         }
         catch
         {
@@ -180,16 +182,27 @@ public class SnapshotCompactor(
         SnapshotPooledList snapshots,
         TComparer comparer,
         Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
-        Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
-        Func<int, TKey, bool>? keep)
+        Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable)
         where TKey : IEquatable<TKey>
         where TComparer : IComparer<TKey>
+        => MergeInto(target, snapshots, comparer, fromSorted, fromMutable, default(KeepAll<TKey>));
+
+    private static void MergeInto<TKey, TValue, TComparer, TKeep>(
+        SortedMergeDictionary<TKey, TValue> target,
+        SnapshotPooledList snapshots,
+        TComparer comparer,
+        Func<SortedSnapshotContent, SortedMergeDictionary<TKey, TValue>> fromSorted,
+        Func<SnapshotContent, IReadOnlyCollection<KeyValuePair<TKey, TValue>>> fromMutable,
+        TKeep keep)
+        where TKey : IEquatable<TKey>
+        where TComparer : IComparer<TKey>
+        where TKeep : struct, IMergeKeep<TKey>
     {
         int count = snapshots.Count;
-        SortedMergeDictionary<TKey, TValue>[] sources = new SortedMergeDictionary<TKey, TValue>[count];
+        SortedMergeDictionary<TKey, TValue>.Run[] sources = new SortedMergeDictionary<TKey, TValue>.Run[count];
 
         // Mutable inputs are sorted into transients that are disposed once the merge has copied them.
-        List<SortedMergeDictionary<TKey, TValue>>? transients = null;
+        List<SortedMergeDictionary<TKey, TValue>.PooledRun>? transients = null;
         try
         {
             for (int i = 0; i < count; i++)
@@ -197,13 +210,13 @@ public class SnapshotCompactor(
                 Snapshot source = snapshots[i];
                 if (source.IsSorted)
                 {
-                    sources[i] = fromSorted(source.SortedContent);
+                    sources[i] = fromSorted(source.SortedContent).AsRun();
                 }
                 else
                 {
-                    SortedMergeDictionary<TKey, TValue> transient = new();
-                    transient.BuildFromUnsorted(fromMutable(source.Content), comparer);
-                    sources[i] = transient;
+                    SortedMergeDictionary<TKey, TValue>.PooledRun transient =
+                        SortedMergeDictionary<TKey, TValue>.BuildRunFromUnsorted(fromMutable(source.Content), comparer);
+                    sources[i] = transient.AsRun();
                     (transients ??= []).Add(transient);
                 }
             }
@@ -213,7 +226,27 @@ public class SnapshotCompactor(
         finally
         {
             if (transients is not null)
-                foreach (SortedMergeDictionary<TKey, TValue> transient in transients) transient.Dispose();
+                foreach (SortedMergeDictionary<TKey, TValue>.PooledRun transient in transients) transient.Dispose();
+        }
+    }
+
+    private struct StorageBoundaryKeep<TGroup, TSecondary>(PooledDictionary<TGroup, int> boundaries)
+        : IMergeKeep<HashedKey<(TGroup, TSecondary)>>
+        where TGroup : class, IEquatable<TGroup>
+    {
+        private TGroup? _group;
+        private int _boundary;
+        private bool _hasBoundary;
+
+        public bool Keep(int sourceIndex, HashedKey<(TGroup, TSecondary)> key)
+        {
+            TGroup group = key.Key.Item1;
+            if (!ReferenceEquals(group, _group) && (_group is null || !group.Equals(_group)))
+            {
+                _group = group;
+                _hasBoundary = boundaries.TryGetValue(group, out _boundary);
+            }
+            return !_hasBoundary || sourceIndex >= _boundary;
         }
     }
 }

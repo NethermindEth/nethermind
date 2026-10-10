@@ -14,6 +14,11 @@ public interface ISnapStateServer
     const long HardResponseByteLimit = 2000000;
     const int HardResponseNodeLimit = 100000;
 
+    /// <summary>
+    /// Caps the number of trie traversals a single <see cref="GetTrieNodes(IReadOnlyList{PathGroup}, Hash256, long, CancellationToken)"/> may perform.
+    /// </summary>
+    const int MaxTrieNodeLookups = 4096;
+
     bool CanServe { get; }
 
     IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>

@@ -11,6 +11,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     {
         [JsonConverter(typeof(ULongConverter))]
         public ulong Nonce { get; set; }
-        public Hash256 MixHash { get; set; }
+        public Hash256? MixHash { get; set; }
     }
 }

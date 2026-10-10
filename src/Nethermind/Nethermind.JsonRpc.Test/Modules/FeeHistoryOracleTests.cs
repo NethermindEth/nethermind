@@ -263,6 +263,44 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.OldestBlock, Is.EqualTo(expectedOldestBlockNumber));
         }
 
+        [Test]
+        public void GetFeeHistory_IfAncestorBodyUnavailable_TruncatesAtOldestAvailableBlock([Values] bool withRewards)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                   BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                   BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+            // Block 2's body is unavailable (e.g. expired history), so only blocks 3..5 can be reported.
+            Block block2 = Build.A.Block.WithNumber(2UL).WithParentHash(TestItem.KeccakH).WithGasLimit(100).WithGasUsed(2).TestObject;
+            Block block3 = Build.A.Block.WithParent(block2).WithGasLimit(100).WithGasUsed(30).WithBaseFeePerGas(3).TestObject;
+            Block block4 = Build.A.Block.WithParent(block3).WithGasLimit(100).WithGasUsed(40).WithBaseFeePerGas(4).TestObject;
+            Block block5 = Build.A.Block.WithParent(block4).WithGasLimit(100).WithGasUsed(50).WithBaseFeePerGas(5).TestObject;
+            foreach (Block block in (Block[])[block3, block4, block5])
+            {
+                blockTree.FindBlock(block.Hash!, options, block.Number).Returns(block);
+            }
+            blockTree.Head.Returns(block5);
+            blockTree.FindBlock(new BlockParameter(5UL)).Returns(block5);
+
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(10UL, new BlockParameter(5UL), withRewards ? [50] : []);
+
+            FeeHistoryResults result = resultWrapper.Data;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.OldestBlock, Is.EqualTo(3UL));
+                Assert.That(result.GasUsedRatio, Is.EqualTo((double[])[0.3, 0.4, 0.5]));
+                Assert.That(result.BlobGasUsedRatio.Count, Is.EqualTo(3));
+                Assert.That(result.BaseFeePerGas.Take(3), Is.EqualTo((UInt256[])[3, 4, 5]));
+                Assert.That(result.BaseFeePerGas.Count, Is.EqualTo(4));
+                Assert.That(result.BaseFeePerBlobGas.Count, Is.EqualTo(4));
+                Assert.That(result.Reward?.Count, Is.EqualTo(withRewards ? 3 : null));
+                if (result.Reward is not null) Assert.That(result.Reward, Has.None.Null);
+            }
+        }
+
         [TestCase(2UL, 2UL)]
         [TestCase(7UL, 7UL)]
         [TestCase(32UL, 32UL)]
@@ -327,6 +365,39 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
         }
 
+        // Rewards are weighted by receipt gas, or by tx GasLimit when receipts are unavailable; the
+        // percentile threshold must use that same total rather than the header GasUsed, which is
+        // pre-refund under EIP-7778 and never matched the GasLimit weights.
+        [TestCase(2_000_000ul, new ulong[] { 100_000, 100_000 }, 50.0, 1ul, TestName = "Post-refund receipt gas, not the pre-refund header total")]
+        [TestCase(50_000ul, null, 60.0, 10ul, TestName = "Tx gas limits when receipts are pruned, not the header total")]
+        public void GetFeeHistory_RewardPercentilesUseTheWeightTotal_NotHeaderGasUsed(
+            ulong headerGasUsed, ulong[]? receiptGasUsed, double percentile, ulong expectedReward)
+        {
+            const ulong gasLimitPerTx = 100_000;
+            Transaction[] transactions =
+            [
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(1)
+                    .WithType(TxType.EIP1559).WithGasLimit(gasLimitPerTx).TestObject,
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(10)
+                    .WithType(TxType.EIP1559).WithGasLimit(gasLimitPerTx).TestObject,
+            ];
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3)
+                .WithGasUsed(headerGasUsed)
+                .WithTransactions(transactions).TestObject;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockParameter newestBlockParameter = new(0UL);
+            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+
+            // A null case means no receipts, which is how the pruned-receipts fallback onto tx gas limits is reached.
+            IReceiptStorage receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, receiptGasUsed ?? []);
+
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [percentile]);
+
+            Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(new UInt256[] { expectedReward }));
+        }
 
         private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
@@ -374,13 +445,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
 
             TxReceipt[] txReceiptsArray = new TxReceipt[gasUsedArray.Length];
-            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
-            for (int i = 1; i < gasUsedArray.Length; i++)
+            ulong gasUsedTotal = 0;
+            for (int i = 0; i < gasUsedArray.Length; i++)
             {
-                txReceiptsArray[i] = new TxReceipt()
-                {
-                    GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i]
-                };
+                gasUsedTotal += gasUsedArray[i];
+                txReceiptsArray[i] = new TxReceipt() { GasUsedTotal = gasUsedTotal };
             }
             receiptStorage.Get(block).Returns(txReceiptsArray);
             receiptStorage.Get(block, false).Returns(txReceiptsArray);

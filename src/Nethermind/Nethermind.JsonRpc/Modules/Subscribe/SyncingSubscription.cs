@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IBlockTree? blockTree,
             IEthSyncingInfo ethSyncingInfo,
             ILogManager? logManager)
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));

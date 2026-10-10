@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
-using Nethermind.Db.LogIndex;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -36,10 +35,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IProtocolsManager protocolsManager,
         IBlocksConfig blocksConfig,
         IForkInfo forkInfo,
-        ILogIndexConfig logIndexConfig,
-        IReceiptConfig receiptConfig,
         IEthCapabilitiesProvider capabilitiesProvider,
-        IBlockForRpcFactory blockForRpcFactory)
+        IBlockForRpcFactory blockForRpcFactory,
+        HashesOnlyBlockReader hashesOnlyBlockReader)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -63,11 +61,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 feeHistoryOracle,
                 protocolsManager,
                 forkInfo,
-                logIndexConfig,
-                receiptConfig,
                 _secondsPerSlot,
                 _headBlockSignal,
                 capabilitiesProvider,
-                blockForRpcFactory);
+                blockForRpcFactory,
+                hashesOnlyBlockReader);
     }
 }

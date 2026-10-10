@@ -1,0 +1,99 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Buffers.Binary;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.State.Flat.Persistence;
+using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
+
+namespace Nethermind.State.Flat.History.Changesets;
+
+internal static class BulkFillStorageCleanup
+{
+    /// <summary>Each account's marker is removed in the batch with its last slot deletions, so a cleanup a crash cuts
+    /// short leaves the marker in place and is finished by the cleanup that runs before replay resumes. Nothing outside
+    /// the scratch depends on how far a cleanup got, so it is never synced. Each lookup starts past the last cleaned
+    /// marker rather than at the start of the column, so it does not walk the tombstones the earlier markers left;
+    /// nothing writes a marker while the cleanup runs.</summary>
+    public static void Run(IColumnsDb<Columns> db, CancellationToken token)
+    {
+        Span<byte> lower = stackalloc byte[Hash256.Size + 1];
+        Span<byte> upper = stackalloc byte[Hash256.Size + 1];
+        upper.Fill(0xFF);
+        int lowerLength = 0;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            ValueHash256 address;
+            ulong clearedAt;
+            using (ISortedView clears = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Clears)).GetViewBetween(lower[..lowerLength], upper))
+            {
+                if (!clears.MoveNext()) return;
+                if (clears.CurrentKey.Length != Hash256.Size || clears.CurrentValue.Length != sizeof(ulong))
+                    throw new InvalidDataException("Invalid scratch clear during cleanup.");
+                address = new ValueHash256(clears.CurrentKey);
+                clearedAt = BinaryPrimitives.ReadUInt64BigEndian(clears.CurrentValue);
+            }
+            address.Bytes.CopyTo(lower);
+            lower[^1] = 0;
+            lowerLength = lower.Length;
+            CleanAccount(db, address, clearedAt, token);
+        }
+    }
+
+    private static void CleanAccount(IColumnsDb<Columns> db, in ValueHash256 address, ulong clearedAt, CancellationToken token)
+    {
+        byte[]? account = db.GetColumnDb(Columns.Accounts)[address.Bytes];
+        bool isDeleted = account is null || account.Length == 0;
+        Span<byte> lower = stackalloc byte[BaseFlatPersistence.StorageKeyLength + 1];
+        lower.Clear();
+        address.Bytes[..HistoryKeyLayout.ScopeKeyLength].CopyTo(lower);
+        Span<byte> upper = stackalloc byte[BaseFlatPersistence.StorageKeyLength + 1];
+        upper.Fill(0xFF);
+        address.Bytes[..HistoryKeyLayout.ScopeKeyLength].CopyTo(upper);
+        int lowerLength = BaseFlatPersistence.StorageKeyLength;
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            IColumnsWriteBatch<Columns> batch = db.StartWriteBatch();
+            bool complete = false;
+            try
+            {
+                using ISortedView slots = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Storage)).GetViewBetween(lower[..lowerLength], upper, ReadFlags.HintReadAhead);
+                for (int count = 0; count < 1024; count++)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (!slots.MoveNext())
+                    {
+                        complete = true;
+                        break;
+                    }
+                    if (slots.CurrentKey.Length != BaseFlatPersistence.StorageKeyLength || slots.CurrentValue.Length < sizeof(ulong))
+                        throw new InvalidDataException("Invalid scratch slot during cleanup.");
+                    if (isDeleted || BinaryPrimitives.ReadUInt64BigEndian(slots.CurrentValue) < clearedAt)
+                        batch.GetColumnBatch(Columns.Storage).Remove(slots.CurrentKey);
+                    slots.CurrentKey.CopyTo(lower);
+                    lower[^1] = 0;
+                    lowerLength = lower.Length;
+                }
+                if (complete) batch.GetColumnBatch(Columns.Clears).Remove(address.Bytes);
+            }
+            catch
+            {
+                try
+                {
+                    batch.Clear();
+                }
+                finally
+                {
+                    batch.Dispose();
+                }
+                throw;
+            }
+            batch.Dispose();
+            if (complete) return;
+        }
+    }
+}

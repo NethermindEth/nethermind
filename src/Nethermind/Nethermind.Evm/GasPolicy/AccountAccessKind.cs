@@ -5,7 +5,7 @@ namespace Nethermind.Evm.GasPolicy;
 
 /// <summary>
 /// Discriminator for account access gas charging.
-/// Allows <see cref="IGasPolicy{TSelf}.ConsumeAccountAccessGas"/> to vary
+/// Allows <see cref="IGasPolicy{TSelf}.TryConsumeAccountAccessGas"/> to vary
 /// its resource-kind split based on the calling opcode's semantics.
 /// </summary>
 public enum AccountAccessKind : byte

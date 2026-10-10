@@ -10,6 +10,11 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Digests;
+using Org.BouncyCastle.Crypto.Macs;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake;
 
@@ -50,7 +55,7 @@ public class EciesCipherTests
         Span<byte> sizeBytes = allBytes.AsSpan(0, 2);
         int size = sizeBytes.ReadEthInt32();
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -71,7 +76,7 @@ public class EciesCipherTests
                   "0f2c703f851cbf5ac47396d9ca65b6260bd141ac4d53e2de585a73d1750780db4c9ee4cd4d225173" +
                   "a4592ee77e2bd94d0be3691f3b406f9bba9b591fc63facc016bfa8");
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes);
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes));
 
         AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -105,7 +110,7 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
         Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
@@ -128,7 +133,7 @@ public class EciesCipherTests
                   "dca6505b7196532e5f85b259a20c45e1979491683fee108e9660edbf38f3add489ae73e3dda2c71b" +
                   "d1497113d5c755e942d1");
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes);
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(NetTestVectors.StaticKeyA, allBytes));
 
         AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
@@ -161,7 +166,7 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
@@ -196,7 +201,7 @@ public class EciesCipherTests
 
         ICryptoRandom cryptoRandom = new CryptoRandom();
         EciesCipher cipher = new(cryptoRandom);
-        (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
+        byte[] deciphered = GetPlainText(cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray()));
 
         AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
         Assert.That(NetTestVectors.EphemeralKeyB.PublicKey, Is.EqualTo(ackMessage.EphemeralPublicKey));
@@ -205,16 +210,78 @@ public class EciesCipherTests
     }
 
     [Test]
-    public void Can_do_roundtrip()
+    public void Can_do_roundtrip([Values(0, 1, 5, 16, 17, 32)] int length, [Values(false, true)] bool withMacData)
     {
         PrivateKey privateKey = NetTestVectors.StaticKeyA;
 
-        byte[] plainText = { 1, 2, 3, 4, 5 };
+        byte[] plainText = new byte[length];
+        for (int i = 0; i < plainText.Length; i++)
+        {
+            plainText[i] = (byte)(i + 1);
+        }
+
+        byte[]? macData = withMacData ? [0, 1] : null;
         _cryptoRandom.EnqueueRandomBytes(Bytes.FromHexString("0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"));
         _cryptoRandom.EnqueueRandomBytes(NetTestVectors.EphemeralKeyA.KeyBytes);
-        byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, null); // public(65) | IV(16) | cipher(...)
+        byte[] cipherText = _eciesCipher.Encrypt(privateKey.PublicKey, plainText, macData); // public(65) | IV(16) | cipher(...)
 
-        (_, byte[] deciphered) = _eciesCipher.Decrypt(privateKey, cipherText);
-        Assert.That(deciphered, Is.EqualTo(plainText));
+        byte[] deciphered = GetPlainText(_eciesCipher.Decrypt(privateKey, cipherText, macData));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cipherText, Has.Length.EqualTo(length + 113));
+            Assert.That(deciphered, Is.EqualTo(plainText));
+        }
+    }
+
+    [Test]
+    public void Decrypt_returns_failure_for_ciphertext_shorter_than_ecies_overhead([Values(0, 1, 64, 65, 80, 81, 111, 112)] int length)
+    {
+        byte[] cipherText = new byte[length];
+        if (length > 0)
+        {
+            cipherText[0] = 4;
+        }
+
+        (bool success, byte[]? plainText) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyA, cipherText);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.False);
+            Assert.That(plainText, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Ies_engine_rejects_body_shorter_than_the_mac([Values(0, 1, 16, 17, 31)] int bodyLength)
+    {
+        EthereumIesEngine engine = CreateIesEngine();
+
+        Assert.That(() => engine.ProcessBlock(new byte[bodyLength], null),
+            Throws.TypeOf<InvalidCipherTextException>().With.Message.EqualTo("Length of input must be at least the MAC size"));
+    }
+
+    [TestCase(32)]
+    [TestCase(33)]
+    public void Ies_engine_rejects_invalid_mac(int bodyLength)
+    {
+        EthereumIesEngine engine = CreateIesEngine();
+
+        Assert.That(() => engine.ProcessBlock(new byte[bodyLength], null),
+            Throws.TypeOf<InvalidCipherTextException>().With.Message.EqualTo("Invalid MAC."));
+    }
+
+    private static EthereumIesEngine CreateIesEngine()
+    {
+        // Keep the cipher configuration aligned with EciesCipher.MakeIesEngine.
+        EthereumIesEngine engine = new(new HMac(new Sha256Digest()), new Sha256Digest(),
+            new BufferedBlockCipher(new SicBlockCipher(AesUtilities.CreateEngine())));
+        engine.Init(false, new byte[32], new IesWithCipherParameters([], [], 128, 128), new byte[16]);
+        return engine;
+    }
+
+    private static byte[] GetPlainText((bool Success, byte[]? PlainText) result)
+    {
+        Assert.That(result.Success, Is.True);
+        return result.PlainText ?? throw new AssertionException("Successful ECIES decryption returned no plaintext.");
     }
 }

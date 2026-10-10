@@ -65,13 +65,27 @@ namespace Nethermind.Consensus.Test
         }
 
         [Test]
-        public void DoesNot_go_below_minimum()
+        public void DoesNot_go_below_minimum([Values(0UL, 1UL)] ulong targetGasLimit)
         {
             const int londonBlock = 5;
 
             Assert.That(
-                Calc(London.Instance, parentGasLimit: 5000, configTarget: 1, blockNumber: londonBlock),
+                Calc(London.Instance, parentGasLimit: 5000, configTarget: (long)targetGasLimit, blockNumber: londonBlock),
                 Is.EqualTo(London.Instance.MinGasLimit));
+        }
+
+        [Test]
+        public void Target_aware_interface_overload_preserves_legacy_implementations()
+        {
+            IGasLimitCalculator calculator = new LegacyGasLimitCalculator();
+            BlockHeader parent = Build.A.BlockHeader.TestObject;
+
+            Assert.That(calculator.GetGasLimit(parent, 1), Is.EqualTo(42));
+        }
+
+        private sealed class LegacyGasLimitCalculator : IGasLimitCalculator
+        {
+            public ulong GetGasLimit(BlockHeader parentHeader, ulong? targetGasLimit = null) => 42;
         }
     }
 }

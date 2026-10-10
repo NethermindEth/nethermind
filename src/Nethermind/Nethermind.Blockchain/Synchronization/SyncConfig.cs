@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Synchronization
         public static ISyncConfig WithFastSync { get; } = new SyncConfig { FastSync = true };
         public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, BlockGossipEnabled = false };
 
+        public bool ReconstructFinalizedStateFromBlockAccessLists { get; set; } = true;
+
         public bool NetworkingEnabled { get; set; } = true;
 
         public bool SynchronizationEnabled
@@ -56,6 +58,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool SnapSync { get; set; } = false;
         public bool StaticSnapPivot { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
+        public bool BalHealing { get; set; } = true;
         public bool FixReceipts { get; set; } = false;
         public ulong? FixReceiptsStartingBlock { get; set; } = null;
         public ulong? FixReceiptsLastBlock { get; set; } = null;

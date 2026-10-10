@@ -11,6 +11,10 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Abi;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Test;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Shutter.Test;
 
@@ -99,6 +103,24 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         // half of transactions were invalid, should have been filtered
         Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(10));
+    }
+
+    [Test]
+    public async Task Can_load_transactions_when_cached_head_header_is_another_instance()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd).Build(ShutterTestsCommon.SpecProvider);
+        await ProduceBranchV1(chain.EngineRpcModule, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+
+        // A lookup that misses the header cache during a concurrent write caches a freshly decoded copy.
+        ((IClearableCache)chain.Container.Resolve<IHeaderStore>()).ClearCache();
+        Block head = chain.BlockTree.Head!;
+        Assert.That(chain.BlockTree.FindHeader(head.Hash!, BlockTreeLookupOptions.None), Is.Not.SameAs(head.Header));
+
+        chain.Api!.AdvanceSlot(20);
+
+        Assert.That(chain.Api.LoadedTransactions!.Value.Transactions, Has.Length.EqualTo(20));
     }
 
     [Test]

@@ -12,7 +12,6 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using System.Numerics;
 
 namespace Nethermind.Trie;
 
@@ -22,7 +21,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
+public partial struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -160,7 +159,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            int offset = index / 2;
+            // Unsigned, so the halving is a single shift and every negative index, -1 included, falls outside the span.
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             int b = theSpan[offset];
             if ((index & 1) == 0)
@@ -175,7 +175,7 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set
         {
-            int offset = index / 2;
+            int offset = (int)((uint)index / 2);
             Span<byte> theSpan = Span;
             ref byte b = ref theSpan[offset];
             if ((index & 1) == 0)
@@ -261,7 +261,8 @@ public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 
     public readonly override bool Equals(object? obj) => obj is TreePath other && Equals(in other);
 
-    public readonly override int GetHashCode() => (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
+    public readonly override int GetHashCode() =>
+        SpanExtensions.CombineHash((uint)Path.GetHashCode(), (uint)Length);
 
     /// <summary>
     /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will

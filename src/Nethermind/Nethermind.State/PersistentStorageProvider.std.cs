@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -33,7 +35,7 @@ internal sealed partial class PersistentStorageProvider
         foreach (KeyValuePair<AddressAsKey, bool> kv in _toUpdateRoots)
         {
             if (!kv.Value) continue;
-            if (!_storages.TryGetValue(kv.Key, out PerContractState contractState))
+            if (!_storages.TryGetValue(kv.Key, out PerContractState? contractState))
             {
                 Debug.Fail($"Storage root marked changed for {kv.Key} but no contract state is present");
                 continue;
@@ -49,10 +51,11 @@ internal sealed partial class PersistentStorageProvider
         // Schedule larger changes first to help balance the work
         storages.AsSpan().Sort(static (a, b) => b.ContractState.EstimatedChanges.CompareTo(a.ContractState.EstimatedChanges));
 
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         ParallelUnbalancedWork.For(
             0,
             storages.Count,
-            RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+            RuntimeInformation.ParallelOptionsLogicalCores,
             (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
             static (i, state) =>
             {
@@ -76,5 +79,37 @@ internal sealed partial class PersistentStorageProvider
             },
             (state) => ReportMetrics(state.writes, state.skips)
         );
+    }
+
+    private sealed partial class PerContractState
+    {
+        [SkipLocalsInit]
+        private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            int writes = 0;
+            int skipped = 0;
+
+            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
+
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
+            {
+                if (!kvp.Value.IsPendingWrite)
+                {
+                    skipped++;
+                }
+                else if (CommitAndWriteUnlessDelete(kvp.Key, ref BlockChange.GetValueRefOrNullRef(kvp.Key), storageWriteBatch))
+                {
+                    writes++;
+                }
+                else
+                {
+                    deferredDeletes.Add(kvp.Key);
+                }
+            }
+
+            writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
+            return (writes, skipped);
+        }
     }
 }

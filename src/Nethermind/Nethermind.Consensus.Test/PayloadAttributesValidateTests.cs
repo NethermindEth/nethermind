@@ -71,6 +71,35 @@ public class PayloadAttributesValidateTests
         }
     }
 
+    // bogota.md PayloadAttributesV5 appends inclusionListTransactions unconditionally: an empty list is
+    // valid, an absent one leaves the attributes V4-shaped and earns -38003 from FCUv5.
+    [TestCase(PayloadAttributesVersions.V5, false, PayloadAttributesValidationResult.InvalidPayloadAttributes)]
+    [TestCase(PayloadAttributesVersions.V5, true, PayloadAttributesValidationResult.Success)]
+    [TestCase(PayloadAttributesVersions.V4, false, PayloadAttributesValidationResult.UnsupportedFork)]
+    public void Validate_requires_an_inclusion_list_at_Bogota(
+        int fcuVersion, bool withInclusionList, PayloadAttributesValidationResult expected)
+    {
+        ISpecProvider sp = Substitute.For<ISpecProvider>();
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip7805Enabled.Returns(true);
+        spec.IsEip7843Enabled.Returns(true);
+        spec.IsEip4844Enabled.Returns(true);
+        spec.WithdrawalsEnabled.Returns(true);
+        sp.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+        attrs.InclusionListTransactions = withInclusionList ? [] : null;
+
+        PayloadAttributesValidationResult result = attrs.Validate(sp, fcuVersion, out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expected));
+            if (expected == PayloadAttributesValidationResult.InvalidPayloadAttributes)
+                Assert.That(error, Does.Contain(nameof(PayloadAttributes.InclusionListTransactions)));
+        }
+    }
+
     [TestCase(false, PayloadAttributesVersions.V1)]
     [TestCase(true, PayloadAttributesVersions.V4)]
     public void GetVersion_infers_correct_version_from_present_fields(
@@ -84,4 +113,23 @@ public class PayloadAttributesValidateTests
 
         Assert.That(attrs.GetVersion(), Is.EqualTo(expectedVersion));
     }
+
+    [Test]
+    public void Validate_accepts_zero_target_gas_limit()
+    {
+        PayloadAttributes attrs = BuildAttrs(withSlotNumber: true);
+        attrs.TargetGasLimit = 0;
+
+        PayloadAttributesValidationResult result = attrs.Validate(
+            MakeSpecProvider(isAmsterdam: true),
+            PayloadAttributesVersions.V4,
+            out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(PayloadAttributesValidationResult.Success));
+            Assert.That(error, Is.Null);
+        }
+    }
+
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using NUnit.Framework;
 using Nethermind.Logging;
@@ -51,7 +52,7 @@ public class HistoryStoreTests
         }
 
         Assert.That(written, Is.GreaterThanOrEqualTo(0));
-        Assert.That(buffer[..written].ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)));
+        Assert.That(buffer[..written], Is.SequenceEqualTo(Convert.FromHexString(expectedHex)));
     }
 
     [Test]
@@ -63,6 +64,7 @@ public class HistoryStoreTests
         Span<byte> buffer = stackalloc byte[64];
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(_store.TryGetAt(3, KeyA, buffer), Is.EqualTo(-1));    // seek runs past every KeyA row onto KeyB's
             Assert.That(_store.TryGetAt(10, KeyB, buffer), Is.EqualTo(-1));   // KeyB unchanged at/before 10
             Assert.That(_store.TryGetAt(25, KeyA, buffer), Is.EqualTo(1));    // KeyA keeps its own 1-byte value
             Assert.That(_store.TryGetAt(25, KeyB, buffer), Is.EqualTo(2));    // KeyB keeps its own 2-byte value

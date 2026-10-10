@@ -3,17 +3,37 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 namespace Nethermind.Evm;
 
+/// <remarks>
+/// Extension contract: there is no base class to derive from, so an added member is a compile error for every
+/// implementation, deliberately. A wrapping repository has to answer for the one it wraps, and a default body
+/// would let a missing forward return the terminal answer silently — the reason <see cref="IsCodeOverridable"/>
+/// had its <c>=> false</c> default stripped again in #12282.
+/// </remarks>
 public interface ICodeInfoRepository
 {
     /// <summary>Whether account code may be overridden (e.g. <c>eth_call</c> state overrides), disabling the simple-transfer fast path.</summary>
     /// <remarks>Wrapping implementations must forward this, else the fast path is wrongly taken under overrides.</remarks>
     bool IsCodeOverridable { get; }
     CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress);
+
+    /// <summary>Resolves the precompile at <paramref name="codeSource"/>, or null when <paramref name="vmSpec"/> enables none there.</summary>
+    /// <remarks>Records no account access, so unlike <see cref="GetCachedCodeInfo"/> it creates no EIP-7928 entry.</remarks>
+    IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec);
+
+    /// <summary>Resolves the code an EIP-7702 delegation to <paramref name="target"/> executes.</summary>
+    /// <remarks>
+    /// Empty for a precompile, which must not execute via delegation. Callers ask this rather than
+    /// <see cref="GetCachedCodeInfo"/>, which cannot tell the lookup from a direct call, so a repository that
+    /// places precompiles at other addresses (a state override moving one) can keep them from running here.
+    /// </remarks>
+    CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
@@ -26,7 +46,7 @@ public interface ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
+            address = new Address(code[Eip7702Constants.DelegationHeaderLength..]);
             return true;
         }
 
@@ -46,6 +66,7 @@ public static class CodeInfoRepositoryExtensions
     /// <summary>
     /// Returns the <see cref="CodeInfo"/> at <paramref name="codeSource"/> without resolving any EIP-7702 delegation.
     /// </summary>
+    [SkipLocalsInit]
     public static CodeInfo GetCachedCodeInfoNoDelegation(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, false, vmSpec, out _);
 }

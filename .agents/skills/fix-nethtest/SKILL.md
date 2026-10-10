@@ -144,7 +144,7 @@ This is the most common failure pattern for new forks. Follow these steps:
    - Re-read the trace output
    - Return to Phase 2 with the new trace
    - Repeat until pass or root cause is confirmed as upstream
-4. **Add a regression test** when the root cause was a Nethermind bug (AGENTS.md requires one for every bug fix) — extend an existing test file with a `[TestCase]` where possible; create a new test file only if no suitable one exists
+4. **Add a regression test** when the root cause was a Nethermind bug (AGENTS.md requires one for every bug fix) — extend an existing test file with another case where possible; create a new test file only if no suitable one exists
 5. **Report the result** — include:
    - Root cause (one sentence)
    - What was fixed (file:line)

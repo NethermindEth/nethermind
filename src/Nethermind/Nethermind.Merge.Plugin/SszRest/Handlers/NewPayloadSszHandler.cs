@@ -12,7 +12,7 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>POST /engine/v2/payloads</c>, the SSZ-REST equivalent of
+/// Handles <c>POST /engine/v1/payloads</c>, the SSZ-REST equivalent of
 /// <c>engine_newPayloadV{N}</c> (the version is selected by the <c>Eth-Execution-Version</c>
 /// header). Generic over a per-version descriptor so adding V6 is one new descriptor struct +
 /// one DI line — no version switch.

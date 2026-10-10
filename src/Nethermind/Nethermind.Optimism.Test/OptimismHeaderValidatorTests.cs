@@ -57,17 +57,17 @@ public class OptimismHeaderValidatorTests(Fork fork)
 
     private static IEnumerable<(string data, Valid isValid)> EIP1559ParametersExtraData => new (string data, Valid isValid)[]
     {
-        new("0x0100000001000000000000000000000000", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x0100000001000000000000000000000000", Valid.Never), // zero elasticity
         new("0x0100000001000001bc0000000000000001", Valid.Since(Spec.JovianTimeStamp)),
         new("0x0100000001ffffffff00000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
-        new("0x01ffffffff0000000000000000000001ff", Valid.Since(Spec.JovianTimeStamp)),
+        new("0x01ffffffff0000000000000000000001ff", Valid.Never), // zero elasticity
         new("0x01ffffffff000001bc01000000000000ff", Valid.Since(Spec.JovianTimeStamp)),
         new("0x01ffffffffffffffffffffffffffffffff", Valid.Since(Spec.JovianTimeStamp)),
 
-        new("0x000000000100000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x000000000100000000", Valid.Never), // zero elasticity
         new("0x0000000001000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
         new("0x0000000001ffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
-        new("0x00ffffffff00000000", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
+        new("0x00ffffffff00000000", Valid.Never), // zero elasticity
         new("0x00ffffffff000001bc", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
         new("0x00ffffffffffffffff", Valid.Between(Spec.HoloceneTimeStamp, Spec.JovianTimeStamp)),
 

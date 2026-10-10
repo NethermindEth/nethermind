@@ -1,0 +1,150 @@
+name: GCP Runner Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      machine_type:
+        description: "GCE machine type"
+        default: "c2-standard-8"
+        required: true
+      local_ssd_count:
+        description: "Number of 375 GB NVMe Local SSD partitions (>1 is RAID0'd)"
+        default: "2"
+        required: true
+      provisioning_model:
+        description: "SPOT or STANDARD"
+        type: choice
+        options:
+          - SPOT
+          - STANDARD
+        default: SPOT
+        required: true
+
+jobs:
+  create_a_runner:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=smoke-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Create a Runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: ${{ inputs.local_ssd_count }}
+          provisioning_model: ${{ inputs.provisioning_model }}
+          max_run_duration: 40m
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+  inspect:
+    needs: [create_a_runner]
+    runs-on: ${{ needs.create_a_runner.outputs.runner_label }}
+    timeout-minutes: 15
+    steps:
+      - name: Machine shape
+        run: |
+          echo "::group::cpu / memory"
+          nproc
+          free -g
+          echo "::endgroup::"
+          echo "::group::block devices"
+          lsblk
+          cat /proc/mdstat 2>/dev/null || echo "no md arrays"
+          echo "::endgroup::"
+          echo "::group::disk usage"
+          df -h /mnt/gh-runner /
+          echo "::endgroup::"
+
+      - name: Workspace and docker are on the SSD array
+        run: |
+          echo "workspace: $GITHUB_WORKSPACE"
+          findmnt -no SOURCE,TARGET --target "$GITHUB_WORKSPACE"
+          docker_root=$(docker info --format '{{.DockerRootDir}}')
+          echo "docker root: $docker_root"
+          case "$GITHUB_WORKSPACE" in
+            /mnt/gh-runner/*) echo "workspace is on the array" ;;
+            *) echo "::error::workspace ${GITHUB_WORKSPACE} is NOT on the array"; exit 1 ;;
+          esac
+          case "$docker_root" in
+            /mnt/gh-runner/*) echo "docker root is on the array" ;;
+            *) echo "::error::docker root ${docker_root} is NOT on the array"; exit 1 ;;
+          esac
+
+      - name: Docker works
+        run: docker run --rm hello-world
+
+      - name: Tools the sync job needs are preinstalled
+        run: |
+          for t in make gcc jq zip git git-lfs screen lshw dmidecode fio python3; do
+            command -v "$t" >/dev/null || { echo "::error::missing ${t}"; exit 1; }
+          done
+          echo "all tools present"
+
+      - name: Sequential write throughput on the array
+        run: |
+          fio --name=seqwrite --directory=/mnt/gh-runner --size=4G --bs=1M \
+            --rw=write --ioengine=libaio --iodepth=32 --direct=1 --runtime=30 \
+            --time_based --group_reporting --output-format=normal \
+            | grep -E "WRITE:|bw=" | head -5
+
+  destroy_runner:
+    needs: [create_a_runner, inspect]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+
+      - name: Destroy Runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_a_runner.outputs.runner_label }}
+          github_token: ${{ steps.gh-app.outputs.token }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        env:
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: |
+          echo "terminated_by=${TERMINATED_BY}"
+          echo "preempted=${PREEMPTED}"

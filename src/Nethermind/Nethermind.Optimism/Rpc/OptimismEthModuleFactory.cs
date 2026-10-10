@@ -19,7 +19,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Network;
 using Nethermind.Serialization.Json;
@@ -50,8 +49,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
     private readonly IForkInfo _forkInfo;
-    private readonly ILogIndexConfig _logIndexConfig;
-    private readonly IReceiptConfig _receiptConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly HeadBlockSignal _headBlockSignal;
@@ -80,8 +77,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IOptimismConfig config,
         IJsonSerializer jsonSerializer,
         ITimestamper timestamper,
-        ILogIndexConfig logIndexConfig,
-        IReceiptConfig receiptConfig,
         IBlockForRpcFactory blockForRpcFactory
     )
     {
@@ -106,8 +101,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
         _forkInfo = forkInfo;
-        _logIndexConfig = logIndexConfig;
-        _receiptConfig = receiptConfig;
         ILogger logger = logManager.GetClassLogger<OptimismEthModuleFactory>();
         if (config.SequencerUrl is null && logger.IsWarn)
         {
@@ -146,8 +139,6 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _sequencerRpcClient,
             _ecdsa,
             _sealer,
-            _logIndexConfig,
-            _receiptConfig,
             _opSpecHelper,
             _headBlockSignal,
             _capabilitiesProvider,

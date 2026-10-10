@@ -7,23 +7,32 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IColumnsDb<TKey> : IDbMeta, IDisposable
+    public interface IColumnsDb<TKey> : IDbMeta, IDisposable where TKey : notnull
     {
         IDb GetColumnDb(TKey key);
         IEnumerable<TKey> ColumnKeys { get; }
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();
         IColumnDbSnapshot<TKey> CreateSnapshot();
+
+        /// <summary>
+        /// Creates a snapshot whose readers may be tuned for sequential full scans.
+        /// </summary>
+        /// <param name="sequentialReadAhead">
+        /// Hint that the snapshot will serve <see cref="ReadFlags.HintReadAhead"/> reads over path-ordered keys
+        /// as part of a sequential full scan. Implementations may ignore it.
+        /// </param>
+        IColumnDbSnapshot<TKey> CreateSnapshot(bool sequentialReadAhead) => CreateSnapshot();
     }
 
-    public interface IColumnsWriteBatch<in TKey> : IDisposable
+    public interface IColumnsWriteBatch<in TKey> : IDisposable where TKey : notnull
     {
         IWriteBatch GetColumnBatch(TKey key);
         void Clear();
     }
 
 
-    public interface IColumnDbSnapshot<in TKey> : IDisposable
+    public interface IColumnDbSnapshot<in TKey> : IDisposable where TKey : notnull
     {
         IReadOnlyKeyValueStore GetColumn(TKey key);
     }

@@ -47,14 +47,14 @@ jobs:
         run: |
           timestamp=$(date +%s)
           head_branch="chore/bump-version-${{ steps.version.outputs.new_version }}-$timestamp"
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b $head_branch
           git add src/Nethermind/Directory.Build.props
-          git commit -m "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable"
+          git commit -m "Bump up the version to ${{ steps.version.outputs.new_version }}"
           git push origin $head_branch
           gh pr create -B master -H $head_branch \
-            -t "Bump up the version to ${{ steps.version.outputs.new_version }}-unstable" \
-            -b "Automated version bump-up from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}-unstable" \
+            -t "Bump up the version to ${{ steps.version.outputs.new_version }}" \
+            -b "Automated version bump-up from ${{ steps.version.outputs.current_version }} to ${{ steps.version.outputs.new_version }}" \
             -l "version bump" \
             -r "kamilchodola,stdevMac,LukaszRozmej"

@@ -53,7 +53,10 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
+    public long MaxBufferedTraceLogSize { get; set; } = 256.MiB;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
+    public int? TraceModuleConcurrentInstances { get; set; } = null;
+    public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }
@@ -79,13 +82,14 @@ public class JsonRpcConfig : IJsonRpcConfig
     public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
     public bool EnableEthSignTransaction { get; set; }
     public string[] CorsOrigins { get; set; } = ["*"];
-    public int WebSocketsProcessingConcurrency { get; set; } = 1;
-    public int IpcProcessingConcurrency { get; set; } = 1;
+    public int WebSocketsProcessingConcurrency { get; set; } = 16;
+    public int IpcProcessingConcurrency { get; set; } = 16;
     public bool EnablePerMethodMetrics { get; set; } = true;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public int RpcTxSyncMaxConcurrentRequests { get; set; } = 128;
     public string[] AdditionalTrustedNetworks { get; set; } = [];
 };

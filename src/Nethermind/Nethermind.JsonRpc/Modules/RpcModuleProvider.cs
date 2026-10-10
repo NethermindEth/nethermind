@@ -11,6 +11,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Nethermind.Logging;
@@ -296,8 +297,10 @@ namespace Nethermind.JsonRpc.Modules
             private static readonly MethodInfo _createTypedDirectThreeParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectThreeParameterInvoker));
             private static readonly MethodInfo _createTypedDirectFourParameterInvokerMethod = GetStaticMethod(nameof(CreateTypedDirectFourParameterInvoker));
             private static readonly MethodInfo _readTaskResultMethod = GetStaticMethod(nameof(ReadTaskResult));
+            private static readonly MethodInfo _createTypedValueReaderMethod = GetStaticMethod(nameof(CreateTypedValueReader));
 
             internal delegate IResultWrapper? TaskResultReader(Task task);
+            internal delegate object? ParameterValueReader(ref Utf8JsonReader reader);
 
             private static MethodInfo GetStaticMethod(string methodName) =>
                 typeof(ResolvedMethodInfo).GetMethod(methodName, NonPublicStatic)!;
@@ -307,8 +310,10 @@ namespace Nethermind.JsonRpc.Modules
                 public readonly ParameterInfo Info;
                 public readonly Type ParameterType;
                 public readonly JsonTypeInfo? TypeInfo;
+                internal readonly ParameterValueReader? ValueReader;
                 public readonly ConstructorInvoker? ConstructorInvoker;
                 public readonly object? DefaultValue;
+                internal readonly bool HasParameterConverter;
                 private readonly ParameterDetails _introspection;
 
                 public ParameterKind Kind { get; }
@@ -338,6 +343,7 @@ namespace Nethermind.JsonRpc.Modules
                     ConstructorInvoker? constructor,
                     ParameterKind kind,
                     object? defaultValue,
+                    bool hasParameterConverter,
                     ParameterDetails introspection)
                 {
                     ArgumentNullException.ThrowIfNull(info);
@@ -345,8 +351,10 @@ namespace Nethermind.JsonRpc.Modules
                     Info = info;
                     ParameterType = parameterType;
                     TypeInfo = typeInfo;
+                    ValueReader = typeInfo is null ? null : CreateValueReader(typeInfo);
                     ConstructorInvoker = constructor;
                     DefaultValue = defaultValue;
+                    HasParameterConverter = hasParameterConverter;
                     Kind = kind;
                     _introspection = introspection;
                 }
@@ -395,6 +403,7 @@ namespace Nethermind.JsonRpc.Modules
                     }
 
                     JsonTypeInfo? typeInfo = null;
+                    Type? converterType = null;
                     ParameterKind kind = ParameterKind.Typed;
 
                     if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
@@ -415,10 +424,12 @@ namespace Nethermind.JsonRpc.Modules
                             kind = ParameterKind.JsonElement;
                         }
 
-                        typeInfo = RpcParameterTypeInfo.Get(paramType);
+                        converterType = parameter.GetCustomAttribute<JsonRpcParameterAttribute>()?.ConverterType;
+                        typeInfo = converterType is null
+                            ? RpcParameterTypeInfo.Get(paramType)
+                            : CreateParameterTypeInfo(parameter, paramType, converterType);
 
-                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                        if (ShouldReparseStringParameter(paramType, converter))
+                        if (ShouldReparseStringParameter(paramType, EthereumJsonSerializer.JsonOptions.GetConverter(paramType)))
                         {
                             details |= ParameterDetails.ReparseString;
                         }
@@ -434,7 +445,7 @@ namespace Nethermind.JsonRpc.Modules
                     }
 
                     object? defaultValue = parameter.IsOptional ? GetDefaultValue(parameter, paramType) : null;
-                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, defaultValue, details);
+                    expectedParameters[i] = new(parameter, paramType, typeInfo, constructor, kind, defaultValue, converterType is not null, details);
                 }
 
                 ExpectedParameters = expectedParameters;
@@ -630,7 +641,71 @@ namespace Nethermind.JsonRpc.Modules
                 converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
                 parameterType.IsArray && parameterType != typeof(byte[]);
 
+            private static JsonTypeInfo CreateParameterTypeInfo(ParameterInfo parameter, Type parameterType, Type converterType)
+            {
+                if (!typeof(JsonConverter).IsAssignableFrom(converterType)
+                    || Activator.CreateInstance(converterType, nonPublic: true) is not JsonConverter converter
+                    || !converter.CanConvert(parameterType))
+                {
+                    throw new InvalidOperationException(
+                        $"{converterType.FullName} is not a JSON converter for parameter {parameter.Name} of type {parameterType.FullName}.");
+                }
+
+                JsonSerializerOptions options = new(EthereumJsonSerializer.JsonRpcRequestOptions);
+                options.Converters.Insert(0, converter);
+                return options.GetTypeInfo(parameterType);
+            }
+
             internal IResultWrapper? ReadTaskResult(Task task) => TaskResultAccessor?.Invoke(task);
+
+            private static ParameterValueReader CreateValueReader(JsonTypeInfo typeInfo) =>
+                (ParameterValueReader)_createTypedValueReaderMethod
+                    .MakeGenericMethod(typeInfo.Type)
+                    .Invoke(null, [typeInfo])!;
+
+            /// <summary>Creates a reader that hands the value at the reader's position to the parameter's converter.</summary>
+            /// <remarks>
+            /// <see cref="JsonSerializer.Deserialize(ref Utf8JsonReader, JsonTypeInfo)"/> first skips over the whole value to
+            /// scope a reader to it, an extra pass over every parameter. Calling the converter avoids that pass, so the
+            /// check that it consumed exactly one value, which that scoping enforced, is made here instead.
+            /// A converter declared for a base type of <typeparamref name="T"/> cannot be called this way, so it is
+            /// read through the serializer.
+            /// </remarks>
+            private static ParameterValueReader CreateTypedValueReader<T>(JsonTypeInfo typeInfo)
+            {
+                if (typeInfo.Converter is not JsonConverter<T> converter)
+                {
+                    return (ref Utf8JsonReader reader) => JsonSerializer.Deserialize(ref reader, typeInfo);
+                }
+
+                JsonSerializerOptions options = typeInfo.Options;
+                // STJ's own converters re-resolve metadata on Read, which only works on read-only options. GetTypeInfo
+                // resolves on mutable options without locking them, so lock them as the first serializer call would.
+                options.MakeReadOnly();
+                return (ref Utf8JsonReader reader) =>
+                {
+                    JsonTokenType startToken = reader.TokenType;
+                    int startDepth = reader.CurrentDepth;
+                    long startIndex = reader.TokenStartIndex;
+                    T? value = converter.Read(ref reader, typeof(T), options);
+                    bool consumedOneValue = startToken switch
+                    {
+                        JsonTokenType.StartObject => reader.TokenType == JsonTokenType.EndObject && reader.CurrentDepth == startDepth,
+                        JsonTokenType.StartArray => reader.TokenType == JsonTokenType.EndArray && reader.CurrentDepth == startDepth,
+                        _ => reader.TokenStartIndex == startIndex,
+                    };
+                    if (!consumedOneValue)
+                    {
+                        ThrowConverterMisread(converter);
+                    }
+
+                    return value;
+                };
+
+                [DoesNotReturn, StackTraceHidden]
+                static void ThrowConverterMisread(JsonConverter converter) =>
+                    throw new JsonException($"The converter '{converter.GetType()}' read too much or not enough.");
+            }
 
             private static TaskResultReader CreateTaskResultAccessor(Type resultType) =>
                 _readTaskResultMethod.MakeGenericMethod(resultType).CreateDelegate<TaskResultReader>();

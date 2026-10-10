@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -20,6 +21,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -33,7 +35,8 @@ public class BlockValidatorTests
     public void Setup()
     {
         IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>(), out Arg.Any<string?>(), Arg.Any<bool>())
+            .Returns(true);
         _blockValidator = new(
             Substitute.For<ITxValidator>(),
             headerValidator,
@@ -42,6 +45,55 @@ public class BlockValidatorTests
             LimboLogs.Instance);
     }
 
+
+    /// <summary>
+    /// The header hash is the one check <c>validateHashes</c> turns off, so an inverted branch on the way to the
+    /// header validator would silently disable it on every path, sync included.
+    /// </summary>
+    [TestCase(true, false, TestName = "ValidateSuggestedBlock_ValidatingHashes_RejectsAMismatchedHeaderHash")]
+    [TestCase(false, true, TestName = "ValidateSuggestedBlock_SkippingHashes_AcceptsAMismatchedHeaderHash")]
+    public void ValidateSuggestedBlock_CarriesValidateHashesToTheHeaderValidator(bool validateHashes, bool expectedValid)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        BlockValidator sut = new(
+            Always.Valid,
+            new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
+            Always.Valid,
+            specProvider,
+            LimboLogs.Instance);
+
+        Block parent = Build.A.Block.WithDifficulty(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
+        blockTree.SuggestBlock(parent);
+        block.Header.Hash = Keccak.Zero;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent.Header, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid), error);
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
+        }
+    }
+
+    /// <summary>
+    /// The EIP-4895 presence rules are not a hash recomputation, so a caller that verified the header hash has not
+    /// verified them: the header only pins the withdrawals root field, not whether a body carries withdrawals.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
+    }
 
     [Test]
     public void Accepts_valid_block()
@@ -427,6 +479,113 @@ public class BlockValidatorTests
         {
             Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
         }
+    }
+
+    /// <summary>
+    /// EIP-2780 prices an unknown sender as a transfer to someone else, the higher charge, so a transaction that
+    /// validates without its sender is left for the background recovery instead of being recovered on the request thread.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_leaves_senders_it_does_not_need_unrecovered()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(
+            Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyB, TestItem.AddressC, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyC, TestItem.AddressC, gasLimit: 50_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+    }
+
+    /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_recovers_the_sender_of_a_self_transfer_below_the_non_self_charge()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+    }
+
+    /// <summary>
+    /// The background recovery can publish the sender right after the first check priced the transaction without it.
+    /// That rejection must still be re-checked with the sender, or a valid block is rejected depending on timing.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rechecks_a_self_transfer_whose_sender_arrives_after_the_first_check()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+        SenderPublishedAfterFirstCheck txValidator = new(new TxValidator(TestBlockchainIds.ChainId), TestItem.AddressA);
+
+        bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+        Assert.That(isValid, Is.True, error);
+    }
+
+    /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
+    private sealed class SenderPublishedAfterFirstCheck(ITxValidator inner, Address sender) : ITxValidator
+    {
+        private int _checks;
+
+        public bool FirstCheckFailed { get; private set; }
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec, 0);
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        {
+            ValidationResult result = inner.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            if (++_checks == 1)
+            {
+                FirstCheckFailed = !result;
+                transaction.SenderAddress = sender;
+            }
+
+            return result;
+        }
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rejects_a_transfer_to_someone_else_below_its_intrinsic_gas()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+    }
+
+    private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(to)
+            .WithValue(1)
+            .WithGasLimit(gasLimit)
+            .WithMaxFeePerGas(2_000_000_000)
+            .WithMaxPriorityFeePerGas(1_000_000_000)
+            .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), signer)
+            .TestObject;
+
+    private static (Block Block, BlockHeader Parent) Eip2780Block(params Transaction[] transactions)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithTransactions(transactions)
+            .WithBal(bal)
+            .TestObject;
+        return (block, parent);
     }
 
     private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>

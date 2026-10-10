@@ -5,4 +5,6 @@ using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Flat")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Trie.ZkEvm.Test")]

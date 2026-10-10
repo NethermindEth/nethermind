@@ -5,12 +5,11 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 /// <summary>
-/// One subscription on <see cref="IBlockTree.NewHeadBlock"/>, shared across all
+/// One subscription on <see cref="IBlockTree.OnUpdateMainChain"/>, shared across all
 /// <c>eth_sendRawTransactionSync</c> callers — replaces N-semaphores-per-call.
 ///
 /// <para>Usage: snapshot <see cref="NextHeadTask"/> BEFORE the state check (e.g. receipt lookup).
@@ -18,6 +17,12 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// the await returns immediately, so the caller re-checks state on the next iteration. Snapshotting
 /// after the check would lose that race.</para>
 /// </summary>
+/// <remarks>
+/// Not <see cref="IBlockTree.NewHeadBlock"/>: it fires before <see cref="IBlockTree.BlockAddedToMain"/>, where the
+/// receipt storage publishes the tx index, so a caller woken by it could miss a receipt already in the new head and
+/// wait for another block. <see cref="IBlockTree.OnUpdateMainChain"/> fires after every
+/// <see cref="IBlockTree.BlockAddedToMain"/> of the branch.
+/// </remarks>
 public sealed class HeadBlockSignal : IDisposable
 {
     private readonly IBlockTree _blockTree;
@@ -26,14 +31,14 @@ public sealed class HeadBlockSignal : IDisposable
     public HeadBlockSignal(IBlockTree blockTree)
     {
         _blockTree = blockTree;
-        _blockTree.NewHeadBlock += OnNewHead;
+        _blockTree.OnUpdateMainChain += OnMainChainUpdated;
     }
 
     public Task NextHeadTask => Volatile.Read(ref _tcs).Task;
 
-    public void Dispose() => _blockTree.NewHeadBlock -= OnNewHead;
+    public void Dispose() => _blockTree.OnUpdateMainChain -= OnMainChainUpdated;
 
-    private void OnNewHead(object? sender, BlockEventArgs _)
+    private void OnMainChainUpdated(object? sender, OnUpdateMainChainArgs _)
     {
         TaskCompletionSource prev = Interlocked.Exchange(
             ref _tcs,

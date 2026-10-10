@@ -18,11 +18,14 @@ public partial class Bls12381G1AddPrecompile : IPrecompile<Bls12381G1AddPrecompi
 
     public static Address Address { get; } = Address.FromNumber(0x0b);
 
-    public static string Name => "BLS12_G1ADD";
+    public string Name => "BLS12_G1ADD";
 
     public ulong BaseGasCost(IReleaseSpec _) => 375UL;
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
+
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        ValidateInputLength(inputData) ? inputData : ReadOnlyMemory<byte>.Empty;
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 

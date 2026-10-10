@@ -25,13 +25,13 @@ namespace Nethermind.Facade.Proxy
         private readonly int _retries = retries;
         private readonly int _retryDelayMilliseconds = retryDelayMilliseconds;
 
-        public Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
+        public Task<T?> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
             => ExecuteAsync<T>(Method.Get, endpoint, cancellationToken: cancellationToken);
 
-        public Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default)
+        public Task<T?> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default)
             => ExecuteAsync<T>(Method.Post, endpoint, payload, cancellationToken);
 
-        private async Task<T> ExecuteAsync<T>(Method method, string endpoint, object? payload = null, CancellationToken cancellationToken = default)
+        private async Task<T?> ExecuteAsync<T>(Method method, string endpoint, object? payload = null, CancellationToken cancellationToken = default)
         {
             string requestId = Guid.NewGuid().ToString("N");
             string methodType = method.ToString();
@@ -49,6 +49,11 @@ namespace Nethermind.Facade.Proxy
 
                     return await ProcessRequestAsync<T>(method, endpoint, requestId, payload, cancellationToken);
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // Caller cancellation has to surface as-is instead of being turned into a default result once the retries run out
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error(ex.Message, ex);
@@ -65,7 +70,7 @@ namespace Nethermind.Facade.Proxy
             return default;
         }
 
-        private async Task<T> ProcessRequestAsync<T>(Method method, string endpoint, string requestId, object? payload = null, CancellationToken cancellationToken = default)
+        private async Task<T?> ProcessRequestAsync<T>(Method method, string endpoint, string requestId, object? payload = null, CancellationToken cancellationToken = default)
         {
             string methodType = method.ToString();
             string json = payload is null ? "{}" : _jsonSerializer.Serialize(payload);

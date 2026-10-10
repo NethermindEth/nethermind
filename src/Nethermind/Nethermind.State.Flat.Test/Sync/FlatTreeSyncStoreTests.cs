@@ -107,7 +107,7 @@ public class FlatTreeSyncStoreTests
     {
         IHistoryPivotSeeder seeder = Substitute.For<IHistoryPivotSeeder>();
         List<string> log = [];
-        seeder.When(s => s.SeedPivot(Arg.Any<ulong>(), Arg.Any<ValueHash256>(), Arg.Any<IPersistence.IPersistenceReader>()))
+        seeder.When(s => s.SeedPivot(Arg.Any<ulong>(), Arg.Any<ValueHash256>()))
             .Do(_ => log.Add("seed-pivot"));
         OrderRecordingPersistence spy = new(_persistence, log);
         FlatTreeSyncStore store = new(spy, Substitute.For<IPersistenceManager>(), LimboLogs.Instance, seeder);
@@ -117,7 +117,7 @@ public class FlatTreeSyncStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            seeder.Received(1).SeedPivot(123, TestItem.KeccakA, Arg.Any<IPersistence.IPersistenceReader>());
+            seeder.Received(1).SeedPivot(123, TestItem.KeccakA);
 
             int seedCallIndex = log.IndexOf("seed-pivot");
             int firstAdvance = log.IndexOf("advance-pointer");

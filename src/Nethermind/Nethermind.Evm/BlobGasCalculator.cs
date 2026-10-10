@@ -46,10 +46,8 @@ public static class BlobGasCalculator
         ulong blobCount = 0UL;
         foreach (Transaction tx in transactions)
         {
-            if (tx.SupportsBlobs)
-            {
-                blobCount += (ulong)tx.GetBlobCount();
-            }
+            // EIP-8141: count from blob hashes, not the type-3-only SupportsBlobs, so blob-carrying frame txs also count.
+            blobCount += (ulong)tx.GetBlobCount();
         }
 
         return CalculateBlobGas(blobCount);
@@ -57,7 +55,7 @@ public static class BlobGasCalculator
 
     public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, ulong blobGasPriceUpdateFraction, out UInt256 blobBaseFee)
     {
-        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
+        if (!TryCalculateFeePerBlobGas(header, blobGasPriceUpdateFraction, out UInt256 feePerBlobGas))
         {
             blobBaseFee = UInt256.MaxValue;
             return false;

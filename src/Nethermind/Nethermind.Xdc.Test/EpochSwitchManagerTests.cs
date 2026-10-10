@@ -617,6 +617,90 @@ internal class EpochSwitchManagerTests
     }
 
     [Test]
+    public void GetBlockByEpochNumber_ShouldReturnBlockWhenOlderEpochsHaveNoSnapshot()
+    {
+        ulong epochLength = 5ul;
+        ulong epochNumber = 2ul;
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = epochLength,
+            SwitchBlock = 0,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        // Only the head epoch has a snapshot, as after a fast sync where no block below the pivot was ever processed.
+        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 20, oldestBlockWithSnapshot: 20);
+
+        Block headBlock = new(chainHead);
+        _tree.Head.Returns(headBlock);
+
+        BlockRoundInfo? result = _epochSwitchManager.GetBlockByEpochNumber(epochNumber);
+
+        Assert.That(result?.BlockNumber, Is.EqualTo(epochNumber * epochLength));
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_ShouldReturnEpochSwitchesInRangeOldestFirst()
+    {
+        XdcBlockHeader chainHead = SetupChain(out XdcReleaseSpec _);
+
+        EpochSwitchInfo[]? result = _epochSwitchManager.GetEpochSwitchInfoBetween(HeaderAt(5), chainHead);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Select(static i => i.EpochSwitchBlockInfo.BlockNumber), Is.EqualTo(new ulong[] { 5, 10, 15, 20 }).AsCollection);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_ShouldSucceedWhenAnEpochItOnlyPassesThroughHasNoSnapshot()
+    {
+        // Snapshots only from block 15, so resolving the epoch at 10 would fail — but it falls below the
+        // requested range and is only traversed, which no longer requires it.
+        XdcBlockHeader chainHead = SetupChain(out XdcReleaseSpec _, oldestBlockWithSnapshot: 15);
+
+        EpochSwitchInfo[]? result = _epochSwitchManager.GetEpochSwitchInfoBetween(HeaderAt(12), chainHead);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.Select(static i => i.EpochSwitchBlockInfo.BlockNumber), Is.EqualTo(new ulong[] { 15, 20 }).AsCollection);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_ShouldReturnNullWhenAnEpochInRangeHasNoSnapshot()
+    {
+        XdcBlockHeader chainHead = SetupChain(out XdcReleaseSpec _, oldestBlockWithSnapshot: 20);
+
+        Assert.That(_epochSwitchManager.GetEpochSwitchInfoBetween(HeaderAt(12), chainHead), Is.Null);
+    }
+
+    [Test]
+    public void GetEpochSwitchInfoBetween_ShouldReturnNullWhenAnAncestorIsMissing()
+    {
+        XdcBlockHeader chainHead = SetupChain(out XdcReleaseSpec _);
+
+        // The epoch switch at 15 steps into the previous epoch through its quorum certificate target
+        _tree.FindHeader(HeaderAt(14).Hash!).Returns((BlockHeader?)null);
+
+        Assert.That(_epochSwitchManager.GetEpochSwitchInfoBetween(HeaderAt(5), chainHead), Is.Null);
+    }
+
+    private XdcBlockHeader SetupChain(out XdcReleaseSpec releaseSpec, ulong oldestBlockWithSnapshot = 0)
+    {
+        releaseSpec = new()
+        {
+            EpochLength = 5,
+            SwitchBlock = 0,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 20, oldestBlockWithSnapshot: oldestBlockWithSnapshot);
+        _tree.Head.Returns(new Block(chainHead));
+        return chainHead;
+    }
+
+    private XdcBlockHeader HeaderAt(ulong number) => (XdcBlockHeader)_tree.FindHeader(number)!;
+
+    [Test]
     public void GetTimeoutCertificateEpochInfo_ShouldReturnEpochSwitchInfoForEpochContainingTcRound()
     {
         ulong epochLength = 5;
@@ -640,7 +724,7 @@ internal class EpochSwitchManagerTests
         Assert.That(result!.EpochSwitchBlockInfo.Round, Is.EqualTo(10));
     }
 
-    private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0)
+    private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0, ulong oldestBlockWithSnapshot = 0)
     {
         int i = startRound;
         XdcBlockHeader block = CreateV2RegenesisBlock(spec);
@@ -651,7 +735,7 @@ internal class EpochSwitchManagerTests
                 block = GenNormalBlock(spec, block!);
             }
 
-            if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0)
+            if ((block.ExtraConsensusData?.BlockRound ?? 0ul) % (ulong)spec.EpochLength == 0 && block.Number >= oldestBlockWithSnapshot)
             {
                 snapManager.GetSnapshotByBlockNumber(block.Number, Arg.Any<IXdcReleaseSpec>()).Returns(new Snapshot(block.Number, block.Hash!, [.. StandbyAddresses, .. SignerAddresses]));
             }

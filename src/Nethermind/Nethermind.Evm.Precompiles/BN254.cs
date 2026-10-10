@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -26,67 +25,93 @@ internal static unsafe class BN254
             throw new InvalidOperationException("MCL initialization failed");
     }
 
+    /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 128 bytes (two 64-byte big-endian G1 points) and
+    /// <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers with no bounds check, so a
+    /// short buffer would read or write past the end. A longer <paramref name="input"/> is rejected to keep the
+    /// contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
+    /// </remarks>
+    /// <returns>
+    /// <c>null</c> on success, otherwise why a point failed to deserialize, or <see cref="Errors.Failed"/> on a length
+    /// mismatch or a serialization failure.
+    /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool Add(byte[] output, ReadOnlySpan<byte> input)
+    internal static string? Add(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        Debug.Assert(input.Length == 128);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != 2 * chunkSize || output.Length < chunkSize)
+            return Errors.Failed;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x, out _))
-                return false;
+            string? error = DeserializeG1(data, out mclBnG1 x, out _);
+            if (error is not null)
+                return error;
 
-            if (!DeserializeG1(data + chunkSize, out mclBnG1 y, out _))
-                return false;
+            error = DeserializeG1(data + chunkSize, out mclBnG1 y, out _);
+            if (error is not null)
+                return error;
 
             mclBnG1_add(ref x, x, y); // x += y
             mclBnG1_normalize(ref x, x);
 
-            return SerializeG1(x, output);
+            return SerializeG1(x, output) ? null : Errors.Failed;
         }
     }
 
+    /// <summary>Multiplies a BN254 G1 point by a scalar and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 96 bytes (a 64-byte big-endian G1 point followed by a 32-byte
+    /// big-endian scalar) and <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers
+    /// with no bounds check, so a short buffer would read or write past the end. A longer <paramref name="input"/> is
+    /// rejected to keep the contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
+    /// </remarks>
+    /// <returns>
+    /// <c>null</c> on success, otherwise why the point failed to deserialize, or <see cref="Errors.Failed"/> on a length
+    /// mismatch, a scalar that fails to decode, or a serialization failure.
+    /// </returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool Mul(byte[] output, ReadOnlySpan<byte> input)
+    internal static string? Mul(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
+        const int scalarSize = 32;
 
-        Debug.Assert(input.Length == 96);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != chunkSize + scalarSize || output.Length < chunkSize)
+            return Errors.Failed;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
-            if (!DeserializeG1(data, out mclBnG1 x, out _))
-                return false;
+            string? error = DeserializeG1(data, out mclBnG1 x, out _);
+            if (error is not null)
+                return error;
 
             Unsafe.SkipInit(out mclBnFr y);
-            if (mclBnFr_setBigEndianMod(ref y, (nint)data + chunkSize, 32) == -1 || mclBnFr_isValid(y) == 0)
-                return false;
+            if (mclBnFr_setBigEndianMod(ref y, data + chunkSize, scalarSize) == -1 || mclBnFr_isValid(y) == 0)
+                return Errors.Failed;
 
             mclBnG1_mul(ref x, x, y);  // x *= y
             mclBnG1_normalize(ref x, x);
-            return SerializeG1(x, output);
+            return SerializeG1(x, output) ? null : Errors.Failed;
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal static bool CheckPairing(byte[] output, ReadOnlySpan<byte> input)
+    internal static string? CheckPairing(byte[] output, ReadOnlySpan<byte> input)
     {
         if (output.Length < 32)
-            return false;
+            return Errors.Failed;
 
         // Empty input means "true" by convention
         if (input.Length == 0)
         {
             output[31] = 1;
-            return true;
+            return null;
         }
 
         if (input.Length % PairSize != 0)
-            return false;
+            return Errors.Bn254PairingInputLength;
 
         int pairCount = input.Length / PairSize;
 
@@ -100,18 +125,20 @@ internal static unsafe class BN254
         }
     }
 
-    private static bool CheckPairingSingle(byte[] output, byte* data)
+    private static string? CheckPairingSingle(byte[] output, byte* data)
     {
-        if (!DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero))
-            return false;
+        string? error = DeserializeG1(data, out mclBnG1 g1, out bool g1IsZero);
+        if (error is not null)
+            return error;
 
-        if (!DeserializeG2(data + 64, out mclBnG2 g2, out bool g2IsZero))
-            return false;
+        error = DeserializeG2(data + 64, out mclBnG2 g2, out bool g2IsZero);
+        if (error is not null)
+            return error;
 
         if (g1IsZero || g2IsZero)
         {
             output[31] = 1;
-            return true;
+            return null;
         }
 
         Unsafe.SkipInit(out mclBnGT acc);
@@ -119,10 +146,10 @@ internal static unsafe class BN254
         mclBn_finalExp(ref acc, acc);
 
         output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
-        return true;
+        return null;
     }
 
-    private static bool CheckPairingVector(byte[] output, byte* data, int pairCount)
+    private static string? CheckPairingVector(byte[] output, byte* data, int pairCount)
     {
         // Process the pairs in chunks of at most MaxStackPairCount so the scratch buffers stay a fixed,
         // input-independent size on the stack (the >MaxStackPairCount case never grows the allocation),
@@ -148,11 +175,13 @@ internal static unsafe class BN254
             {
                 int inputOffset = i * PairSize;
 
-                if (!DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero))
-                    return false;
+                string? error = DeserializeG1(data + inputOffset, out mclBnG1 g1, out bool g1IsZero);
+                if (error is not null)
+                    return error;
 
-                if (!DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero))
-                    return false;
+                error = DeserializeG2(data + inputOffset + 64, out mclBnG2 g2, out bool g2IsZero);
+                if (error is not null)
+                    return error;
 
                 if (g1IsZero || g2IsZero)
                     continue;
@@ -167,8 +196,8 @@ internal static unsafe class BN254
 
             mclBn_millerLoopVec(
                 ref hasMl ? ref ml : ref acc,
-                in Unsafe.AsRef<mclBnG1>(g1Bytes),
-                in Unsafe.AsRef<mclBnG2>(g2Bytes),
+                (mclBnG1*)g1Bytes,
+                (mclBnG2*)g2Bytes,
                 (nuint)nonZeroInChunk);
 
             if (hasMl)
@@ -185,16 +214,16 @@ internal static unsafe class BN254
         if (!hasMl)
         {
             output[31] = 1;
-            return true;
+            return null;
         }
 
         mclBn_finalExp(ref acc, acc);
 
         output[31] = Convert.ToByte(mclBnGT_isOne(acc) == 1);
-        return true;
+        return null;
     }
 
-    private static bool DeserializeG1(byte* data, out mclBnG1 point, out bool isZero)
+    private static string? DeserializeG1(byte* data, out mclBnG1 point, out bool isZero)
     {
         const int chunkSize = 32;
 
@@ -204,7 +233,7 @@ internal static unsafe class BN254
         // Treat all-zero as point at infinity for your calling convention
         if (isZero)
         {
-            return true;
+            return null;
         }
 
         // Input is big-endian; MCL call below expects little-endian byte order for Fp
@@ -212,18 +241,18 @@ internal static unsafe class BN254
 
         // x
         CopyReverse32(data, tmp);
-        if (mclBnFp_deserialize(ref point.x, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.x, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
         // y
         CopyReverse32(data + chunkSize, tmp);
-        if (mclBnFp_deserialize(ref point.y, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.y, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
 
         mclBnFp_setInt32(ref point.z, 1);
-        return mclBnG1_isValid(point) == 1;
+        return mclBnG1_isValid(point) == 1 ? null : Errors.Bn254NotOnCurve;
     }
 
-    private static bool DeserializeG2(byte* data, out mclBnG2 point, out bool isZero)
+    private static string? DeserializeG2(byte* data, out mclBnG2 point, out bool isZero)
     {
         const int chunkSize = 32;
 
@@ -233,7 +262,7 @@ internal static unsafe class BN254
         // Treat all-zero as point at infinity
         if (isZero)
         {
-            return true;
+            return null;
         }
 
         // Input layout: x_im, x_re, y_im, y_re (each 32 bytes, big-endian)
@@ -242,27 +271,51 @@ internal static unsafe class BN254
 
         // x.im
         CopyReverse32(data, tmp);
-        if (mclBnFp_deserialize(ref point.x.d1, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.x.d1, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
 
         // x.re
         CopyReverse32(data + chunkSize, tmp);
-        if (mclBnFp_deserialize(ref point.x.d0, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.x.d0, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
 
         // y.im
         CopyReverse32(data + chunkSize * 2, tmp);
-        if (mclBnFp_deserialize(ref point.y.d1, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.y.d1, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
 
         // y.re
         CopyReverse32(data + chunkSize * 3, tmp);
-        if (mclBnFp_deserialize(ref point.y.d0, (nint)tmp, chunkSize) == nuint.Zero)
-            return false;
+        if (mclBnFp_deserialize(ref point.y.d0, tmp, chunkSize) == nuint.Zero)
+            return Errors.InvalidFieldElementEncoding;
 
         mclBnFp_setInt32(ref point.z.d0, 1);
 
-        return mclBnG2_isValid(point) == 1 && mclBnG2_isValidOrder(point) == 1;
+        if (mclBnG2_isValid(point) == 1 && mclBnG2_isValidOrder(point) == 1)
+            return null;
+
+        // mcl's validity check covers the order too, so the curve equation tells which of the two failed
+        return IsOnTwist(point) ? Errors.Bn254NotInSubgroup : Errors.Bn254NotOnCurve;
+    }
+
+    /// <summary>Whether an affine point satisfies y^2 = x^3 + 3 / (9 + u), the twist G2 lies on (EIP-197).</summary>
+    private static bool IsOnTwist(in mclBnG2 point)
+    {
+        mclBnFp2 b = default;
+        mclBnFp_setInt32(ref b.d0, 9);
+        mclBnFp_setInt32(ref b.d1, 1);
+        mclBnFp2_inv(ref b, b);
+        mclBnFp2 three = default;
+        mclBnFp_setInt32(ref three.d0, 3);
+        mclBnFp2_mul(ref b, three, b);
+
+        Unsafe.SkipInit(out mclBnFp2 ySquared);
+        Unsafe.SkipInit(out mclBnFp2 xCubedPlusB);
+        mclBnFp2_sqr(ref ySquared, point.y);
+        mclBnFp2_sqr(ref xCubedPlusB, point.x);
+        mclBnFp2_mul(ref xCubedPlusB, xCubedPlusB, point.x);
+        mclBnFp2_add(ref xCubedPlusB, xCubedPlusB, b);
+        return mclBnFp2_isEqual(ySquared, xCubedPlusB) == 1;
     }
 
     private static bool SerializeG1(in mclBnG1 point, byte[] output)
@@ -271,10 +324,10 @@ internal static unsafe class BN254
 
         fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(output))
         {
-            if (mclBnFp_getLittleEndian((nint)ptr, chunkSize, point.x) == nuint.Zero)
+            if (mclBnFp_getLittleEndian(ptr, chunkSize, point.x) == nuint.Zero)
                 return false;
 
-            if (mclBnFp_getLittleEndian((nint)ptr + chunkSize, chunkSize, point.y) == nuint.Zero)
+            if (mclBnFp_getLittleEndian(ptr + chunkSize, chunkSize, point.y) == nuint.Zero)
                 return false;
 
             CopyReverse32(ptr, ptr); // To big-endian

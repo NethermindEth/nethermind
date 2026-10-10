@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
@@ -33,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(null, 1);
 
-            TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+            TestToJson(result, "{\"balance\":{\"+\":\"0x1\"},\"code\":{\"+\":\"0x\"},\"nonce\":\"=\",\"storage\":{}}");
         }
 
         [Test]
@@ -42,8 +44,51 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ParityAccountStateChange result = new();
             result.Balance = new ParityStateChange<UInt256?>(1, null);
 
-            TestToJson(result, "{\"balance\":{\"*\":{\"from\":\"0x1\",\"to\":null}},\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
+            TestToJson(result, "{\"balance\":{\"-\":\"0x1\"},\"code\":{\"-\":\"0x\"},\"nonce\":\"=\",\"storage\":{}}");
         }
+
+        [Test]
+        public void Can_serialize_deleted_account([Values(0, 1)] int value)
+        {
+            ParityAccountStateChange result = new()
+            {
+                Balance = new ParityStateChange<UInt256?>((UInt256)value, null),
+                Nonce = new ParityStateChange<UInt256?>((UInt256)value, null),
+                Code = new ParityStateChange<byte[]>(value == 0 ? [] : [0x60, 0x00], null)
+            };
+
+            string quantity = value == 0 ? "0x0" : "0x1";
+            string code = value == 0 ? "0x" : "0x6000";
+            TestToJson(result,
+                $$$"""{"balance":{"-":"{{{quantity}}}"},"code":{"-":"{{{code}}}"},"nonce":{"-":"{{{quantity}}}"},"storage":{}}""");
+        }
+
+        [Test]
+        public void Serialize_WhenStorageKeysAreUnordered_WritesThemAscendingAsFullWidthHex()
+        {
+            UInt256[] keys = [UInt256.MaxValue, 1, UInt256.One << 255, 0, (UInt256)0xabcdef << 100];
+            ParityAccountStateChange result = new() { Storage = [] };
+            foreach (UInt256 key in keys)
+            {
+                result.Storage[key] = new ParityStateChange<byte[]>([1], [2]);
+            }
+
+            StringBuilder expected = new("{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{");
+            UInt256[] ascending = [.. keys.Order()];
+            for (int i = 0; i < ascending.Length; i++)
+            {
+                string hex = ascending[i].ToString("x64");
+                if (i > 0) expected.Append(',');
+                expected.Append("\"0x").Append(hex[^64..]).Append("\":{\"*\":{\"from\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"to\":\"0x0000000000000000000000000000000000000000000000000000000000000002\"}}");
+            }
+
+            expected.Append("}}");
+            TestToJson(result, expected.ToString());
+        }
+
+        [Test]
+        public void Serialize_WhenStorageIsEmpty_WritesAnEmptyObject() =>
+            TestToJson(new ParityAccountStateChange { Storage = [] }, "{\"balance\":\"=\",\"code\":\"=\",\"nonce\":\"=\",\"storage\":{}}");
 
         [Test]
         public void Can_serialize_nulls()

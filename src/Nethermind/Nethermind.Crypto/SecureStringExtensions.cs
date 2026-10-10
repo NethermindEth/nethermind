@@ -9,7 +9,7 @@ namespace Nethermind.Crypto
 {
     public static class SecureStringExtensions
     {
-        public static byte[] ToByteArray(this SecureString secureString, System.Text.Encoding encoding = null)
+        public static byte[] ToByteArray(this SecureString secureString, System.Text.Encoding? encoding = null)
         {
             ArgumentNullException.ThrowIfNull(secureString);
 

@@ -67,6 +67,7 @@ jobs:
               { pattern: 'src/Nethermind/Nethermind.Config', label: 'configuration' },
               { pattern: 'README.md', label: 'docs' },
               { pattern: 'AGENTS.md', label: 'agentic 🤖' },
+              { pattern: '.agents/', label: 'agentic 🤖' },
               { pattern: '.github/', label: 'devops' },
               { pattern: 'Directory.Packages.props', label: 'dependencies' },
               { pattern: 'tools/', label: 'tools' },

@@ -3,15 +3,18 @@
 
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
+using Nethermind.Xdc.RPC;
 
 namespace Nethermind.Xdc;
 
 /// <summary>
 /// Registers XDC header typing: the <see cref="BlockHeader"/> RLP decoders (globally and in DI)
 /// so that call sites which resolve decoders from the static <see cref="Rlp"/> registry instead of
-/// DI (e.g. <c>ProofRpcModule</c>) also encode/decode XDC headers correctly. Used by
+/// DI (e.g. <c>ProofRpcModule</c>) also encode/decode XDC headers correctly, plus the
+/// <see cref="IBlockForRpcFactory"/> that surfaces the XDPoS header fields over JSON-RPC. Used by
 /// <see cref="XdcModule"/> for mainnet headers and by <see cref="XdcSubnetModule"/> with a
 /// subnet-specific decoder instance.
 /// </summary>
@@ -37,6 +40,7 @@ public class XdcHeaderModule(IHeaderDecoder headerDecoder) : Module
         builder
             .AddSingleton<IHeaderDecoder>(headerDecoder)
             .AddSingleton(blockDecoder)
-            .AddSingleton(blockBodyDecoder);
+            .AddSingleton(blockBodyDecoder)
+            .AddSingleton<IBlockForRpcFactory, XdcBlockForRpcFactory>();
     }
 }

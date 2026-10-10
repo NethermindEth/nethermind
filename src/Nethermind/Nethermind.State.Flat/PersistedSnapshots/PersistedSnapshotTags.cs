@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.State.Flat.Persistence;
+
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
@@ -44,7 +46,7 @@ internal static class PersistedSnapshotTags
 
     // Largest RLP encoding of a slot value: a 32-byte string is a 1-byte prefix (0xa0) plus 32
     // bytes. Mirrors BaseFlatPersistence.RlpSlotValueBufferSize.
-    internal const int RlpSlotValueBufferSize = SlotValue.ByteCount + 1;
+    internal const int RlpSlotValueBufferSize = BaseFlatPersistence.StorageValueSize + 1;
 
     // Presence marker for MetadataNodeRefsKey. The key itself is the signal; the value just
     // satisfies the non-empty-value requirement.

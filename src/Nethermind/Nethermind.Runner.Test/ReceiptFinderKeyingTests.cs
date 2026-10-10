@@ -43,6 +43,7 @@ public class ReceiptFinderKeyingTests
         "Nethermind.Consensus.AuRa.InitializationSteps.TxAuRaFilterBuilders",
         "Nethermind.Shutter.ShutterApi",
         "Nethermind.Shutter.ShutterBlockHandler",
+        "Nethermind.Merge.Plugin.FrameTxWidthFinalizer",
     ];
 
     /// <summary>
@@ -59,6 +60,7 @@ public class ReceiptFinderKeyingTests
         "Nethermind.JsonRpc.Modules.Eth.EthRpcModule",
         "Nethermind.Optimism.Rpc.OptimismEthRpcModule",
         "Nethermind.JsonRpc.TraceStore.TraceStoreRpcModule",
+        "Nethermind.Optimism.Rpc.OptimismProofRpcModule",
         "Nethermind.JsonRpc.Modules.Trace.TraceRpcModule",
         "Nethermind.Consensus.AuRa.Contracts.DataStore.ContractDataStore",
         "Nethermind.Consensus.AuRa.Contracts.DataStore.ContractDataStoreWithLocalData",

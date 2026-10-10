@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -41,7 +42,7 @@ namespace Nethermind.Evm.Test
         public void Test(string codeHex, ulong gasUsed, ulong refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
-            TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
+            TestState.Set(new StorageCell(Recipient, 0), new UInt256(new[] { originalValue }, isBigEndian: true));
             TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
             TestAllTracerWithOutput receipt = Execute(Bytes.FromHexString(codeHex));

@@ -23,6 +23,7 @@ public sealed class NativeStateGasTracer : GethLikeNativeTxTracer
         // Terminal-only: reads only the final GasConsumed, so skip the per-opcode storage/stack callbacks.
         IsTracingOpLevelStorage = false;
         IsTracingStack = false;
+        IsTracingReturnData = false;
     }
 
     public override bool IsTracingInstructions => false;

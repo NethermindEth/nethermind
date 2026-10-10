@@ -25,23 +25,25 @@ namespace Nethermind.Network.Test.Rlpx
             IIPResolver ipResolver = Substitute.For<IIPResolver>();
             ipResolver.Resolve(Arg.Any<CancellationToken>())
                 .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.None)));
+            NetworkConfig networkConfig = new()
+            {
+                ProcessingThreadCount = 1,
+                P2PPort = GegAvailableLocalPort(),
+                LocalIp = null,
+                ConnectTimeoutMs = 200,
+                SimulateSendLatencyMs = 0,
+            };
 
             RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
-                new NetworkConfig()
-                {
-                    ProcessingThreadCount = 1,
-                    P2PPort = GegAvailableLocalPort(),
-                    LocalIp = null,
-                    ConnectTimeoutMs = 200,
-                    SimulateSendLatencyMs = 0,
-                },
+                networkConfig,
                 ipResolver,
                 Substitute.For<IPrivilegedIpProvider>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance));
             await host.Init();
             await host.Shutdown();
         }

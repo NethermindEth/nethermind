@@ -81,6 +81,11 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
     public virtual bool IsEip8038Enabled => spec.IsEip8038Enabled;
     public virtual bool IsEip8282Enabled => spec.IsEip8282Enabled;
+    public virtual bool IsEip8141Enabled => spec.IsEip8141Enabled;
+    public virtual bool IsEip8250Enabled => spec.IsEip8250Enabled;
+    public virtual bool IsEip8272Enabled => spec.IsEip8272Enabled;
+    public virtual bool IsEip7906Enabled => spec.IsEip7906Enabled;
+    public virtual bool IsEip7979Enabled => spec.IsEip7979Enabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
@@ -90,9 +95,12 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual int Eip7934MaxRlpBlockSize => spec.Eip7934MaxRlpBlockSize;
     public virtual bool IsEip7951Enabled => spec.IsEip7951Enabled;
     public virtual bool IsRip7212Enabled => spec.IsRip7212Enabled;
+    public virtual bool IsEip7805Enabled => spec.IsEip7805Enabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
     public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
     public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
+    public virtual bool IsEip8131Enabled => spec.IsEip8131Enabled;
+    public virtual bool IsEip8279Enabled => spec.IsEip8279Enabled;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
@@ -108,15 +116,19 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
+    bool IReleaseSpec.IsPrecompile(Address address) => spec.IsPrecompile(address);
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
     public virtual bool IsEip8037Enabled => spec.IsEip8037Enabled;
     public virtual bool IsEip7708Enabled => spec.IsEip7708Enabled;
     public virtual bool IsEip7778Enabled => spec.IsEip7778Enabled;
+    public virtual bool IsEip7668Enabled => spec.IsEip7668Enabled;
     public virtual bool IsEip7843Enabled => spec.IsEip7843Enabled;
     public virtual bool IsEip7954Enabled => spec.IsEip7954Enabled;
     public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
+    public virtual bool IsEip8253Enabled => spec.IsEip8253Enabled;
     public virtual bool IsEip2780Enabled => spec.IsEip2780Enabled;
+    public virtual bool IsEip3298Enabled => spec.IsEip3298Enabled;
     public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public SpecGasCosts GasCosts => spec.GasCosts;
 }

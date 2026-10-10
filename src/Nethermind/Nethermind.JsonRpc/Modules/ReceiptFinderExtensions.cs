@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -23,29 +23,53 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<Hash256>(blockHash);
         }
 
-        public static ResultWrapper<ReceiptForRpc[]?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
+        public static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, BlockParameter blockParameter, IBlockFinder blockFinder, ISpecProvider specProvider)
         {
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
+            return searchResult.IsError
+                ? ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null)
+                : receiptFinder.GetBlockReceipts(searchResult.Object, specProvider);
+        }
+
+        /// <remarks>The result owns pooled receipts; the RPC stack disposes it after serialization.</remarks>
+        internal static ResultWrapper<IEnumerable<ReceiptForRpc>?> GetBlockReceipts(this IReceiptFinder receiptFinder, Block block, ISpecProvider specProvider)
+        {
+            Transaction[] transactions = block.Transactions;
+            TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            int count = Math.Min(receipts.Length, transactions.Length);
+            ReceiptsForRpc<ReceiptForRpc> result = new(count);
+            try
             {
-                return ResultWrapper<ReceiptForRpc[]?>.Success(null);
+                // A running sum equals the per-receipt scan only when every index is its position.
+                bool positionalIndexes = HasPositionalIndexes(receipts);
+                int logIndexStart = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    TxReceipt receipt = receipts[i];
+                    Transaction transaction = transactions[i];
+                    int receiptLogIndexStart = positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
+                    result.Add(new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart));
+                    logIndexStart += receipt.Logs?.Length ?? 0;
+                }
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
             }
 
-            Block block = searchResult.Object;
-            TxReceipt[] receipts = receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            IEnumerable<ReceiptForRpc> result = receipts
-                .Zip(block.Transactions, (r, t) =>
-                {
-                    return new ReceiptForRpc(
-                        t.Hash,
-                        r,
-                        block.Timestamp,
-                        t.GetGasInfo(spec, block.Header),
-                        receipts.GetBlockLogFirstIndex(r.Index));
-                });
-            ReceiptForRpc[] resultAsArray = result.ToArray();
-            return ResultWrapper<ReceiptForRpc[]?>.Success(resultAsArray);
+            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
+        }
+
+        private static bool HasPositionalIndexes(TxReceipt[] receipts)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                if (receipts[i].Index != i) return false;
+            }
+
+            return true;
         }
     }
 }

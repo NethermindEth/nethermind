@@ -50,7 +50,7 @@ public class BackgroundTaskSchedulerBurstTests
 
             for (int i = 0; i < tasksPerCycle; i++)
             {
-                bool accepted = scheduler.TryScheduleTask(i, (_, _) =>
+                bool accepted = scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
                 {
                     Interlocked.Increment(ref totalExecuted);
                     return Task.CompletedTask;
@@ -75,7 +75,7 @@ public class BackgroundTaskSchedulerBurstTests
         int postCycleCount = Math.Min(capacity, 100);
         for (int i = 0; i < postCycleCount; i++)
         {
-            Assert.That(scheduler.TryScheduleTask(i, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(default(TestRequest), (_, _) =>
             {
                 Interlocked.Increment(ref postCycleExecuted);
                 return Task.CompletedTask;

@@ -10,5 +10,8 @@ namespace Nethermind.Consensus.Processing
         public TxReceipt TxReceipt { get; } = txReceipt;
 
         public BlockHeader BlockHeader { get; } = blockHeader;
+
+        /// <summary>Gets the cumulative header gas used when the transaction completed.</summary>
+        public ulong HeaderGasUsed { get; init; } = blockHeader.GasUsed;
     }
 }

@@ -117,11 +117,6 @@ public class AdminRpcModule : IAdminRpcModule
     {
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
 
-        if (_trustedNodesManager.IsTrusted(enodeObj!))
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
-
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         try

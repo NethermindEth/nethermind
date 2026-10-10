@@ -34,11 +34,18 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
             return ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        Result<TProcessing> prepareResult = Prepare(call, header);
-        return !prepareResult.Success(out TProcessing? data, out string? error)
-            ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header, data, stateOverride, timeout.Token);
+        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        try
+        {
+            Result<TProcessing> prepareResult = Prepare(call, header);
+            return !prepareResult.Success(out TProcessing? data, out string? error)
+                ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+                : Execute(header, data, stateOverride, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
     }
 
     protected abstract Result<TProcessing> Prepare(TRequest call, BlockHeader header);

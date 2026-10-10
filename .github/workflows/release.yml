@@ -208,6 +208,10 @@ jobs:
       - name: Build and push image to Docker Hub
         run: |
           image=nethermind/nethermind
+          # The OCI created label must be RFC 3339 and must come from the same commit timestamp
+          # as SOURCE_DATE_EPOCH, or the image stops being reproducible.
+          source_date_epoch=$(git log -1 --format=%ct)
+          build_timestamp=$(date -u -d @$source_date_epoch +%Y-%m-%dT%H:%M:%SZ)
 
           for suffix in "" ".chiseled"; do
             tag_suffix=$([[ -z "$suffix" ]] && echo "" || echo "-${suffix:1}")
@@ -216,6 +220,8 @@ jobs:
               -t "$image:${{ needs.build.outputs.version }}$tag_suffix" \
               --build-arg CI=$CI \
               --build-arg COMMIT_HASH=$GITHUB_SHA \
-              --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) \
+              --build-arg VERSION=${{ needs.build.outputs.version }} \
+              --build-arg SOURCE_DATE_EPOCH=$source_date_epoch \
+              --build-arg BUILD_TIMESTAMP=$build_timestamp \
               --push
           done

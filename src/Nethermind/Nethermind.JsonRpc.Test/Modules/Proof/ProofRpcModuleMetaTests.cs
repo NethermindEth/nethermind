@@ -57,7 +57,7 @@ public class ProofRpcModuleMetaTests
             worldState.CreateAccount(TestItem.AddressC, 300_000);
             for (int i = 0; i < StorageSlotCount; i++)
             {
-                worldState.Set(new StorageCell(TestItem.AddressB, (UInt256)i), [(byte)(i + 1)]);
+                worldState.Set(new StorageCell(TestItem.AddressB, (UInt256)i), (UInt256)(byte)(i + 1));
             }
             worldState.Commit(London.Instance);
             worldState.CommitTree(0);

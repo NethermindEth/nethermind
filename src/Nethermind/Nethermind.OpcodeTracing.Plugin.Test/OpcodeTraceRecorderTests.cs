@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
@@ -46,7 +43,7 @@ public class OpcodeTraceRecorderTests
     }
 
     [Test]
-    public void PrepareAsync_throws_on_invalid_config()
+    public async Task PrepareAsync_throws_on_invalid_config()
     {
         // StartBlock > EndBlock fails validation; PrepareAsync throws so a misconfigured node aborts startup instead of running with tracing silently off.
         using OpcodeTraceRecorder recorder = CreateRecorder(new OpcodeTracingConfig
@@ -58,7 +55,7 @@ public class OpcodeTraceRecorderTests
             OutputDirectory = _tempDir
         });
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await recorder.PrepareAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await recorder.PrepareAsync());
     }
 
     [Test]
@@ -94,7 +91,7 @@ public class OpcodeTraceRecorderTests
         recorder.AttachRealTime();
 
         await recorder.DisposeAsync();
-        Assert.DoesNotThrowAsync(async () => await recorder.DisposeAsync());
+        await Assert.DoesNotThrowAsync(async () => await recorder.DisposeAsync());
     }
 
     private static OpcodeTraceRecorder CreateRecorder(IOpcodeTracingConfig config) =>

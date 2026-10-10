@@ -3,6 +3,7 @@
 
 using System;
 using Autofac;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -30,6 +31,7 @@ public class ShutterTestBlockchain(Random rnd, ITimestamper? timestamper = null,
 
             // ShutterApiSimulator add receipts to block with empty transaction. Crash with full receipt storage.
             .AddSingleton<IReceiptStorage, InMemoryReceiptStorage>()
+            .AddDecorator<IHeaderStore, ReceiptBloomHeaderStore>()
             ;
 
         if (eventSimulator is not null)

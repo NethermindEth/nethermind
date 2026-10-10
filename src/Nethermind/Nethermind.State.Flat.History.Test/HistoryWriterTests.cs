@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -17,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
+using Nethermind.Trie.Pruning;
 using System.IO;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -56,8 +59,8 @@ public class HistoryWriterTests
         _repository = _tier.Repository;
         FlatDbConfig config = new() { HistoryEnabled = true };
         (_availability, _rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, config, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
+        _reader = new HistoryReader(_db, _historyColumns, _availability, _rowFormat, LimboLogs.Instance);
         _accountHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
         _storageHistory = new HistoryStore(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
     }
@@ -70,8 +73,6 @@ public class HistoryWriterTests
         _historyColumns.Dispose();
     }
 
-    // AddrA: (nonce 1, balance 100) @ b1, overwritten to (nonce 2, balance 200) @ b2, deleted @ b3.
-    // Nonce == block number for the committed values, so the expected account is reconstructible from readBlock.
     [TestCase(0ul, 0ul, ExpectedKind.Absent)]   // before the first change -> absent at that height
     [TestCase(1ul, 100ul, ExpectedKind.Value)]
     [TestCase(2ul, 200ul, ExpectedKind.Value)]
@@ -79,6 +80,7 @@ public class HistoryWriterTests
     [TestCase(4ul, 0ul, ExpectedKind.Tombstone)]
     public void Captures_account_value_as_of_block(ulong readBlock, ulong balance, ExpectedKind kind)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
         CommitBlock(2, 3, accountChanges: [(AddrA, null)]);
@@ -100,13 +102,129 @@ public class HistoryWriterTests
                     Assert.That(written, Is.EqualTo(0));
                     break;
                 default:
-                    Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedAccount(new Account(readBlock, balance))));
+                    Assert.That(buffer[..written], Is.SequenceEqualTo(EncodedAccount(new Account(readBlock, balance))));
                     break;
             }
         }
     }
 
-    // AddrA/Slot1: 0x0a @ b1, overwritten to 0x0bbb @ b2, zeroed (removed) @ b3.
+    // A walk records a key's rows in descending block order: visiting a block writes the row for the higher block
+    // seen before it, and the lowest row is only resolved once the walk connects. Commit per block and a key's upper
+    // row is visible while its lower row does not exist, so a read below the watermark seeks upward, finds the upper
+    // row, and answers with a value from after the block it asked about. One batch for the walk forbids that, and
+    // since nothing partial is ever observable there is no half-written state to assert on instead - the count is it.
+    [Test]
+    public void A_capture_walk_publishes_every_row_in_one_batch()
+    {
+        BatchCountingHistoryColumns counting = new(_historyColumns);
+        HistoryWriter writer = new(_db, counting, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
+
+        // The same key at more than one block of the walk is the shape that goes wrong per batch.
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
+
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        Assert.That(counting.BatchesStarted, Is.EqualTo(1));
+    }
+
+    private sealed class BatchCountingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public int BatchesStarted { get; private set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch()
+        {
+            BatchesStarted++;
+            return inner.StartWriteBatch();
+        }
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+
+        // The fixture owns the wrapped database.
+        public void Dispose() { }
+    }
+
+    [Test]
+    public void A_throw_while_resolving_the_pending_rows_publishes_nothing()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
+        ThrowingHistoryColumns throwing = new(_historyColumns, throwOnAccountWrite: 3);
+        HistoryWriter writer = new(_db, throwing, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 200))]);
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
+
+        Assert.Throws<InvalidOperationException>(() => writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None));
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(throwing.AccountWrites, Is.EqualTo(3),
+                "the walk has to have written its two rows before the throw, or this exercises the walk rather than the resolve");
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(0, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(accountHistory.TryGetValueBeforeNextChange(2, AccountKey(AddrA), buffer, out _), Is.EqualTo(-1));
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL));
+        }
+    }
+
+    private sealed class ThrowingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner, int throwOnAccountWrite) : IColumnsDb<FlatHistoryColumns>
+    {
+        public int AccountWrites { get; private set; }
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => new Batch(this, inner.StartWriteBatch());
+
+        public IDb GetColumnDb(FlatHistoryColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+        public void Dispose() { }
+
+        private void CountAccountWrite()
+        {
+            if (++AccountWrites == throwOnAccountWrite) throw new InvalidOperationException("account history write failed");
+        }
+
+        private sealed class Batch(ThrowingHistoryColumns owner, IColumnsWriteBatch<FlatHistoryColumns> inner) : IColumnsWriteBatch<FlatHistoryColumns>
+        {
+            public IWriteBatch GetColumnBatch(FlatHistoryColumns key) => key == FlatHistoryColumns.AccountHistory
+                ? new CountingBatch(owner, inner.GetColumnBatch(key))
+                : inner.GetColumnBatch(key);
+
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class CountingBatch(ThrowingHistoryColumns owner, IWriteBatch inner) : IWriteBatch
+        {
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                owner.CountAccountWrite();
+                inner.Set(key, value, flags);
+            }
+
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                owner.CountAccountWrite();
+                inner.PutSpan(key, value, flags);
+            }
+
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => inner.Merge(key, value, flags);
+            public void Clear() => inner.Clear();
+            public void Dispose() => inner.Dispose();
+        }
+    }
+
     [TestCase(0ul, null)]
     [TestCase(1ul, "0a")]
     [TestCase(2ul, "0bbb")]
@@ -114,6 +232,7 @@ public class HistoryWriterTests
     [TestCase(4ul, "", true)]
     public void Captures_storage_value_as_of_block(ulong readBlock, string? expectedHex, bool expectTombstone = false)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, Slot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, Slot(0x0b, 0xbb))]);
         CommitBlock(2, 3, storageChanges: [(AddrA, Slot1, null)]);
@@ -137,7 +256,7 @@ public class HistoryWriterTests
             else
             {
                 Assert.That(written, Is.GreaterThan(0));
-                Assert.That(buffer[..written].ToArray(), Is.EqualTo(EncodedSlot(Convert.FromHexString(expectedHex))));
+                Assert.That(buffer[..written], Is.SequenceEqualTo(EncodedSlot(Convert.FromHexString(expectedHex))));
             }
         }
     }
@@ -145,8 +264,9 @@ public class HistoryWriterTests
     [Test]
     public void Recorded_bytes_match_the_flat_encoders()
     {
+        SeedGenesisFloor();
         Account account = new(7, 4242);
-        SlotValue slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
         CommitBlock(0, 1, accountChanges: [(AddrB, account)], storageChanges: [(AddrB, Slot2, slot)]);
 
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -161,7 +281,7 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
-            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.AsReadOnlySpan)));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
         }
     }
 
@@ -190,7 +310,6 @@ public class HistoryWriterTests
         }
     }
 
-    // (a) created @1, (a) self-destructed @2 (null tombstone), (c) re-created @3 with a new value.
     [TestCase(0ul, 0ul)]   // before any change -> absent
     [TestCase(1ul, 100ul)] // created
     [TestCase(2ul, 0ul)]   // self-destructed -> absent
@@ -198,6 +317,7 @@ public class HistoryWriterTests
     [TestCase(4ul, 300ul)] // still present afterwards
     public void Account_selfdestruct_then_recreate_reads_per_height(ulong readBlock, ulong expectedBalance)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, null)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 300))]);
@@ -220,9 +340,6 @@ public class HistoryWriterTests
         }
     }
 
-    // Slot written @1, killed @2 by a per-slot clear (tombstone) or a self-destruct (range-delete in the live
-    // column, so only the clear marker can kill the @1 value), re-written @3. The kill block optionally lives in
-    // the persisted tier (converted by long-finality Phase 2), so the walk crosses tiers mid-range.
     [TestCase(0ul, null, false, false)]
     [TestCase(1ul, "0a", false, false)]
     [TestCase(2ul, null, false, false)]
@@ -240,6 +357,7 @@ public class HistoryWriterTests
     [TestCase(4ul, "0c", true, true)]
     public void Storage_killed_then_rewritten_reads_per_height(ulong readBlock, string? expectedHex, bool viaSelfDestruct, bool killBlockConverted)
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         if (viaSelfDestruct)
             CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
@@ -256,6 +374,7 @@ public class HistoryWriterTests
     [Test]
     public void Storage_untouched_after_selfdestruct_reads_empty_while_rewritten_slot_reads_new_value()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a)), (AddrA, Slot2, HistorySlot(0x0b))]);
         CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         CommitBlock(2, 3, accountChanges: [(AddrA, new Account(1, 100))], storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
@@ -269,11 +388,10 @@ public class HistoryWriterTests
         }
     }
 
-    // A destruct and a re-creation in the same block: the snapshot's slot values are the post-destruct state,
-    // so they win over the same-block clear (mirrors the live column's destruct-then-write batch order).
     [Test]
     public void Storage_destructed_and_rewritten_in_same_block_reads_the_rewrite()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
 
@@ -287,11 +405,10 @@ public class HistoryWriterTests
         }
     }
 
-    // IsNewAccount == true means the account had no persisted storage before the destruct; the live column skips
-    // the range-delete in that case, so no clear is recorded and pre-existing history stays visible.
     [Test]
     public void Selfdestruct_of_account_without_persisted_storage_records_no_clear()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, selfDestructs: [(AddrA, true)]);
 
@@ -300,11 +417,10 @@ public class HistoryWriterTests
         AssertStorageAt(3, Slot1, "0a");
     }
 
-    // an EIP-158-style empty account (nonce 0, balance 0) must round-trip as a
-    // present account, not as a deletion tombstone.
     [Test]
     public void Empty_account_round_trips_as_present_not_tombstone()
     {
+        SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(0UL, UInt256.Zero))]);
 
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -319,7 +435,6 @@ public class HistoryWriterTests
         }
     }
 
-    // Genesis allocations never touched again must be captured on the first walk and resolve at every later height.
     [Test]
     public void Genesis_allocations_are_captured_and_readable_at_later_blocks()
     {
@@ -345,8 +460,6 @@ public class HistoryWriterTests
         }
     }
 
-    // A capture that cannot walk down to the genesis floor (no genesis snapshot, no seeded floor) never connects, so
-    // the watermark must stay unset — reads report no history rather than a pre-gap value.
     [Test]
     public void Capture_that_cannot_connect_leaves_watermark_unadvanced()
     {
@@ -363,103 +476,6 @@ public class HistoryWriterTests
         }
     }
 
-    // Archive-clone mode: an unconnected walk records a pending range instead of disabling capture, so the blocks
-    // processed while the clone backfills are never lost; reads stay refused until the ranges connect.
-    [Test]
-    public void Detached_capture_records_a_pending_range_instead_of_disabling()
-    {
-        HistoryWriter writer = CreateCloneModeWriter();
-        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
-
-        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(writer.CaptureHealthy, Is.True, "detached capture must keep running, not disable itself");
-            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL), "nothing is served before the ranges connect");
-            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
-            Assert.That((first, last), Is.EqualTo((1UL, 2UL)));
-            Assert.That(_reader.HasHistoryForBlock(2), Is.False);
-        }
-    }
-
-    [Test]
-    public void Detached_capture_extends_the_pending_range_across_persists()
-    {
-        HistoryWriter writer = CreateCloneModeWriter();
-        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
-        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
-
-        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
-        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
-            Assert.That((first, last), Is.EqualTo((1UL, 3UL)));
-            Assert.That(writer.LastCapturedBlock, Is.EqualTo(0UL));
-        }
-    }
-
-    [Test]
-    public void Pending_range_merges_once_the_imported_watermark_reaches_it()
-    {
-        HistoryWriter writer = CreateCloneModeWriter();
-        ulong advancedTo = 0;
-        writer.WatermarkAdvanced += w => advancedTo = w;
-        Account atBlock1 = new(1, 11);
-        Account atBlock2 = new(2, 22);
-        CommitBlock(0, 1, accountChanges: [(AddrA, atBlock1)]);
-        CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
-        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
-
-        _availability.PublishWatermark(0, _rowFormat.FormatVersion);
-
-        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 33))]);
-        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
-
-        Span<byte> buffer = stackalloc byte[256];
-        ReadOnlySpan<byte> flatKey = AccountKey(AddrA);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(writer.LastCapturedBlock, Is.EqualTo(3UL), "the union is contiguous from genesis and fully served");
-            Assert.That(_availability.TryGetPendingCaptureRange(out _, out _), Is.False, "the pending range is consumed by the merge");
-            Assert.That(advancedTo, Is.EqualTo(3UL));
-            Assert.That(_reader.HasHistoryForBlock(2), Is.True);
-            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock1)));
-            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
-        }
-    }
-
-    // An imported watermark that stops short of the pending range's bottom leaves a hole no read may cross:
-    // nothing merges, nothing above the watermark is served, and the pending capture keeps recording.
-    [Test]
-    public void Pending_range_with_a_hole_below_it_stays_unpublished()
-    {
-        HistoryWriter writer = CreateCloneModeWriter();
-        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 3))]);
-        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 4))]);
-        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
-
-        _availability.PublishWatermark(1, _rowFormat.FormatVersion);
-
-        CommitBlock(4, 5, accountChanges: [(AddrA, new Account(5, 5))]);
-        writer.CaptureUpTo(StateAt(5), _repository, CancellationToken.None);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over the hole at block 2");
-            Assert.That(_availability.TryGetPendingCaptureRange(out ulong first, out ulong last), Is.True);
-            Assert.That((first, last), Is.EqualTo((3UL, 5UL)), "the pending capture keeps recording above the hole");
-            Assert.That(_reader.HasHistoryForBlock(3), Is.False);
-        }
-    }
-
-    private HistoryWriter CreateCloneModeWriter() =>
-        new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryArchiveCloneEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
-
     [Test]
     public void Recapture_after_restart_is_idempotent_and_extends_from_watermark()
     {
@@ -470,8 +486,7 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, atBlock2)]);
         _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        // "Restart": a fresh writer over the same columns, replay re-captures the same head, then extends.
-        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance);
+        HistoryWriter restarted = new(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance, commitments: null);
         restarted.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         Account atBlock3 = new(3, 33);
@@ -483,25 +498,35 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(restarted.LastCapturedBlock, Is.EqualTo(3));
-            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock1)));
-            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock2)));
-            Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)].ToArray(), Is.EqualTo(EncodedAccount(atBlock3)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(1, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock1)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(2, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock2)));
+            Assert.That(buffer[.._accountHistory.TryGetAt(3, flatKey, buffer)], Is.SequenceEqualTo(EncodedAccount(atBlock3)));
         }
     }
 
-    // Capture batches commit markers before any watermark publish; the format stamp must ride the same batch or a
-    // restart in between reads the index as pre-release v1 and refuses startup.
+    // A walk that does not connect must leave the column as it found it. Publishing what it accumulated is the row
+    // set the single batch exists to prevent: a key's upper row is written while visiting a lower block, its lowest
+    // row only once the walk connects, so half a walk answers reads below the watermark with a value from after the
+    // block they asked about - and the refusal paths disable capture, so nothing would ever come back to correct it.
     [Test]
-    public void Capture_without_publish_still_stamps_format()
+    public void An_unconnected_walk_publishes_nothing()
     {
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
-        _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None); // unconnected: markers written, watermark never published
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
 
-        Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, _availability, _rowFormat, LimboLogs.Instance));
+        // No seed, so the walk can reach neither a watermark nor PreGenesis and refuses to connect.
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        Span<byte> buffer = stackalloc byte[256];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL));
+            Assert.That(_accountHistory.TryGetAt(1, AccountKey(AddrA), buffer), Is.EqualTo(-1));
+            Assert.That(_accountHistory.TryGetAt(2, AccountKey(AddrA), buffer), Is.EqualTo(-1));
+            Assert.DoesNotThrow(() => _ = new HistoryReader(_db, _historyColumns, _availability, _rowFormat, LimboLogs.Instance));
+        }
     }
 
-    // Only a completed capture may report health: config cannot prove the hook is wired, and the seed proves
-    // only the floor.
     [Test]
     public void Capture_health_requires_a_proven_capture()
     {
@@ -516,16 +541,37 @@ public class HistoryWriterTests
         Assert.That(_writer.CaptureHealthy, Is.True, "a completed capture proves the pipeline runs");
     }
 
-    // A number-only connect would advance the watermark over a reorged pre-finalization capture.
+    [Test]
+    public void Capture_of_an_already_covered_head_proves_health()
+    {
+        SeedGenesisFloor();
+
+        _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
+
+        Assert.That(_writer.CaptureHealthy, Is.True, "a persist at a head the watermark already covers is backed by what is on disk");
+    }
+
+    [Test]
+    public void Capture_of_a_covered_head_at_a_pivot_floor_proves_health()
+    {
+        (HistoryWriter writer, _) = CreateWindowedPair(retentionBlocks: 1000);
+        writer.SeedPivot(100, StateAt(100).StateRoot);
+
+        writer.CaptureUpTo(StateAt(100), _repository, CancellationToken.None);
+
+        Assert.That(writer.CaptureHealthy, Is.True, "at the published floor the persisted flat column backs every read, so the covered head is proof");
+    }
+
     [Test]
     public void Reorged_capture_at_the_connect_point_refuses_to_advance_the_watermark()
     {
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
         SeedGenesisFloor();
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 11))]);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
         Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL));
 
-        // The reorged branch: same height 1, different state root, continuing to block 2.
         Span<byte> reorgedRoot = stackalloc byte[32];
         reorgedRoot[0] = 0xde;
         reorgedRoot[1] = 0xad;
@@ -542,10 +588,50 @@ public class HistoryWriterTests
             Assert.That(_writer.LastCapturedBlock, Is.EqualTo(1UL), "the watermark must not advance over a reorged capture");
             Assert.That(_reader.HasHistoryForBlock(2), Is.False);
             Assert.That(_writer.CaptureHealthy, Is.False, "capture must self-disable so dependants stop relying on it");
+            Assert.That(disabled, Is.EqualTo(1), "a reorg refusal must not report an unconnected walk a second time");
         }
     }
 
-    // After the breaker trips, capture degrades to "no more history" and persistence resumes.
+    [Test]
+    public void CaptureUpTo_WhenSnapshotIsMissing_ReportsObservedGap()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(wrappedLogger);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryWriter writer = new(_db, _historyColumns, config, _availability, _rowFormat, logManager, commitments: null);
+        SeedGenesisFloor();
+
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        logger.Received(1).Error(Arg.Is<string>(message =>
+            message.Contains("a required per-block snapshot was unavailable")
+            && !message.Contains("pruned before history was enabled")), Arg.Any<Exception?>());
+        Assert.That(writer.CaptureHealthy, Is.False);
+    }
+
+    [Test]
+    public void CaptureUpTo_WhenTierDiagnosticsThrow_DisablesCaptureOnce()
+    {
+        SeedGenesisFloor();
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.GetStatesAtBlockNumber(Arg.Any<ulong>()).Throws(new ObjectDisposedException("repository"));
+        int disabled = 0;
+        _writer.CaptureDisabled += () => disabled++;
+
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+        _writer.CaptureUpTo(StateAt(2), repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disabled, Is.EqualTo(1), "diagnostic failures must not prevent one-shot degradation");
+            Assert.That(_writer.LastCapturedBlock, Is.EqualTo(0UL), "the incomplete walk must not advance history");
+            Assert.That(_writer.CaptureHealthy, Is.False, "a missing ancestry must disable capture");
+        }
+    }
+
     [Test]
     public void Repeated_capture_failures_trip_the_breaker_and_let_persistence_resume()
     {
@@ -553,7 +639,6 @@ public class HistoryWriterTests
         ISnapshotRepository failing = Substitute.For<ISnapshotRepository>();
         failing.TryLeaseInMemoryState(default, default, out _).ThrowsForAnyArgs(new IOException("disk failure"));
 
-        // Matches HistoryWriter.MaxConsecutiveCaptureFailures.
         for (int i = 0; i < 16; i++)
         {
             Assert.Throws<IOException>(() => _writer.CaptureUpTo(StateAt(2), failing, CancellationToken.None),
@@ -648,8 +733,6 @@ public class HistoryWriterTests
         }
     }
 
-    // The per-block marker binds the block's state root; a query for the same height with a different root (a
-    // non-canonical EIP-1898 hash) must not be served.
     [Test]
     public void Capture_binds_block_state_root_for_availability()
     {
@@ -671,7 +754,7 @@ public class HistoryWriterTests
     {
         FlatDbConfig disabledConfig = new() { HistoryEnabled = false };
         (HistoryAvailability disabledAvailability, HistoryRowFormat disabledRowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, disabledConfig);
-        HistoryWriter disabled = new(_db, _historyColumns, disabledConfig, disabledAvailability, disabledRowFormat, LimboLogs.Instance);
+        HistoryWriter disabled = new(_db, _historyColumns, disabledConfig, disabledAvailability, disabledRowFormat, LimboLogs.Instance, commitments: null);
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
 
         disabled.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
@@ -683,17 +766,13 @@ public class HistoryWriterTests
         }
     }
 
-    // A windowed writer must declare itself v3 from its very first capture and stay there: if MarkBlock instead
-    // wrote the plain FormatVersion on every captured block, the very first capture after a floor publish would
-    // silently downgrade the stamp back to 2, and an older floor-unaware binary reading a pruned DB would pass
-    // VerifyFormat and serve absent instead of erroring for every pruned height.
     [Test]
     public void Windowed_writer_stamps_windowed_format_version_and_it_survives_further_captures()
     {
         (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 100);
         windowed.SeedGenesis([], StateAt(0).StateRoot);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.WindowedFormatVersion),
             "precondition: a windowed writer's seed must stamp the windowed format version");
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 1))]);
@@ -701,8 +780,141 @@ public class HistoryWriterTests
         CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 2))]);
         windowed.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)3),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.WindowedFormatVersion),
             "further captures on a windowed writer must never regress the stamp back to the plain format version");
+    }
+
+    [Test]
+    public void Since_block_writer_captures_nothing_below_the_floor_and_serves_everything_from_it()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 3);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+        Assert.That(writer.CaptureHealthy, Is.False, "below the floor nothing is captured, so no receipt body may be skipped on the promise of deriving it");
+        // Capture runs before the caller persists, so the live column holds the previous head at each capture.
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(2, 20)));
+        CommitBlock(2, 3, accountChanges: [(AddrA, new Account(3, 30))]);
+        writer.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(3, 30)));
+        CommitBlock(3, 4, accountChanges: [(AddrA, new Account(4, 40))]);
+        writer.CaptureUpTo(StateAt(4), _repository, CancellationToken.None);
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(4, 40)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "heights below the first kept block fail closed");
+            Assert.That(reader.IsPrunedBelowFloor(3), Is.False, "the first kept block itself is served");
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(4UL), "the watermark follows every persisted head, rows or not");
+            Assert.That(writer.CaptureHealthy, Is.True, "the first walk that writes rows proves the capture");
+            Assert.That(reader.TryGetAccount(3, AddrA, out AccountStruct atThree), Is.True);
+            Assert.That(atThree.Balance, Is.EqualTo((UInt256)30), "the as-of read at the floor resolves through the rows captured above it");
+            Assert.That(reader.TryGetAccount(4, AddrA, out AccountStruct atFour), Is.True);
+            Assert.That(atFour.Balance, Is.EqualTo((UInt256)40));
+        }
+    }
+
+    [Test]
+    public void Since_block_raised_over_the_published_floor_is_refused()
+    {
+        CreateSinceBlockPair(sinceBlock: 3);
+
+        Assert.That(() => CreateSinceBlockPair(sinceBlock: 5), Throws.TypeOf<InvalidConfigurationException>(),
+            "the floor never moves in this mode, and nothing would reclaim the rows a raise leaves below it");
+    }
+
+    [Test]
+    public void Since_block_below_a_pivot_floor_keeps_the_pivot_floor()
+    {
+        (HistoryWriter first, _) = CreateSinceBlockPair(sinceBlock: 3);
+        first.SeedPivot(100, StateAt(100).StateRoot);
+
+        (_, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 3);
+
+        Assert.That(reader.IsPrunedBelowFloor(99), Is.True, "history starts where the node's state starts, at the pivot");
+    }
+
+    [Test]
+    public void Since_block_seed_pivot_below_the_configured_block_keeps_the_configured_floor()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 5);
+
+        writer.SeedPivot(3, StateAt(3).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(3UL), "the state starts at the pivot, so the watermark does");
+            Assert.That(reader.IsBelowGlobalFloor(4), Is.True, "the history starts at the configured block, not at the pivot");
+            Assert.That(reader.IsBelowGlobalFloor(5), Is.False);
+        }
+    }
+
+    [Test]
+    public void Since_block_below_floor_persists_keep_only_the_latest_marker()
+    {
+        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 5);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasMarker(0), Is.False, "the seed step keys on the watermark, not on this marker");
+            Assert.That(HasMarker(1), Is.False, "nothing connects at a marker below the watermark, and nothing would prune it later");
+            Assert.That(HasMarker(2), Is.True, "the first real walk connects here");
+        }
+    }
+
+    [Test]
+    public void Since_block_seed_pivot_above_captured_history_moves_the_floor_to_the_pivot()
+    {
+        (HistoryWriter writer, HistoryReader reader) = CreateSinceBlockPair(sinceBlock: 1);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        writer.SeedPivot(10, StateAt(10).StateRoot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.LastCapturedBlock, Is.EqualTo(10UL), "the sync must complete; a refusal here cannot be retried");
+            Assert.That(reader.IsPrunedBelowFloor(2), Is.True, "the rows already captured now sit below the floor");
+        }
+    }
+
+    [Test]
+    public void Seed_pivot_raises_every_slice_floor_with_the_general_floor()
+    {
+        (HistoryWriter writer, _) = CreateSinceBlockPair(sinceBlock: 1);
+        HistoryAvailability scopes = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        scopes.PublishScope(HistoryColumnsWriter.ScopeKeyOf(AddrA), 1);
+        writer.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 10))]);
+        writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 20))]);
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        writer.SeedPivot(10, StateAt(10).StateRoot);
+
+        Assert.That(scopes.TryGetScopeFloor(HistoryColumnsWriter.ScopeKeyOf(AddrA), out ulong sliceFloor), Is.True);
+        Assert.That(sliceFloor, Is.EqualTo(10UL),
+            "a restricted read below the pivot would resolve through the live state the sync replaced, so the slice must fail closed there too");
+    }
+
+    [Test]
+    public void Since_block_over_history_captured_without_a_floor_is_refused()
+    {
+        (HistoryWriter windowed, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowed.SeedGenesis([], StateAt(0).StateRoot);
+
+        Assert.That(() => CreateSinceBlockPair(sinceBlock: 3), Throws.TypeOf<InvalidConfigurationException>(),
+            "a watermark with no floor is another mode's history; a since-block floor published over it would orphan the rows below");
     }
 
     [Test]
@@ -712,7 +924,7 @@ public class HistoryWriterTests
         _writer.SeedGenesis([], StateAt(0).StateRoot);
         _writer.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)2),
+        Assert.That(HistoryColumnsWriter.GetStampedFormatVersion(_historyColumns), Is.EqualTo((byte?)HistoryAvailability.FormatVersion),
             "a writer with no window configured must retain today's shipped format version unchanged");
     }
 
@@ -734,28 +946,22 @@ public class HistoryWriterTests
         }
     }
 
-    // SeedPivot on a v3 (windowed) writer publishes the marker/watermark/floor and writes no rows — reads at the
-    // pivot must resolve via HistoryStoreV3's persisted-flat fallback (the live Account/Storage columns, already
-    // populated as if sync had just finished writing them), not via any captured row.
     [Test]
     public void SeedPivot_OnAWindowedWriter_PublishesWatermarkAndFloor_AndReadsFallThroughToThePersistedFlatColumns()
     {
-        // Construct the writer/reader before populating the live flat columns, matching real startup order (DI
-        // constructs both before sync ever runs) — ResolveSlotEncoding reads whether the storage column is empty
-        // at construction time, so writing to it first would flip the resolved encoding out from under this test.
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(5, 500)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(5, 500)));
         Span<byte> slotValueBuffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero([0xAA]), RlpWrapSlots, slotValueBuffer);
+        int slotValueLength = BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue([0xAA]), RlpWrapSlots, slotValueBuffer);
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), slotValueBuffer[..slotValueLength]);
 
         StateId pivot = StateAt(100);
 
-        windowedWriter.SeedPivot(100, pivot.StateRoot, Substitute.For<IPersistence.IPersistenceReader>());
+        windowedWriter.SeedPivot(100, pivot.StateRoot);
 
         bool foundAccount = windowedReader.TryGetAccount(100, AddrA, out AccountStruct account);
-        bool foundStorage = windowedReader.TryGetStorage(100, AddrA, Slot1, out SlotValue slot);
+        bool foundStorage = windowedReader.TryGetStorage(100, AddrA, Slot1, out UInt256 slot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -763,37 +969,92 @@ public class HistoryWriterTests
             Assert.That(foundAccount, Is.True, "the persisted-flat fallback must resolve the account with no captured row");
             Assert.That(account.Balance, Is.EqualTo((UInt256)500));
             Assert.That(foundStorage, Is.True, "the persisted-flat fallback must resolve the slot with no captured row");
-            Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(windowedReader.IsAvailable(pivot), Is.True, "the pivot's own state root must be immediately available");
             Assert.That(windowedReader.IsPrunedBelowFloor(99), Is.True, "the floor publishes at the pivot, so anything below it reports pruned rather than absent");
         }
     }
 
-    // The invariant chain that makes the v3 persisted-flat fallback sound, exercised directly: capture (which
-    // records the pre-value row for the just-captured change) always completes strictly before the corresponding
-    // flat persist commits. A read for a block at or before the just-published watermark, whose forward-seek
-    // finds no captured change above it, must resolve via the persisted flat column — which, at the moment
-    // capture finishes, still reflects the state from BEFORE this round (the old watermark), and after the round
-    // (once persist catches up) reflects the state that round captured. Both moments must read correctly.
+    [Test]
+    public void V3_TwoBlocksTouchingTheSameKeyInOneWalk_ResolveTheOlderTouchesPostValueAsTheNewersPreValue()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(0, 100)));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 222))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(2, 222)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedReader.TryGetAccount(0, AddrA, out AccountStruct atZero), Is.True);
+            Assert.That(atZero.Balance, Is.EqualTo((UInt256)100));
+            Assert.That(windowedReader.TryGetAccount(1, AddrA, out AccountStruct atOne), Is.True);
+            Assert.That(atOne.Balance, Is.EqualTo((UInt256)111),
+                "block 2's pre-value must be block 1's post-value, resolved by the older touch inside the same walk - not the persisted-column fallback, which already moved on");
+            Assert.That(windowedReader.TryGetAccount(2, AddrA, out AccountStruct atTwo), Is.True);
+            Assert.That(atTwo.Balance, Is.EqualTo((UInt256)222));
+        }
+    }
+
+    [Test]
+    public void V3_RowsResolvedInsideTheWalk_MatchTheFlatEncoders()
+    {
+        (HistoryWriter windowedWriter, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        Account account = new(7, 4242, TestItem.KeccakA, TestItem.KeccakB);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        CommitBlock(0, 1,
+            accountChanges: [(AddrA, account), (AddrB, null)],
+            storageChanges: [(AddrA, Slot1, slot), (AddrA, Slot2, null)]);
+        CommitBlock(1, 2,
+            accountChanges: [(AddrA, new Account(8, 1)), (AddrB, new Account(1, 1))],
+            storageChanges: [(AddrA, Slot1, Slot(0x02)), (AddrA, Slot2, Slot(0x03))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        HistoryStoreV3 storageHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        Span<byte> buffer = stackalloc byte[256];
+
+        int accountWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out ulong accountRow);
+        byte[] accountBytes = buffer[..accountWritten].ToArray();
+        int deletedWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrB), buffer, out ulong deletedRow);
+        int slotWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot1), buffer, out ulong slotRow);
+        byte[] slotBytes = buffer[..slotWritten].ToArray();
+        int zeroedWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot2), buffer, out ulong zeroedRow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountRow, Is.EqualTo(2UL));
+            Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
+            Assert.That(deletedRow, Is.EqualTo(2UL));
+            Assert.That(deletedWritten, Is.Zero);
+            Assert.That(slotRow, Is.EqualTo(2UL));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
+            Assert.That(zeroedRow, Is.EqualTo(2UL));
+            Assert.That(zeroedWritten, Is.Zero);
+        }
+    }
+
     [Test]
     public void V3Read_AtOrBelowWatermark_ResolvesCorrectly_BeforeAndAfterThePersistCatchesUp()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
-        // "Persisted flat, as of the old watermark (block 0)": AddrA's value before this round's only change.
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(0, 100)));
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
         CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        // Capture has published watermark = 1 and recorded the pre-value row, but — matching the real ordering
-        // ("the flat persist commits only after") — the persisted flat column has NOT been updated yet: it is
-        // deliberately left showing block 0's value at this point in the test.
         bool foundAtZero = windowedReader.TryGetAccount(0, AddrA, out AccountStruct atZero);
 
-        // Now simulate the flat persist catching up to what this round captured.
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(1, 111)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(1, 111)));
 
         bool foundAtOne = windowedReader.TryGetAccount(1, AddrA, out AccountStruct atOne);
 
@@ -809,9 +1070,7 @@ public class HistoryWriterTests
     [Test]
     public void SeedPivot_OnAnUnwindowedWriter_IsANoOp()
     {
-        // Pivot-start is v3-only: calling it on the class's default (unwindowed) writer must not publish a floor
-        // it cannot back with either captured rows or a fallback.
-        _writer.SeedPivot(100, StateAt(100).StateRoot, Substitute.For<IPersistence.IPersistenceReader>());
+        _writer.SeedPivot(100, StateAt(100).StateRoot);
 
         using (Assert.EnterMultipleScope())
         {
@@ -820,11 +1079,6 @@ public class HistoryWriterTests
         }
     }
 
-    // v3 only: a self-destruct with persisted storage must materialize a per-slot pre-value row by enumerating
-    // the persisted flat column at capture time (before that round's persist commits the range-delete) — without
-    // this, a v3 read below the destruct block would find no captured row and fall through to a persisted column
-    // that (once caught up) no longer has the slot, silently reporting absent instead of the true pre-destruct
-    // value.
     [Test]
     public void V3_SelfDestruct_MaterializesPerSlotPreValue_ReadableBelowDestructBlock()
     {
@@ -835,16 +1089,13 @@ public class HistoryWriterTests
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        // Simulate the round-1 persist catching up before round 2 (the destruct) captures - matching the real
-        // per-round capture-then-persist ordering, so the destruct's enumeration sees the true pre-destruct value.
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
 
         CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
-        // Simulate the destruct's own persist (range-delete) catching up.
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
 
         bool foundAt = windowedReader.TryGetStorage(2, AddrA, Slot1, out _);
@@ -852,14 +1103,11 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundBelow, Is.True, "the slot's pre-destruct value must be readable strictly below the destruct block");
-            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(foundAt, Is.False, "the slot must read empty at/after the destruct once the persist has caught up");
         }
     }
 
-    // Both an account and its multiple slots created, then destructed, within the same retention window: the
-    // destruct's enumeration must recover every persisted slot (not just ones explicitly touched at the destruct's
-    // own block), and the account's own tombstone must resolve independently of the slot handling.
     [Test]
     public void V3_AccountCreatedThenDestructed_AllSlotsResolveCorrectlyAcrossTheWindow()
     {
@@ -872,7 +1120,7 @@ public class HistoryWriterTests
             storageChanges: [(AddrA, Slot1, HistorySlot(0x0a)), (AddrA, Slot2, HistorySlot(0x0b))]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(1, 100)));
+        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(FlatAccountKey(AddrA), EncodedAccount(new Account(1, 100)));
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot2), EncodedHistorySlot(0x0b));
 
@@ -880,11 +1128,10 @@ public class HistoryWriterTests
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         bool foundAccountBelow = windowedReader.TryGetAccount(1, AddrA, out AccountStruct accountBelow);
-        bool foundSlot1Below = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue slot1Below);
-        bool foundSlot2Below = windowedReader.TryGetStorage(1, AddrA, Slot2, out SlotValue slot2Below);
+        bool foundSlot1Below = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 slot1Below);
+        bool foundSlot2Below = windowedReader.TryGetStorage(1, AddrA, Slot2, out UInt256 slot2Below);
 
-        // Simulate the destruct's own persist (account tombstone + storage range-delete) catching up.
-        _db.GetColumnDb(FlatDbColumns.Account).Remove(AccountKey(AddrA));
+        _db.GetColumnDb(FlatDbColumns.Account).Remove(FlatAccountKey(AddrA));
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
         _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot2));
 
@@ -897,9 +1144,9 @@ public class HistoryWriterTests
             Assert.That(foundAccountBelow, Is.True);
             Assert.That(accountBelow.Balance, Is.EqualTo((UInt256)100));
             Assert.That(foundSlot1Below, Is.True);
-            Assert.That(slot1Below.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(slot1Below.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
             Assert.That(foundSlot2Below, Is.True);
-            Assert.That(slot2Below.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }));
+            Assert.That(slot2Below.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }));
 
             Assert.That(foundAccountAt, Is.False, "the account must be a tombstone at/after its own destruct block");
             Assert.That(foundSlot1At, Is.False, "every persisted slot must be dead at/after the destruct, not just the one explicitly touched");
@@ -907,9 +1154,6 @@ public class HistoryWriterTests
         }
     }
 
-    // A destruct and a same-block rewrite of the same slot (resurrection): the live column nets out to just the
-    // rewrite (destruct-then-write batch order), and the synthetic destruct-wipe touch must neither corrupt, nor
-    // be corrupted by, the rewrite's own touch (PendingV3Writes.ResolveAndTrack's same-block guard).
     [Test]
     public void V3_SlotDestructedAndRewrittenInSameBlock_ReadsPreValueBelowAndResurrectedValueAt()
     {
@@ -924,28 +1168,81 @@ public class HistoryWriterTests
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out SlotValue belowDestruct);
+        bool foundBelow = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
-        // Simulate the flat persist catching up to round 2: the destruct's range-delete and the rewrite net out
-        // to just "slot1 = 0x0b" in the live column.
         _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0b));
 
-        bool foundAt = windowedReader.TryGetStorage(2, AddrA, Slot1, out SlotValue atResurrection);
+        bool foundAt = windowedReader.TryGetStorage(2, AddrA, Slot1, out UInt256 atResurrection);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundBelow, Is.True);
-            Assert.That(belowDestruct.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0a }),
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }),
                 "the pre-destruct value must still be readable strictly below the combined destruct+rewrite block");
             Assert.That(foundAt, Is.True);
-            Assert.That(atResurrection.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0x0b }),
+            Assert.That(atResurrection.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }),
                 "as of the combined block, the resurrected value must win, not the destruct's wipe");
         }
     }
 
-    // Above HistoryWriter's per-destruct slot enumeration cap, no per-slot pre-value rows are written at all - a
-    // poison marker is recorded instead, and the reader must fail closed for this account below the destruct
-    // block rather than silently falling through and reporting every slot absent.
+    [Test]
+    public void V3_DestructAndRewriteInSameBlock_WithHigherTouchInSameWalk()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
+        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0c))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0c));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out UInt256 at0), Is.True);
+            Assert.That(at0.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
+
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 at1), Is.True,
+                "the resurrected value must be readable as of the combined destruct+rewrite block");
+            Assert.That(at1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }));
+
+            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out UInt256 at2), Is.True);
+            Assert.That(at2.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0c }));
+        }
+    }
+
+    [Test]
+    public void V3_SlotFirstWrittenBelowADestructInTheSameWalk_ReadsItsValueBetweenTheTwoBlocks()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot2), EncodedHistorySlot(0x0b));
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot1));
+        _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, Slot2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _), Is.False,
+                "the slot did not exist before the block that first wrote it");
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 between), Is.True,
+                "the destruct one block up never enumerated this slot - it was not persisted yet - so its value has to be spliced in from the walk itself");
+            Assert.That(between.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(windowedReader.TryGetStorage(2, AddrA, Slot1, out _), Is.False,
+                "the destruct block itself must read empty");
+            Assert.That(windowedReader.TryGetStorage(1, AddrA, Slot2, out UInt256 persisted), Is.True);
+            Assert.That(persisted.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0b }),
+                "the persisted slot's own pre-destruct value must survive the splice unchanged");
+        }
+    }
+
     [Test]
     public void V3_SelfDestruct_AboveEnumerationCap_PoisonsAccount_ReadFailsClosed()
     {
@@ -961,120 +1258,185 @@ public class HistoryWriterTests
         CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, Slot1, out _),
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, 999999, out _),
             Throws.InstanceOf<InvalidOperationException>(),
-            "reads for this account below an over-cap destruct must fail closed rather than silently report every slot absent");
+            "a slot the over-cap destruct wrote no row for must fail closed rather than silently report absent");
     }
 
-    // A key with no older touch anywhere in the walk has its pre-value known only once ResolvePendingV3 reads the
-    // persisted column, at the very end of the walk - the exact reason the sidecar entry cannot be written
-    // immediately per-block and must be buffered until then (see HistoryWriter.FlushSidecarBuilders' remarks).
     [Test]
-    public void V3_SidecarEntry_ForATouchWithNoOlderTouchInTheWalk_ResolvesPreValueFromThePersistedColumn()
+    public void V3_ScopeCachedNoPoison_ThenOverCapDestructCaptured_ReadFailsClosed()
     {
-        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
-        _db.GetColumnDb(FlatDbColumns.Account).PutSpan(AccountKey(AddrA), EncodedAccount(new Account(0, 100)));
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
-        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        StorageClearsScopeCache scopeCache = new();
+        Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _, scopeCache), Is.True);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
         windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
 
-        ChangesetAccountEntry entry = DecodeSidecarEntries(1)[0];
-        using (Assert.EnterMultipleScope())
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
         {
-            Assert.That(entry.Address, Is.EqualTo(AddrA));
-            Assert.That(entry.AccountValue.ToArray(), Is.EqualTo(EncodedAccount(new Account(1, 111))),
-                "the post-value must still be the block's own touch - unaffected by adding PreValue");
-            Assert.That(entry.AccountPreValue.ToArray(), Is.EqualTo(EncodedAccount(new Account(0, 100))),
-                "the pre-value must be exactly what the persisted column held before this round - the same read ResolvePendingV3 uses for the history row itself");
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
         }
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (StateUnavailableException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _, scopeCache),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "the scope cached \"no poison above block 0\" before the destruct was captured; trusting it reads a slot that held 0x01 as unset");
     }
 
-    // Two blocks touching the same key: the older block's post-value becomes the newer block's resolved
-    // pre-value via in-walk chaining (PendingV3Writes.ResolveAndTrack), never the persisted-column fallback.
     [Test]
-    public void V3_SidecarEntry_ForAChainedTouch_ResolvesPreValueFromTheOlderTouchInTheSameWalk()
+    public void V3_SelfDestruct_AboveEnumerationCap_ARecordedRowStillAnswers_OnlyTheLiveFallbackFailsClosed()
     {
-        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
         CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
         CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        ChangesetSlotEntry block1Slot = DecodeSidecarEntries(1)[0].StorageChanges[0];
-        ChangesetSlotEntry block2Slot = DecodeSidecarEntries(2)[0].StorageChanges[0];
+        for (UInt256 slot = 100; slot <= 100 + HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        CommitBlock(2, 3, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(3), _repository, CancellationToken.None);
+
+        bool found = windowedReader.TryGetStorage(1, AddrA, Slot1, out UInt256 belowDestruct);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(block1Slot.PreValue.Length, Is.EqualTo(0), "block 1 is the slot's first-ever touch - no prior value exists");
-            Assert.That(block2Slot.PreValue.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0a)),
-                "block 2's pre-value must be block 1's post-value, resolved by in-walk chaining, not a persisted-column read");
+            Assert.That(found, Is.True, "a recorded pre-value row is authoritative below the destruct - the poison only covers reads that would fall through to live state");
+            Assert.That(belowDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x0a }));
+            Assert.That(() => windowedReader.TryGetStorage(1, AddrA, 999999, out _),
+                Throws.InstanceOf<InvalidOperationException>(),
+                "a slot with no recorded row below an over-cap destruct must still fail closed - absent is indistinguishable from missed by the cap");
         }
     }
 
-    // A same-block destruct + rewrite of the same slot: the destruct's synthetic wipe has no sidecar entry of its
-    // own (a separate, documented gap - see HandleSelfDestructV3's remarks), so the rewrite's real sidecar entry
-    // must still resolve its pre-value correctly, unclobbered by the synthetic touch it shares a block with.
     [Test]
-    public void V3_SidecarEntry_ForASameBlockDestructAndRewrite_ResolvesTheRewriteEntrysPreValueCorrectly()
+    public void V3_OverCapDestruct_ARowWrittenByALaterWalk_DoesNotAnswerReadsBelowTheDestruct()
     {
-        HistoryWriter windowedWriter = CreateWindowedWriterWithSidecar(retentionBlocks: 1000);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
         windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
 
-        CommitBlock(0, 1, storageChanges: [(AddrA, Slot1, HistorySlot(0x0a))]);
-        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
-        _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, Slot1), EncodedHistorySlot(0x0a));
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
 
-        CommitBlock(1, 2, storageChanges: [(AddrA, Slot1, HistorySlot(0x0b))], selfDestructs: [(AddrA, false)]);
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (InvalidOperationException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
+        }
+
+        CommitBlock(1, 2, storageChanges: [(AddrA, missedSlot, HistorySlot(0x0b))]);
         windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        List<ChangesetAccountEntry> block2Entries = DecodeSidecarEntries(2);
-        ChangesetSlotEntry rewrittenSlot = block2Entries.Single(e => e.Address == AddrA).StorageChanges.Single(s => s.Slot == Slot1);
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _),
+            Throws.InstanceOf<InvalidOperationException>(),
+            "the rewrite's row resolved its pre-value through a live column the destruct already truncated - believing it reports the slot unset where it held a value");
+    }
+
+    [Test]
+    public void V3_OverCapDestruct_ASlotRewrittenAboveItInTheSameWalk_ReadsUnsetBetweenThem()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        int slotCount = HistoryWriter.DestructSlotEnumerationCap + 1;
+        (Address Address, UInt256 Slot, UInt256? Value)[] rewrites = new (Address, UInt256, UInt256?)[slotCount];
+        for (int i = 0; i < slotCount; i++)
+        {
+            UInt256 slot = (UInt256)(i + 1);
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+            rewrites[i] = (AddrA, slot, HistorySlot(0x0b));
+        }
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        CommitBlock(1, 2, storageChanges: rewrites);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rewrittenSlot.Value.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0b)), "the rewrite's post-value must win, matching the live column");
-            Assert.That(rewrittenSlot.PreValue.ToArray(), Is.EqualTo(EncodedHistorySlot(0x0a)), "the rewrite entry's own pre-value must resolve correctly despite sharing its block with the destruct's sinkless synthetic touch");
+            for (int i = 0; i < slotCount; i++)
+            {
+                UInt256 slot = (UInt256)(i + 1);
+                Assert.That(windowedReader.TryGetStorage(1, AddrA, slot, out _), Is.False,
+                    $"slot {slot} was destroyed at block 1 and rewritten at block 2 in the same walk - between them it is unset, not the resurrected pre-destruct value");
+                Assert.That(windowedReader.TryGetStorage(0, AddrA, slot, out UInt256 beforeDestruct), Is.True,
+                    $"slot {slot} held its persisted value below the destruct");
+                Assert.That(beforeDestruct.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0x01 }));
+            }
         }
     }
 
-    // v2 (unwindowed) capture has no deferred pre-value mechanism at all - its sidecar entries (a documented gap,
-    // see RecordChangesetSidecarChunk's remarks) must round-trip with an explicitly empty PreValue, never a wrong
-    // guess, so a consumer can tell "genuinely created here" from "not derived" only by cross-referencing the
-    // stamped format version - never by the PreValue field's shape alone.
     [Test]
-    public void V2_SidecarEntry_HasNoPreValueMechanism_RoundTripsEmpty()
+    public void SeedPivot_InsideTheAlreadyCapturedWindow_Throws_AndWritesNothing()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryChangesetSidecarEnabled = true };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryWriter unwindowedWriter = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
 
-        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100))]);
-        unwindowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 111))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, new Account(2, 222))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
 
-        ChangesetAccountEntry entry = DecodeSidecarEntries(1)[0];
-        Assert.That(entry.AccountPreValue.Length, Is.EqualTo(0));
+        Assert.That(() => windowedWriter.SeedPivot(1, TestItem.KeccakA),
+            Throws.InvalidOperationException.With.Message.Contains("watermark"),
+            "a pivot inside the captured window replaces the live state its history resolves through - it must refuse, not re-seed");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(windowedWriter.LastCapturedBlock, Is.EqualTo(2UL), "the watermark must be untouched by the refused seed");
+            Assert.That(windowedReader.IsAvailable(StateAt(1)), Is.True, "block 1's captured marker must not have been overwritten before the refusal");
+            Assert.That(windowedReader.IsPrunedBelowFloor(0), Is.False, "no floor may publish from a refused seed");
+        }
     }
 
-    private List<ChangesetAccountEntry> DecodeSidecarEntries(ulong block)
-    {
-        ChangesetSidecarStore sidecarStore = new(_historyColumns.GetColumnDb(FlatHistoryColumns.ChangesetSidecar));
-        byte[]? chunk = sidecarStore.TryGetChunk(block, 0);
-        Assert.That(chunk, Is.Not.Null, $"precondition: block {block} must have a recorded sidecar chunk");
-        return ChangesetChunkCodec.Decode(chunk!);
-    }
-
-    private HistoryWriter CreateWindowedWriterWithSidecar(ulong retentionBlocks)
-    {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks, HistoryChangesetSidecarEnabled = true };
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        return new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
-    }
-
-    // The range mixes tiers deliberately — blocks 2-3 converted to the persisted tier, blocks 1 and 4 in memory —
-    // and block 2 also deletes AddrB, so the account tombstone round-trips through the persisted format.
     [Test]
     public void Capture_over_converted_range_reads_persisted_bases()
     {
@@ -1123,7 +1485,8 @@ public class HistoryWriterTests
         using (ReadOnlySnapshotBundle tip = TipBundle(blockCount, blockCount))
         {
             tipAccount = tip.GetAccount(AddrA);
-            tipSlot = tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA));
+            tip.GetSlot(AddrA, Slot1, tip.DetermineSelfDestructSnapshotIdx(AddrA), out UInt256? stored);
+            tipSlot = stored is { } slotValue ? slotValue.ToMinimalBigEndian() : null;
         }
 
         bool historyHasMidpoint = _reader.TryGetAccount(blockCount / 2, AddrA, out AccountStruct midpoint);
@@ -1144,6 +1507,7 @@ public class HistoryWriterTests
     [Test]
     public void Capture_after_real_compaction_has_no_gaps()
     {
+        SeedGenesisFloor();
         const int compactSize = 8;
         const int blockCount = 24; // 3 full compaction windows at CompactSize 8.
 
@@ -1151,8 +1515,6 @@ public class HistoryWriterTests
         CompactionSchedule schedule = new(new MemDb(), compactionConfig, LimboLogs.Instance);
         SnapshotCompactor compactor = new(compactionConfig, schedule, _resourcePool, _repository, LimboLogs.Instance);
 
-        // Each block gives the account a unique end-of-block value (nonce == balance == block) and a unique slot
-        // value, so a gap that resolves to an earlier compaction boundary is detectable.
         for (ulong block = 1; block <= blockCount; block++)
         {
             CommitBlock(
@@ -1176,15 +1538,13 @@ public class HistoryWriterTests
                 Assert.That(account.Nonce, Is.EqualTo((ulong)block), $"Account at block {block} resolved to the wrong (earlier-boundary) value.");
                 Assert.That(account.Balance, Is.EqualTo((UInt256)block), $"Account balance at block {block} resolved to the wrong value.");
 
-                bool foundSlot = _reader.TryGetStorage(block, AddrA, Slot1, out SlotValue slot);
+                bool foundSlot = _reader.TryGetStorage(block, AddrA, Slot1, out UInt256 slot);
                 Assert.That(foundSlot, Is.True, $"Storage missing at block {block} (capture gap).");
-                Assert.That(slot.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(CompactionSlotBytes(block)), $"Storage at block {block} resolved to the wrong value.");
+                Assert.That(slot.ToMinimalBigEndian(), Is.EqualTo(CompactionSlotBytes(block)), $"Storage at block {block} resolved to the wrong value.");
             }
         }
     }
 
-    // Mirrors the tip path of FlatDbManager.GatherReadOnlySnapshotBundle: assemble the live per-block snapshots from
-    // the read block down to the persisted floor (block 0), then read through them.
     private ReadOnlySnapshotBundle TipBundle(ulong tip, int estimatedSize)
     {
         AssembledSnapshotResult assembled = _repository.AssembleSnapshots(StateAt(tip), StateAt(0), estimatedSize);
@@ -1194,7 +1554,7 @@ public class HistoryWriterTests
 
     private void AssertStorageAt(ulong readBlock, UInt256 slot, string? expectedHex)
     {
-        bool found = _reader.TryGetStorage(readBlock, AddrA, slot, out SlotValue value);
+        bool found = _reader.TryGetStorage(readBlock, AddrA, slot, out UInt256 value);
 
         if (expectedHex is null)
         {
@@ -1203,25 +1563,60 @@ public class HistoryWriterTests
         else
         {
             Assert.That(found, Is.True, $"slot {slot} must be present at block {readBlock}");
-            Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(Convert.FromHexString(expectedHex)),
+            Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(Convert.FromHexString(expectedHex)),
                 $"slot {slot} resolved to the wrong value at block {readBlock}");
         }
     }
 
     private static byte[] RegressionSlotBytes(ulong block) => [0xAB, (byte)block];
 
-    private static SlotValue RegressionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(RegressionSlotBytes(block));
+    private static UInt256 RegressionSlotFor(ulong block) => BaseFlatPersistence.DecodeSlotValue(RegressionSlotBytes(block));
 
-    // First byte is always non-zero so the value survives the without-leading-zeros slot roundtrip unchanged.
     private static byte[] CompactionSlotBytes(ulong block) => [0xAB, (byte)(block >> 8), (byte)block];
 
-    private static SlotValue CompactionSlotFor(ulong block) => SlotValue.FromSpanWithoutLeadingZero(CompactionSlotBytes(block));
+    private static UInt256 CompactionSlotFor(ulong block) => BaseFlatPersistence.DecodeSlotValue(CompactionSlotBytes(block));
+
+    [Test]
+    public void Accounts_read_back_at_a_height_reproduce_that_height_state_root()
+    {
+        SeedGenesisFloor();
+        Account accountA = new(3, 300);
+        Account accountB = new(7, 700);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, new Account(1, 100)), (AddrB, new Account(1, 100))]);
+        CommitBlock(1, 2, accountChanges: [(AddrA, accountA), (AddrB, accountB)]);
+        _writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        StateTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        expected.Set(AddrA, accountA);
+        expected.Set(AddrB, accountB);
+        expected.UpdateRootHash();
+
+        foreach (KeyValuePair<byte[], byte[]> row in _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).GetAll())
+        {
+            Assert.That(row.Key.Length - sizeof(ulong), Is.EqualTo(Hash256.Size),
+                "an account row has to carry the whole trie path, otherwise a scan of the column cannot place its leaf and no root can be rebuilt from history");
+        }
+
+        StateTree rebuilt = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach (Address address in new[] { AddrA, AddrB })
+        {
+            Assert.That(_reader.TryGetAccount(2, address, out AccountStruct account), Is.True,
+                $"account {address} must be readable from history at the height whose root is being rebuilt");
+            rebuilt.Set(address, new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment()));
+        }
+
+        rebuilt.UpdateRootHash();
+
+        Assert.That(rebuilt.RootHash, Is.EqualTo(expected.RootHash),
+            "a state root rebuilt from what history returns at a height must equal the root of a trie built directly from the same accounts - if it does not, history cannot be checked against headers whatever shape the key takes");
+    }
 
     private void CommitBlock(
         ulong fromBlock,
         ulong toBlock,
         (Address Address, Account? Account)[]? accountChanges = null,
-        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null,
+        (Address Address, UInt256 Slot, UInt256? Value)[]? storageChanges = null,
         (Address Address, bool IsNewAccount)[]? selfDestructs = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(StateAt(fromBlock), StateAt(toBlock), ResourcePool.Usage.ReadOnlyProcessingEnv);
@@ -1231,7 +1626,7 @@ public class HistoryWriterTests
                 snapshot.Content.Accounts[address] = account;
 
         if (storageChanges is not null)
-            foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
+            foreach ((Address address, UInt256 slot, UInt256? value) in storageChanges)
                 snapshot.Content.Storages[(address, slot)] = value;
 
         if (selfDestructs is not null)
@@ -1244,7 +1639,7 @@ public class HistoryWriterTests
 
     private void CommitGenesis(
         (Address Address, Account? Account)[]? accountChanges = null,
-        (Address Address, UInt256 Slot, SlotValue? Value)[]? storageChanges = null)
+        (Address Address, UInt256 Slot, UInt256? Value)[]? storageChanges = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
 
@@ -1253,7 +1648,7 @@ public class HistoryWriterTests
                 snapshot.Content.Accounts[address] = account;
 
         if (storageChanges is not null)
-            foreach ((Address address, UInt256 slot, SlotValue? value) in storageChanges)
+            foreach ((Address address, UInt256 slot, UInt256? value) in storageChanges)
                 snapshot.Content.Storages[(address, slot)] = value;
 
         Assert.That(_repository.TryAdd(snapshot, SnapshotTier.InMemoryBase), Is.True);
@@ -1272,20 +1667,35 @@ public class HistoryWriterTests
         _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
     }
 
-    // Establishes the block-0 watermark floor (as production genesis capture / SeedGenesis does) so a later capture
-    // walk connects to it and publishes its watermark without needing a genesis snapshot in the repository.
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
 
-    // A windowed writer/reader pair sharing one HistoryAvailability/HistoryRowFormat resolved from one config -
-    // mirroring the single DI-bound instance production wires both through, matching every collaborator to the
-    // same config the pruner's own tests must also share (see HistoryColumnsWriter.CreateSharedFormat's remarks).
-    private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks)
+    private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks) => CreatePair(new FlatDbConfig
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetentionBlocks = retentionBlocks };
+        HistoryEnabled = true,
+        HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
+        HistoryRetentionBlocks = retentionBlocks
+    });
+
+    private (HistoryWriter Writer, HistoryReader Reader) CreateSinceBlockPair(ulong sinceBlock) => CreatePair(new FlatDbConfig
+    {
+        HistoryEnabled = true,
+        HistoryRetention = HistoryRetentionMode.SinceBlock,
+        HistoryRetentionSinceBlock = sinceBlock
+    });
+
+    private (HistoryWriter Writer, HistoryReader Reader) CreatePair(FlatDbConfig config)
+    {
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
-        HistoryReader reader = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        HistoryWriter writer = new(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return (writer, reader);
+    }
+
+    private bool HasMarker(ulong block)
+    {
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks).KeyExists(key);
     }
 
     private static StateId StateAt(ulong blockNumber)
@@ -1296,6 +1706,12 @@ public class HistoryWriterTests
     }
 
     private static byte[] AccountKey(Address address)
+    {
+        Span<byte> buffer = stackalloc byte[HistoryKeyLayout.AccountKeyLength];
+        return address.ToAccountPath.Bytes.ToArray();
+    }
+
+    private static byte[] FlatAccountKey(Address address)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.AccountKeyLength];
         return BaseFlatPersistence.EncodeAccountKeyHashed(buffer, address.ToAccountPath).ToArray();
@@ -1318,17 +1734,14 @@ public class HistoryWriterTests
     private static byte[] EncodedSlot(ReadOnlySpan<byte> rawSlotBytes)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
-        int written = BaseFlatPersistence.EncodeSlotValue(new SlotValue(rawSlotBytes), RlpWrapSlots, buffer);
+        int written = BaseFlatPersistence.EncodeSlotValue(new UInt256(rawSlotBytes, isBigEndian: true) << ((32 - rawSlotBytes.Length) * 8), RlpWrapSlots, buffer);
         return buffer[..written].ToArray();
     }
 
-    private static SlotValue Slot(params byte[] bytes) => new(bytes);
+    private static UInt256 Slot(params byte[] bytes) => new UInt256(bytes, isBigEndian: true) << ((32 - bytes.Length) * 8);
 
-    // Right-aligned (numeric) slot value, matching what the reader decodes; Slot() is the raw 32-byte layout.
-    private static SlotValue HistorySlot(params byte[] bytes) => SlotValue.FromSpanWithoutLeadingZero(bytes);
+    private static UInt256 HistorySlot(params byte[] bytes) => BaseFlatPersistence.DecodeSlotValue(bytes);
 
-    // The flat-column-encoded bytes for a right-aligned (numeric) slot value - for simulating what the live flat
-    // Storage column would hold for a value written via HistorySlot(), when a test pre-populates it directly.
     private static byte[] EncodedHistorySlot(params byte[] bytes)
     {
         Span<byte> buffer = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];

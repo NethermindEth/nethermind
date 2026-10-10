@@ -21,8 +21,8 @@ namespace Nethermind.Taiko;
 /// <para>
 /// The sync-duration stopwatch is maintained here rather than delegated to
 /// <paramref name="inner"/>, because <see cref="EthSyncingInfo.UpdateAndGetSyncTime"/>
-/// keys off the inner's beacon-unaware <see cref="EthSyncingInfo.IsSyncing"/>, which
-/// reports <c>false</c> during the very plateau this decorator exists to fix.
+/// keys off the inner's <see cref="EthSyncingInfo.IsSyncing"/>, which ignores
+/// <c>BestSuggestedBeaconHeader</c> and so can report <c>false</c> during the very plateau this decorator exists to fix.
 /// </para>
 /// </remarks>
 public sealed class TaikoEthSyncingInfo(

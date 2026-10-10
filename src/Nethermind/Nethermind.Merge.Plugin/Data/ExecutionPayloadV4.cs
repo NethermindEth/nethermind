@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -29,6 +30,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     public new static ExecutionPayloadV4 Create(Block block) => Create<ExecutionPayloadV4>(block);
 
+    /// <inheritdoc/>
+    private protected override PayloadFields RequiredFields => PayloadFields.V4;
+
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
@@ -38,31 +42,40 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         Block block = baseResult.Data;
+        ReadOnlyBlockAccessList? blockAccessList = null;
         if (BlockAccessList is not null)
         {
-            if (!TryDecodeBlockAccessList(out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+            if (!TryDecodeBlockAccessList(out blockAccessList, out string? error))
             {
-                return Result<Block>.Fail(error!);
+                return Result<Block>.Fail(error);
             }
 
             block.BlockAccessList = blockAccessList;
         }
 
         block.EncodedBlockAccessList = BlockAccessList;
-        block.Header.BlockAccessListHash = BlockAccessList is null || BlockAccessList.Length == 0 ? null : block.BlockAccessList!.WireHash;
+        block.Header.BlockAccessListHash = blockAccessList?.WireHash;
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
     }
 
     internal bool TryDecodeBlockAccessList(
-        out ReadOnlyBlockAccessList? blockAccessList,
-        out string? error)
+        [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
+        [NotNullWhen(false)] out string? error)
     {
-        byte[] encodedBlockAccessList = BlockAccessList!;
+        byte[]? encodedBlockAccessList = BlockAccessList;
+        if (encodedBlockAccessList is null)
+        {
+            blockAccessList = null;
+            error = "Block access list is missing.";
+            return false;
+        }
+
         if (ReferenceEquals(encodedBlockAccessList, _decodedBlockAccessListSource))
         {
-            blockAccessList = _decodedBlockAccessList;
+            blockAccessList = _decodedBlockAccessList
+                ?? throw new InvalidOperationException("Cached block access list is missing.");
             error = null;
             return true;
         }
@@ -79,12 +92,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     internal static bool TryDecodeBlockAccessList(
         byte[] encodedBlockAccessList,
-        out ReadOnlyBlockAccessList? blockAccessList,
-        out string? error)
+        [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
+        [NotNullWhen(false)] out string? error)
     {
         try
         {
-            blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList);
+            blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList)
+                ?? throw new RlpException("Block access list decoded as null.");
             error = null;
             return true;
         }
@@ -120,23 +134,27 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
     }
 
-    public override bool ValidateFork(ISpecProvider specProvider)
-         => specProvider.GetSpec(BlockNumber, Timestamp).BlockLevelAccessListsEnabled;
+    public override bool ValidateForkOnNewPayload(ISpecProvider specProvider, int newPayloadVersion)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(BlockNumber, Timestamp);
+        // V5 and V6 share this payload type and differ only by the inclusion list beside it, so the
+        // fork decides which version is valid.
+        return spec.IsAmsterdamEnabled
+            && spec.IsBogotaEnabled == (newPayloadVersion >= EngineApiVersions.NewPayload.V6);
+    }
 
 
     /// <summary>
     /// Gets or sets <see cref="Block.BlockAccessList"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7928">EIP-7928</see>.
     /// </summary>
-    [JsonRequired]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public sealed override byte[]? BlockAccessList { get; set; }
+    public sealed override byte[]? BlockAccessList { get; set => field = Bind(value, PayloadFields.BlockAccessList); }
 
     /// <summary>
     /// Gets or sets <see cref="Block.SlotNumber"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7843">EIP-7843</see>.
     /// </summary>
-    [JsonRequired]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public sealed override ulong? SlotNumber { get; set; }
+    public sealed override ulong? SlotNumber { get; set => field = Bind(value, PayloadFields.SlotNumber); }
 }

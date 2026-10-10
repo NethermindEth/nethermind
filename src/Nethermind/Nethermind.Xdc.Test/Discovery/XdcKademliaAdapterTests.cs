@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -12,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -65,11 +67,18 @@ public class XdcKademliaAdapterTests
 
         _nodeRecordProvider = Substitute.For<INodeRecordProvider>();
         _nodeRecordProvider.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<NodeRecord>(new NodeRecord()));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
+        NetworkListenerState listenerState = new(new NetworkConfig { LocalIp = "0.0.0.0" }, ipResolver, LimboLogs.Instance);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        listenerState.SetRlpxAddress(IPAddress.Any);
         _nodeStatsManager = Substitute.For<INodeStatsManager>();
         _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
         _adapter = new XdcKademliaAdapter(
             new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
+            Substitute.For<IRoutingTable<Node, ValueHash256>>(),
             new Lazy<INodeHealthTracker<Node>>(() => _nodeHealthTracker),
             new DiscoveryConfig
             {
@@ -80,11 +89,13 @@ public class XdcKademliaAdapterTests
             },
             _kademliaConfig,
             _nodeRecordProvider,
+            ipResolver,
             _nodeStatsManager,
             _timestamper,
             Substitute.For<IProcessExitSource>(),
             new Ecdsa(),
-            LimboLogs.Instance)
+            LimboLogs.Instance,
+            listenerState)
         {
             MsgSender = _msgSender,
         };

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/foundation.json",
+    "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+    "BaseDbPath": "nethermind_db/mainnet_aztec",
+    "LogFileName": "mainnet_aztec.log",
+    "MemoryHint": 1024000000
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 26014000,
+    "PivotHash": "0xb3dc78d68fe9b35441ea8d07e8a43ac077424a4b20a1eadd5e21ba440670dee2",
+    "PivotTotalDifficulty": "58750003716598352816469",
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 24600000,
+    "AncientBodiesBarrier": 24600000
+  },
+  "FlatDb": {
+    "HistoryEnabled": true,
+    "HistoryRetention": "Rolling",
+    "HistoryRetentionBlocks": 4096,
+    "HistoryTransactionIndexEnabled": true
+  },
+  "LogIndex": {
+    "Enabled": true
+  },
+  "EthStats": {
+    "Server": "wss://ethstats.net/api"
+  },
+  "Metrics": {
+    "NodeName": "Mainnet Aztec"
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 60000000
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 20000,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "AdditionalRpcUrls": [
+      "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
+    ]
+  },
+  "Merge": {
+    "Enabled": true
+  },
+  "Discovery": {
+    "DiscoveryVersion": "All"
+  }
+}

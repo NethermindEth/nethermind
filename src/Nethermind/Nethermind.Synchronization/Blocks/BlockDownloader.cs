@@ -124,6 +124,18 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return await DoPrepareRequest(options, fastSyncLag, cancellation);
             }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                // A cancelled request is not a downloader failure: the dispatcher owns cancellation
+                // handling. A cancellation raised by another token still falls through to the
+                // catch-all below, so a single bad response cannot finish the feed.
+                throw;
+            }
+            catch (BlockTreeNotReadyException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block download deferred: {e.Message}");
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -227,7 +239,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     GC.KeepAlive(entry.ParentHeader); // ParentHeader is used with `Header.MaybeParent` to ensure reference is kept.
 
-                    if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, downloadReceipts, entry.Receipts))
+                    if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, ShouldDownloadReceipts(entry.Header, shouldProcess, downloadReceipts), entry.Receipts))
                     {
                         if (shouldProcess)
                         {
@@ -284,6 +296,7 @@ namespace Nethermind.Synchronization.Blocks
             BlocksRequestContentType? requestContentType = null;
 
             ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<int> expectedReceiptCounts = new(headers.Count);
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
@@ -319,6 +332,7 @@ namespace Nethermind.Synchronization.Blocks
                             PeerInfo: null,
                             EncodedAccessList: null));
                 }
+                entry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                 parentHeader = blockHeader;
 
                 if ((requestContentType is null or BlocksRequestContentType.Bodies) && entry.NeedBodyDownload)
@@ -328,7 +342,7 @@ namespace Nethermind.Synchronization.Blocks
                     requestContentType = BlocksRequestContentType.Bodies;
                 }
 
-                if (!shouldProcess && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
+                if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
                         (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
@@ -343,12 +357,13 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (
-                    shouldDownloadReceipt &&
+                    ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) &&
                     (requestContentType is null or BlocksRequestContentType.Receipts) &&
                     entry.NeedReceiptDownload)
                 {
                     entry.MarkReceiptRequestSent();
                     receiptsToDownload.Add(blockHeader);
+                    expectedReceiptCounts.Add(entry.Block!.Transactions.Length);
                     requestContentType = BlocksRequestContentType.Receipts;
                 }
 
@@ -373,6 +388,7 @@ namespace Nethermind.Synchronization.Blocks
                 bodiesToDownload.Dispose();
                 blockAccessListsToDownload.Dispose();
                 receiptsToDownload.Dispose();
+                expectedReceiptCounts.Dispose();
                 return null;
             }
 
@@ -381,6 +397,7 @@ namespace Nethermind.Synchronization.Blocks
                 BodiesRequests = bodiesToDownload,
                 BlockAccessListsRequests = blockAccessListsToDownload,
                 ReceiptsRequests = receiptsToDownload,
+                ExpectedReceiptCounts = expectedReceiptCounts,
             };
         }
 
@@ -396,9 +413,10 @@ namespace Nethermind.Synchronization.Blocks
                     BlockHeader? blockHeader = headersSpan[i];
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
+                    blockEntry.CanExecuteMissingData = shouldProcess && ShouldDownloadAccessList(blockHeader, true);
                     if (blockEntry.Block is null) break;
-                    if (!shouldProcess && !blockEntry.HasAccessList) break;
-                    if (shouldDownloadReceipt && !blockEntry.HasReceipt) break;
+                    if (ShouldDownloadAccessList(blockHeader, shouldProcess) && !blockEntry.HasAccessList) break;
+                    if (ShouldDownloadReceipts(blockHeader, shouldProcess, shouldDownloadReceipt) && !blockEntry.HasReceipt) break;
 
                     satisfiedEntry.Add(blockEntry);
                     _downloadRequests.Remove(blockHeader.Hash, out _);
@@ -493,8 +511,11 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if ((response.Receipts?.Count ?? 0) <= i)
+                int receiptsServed = response.Receipts?.Count ?? 0;
+                if (receiptsServed <= i)
                 {
+                    // A non-empty reply cut short by the peer's size limit is not evidence the data is missing.
+                    if (receiptsServed == 0) entry.RecordMissingReceipt();
                     entry.RetryReceiptRequest();
                     continue;
                 }
@@ -502,6 +523,7 @@ namespace Nethermind.Synchronization.Blocks
                 TxReceipt[]? receipts = response.Receipts[i];
                 if (receipts is null)
                 {
+                    entry.RecordMissingReceipt();
                     entry.RetryReceiptRequest();
                     continue;
                 }
@@ -535,6 +557,7 @@ namespace Nethermind.Synchronization.Blocks
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Adding receipts to requests map {entry.Header.Number}");
+                entry.ResetMissingReceipt();
                 entry.Receipts = receipts;
                 entry.PeerInfo = peer;
                 receiptsCount++;
@@ -578,13 +601,15 @@ namespace Nethermind.Synchronization.Blocks
             PeerInfo? peer,
             ref SyncResponseHandlingResult result)
         {
-            if ((blockAccessLists?.Count ?? 0) <= index)
+            int served = blockAccessLists?.Count ?? 0;
+            if (served <= index)
             {
                 if (unsupportedBlockAccessListsPeer)
                 {
                     result = SyncResponseHandlingResult.LesserQuality;
                 }
 
+                if (served == 0) entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -592,6 +617,7 @@ namespace Nethermind.Synchronization.Blocks
             byte[]? encodedAccessList = blockAccessLists[index];
             if (encodedAccessList is null)
             {
+                entry.RecordMissingAccessList();
                 entry.RetryAccessListRequest();
                 return false;
             }
@@ -606,6 +632,7 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
+            entry.ResetMissingAccessList();
             entry.EncodedAccessList = encodedAccessList;
             if (entry.Block is not null)
             {
@@ -629,6 +656,12 @@ namespace Nethermind.Synchronization.Blocks
             return receiptsRoot == block.ReceiptsRoot;
         }
 
+        /// <summary>Whether this header requires a BAL before suggestion.</summary>
+        protected virtual bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) => !shouldProcess;
+
+        /// <summary>Whether this header requires receipts before suggestion.</summary>
+        protected virtual bool ShouldDownloadReceipts(BlockHeader header, bool shouldProcess, bool requested) => requested;
+
         protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) => shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
 
         private bool SuggestBlock(
@@ -641,31 +674,31 @@ namespace Nethermind.Synchronization.Blocks
         {
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
+            // Processing can start before SuggestBlock returns, and BAL reconstruction reads these receipts.
+            if (shouldProcess && downloadReceipts && receipts is not null)
+                _receiptStorage.Insert(currentBlock, receipts, ensureCanonical: false);
+
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
-            bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
+            bool handled = HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult);
+
+            if (!shouldProcess && downloadReceipts && addResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
-                if (downloadReceipts)
+                if (receipts is not null)
                 {
-                    if (receipts is not null)
-                    {
-                        _receiptStorage.Insert(currentBlock, receipts);
-                    }
-                    else
-                    {
-                        // this shouldn't now happen with new validation above, still lets keep this check
-                        if (currentBlock.Header.HasTransactions)
-                        {
-                            if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                        }
-                    }
+                    _receiptStorage.Insert(currentBlock, receipts);
                 }
-                handled = true;
+                else if (currentBlock.Header.HasTransactions)
+                {
+                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                }
             }
 
             if (!shouldProcess)
             {
-                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
+                if (!_blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Canonical update deferred for {currentBlock.Header.ToString(BlockHeader.Format.Short)}: a predecessor is missing or chain maintenance overlapped.");
+                }
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -729,9 +762,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
-                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
-                        throw new EthSyncException(message);
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {
@@ -817,8 +848,24 @@ namespace Nethermind.Synchronization.Blocks
             byte[]? EncodedAccessList
         )
         {
-            public bool HasAccessList => Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
-            public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
+            private const int MissingDataRetries = 3;
+            private int _missingAccessLists;
+            private int _missingReceipts;
+            public void RecordMissingAccessList()
+            {
+                if (CanExecuteMissingData && ++_missingAccessLists >= MissingDataRetries) SkipAccessListDownload = true;
+            }
+            public void RecordMissingReceipt()
+            {
+                if (CanExecuteMissingData && ++_missingReceipts >= MissingDataRetries) SkipReceiptDownload = true;
+            }
+            public void ResetMissingAccessList() { _missingAccessLists = 0; SkipAccessListDownload = false; }
+            public void ResetMissingReceipt() { _missingReceipts = 0; SkipReceiptDownload = false; }
+            public bool CanExecuteMissingData { get; set; }
+            public bool SkipAccessListDownload { get; set; }
+            public bool SkipReceiptDownload { get; set; }
+            public bool HasAccessList => (CanExecuteMissingData && SkipAccessListDownload) || Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
+            public bool HasReceipt => (CanExecuteMissingData && (SkipReceiptDownload || SkipAccessListDownload)) || !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
             public void MarkBlockRequestSent() => _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;

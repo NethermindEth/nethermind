@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -54,8 +55,8 @@ public class StorageLayerTests
         }
 
         // Read back via the raw mmap pointer — the same access path ArenaByteReader uses.
-        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length).ToArray(), Is.EqualTo(data1));
-        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr, data1.Length), Is.SequenceEqualTo(data1));
+        Assert.That(new ReadOnlySpan<byte>(arena.BasePtr + data1.Length, data2.Length), Is.SequenceEqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
     }
 
@@ -173,9 +174,8 @@ public class StorageLayerTests
 
     // Both pools (non-small and small) share the same reserve / cancel / re-add lifecycle, so the
     // cancelled-write reuse must hold for each independently.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void ArenaManager_CancelWrite_AllowsReuse(bool small)
+    [Test]
+    public void ArenaManager_CancelWrite_AllowsReuse([Values] bool small)
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         // 64 KiB so two page-aligned reservations fit in one shared arena file.
@@ -220,9 +220,8 @@ public class StorageLayerTests
     // not tear the file down mid-write (the completed reservation would point at a deleted file)
     // nor re-add the dead arena's id to the mutable pool on the writer's Complete/Cancel (the
     // next pool scan then threw KeyNotFoundException, wedging the persisted compactor).
-    [TestCase(true)]
-    [TestCase(false)]
-    public void ArenaManager_ArenaFullyDeadWhileWriterActive_SurvivesUntilWriterFinishes(bool completeSecondWrite)
+    [Test]
+    public void ArenaManager_ArenaFullyDeadWhileWriterActive_SurvivesUntilWriterFinishes([Values] bool completeSecondWrite)
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
         using ArenaManager manager = new(arenaDir, new FlatDbConfig

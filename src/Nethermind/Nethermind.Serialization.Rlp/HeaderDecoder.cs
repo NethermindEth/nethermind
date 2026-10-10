@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -12,40 +13,57 @@ namespace Nethermind.Serialization.Rlp
     public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
     public interface IBlockHeaderDecoder<T> : IRlpDecoder<T> where T : BlockHeader { }
 
-    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
+    /// <remarks>
+    /// Without a spec provider a zero-length logs bloom is rejected; with one it is accepted only where EIP-7668 is
+    /// active, which needs the header's number and timestamp, so that check follows them.
+    /// </remarks>
+    public class HeaderDecoder : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
+
+        private readonly ISpecProvider? _specProvider;
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
+        public HeaderDecoder() { }
+
+        /// <param name="specProvider">Resolves EIP-7668 activation, which allows a zero-length logs bloom.</param>
+        public HeaderDecoder(ISpecProvider? specProvider) => _specProvider = specProvider;
 
         protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (decoderContext.IsNextItemEmptyList())
+            if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
+
+            ReadOnlySpan<byte> headerRlp = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
+            rlp.ReadSequenceLength(ref position, out int headerSequenceLength);
+            int headerCheck = position + headerSequenceLength;
+
+            rlp.DecodeKeccak(ref position, out Hash256 parentHash);
+            rlp.DecodeKeccak(ref position, out Hash256 unclesHash);
+            rlp.DecodeAddress(ref position, out Address beneficiary);
+            rlp.DecodeKeccak(ref position, out Hash256 stateRoot);
+            rlp.DecodeKeccak(ref position, out Hash256 transactionsRoot);
+            rlp.DecodeKeccak(ref position, out Hash256 receiptsRoot);
+            Bloom bloom;
+            if (_specProvider is null) rlp.DecodeBloom(ref position, out bloom);
+            else rlp.DecodeBloomOrZeroLength(ref position, out bloom);
+            rlp.DecodeUInt256(ref position, out UInt256 difficulty);
+            rlp.DecodeULong(ref position, out ulong number);
+            rlp.DecodeULong(ref position, out ulong gasLimit);
+            rlp.DecodeULong(ref position, out ulong gasUsed);
+            rlp.DecodeULong(ref position, out ulong timestamp);
+            if (bloom.IsZeroLength && !_specProvider!.GetSpec(new ForkActivation(number, timestamp)).IsEip7668Enabled)
             {
-                decoderContext.ReadByte();
-                return null;
+                // The same exception DecodeBloom throws for a zero-length bloom.
+                Rlp.GuardSize(actual: 0, expected: Bloom.ByteLength);
             }
 
-            ReadOnlySpan<byte> headerRlp = decoderContext.PeekNextItem();
-            int headerSequenceLength = decoderContext.ReadSequenceLength();
-            int headerCheck = decoderContext.Position + headerSequenceLength;
+            rlp.DecodeByteArray(ref position, out byte[] extraData);
 
-            Hash256 parentHash = decoderContext.DecodeKeccak();
-            Hash256 unclesHash = decoderContext.DecodeKeccak();
-            Address beneficiary = decoderContext.DecodeAddress();
-            Hash256 stateRoot = decoderContext.DecodeKeccak();
-            Hash256 transactionsRoot = decoderContext.DecodeKeccak();
-            Hash256 receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom bloom = decoderContext.DecodeBloom();
-            UInt256 difficulty = decoderContext.DecodeUInt256();
-            ulong number = decoderContext.DecodeULong();
-            ulong gasLimit = decoderContext.DecodeULong();
-            ulong gasUsed = decoderContext.DecodeULong();
-            ulong timestamp = decoderContext.DecodeULong();
-            byte[]? extraData = decoderContext.DecodeByteArray();
-
+            // The seal is a virtual extension point, so the cursor goes back to the reader once here.
+            decoderContext.Position = position;
             BlockHeader blockHeader = DecodeSealAndCreateHeader(
-                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData!);
+                ref decoderContext, parentHash, unclesHash, beneficiary, in difficulty, number, gasLimit, timestamp, extraData);
             blockHeader.StateRoot = stateRoot;
             blockHeader.TxRoot = transactionsRoot;
             blockHeader.ReceiptsRoot = receiptsRoot;
@@ -53,18 +71,23 @@ namespace Nethermind.Serialization.Rlp
             blockHeader.GasUsed = gasUsed;
             blockHeader.Hash = Keccak.Compute(headerRlp);
 
-            if (decoderContext.Position != headerCheck) blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
-            if (decoderContext.Position != headerCheck) blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
-            if (decoderContext.Position != headerCheck) blockHeader.BlobGasUsed = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
-            if (decoderContext.Position != headerCheck) blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccakOrNull();
-            if (decoderContext.Position != headerCheck) blockHeader.RequestsHash = decoderContext.DecodeKeccakOrNull();
-            if (decoderContext.Position != headerCheck) blockHeader.BlockAccessListHash = decoderContext.DecodeKeccakOrNull();
-            if (decoderContext.Position != headerCheck) blockHeader.SlotNumber = decoderContext.DecodeULong();
+            position = decoderContext.Position;
+
+            // BaseFeePerGas is a field, so it takes the `out` form; the rest are properties and take the return value.
+            if (position != headerCheck) rlp.DecodeUInt256(ref position, out blockHeader.BaseFeePerGas);
+            if (position != headerCheck) blockHeader.WithdrawalsRoot = rlp.DecodeKeccak(ref position);
+            if (position != headerCheck) blockHeader.BlobGasUsed = rlp.DecodeULong(ref position);
+            if (position != headerCheck) blockHeader.ExcessBlobGas = rlp.DecodeULong(ref position);
+            if (position != headerCheck) blockHeader.ParentBeaconBlockRoot = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.RequestsHash = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.BlockAccessListHash = rlp.DecodeKeccakOrNull(ref position);
+            if (position != headerCheck) blockHeader.SlotNumber = rlp.DecodeULong(ref position);
+
+            decoderContext.Position = position;
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
-                decoderContext.Check(headerCheck);
+                RlpHelpers.Check(position, headerCheck);
             }
 
             return blockHeader;
@@ -82,9 +105,9 @@ namespace Nethermind.Serialization.Rlp
         /// </remarks>
         protected virtual BlockHeader DecodeSealAndCreateHeader(
             ref RlpReader decoderContext,
-            Hash256? parentHash,
-            Hash256? unclesHash,
-            Address? beneficiary,
+            Hash256 parentHash,
+            Hash256 unclesHash,
+            Address beneficiary,
             in UInt256 difficulty,
             ulong number,
             ulong gasLimit,
@@ -134,7 +157,7 @@ namespace Nethermind.Serialization.Rlp
             writer.Encode(header.GasLimit);
             writer.Encode(header.GasUsed);
             writer.Encode(header.Timestamp);
-            writer.Encode(header.ExtraData);
+            writer.Encode(header.ExtraData ?? []);
 
             if (notForSealing)
             {
@@ -142,19 +165,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            requiredItems[0] = !header.BaseFeePerGas.IsZero;
-            requiredItems[1] = header.WithdrawalsRoot is not null;
-            requiredItems[2] = header.BlobGasUsed is not null;
-            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
-            requiredItems[4] = header.ParentBeaconBlockRoot is not null;
-            requiredItems[5] = header.RequestsHash is not null;
-            requiredItems[6] = header.BlockAccessListHash is not null;
-            requiredItems[7] = header.SlotNumber is not null;
-
-            for (int i = 6; i >= 0; i--)
-            {
-                requiredItems[i] |= requiredItems[i + 1];
-            }
+            SetRequiredItems(header, requiredItems);
 
             if (requiredItems[0]) writer.Encode(header.BaseFeePerGas);
             if (requiredItems[1]) writer.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
@@ -201,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasLimit)
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
-                                + Rlp.LengthOf(item.ExtraData);
+                                + Rlp.LengthOf(item.ExtraData ?? []);
 
             if (notForSealing)
             {
@@ -209,19 +220,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<bool> requiredItems = stackalloc bool[8];
-            requiredItems[0] = !item.BaseFeePerGas.IsZero;
-            requiredItems[1] = item.WithdrawalsRoot is not null;
-            requiredItems[2] = item.BlobGasUsed is not null;
-            requiredItems[3] = item.BlobGasUsed is not null || item.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
-            requiredItems[4] = item.ParentBeaconBlockRoot is not null;
-            requiredItems[5] = item.RequestsHash is not null;
-            requiredItems[6] = item.BlockAccessListHash is not null;
-            requiredItems[7] = item.SlotNumber is not null;
-
-            for (int i = 6; i >= 0; i--)
-            {
-                requiredItems[i] |= requiredItems[i + 1];
-            }
+            SetRequiredItems(item, requiredItems);
 
             if (requiredItems[0]) contentLength += Rlp.LengthOf(item.BaseFeePerGas);
             if (requiredItems[1]) contentLength += Rlp.LengthOf(item.WithdrawalsRoot ?? Keccak.Zero);
@@ -233,6 +232,24 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
 
             return contentLength;
+        }
+
+        private static void SetRequiredItems(BlockHeader header, Span<bool> requiredItems)
+        {
+            requiredItems[0] = !header.BaseFeePerGas.IsZero;
+            requiredItems[1] = header.WithdrawalsRoot is not null;
+            requiredItems[2] = header.BlobGasUsed is not null;
+            // EIP-4844: BlobGasUsed and ExcessBlobGas are always encoded as a pair.
+            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null;
+            requiredItems[4] = header.ParentBeaconBlockRoot is not null;
+            requiredItems[5] = header.RequestsHash is not null;
+            requiredItems[6] = header.BlockAccessListHash is not null;
+            requiredItems[7] = header.SlotNumber is not null;
+
+            for (int i = requiredItems.Length - 2; i >= 0; i--)
+            {
+                requiredItems[i] |= requiredItems[i + 1];
+            }
         }
 
         public override int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)

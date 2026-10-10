@@ -1,0 +1,260 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+
+namespace Nethermind.Consensus.Processing;
+
+/// <summary>A warm run of one transaction: the state it depended on, the state calls it made and its receipt.</summary>
+/// <remarks>
+/// Execution decides only on the values it reads, so while every precondition is met, replaying the calls on the
+/// block's state is that execution. Balance changes replay as additions and subtractions, so they need no precondition.
+/// </remarks>
+internal sealed class TransactionFootprint(
+    Transaction transaction,
+    AccountPrecondition[] accounts,
+    SlotPrecondition[] slots,
+    StateEffect[] effects,
+    in FootprintReceipt receipt,
+    in TransactionResult result,
+    in ExecutionCounts counts)
+{
+    private readonly FootprintReceipt _receipt = receipt;
+    private readonly TransactionResult _result = result;
+    private readonly ExecutionCounts _counts = counts;
+
+    public Transaction Transaction { get; } = transaction;
+
+    /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
+    public bool Refreshed { get; init; }
+
+    /// <summary>Whether the mempool pass recorded the run, on the block's parent.</summary>
+    public bool FromMempool { get; init; }
+
+    /// <summary>The block context fields the run read through an opcode.</summary>
+    public BlockContextReads ContextReads { get; init; }
+
+    /// <summary>The storage writes replay makes, one per slot.</summary>
+    public int StorageWrites { get; } = CountStorageWrites(effects);
+
+    public ref readonly FootprintReceipt Receipt => ref _receipt;
+
+    public ref readonly TransactionResult Result => ref _result;
+
+    /// <summary>What the run added to the execution counters.</summary>
+    public ref readonly ExecutionCounts Counts => ref _counts;
+
+    /// <summary>The accounts the run depended on, at the values it depended on.</summary>
+    public ReadOnlySpan<AccountPrecondition> Accounts => accounts;
+
+    /// <summary>The slots the run read, at the values it read.</summary>
+    public ReadOnlySpan<SlotPrecondition> Slots => slots;
+
+    public ReadOnlySpan<StateEffect> Effects => effects;
+
+    /// <summary>This mempool run as the run of the block's <paramref name="tx"/>, with <paramref name="replacedEffects"/> in place of its effects.</summary>
+    public TransactionFootprint For(Transaction tx, StateEffect[] replacedEffects) =>
+        new(tx, accounts, slots, replacedEffects, in _receipt, in _result, in _counts) { ContextReads = ContextReads, FromMempool = true };
+
+    [SkipLocalsInit]
+    public bool Matches(IWorldState state)
+    {
+        foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
+        {
+            if (!account.IsMet(state)) return false;
+        }
+
+        foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
+        {
+            state.Get(in slot.Cell, out UInt256 value);
+            if (value != slot.Value) return false;
+        }
+
+        return true;
+    }
+
+    private static int CountStorageWrites(StateEffect[] effects)
+    {
+        int count = 0;
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage) count++;
+        }
+
+        return count;
+    }
+
+    public void Replay(IWorldState state, IReleaseSpec spec)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            effect.Replay(state, spec);
+        }
+    }
+}
+
+internal readonly struct FootprintReceipt(bool success, Address recipient, in GasConsumed gas, LogEntry[] logs, string? error)
+{
+    public readonly bool Success = success;
+    public readonly Address Recipient = recipient;
+    public readonly GasConsumed Gas = gas;
+    public readonly LogEntry[] Logs = logs;
+    public readonly string? Error = error;
+}
+
+[Flags]
+internal enum AccountFields : byte
+{
+    None = 0,
+    Existence = 1,
+    Liveness = 2,
+    Balance = 4,
+    Nonce = 8,
+    Code = 16,
+    MinimumBalance = 32
+}
+
+/// <summary>An account a run touched, with its values when the transaction started.</summary>
+internal struct AccountPrecondition
+{
+    public Address Address;
+    public AccountFields Fields;
+    public bool Modified;
+    public bool Exists;
+    public bool IsDead;
+    public ulong Nonce;
+    public UInt256 Balance;
+    public UInt256 MinimumBalance;
+    public ValueHash256 CodeHash;
+    public int BalanceValueReads;
+
+    public readonly bool IsMet(IWorldState state)
+    {
+        AccountFields fields = Fields;
+        if (fields == AccountFields.None) return true;
+        Address address = Address;
+        if ((fields & AccountFields.Existence) != 0 && state.AccountExists(address) != Exists) return false;
+        if ((fields & AccountFields.Liveness) != 0 && state.IsDeadAccount(address) != IsDead) return false;
+        if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return false;
+        if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance)) != 0)
+        {
+            ref readonly UInt256 balance = ref state.GetBalance(address);
+            if (((fields & AccountFields.Balance) != 0 && balance != Balance) || balance < MinimumBalance) return false;
+        }
+
+        if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return false;
+        return true;
+    }
+}
+
+internal struct SlotPrecondition
+{
+    public StorageCell Cell;
+    public UInt256 Value;
+    public bool Read;
+    public bool Written;
+}
+
+internal enum EffectKind : byte
+{
+    SetStorage,
+    ClearStorage,
+    MarkStorageDestroyed,
+    AddToBalance,
+    AddToBalanceAndCreateIfNotExists,
+    SubtractFromBalance,
+    IncrementNonce,
+    DecrementNonce,
+    SetNonce,
+    CreateAccount,
+    CreateAccountIfNotExists,
+    DeleteAccount,
+    InsertCode
+}
+
+/// <remarks>
+/// Laid out in 88 bytes rather than two cache lines: replay reads every effect from the core that recorded it. A
+/// nonce has the slot index of an account effect, and a code hash the value of code being inserted.
+/// </remarks>
+internal struct StateEffect
+{
+    // The account, and for a storage write the slot, in the form the write takes, so replaying it builds no cell.
+    public StorageCell Cell;
+    public UInt256 Value;
+    public byte[]? Code;
+    public EffectKind Kind;
+
+    public readonly Address Address => Cell.Address;
+
+    public ulong Nonce
+    {
+        readonly get => Cell.Index.u0;
+        set => Cell = new StorageCell(Cell.Address, value);
+    }
+
+    public ValueHash256 CodeHash
+    {
+        readonly get => Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in Value));
+        set => Value = Unsafe.As<ValueHash256, UInt256>(ref value);
+    }
+
+    // The balance and nonce a change leaves are discarded; clearing them first would cost every effect replayed.
+    [SkipLocalsInit]
+    public readonly void Replay(IWorldState state, IReleaseSpec spec)
+    {
+        switch (Kind)
+        {
+            case EffectKind.SetStorage:
+                state.Set(in Cell, in Value);
+                break;
+            case EffectKind.ClearStorage:
+                state.ClearStorage(Address);
+                break;
+            case EffectKind.MarkStorageDestroyed:
+                state.MarkStorageDestroyed(Address);
+                break;
+            case EffectKind.AddToBalance:
+                state.AddToBalance(Address, in Value, spec, out _);
+                break;
+            case EffectKind.AddToBalanceAndCreateIfNotExists:
+                state.AddToBalanceAndCreateIfNotExists(Address, in Value, spec, out _);
+                break;
+            case EffectKind.SubtractFromBalance:
+                state.SubtractFromBalance(Address, in Value, spec, out _);
+                break;
+            case EffectKind.IncrementNonce:
+                state.IncrementNonce(Address, Nonce, out _);
+                break;
+            case EffectKind.DecrementNonce:
+                state.DecrementNonce(Address, Nonce);
+                break;
+            case EffectKind.SetNonce:
+                state.SetNonce(Address, Nonce);
+                break;
+            case EffectKind.CreateAccount:
+                state.CreateAccount(Address, in Value, Nonce);
+                break;
+            case EffectKind.CreateAccountIfNotExists:
+                state.CreateAccountIfNotExists(Address, in Value, Nonce);
+                break;
+            case EffectKind.DeleteAccount:
+                state.DeleteAccount(Address);
+                break;
+            case EffectKind.InsertCode:
+                InsertCode(state, spec);
+                break;
+        }
+    }
+
+    // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, CodeHash, Code, spec);
+}

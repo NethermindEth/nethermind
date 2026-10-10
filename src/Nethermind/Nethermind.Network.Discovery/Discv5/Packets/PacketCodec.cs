@@ -209,10 +209,7 @@ public sealed class PacketCodec(
         }
     }
 
-    internal bool TryDecryptMessage(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
-        => TryDecryptMessageForTest(in packet, encryptionKey, out message);
-
-    internal static bool TryDecryptMessageForTest(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
+    internal static bool TryDecryptMessage(scoped in Packet packet, ReadOnlySpan<byte> encryptionKey, out Discv5Message message)
     {
         message = null!;
         ReadOnlySpan<byte> encryptedMessage = packet.Message.Span;
@@ -449,29 +446,56 @@ public sealed class PacketCodec(
     [SkipLocalsInit]
     private static void AesCtrTransform(Aes aes, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
     {
+        if (iv.Length != MaskingIvSize)
+        {
+            throw new ArgumentException("Masking IV must be 16 bytes.", nameof(iv));
+        }
+
         if (output.Length < input.Length)
         {
             throw new ArgumentException("Output span must be at least as long as input.", nameof(output));
         }
 
-        Span<byte> counter = stackalloc byte[MaskingIvSize];
+        Unsafe.SkipInit(out CounterBuffer counterStorage);
+        Unsafe.SkipInit(out MaskingBatchBuffer countersStorage);
+        Unsafe.SkipInit(out MaskingBatchBuffer keyStreamStorage);
+        Span<byte> counter = counterStorage;
+        Span<byte> counters = countersStorage;
+        Span<byte> keyStream = keyStreamStorage;
         iv.CopyTo(counter);
-        Span<byte> keyStream = stackalloc byte[MaskingIvSize];
 
         int offset = 0;
         while (offset < input.Length)
         {
-            aes.EncryptEcb(counter, keyStream, PaddingMode.None);
+            int batchLength = Math.Min(MaxStackPacketBufferSize, input.Length - offset);
+            int paddedLength = (batchLength + MaskingIvSize - 1) & -MaskingIvSize;
+            for (int i = 0; i < paddedLength; i += MaskingIvSize)
+            {
+                counter.CopyTo(counters.Slice(i, MaskingIvSize));
+                IncrementCounter(counter);
+            }
 
-            int blockLength = Math.Min(MaskingIvSize, input.Length - offset);
-            for (int i = 0; i < blockLength; i++)
+            // One native key import per batch instead of one per counter block.
+            aes.EncryptEcb(counters[..paddedLength], keyStream, PaddingMode.None);
+            for (int i = 0; i < batchLength; i++)
             {
                 output[offset + i] = (byte)(input[offset + i] ^ keyStream[i]);
             }
 
-            IncrementCounter(counter);
-            offset += blockLength;
+            offset += batchLength;
         }
+    }
+
+    [InlineArray(MaskingIvSize)]
+    private struct CounterBuffer
+    {
+        private byte _element0;
+    }
+
+    [InlineArray(MaxStackPacketBufferSize)]
+    private struct MaskingBatchBuffer
+    {
+        private byte _element0;
     }
 
     private static Aes CreateMaskingAes(ReadOnlySpan<byte> key)

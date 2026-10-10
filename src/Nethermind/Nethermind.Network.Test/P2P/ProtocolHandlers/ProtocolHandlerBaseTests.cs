@@ -5,13 +5,16 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -28,8 +31,13 @@ public class ProtocolHandlerBaseTests
     private static readonly Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> SyncServeValueTaskHandler =
         static (_, _) => ValueTask.FromResult(new TestResponseMessage());
 
-    private class TestProtocolHandler(ISession session, TimeSpan initTimeout, IBackgroundTaskScheduler? backgroundTaskScheduler = null)
-        : ProtocolHandlerBase(session, Substitute.For<INodeStatsManager>(), Substitute.For<IMessageSerializationService>(), backgroundTaskScheduler ?? Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance)
+    private class TestProtocolHandler(
+        ISession session,
+        TimeSpan initTimeout,
+        IBackgroundTaskScheduler? backgroundTaskScheduler = null,
+        IMessageSerializationService? serializationService = null,
+        ILogManager? logManager = null)
+        : ProtocolHandlerBase(session, Substitute.For<INodeStatsManager>(), serializationService ?? Substitute.For<IMessageSerializationService>(), backgroundTaskScheduler ?? Substitute.For<IBackgroundTaskScheduler>(), logManager ?? LimboLogs.Instance)
     {
         public override string Name => "test";
         protected override TimeSpan InitTimeout => initTimeout;
@@ -41,11 +49,16 @@ public class ProtocolHandlerBaseTests
         public Task StartTimeoutCheck() => CheckProtocolInitTimeout();
         public void SimulateLateInitMessage() => ReceivedProtocolInitMsg(new AckMessage());
         public void ScheduleBackgroundTask(Func<int, CancellationToken, ValueTask> backgroundTask) =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask, "test");
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(1, backgroundTask);
+        public void ScheduleBackgroundTaskFor(TestRequestMessage request) =>
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(request, static (_, _) => ValueTask.CompletedTask);
         public void ScheduleSyncServeTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, Task<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
         public void ScheduleSyncServeValueTask(TestRequestMessage request, Func<TestRequestMessage, CancellationToken, ValueTask<TestResponseMessage>> syncServe) =>
             BackgroundTaskScheduler.TryScheduleSyncServe(request, syncServe);
+        public void ScheduleHandlerSyncServeTask(TestRequestMessage request) =>
+            BackgroundTaskScheduler.TryScheduleSyncServe<TestProtocolHandler, TestRequestMessage, TestResponseMessage, TestSyncServeRequestHandler>(this, request);
+        public TestRequestMessage Deserialize(byte[] data) => Deserialize<TestRequestMessage>(data);
         public override void Init() { }
         public override void Dispose() { }
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
@@ -56,22 +69,99 @@ public class ProtocolHandlerBaseTests
     {
         public Task ScheduledTask { get; private set; } = Task.CompletedTask;
 
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null)
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
         {
             ScheduledTask = fulfillFunc(request, cancellationToken);
             return true;
         }
     }
 
-    private sealed class NoopBackgroundTaskScheduler : IBackgroundTaskScheduler
+    private readonly struct TestSyncServeRequestHandler : ISyncServeRequestHandler<TestProtocolHandler, TestRequestMessage, TestResponseMessage>
     {
-        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string? source = null) => true;
+        public static Task<TestResponseMessage> Execute(TestProtocolHandler handler, TestRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new TestResponseMessage());
+    }
+
+    /// <summary>
+    /// Records the runner delegate the most recently scheduled task was dispatched with.
+    /// </summary>
+    /// <remarks>
+    /// A cached runner is handed to the scheduler by reference, so repeated scheduling yielding the same
+    /// instance is what proves no per-call wrapper delegate is allocated.
+    /// </remarks>
+    private sealed class RunnerCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public Delegate? CapturedRunner { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            CapturedRunner = fulfillFunc;
+            return true;
+        }
+    }
+
+    /// <summary>Records the name each scheduled task is reported under.</summary>
+    private sealed class NameCapturingBackgroundTaskScheduler : IBackgroundTaskScheduler
+    {
+        public string? ReportedName { get; private set; }
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+            where TReq : notnull, IBackgroundTaskRequest<TReq>
+        {
+            ReportedName = BackgroundTaskTypeRegistry.GetName(TReq.TaskId);
+            return true;
+        }
     }
 
     private sealed class TestRequestMessage : P2PMessage
     {
         public override int PacketType => 1;
         public override string Protocol => "test";
+    }
+
+    public enum SchedulingPath
+    {
+        SyncServeTask,
+        SyncServeValueTask,
+        HandlerSyncServe,
+        BackgroundTask
+    }
+
+    /// <remarks>
+    /// Each wrapper request is generic over the message it wraps, so its own type name is identical for
+    /// every instantiation. The wrappers therefore report the wrapped type instead, which nothing in the
+    /// type system enforces — this pins it for every scheduling path.
+    /// </remarks>
+    [Test]
+    public void Scheduling_reports_the_wrapped_message_type([Values] SchedulingPath path)
+    {
+        NameCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+
+        Schedule(handler, path, new TestRequestMessage());
+
+        Assert.That(scheduler.ReportedName, Is.EqualTo(nameof(TestRequestMessage)));
+    }
+
+    private static void Schedule(TestProtocolHandler handler, SchedulingPath path, TestRequestMessage request)
+    {
+        switch (path)
+        {
+            case SchedulingPath.SyncServeTask:
+                handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+                break;
+            case SchedulingPath.SyncServeValueTask:
+                handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
+                break;
+            case SchedulingPath.HandlerSyncServe:
+                handler.ScheduleHandlerSyncServeTask(request);
+                break;
+            case SchedulingPath.BackgroundTask:
+                handler.ScheduleBackgroundTaskFor(request);
+                break;
+        }
     }
 
     private sealed class TestResponseMessage : P2PMessage
@@ -92,9 +182,8 @@ public class ProtocolHandlerBaseTests
         session.Received().InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, Arg.Any<string>());
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Operation_canceled_behavior_depends_on_session_closing(bool sessionIsClosing)
+    [Test]
+    public async Task Operation_canceled_behavior_depends_on_session_closing([Values] bool sessionIsClosing)
     {
         ISession session = Substitute.For<ISession>();
         session.IsClosing.Returns(sessionIsClosing);
@@ -120,34 +209,38 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
-    public void Sync_serve_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Scheduling_does_not_allocate_wrapper_delegate([Values] SchedulingPath path)
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
+        RunnerCapturingBackgroundTaskScheduler scheduler = new();
+        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
+        Schedule(handler, path, request);
+        Delegate? firstRunner = scheduler.CapturedRunner;
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        Schedule(handler, path, request);
 
-        handler.ScheduleSyncServeTask(request, SyncServeTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRunner, Is.Not.Null);
+            Assert.That(scheduler.CapturedRunner, Is.SameAs(firstRunner));
+        }
     }
 
     [Test]
-    public void Sync_serve_value_task_scheduling_does_not_allocate_wrapper_delegate()
+    public void Rlp_deserialization_exceptions_are_not_logged_at_debug([Values] bool limitExceeded)
     {
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), new NoopBackgroundTaskScheduler());
-        TestRequestMessage request = new();
+        Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpException("invalid");
+        IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
+        serializationService.Deserialize<TestRequestMessage>(Arg.Any<ArraySegment<byte>>()).Returns(_ => throw exception);
+        TestLogger logger = new() { IsTrace = false };
+        TestProtocolHandler handler = new(
+            Substitute.For<ISession>(),
+            TimeSpan.FromMilliseconds(50),
+            serializationService: serializationService,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
 
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-
-        handler.ScheduleSyncServeValueTask(request, SyncServeValueTaskHandler);
-
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
-        Assert.That(allocated, Is.Zero);
+        Assert.That(() => handler.Deserialize([]), Throws.TypeOf(exception.GetType()));
+        Assert.That(logger.LogList, Is.Empty);
     }
 }

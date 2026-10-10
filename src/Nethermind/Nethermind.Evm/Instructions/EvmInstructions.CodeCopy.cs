@@ -30,11 +30,28 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
-            goto StackUnderflow;
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
+            return EvmExceptionType.StackUnderflow;
 
+        return DataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in a, in b, in result, source);
+    }
+
+    /// <summary>Copy-to-memory core with the three copy operands already popped, for callers that pop
+    /// preceding operands first (SIGPARAM, FRAMEDATACOPY).</summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType DataCopyCore<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref TGasPolicy gas,
+        in UInt256 a,
+        in UInt256 b,
+        in UInt256 result,
+        scoped ReadOnlySpan<byte> source)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         if (!result.IsZero)
@@ -55,59 +72,30 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     }
 
     /// <summary>
-    /// CODECOPY - copies a portion of the executing contract's code into memory.
-    /// Sources bytes from <c>stack.Code</c>/<c>stack.CodeLength</c> (hoisted at frame entry)
-    /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
-    /// </summary>
-    public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, stack.CodeLength));
-
-    /// <summary>
-    /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
-    /// </summary>
-    public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
-        VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
-            vm.VmState.Env.InputData.Span);
-
-    /// <summary>
-    /// Copies data from the previous call's return buffer into memory.
+    /// Copy-to-memory core for sources that halt on an out-of-range read instead of zero-padding it
+    /// (RETURNDATACOPY per EIP-211, EVENTDATACOPY per EIP-7906), operands already popped.
     /// </summary>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType BoundedDataCopyCore<TGasPolicy, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
         ref TGasPolicy gas,
-        ref int programCounter)
+        in UInt256 destOffset,
+        in UInt256 sourceOffset,
+        in UInt256 size,
+        scoped ReadOnlySpan<byte> source)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        if (!stack.PopUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
-            goto StackUnderflow;
-
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, vm.Spec, isExternalCode: false, words)) goto OutOfGas;
         if (outOfGas) goto OutOfGas;
 
-        ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
-        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
+        // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
+        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 end) || end > source.Length)
             goto AccessViolation;
 
         if (!size.IsZero)
@@ -115,8 +103,7 @@ public static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, ref vm.VmState.Memory))
                 goto OutOfGas;
 
-            ReadOnlySpan<byte> source = returnDataBuffer.Span.Slice((int)sourceOffset, (int)size);
-            vm.VmState.Memory.SaveAfterGas(in destOffset, source);
+            vm.VmState.Memory.SaveAfterGas(in destOffset, source.Slice((int)sourceOffset, (int)size));
 
             if (TTracingInst.IsActive)
             {
@@ -126,12 +113,51 @@ public static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
     AccessViolation:
         return EvmExceptionType.AccessViolation;
+    }
+
+    /// <summary>
+    /// CODECOPY - copies a portion of the executing contract's code into memory.
+    /// Sources bytes from <c>stack.Code</c>/<c>stack.CodeLength</c> (hoisted at frame entry)
+    /// rather than re-walking <c>vm.VmState.Env.CodeInfo.CodeSpan</c>.
+    /// </summary>
+    public static EvmExceptionType InstructionCodeCopy<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
+            MemoryMarshal.CreateReadOnlySpan(ref stack.Code, (int)stack.CodeLength));
+
+    /// <summary>
+    /// CALLDATACOPY - copies a portion of the transaction's calldata into memory.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionCallDataCopy<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        => DataCopy<TGasPolicy, TTracingInst>(vm, ref stack, ref gas,
+            MemoryMarshal.CreateReadOnlySpan(in stack.InputData, (int)stack.InputDataLength));
+
+    /// <summary>
+    /// Copies data from the previous call's return buffer into memory.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 destOffset, out UInt256 sourceOffset, out UInt256 size))
+            return EvmExceptionType.StackUnderflow;
+
+        return BoundedDataCopyCore<TGasPolicy, TTracingInst>(vm, ref gas, in destOffset, in sourceOffset, in size, vm.ReturnDataBuffer.Span);
     }
 
     /// <summary>
@@ -143,40 +169,45 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter (unused in this operation).</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
+    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where Eip8038 : struct, IFlag
+        where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
-        Address address = stack.PopAddress(vm.AddressCache);
-        // Pop destination offset, source offset, and length from the stack.
+        Address? address = stack.PopAddress(vm.AddressCache);
+        // Pop destination offset, source offset, and length from the stack. The destination keeps its
+        // vector decode here: this handler already saves seven callee-saved registers, and holding the
+        // destination in general registers instead costs an eighth and measures slower.
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
-        TGasPolicy.ConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words);
+        if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
         if (outOfGas) goto OutOfGas;
 
         // Charge gas for account access (considering hot/cold storage costs).
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODECOPY performs.
-        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
         if (!result.IsZero)
@@ -184,6 +215,9 @@ public static partial class EvmInstructions
             // Update memory cost if the destination region requires expansion.
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
+
+            // EIP-8279: the account enters the block access list on the transaction's first touch, metered after every charge.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
             vm.WorldState.AddAccountRead(address);
 
@@ -204,6 +238,9 @@ public static partial class EvmInstructions
         }
         else
         {
+            // EIP-8279: as above; a zero-length copy expands no memory.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
+
             vm.WorldState.AddAccountRead(address);
             vm.WorldState.RecordBytecodeAccess(address);
         }
@@ -225,46 +262,53 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <param name="programCounter">Reference to the program counter, which may be adjusted during optimization.</param>
+    /// <param name="programCounter">The program counter; a fused compare returns it advanced past the folded opcode.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeSize<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm,
-        ref EvmStack stack,
-        ref TGasPolicy gas,
-        ref int programCounter)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
+        where Eip8038 : struct, IFlag
+        where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
-        TGasPolicy.Consume<ExtCodeSizeGasCost>(ref gas, spec);
+        if (!TGasPolicy.UpdateGas<ExtCodeSizeGasCost>(ref gas, spec)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
 
         // Pop the account address from the stack.
-        Address address = stack.PopAddress(vm.AddressCache);
+        Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
         // Charge gas for accessing the account's state.
-        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
+        if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
             goto OutOfGas;
 
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
-        if (spec.IsEip8038Enabled && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
+        if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
+
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);
 
-        // Attempt a peephole optimization when tracing is not active and code is available.
-        ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
-        if (!TTracingInst.IsActive && programCounter < codeSection.Length)
+        // Attempt a peephole optimization when tracing is not active.
+        if (!TTracingInst.IsActive)
         {
             bool optimizeAccess = false;
-            // Peek at the next instruction to detect patterns.
-            Instruction nextInstruction = (Instruction)codeSection[programCounter];
+            // Peek at the next instruction to detect patterns. Untraced code is padded, so past the end this reads STOP.
+            Instruction nextInstruction = (Instruction)Unsafe.Add(ref stack.Code, programCounter);
             // If the next instruction is ISZERO, optimize for a simple contract check.
             if (nextInstruction == Instruction.ISZERO)
             {
@@ -284,13 +328,19 @@ public static partial class EvmInstructions
             {
                 // Peephole optimization for EXTCODESIZE when checking for contract existence.
                 // This reduces storage access by using the preloaded CodeHash.
-                vm.OpCodeCount++;
+                if (DispatchFlags.CountOpcodes)
+                    vm.OpCodeCount++;
                 programCounter++;
-                // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
-                TGasPolicy.Consume<VeryLowGasCost>(ref gas);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
                 bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                // EXTCODESIZE reads the code before the folded operation can run out of gas, so a witness must carry it.
+                if (isCodeLengthNotZero)
+                    vm.WorldState.RecordBytecodeAccess(address);
+
+                // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
+                if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {
@@ -298,9 +348,9 @@ public static partial class EvmInstructions
                 }
 
                 // Push 1 if the condition is met (indicating contract presence or absence), else push 0.
-                return !isCodeLengthNotZero
+                return new OpcodeResult(programCounter, !isCodeLengthNotZero
                     ? stack.PushOne<TTracingInst>()
-                    : stack.PushZero<TTracingInst>();
+                    : stack.PushZero<TTracingInst, OnFlag>());
             }
         }
 
@@ -308,11 +358,11 @@ public static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        return stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)accountCode.Length));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
-        return EvmExceptionType.OutOfGas;
+        return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
-        return EvmExceptionType.StackUnderflow;
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
     }
 }

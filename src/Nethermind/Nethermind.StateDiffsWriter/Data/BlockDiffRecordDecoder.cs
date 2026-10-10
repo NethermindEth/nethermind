@@ -13,8 +13,14 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
 {
     public static BlockDiffRecordDecoder Instance { get; } = new();
 
-    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode<TWriter>(ref TWriter stream, BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item is null)
+        {
+            stream.EncodeNullObject();
+            return;
+        }
+
         int contentLength = GetContentLength(item);
         stream.StartSequence(contentLength);
 
@@ -50,8 +56,8 @@ public sealed class BlockDiffRecordDecoder : RlpDecoder<BlockDiffRecord>
         stream.Encode(item.AccountsAddedDelta);
     }
 
-    public override int GetLength(BlockDiffRecord item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        => Rlp.LengthOfSequence(GetContentLength(item));
+    public override int GetLength(BlockDiffRecord? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        => item is null ? Rlp.OfEmptyList.Length : Rlp.LengthOfSequence(GetContentLength(item));
 
     protected override BlockDiffRecord DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

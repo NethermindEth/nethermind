@@ -5,12 +5,6 @@ using System.Text.Json;
 
 internal class Program
 {
-    public static readonly JsonSerializerOptions SERIALIZER_OPTIONS = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
-    };
-
     private static void Main(string[] args)
     {
         Option<string> firstFileOption = new("--first-file", "-f")
@@ -62,7 +56,7 @@ internal class Program
             try
             {
                 using Stream fileStream = File.OpenRead(file);
-                HiveTestResult? hiveTest = JsonSerializer.Deserialize<HiveTestResult>(fileStream, SERIALIZER_OPTIONS);
+                HiveTestResult? hiveTest = JsonSerializer.Deserialize(fileStream, HiveCompareJsonContext.Default.HiveTestResult);
 
                 if (hiveTest is null)
                 {

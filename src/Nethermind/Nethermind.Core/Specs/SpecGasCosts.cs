@@ -20,6 +20,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly ulong CallCost;
     public readonly ulong ExpByteCost;
     public readonly ulong SStoreResetCost;
+    public readonly ulong ColdAccountAccessCost;
     public readonly ulong TxDataNonZeroMultiplier;
     public readonly ulong TotalCostFloorPerToken;
 
@@ -91,6 +92,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             : shanghaiDDos ? GasCostOf.CallEip150
             : GasCostOf.Call;
 
+        // EIP-2929 cold account access, repriced by EIP-8038.
+        ColdAccountAccessCost = spec.IsEip8038Enabled
+            ? Eip8038Constants.ColdAccountAccess
+            : GasCostOf.ColdAccountAccess;
+
         ExpByteCost = spec.UseExpDDosProtection
             ? GasCostOf.ExpByteEip160
             : GasCostOf.ExpByte;
@@ -109,19 +115,21 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 ? GasCostOf.TotalCostFloorPerTokenEip7623
                 : GasCostOf.Free;
 
-        SClearRefund = spec.IsEip8038Enabled
-            ? RefundOf.SClearEip8038
-            : spec.IsEip3529Enabled
-                ? RefundOf.SClearAfterEip3529
-                : RefundOf.SClearBeforeEip3529;
+        SClearRefund = spec.IsEip3298Enabled
+            ? GasCostOf.Free
+            : spec.IsEip8038Enabled
+                ? RefundOf.SClearEip8038
+                : spec.IsEip3529Enabled
+                    ? RefundOf.SClearAfterEip3529
+                    : RefundOf.SClearBeforeEip3529;
 
-        DestroyRefund = spec.IsEip3529Enabled
+        DestroyRefund = spec.IsEip3529Enabled || spec.IsEip3298Enabled
             ? RefundOf.DestroyAfterEip3529
             : RefundOf.DestroyBeforeEip3529;
 
         int hashCode1 = HashCode.Combine(SLoadCost, BalanceCost, ExtCodeCost, ExtCodeHashCost, CallCost, ExpByteCost, sStoreResetCost, netMeteredSStoreCost);
         int hashCode2 = HashCode.Combine(TxDataNonZeroMultiplier, TotalCostFloorPerToken, clearReversalRefund, setReversalRefund, SClearRefund, MaxBlobGasPerBlock, MaxBlobGasPerTx, TargetBlobGasPerBlock);
-        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
+        _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund, ColdAccountAccessCost);
     }
 
     public ulong RefundFromReversal(bool originalIsZero) => originalIsZero
@@ -140,6 +148,7 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
             && CallCost == other.CallCost
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
+            && ColdAccountAccessCost == other.ColdAccountAccessCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
             && TotalCostFloorPerToken == other.TotalCostFloorPerToken
             && NetMeteredSStoreCost == other.NetMeteredSStoreCost

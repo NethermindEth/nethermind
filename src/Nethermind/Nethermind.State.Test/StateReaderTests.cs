@@ -115,7 +115,7 @@ namespace Nethermind.Store.Test
             IStateReader reader = ctx.Reader;
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
-            void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, newValue);
+            void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, new UInt256(newValue, isBigEndian: true));
 
             void AddOneToBalance() => provider.AddToBalance(_address1, 1, spec);
 
@@ -174,11 +174,12 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            provider.Set(storageCell, new byte[] { 1 });
+            provider.Set(storageCell, new UInt256(new byte[] { 1 }, isBigEndian: true));
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
-            Assert.That(reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray(), Is.EqualTo(new byte[] { 0 }));
+            reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1, out UInt256 missing);
+            Assert.That(missing, Is.EqualTo(UInt256.Zero));
         }
 
         private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value) => Task.Run(
@@ -197,13 +198,16 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 1000; i++)
                     {
-                        byte[] result = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-                        Assert.That(result, Is.EqualTo(value));
+                        reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index, out UInt256 result);
+                        Assert.That(result, Is.EqualTo(new UInt256(value, isBigEndian: true)));
                     }
                 });
 
+        public static readonly UInt256[] StorageValues =
+            [UInt256.Zero, UInt256.One, new(0x010203), new(1_000_000_000_000_000_000UL), new(1, 2, 3, 4), UInt256.MaxValue];
+
         [Test]
-        public void Get_storage()
+        public void Get_storage([ValueSource(nameof(StorageValues))] UInt256 initialValue)
         {
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
@@ -211,7 +215,6 @@ namespace Nethermind.Store.Test
             using Context ctx = new(useFlat);
             IWorldState state = ctx.WorldState;
             IStateReader reader = ctx.Reader;
-            byte[] initialValue = new byte[] { 1, 2, 3 };
             BlockHeader baseBlock;
             using (IDisposable _ = state.BeginScope(IWorldState.PreGenesis))
             {
@@ -222,16 +225,14 @@ namespace Nethermind.Store.Test
 
                 /* at this stage we have an account with empty storage at the address that we want to test */
 
-                state.Set(storageCell, initialValue);
+                state.Set(storageCell, in initialValue);
                 state.Commit(MuirGlacier.Instance);
                 state.CommitTree(2);
                 baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
             }
 
-            byte[] retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
+            reader.GetStorage(baseBlock, _address1, storageCell.Index, out UInt256 retrieved);
             Assert.That(retrieved, Is.EqualTo(initialValue));
-
-            /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
 
             /* Now we are testing scenario where the storage is being changed by the block processor.
                To do that we create some different storage / state access stack that represents the processor.
@@ -245,21 +246,33 @@ namespace Nethermind.Store.Test
 
             using (IDisposable _ = processorStateProvider.BeginScope(baseBlock))
             {
-                processorStateProvider.Set(storageCell, newValue);
+                processorStateProvider.Set(storageCell, new UInt256(newValue, isBigEndian: true));
                 processorStateProvider.Commit(MuirGlacier.Instance);
                 processorStateProvider.CommitTree(baseBlock.Number + 1);
                 baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(state.StateRoot).TestObject;
             }
 
-            /* At this stage the DB should have the storage value updated to 5.
-               We will try to retrieve the value by taking the state root from the processor.*/
-
-            retrieved = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-            Assert.That(retrieved, Is.EqualTo(newValue));
+            reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index, out retrieved);
+            Assert.That(retrieved, Is.EqualTo(new UInt256(newValue, isBigEndian: true)));
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
 
+
+        [Test]
+        public void Get_storage_returns_zero_when_missing([Values] bool accountExists)
+        {
+            using Context ctx = new(useFlat);
+            BlockHeader header = ctx.CommitAndCapture(state =>
+            {
+                state.CreateAccount(TestItem.AddressB, 1);
+                if (accountExists) state.CreateAccount(_address1, 1);
+            });
+
+            ctx.Reader.GetStorage(header, _address1, UInt256.One, out UInt256 value);
+
+            Assert.That(value, Is.EqualTo(UInt256.Zero));
+        }
 
         public static System.Collections.Generic.IEnumerable<TestCaseData> ReaderApiSmokeCases
         {

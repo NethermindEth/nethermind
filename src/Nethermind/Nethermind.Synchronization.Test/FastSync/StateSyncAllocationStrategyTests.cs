@@ -22,29 +22,33 @@ public class StateSyncAllocationStrategyTests
 {
     private static readonly IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
 
-    [TestCase(EthVersions.Eth67, true, ExpectedResult = true)]
-    [TestCase(EthVersions.Eth66, false, ExpectedResult = true)]
-    [TestCase(EthVersions.Eth67, false, ExpectedResult = false)]
-    public bool Can_allocate_node(int ethVersion, bool hasSnap) =>
-        IsNodeAllocated(ethVersion, hasSnap);
+    [TestCase(EthVersions.Eth67, SnapVersions.Snap1, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth66, null, ExpectedResult = true)]
+    [TestCase(EthVersions.Eth67, null, ExpectedResult = false)]
+    [TestCase(EthVersions.Eth67, SnapVersions.Snap2, ExpectedResult = false)]
+    [TestCase(EthVersions.Eth66, SnapVersions.Snap2, ExpectedResult = true)]
+    public bool Can_allocate_node(byte ethVersion, byte? snapVersion) =>
+        IsNodeAllocated(ethVersion, snapVersion);
 
-    private bool IsNodeAllocated(int version, bool hasSnap)
+    private bool IsNodeAllocated(byte version, byte? snapVersion)
     {
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(0, 0));
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(node);
-        syncPeer.ProtocolVersion.Returns((byte)version);
+        syncPeer.ProtocolVersion.Returns(version);
         syncPeer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>
             {
-                if (hasSnap)
+                if (snapVersion is null)
                 {
-                    x[1] = new object();
-                    return true;
+                    x[1] = null;
+                    return false;
                 }
 
-                x[1] = null;
-                return false;
+                ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
+                snapPeer.SnapProtocolVersion.Returns(snapVersion.Value);
+                x[1] = snapPeer;
+                return true;
             });
         PeerInfo peerInfo = new(syncPeer);
 

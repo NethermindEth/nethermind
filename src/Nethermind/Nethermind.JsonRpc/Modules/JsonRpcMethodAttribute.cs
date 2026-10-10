@@ -21,5 +21,12 @@ namespace Nethermind.JsonRpc.Modules
         public string? ResponseDescription { get; set; }
 
         public string? ExampleResponse { get; set; }
+
+        /// <summary>
+        /// Indicates that a successful response may carry a <c>null</c> result (for example, when the
+        /// requested entity does not exist), as opposed to returning a JSON-RPC error.
+        /// </summary>
+        /// <remarks>Consumed by the documentation generator to flag nullable results.</remarks>
+        public bool ResultCanBeNull { get; set; }
     }
 }
