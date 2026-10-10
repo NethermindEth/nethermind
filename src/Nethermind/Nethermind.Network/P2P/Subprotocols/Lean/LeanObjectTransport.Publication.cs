@@ -165,12 +165,20 @@ public sealed partial class LeanObjectTransport
     /// Local sources come first: proofs of blocks this node built, served block proofs and known headers. Otherwise peers
     /// that announced the block are asked first, then the rest, until the caller's deadline. The sidecar's context must
     /// match the block's number, transactions root and <c>get_deps_hash(dependencies(block))</c>, and the header rebuilt
-    /// from its skeleton must hash to the block hash.
+    /// from its skeleton must hash to the block hash. No proof is returned for a block whose dependencies use a scheme the
+    /// profile does not enable or fail EIP-8288 <c>dependencies_fit_block</c>.
     /// </remarks>
     public async Task<RecursiveStark?> TryGetAsync(Block block, CancellationToken cancellationToken)
     {
         if (block.Hash is not { } hash || block.Header.TxRoot is not { } transactionsRoot) return null;
-        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        // Such a block is invalid under the profile's circuit or EIP-8288's block limits, whatever proof a peer offers.
+        if (!Eip8288Dependencies.AreSchemesEnabled(dependencies) || !LeanProofCapacity.FitsBlock(dependencies))
+        {
+            if (_logger.IsDebug) _logger.Debug($"lean/1 no sidecar for {block.ToString(Block.Format.Short)}: dependencies outside the profile or block limits");
+            return null;
+        }
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
         LeanSelector selector = new(LeanProtocol.KindBlockProof, LocalProfile, LeanProtocol.LookupPrimary, hash.ValueHash256);
         lock (_gate)
         {

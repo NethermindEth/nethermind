@@ -103,7 +103,13 @@ public class LeanTransportTests
     public void Profile_id_is_the_domain_separated_keccak_of_the_aggregated_key()
     {
         byte[] preimage = [.. "lean/1/profile"u8, 0, .. Eip8288Constants.AggregatedVk];
-        Assert.That(LeanObjectTransport.LocalProfile, Is.EqualTo(ValueKeccak.Compute(preimage)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanObjectTransport.LocalProfile, Is.EqualTo(ValueKeccak.Compute(preimage)));
+            // Pinned with the LeanVM guest: a different enabled_schemes set needs a new key and so a new profile.
+            Assert.That(LeanObjectTransport.LocalProfile.ToString(false),
+                Is.EqualTo("d4822e0deca6b14894dcfbd137b2bcaf9dd225f869afd47fc942afc015e0d370"));
+        }
     }
 
     [TestCase(1)]
@@ -460,6 +466,19 @@ public class LeanTransportTests
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 2)).SetName("Unknown mode");
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0,
             LeanRlp.EncodeList(LeanRlp.EncodeBytes(new byte[95])))).SetName("Dependency not 96 bytes");
+        byte[] Dependency(byte scheme, byte padding = 0)
+        {
+            byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+            dependency[0] = padding;
+            dependency[31] = scheme;
+            return LeanRlp.EncodeList(LeanRlp.EncodeBytes(dependency));
+        }
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0, Dependency(0x12)))
+            .SetName("Dependency scheme outside the profile");
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0, Dependency(0x00)))
+            .SetName("Dependency scheme zero");
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 0,
+            Dependency(Eip8288Constants.LeanSphincsScheme, padding: 1))).SetName("Dependency with nonzero scheme padding");
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 1, null, LeanRlp.EncodeList()))
             .SetName("Mode 1 with proof list");
         yield return new TestCaseData(LeanProtocol.KindBlockProof, LeanRlp.EncodeList(LeanRlp.EncodeBytes([1]), LeanRlp.EncodeBytes([1])))

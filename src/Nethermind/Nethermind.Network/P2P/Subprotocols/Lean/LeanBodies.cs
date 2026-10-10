@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
@@ -16,7 +17,7 @@ public static class LeanBodies
     public readonly record struct WrapperEntry(ValueHash256 Hash, bool IsFull, int EnvelopeOffset, int EnvelopeLength);
 
     /// <summary>Parses <c>RLP([transactions, mode, [deps, proof_content]])</c> without decoding transactions.</summary>
-    /// <exception cref="RlpException">The body is not a canonical kind-1 encoding.</exception>
+    /// <exception cref="RlpException">The body is not a canonical kind-1 encoding, or a dependency's scheme is not enabled.</exception>
     public static List<WrapperEntry> ParseWrapper(ReadOnlySpan<byte> body)
     {
         LeanRlpReader outer = new(body);
@@ -50,7 +51,13 @@ public static class LeanBodies
         wrapper.End();
         LeanRlpReader deps = content.ReadList();
         while (deps.HasMore)
-            if (deps.ReadBytes().Length != Eip8288Constants.DependencyTripleLength) throw new RlpException("Dependency is not 96 bytes");
+        {
+            ReadOnlySpan<byte> dependency = deps.ReadBytes();
+            if (dependency.Length != Eip8288Constants.DependencyTripleLength) throw new RlpException("Dependency is not 96 bytes");
+            // Only schemes the local profile enables: its AGGREGATED_VK fixes EIP-8288's enabled_schemes, and no other profile is fetched.
+            if (!dependency[..31].IsZero() || !Eip8288Dependencies.IsAcceptedScheme(dependency[31]))
+                throw new RlpException("Dependency scheme is not enabled by the profile");
+        }
         switch (mode)
         {
             case 0:

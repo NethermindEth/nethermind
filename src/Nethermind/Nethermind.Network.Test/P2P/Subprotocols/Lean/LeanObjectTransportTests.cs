@@ -10,6 +10,7 @@ using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -334,6 +335,72 @@ public class LeanObjectTransportTests
             Assert.That(node.Pending, Is.Empty);
             Assert.That(a.Penalties, Is.Not.Empty, "the preliminary proof check does not validate the wrapper");
         }
+    }
+
+    [TestCase((byte)0x12)]
+    [TestCase((byte)0x00)]
+    public async Task Wrapper_with_a_scheme_outside_the_profile_is_rejected_before_verification(byte scheme)
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        Transaction transaction = FrameTransaction(18);
+        // The transport commitment and deps_hash match the claimed list; the scheme alone makes it invalid.
+        List<FrameDependency> claimed = [new(scheme, ValueKeccak.Compute([18]), default)];
+        byte[] body = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash!)],
+            Deps = claimed,
+            Mode = MempoolWrapper.ModeRecursive,
+            RecursiveStark = new RecursiveStark(Proof(ChunkBytes), new Hash256(Eip8288Dependencies.ComputeDepsHash(claimed)))
+        }).Bytes;
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+
+        await Until(() => node.Transport.IsTombstoned(descriptor.ObjectId));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Penalties, Has.One.Contains("not enabled by the profile"), "rejected by the transport's body check");
+            Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False, "rejected before proof verification");
+            Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty, "nothing is recovered for an invalid wrapper");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> BlockDependencySets()
+    {
+        static FrameDependency Sphincs(int i) => new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default);
+        static FrameDependency Stark(int i) => new(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(BitConverter.GetBytes(i)), default);
+        int maxStark = Eip8288Constants.MaxLeanStarkDepsPerBlock;
+        int maxDeps = Eip8288Constants.MaxDepsPerBlock;
+        yield return new TestCaseData(Enumerable.Range(0, maxStark).Select(Stark).Concat(Enumerable.Range(0, maxDeps - maxStark).Select(Sphincs)).ToArray(), true)
+            .SetName("At MAX_DEPS_PER_BLOCK and MAX_LEANSTARK_DEPS_PER_BLOCK");
+        yield return new TestCaseData(Enumerable.Range(0, maxDeps + 1).Select(Sphincs).ToArray(), false).SetName("Above MAX_DEPS_PER_BLOCK");
+        yield return new TestCaseData(Enumerable.Range(0, maxStark + 1).Select(Stark).ToArray(), false).SetName("Above MAX_LEANSTARK_DEPS_PER_BLOCK");
+        yield return new TestCaseData(new[] { Sphincs(0), new FrameDependency(0x12, default, default) }, false).SetName("Scheme outside the profile");
+    }
+
+    [TestCaseSource(nameof(BlockDependencySets))]
+    public async Task Sidecar_is_sought_only_for_blocks_within_the_profile_and_block_limits(FrameDependency[] dependencies, bool sought)
+    {
+        using LeanTestNode node = new(manualTime: false);
+        FakeLink a = new();
+        node.Connect(a);
+        BlockHeader header = LeanTransportTests.ProofHeader([]);
+        header.RecursiveStark = null;
+        // dependencies(block) is read from the frames alone, so one frame may carry the whole set.
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))]
+        };
+
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(sought ? 2 : 10));
+        Task<RecursiveStark?> fetch = node.Transport.TryGetAsync(new Block(header, new BlockBody([transaction], [])), deadline.Token);
+        if (sought) await Until(() => a.Sent<GetObjectsMessage>().Length > 0);
+
+        Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
+        Assert.That(a.Sent<GetObjectsMessage>(), sought ? Is.Not.Empty : Is.Empty);
     }
 
     [Test]
