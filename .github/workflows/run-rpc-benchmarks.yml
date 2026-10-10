@@ -191,7 +191,7 @@ on:
         required: false
         default: ""
       node_config:
-        description: Advanced — node/runner JSON (db_source, db_isolation, scratch_root, cpuset, memory, cpu_max_freq_khz, reference_*). See README.
+        description: Advanced — node/runner JSON (db_source, db_isolation, scratch_root, cpuset, memory, cpu_max_freq_khz, rpc_gas_cap for single-node tools, reference_*). See README.
         required: false
         default: ""
   pull_request:
@@ -257,6 +257,7 @@ jobs:
       health_timeout: ${{ steps.resolve.outputs.health_timeout }}
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
+      rpc_gas_cap: ${{ steps.resolve.outputs.rpc_gas_cap }}
       cpu_max_freq_khz: ${{ steps.resolve.outputs.cpu_max_freq_khz }}
       cpu_stabilize: ${{ steps.resolve.outputs.cpu_stabilize }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
@@ -593,6 +594,17 @@ jobs:
           echo "${node_config}" | jq -e . >/dev/null 2>&1 || fail "node_config is not valid JSON: ${node_config}"
           nc() { echo "${node_config}" | jq -r "$1 // empty"; }
 
+          rpc_gas_cap="$(nc '.rpc_gas_cap')"
+          if [[ "$(echo "${node_config}" | jq -r '.rpc_gas_cap != null')" == "true" ]]; then
+            [[ "${sweep}" != "true" ]] || fail "node_config.rpc_gas_cap is supported only by single-node tools."
+            [[ "$(echo "${node_config}" | jq -r '.rpc_gas_cap | type')" == "number" && "${rpc_gas_cap}" =~ ^[1-9][0-9]*$ && ${#rpc_gas_cap} -le 18 ]] \
+              || fail "node_config.rpc_gas_cap must be a positive JSON integer of at most 18 digits."
+          elif [[ "${eth_call_corpus}" == "true" ]]; then
+            rpc_gas_cap="1000000000000"
+          else
+            rpc_gas_cap="1000000000"
+          fi
+
           # ARM carries the numbered snapshot only; sweeps, geth/reth and comparisons also need that same-head set.
           DEFAULT_SNAPSHOT_BLOCK="25490000"
           if [[ -z "${snapshot_block}" ]] && { [[ "${arch}" == "arm64" || "${comparison}" == "true" || "${sweep}" == "true" ]] || [[ "${client}" != "nethermind" ]]; }; then
@@ -734,6 +746,7 @@ jobs:
             echo "health_timeout=${health_timeout}"
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
+            echo "rpc_gas_cap=${rpc_gas_cap}"
             echo "cpu_max_freq_khz=${cpu_max_freq_khz}"
             echo "cpu_stabilize=${cpu_stabilize}"
             echo "eth_call_corpus=${eth_call_corpus}"
@@ -1091,7 +1104,7 @@ jobs:
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.layout_flags }}
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
-          RPC_GAS_CAP: ${{ needs.resolve.outputs.eth_call_corpus == 'true' && '1000000000000' || '' }}
+          RPC_GAS_CAP: ${{ needs.resolve.outputs.rpc_gas_cap }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTNET_TRACE: ${{ needs.resolve.outputs.dotnet_trace }}
@@ -1121,6 +1134,7 @@ jobs:
           LAYOUT_FLAGS: ${{ needs.resolve.outputs.ref_layout_flags }}
           ADDITIONAL_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
           HEALTH_TIMEOUT: ${{ needs.resolve.outputs.health_timeout }}
+          RPC_GAS_CAP: ${{ needs.resolve.outputs.rpc_gas_cap }}
           DOTTRACE: "false"
           PERF: "false"
           DOTNET_TRACE: "false"

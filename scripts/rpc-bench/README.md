@@ -65,6 +65,19 @@ exists, it is diagnostic only: it cannot monitor the accumulated writes, restore
 isolation, or make those timings comparable. Use separate fresh reth
 snapshots/runs when a clean A/B is required.
 
+### Single-node gas cap
+
+For `jsonbench`, `flood` and `ethcallchaos`, set `node_config.rpc_gas_cap` to a
+positive JSON integer, for example `{"rpc_gas_cap":2000000000}`. The resolved
+cap is passed to both nodes when a reference client is used. Existing defaults
+remain 1B gas, or 1T for private-corpus single-node runs. This key is refused in
+sweep presets rather than silently ignored.
+
+Use this key instead of adding `--JsonRpc.GasCap` to
+`additional_nethermind_flags`: the startup script already supplies that option,
+and repeating it can prevent the node from starting. The heavy synthetic
+`eth_call` workload requests 2B gas and needs a cap of at least that value.
+
 ### Per-arm options
 
 `tool_config.clients` entries use `client[@image][#K=V[,K=V]][+flag[;flag]]`, in
