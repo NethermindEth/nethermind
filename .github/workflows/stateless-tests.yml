@@ -81,6 +81,13 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
 
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
       # One bflat image compiles all three; the layout, entry point and exit
       # protocol differ per target and come from the guest's Makefile.
       - name: Build Nethermind
@@ -148,6 +155,13 @@ jobs:
       # recipes expect it back.
       - name: Restore the executable bit
         run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/nethermind"
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Run Nethermind guest
         working-directory: src/Nethermind/${{ matrix.project }}
