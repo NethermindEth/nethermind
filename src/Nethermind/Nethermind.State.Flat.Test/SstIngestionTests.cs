@@ -304,6 +304,38 @@ public class SstIngestionTests
         }
     }
 
+    [Test]
+    public void Failed_wal_flush_after_the_commit_propagates_without_claiming_the_marker_was_kept()
+    {
+        StateId s1 = State(1, 1);
+        StateId s2 = State(2, 2);
+
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, s1, WriteFlags.None))
+        {
+            batch.SetAccount(Addr, new Account(100));
+        }
+
+        TestErrorLogManager logManager = new();
+        FaultingColumnsDb faulting = WrapWithFaults(logManager: logManager);
+        faulting.FailWalFlush = true;
+
+        Assert.That(() =>
+        {
+            using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(s1, s2, WriteFlags.None);
+            batch.SetAccount(Addr, new Account(200));
+        }, Throws.InstanceOf<IOException>().With.Message.EqualTo("injected WAL flush failure"));
+
+        faulting.FailWalFlush = false;
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(s2));
+            Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
+            Assert.That(logManager.Errors.Select(static e => e.Text), Is.Empty);
+        }
+    }
+
     /// <summary>Observes the fatal-exit decision instead of taking it, which a test process cannot survive.</summary>
     private sealed class ObservablePersistence(IColumnsDb<FlatDbColumns> db, ILogManager logManager, IFlatDbConfig config, IProcessExitSource? exitSource = null)
         : RocksDbPersistence(db, logManager, config, exitSource)
@@ -314,15 +346,15 @@ public class SstIngestionTests
     }
 
     /// <summary>Re-points <see cref="_persistence"/> at the same DB through a fault injector.</summary>
-    private FaultingColumnsDb WrapWithFaults(IProcessExitSource? exitSource = null)
+    private FaultingColumnsDb WrapWithFaults(IProcessExitSource? exitSource = null, ILogManager? logManager = null)
     {
         FaultingColumnsDb faulting = new(_db);
         _persistence.Dispose();
-        _persistence = new ObservablePersistence(faulting, LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true }, exitSource);
+        _persistence = new ObservablePersistence(faulting, logManager ?? LimboLogs.Instance, new FlatDbConfig { PersistViaSstIngestion = true }, exitSource);
         return faulting;
     }
 
-    /// <summary>Fails one chosen write batch or column ingest of the real DB, and records the headroom waits.</summary>
+    /// <summary>Fails one chosen write batch, column ingest or WAL flush of the real DB, and records the headroom waits.</summary>
     /// <remarks>Forwards only what the SST-ingest persist path uses.</remarks>
     private sealed class FaultingColumnsDb(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
     {
@@ -331,6 +363,8 @@ public class SstIngestionTests
         private bool _commitBeforeFailing;
 
         public ConcurrentQueue<CancellationToken> HeadroomWaitTokens { get; } = [];
+
+        public bool FailWalFlush { get; set; }
 
         /// <summary>Runs <paramref name="fault"/> with the staged files before every ingest into <paramref name="column"/>;
         /// <c>null</c> removes it.</summary>
@@ -366,7 +400,12 @@ public class SstIngestionTests
         public IDb GetColumnDb(FlatDbColumns key) => new FaultingColumn(this, key, inner.GetColumnDb(key));
         public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
         public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot() => inner.CreateSnapshot();
-        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void Flush(bool onlyWal = false)
+        {
+            if (onlyWal && FailWalFlush) throw new IOException("injected WAL flush failure");
+            inner.Flush(onlyWal);
+        }
+
         public void SyncWal() => inner.SyncWal();
         public void Dispose() => inner.Dispose();
 
