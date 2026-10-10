@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,17 +19,26 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
+        private readonly Func<BlockHeader, IReadOnlyStateProvider> _stateAt;
         private readonly IBlockBuildingTracker? _blockBuildingTracker;
         // For testing
         public bool HasSynced { private get; init; }
 
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), blockBuildingTracker)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), header => new SpecificBlockReadOnlyStateProvider(stateReader, header), blockBuildingTracker)
         {
         }
 
+        /// <remarks><paramref name="stateProvider"/> is used as given, so <see cref="TryGetHeadState"/> returns it
+        /// unbound: binding the state to the head is the caller's concern.</remarks>
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, stateProvider, _ => stateProvider, blockBuildingTracker)
         {
+        }
+
+        private ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, Func<BlockHeader, IReadOnlyStateProvider> stateAt, IBlockBuildingTracker? blockBuildingTracker)
+        {
+            _stateAt = stateAt;
             _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
@@ -39,13 +49,22 @@ namespace Nethermind.Blockchain
             // gas limit, fees, and proof version at their defaults until the first head change.
             if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
-            blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
+            blockTree.BlockAddedToMain += OnHeadChanged;
+            blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
 
         public IReadOnlyStateProvider ReadOnlyStateProvider { get; }
+
+        /// <inheritdoc/>
+        public bool TryGetHeadState([NotNullWhen(true)] out BlockHeader? head, [NotNullWhen(true)] out IReadOnlyStateProvider? state)
+        {
+            head = _blockTree.Head?.Header;
+            state = head is null ? null : _stateAt(head);
+            return head is not null;
+        }
 
         public ulong HeadNumber { get; private set; }
 
@@ -81,6 +100,11 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
+        public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain;
+
+        public Block? FindRemovedBlock(BlockHeader header) =>
+            _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
+
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
             HeadNumber = e.Block.Number;
@@ -88,6 +112,8 @@ namespace Nethermind.Blockchain
             ReadHead(e.Block.Header);
             HeadChanged?.Invoke(sender, e);
         }
+
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => BlockRemovedFromMain?.Invoke(sender, e);
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
         /// <remarks>The constructor calls this only for a non-genesis head; the head-change handler always calls it.

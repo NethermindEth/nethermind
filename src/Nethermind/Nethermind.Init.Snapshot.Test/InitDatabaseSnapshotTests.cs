@@ -77,13 +77,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_FreeSpaceBelowExtractionEstimate_ThrowsIOException()
+    public async Task Execute_FreeSpaceBelowExtractionEstimate_ThrowsIOException()
     {
         long snapshotSize = WriteSnapshotTar();
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(snapshotSize));
 
-        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -95,13 +95,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_FreeSpaceBelowDownloadRequirement_ThrowsIOExceptionBeforeDownloading()
+    public async Task Execute_FreeSpaceBelowDownloadRequirement_ThrowsIOExceptionBeforeDownloading()
     {
         using SnapshotServer server = SnapshotServer.Start(contentLength: 1_000_000);
         _snapshotConfig.DownloadUrl = server.Url;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(1_000_000));
 
-        IOException exception = Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None))!;
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -133,14 +133,14 @@ public class InitDatabaseSnapshotTests
 
     [TestCase(0, TestName = "Zero")]
     [TestCase(17, TestName = "AboveMaximum")]
-    public void Execute_StreamingConnectionsOutOfRange_Throws(int connections)
+    public async Task Execute_StreamingConnectionsOutOfRange_Throws(int connections)
     {
         _snapshotConfig.Streaming = true;
         _snapshotConfig.StreamingConnections = connections;
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(timeout.Token),
+        await Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(timeout.Token),
             "a connection count outside 1-16 must be rejected before any network activity");
     }
 
@@ -222,13 +222,13 @@ public class InitDatabaseSnapshotTests
     }
 
     [Test]
-    public void Execute_ArchiveNotMatchingStripComponents_Throws()
+    public async Task Execute_ArchiveNotMatchingStripComponents_Throws()
     {
         File.WriteAllBytes(_snapshotPath, TestArchive.BuildTarWithoutTopLevelDirectory());
         AdvanceCheckpoint(SnapshotStage.Verified);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
 
-        InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None))!;
+        InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(() => step.Execute(CancellationToken.None)))!;
 
         Assert.That(exception.Message, Does.Contain("StripComponents"),
             "an extraction that produced no files must point the operator at the strip configuration");
