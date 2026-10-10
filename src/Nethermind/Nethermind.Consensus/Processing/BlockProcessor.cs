@@ -28,6 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
@@ -246,7 +247,7 @@ public partial class BlockProcessor(
                                 ? new RecursiveProofInput(proven, parentProof!) : null;
                             _productionProofCache.TrySchedule(deps, depsHash, RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, parent), leanProofStore);
                         }
-                        throw new LeanProofNotReadyException(new HashSet<FrameDependency>(proven));
+                        throw new LeanProofNotReadyException(ChooseProvenLimit(block, leanProofStore.ProvenSubsets(new HashSet<FrameDependency>(deps))));
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
@@ -261,6 +262,46 @@ public partial class BlockProcessor(
             // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
             block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
         }
+    }
+
+    /// <summary>Picks the proven dependency set that keeps the most of this body's transactions includable.</summary>
+    /// <remarks>
+    /// A transaction is kept when its dependencies lie in the set and every earlier transaction of its nonce domain is kept,
+    /// as a skipped nonce blocks the rest of that sender's sequence. Only a set whose kept transactions need exactly a proven statement
+    /// qualifies, so the rebuild reuses that proof unchanged; the empty set always qualifies.
+    /// </remarks>
+    private static HashSet<FrameDependency> ChooseProvenLimit(Block block, List<FrameDependency[]> proven)
+    {
+        HashSet<ValueHash256> statements = [];
+        foreach (FrameDependency[] subset in proven) statements.Add(Eip8288Dependencies.ComputeDepsHash(subset));
+        HashSet<FrameDependency> best = [];
+        int bestKept = -1;
+        HashSet<(Address?, UInt256)> blocked = [];
+        foreach (FrameDependency[] subset in proven)
+        {
+            HashSet<FrameDependency> limit = [.. subset];
+            HashSet<FrameDependency> needed = [];
+            int kept = 0;
+            blocked.Clear();
+            foreach (Transaction transaction in block.Transactions)
+            {
+                List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
+                (Address?, UInt256) domain = (transaction.SenderAddress, transaction.NonceKeys is { Length: > 0 } keys ? keys[0] : UInt256.Zero);
+                if (blocked.Contains(domain)) continue;
+                if (!limit.IsSupersetOf(dependencies))
+                {
+                    blocked.Add(domain);
+                    continue;
+                }
+                needed.UnionWith(dependencies);
+                kept++;
+            }
+            if (kept <= bestKept || needed.Count != 0 && !statements.Contains(Eip8288Dependencies.ComputeDepsHash(Eip8288Dependencies.Canonicalize(needed))))
+                continue;
+            best = needed;
+            bestKept = kept;
+        }
+        return best;
     }
 
     /// <summary>

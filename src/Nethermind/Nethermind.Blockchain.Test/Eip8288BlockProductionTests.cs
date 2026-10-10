@@ -627,6 +627,31 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency shared = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-shared"), default);
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-first"), default);
+        FrameDependency second = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("prefer-second"), default);
+        foreach (FrameDependency dependency in (FrameDependency[])[shared, first, second]) proofs.AddVerified([dependency], [[1]], null);
+        // An equally large proven set whose only transaction waits behind an unproven nonce is listed first.
+        proofs.AddCachedRecursive([second], Eip8288Dependencies.ComputeDepsHash([second]).ToByteArray());
+        proofs.AddCachedRecursive([shared], Eip8288Dependencies.ComputeDepsHash([shared]).ToByteArray());
+        Transaction sharedTransaction = CreateTransaction(chain, shared, [1]);
+        Transaction blocking = CreateTransaction(chain, first, [UInt256.Zero]);
+        Transaction blocked = CreateTransaction(chain, second, [UInt256.Zero], nonce: 1);
+        foreach (Transaction transaction in (Transaction[])[sharedTransaction, blocking, blocked])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(block!.Transactions, Is.EqualTo(new[] { sharedTransaction }));
+    }
+
+    [Test]
     public async Task Deadline_production_keeps_shrinking_past_a_proven_set_that_is_not_includable()
     {
         CountingVerifier verifier = new();
@@ -770,7 +795,7 @@ public class Eip8288BlockProductionTests
             })));
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
         Transaction transaction = CreateTransaction(chain, dependency, [UInt256.Zero],
-            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)], 0,
+            [new(sourceId, 0, matchingRoot ? root : TestItem.KeccakC.ValueHash256)], 0, null,
             new(FrameMode.Sender, FrameFlags.None, TestItem.AddressD, executionGasLimit: 100_000, stateGasLimit: GasCostOf.SSetState, UInt256.Zero, default),
             FrameTxTestFrames.PostTx(10_000));
         ProofWrapperService service = chain.Container.Resolve<ProofWrapperService>();
@@ -830,7 +855,7 @@ public class Eip8288BlockProductionTests
         });
 
     private static Transaction CreateTransaction(BasicTestBlockchain chain, FrameDependency dependency, UInt256[] keys,
-        RecentRootReference[]? roots = null, ulong nonce = 0, params TxFrame[] execution)
+        RecentRootReference[]? roots = null, ulong nonce = 0, PrivateKey? key = null, params TxFrame[] execution)
     {
         ulong stateGas = keys.Length == 1 && keys[0].IsZero ? 0 : (ulong)keys.Length * GasCostOf.SSetState;
         TxFrame[] frames =
@@ -846,7 +871,7 @@ public class Eip8288BlockProductionTests
         {
             Type = TxType.FrameTx,
             ChainId = chain.SpecProvider.ChainId,
-            SenderAddress = TestItem.PrivateKeyB.Address,
+            SenderAddress = (key ?? TestItem.PrivateKeyB).Address,
             Nonce = nonce,
             NonceKeys = keys,
             RecentRootReferences = roots,
@@ -855,7 +880,7 @@ public class Eip8288BlockProductionTests
             GasPrice = 1.GWei,
             DecodedMaxFeePerGas = 100.GWei
         };
-        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        FrameTxTestFrames.SignSecp256k1(transaction, key ?? TestItem.PrivateKeyB, (key ?? TestItem.PrivateKeyB).Address);
         transaction.Hash = transaction.CalculateHash();
         return transaction;
     }

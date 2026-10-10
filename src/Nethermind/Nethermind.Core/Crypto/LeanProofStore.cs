@@ -509,6 +509,29 @@ public sealed class LeanProofStore
         }
     }
 
+    /// <summary>Lists the distinct dependency sets inside <paramref name="within"/> that have a verified recursive proof.</summary>
+    public List<FrameDependency[]> ProvenSubsets(IReadOnlySet<FrameDependency> within)
+    {
+        List<FrameDependency[]> subsets = [];
+        HashSet<ValueHash256> seen = [];
+        lock (_lock)
+        {
+            foreach (ProofRecord record in _recursiveCache) Consider(record);
+            foreach (ProofRecord record in _records)
+                if (record.RecursiveProof is not null) Consider(record);
+        }
+        return subsets;
+
+        void Consider(ProofRecord record)
+        {
+            if (record.Dependencies.Length > within.Count || seen.Contains(record.DependencyHash)) return;
+            foreach (FrameDependency dependency in record.Dependencies)
+                if (!within.Contains(dependency)) return;
+            seen.Add(record.DependencyHash);
+            subsets.Add([.. record.Dependencies]);
+        }
+    }
+
     /// <summary>Collects direct and recursive witnesses, discarding dependencies outside the requested set.</summary>
     public bool TryGetInput(IReadOnlyList<FrameDependency> dependencies, out AggregationInput input)
     {
