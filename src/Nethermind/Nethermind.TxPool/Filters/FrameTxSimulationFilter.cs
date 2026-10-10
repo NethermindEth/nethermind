@@ -79,7 +79,7 @@ internal sealed class FrameTxSimulationFilter(
                     if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);
-                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same mutable code.");
+                        if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, too many pending transactions depend on the same account with mutable code.");
                         return AcceptTxResult.FrameTxCodeDependencyLimitReached;
                     }
 

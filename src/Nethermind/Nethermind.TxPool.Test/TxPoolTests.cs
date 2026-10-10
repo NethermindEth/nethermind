@@ -4888,7 +4888,7 @@ namespace Nethermind.TxPool.Test
         private static readonly FrameTxCodeDependency[] DelegatingCodeDependency = [new(TestItem.AddressE, TestItem.KeccakA)];
 
         // EIP-8298: a prefix relying on code that can change by delegating is admitted, but only up to the cap
-        // per code hash, so one code change can invalidate a bounded number of pending transactions.
+        // per account, so one code change can invalidate a bounded number of pending transactions.
         [Test]
         public void Frame_transactions_relying_on_the_same_delegating_code_are_capped()
         {
@@ -4901,6 +4901,28 @@ namespace Nethermind.TxPool.Test
             foreach (PrivateKey sender in senders) EnsureSenderBalance(sender.Address, UInt256.MaxValue);
 
             AcceptTxResult[] results = Array.ConvertAll(senders, sender => _txPool.SubmitTx(SponsoredFrameTx(sender, TestItem.PrivateKeyD), TxHandlingOptions.None));
+
+            Assert.That(results, Is.EqualTo(new[] { AcceptTxResult.Accepted, AcceptTxResult.Accepted, AcceptTxResult.FrameTxCodeDependencyLimitReached }));
+        }
+
+        // SETCODEFROM rewrites only the account it runs as, so proxies sharing bytecode do not share a budget.
+        [Test]
+        public void Frame_transactions_relying_on_distinct_accounts_with_the_same_delegating_code_are_capped_separately()
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxMaxPendingPerDelegatingCode = 1 },
+                new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            PrivateKey[] senders = [TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC];
+            foreach (PrivateKey sender in senders) EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+
+            Address[] proxies = [TestItem.AddressE, TestItem.AddressF, TestItem.AddressE];
+            AcceptTxResult[] results = new AcceptTxResult[senders.Length];
+            for (int i = 0; i < senders.Length; i++)
+            {
+                SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD, [new FrameTxCodeDependency(proxies[i], TestItem.KeccakA)]));
+                results[i] = _txPool.SubmitTx(SponsoredFrameTx(senders[i], TestItem.PrivateKeyD), TxHandlingOptions.None);
+            }
 
             Assert.That(results, Is.EqualTo(new[] { AcceptTxResult.Accepted, AcceptTxResult.Accepted, AcceptTxResult.FrameTxCodeDependencyLimitReached }));
         }

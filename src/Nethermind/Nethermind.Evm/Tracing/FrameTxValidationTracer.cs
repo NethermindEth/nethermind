@@ -324,7 +324,7 @@ public sealed class FrameTxValidationTracer(
     /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
     /// Direct SETCODEFROM is refused. A target that can only reach it by delegating, such as a proxy
     /// implementation, is admitted but recorded in <see cref="CodeDependencies"/>, so the pool revalidates
-    /// when its code changes and caps how many pending transactions rely on that code.
+    /// when its code changes and caps how many pending transactions rely on that account.
     /// </remarks>
     private bool HasMutableCode(Address target)
     {
