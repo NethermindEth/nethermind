@@ -120,7 +120,7 @@ public class SstIngestionTests
 
         faulting.FailIngest(FlatDbColumns.Storage, null);
 
-        (StateId To, string[] Files)? pending = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
+        (StateId To, (FlatDbColumns Column, string Name)[] Files)? pending = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
         Assert.That(pending, Is.Not.Null);
         string[] pendingFiles = StagedSstFiles();
 
@@ -512,6 +512,9 @@ public class SstIngestionTests
         return Directory.Exists(stagingDir) ? Directory.GetFiles(stagingDir, "*.sst") : [];
     }
 
+    private static IEnumerable<(FlatDbColumns Column, string Name)> WithColumn(FlatDbColumns column, IEnumerable<string> files) =>
+        files.Select(file => (column, file));
+
     private static void AssertSlot(IPersistence.IPersistenceReader reader, in UInt256 slot, in UInt256 expected)
     {
         UInt256 read = default;
@@ -709,7 +712,7 @@ public class SstIngestionTests
 
         faulting.FailIngest(FlatDbColumns.Storage, null);
 
-        (StateId To, string[] Files)? marker = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
+        (StateId To, (FlatDbColumns Column, string Name)[] Files)? marker = BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata));
         Assert.That(marker, Is.Not.Null);
         Assert.That(marker!.Value.To, Is.EqualTo(s2));
         Assert.That(StagedSstFiles(), Is.Not.Empty);
@@ -783,7 +786,7 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Crash_between_column_ingests_rolls_forward_on_reopen([Values] bool persistViaSstIngestion)
+    public void Crash_between_column_ingests_rolls_forward_on_reopen([Values] bool persistViaSstIngestion, [Values] bool neutralStagedFileName)
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
@@ -801,7 +804,15 @@ public class SstIngestionTests
         {
             accountBatch.Set(accountKey, [0xa2]);
             storageBatch.Set(storageKey, [0xb2]);
-            List<string> stagedFiles = [.. accountBatch.SealToStagedFiles(), .. storageBatch.SealToStagedFiles()];
+            string storageFile = storageBatch.SealToStagedFiles().Single();
+            if (neutralStagedFileName)
+            {
+                string renamed = Path.Combine(Path.GetDirectoryName(storageFile)!, "pending.sst");
+                File.Move(storageFile, renamed);
+                storageFile = renamed;
+            }
+            List<(FlatDbColumns Column, string Name)> stagedFiles =
+                [.. WithColumn(FlatDbColumns.Account, accountBatch.SealToStagedFiles()), (FlatDbColumns.Storage, storageFile)];
 
             using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
                 BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
@@ -844,7 +855,7 @@ public class SstIngestionTests
         try
         {
             accountBatch.Set(accountKey, [0xa3]);
-            List<string> stagedFiles = [.. accountBatch.SealToStagedFiles()];
+            List<(FlatDbColumns Column, string Name)> stagedFiles = [.. WithColumn(FlatDbColumns.Account, accountBatch.SealToStagedFiles())];
 
             using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
                 BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
@@ -900,7 +911,8 @@ public class SstIngestionTests
 
             string[] accountFiles = [.. accountBatch.SealToStagedFiles()];
             Assert.That(accountFiles, Has.Length.GreaterThan(1));
-            List<string> stagedFiles = [.. accountFiles, .. storageBatch.SealToStagedFiles()];
+            List<(FlatDbColumns Column, string Name)> stagedFiles =
+                [.. WithColumn(FlatDbColumns.Account, accountFiles), .. WithColumn(FlatDbColumns.Storage, storageBatch.SealToStagedFiles())];
 
             using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
                 BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
@@ -930,6 +942,17 @@ public class SstIngestionTests
             Assert.That(BasePersistence.ReadIngestMarker(_db.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
             Assert.That(StagedSstFiles(), Is.Empty);
         }
+    }
+
+    [Test]
+    public void Roll_forward_rejects_a_marker_recording_a_column_that_cannot_be_ingested(
+        [Values(FlatDbColumns.Metadata, (FlatDbColumns)0xee)] FlatDbColumns column)
+    {
+        using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
+            BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), State(1, 1), [(column, "Account_1.sst")]);
+        _db.Flush(onlyWal: true);
+
+        Assert.That(() => Reopen(), Throws.InstanceOf<InvalidOperationException>());
     }
 
     [Test]

@@ -194,9 +194,12 @@ public class RocksDbPersistence : IPersistence, IDisposable
                     $"Cannot persist {to}: the flat DB SST ingest to {pendingMarker.To} is still pending. Restart to roll it forward.");
             }
 
-            List<string> stagedFiles = [];
-            foreach (ISstIngestWriteBatch batch in batches)
-                stagedFiles.AddRange(batch.SealToStagedFiles());
+            List<(FlatDbColumns Column, string Name)> stagedFiles = [];
+            for (int i = 0; i < batches.Length; i++)
+            {
+                foreach (string file in batches[i].SealToStagedFiles())
+                    stagedFiles.Add((IngestColumns[i], file));
+            }
 
             // The staged files are the marker's redo log, and roll-forward reads a missing one as move-ingested.
             // Their contents are already synced by SstFileWriter.Finish, but the directory entries naming them are
@@ -424,15 +427,14 @@ public class RocksDbPersistence : IPersistence, IDisposable
     /// present is re-ingested as the same set in the same order, which gives the same result whether or not it already
     /// went live.
     /// </remarks>
-    private static void RollForwardPendingIngest(IColumnsDb<FlatDbColumns> db, string stagingDir, (StateId To, string[] Files) pending, ILogger logger)
+    private static void RollForwardPendingIngest(IColumnsDb<FlatDbColumns> db, string stagingDir, (StateId To, (FlatDbColumns Column, string Name)[] Files) pending, ILogger logger)
     {
         Dictionary<FlatDbColumns, List<string>> byColumn = [];
         HashSet<FlatDbColumns> liveColumns = [];
-        foreach (string name in pending.Files)
+        foreach ((FlatDbColumns column, string name) in pending.Files)
         {
-            int cut = name.LastIndexOf('_');
-            if (cut <= 0 || !Enum.TryParse(name.AsSpan(0, cut), out FlatDbColumns column) || !Enum.IsDefined(column) || column == FlatDbColumns.Metadata)
-                throw new InvalidOperationException($"Flat DB SST ingest marker references unrecognized staged file '{name}'");
+            if (!Enum.IsDefined(column) || column == FlatDbColumns.Metadata)
+                throw new InvalidOperationException($"Flat DB SST ingest marker records unrecognized column {(int)column} for staged file '{name}'");
 
             string path = Path.Combine(stagingDir, name);
             if (!File.Exists(path))

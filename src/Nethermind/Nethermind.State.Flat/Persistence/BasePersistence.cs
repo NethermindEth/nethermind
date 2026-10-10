@@ -69,14 +69,14 @@ public static class BasePersistence
     }
 
     /// <summary>
-    /// Durable redo marker for an SST-ingest persist: target state plus the staged file names. Written (WAL-synced)
+    /// Durable redo marker for an SST-ingest persist: target state plus each staged file's column and name. Written (WAL-synced)
     /// before the first ingest; cleared atomically with the <see cref="CurrentStateKey"/> advance. A marker found at
     /// startup means the process died mid-commit and the persist must be rolled forward.
     /// </summary>
-    internal static void SetIngestMarker(IWriteOnlyKeyValueStore kv, in StateId to, IReadOnlyList<string> files)
+    internal static void SetIngestMarker(IWriteOnlyKeyValueStore kv, in StateId to, IReadOnlyList<(FlatDbColumns Column, string Name)> files)
     {
         int size = 8 + 32;
-        foreach (string file in files) size += 2 + Encoding.UTF8.GetByteCount(Path.GetFileName(file));
+        foreach ((_, string file) in files) size += 1 + 2 + Encoding.UTF8.GetByteCount(Path.GetFileName(file));
 
         byte[]? rented = size <= 4096 ? null : ArrayPool<byte>.Shared.Rent(size);
         Span<byte> bytes = rented is null ? stackalloc byte[size] : rented.AsSpan(0, size);
@@ -85,8 +85,9 @@ public static class BasePersistence
             BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], to.BlockNumber);
             to.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
             int offset = 8 + 32;
-            foreach (string file in files)
+            foreach ((FlatDbColumns column, string file) in files)
             {
+                bytes[offset++] = (byte)column;
                 int written = Encoding.UTF8.GetBytes(Path.GetFileName(file), bytes[(offset + 2)..]);
                 BinaryPrimitives.WriteUInt16BigEndian(bytes[offset..], (ushort)written);
                 offset += 2 + written;
@@ -100,20 +101,21 @@ public static class BasePersistence
         }
     }
 
-    internal static (StateId To, string[] Files)? ReadIngestMarker(IReadOnlyKeyValueStore kv)
+    internal static (StateId To, (FlatDbColumns Column, string Name)[] Files)? ReadIngestMarker(IReadOnlyKeyValueStore kv)
     {
         byte[]? bytes = kv.Get(IngestMarkerKey);
         if (bytes is null || bytes.Length < 8 + 32) return null;
 
         StateId to = new(BinaryPrimitives.ReadUInt64BigEndian(bytes), new ValueHash256(bytes.AsSpan(8, 32)));
-        List<string> files = [];
+        List<(FlatDbColumns Column, string Name)> files = [];
         int offset = 8 + 32;
-        while (offset + 2 <= bytes.Length)
+        while (offset + 1 + 2 <= bytes.Length)
         {
+            FlatDbColumns column = (FlatDbColumns)bytes[offset++];
             int length = BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(offset));
             offset += 2;
             if (offset + length > bytes.Length) throw new InvalidDataException("Flat DB SST ingest marker is truncated");
-            files.Add(Encoding.UTF8.GetString(bytes, offset, length));
+            files.Add((column, Encoding.UTF8.GetString(bytes, offset, length)));
             offset += length;
         }
 
