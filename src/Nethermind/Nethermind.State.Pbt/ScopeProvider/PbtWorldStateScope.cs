@@ -26,7 +26,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
     private const int AccountGroupDepth = PbtNodeGroupLayout.AccountTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
     private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
-    private const long AverageNodeGroupBytes = 1024;
+    private const long AverageNodeGroupBytes = 512;
     private const int SlotChunkLength = 64;
 
     private static long _nextScopeId;
@@ -197,7 +197,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <remarks>
     /// Reads the first group below the top node groups of each account zone written, and per account writing its storage
     /// zone, the first storage group and then the groups below each written slot, as deep as the slot's estimated remaining
-    /// group levels: a boundary slot of the first storage group holds about <c>descendantBytes / 1 KiB</c> groups, so its
+    /// group levels: a boundary slot of the first storage group holds about <c>descendantBytes / 512 B</c> groups, so its
     /// remaining depth is about <c>log8</c> of that many group levels. Code leaves are left out: they are content
     /// addressed, so a deployment rarely finds their groups stored.
     /// </remarks>

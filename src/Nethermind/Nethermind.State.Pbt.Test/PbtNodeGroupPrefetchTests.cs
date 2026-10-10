@@ -58,7 +58,7 @@ public class PbtNodeGroupPrefetchTests
 
     [Test]
     public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(
-        [Values(-1L, 0L, 1024L, 1025L, 8 * 1024L, 8 * 1024 + 1L, 1024 * 1024L)] long descendantBytes,
+        [Values(-1L, 0L, 512L, 513L, 8 * 512L, 8 * 512 + 1L, 1024 * 1024L)] long descendantBytes,
         [Values] bool snapshotBacked, [Values] bool readByFold)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
@@ -103,7 +103,7 @@ public class PbtNodeGroupPrefetchTests
         PbtWorldStateScope scope = HintBal(bundle, bal);
 
         HashSet<PbtStorageNodePath> expected = firstGroups;
-        int levels = descendantBytes switch { <= 1024 => 0, <= 8 * 1024 => 1, <= 64 * 1024 => 2, <= 512 * 1024 => 3, _ => 4 };
+        int levels = descendantBytes switch { <= 512 => 0, <= 8 * 512 => 1, <= 64 * 512 => 2, <= 512 * 512 => 3, _ => 4 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {
             PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
