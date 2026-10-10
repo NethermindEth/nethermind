@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.Synchronization.FastSync;
@@ -40,7 +41,7 @@ public class FlatBalHealingTests
     public void SetUp()
     {
         _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
-        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
         _reassembler = new TrieReassembler(_persistence, LimboLogs.Instance);
         _codeDb = new MemDb();
         _balDb = new MemDb();
@@ -543,7 +544,7 @@ public class FlatBalHealingTests
     private static Hash256 BuildRoot(params AccountSpec[] accounts)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
         return CommitState(persistence, accounts);
     }
 

@@ -187,6 +187,18 @@ public static class BasePersistence
     /// </remarks>
     public static bool ReadWipedForSync(IReadOnlyKeyValueStore metadata) => metadata.Get(WipedForSyncKey) is { Length: > 0 };
 
+    /// <summary>
+    /// Durably marks the DB as wiped for a state sync ahead of <see cref="ClearAllColumns"/>, for a caller that drops
+    /// data outside RocksDB first: a crash in between then reads back as an interrupted wipe rather than as a state
+    /// whose nodes are missing.
+    /// </summary>
+    internal static void MarkWipeStarted(IColumnsDb<FlatDbColumns> db)
+    {
+        IDb metadata = db.GetColumnDb(FlatDbColumns.Metadata);
+        metadata.PutSpan(WipedForSyncKey, [1]);
+        metadata.FlushOrThrow();
+    }
+
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
     public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
