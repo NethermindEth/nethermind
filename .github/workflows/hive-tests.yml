@@ -12,7 +12,9 @@ on:
         options:
           - 'all'
           - devp2p
-          - ethereum/eest
+          - ethereum/eels/consume-engine
+          - ethereum/eels/consume-rlp
+          - ethereum/eels/consume-sync
           - ethereum/engine
           - ethereum/graphql
           - ethereum/rpc-compat
