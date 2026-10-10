@@ -168,15 +168,12 @@ public enum Instruction : byte
     SIGPARAM = 0xb4,
     SIGDATACOPY = 0xb5,
 
-    // EIP-8272 recent roots
-    RECENTROOTREFLOAD = 0xb6,
+    // EIP-7906 transaction outcome assertions
+    TXTRACE = 0xb6,
+    TXDIFF = 0xb7,
+    EVENTDATACOPY = 0xb8,
 
-    // EIP-7906, draft: shifted up two from the spec's 0xb5-0xb7, which collides with EIP-8141 and EIP-8272.
-    TXTRACE = 0xb7,
-    TXDIFF = 0xb8,
-    EVENTDATACOPY = 0xb9,
-
-    // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these take the next free values.
+    // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these use provisional values until the EIP assigns them.
     CALLSUB = 0xba,
     CALLDEST = 0xbb,
     RETURNSUB = 0xbc,

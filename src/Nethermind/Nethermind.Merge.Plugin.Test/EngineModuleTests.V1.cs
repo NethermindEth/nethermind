@@ -1149,6 +1149,32 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// A request whose budget ran out before the block reached the tree still queues it once it is suggested, so the
+    /// SYNCING it answers is followed by the block being processed rather than by nothing until the CL re-sends.
+    /// That holds also when the tree is not accepting blocks yet and the suggest completes only after the answer.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task newPayloadV1_out_of_budget_still_processes_the_suggested_block([Values] bool suggestPending)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { NewPayloadBlockProcessingTimeout = 0 });
+        BlockTree blockTree = (BlockTree)chain.BlockTree;
+        Block head = blockTree.Head!;
+        Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+
+        if (suggestPending) blockTree.BlockAcceptingNewBlocks();
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+        if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+
+        Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+        using CancellationTokenSource cts = new(GateTimeout);
+        while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
+        {
+            await Task.Delay(10, cts.Token);
+        }
+    }
+
+    /// <summary>
     /// The wait is for the copy of the head that is committing, not for every block queued behind it: neither an
     /// unrelated block nor another copy of the head, which sync can queue, delays that commit. Waiting for the last
     /// copy instead would hold the engine API's lock for as long as the blocks ahead of that copy take.
@@ -1944,7 +1970,7 @@ public partial class EngineModuleTests
             "the child of a block the node just accepted must be executed, not answered SYNCING");
     }
 
-    /// <summary>Records when <see cref="NewPayloadHandler"/> starts waiting for a watched block's answered copy to leave the queue.</summary>
+    /// <summary>Records when an engine handler starts waiting for a watched block's answered copy to leave the queue.</summary>
     private sealed class CommitWaitProbe
     {
         private Hash256? _watched;
@@ -1958,24 +1984,33 @@ public partial class EngineModuleTests
         {
             if (blockHash == Volatile.Read(ref _watched)) WaitEntered.TrySetResult();
         }
+
+        /// <summary>Completes once the handler waits for a watched block to leave the queue while a copy of it is still there.</summary>
+        public TaskCompletionSource RemovalWaitPending { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void OnRemovalWait(Hash256 blockHash, bool pending)
+        {
+            if (pending && blockHash == Volatile.Read(ref _watched)) RemovalWaitPending.TrySetResult();
+        }
     }
 
     /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
     /// <remarks>The engine RPC module also waits on this commit after answering, so only a wait from inside the handler counts.</remarks>
-    private sealed class CommitWaitObservingQueue(IBlockProcessingQueue inner, CommitWaitProbe probe) : IBlockProcessingQueue
+    /// <param name="handler">The handler whose waits are reported.</param>
+    private sealed class CommitWaitObservingQueue(IBlockProcessingQueue inner, CommitWaitProbe probe, Type handler) : IBlockProcessingQueue
     {
         public ValueTask WaitUntilExecutedCopyRemovedAsync(Hash256 blockHash)
         {
-            if (IsCalledFromNewPayloadHandler()) probe.OnWait(blockHash);
+            if (IsCalledFromHandler()) probe.OnWait(blockHash);
             return inner.WaitUntilExecutedCopyRemovedAsync(blockHash);
         }
 
-        /// <summary>Whether the frame that asked for this wait belongs to <see cref="NewPayloadHandler"/>.</summary>
+        /// <summary>Whether the frame that asked for this wait belongs to the observed handler.</summary>
         /// <remarks>
         /// Only the immediate caller counts, as a continuation can run inline under the handler's frames. Async
         /// state machines are nested in their method's type, hence the declaring-type check.
         /// </remarks>
-        private static bool IsCalledFromNewPayloadHandler()
+        private bool IsCalledFromHandler()
         {
             static bool IsIn(Type type, Type owner) => type == owner || type.DeclaringType == owner;
 
@@ -1990,13 +2025,18 @@ public partial class EngineModuleTests
                     continue;
                 }
 
-                return IsIn(type, typeof(NewPayloadHandler));
+                return IsIn(type, handler);
             }
 
             return false;
         }
 
-        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
+        {
+            ValueTask wait = inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+            if (IsCalledFromHandler()) probe.OnRemovalWait(blockHash, !wait.IsCompleted);
+            return wait;
+        }
 
         public void Start() => inner.Start();
 
@@ -2028,7 +2068,7 @@ public partial class EngineModuleTests
         ConcurrentDictionary<Hash256, byte> pruned = new();
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder =>
-            builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+            builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
@@ -2038,20 +2078,10 @@ public partial class EngineModuleTests
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(toGenesis)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         pruned[resubmitted.BlockHash] = 0;
 
-        // Holds the processing thread between the re-execution's verdict and its commit.
-        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
-        {
-            if (e.BlockHash == resubmitted.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
-        };
+        TaskCompletionSource commit = HoldCommit(chain, resubmitted.BlockHash);
 
         Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        ForkchoiceStateV1 toResubmitted = new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That((await rpc.engine_forkchoiceUpdatedV1(toResubmitted)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(resubmitted.BlockHash));
-        }
+        MoveHeadBeforeCommit(chain, resubmitted.BlockHash);
 
         // Release the commit once the re-send waits on it or answers; the delay is a backstop.
         probe.Watch(resubmitted.BlockHash);
@@ -2067,6 +2097,114 @@ public partial class EngineModuleTests
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid),
                 "the head's own re-execution is committing, so its state is about to be readable");
         }
+    }
+
+    /// <summary>A forkchoice update does not move the head to a processed block whose state is gone, as no payload can be built on it.</summary>
+    /// <param name="headMovedBack">Whether the head first moves back to genesis, leaving the block above it (the Hive shape).</param>
+    [TestCase(false, TestName = "forkchoiceUpdatedV1_does_not_move_the_head_to_an_ancestor_without_state")]
+    [TestCase(true, TestName = "forkchoiceUpdatedV1_does_not_move_the_head_to_a_block_above_it_without_state")]
+    public async Task forkchoiceUpdatedV1_does_not_move_the_head_to_a_block_without_state(bool headMovedBack)
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        if (headMovedBack)
+        {
+            Assert.That((await rpc.engine_forkchoiceUpdatedV1(new(genesisHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+                Is.EqualTo(PayloadStatus.Valid));
+        }
+
+        Hash256 head = chain.BlockTree.HeadHash!;
+        ExecutionPayload target = headMovedBack ? blocks[0] : blocks[1];
+        // Built while the state is still readable; only its submission happens after pruning.
+        ExecutionPayload child = await CreateBlockRequest(chain, target, TestItem.AddressD);
+        pruned[target.BlockHash] = 0;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(new(target.BlockHash, Keccak.Zero, Keccak.Zero));
+        ResultWrapper<PayloadStatusV1> childResult = await rpc.engine_newPayloadV1(child);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(head), "the head must stay on a block the next payload can be built on");
+            Assert.That(childResult.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the child's parent has no state to execute it on");
+        }
+    }
+
+    /// <summary>A block below finalized keeps the execution-apis#786 MAY-skip answer even without state, and the head stays.</summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_answers_a_block_below_finalized_without_state()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain, finalizedIndex: 2);
+        pruned[blocks[1].BlockHash] = 0;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result =
+            await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(new(blocks[1].BlockHash, Keccak.Zero, Keccak.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(blocks[^1].BlockHash));
+        }
+    }
+
+    /// <summary>A forkchoice update to a head whose re-execution is still committing waits for that commit, then moves the head.</summary>
+    /// <remarks>The re-executed block keeps its processed flag from its first run, so the flag cannot say whether its state has landed.</remarks>
+    [Test]
+    public async Task forkchoiceUpdatedV1_moves_the_head_once_its_re_execution_commits()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned, builder =>
+            builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(ForkchoiceUpdatedHandler))));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        Hash256 genesisHash = chain.BlockTree.HeadHash!;
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain);
+        ExecutionPayload resubmitted = blocks[0];
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new(genesisHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        pruned[resubmitted.BlockHash] = 0;
+
+        TaskCompletionSource commit = HoldCommit(chain, resubmitted.BlockHash);
+        Assert.That((await rpc.engine_newPayloadV1(resubmitted)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        // Release the commit once the update waits on it or answers; the delay is a backstop.
+        probe.Watch(resubmitted.BlockHash);
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>> update = rpc.engine_forkchoiceUpdatedV1(new(resubmitted.BlockHash, Keccak.Zero, Keccak.Zero));
+        await Task.WhenAny(probe.WaitEntered.Task, update, Task.Delay(TimeSpan.FromSeconds(20)));
+        bool waitedForCommit = probe.WaitEntered.Task.IsCompleted;
+        commit.SetResult();
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await update;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waitedForCommit, Is.True, "the update must wait for the head's committing re-execution");
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(resubmitted.BlockHash));
+        }
+    }
+
+    /// <summary>Makes a block head while its commit is held, bypassing forkchoice, which waits for that commit.</summary>
+    private static void MoveHeadBeforeCommit(MergeTestBlockchain chain, Hash256 blockHash)
+    {
+        BlockHeader header = chain.BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.None)!;
+        Assert.That(chain.BlockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true), Is.True);
+    }
+
+    /// <summary>Holds the processing thread between <paramref name="blockHash"/>'s verdict and its commit until the returned source completes.</summary>
+    private static TaskCompletionSource HoldCommit(MergeTestBlockchain chain, Hash256 blockHash)
+    {
+        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash == blockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
+        };
+        return commit;
     }
 
     /// <summary>Waits for a block's answered copy to leave the processing queue, and with it to commit its state.</summary>
@@ -2657,6 +2795,56 @@ public partial class EngineModuleTests
         {
             // No skip: the unprocessed branch falls through and returns Syncing.
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+    }
+
+    /// <summary>
+    /// The ePBS shape: the head moves back to its parent, then a sibling without the old head's transactions becomes
+    /// the head. The old head is never reported as the sibling's replaced block, so its transactions must come back
+    /// through its removal from the main chain.
+    /// </summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_to_the_head_parent_returns_the_head_txs_to_the_pool()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload parent = CreateParentBlockRequestOnHead(chain.BlockTree);
+        Transaction[] transactions = BuildTransactions(chain, parent.BlockHash, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _);
+        chain.AddTransactions(transactions);
+        Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(transactions.Length), "precondition: txs pooled");
+
+        Task improved = chain.WaitForImprovedBlock(parent.BlockHash, transactions.Length);
+        string payloadId = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(parent.BlockHash, Keccak.Zero, Keccak.Zero),
+            new PayloadAttributes { Timestamp = parent.Timestamp + 12, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+        await improved;
+        ExecutionPayload head = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        Assert.That((await rpc.engine_newPayloadV1(head)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Task headInPool = chain.WaitForTxPoolHead(head.BlockHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head.BlockHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        await headInPool;
+        Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.Zero, "precondition: the head included every pooled tx");
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> rewind = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(parent.BlockHash, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(parent.BlockHash), "precondition: the head moved back to its parent");
+        }
+
+        ExecutionPayload sibling = await CreateBlockRequest(chain, parent, TestItem.AddressD);
+        Assert.That((await rpc.engine_newPayloadV1(sibling)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Task siblingInPool = chain.WaitForTxPoolHead(sibling.BlockHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(sibling.BlockHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        await siblingInPool;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Transaction tx in transactions)
+            {
+                Assert.That(chain.TxPool.TryGetPendingTransaction(tx.Hash!, out _), Is.True, $"tx with nonce {tx.Nonce} must be back in the pool");
+            }
         }
     }
 

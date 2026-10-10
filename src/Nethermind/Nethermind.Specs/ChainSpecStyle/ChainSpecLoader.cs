@@ -245,6 +245,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip2780TransitionTimestamp = parameters.Eip2780TransitionTimestamp,
             Eip3298TransitionTimestamp = parameters.Eip3298TransitionTimestamp,
             Eip8131TransitionTimestamp = parameters.Eip8131TransitionTimestamp,
+            Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
             Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
         };
 
@@ -399,7 +400,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         {
             Author = beneficiary,
             Hash = Keccak.Zero, // need to run the block to know the actual hash
-            Bloom = Bloom.Empty,
+            Bloom = parameters.Eip7668TransitionTimestamp is not null && timestamp >= parameters.Eip7668TransitionTimestamp ? Bloom.ZeroLength : Bloom.Empty,
             MixHash = mixHash,
             Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,
