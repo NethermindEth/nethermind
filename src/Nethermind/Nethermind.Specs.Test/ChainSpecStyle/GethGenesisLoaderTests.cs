@@ -47,10 +47,11 @@ public class GethGenesisLoaderTests
         "Eip150Block",        // alias for TangerineWhistleBlock
         "Eip155Block",        // alias for SpuriousDragonBlock
         "Eip158Block",        // alias for SpuriousDragonBlock
+        nameof(GethGenesisConfigJson.BogotaTime),
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1)];
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(Bogota), nameof(FramesDevnet1)];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
@@ -301,20 +302,16 @@ public class GethGenesisLoaderTests
         }
     }
 
-    // Two devnet fixture lines both call their fork Bogota while meaning different things by it, so a
-    // genesis says which it means by the label it carries: bogotaTime is inclusion lists, and frame
-    // transactions have their own. Neither may drag the other's EIP in — they sit on different
-    // engine_newPayload versions, and the frame-transaction predeploy shifts every EIP-7928 access list.
-    [TestCase("bogotaTime", true, false)]
-    [TestCase("eip8141PrototypeTime", false, true)]
-    public void Genesis_fork_label_picks_one_of_the_two_amsterdam_successors(string label, bool eip7805, bool eip8141)
+    [TestCase("bogotaTime", true)]
+    [TestCase("eip8141PrototypeTime", false)]
+    public void Genesis_bogota_label_schedules_the_whole_frames_devnet_1_fork(string label, bool extensions)
     {
         ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.EqualTo(eip7805 ? (ulong?)15 : null));
-            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo(eip8141 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.EqualTo((ulong?)15));
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
         }
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -322,10 +319,12 @@ public class GethGenesisLoaderTests
         IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(before.IsEip7805Enabled, Is.False);
             Assert.That(before.IsEip8141Enabled, Is.False);
-            Assert.That(after.IsEip7805Enabled, Is.EqualTo(eip7805));
-            Assert.That(after.IsEip8141Enabled, Is.EqualTo(eip8141));
+            Assert.That(after.IsEip8141Enabled, Is.True);
+            Assert.That(after.IsEip8250Enabled, Is.EqualTo(extensions));
+            Assert.That(after.IsEip8272Enabled, Is.EqualTo(extensions));
+            Assert.That(after.IsEip7906Enabled, Is.EqualTo(extensions));
+            Assert.That(after.IsEip7805Enabled, Is.False);
         }
     }
 
@@ -795,7 +794,7 @@ public class GethGenesisLoaderTests
         {
             bool isTime = IsForkLabel(prop, "Time");
 
-            if (isTime || IsForkLabel(prop, "Block"))
+            if (!ConfigPropsWithoutForkClass.Contains(prop.Name) && (isTime || IsForkLabel(prop, "Block")))
             {
                 string transitionSuffix = isTime ? "TransitionTimestamp" : "Transition";
                 string? forkName = RoutedForkName(prop, isTime);

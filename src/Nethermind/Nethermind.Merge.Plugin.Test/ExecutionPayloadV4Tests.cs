@@ -74,12 +74,9 @@ public class ExecutionPayloadV4Tests
         Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(block.BlockAccessList!.WireHash));
     }
 
-    // Two devnet fixture lines both call their Amsterdam successor Bogota while meaning different
-    // things by it, so the label a genesis carries has to decide which newPayload version the node
-    // accepts: inclusion lists move it to V6, frame transactions leave it on Amsterdam's V5.
-    [TestCase("bogotaTime", EngineApiVersions.NewPayload.V6)]
-    [TestCase("eip8141PrototypeTime", EngineApiVersions.NewPayload.V5)]
-    public void ValidateForkOnNewPayload_accepts_the_version_the_genesis_fork_label_selects(string label, int accepted)
+    [TestCase("bogotaTime")]
+    [TestCase("eip8141PrototypeTime")]
+    public void ValidateForkOnNewPayload_accepts_V5_for_either_frame_transaction_label(string label)
     {
         string genesis = $$"""
             {
@@ -106,10 +103,8 @@ public class ExecutionPayloadV4Tests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5),
-                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V5));
-            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
-                Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V5), Is.True);
+            Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6), Is.False);
         }
     }
 
