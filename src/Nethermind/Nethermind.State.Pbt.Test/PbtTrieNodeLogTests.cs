@@ -26,9 +26,9 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtTrieNodeLogTests
 {
-    private static readonly byte[] TopKey = GroupKey(Bytes.FromHexString("0x10"), 4); // TopNodeGroups
-    private static readonly byte[] ColdKey = GroupKey(Bytes.FromHexString("0x20"), 4); // TopNodeGroups, same shard as TopKey
-    private static readonly byte[] AccountKey = GroupKey(Bytes.FromHexString("0x00123456"), 32); // AccountNodeGroups
+    private static readonly byte[] TopKey = GroupKey(Bytes.FromHexString("0x20"), 3); // TopNodeGroups
+    private static readonly byte[] ColdKey = GroupKey(Bytes.FromHexString("0x40"), 3); // TopNodeGroups, same shard as TopKey
+    private static readonly byte[] AccountKey = GroupKey(Bytes.FromHexString("0x00123454"), 30); // AccountNodeGroups
     private static readonly byte[] StorageKey = GroupKey(Bytes.FromHexString("0xffaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), 264); // StorageNodeGroups
     private static readonly byte[] Value1 = Bytes.FromHexString("0x1111111111");
     private static readonly byte[] Value2 = Bytes.FromHexString("0x2222222222");
@@ -213,7 +213,7 @@ public class PbtTrieNodeLogTests
     {
         PbtRocksDbPersistence persistence = new(_db, _config, _log);
         PbtNodePath rootNode = new([], 0);
-        PbtNodePath topNode = new(Bytes.FromHexString("0x10"), 5);
+        PbtNodePath topNode = new(Bytes.FromHexString("0x20"), 4);
         PbtNodePath rootKey = PbtTestPaths.Locate(rootNode).GroupKey;
         PbtNodePath topKey = PbtTestPaths.Locate(topNode).GroupKey;
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
@@ -463,7 +463,7 @@ public class PbtTrieNodeLogTests
     {
         _config.TrieNodeLogAccountShardCount = 2;
         await Reopen();
-        byte[][] keys = [.. Enumerable.Range(0, 16).Select(static index => GroupKey([(byte)(index << 4)], 4))];
+        byte[][] keys = [.. Enumerable.Range(0, 16).Select(static index => GroupKey([(byte)(index << 2)], 6))];
         Write([.. keys.Select(static key => (key, (byte[]?)key))]);
 
         using (Assert.EnterMultipleScope())
@@ -653,7 +653,7 @@ public class PbtTrieNodeLogTests
         PbtRocksDbPersistence persistence = new(db, _config, _log);
 
         IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None);
-        PbtNodePath topNode = new(Bytes.FromHexString("0x10"), 5);
+        PbtNodePath topNode = new(Bytes.FromHexString("0x20"), 4);
         using (RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256))
             writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top);
         Assert.That(writeBatch.Commit, Throws.TypeOf<IOException>());

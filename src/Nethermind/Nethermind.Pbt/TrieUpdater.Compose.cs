@@ -15,7 +15,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// A branch gains the side bits it rose over in front of its compressed prefix, and so needs hashing again; a leaf's
     /// encoding does not depend on its position. An implicit branch appended without its child hashes has them resolved here.
-    /// A branch landing at the root of a group on a byte boundary takes the group's last path byte back into its inline keys,
+    /// A branch landing at the root of a group with more whole path bytes than its parent group takes the group's last whole path byte back into its inline keys,
     /// which <paramref name="path"/>, the group's, supplies.
     /// </remarks>
     [SkipLocalsInit]
@@ -40,7 +40,7 @@ public static partial class TrieUpdater<TKey, TPath>
         ValueHash256 rightHash = stored.RightHash;
         if (node.ChildHashesPending)
         {
-            int width = PbtFourLevelGroupGeometry.WidthOf(childPosition);
+            int width = PbtThreeLevelGroupGeometry.WidthOf(childPosition);
             hashes.GetChildHashesPaired(ref reader, childPosition - width, childPosition - 1, out leftHash, out rightHash);
         }
         CompressedPrefix prefix = stored.Prefix;
@@ -86,7 +86,7 @@ public static partial class TrieUpdater<TKey, TPath>
         /// <summary>Records a rise from <paramref name="childPosition"/> over an empty sibling, with the node on <paramref name="side"/>, which <see cref="Land"/> applies.</summary>
         public ComposedNode Rise(int childPosition, int side)
         {
-            Debug.Assert(RiseBitCount < PbtFourLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
+            Debug.Assert(RiseBitCount < PbtThreeLevelGroupGeometry.LevelsPerGroup, "A node rises at most to the group root.");
             return this with
             {
                 EntryPosition = RiseBitCount == 0 ? childPosition : EntryPosition,

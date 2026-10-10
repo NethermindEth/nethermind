@@ -147,7 +147,7 @@ public static class PbtRetainedKey
         if (key.Length < 4) throw new InvalidDataException("Invalid retained PBT group key.");
         int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
         int maxDepth = key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != GroupKeyLength(depth))
+        if (!PbtThreeLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != GroupKeyLength(depth))
             throw new InvalidDataException("Invalid retained PBT group depth.");
         ReadOnlySpan<byte> path = key.Slice(3, key.Length - 4);
         if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid retained PBT group padding.");

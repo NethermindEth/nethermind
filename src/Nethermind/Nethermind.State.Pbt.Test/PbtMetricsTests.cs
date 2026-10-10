@@ -118,18 +118,21 @@ public class PbtMetricsTests
             Is.LessThanOrEqualTo(_rootHashTime.Observations[0]), "phase timings are contained in the total");
     }
 
+    private static readonly (string Path, int Depth, string Partition)[] GroupKeys =
+        [("", 0, "account"), ("00", 3, "account"), ("0000", 9, "account"), ("0100", 9, "code"), ("e0", 3, "storage"), ("ff00", 9, "storage")];
+
     [Test]
     public void PointReads_ReportOnlyTheAnsweringTier(
         [Values("snapshot", "tombstone", "selfdestruct", "persistence", "missing")] string scenario,
         [Values] bool detailedMetrics,
-        [Values("", "0", "00", "01", "f", "ff")] string groupPath)
+        [ValueSource(nameof(GroupKeys))] (string Path, int Depth, string Partition) group)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
         PbtPath headerStorageKey = Eip8297KeyDerivation.HeaderStorageKey(addressHash, 1);
         PbtStoragePath storageKey = PbtStateKey.Storage(TestItem.AddressA, addressHash, PbtKeyDerivation.HeaderStorageOffset);
-        PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
-        string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
+        PbtNodePath groupKey = new(Bytes.FromHexString(group.Path), group.Depth);
+        string partition = group.Partition;
         Account account = new(1, 100);
         UInt256 slot = (UInt256)0x01;
         CodeInfo code = new(Bytes.FromHexString("6001"));

@@ -48,7 +48,7 @@ public interface IPbtPersistence
         /// <see cref="RefCountingMemory.GetSpan"/> as read-only. The reference keeps the payload valid until
         /// released, independently of the reader. A missing group returns <see langword="null"/>.
         /// </remarks>
-        /// <param name="groupKey">The four-level-boundary key identifying the group.</param>
+        /// <param name="groupKey">The group-boundary key identifying the group.</param>
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
     }

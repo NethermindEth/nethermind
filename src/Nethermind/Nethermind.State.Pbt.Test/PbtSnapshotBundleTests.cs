@@ -146,7 +146,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone, [Values] bool replaceViaStoragePath)
+    public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 8)] int groupCount, [Values] bool tombstone, [Values] bool replaceViaStoragePath)
     {
         using PbtSnapshotContent content = new();
         TrackingMemoryProvider memoryProvider = new();
@@ -159,7 +159,7 @@ public class PbtSnapshotBundleTests
             {
                 for (int index = 0; index < groupCount; index++)
                 {
-                    PbtNodePath groupPath = new([(byte)(index << 4)], 4);
+                    PbtNodePath groupPath = new([(byte)(index << 5)], 3);
                     PbtStorageNodePath storagePath = groupPath.ToPath<PbtStorageNodePath>();
                     Assert.That(content.TryGetNodeGroup(groupPath, out RefCountingMemory? missing), Is.False);
                     using (missing) Assert.That(missing, Is.Null);
@@ -371,7 +371,7 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Trie_cache_reuses_unchanged_descendants_across_roots()
     {
-        PbtNodePath path = new(Bytes.FromHexString("00"), 4);
+        PbtNodePath path = new(Bytes.FromHexString("00"), 3);
         byte[] originalNode = BranchEncoding(1);
         byte[] changedNode = BranchEncoding(2);
         ValueHash256 originalHash = PbtTreeHarness.HashBranch(originalNode);
@@ -498,12 +498,12 @@ public class PbtSnapshotBundleTests
     [Test]
     [NonParallelizable]
     public void Trie_cache_shares_canonical_paths_across_representations(
-        [Values(0, 4, 8, 12, 272)] int depth,
+        [Values(0, 3, 6, 9, 12, 272)] int depth,
         [Values(Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.CodeZone, Eip8297KeyDerivation.StorageZone)] byte zone,
         [Values] bool storageFirst)
     {
         byte[] bytes = new byte[(depth + 7) / 8];
-        if (bytes.Length > 0) bytes[0] = depth == 4 ? (byte)(zone & 0xF0) : zone;
+        if (bytes.Length > 0) bytes[0] = depth < 8 ? (byte)(zone & (0xFF << (8 - depth))) : zone;
         PbtNodePath narrow = new(bytes, depth);
         PbtStorageNodePath wide = new(bytes, depth);
         if (storageFirst) AssertCanonicalCachePaths(wide, narrow);
@@ -550,18 +550,19 @@ public class PbtSnapshotBundleTests
 
     private static PbtNodePath CachePath(string partition) => new(Bytes.FromHexString(partition switch
     {
-        "account" => "00",
-        "code" => "01",
-        _ => "ff",
-    }), 8);
+        "account" => "0000",
+        "code" => "0100",
+        _ => "ff00",
+    }), 9);
 
     [NonParallelizable]
     [TestCase("", 0, "account")]
-    [TestCase("00", 4, "account")]
-    [TestCase("f0", 4, "storage")]
-    [TestCase("00", 8, "account")]
-    [TestCase("01", 8, "code")]
-    [TestCase("ff", 8, "storage")]
+    [TestCase("00", 3, "account")]
+    [TestCase("e0", 3, "storage")]
+    [TestCase("fc", 6, "storage")]
+    [TestCase("0000", 9, "account")]
+    [TestCase("0100", 9, "code")]
+    [TestCase("ff00", 9, "storage")]
     [TestCase("00a0", 12, "account")]
     [TestCase("01a0", 12, "code")]
     [TestCase("ffa0", 12, "storage")]
@@ -811,7 +812,7 @@ public class PbtSnapshotBundleTests
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath wideGroupKey = new([], 0);
         byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
-            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 14).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
+            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 6).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
         byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
         byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
         byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
@@ -891,7 +892,7 @@ public class PbtSnapshotBundleTests
                 Assert.That(reader.GroupReadCount, Is.Zero);
             }
         }
-        PbtStorageNodePath missing = new([0], 8);
+        PbtStorageNodePath missing = new([0, 0], 9);
         bool missingFound = bundle.TryGetSnapshotNodeGroup(missing, out RefCountingMemory? missingPayload);
         using (missingPayload)
         using (Assert.EnterMultipleScope())
@@ -908,7 +909,7 @@ public class PbtSnapshotBundleTests
         TrackingMemoryProvider memoryProvider = new();
         PbtVariableTreeKey originalLeafKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
-        PbtNodePath originalNodePath = new([0x80], 4);
+        PbtNodePath originalNodePath = new([0x80], 3);
         byte[] originalNode = PbtNodeGroupEncoder.Encode(originalNodePath, [new PbtNodeRecord(PbtTestPaths.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
         Reader reader = new(new PbtVariableTreeKey([0]), null)
         {
@@ -1384,7 +1385,7 @@ public class PbtSnapshotBundleTests
         public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash) => bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash);
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         {
-            if (groupKey.BitDepth == 8 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == FailedZone)
+            if (groupKey.BitDepth >= 9 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == FailedZone)
                 throw new InvalidDataException("Configured partition write failure.");
             ApplyCount++;
             bundle.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash, payload);

@@ -81,10 +81,14 @@ public static partial class TrieUpdater
         }
     }
 
+    /// <summary>Reads the boundary slot of the group at <paramref name="groupDepth"/> that <paramref name="key"/> lies under.</summary>
+    /// <remarks>The slot can span two key bytes; bits past the key's end read as zero.</remarks>
     public static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
     {
-        byte value = key[groupDepth >> 3];
-        return (value >> (4 - (groupDepth & 4))) & 0x0F;
+        int index = groupDepth >> 3;
+        int window = key[index] << 8;
+        if (index + 1 < key.Length) window |= key[index + 1];
+        return (window >> (16 - PbtThreeLevelGroupGeometry.LevelsPerGroup - (groupDepth & 7))) & (PbtThreeLevelGroupGeometry.BoundarySlots - 1);
     }
 
 }
@@ -103,7 +107,7 @@ public static partial class TrieUpdater<TKey, TPath>
         scoped in PbtTraversalPath path, in ValueHash256 hash)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
+        Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
         long deltaTotal = 0;
         for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
@@ -131,7 +135,7 @@ public static partial class TrieUpdater<TKey, TPath>
     private static bool IsAbsentGroupBelow(scoped in BoundaryNode current, int bitDepth)
     {
         Debug.Assert(bitDepth != 0, "The root group always exists.");
-        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup;
     }
 
     /// <summary>Per-fold state shared by every frame of one root update.</summary>

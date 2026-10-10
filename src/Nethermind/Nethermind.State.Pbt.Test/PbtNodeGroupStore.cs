@@ -11,7 +11,7 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>In-memory store of canonical nodes grouped by four-level ownership boundaries.</summary>
+/// <summary>In-memory store of canonical nodes grouped by three-level ownership boundaries.</summary>
 public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
     public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
@@ -33,8 +33,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
             foreach (PbtPhysicalPayload payload in payloads)
             {
                 PbtStorageNodePath groupKey = payload.Key;
-                if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                    throw new InvalidDataException("A PBT node-group key depth must be a four-level boundary.");
+                if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                    throw new InvalidDataException("A PBT node-group key depth must be a three-level boundary.");
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
 
                 ReadOnlySpan<byte> payloadSpan = payload.Payload.Span;
@@ -67,8 +67,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
             if (!_groups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out RefCountingMemory? payload)) return null;
 
             payload.AcquireLease();
@@ -82,8 +82,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         lock (_groupLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-                throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
+            if (!PbtThreeLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
+                throw new ArgumentException("A group key depth must be a three-level boundary.", nameof(groupKey));
             PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
             if (payload is not null) PbtNodeGroupCodec.ValidateNodes(storagePath, payload.GetSpan());
 

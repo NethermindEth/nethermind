@@ -744,7 +744,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Single_bucket_prefix_survives_existing_sibling_branches([Values(17, 33)] int count)
     {
-        List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, 40, 16, 2);
+        List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, 40, 8, 2);
         initial.Add((ZoneKey("00AA8000000000"), Value(1)));
         initial.Add((ZoneKey("00AAAA80000000"), Value(2)));
         initial.Add((ZoneKey("00AAAAAA800000"), Value(3)));
@@ -764,9 +764,9 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Boundary_bucketization_batches_match_oracle_serial_and_reopen(
         [Values(0, 1, 2, 3, 4, 16, 31, 32, 33, 256)] int count,
-        [Values(0, 4, 20)] int groupDepth)
+        [Values(1, 4, 19)] int groupDepth)
     {
-        foreach (int occupiedSlots in new[] { 1, 2, 16 })
+        foreach (int occupiedSlots in new[] { 1, 2, 8 })
         {
             using BulkSerialOracle tree = new();
             List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, groupDepth, occupiedSlots, 0);
@@ -805,9 +805,8 @@ public class Eip8297CanonicalTreeTests
         {
             // The group depth counts from below the zone byte.
             byte[] key = ZoneKey("00AAAAAA000000");
-            int destination = occupiedSlots == 1 ? 15 : occupiedSlots == 2 ? (index % 2) * 15 : index % 16;
-            int shift = 4 - groupDepth % 8;
-            key[1 + groupDepth / 8] = (byte)((key[1 + groupDepth / 8] & ~(15 << shift)) | (destination << shift));
+            int destination = occupiedSlots == 1 ? 7 : occupiedSlots == 2 ? (index % 2) * 7 : index % 8;
+            WriteSlot(key, 8 + groupDepth, destination);
             key[4] = (byte)(index >> 8);
             key[5] = (byte)index;
             changes.Add((key, Value((byte)(index + 1))));
@@ -846,18 +845,17 @@ public class Eip8297CanonicalTreeTests
 
     [Test]
     public void Dense_group_paths_survive_collapse_and_restoration(
-        [Values(8, 12, 248, 252, 520, 524)] int groupDepth,
-        [Values(0x0000, 0x0001, 0x8000, 0x000A, 0xA000, 0xA55A, 0x8001, 0xFFFF)] int retainedMask)
+        [Values(9, 15, 24, 30, 252, 519, 522, 525)] int groupDepth,
+        [Values(0x00, 0x01, 0x80, 0x0A, 0xA0, 0x5A, 0x81, 0xFF)] int retainedMask)
     {
-        byte[] sharedKey = ZoneKey(groupDepth + 4 <= PbtPath.KeyLength * 8 ? "00" : "FF");
+        byte[] sharedKey = ZoneKey(groupDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup <= PbtPath.KeyLength * 8 ? "00" : "FF");
         new Random(8297).NextBytes(sharedKey.AsSpan(1));
         List<(byte[] Key, byte[]? Value)> initial = [];
         List<(byte[] Key, byte[]? Value)> deletions = [];
-        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+        for (int slot = 0; slot < PbtThreeLevelGroupGeometry.BoundarySlots; slot++)
         {
             byte[] key = (byte[])sharedKey.Clone();
-            int shift = 4 - (groupDepth & 4);
-            key[groupDepth >> 3] = (byte)((key[groupDepth >> 3] & ~(0xF << shift)) | (slot << shift));
+            WriteSlot(key, groupDepth, slot);
             initial.Add((key, Value((byte)(slot + 1))));
             if ((retainedMask & (1 << slot)) == 0) deletions.Add((key, null));
         }
@@ -871,9 +869,20 @@ public class Eip8297CanonicalTreeTests
         tree.AssertEquivalentAfterReopen("restored group");
     }
 
+    /// <summary>Overwrites the group boundary slot of <paramref name="key"/> at <paramref name="groupDepth"/>, which can span two bytes.</summary>
+    private static void WriteSlot(byte[] key, int groupDepth, int slot)
+    {
+        for (int bit = 0; bit < PbtThreeLevelGroupGeometry.LevelsPerGroup; bit++)
+        {
+            int keyBit = groupDepth + bit;
+            int value = slot >> (PbtThreeLevelGroupGeometry.LevelsPerGroup - 1 - bit) & 1;
+            key[keyBit >> 3] = (byte)(key[keyBit >> 3] & ~(0x80 >> (keyBit & 7)) | value << (7 - (keyBit & 7)));
+        }
+    }
+
     [Test]
     public void Span_partition_divergence_before_on_and_after_compressed_group_boundaries_matches_oracle(
-        [Values(1, 3, 4, 5, 7, 8, 9, 11, 12, 13)] int divergenceBit)
+        [Range(1, 13)] int divergenceBit)
     {
         byte[] leftKey = ZoneKey("000000");
         byte[] existingRightKey = ZoneKey("000008");
@@ -1251,7 +1260,7 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails([Values] bool parallel, [Values(0, 4, 8)] int failedDepth)
+    public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails([Values] bool parallel, [Values(0, 6, 9)] int failedDepth)
     {
         TrackingMemoryProvider memoryProvider = new();
         TrackingMemoryProvider storeProvider = new();
@@ -1260,8 +1269,8 @@ public class Eip8297CanonicalTreeTests
         (byte[] Key, byte[]? Value)[] changes =
         [
             (ZoneKey("00000000"), Value(1)), (ZoneKey("00800000"), Value(2)),
-            // Branches below the zone boundary, so the zone's group at depth eight is stored and published.
-            (ZoneKey("00400000"), Value(7)),
+            // Branches below the zone boundary, so the zone's group at depth nine is stored and published.
+            (ZoneKey("00400000"), Value(7)), (ZoneKey("00200000"), Value(8)),
             (ZoneKey("01000000"), Value(3)), (ZoneKey("01800000"), Value(4)),
             (ZoneKey("ff000000"), Value(5)), (ZoneKey("ff800000"), Value(6)),
         ];
@@ -1288,7 +1297,7 @@ public class Eip8297CanonicalTreeTests
     public void Promoted_subtree_is_materialized_before_its_frame_is_disposed()
     {
         CountingPbtStore store = new();
-        // The two 0012345x keys keep a stored branch in the group at depth 28; deleting 00123458 promotes it.
+        // The two 0012345x keys keep a stored branch in the group at depth 27; deleting 00123458 promotes it.
         ValueHash256 root = store.Fold(default, [
             (ZoneKey("00123450"), Value(1)), (ZoneKey("00123451"), Value(4)), (ZoneKey("00123458"), Value(2)), (ZoneKey("0080"), Value(3))]);
         TrackingMemoryProvider readProvider = new();
@@ -1301,7 +1310,7 @@ public class Eip8297CanonicalTreeTests
             if (stored is null) return null;
             RefCountingMemory read = readProvider.Rent(stored.Memory.Length);
             stored.GetSpan().CopyTo(read.GetSpan());
-            if (groupKey.BitDepth == 28) promotedPayload = read;
+            if (groupKey.BitDepth == 27) promotedPayload = read;
             return read;
         };
         store.OnApply = groupKey =>
@@ -1331,12 +1340,13 @@ public class Eip8297CanonicalTreeTests
     public void Ordered_group_emission_rents_one_bucket_instead_of_per_node([Values(2, 8)] int leafCount)
     {
         // Every leaf pair is inlined in a stored branch. A single pair is the root, whose prefix spans the zone byte;
-        // otherwise the pairs are the prefixless branches of the zone's group at depth eight, below a root of their own.
+        // otherwise the pairs are the prefixless branches of the two groups at depth nine, two pairs in each, below the root's group and
+        // the depth-six group that holds their parent branches.
         bool singlePair = leafCount == 2;
         // The pairs below the root omit the zone byte of their group's path from their inline keys.
         int inlineKeyLength = singlePair ? PbtPath.KeyLength : PbtPath.KeyLength - 1;
         int pairBranchLength = PbtNodeCodec.BranchLength(singlePair ? 8 : 0, inlineKeyLength, inlineKeyLength);
-        int storedNodes = leafCount / 2;
+        int storedNodes = singlePair ? 1 : leafCount / 4;
         TrackingMemoryProvider provider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
         EipReferenceTree oracle = new();
@@ -1349,8 +1359,8 @@ public class Eip8297CanonicalTreeTests
         }
         ValueHash256 root = ApplyTracked(store, default, changes, false, provider);
         IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
-        Assert.That(payloads, Has.Count.EqualTo(singlePair ? 1 : 2));
-        PbtStorageNodePath groupKey = singlePair ? new([], 0) : new(Bytes.FromHexString("00"), 8);
+        Assert.That(payloads, Has.Count.EqualTo(singlePair ? 1 : 4));
+        PbtStorageNodePath groupKey = singlePair ? new([], 0) : new(Bytes.FromHexString("0000"), 9);
         PbtPhysicalPayload group = payloads.Single(payload => payload.Key.Equals(groupKey));
         List<(int Position, ReadOnlyMemory<byte> Encoding)> nodes = PbtStoreTestExtensions.ReadGroup(groupKey, group.Payload.Span).Nodes();
         List<PbtNodeRecord> records = [];
@@ -1362,7 +1372,7 @@ public class Eip8297CanonicalTreeTests
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(nodes, Has.Count.EqualTo(storedNodes));
             Assert.That(group.Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + storedNodes * pairBranchLength
-                + storedNodes * sizeof(ushort) + sizeof(uint) + PbtNodeGroupCodec.DescendantMaskLength));
+                + storedNodes * sizeof(ushort) + PbtNodeGroupCodec.AvailabilityLength + PbtNodeGroupCodec.DescendantMaskLength));
             Assert.That(group.Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RequestedLengths, Is.EquivalentTo(payloads.Select(static payload => payload.Payload.Length)),
                 "every published group is rented once, at its final size");
@@ -1383,10 +1393,10 @@ public class Eip8297CanonicalTreeTests
         byte[] left = ZoneKey(leftHex), right = ZoneKey(rightHex), sibling = ZoneKey(siblingHex);
         ValueHash256 root = store.Fold(default, [(left, Value(1)), (right, Value(2)), (sibling, Value(3))]);
         PbtStorageNodePath groupKey = new([], 0);
-        PbtStorageNodePath branchGroupKey = new(Bytes.FromHexString("00"), 8);
+        PbtStorageNodePath branchGroupKey = new(Bytes.FromHexString("0080"), 9);
         using (RefCountingMemory? original = store.GetPhysicalNodeGroup(branchGroupKey))
         {
-            PbtBranchReader branch = PbtBranchReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(18).Span);
+            PbtBranchReader branch = PbtBranchReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(3).Span);
             Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 12));
         }
         root = store.Fold(root, [(sibling, null)]);
@@ -1395,7 +1405,7 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
-        PbtBranchReader promoted = PbtBranchReader.FromValidated(updatedReader.GetEncoding(30).Span);
+        PbtBranchReader promoted = PbtBranchReader.FromValidated(updatedReader.GetEncoding(14).Span);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
@@ -1561,9 +1571,9 @@ public class Eip8297CanonicalTreeTests
             if (OverrideNode is { } overrideNode)
             {
                 List<PbtNodeRecord> records = [];
-                for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
+                for (int position = 0; position < PbtThreeLevelGroupGeometry.PositionCount; position++)
                 {
-                    if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
+                    if (position == PbtThreeLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
                     PbtStorageNodePath path = PbtTestPaths.PathOf(storageGroupKey, position);
                     byte[]? encoding = overrideNode(path);
                     if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));

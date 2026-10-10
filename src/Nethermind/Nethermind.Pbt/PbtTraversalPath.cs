@@ -37,12 +37,17 @@ public ref struct PbtTraversalPath
     /// <summary>Gets the consumed MSB-first bit count.</summary>
     public int BitDepth { get; private set; }
 
-    /// <summary>Appends a four-bit nibble to this cursor at a nibble-aligned depth.</summary>
-    public void AppendMut(int nibble)
+    /// <summary>Appends a group boundary slot to this cursor at a group depth.</summary>
+    /// <remarks>The slot can span two bytes; the second byte is written only when the slot reaches it.</remarks>
+    public void AppendMut(int slot)
     {
-        Debug.Assert((BitDepth & 3) == 0, "Only a nibble-aligned cursor takes a nibble.");
-        _buffer[BitDepth >> 3] |= (byte)(nibble << (4 - (BitDepth & 4)));
-        BitDepth += 4;
+        Debug.Assert(
+            PbtThreeLevelGroupGeometry.IsGroupDepth(BitDepth) && BitDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup <= _buffer.Length * 8,
+            "Only a group-aligned cursor with room for a slot takes one.");
+        int shifted = slot << (16 - PbtThreeLevelGroupGeometry.LevelsPerGroup - (BitDepth & 7));
+        _buffer[BitDepth >> 3] |= (byte)(shifted >> 8);
+        if ((byte)shifted != 0) _buffer[(BitDepth >> 3) + 1] |= (byte)shifted;
+        BitDepth += PbtThreeLevelGroupGeometry.LevelsPerGroup;
     }
 
     /// <summary>Extends the cursor to a depth using the corresponding bits of a complete key.</summary>

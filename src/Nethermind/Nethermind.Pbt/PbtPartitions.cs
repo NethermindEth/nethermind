@@ -15,10 +15,10 @@ public static class PbtPartitions
     };
 
     /// <summary>The <see cref="PbtPartition"/> whose subtree holds the node at <paramref name="path"/>.</summary>
-    /// <remarks>A path above the zone byte counts as <see cref="PbtPartition.Account"/>, except the depth-four group over the storage zone.</remarks>
+    /// <remarks>A path above the zone byte counts as <see cref="PbtPartition.Account"/>, except the groups that lie under the storage zone alone.</remarks>
     public static PbtPartition PartitionOfPath<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (path.BitDepth == 4 && path.GetByte(0) == 0xF0
+        if (path.BitDepth is > 0 and < 8 && path.GetByte(0) == (byte)(0xFF << (8 - path.BitDepth))
             || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtPartition.Storage;
         return path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? PbtPartition.Code : PbtPartition.Account;

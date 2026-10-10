@@ -18,12 +18,13 @@ public static partial class TrieUpdater
     private static readonly StringLabel _storageFoldLabel = new("storage");
 
     /// <summary>The root group slot the account and code zones share, both of whose keys are <see cref="PbtPath"/>s.</summary>
-    private const int AccountSlot = Eip8297KeyDerivation.AccountZone >> 4;
-    private const int StorageSlot = Eip8297KeyDerivation.StorageZone >> 4;
+    private const int AccountSlot = Eip8297KeyDerivation.AccountZone >> ZoneSlotShift;
+    private const int StorageSlot = Eip8297KeyDerivation.StorageZone >> ZoneSlotShift;
+    private const int ZoneSlotShift = 8 - PbtThreeLevelGroupGeometry.LevelsPerGroup;
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
-    /// The zones' first nibbles split them over the root group's boundary slots: the account and code zones share one and
+    /// The zones' first bits split them over the root group's boundary slots: the account and code zones share one and
     /// the storage zone has its own, so below the root group every slot is an ordinary sorted fold of one key type.
     /// The touched root slots, their zones' shard sorts and the touched slots of every frame wide enough to fan out,
     /// merged into runs of at least the minimum <paramref name="fanOut"/> gives for the frame's subtree size, share
@@ -53,7 +54,7 @@ public static partial class TrieUpdater
         IMetricObserver? partitionFoldTime,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
-        Debug.Assert(Eip8297KeyDerivation.CodeZone >> 4 == AccountSlot && StorageSlot != AccountSlot, "Only the account and code zones share a root slot.");
+        Debug.Assert(Eip8297KeyDerivation.CodeZone >> ZoneSlotShift == AccountSlot && StorageSlot != AccountSlot, "Only the account and code zones share a root slot.");
         memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel);
         using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel);
@@ -93,7 +94,7 @@ public static partial class TrieUpdater
         if (!rootNode.IsEmpty)
         {
             ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
-            rootWriter.ValidateEntry(rootPath, PbtFourLevelGroupGeometry.RootPosition, entry);
+            rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
             hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
         }
         PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);

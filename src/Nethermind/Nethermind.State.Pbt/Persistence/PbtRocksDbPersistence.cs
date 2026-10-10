@@ -26,9 +26,6 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
-    // Retired stamps that epoch-23 databases still carry; the epoch alone now pins the layout and the omission.
-    private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
-    private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     public static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
     /// <remarks>
@@ -36,16 +33,15 @@ public class PbtRocksDbPersistence(
     /// a group's bytes but not its hash, and the node-group caches key on the hash, so a database written with another
     /// omission can serve a group whose size no longer matches the one its ancestors recorded.
     /// </remarks>
-    private const int SchemaEpoch = 23;
+    private const int SchemaEpoch = 24;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
 
     public bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
-    /// <summary>Whether a metadata key is a schema stamp, current or retired, so an otherwise empty database still counts as empty.</summary>
-    public static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
-        key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
+    /// <summary>Whether a metadata key is the schema stamp, so an otherwise empty database still counts as empty.</summary>
+    public static bool IsSchemaStamp(ReadOnlySpan<byte> key) => key.SequenceEqual(SchemaEpochKey);
 
     private static IColumnsDb<PbtColumns> EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
@@ -167,7 +163,7 @@ public class PbtRocksDbPersistence(
         return PbtNodeGroupLayout.IsTopGroup(groupKey) ? PbtColumns.TopNodeGroups : PartitionColumn(groupKey);
     }
 
-    /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>
+    /// <summary>The partition column of a group keyed below the groups the zones share, ignoring the top split.</summary>
     public static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> =>
         PbtPartitions.PartitionOfPath(groupKey) switch
         {

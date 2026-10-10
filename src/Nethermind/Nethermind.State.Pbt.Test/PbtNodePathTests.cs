@@ -14,9 +14,9 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
 {
     [Test]
-    public void Traversal_path_restores_siblings_and_preserves_snapshots([Values(0, 4, 8, -1)] int depth)
+    public void Traversal_path_restores_siblings_and_preserves_snapshots([Values(0, 3, 6, -1)] int depth)
     {
-        if (depth == -1) depth = TPath.MaxBitDepth - 4;
+        if (depth == -1) depth = (TPath.MaxBitDepth - PbtThreeLevelGroupGeometry.LevelsPerGroup) / PbtThreeLevelGroupGeometry.LevelsPerGroup * PbtThreeLevelGroupGeometry.LevelsPerGroup;
         byte[] key = Bytes.FromHexString(new string('D', TPath.MaxBitDepth / 4));
         Span<byte> buffer = stackalloc byte[TPath.MaxBitDepth / 8];
         buffer.Fill(0xFF);
@@ -30,16 +30,16 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
         TPath parent = PbtTestPaths.Prefix<TPath>(key, depth);
         Assert.That(path.ToPath<TPath>(), Is.EqualTo(parent));
 
-        path.AppendMut(15);
+        path.AppendMut(7);
         TPath snapshot = path.ToPath<TPath>();
-        Assert.That(snapshot, Is.EqualTo(parent.AppendBits(15, 4)));
+        Assert.That(snapshot, Is.EqualTo(parent.AppendBits(7, 3)));
         path.AppendKey(key, TPath.MaxBitDepth);
         TPath extended = path.ToPath<TPath>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(path.BitDepth, Is.EqualTo(TPath.MaxBitDepth));
-            Assert.That(extended.Prefix(depth + 4), Is.EqualTo(snapshot));
-            for (int bit = depth + 4; bit < TPath.MaxBitDepth; bit++)
+            Assert.That(extended.Prefix(depth + 3), Is.EqualTo(snapshot));
+            for (int bit = depth + 3; bit < TPath.MaxBitDepth; bit++)
                 Assert.That(extended.GetBit(bit), Is.EqualTo(TrieUpdater.GetBit(key, bit)), $"appended bit {bit}");
         }
         path.Truncate(depth);
@@ -47,9 +47,9 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
         path.AppendMut(0);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(path.BitDepth, Is.EqualTo(depth + 4));
-            Assert.That(path.ToPath<TPath>(), Is.EqualTo(parent.AppendBits(0, 4)));
-            Assert.That(snapshot, Is.EqualTo(parent.AppendBits(15, 4)));
+            Assert.That(path.BitDepth, Is.EqualTo(depth + 3));
+            Assert.That(path.ToPath<TPath>(), Is.EqualTo(parent.AppendBits(0, 3)));
+            Assert.That(snapshot, Is.EqualTo(parent.AppendBits(7, 3)));
         }
         path.Truncate(0);
         path.AppendKey(key, TPath.MaxBitDepth);
@@ -98,9 +98,10 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
     }
 
     [Test]
-    public void Group_geometry_reconstructs_internal_and_boundary_paths([Values(0, 4, 268, 272, 524)] int groupDepth, [Range(0, 30)] int position)
+    public void Group_geometry_reconstructs_internal_and_boundary_paths([Values(0, 3, 6, 267, 270, 525)] int groupDepth, [Range(0, 14)] int position)
     {
-        if (position == PbtFourLevelGroupGeometry.RootPosition && groupDepth != 0 || groupDepth >= TPath.MaxBitDepth) return;
+        if (position == PbtThreeLevelGroupGeometry.RootPosition && groupDepth != 0
+            || groupDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length > TPath.MaxBitDepth) return;
         byte[] groupBytes = new byte[(groupDepth + 7) >> 3];
         Array.Fill(groupBytes, (byte)0xA0);
         TPath groupKey = TPath.Create(groupBytes, groupDepth);
@@ -121,12 +122,12 @@ public class PbtNodePathTests<TPath> where TPath : struct, IPbtNodePath<TPath>
             Assert.That(actual, Is.EqualTo(expected));
             Assert.That(location.GroupKey, Is.EqualTo(groupKey));
             Assert.That(location.Position, Is.EqualTo(position));
-            Assert.That(PbtFourLevelGroupGeometry.WidthOf(position), Is.EqualTo(PbtFourLevelGroupGeometry.BoundarySlots >> relativePath.Length));
+            Assert.That(PbtThreeLevelGroupGeometry.WidthOf(position), Is.EqualTo(PbtThreeLevelGroupGeometry.BoundarySlots >> relativePath.Length));
         }
 
         void Visit(string path)
         {
-            if (path.Length < 4)
+            if (path.Length < PbtThreeLevelGroupGeometry.LevelsPerGroup)
             {
                 Visit(path + "0");
                 Visit(path + "1");

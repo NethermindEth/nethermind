@@ -76,9 +76,9 @@ public class PbtFormatInteropTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mixedRoot, Is.EqualTo("0xd6100f64e772fe72648dbef668e718b9625d3d7907e18e62618c54c07f7af13e"));
-            Assert.That(mixedPayload, Is.EqualTo("0x9b2eeb9be8fc8accdd57d866f1704d535f9f5b21ff68ab80f673d21d23333b9f"));
+            Assert.That(mixedPayload, Is.EqualTo("0x08ef446867fe43432d65c83f044dd3281e0ab51a77fd27fc8b234be90a5328a1"));
             Assert.That(singletonRoot, Is.EqualTo("0x3039f167d1d69a8b3739e88307abc9c4e71193e29f330c06a5b1edae10cafde7"));
-            Assert.That(singletonPayload, Is.EqualTo("0x67f77d56b0035157fc83720cf88235e7265e7d56a5b00a7c0233565f491374f4"));
+            Assert.That(singletonPayload, Is.EqualTo("0x6f5cee6de286f05d0855f0e900b2e65512974bf956338e1050c91a0a0152fbcf"));
             Assert.That(tree.RootHash.ToString(), Is.EqualTo(mixedRoot));
             Assert.That(tree.CanonicalRecords(), Is.EqualTo(mixedRecords));
             Assert.That(PhysicalDigest(tree), Is.EqualTo(mixedPayload));
@@ -127,8 +127,8 @@ public class PbtFormatInteropTests
         content.Storages[new(storageKey)] = SlotRun.Create(ushort.MaxValue, words);
         PbtNodePath root = new([], 0);
         content.AccountNodeGroups[root] = null;
-        content.CodeNodeGroups[new([Eip8297KeyDerivation.CodeZone], 8)] = null;
-        content.StorageNodeGroups[new([0xF0], 4)] = null;
+        content.CodeNodeGroups[new([Eip8297KeyDerivation.CodeZone, 0], 9)] = null;
+        content.StorageNodeGroups[new([0xE0], 3)] = null;
         using PbtSnapshot source = RetainedSource(content);
         using PbtRetainedSnapshot retained = store.Build(source);
         using (Assert.EnterMultipleScope())
@@ -175,7 +175,7 @@ public class PbtFormatInteropTests
             if (depth != 0) cursor.AppendMut(0);
             byte[] node = depth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
-            writer.Write(cursor, depth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0, node);
+            writer.Write(cursor, depth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
             using RefCountingMemory memory = writer.Detach(default, ushort.MaxValue)!;
             expected = memory.GetSpan().ToArray();
             content.SetNodeGroup(groupKey, tombstone ? null : memory);
@@ -190,7 +190,7 @@ public class PbtFormatInteropTests
     }
 
     private static readonly PbtStorageNodePath[] RetainedGroupPaths =
-    [new([], 0), new([0], 4), new([0], 8), new([1], 8), new([0xFF], 8), new([0xF0], 4)];
+    [new([], 0), new([0], 3), new([0], 6), new([1, 0], 9), new([0xFF, 0], 9), new([0xE0], 3), new([0xFC], 6)];
 
     [Test]
     public void Retained_metadata_preserves_sentinels([Values] bool sync)
@@ -224,7 +224,7 @@ public class PbtFormatInteropTests
             case "missing-chunk": records.Add((codeKey, [2, 0, 1, 0, 0, 1, 0, 0, 0])); break;
             case "unknown-metadata": records.Insert(4, ([0, 5], [0])); break;
             case "owner": records.Add((PbtRetainedKey.Owner(4), [1])); break;
-            case "padding": records.Add(([0x30, 0, 4, 1, 0], [0])); break;
+            case "padding": records.Add(([0x30, 0, 6, 1, 0], [0])); break;
         }
         Assert.Throws<InvalidDataException>(() => store.BuildRaw(metadata, records));
     }

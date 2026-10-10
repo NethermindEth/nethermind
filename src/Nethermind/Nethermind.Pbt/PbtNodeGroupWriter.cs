@@ -40,7 +40,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     private PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
     {
-        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
+        Debug.Assert(PbtThreeLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
     }
@@ -51,7 +51,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     {
         if (t_cache is not { Count: > 0 } cache) return new(bitDepth, memoryProvider) { _rented = true };
         PbtNodeGroupWriter<TPath> writer = cache.Pop();
-        Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
+        Debug.Assert(PbtThreeLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a group boundary.");
         writer._bitDepth = bitDepth;
         writer._memoryProvider = memoryProvider;
         ((Span<long>)writer._descendantDeltas).Clear();
@@ -65,7 +65,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
 
     public int WrittenCount => _written;
     /// <summary>The number of leading key bytes inline leaf keys omit in a branch written at <paramref name="position"/>.</summary>
-    public int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length);
+    public int KeyOffsetAt(int position) => PbtNodeCodec.InlineKeyOffset(_bitDepth + PbtThreeLevelGroupGeometry.LocalPathOf(position).Length);
 
     /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
     public long DescendantDelta(int slot) => _descendantDeltas[slot];
@@ -194,13 +194,13 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _scratch = grown;
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.PositionCount)]
+    [InlineArray(PbtThreeLevelGroupGeometry.PositionCount)]
     private struct OffsetBuffer
     {
         private ushort _element;
     }
 
-    [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
+    [InlineArray(PbtThreeLevelGroupGeometry.BoundarySlots)]
     private struct DescendantDeltaBuffer
     {
         private long _element;

@@ -53,22 +53,32 @@ internal static class PbtTestPaths
     /// <summary>The group key and position of the node at <paramref name="path"/>.</summary>
     public static PbtNodeGroupLocation<TPath> Locate<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        int groupDepth = PbtFourLevelGroupGeometry.GroupDepthOf(path.BitDepth);
+        int groupDepth = PbtThreeLevelGroupGeometry.GroupDepthOf(path.BitDepth);
         int relativeDepth = path.BitDepth - groupDepth;
-        int position = PbtFourLevelGroupGeometry.RootPosition;
+        int position = PbtThreeLevelGroupGeometry.RootPosition;
         if (relativeDepth != 0)
         {
-            int slot = (path.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
-            position = new NodeGroupPath(slot & ~((PbtFourLevelGroupGeometry.BoundarySlots >> relativeDepth) - 1), relativeDepth).Position;
+            int slot = SlotOf(path, groupDepth);
+            position = new NodeGroupPath(slot & ~((PbtThreeLevelGroupGeometry.BoundarySlots >> relativeDepth) - 1), relativeDepth).Position;
         }
         return new(path.Prefix(groupDepth), position);
+    }
+
+    /// <summary>The boundary slot of the group at <paramref name="groupDepth"/> that <paramref name="path"/> lies under.</summary>
+    /// <remarks>Bits past the end of <paramref name="path"/> read as zero.</remarks>
+    public static int SlotOf<TPath>(TPath path, int groupDepth) where TPath : struct, IPbtNodePath<TPath>
+    {
+        int slot = 0;
+        for (int bit = groupDepth; bit < groupDepth + PbtThreeLevelGroupGeometry.LevelsPerGroup; bit++)
+            slot = slot << 1 | (bit < path.BitDepth ? (path.GetByte(bit >> 3) >> (7 - (bit & 7))) & 1 : 0);
+        return slot;
     }
 
     /// <summary>The path of the node at <paramref name="position"/> in the group at <paramref name="groupKey"/>.</summary>
     public static TPath PathOf<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
-        NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
-        return groupKey.AppendBits(local.Slot >> (PbtFourLevelGroupGeometry.LevelsPerGroup - local.Length), local.Length);
+        NodeGroupPath local = PbtThreeLevelGroupGeometry.LocalPathOf(position);
+        return groupKey.AppendBits(local.Slot >> (PbtThreeLevelGroupGeometry.LevelsPerGroup - local.Length), local.Length);
     }
 }
 

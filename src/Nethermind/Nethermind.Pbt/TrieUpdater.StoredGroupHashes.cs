@@ -24,7 +24,7 @@ public static partial class TrieUpdater<TKey, TPath>
         private uint _known;
 
         /// <summary>Opens <paramref name="hashes"/> with no hash known, leaving the hash buffer unzeroed, since only known positions are read from it.</summary>
-        /// <remarks>A frame opens one per group it folds, and the buffer is a kilobyte.</remarks>
+        /// <remarks>A frame opens one per group it folds, and the buffer is about half a kilobyte.</remarks>
         public static void Open(out StoredGroupHashes hashes)
         {
             Unsafe.SkipInit(out hashes);
@@ -86,14 +86,14 @@ public static partial class TrieUpdater<TKey, TPath>
                 return PbtBranchReader.FromValidated(encoding.Span).Preimage;
             }
             _hashes[position] = default;
-            if (PbtFourLevelGroupGeometry.WidthOf(position) is not (int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)) return default;
+            if (PbtThreeLevelGroupGeometry.WidthOf(position) is not (int width and > 1 and < PbtThreeLevelGroupGeometry.BoundarySlots)) return default;
             GetChildHashesPaired(ref frame, position - width, position - 1, out ValueHash256 left, out ValueHash256 right);
             if (left == default || right == default) return default;
             PbtNodeCodec.CreateBranchEncoding(buffer, 0, left, right);
             return buffer;
         }
 
-        [InlineArray(PbtFourLevelGroupGeometry.PositionCount)]
+        [InlineArray(PbtThreeLevelGroupGeometry.PositionCount)]
         private struct HashBuffer
         {
             private ValueHash256 _element;
