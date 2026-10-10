@@ -117,7 +117,7 @@ public interface IInitConfig : IConfig
         HiddenFromDocs = true)]
     long HealCanonicalChainDepth { get; set; }
 
-    [ConfigItem(Description = "Interval, in milliseconds, at which the GC pacer induces a gen0 collection, skipped when the runtime already ran one within the interval or when less than 16 MiB was allocated since the previous tick. At very large block sizes the regions GC ignores `GCGen0MaxBudget`, so a whole block's survivors are otherwise promoted in one multi-hundred-ms gen0 pause. With pacing enabled, superblocks measured gen0 pause p90 at 25 ms instead of 362 ms at the cost of about 14% higher median newPayload time. `0` disables.", DefaultValue = "0")]
+    [ConfigItem(Description = "Interval, in milliseconds, at which the GC pacer induces a gen0 collection, skipped when the runtime already ran one within the interval or when less than 16 MiB was allocated since the previous tick. At very large block sizes the regions GC ignores `GCGen0MaxBudget`, so a whole block's survivors are otherwise promoted in one multi-hundred-ms gen0 pause. Pacing trades a higher median newPayload time for a shorter worst-case gen0 pause. `0` disables.", DefaultValue = "0")]
     long GcPaceGen0IntervalMs { get; set; }
 
     [ConfigItem(Description = "Interval, in milliseconds, at which the GC pacer induces a non-compacting gen1 collection, skipped when a gen1 collection already ran within the interval, so young objects referenced from long-lived caches are promoted in many small pauses instead of accumulating for minutes and being promoted in one multi-second induced collection. `0` disables.", DefaultValue = "0")]

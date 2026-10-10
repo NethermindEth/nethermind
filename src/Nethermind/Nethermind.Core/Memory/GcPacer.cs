@@ -20,6 +20,10 @@ namespace Nethermind.Core.Memory;
 /// honour its exclusion gate and a paced gen2 restarts its sustained-sweep allocation budget. Gen0 collections
 /// bypass that gate because it is held for the whole <c>engine_newPayload</c> call, and splitting a payload's
 /// promotion is what they are for; they still skip while a no-GC region is active.
+/// Every paced gen1 or gen2 restarts the scheduler's blocks-without-GC countdown, so while the gen1 interval is
+/// shorter than the time to process that many blocks, the full GC the scheduler runs during backlog catch-up does
+/// not fire. A paced tick that holds the scheduler gate when <c>engine_newPayload</c> arrives leaves the gate
+/// reopened while that payload runs, so the sustained sweep can collect mid-payload.
 /// </remarks>
 public sealed class GcPacer : IDisposable
 {
@@ -46,7 +50,7 @@ public sealed class GcPacer : IDisposable
     /// <param name="gen1IntervalMs">Gen1 cadence in milliseconds; non-positive disables gen1 and gen2 pacing.</param>
     /// <param name="gen2IntervalMs">Gen2 cadence in milliseconds; non-positive disables it.</param>
     /// <param name="warmupSeconds">Seconds from start during which the gen1 and gen2 cadences are shortened.</param>
-    /// <param name="logManager">The log manager.</param>
+    /// <param name="logManager">Source of the logger that reports failures of the pacing loops.</param>
     public GcPacer(long gen0IntervalMs, long gen1IntervalMs, long gen2IntervalMs, long warmupSeconds, ILogManager logManager)
         : this(gen0IntervalMs, gen1IntervalMs, gen2IntervalMs, warmupSeconds, logManager, GCScheduler.Instance)
     {
