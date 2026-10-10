@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Trie;
 
 namespace Nethermind.State;

@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
