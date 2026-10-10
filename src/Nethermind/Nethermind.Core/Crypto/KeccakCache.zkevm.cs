@@ -22,8 +22,8 @@ public static partial class KeccakCache
     internal const int MemoSlotBits = 17;
     private const int MemoSlotCount = 1 << MemoSlotBits;
 
-    // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the multiplied hash
-    // is shifted by 32 and the index is undefined, at 32 the count folds to one slot while the index
+    // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the shift is by 64,
+    // which C# wraps to 0, so the index is unbounded; at 32 the count folds to one slot while the index
     // reaches 2^32 and the store runs off the array.
     private const nuint MemoSlotBitsInRange = ((nuint)MemoSlotBits - 1) + (31 - (nuint)MemoSlotBits);
 
