@@ -42,6 +42,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private readonly ILogger _logger;
     private readonly Lock _gate = new();
     private readonly List<LeanPeer> _peers = [];
+    private readonly Dictionary<PublicKey, LeanNodeBudget> _nodes = [];
     private readonly LeanObjectStore _store = new();
     private readonly Dictionary<ValueHash256, LeanAssembly> _assemblies = [];
     private readonly LeanBoundedSet _tombstones = new(LeanLimits.MaxTombstones);
@@ -95,7 +96,10 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         : null;
 
     /// <summary>Registers a peer whose Status is compatible; null disables <c>lean/1</c> on that connection only.</summary>
-    internal LeanPeer? Accept(ILeanLink link, LeanStatusMessage status)
+    /// <param name="link">The connection.</param>
+    /// <param name="status">The peer's Status.</param>
+    /// <param name="nodeKey">The authenticated node key, whose connections share one set of budgets.</param>
+    internal LeanPeer? Accept(ILeanLink link, LeanStatusMessage status, PublicKey? nodeKey = null)
     {
         if (!IsEnabled || status.ChainId != (UInt256)_blockTree.ChainId || _blockTree.Genesis?.Hash?.ValueHash256 != status.GenesisHash
             || Array.IndexOf(status.Profiles, LocalProfile) < 0)
@@ -104,10 +108,14 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             return null;
         }
         Outbox outbox = new();
-        LeanPeer peer = new(link, status);
+        LeanPeer peer;
         lock (_gate)
         {
             if (_disposed) return null;
+            LeanNodeBudget node = nodeKey is null ? new LeanNodeBudget(null)
+                : _nodes.TryGetValue(nodeKey, out LeanNodeBudget? shared) ? shared : _nodes[nodeKey] = new LeanNodeBudget(nodeKey);
+            peer = new(link, status, node);
+            node.Connections.Add(peer);
             _peers.Add(peer);
             AnnounceStored(peer, outbox);
         }
@@ -132,6 +140,8 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         if (peer.Closed) return;
         peer.Closed = true;
         _peers.Remove(peer);
+        peer.Node.Connections.Remove(peer);
+        if (peer.Node is { Key: { } key, Connections.Count: 0 }) _nodes.Remove(key);
         foreach (LeanOutgoingRequest request in peer.Live.Values) Fail(request, peer);
         peer.Live.Clear();
         foreach (LeanServing serving in peer.Serving.Values)
