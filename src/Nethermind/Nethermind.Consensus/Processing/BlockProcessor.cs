@@ -61,7 +61,7 @@ public partial class BlockProcessor(
             balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
-        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, stateProvider));
+        new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor));
     private ISystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -176,10 +176,6 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
-        {
-            _systemContractHandler.InstallPredeploys(spec);
-        }
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);

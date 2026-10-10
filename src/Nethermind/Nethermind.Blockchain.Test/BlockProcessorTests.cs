@@ -3929,10 +3929,6 @@ public partial class BlockProcessorTests
         {
         }
 
-        public void InstallPredeploys(IReleaseSpec spec)
-        {
-        }
-
         public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
         {
         }
