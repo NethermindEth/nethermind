@@ -2786,6 +2786,29 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
+      - name: Build pinned storage-map comparison images
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in \
+            0e016e5d2aaf110599ca7dc2f80a40d47ca117f5:storage-map-baseline-0e016e5 \
+            3791d66da156f868aea70c8f72988c28a703e0d9:storage-map-bounded-3791d66; do
+            source_ref="${entry%%:*}"
+            image="nethermind-rpcbench:${entry#*:}"
+            git fetch --depth=1 origin "$source_ref"
+            source_sha="$(git rev-parse "$source_ref^{commit}")"
+            revision="$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+            if [[ "$revision" != "$source_sha" ]]; then
+              source_context="$(mktemp -d "${RUNNER_TEMP}/storage-map-expb.XXXXXX")"
+              git archive "$source_sha" | tar -x -C "$source_context"
+              source_date_epoch="$(git log -1 --format=%ct "$source_sha")"
+              docker build "$source_context" -f "$source_context/Dockerfile" -t "$image" \
+                --build-arg BUILD_CONFIG=release --build-arg CI=true \
+                --build-arg COMMIT_HASH="$source_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+            fi
+            docker image inspect "$image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
+          done
+
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
