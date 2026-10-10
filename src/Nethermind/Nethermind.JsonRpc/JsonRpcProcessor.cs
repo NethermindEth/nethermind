@@ -546,7 +546,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
                     if (_logger.IsDebug) DebugRequest(request);
 
-                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
+                    JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context, cancellationToken);
                     await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
                     break;
 
@@ -575,7 +575,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         {
             if (_logger.IsDebug) DebugRequest(request);
 
-            JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
+            JsonRpcResult.Entry response = await HandleSingleRequest(request, context, cancellationToken);
             await WriteSingleEntryAsync(response, sink, cancellationToken);
         }
         finally
@@ -612,6 +612,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests");
 
         long startTime = Stopwatch.GetTimestamp();
+        StrongBox<TimeSpan> batchQueueWait = new();
         int requestIndex = 0;
         bool isStopped = false;
         // Deferred so an empty batch can be answered as a single Invalid Request rather than an empty array.
@@ -640,10 +641,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 }
 
                 batchRequestJsonLifetime.TrackUntilBatchEnd(request);
+                request.BatchQueueWait = batchQueueWait;
 
                 JsonRpcResult.Entry response = isStopped
                     ? CreateBatchResponseLimitEntry(request)
-                    : await HandleSingleRequest(request, context);
+                    : await HandleSingleRequest(request, context, cancellationToken);
 
                 if (_logger.IsTrace)
                 {
@@ -821,9 +823,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return _diagnostics.RecordResponse(response, new RpcReport("# parsing error #", (long)Stopwatch.GetElapsedTime(startTime).TotalMicroseconds, false));
     }
 
-    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
+    private ValueTask<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         Metrics.JsonRpcRequests++;
+        request.CancellationToken = cancellationToken;
         long startTime = Stopwatch.GetTimestamp();
 
         ValueTask<JsonRpcResponse> responseTask = _jsonRpcService.SendRequestAsync(request, context);

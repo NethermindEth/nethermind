@@ -8,10 +8,12 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -104,6 +106,9 @@ public class JsonRpcServiceTests
     private IConfigProvider _configurationProvider = null!;
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
+
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private const string StateOverrideJson = """{"0x0000000000000000000000000000000000000001":{"balance":"0x1"}}""";
 
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
@@ -253,25 +258,33 @@ public class JsonRpcServiceTests
     }
 
     private JsonRpcResponse TestRawRequest<T>(T module, string method, string rawParameters) where T : IRpcModule =>
-        SendRequestWithPool(
-            new SingletonModulePool<T>(new SingletonFactory<T>(module), true),
-            new JsonRpcRequest
-            {
-                JsonRpc = "2.0",
-                Method = method,
-                ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
-                ParamsKind = JsonValueKind.Array,
-                Id = 67
-            });
+        SendRequestWithPool(new SingletonModulePool<T>(new SingletonFactory<T>(module), true), BuildRawRequest(method, rawParameters));
+
+    private static JsonRpcRequest BuildRawRequest(string method, string rawParameters) =>
+        new()
+        {
+            JsonRpc = "2.0",
+            Method = method,
+            ParamsUtf8 = Encoding.UTF8.GetBytes(rawParameters),
+            ParamsKind = JsonValueKind.Array,
+            Id = 67
+        };
 
     private JsonRpcResponse SendRequestWithPool<T>(IRpcModulePool<T> pool, JsonRpcRequest request) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
-        moduleProvider.Register(pool);
-        _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
+        _jsonRpcService = CreateService(pool, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
         Assert.That(response.Id, Is.EqualTo(request.Id));
         return response;
+    }
+
+    private JsonRpcService CreateService<T>(IRpcModulePool<T> pool, IJsonRpcConfig config, TimeProvider? clock = null) where T : IRpcModule
+    {
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        moduleProvider.Register(pool);
+        return clock is null
+            ? new JsonRpcService(moduleProvider, _logManager, config, _gcKeeper)
+            : new JsonRpcService(moduleProvider, _logManager, config, _gcKeeper) { EvmGate = new EvmAdmissionGate(config, clock) };
     }
 
     [TestCase(false, 2UL, TestName = "Number")]
@@ -1382,6 +1395,435 @@ public class JsonRpcServiceTests
 
         static MissingTrieNodeException MissingTrieNode(StateUnavailableException inner) =>
             new("State proof at historical block 1 is unavailable", null, TreePath.Empty, TestItem.KeccakA, inner);
+    }
+
+    [TestCase(null, null, TestName = "Succeeds")]
+    [TestCase(typeof(InvalidOperationException), ErrorCodes.InternalError, TestName = "Throws")]
+    [TestCase(typeof(OperationCanceledException), ErrorCodes.Timeout, TestName = "Throws a cancellation the caller did not request")]
+    public async Task Eth_call_holds_an_execution_slot_until_it_completes(Type? exceptionType, int? expectedErrorCode)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        int inFlightDuringCall = -1;
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        {
+            inFlightDuringCall = service.EvmGate.InFlight;
+            return exceptionType is null
+                ? ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"))
+                : throw (Exception)Activator.CreateInstance(exceptionType)!;
+        });
+
+        using JsonRpcResponse response = await service.SendRequestAsync(EthCall(), _context);
+
+        if (expectedErrorCode is null) RpcTest.AssertSuccess<HexBytes>(response);
+        else AssertJsonRpcError(response, expectedErrorCode.Value);
+        Assert.That((inFlightDuringCall, service.EvmGate.InFlight), Is.EqualTo((1, 0)));
+    }
+
+    [TestCase(true, ErrorCodes.LimitExceeded, TestName = "Busy: rejected before binding")]
+    [TestCase(false, ErrorCodes.InvalidParams, TestName = "Free: bound, then rejected")]
+    public async Task Evm_request_is_admitted_before_its_parameters_are_bound(bool busy, int expectedCode)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_blockNumber().Returns(Task.FromResult(ResultWrapper<ulong?>.Success(7)));
+        JsonRpcService service = CreateGatedService(ethRpcModule, maxQueueWaitMs: 0);
+        using EvmAdmissionGate.Lease held = busy ? await HoldSlot(service) : default;
+
+        using JsonRpcResponse evmResponse = await service.SendRequestAsync(EthCall("not a transaction"), _context);
+        using JsonRpcResponse otherResponse = await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_blockNumber"), _context);
+
+        AssertJsonRpcError(evmResponse, expectedCode);
+        Assert.That(RpcTest.AssertSuccess<ulong?>(otherResponse), Is.EqualTo(7UL), "other methods are not gated");
+        Assert.That(service.EvmGate.InFlight, Is.EqualTo(busy ? 1 : 0));
+    }
+
+    [TestCaseSource(nameof(EvmQueueingCases))]
+    public async Task Evm_request_queues_unless_its_wait_budget_is_spent(
+        RpcEndpoint endpoint, int webSocketsProcessingConcurrency, int? batchWaitedSeconds, bool queues)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        JsonRpcService service = CreateGatedService(ethRpcModule, webSocketsProcessingConcurrency: webSocketsProcessingConcurrency);
+        using JsonRpcContext context = new(endpoint);
+        JsonRpcRequest request = EthCall();
+        if (batchWaitedSeconds is { } waited) request.BatchQueueWait = new(TimeSpan.FromSeconds(waited));
+
+        Task<JsonRpcResponse> response;
+        using (await HoldSlot(service))
+        {
+            response = service.SendRequestAsync(request, context).AsTask();
+            Assert.That(service.EvmGate.Queued, Is.EqualTo(queues ? 1 : 0));
+        }
+
+        using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+        if (queues) RpcTest.AssertSuccess<HexBytes>(completed);
+        else AssertJsonRpcError(completed, ErrorCodes.LimitExceeded);
+    }
+
+    private static IEnumerable<TestCaseData> EvmQueueingCases()
+    {
+        // CreateGatedService gives a 60 s budget.
+        yield return new TestCaseData(RpcEndpoint.Http, 1, null, true).SetName("HTTP queues");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, 0, true).SetName("Batch item queues within its batch budget");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, 30, true).SetName("Batch item queues with what is left of its batch budget");
+        yield return new TestCaseData(RpcEndpoint.Http, 1, 60, false).SetName("Batch item whose batch waited its whole budget is rejected at once");
+        yield return new TestCaseData(RpcEndpoint.Ws, 1, null, true).SetName("Single-worker WebSocket queues");
+        yield return new TestCaseData(RpcEndpoint.Ws, 2, null, true).SetName("Multi-worker WebSocket queues");
+        yield return new TestCaseData(RpcEndpoint.Ws, 1, 60, false).SetName("WebSocket batch item whose batch waited its whole budget is rejected at once");
+    }
+
+    [Test]
+    public async Task Batch_items_are_charged_their_wait_for_a_slot_not_their_execution()
+    {
+        ManualClock clock = new();
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        // Every item runs for a second on the gate's clock.
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(_ =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(1));
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        JsonRpcService service = CreateGatedService(ethRpcModule, clock: clock);
+        StrongBox<TimeSpan> batchQueueWait = new();
+
+        using (JsonRpcResponse executed = await service.SendRequestAsync(BatchItem(), _context))
+        {
+            RpcTest.AssertSuccess<HexBytes>(executed);
+        }
+
+        Assert.That(batchQueueWait.Value, Is.EqualTo(TimeSpan.Zero), "a free slot costs the batch nothing, however long the item runs");
+        Task<JsonRpcResponse> queued;
+        using (await HoldSlot(service))
+        {
+            queued = service.SendRequestAsync(BatchItem(), _context).AsTask();
+            clock.Advance(TimeSpan.FromMilliseconds(200));
+        }
+
+        using (JsonRpcResponse executed = await queued.WaitAsync(TestTimeout))
+        {
+            RpcTest.AssertSuccess<HexBytes>(executed);
+        }
+
+        Assert.That(batchQueueWait.Value, Is.EqualTo(TimeSpan.FromMilliseconds(200)), "a queued item is charged its wait for the slot, not its run as well");
+
+        JsonRpcRequest BatchItem()
+        {
+            JsonRpcRequest request = EthCall();
+            request.BatchQueueWait = batchQueueWait;
+            return request;
+        }
+    }
+
+    [Test]
+    public async Task Batch_item_waits_only_what_is_left_and_once_that_runs_out_later_items_are_rejected_at_once()
+    {
+        // The wait timer fires 1 ms early, as the system timer may, so the item gives up before all that was left has passed.
+        ManualClock clock = new() { TimerEarliness = TimeSpan.FromMilliseconds(1) };
+        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>(), clock: clock);
+        TimeSpan left = TimeSpan.FromMilliseconds(100);
+        StrongBox<TimeSpan> batchQueueWait = new(service.EvmGate.Budget - left);
+
+        using (await HoldSlot(service))
+        {
+            Task<JsonRpcResponse> response = service.SendRequestAsync(BatchItem(), _context).AsTask();
+            clock.Advance(left - TimeSpan.FromMilliseconds(2));
+            Assert.That((response.IsCompleted, service.EvmGate.Queued), Is.EqualTo((false, 1)), "still waiting 2 ms before what was left runs out");
+            clock.Advance(TimeSpan.FromMilliseconds(1));
+            using (JsonRpcResponse timedOut = await response.WaitAsync(TestTimeout))
+            {
+                AssertJsonRpcError(timedOut, ErrorCodes.LimitExceeded);
+            }
+
+            Assert.That(batchQueueWait.Value, Is.EqualTo(service.EvmGate.Budget), "a timed-out item spends all that was left, though it waited 1 ms less");
+            using JsonRpcResponse rejected = await service.SendRequestAsync(BatchItem(), _context).AsTask().WaitAsync(TestTimeout);
+            AssertJsonRpcError(rejected, ErrorCodes.LimitExceeded);
+        }
+
+        Assert.That((service.EvmGate.WaitTimeoutRejections, service.EvmGate.NotQueueableRejections), Is.EqualTo((1L, 1L)), "so the next item is rejected without queueing");
+
+        JsonRpcRequest BatchItem()
+        {
+            JsonRpcRequest request = EthCall();
+            request.BatchQueueWait = batchQueueWait;
+            return request;
+        }
+    }
+
+    [Test]
+    public async Task Batch_item_refused_for_a_full_queue_leaves_its_batch_the_budget_it_had()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        JsonRpcService service = CreateGatedService(ethRpcModule, queueLimit: 1, clock: new ManualClock());
+        JsonRpcRequest item = EthCall();
+        item.BatchQueueWait = new(TimeSpan.FromSeconds(1));
+
+        Task<JsonRpcResponse> queued;
+        using (await HoldSlot(service))
+        {
+            queued = service.SendRequestAsync(EthCall(), _context).AsTask();
+            using JsonRpcResponse refused = await service.SendRequestAsync(item, _context).AsTask().WaitAsync(TestTimeout);
+            AssertJsonRpcError(refused, ErrorCodes.LimitExceeded);
+        }
+
+        using (JsonRpcResponse completed = await queued.WaitAsync(TestTimeout))
+        {
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        // Only a wait that timed out spends the rest of the budget.
+        Assert.That(service.EvmGate.QueueFullRejections, Is.EqualTo(1));
+        Assert.That(item.BatchQueueWait.Value, Is.EqualTo(TimeSpan.FromSeconds(1)), "charged only what it waited, which is nothing");
+    }
+
+    [Test]
+    public async Task Batch_items_add_their_granted_waits_to_what_their_batch_waited()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(ResultWrapper<HexBytes>.Success(ToHexBytes("0x01")));
+        ManualClock clock = new();
+        JsonRpcService service = CreateGatedService(ethRpcModule, clock: clock);
+        StrongBox<TimeSpan> batchQueueWait = new();
+
+        await GrantedAfterHolding(TimeSpan.FromMilliseconds(200));
+        Assert.That(batchQueueWait.Value, Is.EqualTo(TimeSpan.FromMilliseconds(200)), "a wait that ends in a grant is charged");
+        await GrantedAfterHolding(TimeSpan.FromMilliseconds(300));
+        Assert.That(batchQueueWait.Value, Is.EqualTo(TimeSpan.FromMilliseconds(500)), "and adds to what the batch waited before");
+
+        async Task GrantedAfterHolding(TimeSpan held)
+        {
+            Task<JsonRpcResponse> response;
+            using (await HoldSlot(service))
+            {
+                response = service.SendRequestAsync(BatchItem(), _context).AsTask();
+                Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+                clock.Advance(held);
+            }
+
+            using JsonRpcResponse granted = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(granted);
+        }
+
+        JsonRpcRequest BatchItem()
+        {
+            JsonRpcRequest request = EthCall();
+            request.BatchQueueWait = batchQueueWait;
+            return request;
+        }
+    }
+
+    [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
+    [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
+    public async Task Authenticated_and_ipc_evm_requests_queue_in_arrival_order_and_are_refused_for_a_full_queue(RpcEndpoint endpoint, bool authenticatedUrl)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule, queueLimit: 2);
+        List<(ulong? Nonce, int InFlight, int Queued)> calls = RecordEthCalls(ethRpcModule, service);
+        using JsonRpcContext authenticated = CreateAuthenticatedContext(endpoint, authenticatedUrl);
+
+        Task<JsonRpcResponse>[] queued;
+        using (await HoldSlot(service))
+        {
+            queued =
+            [
+                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 1 }), _context).AsTask(),
+                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 2 }), authenticated).AsTask(),
+            ];
+            using JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), authenticated).AsTask().WaitAsync(TestTimeout);
+            AssertJsonRpcError(refused, ErrorCodes.LimitExceeded, "Too many requests");
+            Assert.That((service.EvmGate.InFlight, service.EvmGate.Queued, service.EvmGate.QueueFullRejections), Is.EqualTo((1, 2, 1L)),
+                "authenticated and IPC requests queue like any other, within the queue limit");
+        }
+
+        foreach (Task<JsonRpcResponse> response in queued)
+        {
+            using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+            RpcTest.AssertSuccess<HexBytes>(completed);
+        }
+
+        Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (1, 1, 1), (2, 1, 0) }), "served one at a time, in arrival order");
+    }
+
+    [Test]
+    public async Task Cancelled_caller_leaves_the_queue_and_gets_no_response()
+    {
+        JsonRpcService service = CreateGatedService(Substitute.For<IEthRpcModule>());
+        using CancellationTokenSource cancellation = new();
+        JsonRpcRequest request = EthCall();
+        request.CancellationToken = cancellation.Token;
+        using EvmAdmissionGate.Lease held = await HoldSlot(service);
+        Task<JsonRpcResponse> response = service.SendRequestAsync(request, _context).AsTask();
+        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+
+        cancellation.Cancel();
+
+        Assert.That(async () => await response.WaitAsync(TestTimeout), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(service.EvmGate.Queued, Is.Zero);
+    }
+
+    [Test]
+    public async Task Caller_cancelled_after_the_grant_never_executes()
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        using CancellationTokenSource cancellation = new();
+        JsonRpcRequest request = EthCall();
+        request.CancellationToken = cancellation.Token;
+        EvmAdmissionGate.Lease held = await HoldSlot(service);
+        HeldContinuations continuations = new();
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        Task<JsonRpcResponse> response;
+        try
+        {
+            // The request resumes after its grant only when the test runs the continuations, so the caller leaves first.
+            SynchronizationContext.SetSynchronizationContext(continuations);
+            response = service.SendRequestAsync(request, _context).AsTask();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        Assert.That(service.EvmGate.Queued, Is.EqualTo(1));
+
+        held.Dispose();
+        cancellation.Cancel();
+        Assert.That(() => continuations.RunUntilCompleted(response, TestTimeout), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(response.IsCanceled, Is.True, "cancelled by its caller once its continuations ran, not stopped by the pump's time limit");
+        ethRpcModule.DidNotReceiveWithAnyArgs().eth_call(null!);
+        Assert.That(service.EvmGate.InFlight, Is.Zero);
+    }
+
+    [Test]
+    public async Task Evm_request_is_gated_only_when_it_runs_in_an_environment_pool_of_its_own(
+        [ValueSource(nameof(EvmGatingCases))] (string Method, string ParamsJson, bool Gated) gating, [Values] bool rawParams)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        JsonElement parsed = JsonSerializer.Deserialize<JsonElement>(gating.ParamsJson);
+        JsonRpcRequest request = rawParams
+            ? new() { JsonRpc = "2.0", Method = gating.Method, ParamsUtf8 = Encoding.UTF8.GetBytes(gating.ParamsJson), ParamsKind = parsed.ValueKind, Id = 67 }
+            : new() { JsonRpc = "2.0", Method = gating.Method, Params = parsed, Id = 67 };
+
+        Task<JsonRpcResponse> response;
+        using (await HoldSlot(service))
+        {
+            response = service.SendRequestAsync(request, _context).AsTask();
+            if (gating.Gated)
+            {
+                Assert.That((service.EvmGate.Queued, ethRpcModule.ReceivedCalls().Count()), Is.EqualTo((1, 0)), "waits for the held slot");
+            }
+            else
+            {
+                using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+                Assert.That(completed is JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded }, Is.False, "not refused");
+                Assert.That(service.EvmGate.Queued, Is.Zero, "ran while every slot was held");
+            }
+        }
+
+        using JsonRpcResponse _ = await response.WaitAsync(TestTimeout);
+        Assert.That(service.EvmGate.InFlight, Is.Zero);
+    }
+
+    private static IEnumerable<(string Method, string ParamsJson, bool Gated)> EvmGatingCases()
+    {
+        const string Tx = """{"to":"0x0000000000000000000000000000000000000002"}""";
+        const string Latest = "\"latest\"";
+        const string Missing = "\"\"";
+        yield return ("eth_call", Params(Tx), false);
+        yield return ("eth_call", Params(Tx, Latest), false);
+        yield return ("eth_call", Params(Tx, Latest, "null"), false);
+        yield return ("eth_call", Params(Tx, Latest, "{}"), false);
+        yield return ("eth_call", Params(Tx, Latest, Missing), false);
+        yield return ("eth_call", Params(Tx, Latest, StateOverrideJson), true);
+        yield return ("eth_call", Params(Tx, Latest, "null", "null"), false);
+        yield return ("eth_call", Params(Tx, Latest, "{}", Missing), false);
+        yield return ("eth_call", Params(Tx, Latest, "null", "{}"), true);
+        yield return ("eth_call", Params(Tx, Latest, "{}", """{"number":"0x1"}"""), true);
+        // Binding parses a string as JSON too.
+        yield return ("eth_call", Params(Tx, Latest, JsonSerializer.Serialize(StateOverrideJson)), true);
+        yield return ("eth_call", Params(Tx, Latest, "null", JsonSerializer.Serialize("{}")), true);
+        yield return ("eth_estimateGas", Params(Tx, Latest, "null", "{}"), true);
+        yield return ("eth_createAccessList", Params(Tx, Latest, "null", "true"), false);
+        yield return ("eth_createAccessList", Params(Tx, Latest, "{}", "false"), false);
+        yield return ("eth_createAccessList", Params(Tx, Latest, StateOverrideJson, "true"), true);
+        yield return ("eth_simulateV1", Params("""{"blockStateCalls":[]}"""), true);
+        yield return ("eth_call", Tx, false);
+
+        static string Params(params string[] items) => $"[{string.Join(',', items)}]";
+    }
+
+    private JsonRpcService CreateGatedService(
+        IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1, int queueLimit = 500, ManualClock? clock = null) =>
+        CreateService(
+            new SingletonModulePool<IEthRpcModule>(new SingletonFactory<IEthRpcModule>(ethRpcModule), true),
+            new JsonRpcConfig
+            {
+                EthModuleConcurrentInstances = 1,
+                EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
+                EvmExecutionQueueLimit = queueLimit,
+                WebSocketsProcessingConcurrency = webSocketsProcessingConcurrency,
+            },
+            clock);
+
+    // With a state override, so the call is gated.
+    private static JsonRpcRequest EthCall(object? transaction = null) =>
+        RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc(), "latest", JsonSerializer.Deserialize<JsonElement>(StateOverrideJson));
+
+    private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
+        service.EvmGate.AdmitAsync(TimeSpan.Zero, CancellationToken.None);
+
+    private static JsonRpcContext CreateAuthenticatedContext(RpcEndpoint endpoint, bool authenticatedUrl) =>
+        new(endpoint, url: authenticatedUrl ? new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]) : null);
+
+    // Records each eth_call's nonce with the gate's state while it runs.
+    private static List<(ulong? Nonce, int InFlight, int Queued)> RecordEthCalls(IEthRpcModule ethRpcModule, JsonRpcService service)
+    {
+        List<(ulong? Nonce, int InFlight, int Queued)> calls = [];
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
+        {
+            ulong? nonce = ((LegacyTransactionForRpc)callInfo.Arg<SignableTransactionForRpc>()).Nonce;
+            lock (calls) calls.Add((nonce, service.EvmGate.InFlight, service.EvmGate.Queued));
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        return calls;
+    }
+
+    /// <summary>Holds the continuations posted to it until <see cref="RunUntilCompleted"/> runs them on the calling thread.</summary>
+    private sealed class HeldContinuations : SynchronizationContext
+    {
+        private readonly Channel<(SendOrPostCallback Callback, object? State)> _posted = Channel.CreateUnbounded<(SendOrPostCallback, object?)>();
+
+        public override void Post(SendOrPostCallback d, object? state) => _posted.Writer.TryWrite((d, state));
+
+        /// <summary>Runs the posted continuations until <paramref name="task"/> completes, then returns its result or throws its exception.</summary>
+        /// <exception cref="OperationCanceledException"><paramref name="task"/> did not complete within <paramref name="timeout"/>.</exception>
+        public void RunUntilCompleted(Task task, TimeSpan timeout)
+        {
+            using CancellationTokenSource cancellation = new(timeout);
+            try
+            {
+                while (!task.IsCompleted)
+                {
+                    while (_posted.Reader.TryRead(out (SendOrPostCallback Callback, object? State) posted))
+                    {
+                        posted.Callback(posted.State);
+                    }
+
+                    if (!task.IsCompleted)
+                    {
+                        Task ready = _posted.Reader.WaitToReadAsync(cancellation.Token).AsTask();
+                        Task.WhenAny(task, ready).WaitAsync(cancellation.Token).GetAwaiter().GetResult();
+                    }
+                }
+
+                task.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                cancellation.Cancel();
+            }
+        }
     }
 
     [RpcModule(ModuleType.Eth)]

@@ -5,12 +5,14 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.ParityStyle;
@@ -23,6 +25,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -235,6 +238,41 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Evm_execution_flag_marks_exactly_the_methods_with_an_environment_pool_of_their_own_and_finds_their_overrides()
+    {
+        // The Engine API is swept too: a gated engine method would shed consensus-client calls under load.
+        Dictionary<string, (int State, int Block)> flagged = new[] { typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly }
+            .SelectMany(static a => a.GetTypes())
+            .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t))
+            .SelectMany(static t => t.GetMethods())
+            .Where(static m => m.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution == true)
+            .Select(static m => new RpcModuleProvider.ResolvedMethodInfo(ModuleType.Eth, m, true, RpcEndpoint.All, true))
+            .ToDictionary(static m => m.MethodInfo.Name, static m => (m.StateOverrideIndex, m.BlockOverrideIndex));
+
+        Assert.That(flagged, Is.EquivalentTo(new Dictionary<string, (int State, int Block)>
+        {
+            ["eth_call"] = (2, 3),
+            ["eth_estimateGas"] = (2, 3),
+            ["eth_createAccessList"] = (2, -1),
+            ["eth_simulateV1"] = (-1, -1),
+        }));
+    }
+
+    [Test]
+    public void Evm_execution_flag_reaches_the_resolved_method_and_rejects_a_streamed_result()
+    {
+        _moduleProvider.Register(new TestModulePool<EvmExecutionRpcModule>(new EvmExecutionRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Resolve(nameof(EvmExecutionRpcModule.evm_gated))!.IsEvmExecution, Is.True);
+            Assert.That(_moduleProvider.Resolve(nameof(EvmExecutionRpcModule.evm_streamed))!.IsEvmExecution, Is.False);
+            Assert.That(() => _moduleProvider.Register(new TestModulePool<StreamedEvmExecutionRpcModule>(new StreamedEvmExecutionRpcModule())),
+                Throws.InvalidOperationException.With.Message.Contains(nameof(IStreamableResult)));
         }
     }
 
@@ -620,6 +658,28 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class EvmExecutionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<string> evm_gated() => ResultWrapper<string>.Success(string.Empty);
+
+        [JsonRpcMethod]
+        public ResultWrapper<TestStreamableResult> evm_streamed() => ResultWrapper<TestStreamableResult>.Success(new());
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class StreamedEvmExecutionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<TestStreamableResult> evm_gated_streamed() => ResultWrapper<TestStreamableResult>.Success(new());
+    }
+
+    private sealed class TestStreamableResult : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => default;
+    }
 
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule
