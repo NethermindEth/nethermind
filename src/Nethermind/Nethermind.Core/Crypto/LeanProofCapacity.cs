@@ -79,8 +79,8 @@ public static class LeanProofCapacity
 
     private static string? Add(FrameDependency dependency, ref int generic)
     {
+        if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) return "Unknown dependency proof scheme";
         if (dependency.Scheme == Eip8288Constants.LeanStarkScheme) generic++;
-        else if (dependency.Scheme != Eip8288Constants.LeanSphincsScheme) return "Unknown dependency proof scheme";
         return null;
     }
 

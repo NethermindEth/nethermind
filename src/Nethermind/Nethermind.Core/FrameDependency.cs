@@ -154,9 +154,18 @@ public static class Eip8288Dependencies
         => Blake2s.Compute(Serialize(Canonicalize(dependencies)));
 
     /// <summary>Whether a dependency scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
-    internal static bool IsAcceptedScheme(byte scheme) =>
+    /// <remarks><see cref="Eip8288Constants.AggregatedVk"/> fixes the set, so it is also the EIP-8437 profile's scheme set.</remarks>
+    public static bool IsAcceptedScheme(byte scheme) =>
         scheme == Eip8288Constants.LeanSphincsScheme
         || (Eip8288Constants.LeanStarkSchemeEnabled && scheme == Eip8288Constants.LeanStarkScheme);
+
+    /// <summary>Whether every dependency's scheme is in the EIP-8288 <c>enabled_schemes</c>.</summary>
+    public static bool AreSchemesEnabled(IReadOnlyList<FrameDependency> dependencies)
+    {
+        for (int i = 0; i < dependencies.Count; i++)
+            if (!IsAcceptedScheme(dependencies[i].Scheme)) return false;
+        return true;
+    }
 
     /// <summary>Sorts and deduplicates dependencies for the EIP-8288 commitment.</summary>
     public static List<FrameDependency> Canonicalize(IEnumerable<FrameDependency> dependencies)

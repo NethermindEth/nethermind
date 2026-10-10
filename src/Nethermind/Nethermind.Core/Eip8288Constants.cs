@@ -73,6 +73,8 @@ public static class Eip8288Constants
     public const int MaxLeanStarkDepsPerWrapper = 1;
 
     /// <summary>Mode-1 (aggregate) dependencies per wrapper; mode-0 witness limits do not apply to an aggregate.</summary>
+    /// <remarks>A mempool bound, distinct from <see cref="MaxDepsPerBlock"/> though equal to it, so one aggregate fits an empty block.
+    /// It never excuses an inclusion-list omission.</remarks>
     public const int MaxDepsPerAggregate = 4096;
 
     /// <summary>Mode-1 (aggregate) leanSTARK dependencies per wrapper, counted within <see cref="MaxDepsPerAggregate"/>.</summary>

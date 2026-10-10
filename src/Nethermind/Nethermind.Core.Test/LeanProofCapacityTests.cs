@@ -71,7 +71,19 @@ public class LeanProofCapacityTests
         {
             Assert.That(LeanProofCapacity.Block, Is.EqualTo(new LeanProofCapacity.Limits(4096, 16)));
             Assert.That(LeanProofCapacity.Block.Dependencies, Is.GreaterThanOrEqualTo(LeanProofCapacity.Proof.Dependencies));
+            // Distinct mempool and consensus constants: one mode-1 aggregate fits an otherwise empty block.
+            Assert.That(new LeanProofCapacity.Limits(Eip8288Constants.MaxDepsPerAggregate, Eip8288Constants.MaxLeanStarkDepsPerAggregate),
+                Is.EqualTo(LeanProofCapacity.Block));
         }
+    }
+
+    [Test]
+    public void Schemes_outside_enabled_schemes_have_no_capacity([Values] bool block)
+    {
+        LeanProofCapacity.Limits limits = block ? LeanProofCapacity.Block : LeanProofCapacity.Proof;
+        FrameDependency disabled = new(0x12, ValueKeccak.Compute("disabled"), default);
+        Assert.That(LeanProofCapacity.CreateAppendBudget(new HashSet<FrameDependency>(), limits).CapacityError([disabled]),
+            Is.EqualTo("Unknown dependency proof scheme"));
     }
 
     // EIP-8288 test case 11: 4,096 distinct dependencies with 16 leanSTARK fit; a 4,097th or a 17th leanSTARK does not,

@@ -83,8 +83,15 @@ public class FrameDependencyTests
     [TestCase((byte)0x00, false)]
     [TestCase((byte)0x12, false)]
     [TestCase((byte)0xFF, false)]
-    public void Only_enabled_schemes_are_accepted(byte scheme, bool accepted) =>
-        Assert.That(Eip8288Dependencies.IsAcceptedScheme(scheme), Is.EqualTo(accepted));
+    public void Only_enabled_schemes_are_accepted(byte scheme, bool accepted)
+    {
+        FrameDependency sphincs = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.IsAcceptedScheme(scheme), Is.EqualTo(accepted));
+            Assert.That(Eip8288Dependencies.AreSchemesEnabled([sphincs, new FrameDependency(scheme, default, default)]), Is.EqualTo(accepted));
+        }
+    }
 
     [TestCase(new byte[] { (byte)'a', (byte)'b', (byte)'c' }, "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982")]
     [TestCase(null, "6d244e1a06ce4ef578dd0f63aff0936706735119ca9c8d22d86c801414ab9741")]
