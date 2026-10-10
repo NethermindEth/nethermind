@@ -5,6 +5,8 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -37,6 +39,22 @@ public class StatelessSpecProviderTests
         [Values] bool bogota) =>
         Assert.That(() => StatelessSpecProvider.Create(BlockchainIds.Mainnet, fork,
             bogota ? MainnetSpecProvider.BogotaActivation : MainnetSpecProvider.AmsterdamActivation), Throws.Nothing);
+
+    [Test]
+    public void Follows_the_chain_schedule([Values(BlockchainIds.Mainnet, BlockchainIds.Gnosis)] ulong chainId)
+    {
+        ForkActivation activation = GetOsakaActivation(chainId);
+        IReleaseSpec scheduled = ChainSpecBasedSpecProvider.KnownProvidersByChainId[chainId].GetSpec(activation);
+
+        Assert.That(StatelessSpecProvider.Create(chainId, ProtocolFork.Current, activation).GetSpec(activation), Is.SameAs(scheduled));
+    }
+
+    [Test]
+    public void Pins_the_fork_the_chain_schedules_under_that_name() =>
+        Assert.That(
+            StatelessSpecProvider.Create(BlockchainIds.Mainnet, ProtocolFork.Amsterdam, MainnetSpecProvider.OsakaActivation)
+                .GetSpec(MainnetSpecProvider.OsakaActivation),
+            Is.SameAs(Amsterdam.Instance));
 
     private static ForkActivation GetOsakaActivation(ulong chainId) =>
         chainId == BlockchainIds.Gnosis ? _gnosisOsakaActivation : MainnetSpecProvider.OsakaActivation;

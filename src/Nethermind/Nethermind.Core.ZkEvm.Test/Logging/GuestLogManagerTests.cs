@@ -8,8 +8,9 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Logging;
 
 /// <summary>
-/// The non-virtual <see cref="ILogManager.GetClassLogger{T}"/> of <c>ILogManager.zkevm.cs</c>, which the
-/// host suite cannot reach: there it is an interface member each manager implements.
+/// The non-virtual <see cref="ILogManager.GetClassLogger{T}"/> of <c>ILogManager.zkevm.cs</c> and the zkEVM branch of
+/// <see cref="LogManagerExtensions.GetClassLogger"/>, which the host suite cannot reach: there the first is an interface
+/// member each manager implements and the second names the logger after the type.
 /// </summary>
 public class GuestLogManagerTests
 {
@@ -28,12 +29,15 @@ public class GuestLogManagerTests
             Is.SameAs(manager.GetLogger(nameof(GuestLogManagerTests)).UnderlyingLogger));
 
     [Test]
-    public void Class_logger_forwards_to_GetLogger_with_an_empty_name()
+    public void Class_logger_forwards_to_GetLogger_with_an_empty_name([Values] bool byType)
     {
         NameRecordingLogManager recorder = new();
         ILogManager manager = recorder;
 
-        manager.GetClassLogger<GuestLogManagerTests>();
+        if (byType)
+            manager.GetClassLogger(typeof(GuestLogManagerTests));
+        else
+            manager.GetClassLogger<GuestLogManagerTests>();
 
         Assert.That(recorder.Names, Is.EqualTo(new[] { string.Empty }));
     }

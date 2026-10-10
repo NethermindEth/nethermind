@@ -23,7 +23,30 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     protected internal ForkSpec[] ForkSchedule => _schedule.Value;
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
     public IEnumerable<string> AvailableForks => _availableForks.Value;
+#if ZK_EVM
+    /// <inheritdoc/>
+    /// <remarks>A guest looks up one fork per run, so building the name index over the whole schedule costs more than a scan.
+    /// The scan starts from the newest fork, the one inputs pin: each fork is its own spec type, and every new
+    /// receiver type at the Name call site costs an interface dispatch resolution. Starting there also keeps the
+    /// name index's rule that the last of duplicate names wins.</remarks>
+    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
+    {
+        ForkSpec[] schedule = ForkSchedule;
+        for (int i = schedule.Length - 1; i >= 0; i--)
+        {
+            if (string.Equals(schedule[i].Spec.Name, forkName, StringComparison.OrdinalIgnoreCase))
+            {
+                spec = schedule[i].Spec;
+                return true;
+            }
+        }
+
+        spec = null;
+        return false;
+    }
+#else
     public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
+#endif
 
     protected ForkScheduleSpecProvider(ForkSpec[] schedule, UInt256? terminalTotalDifficulty = null, ForkActivation? mergeBlockNumber = null)
         : this(new Lazy<ForkSpec[]>(schedule), terminalTotalDifficulty, mergeBlockNumber) { }
