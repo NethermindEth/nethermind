@@ -43,7 +43,7 @@ public static partial class TrieUpdater
     /// <param name="foldQuota">The worker slots the fold's parallel parts share.</param>
     /// <param name="fanOut">The fewest operations worth handing a worker, by the stored size below its buckets.</param>
     /// <param name="partitionFoldTime">Observes each root slot's fold time, labelled by partition; <c>null</c> to skip.</param>
-    /// <param name="memoryProvider">Rents the published groups' memory; <c>null</c> for the default pool.</param>
+    /// <param name="memoryProvider">Rents the published groups' memory.</param>
     /// <returns>The root of the updated tree.</returns>
     public static ValueHash256 UpdateRoot(
         IPbtStore store,
@@ -52,10 +52,9 @@ public static partial class TrieUpdater
         ConcurrencyController foldQuota,
         FoldFanOut fanOut,
         IMetricObserver? partitionFoldTime,
-        IRefCountingMemoryProvider? memoryProvider = null)
+        IRefCountingMemoryProvider memoryProvider)
     {
         Debug.Assert(Eip8297KeyDerivation.CodeZone >> ZoneSlotShift == AccountSlot && StorageSlot != AccountSlot, "Only the account and code zones share a root slot.");
-        memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
         using RootSlotFold<PbtPath, PbtNodePath> accountFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _accountFoldLabel);
         using RootSlotFold<PbtStoragePath, PbtStorageNodePath> storageFold = new(store, memoryProvider, foldQuota, fanOut, partitionFoldTime, _storageFoldLabel);
         accountFold.Add(changes.Account);

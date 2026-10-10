@@ -39,7 +39,7 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
     private readonly SlabMemoryAllocator? _allocator;
     private readonly SlabAllocation _allocation;
     private readonly int _capacity;
-    private int _length;
+    private readonly int _length;
     private readonly BackingKind _backingKind;
     private long _leases = RefCountingLease.Single;
 
@@ -104,22 +104,6 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
 
     /// <summary>Gets the size of the backing buffer, which a pooled buffer may have rented larger than the value.</summary>
     public int Capacity => _capacity;
-
-    /// <summary>
-    /// Narrows the value to its first <paramref name="length"/> bytes, for a producer that rented more
-    /// room than it turned out to need.
-    /// </summary>
-    /// <remarks>
-    /// Only the producer may call this, before the memory is shared: it changes what every reader sees,
-    /// so a second lease being out already means someone is reading the bytes it would cut away. The
-    /// backing buffer is unaffected — a pooled one is still returned whole.
-    /// </remarks>
-    public void Shrink(int length)
-    {
-        Debug.Assert((uint)length <= (uint)_length, "a shrink only ever narrows the value");
-        Debug.Assert(Volatile.Read(ref _leases) == RefCountingLease.Single, "the value is already shared, so its readers would see it change");
-        _length = length;
-    }
 
     /// <summary>Acquires one additional reference; the matching <see cref="IDisposable.Dispose"/> releases it.</summary>
     /// <exception cref="InvalidOperationException">The memory is already being torn down.</exception>

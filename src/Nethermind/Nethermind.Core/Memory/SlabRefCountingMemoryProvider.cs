@@ -13,11 +13,7 @@ namespace Nethermind.Core.Memory;
 /// <remarks>Disposing the provider disposes the allocator; memory still leased is freed as it is released.</remarks>
 public sealed class SlabRefCountingMemoryProvider(SlabMemoryAllocator allocator) : IRefCountingMemoryProvider, IDisposable
 {
-    public SlabMemoryAllocator Allocator { get; } = allocator;
+    public RefCountingMemory Rent(int length) => RefCountingMemory.OwningNative(allocator, allocator.Allocate(length), length);
 
-    public RefCountingMemory Rent(int length) => RefCountingMemory.OwningNative(Allocator, Allocator.Allocate(length), length);
-
-    public int RoundUpCapacity(int length) => Allocator.RoundUpCapacity(length);
-
-    public void Dispose() => Allocator.Dispose();
+    public void Dispose() => allocator.Dispose();
 }

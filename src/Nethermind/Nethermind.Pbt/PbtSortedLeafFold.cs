@@ -50,7 +50,7 @@ public static class PbtSortedLeafFold
         {
             cancellationToken.ThrowIfCancellationRequested();
             using (PbtPartitionBatches prepared = changes.Build())
-                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null);
+                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null, PooledRefCountingMemoryProvider.Instance);
             store.ReleaseSuperseded();
             changes.Reset();
             onWindowFolded(windowCount);

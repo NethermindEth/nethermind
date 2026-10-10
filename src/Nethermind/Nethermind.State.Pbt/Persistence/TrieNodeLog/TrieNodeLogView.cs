@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -59,6 +60,7 @@ public sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<TrieNo
     }
 
     /// <summary>Whether the shard holds the value for <paramref name="key"/> at this view's version; <paramref name="value"/> is null for a tombstone.</summary>
+    [SkipLocalsInit]
     public bool TryGet(ReadOnlySpan<byte> key, out byte[]? value)
     {
         ulong hash = TrieNodeLogRecord.Hash(key);

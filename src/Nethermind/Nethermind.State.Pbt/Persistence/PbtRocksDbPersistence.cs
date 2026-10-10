@@ -295,9 +295,14 @@ public class PbtRocksDbPersistence(
         WriteFlags flags,
         bool publishState) : IPbtPersistence.IWriteBatch
     {
+        private readonly IWriteBatch?[] _columnBatches = new IWriteBatch?[Enum.GetValues<PbtColumns>().Length];
+
+        private IWriteBatch ColumnBatch(PbtColumns column) =>
+            _columnBatches[(int)column] ??= logBatch.Wrap(column, batch.GetColumnBatch(column));
+
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
-            IWriteBatch accounts = batch.GetColumnBatch(PbtColumns.Accounts);
+            IWriteBatch accounts = ColumnBatch(PbtColumns.Accounts);
             if (account is not { } value) accounts.Set(addressHash.Bytes, null, flags);
             else
             {
@@ -310,7 +315,7 @@ public class PbtRocksDbPersistence(
         public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
         {
             if (!IsStorageKey(runKey.Bytes)) throw new ArgumentException("A complete storage run key is required.", nameof(runKey));
-            IWriteBatch storage = batch.GetColumnBatch(PbtColumns.Storages);
+            IWriteBatch storage = ColumnBatch(PbtColumns.Storages);
             Span<byte> persistedKey = stackalloc byte[TKey.Capacity];
             ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(runKey, persistedKey);
             if (run.Count == 0) storage.Set(encodedKey, null, flags);
@@ -323,20 +328,21 @@ public class PbtRocksDbPersistence(
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
-            batch.GetColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
+            ColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
 
         public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) =>
-            batch.GetColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
+            ColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
-            key.Length == 34 && key[0] == Eip8297KeyDerivation.AccountZone && key[^1] is >= 64 and < 128
-            || key.Length == 66 && key[0] == Eip8297KeyDerivation.StorageZone;
+            key.Length == PbtPath.KeyLength && key[0] == Eip8297KeyDerivation.AccountZone
+                && key[^1] is >= PbtKeyDerivation.HeaderStorageOffset and < PbtKeyDerivation.HeaderStorageOffset + PbtKeyDerivation.HeaderStorageSlots
+            || key.Length == PbtStoragePath.KeyLength && key[0] == Eip8297KeyDerivation.StorageZone;
 
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
         {
             if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
             PbtColumns column = NodeGroupColumn(groupKey);
-            IWriteBatch groups = logBatch.Wrap(column, batch.GetColumnBatch(column));
+            IWriteBatch groups = ColumnBatch(column);
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
             ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(column, groupKey, key);
             if (payload is null) groups.Set(storageKey, null, flags);

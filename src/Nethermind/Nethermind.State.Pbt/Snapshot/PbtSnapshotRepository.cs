@@ -73,7 +73,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         {
             if (!_disposed && _snapshots.TryAdd(snapshot.To, snapshot))
             {
-                _memoryBytes += payloadSize.Leaf + payloadSize.Node;
+                _memoryBytes += Bytes(snapshot);
                 _lastCommittedStateId = snapshot.To;
                 Metrics.AddPbtBaseSnapshotCount(1);
                 if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(payloadSize, 1);
@@ -89,10 +89,9 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     /// <remarks>Returns false (and releases) when that state already has one — two compactions raced.</remarks>
     public bool TryAddCompacted(PbtSnapshot snapshot)
     {
-        PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
         lock (_lock)
         {
-            if (!_disposed && _compactedSnapshots.TryAdd(snapshot.To, snapshot)) { _memoryBytes += payloadSize.Leaf + payloadSize.Node; return true; }
+            if (!_disposed && _compactedSnapshots.TryAdd(snapshot.To, snapshot)) { _memoryBytes += Bytes(snapshot); return true; }
         }
 
         snapshot.Dispose();
@@ -152,29 +151,6 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     public bool HasState(in StateId stateId)
     {
         lock (_lock) return _snapshots.ContainsKey(stateId) || HasRetainedBase(stateId);
-    }
-
-    /// <summary>
-    /// Leases the chain of layers from <paramref name="head"/> (inclusive) down to
-    /// <paramref name="persistedFloor"/> (exclusive), oldest first. Returns false when the chain is
-    /// broken, e.g. pruned concurrently; the caller should re-read the persisted floor and retry.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="chain"/> is owned by the caller either way: on failure it is left holding the
-    /// leases taken before the walk broke, which disposing it releases.
-    /// </remarks>
-    public bool TryLeaseChain(in StateId head, in StateId persistedFloor, PbtSnapshotPooledList chain)
-    {
-        StateId floor = persistedFloor;
-        using PbtSnapshotChain? leased = head == floor ? new([]) : Walk(head, MemoryPriority,
-            edge => edge.From == floor ? Step.Stop : Height(edge.From) > Height(floor) ? Step.Traverse : Step.Skip);
-        if (leased is null) return false;
-        foreach (PbtSnapshotLease edge in leased.Layers)
-        {
-            if (!edge.Memory!.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-            chain.Add(edge.Memory);
-        }
-        return true;
     }
 
     /// <summary>
@@ -269,20 +245,11 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         return chain is not null;
     }
 
-    private static readonly ValueHash256 MaximumRetainedRoot = CreateMaximumRoot();
-
-    private static ValueHash256 CreateMaximumRoot()
-    {
-        Span<byte> bytes = stackalloc byte[32];
-        bytes.Fill(byte.MaxValue);
-        return new(bytes);
-    }
-
     private ArrayPoolList<StateId> GetRetainedStatesInRange(ulong first, ulong last)
     {
         ArrayPoolList<StateId> states = new(16);
         lock (_lock)
-            foreach (StateId state in _retained.StatesBetween(new(first, default), new(last, MaximumRetainedRoot)))
+            foreach (StateId state in _retained.StatesBetween(new(first, default), new(last, ValueKeccak.MaxValue)))
                 states.Add(state);
         return states;
     }
@@ -626,10 +593,12 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     public bool ContainsRetainedStorageSource(PbtRetainedSnapshot snapshot)
     {
         lock (_lock)
-            return _retained.TryGet(snapshot.To, snapshot.Depth, out PbtRetainedSnapshot? current)
-                && current.From == snapshot.From && current.To == snapshot.To && current.TreeRoot == snapshot.TreeRoot
-                && current.Tier == snapshot.Tier && current.Location == snapshot.Location;
+            return _retained.TryGet(snapshot.To, snapshot.Depth, out PbtRetainedSnapshot? current) && SameIdentity(current, snapshot);
     }
+
+    private static bool SameIdentity(PbtRetainedSnapshot left, PbtRetainedSnapshot right) =>
+        left.From == right.From && left.To == right.To && left.TreeRoot == right.TreeRoot
+        && left.Tier == right.Tier && left.Location == right.Location;
 
     public bool ReplaceRetainedSnapshot(PbtRetainedSnapshot expected, PbtRetainedSnapshot replacement)
     {
@@ -638,8 +607,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
             lock (_lock)
             {
                 if (!_retained.Contains(expected)) return false;
-                if (replacement.From != expected.From || replacement.To != expected.To || replacement.TreeRoot != expected.TreeRoot
-                    || replacement.Tier != expected.Tier || replacement.Location != expected.Location)
+                if (!SameIdentity(replacement, expected))
                     throw new InvalidOperationException("Bloom replacement must preserve the retained snapshot's identity and storage.");
                 if (!_retained.TryReplace(expected, replacement)) return false;
             }

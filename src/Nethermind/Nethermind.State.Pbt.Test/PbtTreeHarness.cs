@@ -382,7 +382,7 @@ internal static class PbtStoreTestExtensions
         ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        return TrieUpdater.UpdateRoot(store, root, changes, foldQuota, fanOut, null, memoryProvider);
+        return TrieUpdater.UpdateRoot(store, root, changes, foldQuota, fanOut, null, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)

@@ -193,7 +193,6 @@ public sealed class PbtRetainedSnapshotLoader(
 
     private RefCountedBloomFilter RebuildBloom(PbtRetainedSnapshot snapshot)
     {
-        if (config.PersistedSnapshotBloomBitsPerKey <= 0) return RefCountedBloomFilter.AlwaysTrue();
         long count = snapshot.EntityBloomHashes().LongCount();
         RefCountedBloomFilter result = new(new BloomFilter(Math.Max(1, count), config.PersistedSnapshotBloomBitsPerKey));
         try

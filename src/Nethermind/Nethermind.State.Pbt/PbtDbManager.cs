@@ -234,24 +234,17 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
-    /// <summary>Blocks the committing thread until the worker accepts the job; returns false only when the manager is shutting down.</summary>
-    private bool EnqueueOrStall<T>(ChannelWriter<T> writer, T job, string workerName)
+    /// <summary>Blocks the committing thread until the worker accepts the job, or the manager shuts down.</summary>
+    private void EnqueueOrStall<T>(ChannelWriter<T> writer, T job, string workerName)
     {
-        if (writer.TryWrite(job)) return true;
+        if (writer.TryWrite(job)) return;
         if (_logger.IsWarn) _logger.Warn($"Pbt {workerName} is not keeping up with block processing; stalling the commit until it does.");
         try
         {
             writer.WriteAsync(job, _processExitToken).AsTask().GetAwaiter().GetResult();
-            return true;
         }
-        catch (OperationCanceledException) when (_processExitToken.IsCancellationRequested)
-        {
-            return false;
-        }
-        catch (ChannelClosedException) when (Volatile.Read(ref _isDisposed) != 0)
-        {
-            return false;
-        }
+        catch (OperationCanceledException) when (_processExitToken.IsCancellationRequested) { }
+        catch (ChannelClosedException) when (Volatile.Read(ref _isDisposed) != 0) { }
     }
 
     public bool HasStateForBlock(in StateId stateId) =>

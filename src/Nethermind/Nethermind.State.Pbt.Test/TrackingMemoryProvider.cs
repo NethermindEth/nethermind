@@ -40,8 +40,6 @@ public sealed class TrackingMemoryProvider(IRefCountingMemoryProvider inner) : I
         return memory;
     }
 
-    public int RoundUpCapacity(int length) => inner.RoundUpCapacity(length);
-
     /// <summary>
     /// How many of <paramref name="memories"/> still hold a lease, including store-owned outputs.
     /// A fully released buffer refuses a fresh lease, an outstanding one takes it.

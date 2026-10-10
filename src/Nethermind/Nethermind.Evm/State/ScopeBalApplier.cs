@@ -62,7 +62,7 @@ public static class ScopeBalApplier
         {
             foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
             {
-                if (!accountChanges.HasStateChanges || accountChanges.CodeChanges.Length == 0) continue;
+                if (accountChanges.CodeChanges.Length == 0) continue;
 
                 CodeChange codeChange = accountChanges.CodeChanges[^1];
                 if (writtenCodeHashes?.Contains(codeChange.CodeHash) == true || scope.CodeDb.ContainsCode(codeChange.CodeHash)) continue;
@@ -100,7 +100,7 @@ public static class ScopeBalApplier
 
         Address address = accountChanges.Address;
         Account? existing = scope.Get(address);
-        if (accountChanges.BalanceChanges.Length == 0 && accountChanges.NonceChanges.Length == 0 && accountChanges.CodeChanges.Length == 0)
+        if (!accountChanges.HasBalanceNonceOrCodeChanges)
         {
             // Slot writes alone are not an account change: they neither create a missing account nor touch an
             // existing one, so EIP-158 leaves an empty account holding storage in place.

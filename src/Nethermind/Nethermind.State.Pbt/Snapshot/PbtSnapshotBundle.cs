@@ -267,8 +267,9 @@ public sealed class PbtSnapshotBundle(
             }
             else
             {
-                PbtStoragePath key = default;
-                foreach ((UInt256 Slot, UInt256 Value) write in runWrites) SetPbtLeaf(key = PbtStateKey.Storage(address, addressHash, write.Slot), SlotLeaf(write.Value));
+                // A run lies within one stem, so only its first key is hashed.
+                PbtStoragePath key = PbtStateKey.Storage(address, addressHash, runWrites[0].Slot);
+                foreach ((UInt256 Slot, UInt256 Value) write in runWrites) SetPbtLeaf(key = Eip8297KeyDerivation.StorageKeyInStem(key, write.Slot), SlotLeaf(write.Value));
                 SetRunSlots(key, addressHash, runWrites);
             }
         }

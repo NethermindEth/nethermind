@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Collections;
-
 namespace Nethermind.Core.Memory;
 
 /// <summary>
@@ -13,10 +11,4 @@ namespace Nethermind.Core.Memory;
 public interface IRefCountingMemoryProvider
 {
     RefCountingMemory Rent(int length);
-
-    /// <summary>
-    /// The <see cref="RefCountingMemory.Capacity"/> a <see cref="Rent"/> of <paramref name="length"/>
-    /// bytes would get, so a producer can tell whether re-renting a shrunk value frees anything.
-    /// </summary>
-    int RoundUpCapacity(int length) => length == 0 ? 0 : ArrayPoolUtilities.GetPowerOfTwoCapacity(length);
 }

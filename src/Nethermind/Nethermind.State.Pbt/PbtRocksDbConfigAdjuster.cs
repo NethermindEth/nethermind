@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -71,6 +73,10 @@ public sealed class PbtRocksDbConfigAdjuster(
         if (share == 0) return null;
 
         ulong cacheCapacity = (ulong)(pbtConfig.BlockCacheSizeBudget * share);
+        if (cacheCapacity == 0)
+            throw new InvalidConfigurationException(
+                $"Block cache capacity must be greater than zero. Check Pbt.{nameof(IPbtConfig.BlockCacheSizeBudget)}.",
+                ExitCodes.ForbiddenOptionValue);
         if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to {columnName}");
         HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
         disposeStack.Push(cacheWrapper);

@@ -123,10 +123,10 @@ public sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     }
 
     public bool TryLease() => TryAcquireLease();
-    public WholeReadSession BeginWholeReadSession(bool adviseDontNeedOnDispose = true)
+    public WholeReadSession BeginWholeReadSession()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
-        return _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
+        return _reservation.BeginWholeReadSession();
     }
     public PbtRetainedScanner Scan() => new(this);
 

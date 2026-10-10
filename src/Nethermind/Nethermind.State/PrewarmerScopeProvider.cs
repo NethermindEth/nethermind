@@ -361,7 +361,7 @@ public class PrewarmerScopeProvider(
                     if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
 
                     // Only an account change can remove an account; whether it took storage along is known only when cached.
-                    bool mayRemoveStorage = accountChanges.HasBalanceNonceOrCodeChanges &&(!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
+                    bool mayRemoveStorage = accountChanges.HasBalanceNonceOrCodeChanges && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
                     accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
                 }
 

@@ -49,7 +49,7 @@ internal static class PbtSnapshotBundleTestExtensions
         {
             ValueHash256 updated;
             using (PbtSnapshotStore store = new(bundle))
-                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
+                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance);
             bundle.CompleteLeafChanges();
             return updated;
         }

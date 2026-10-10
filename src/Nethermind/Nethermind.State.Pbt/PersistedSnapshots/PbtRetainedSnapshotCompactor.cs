@@ -117,11 +117,11 @@ public sealed class PbtRetainedSnapshotCompactor(
         }
         foreach (List<StateId> bucket in buckets.Values)
             Parallel.ForEach(bucket, new ParallelOptions { CancellationToken = _shutdown }, state =>
-                RunJob(state, () => DoCompactSnapshot(state, floor, _shutdown)));
+                RunJob(state, () => DoCompactSnapshot(state, floor)));
         foreach (StateId state in boundaries)
         {
             _shutdown.ThrowIfCancellationRequested();
-            RunJob(state, () => DoCompactCompactSized(state, _shutdown));
+            RunJob(state, () => DoCompactCompactSized(state));
         }
         foreach (StateId state in largeBoundaries)
             await _largeJobs.Writer.WriteAsync((state, floor), _shutdown);
@@ -141,7 +141,7 @@ public sealed class PbtRetainedSnapshotCompactor(
         try
         {
             await foreach ((StateId state, ulong floor) in _largeJobs.Reader.ReadAllAsync(_shutdown))
-                RunJob(state, () => DoCompactSnapshot(state, floor, _shutdown));
+                RunJob(state, () => DoCompactSnapshot(state, floor));
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
     }
@@ -167,25 +167,24 @@ public sealed class PbtRetainedSnapshotCompactor(
         while (_largeJobs.Reader.TryRead(out _)) { }
     }
 
-    private bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber = 0, CancellationToken cancellationToken = default)
+    private bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber)
     {
         ulong width = schedule.GetPersistedSnapshotCompactSize(snapshotTo.BlockNumber);
         if (snapshotTo.BlockNumber == 0 || width <= 1 || repository.RetainedCount < 2) return false;
         ulong floor = unchecked((ulong)Math.Max(unchecked((long)snapshotTo.BlockNumber) - checked((long)width), unchecked((long)persistedBlockNumber)));
-        return CompactRange(snapshotTo, floor, isCompactSized: false, cancellationToken);
+        return CompactRange(snapshotTo, floor, isCompactSized: false);
     }
 
-    private bool DoCompactCompactSized(StateId snapshotTo, CancellationToken cancellationToken = default)
+    private bool DoCompactCompactSized(StateId snapshotTo)
     {
-        if (snapshotTo.BlockNumber == 0 || !schedule.IsCompactSizeBoundary(snapshotTo.BlockNumber) && !schedule.IsLargeCompactionBoundary(snapshotTo.BlockNumber)
-            || repository.RetainedCount < 2) return false;
+        if (repository.RetainedCount < 2) return false;
         ulong width = schedule.GetCompactSize(snapshotTo.BlockNumber);
-        return CompactRange(snapshotTo, unchecked(snapshotTo.BlockNumber - width), isCompactSized: true, cancellationToken);
+        return CompactRange(snapshotTo, unchecked(snapshotTo.BlockNumber - width), isCompactSized: true);
     }
 
-    private bool CompactRange(StateId target, ulong floor, bool isCompactSized, CancellationToken cancellationToken)
+    private bool CompactRange(StateId target, ulong floor, bool isCompactSized)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        _shutdown.ThrowIfCancellationRequested();
         using PbtSnapshotChain? chain = repository.TryLeaseRetainedChain(target, floor);
         if (chain is null || chain.Layers.Count < 2) return false;
         using ArrayPoolList<PbtRetainedSnapshot> sources = new(chain.Layers.Count);
@@ -208,15 +207,15 @@ public sealed class PbtRetainedSnapshotCompactor(
         SnapshotLocation location;
         using (ArenaWriter writer = arena.CreateWriter(estimatedSize, small: tier == SnapshotTier.PersistedSmallCompacted))
         {
-            PbtRetainedSnapshotMerger.Merge(sources.AsSpan(), metadata, ref writer.GetWriter(), bloom.Filter, cancellationToken);
+            PbtRetainedSnapshotMerger.Merge(sources.AsSpan(), metadata, ref writer.GetWriter(), bloom.Filter, _shutdown);
             (location, reservation) = writer.Complete();
         }
         using (reservation)
         {
             reservation.Fsync();
-            cancellationToken.ThrowIfCancellationRequested();
+            _shutdown.ThrowIfCancellationRequested();
             using PbtRetainedSnapshot output = new(new(metadata.From, metadata.To, location, tier), reservation, blobs, nodeGroupMemory, bloom);
-            cancellationToken.ThrowIfCancellationRequested();
+            _shutdown.ThrowIfCancellationRequested();
             bool registered = loader.RegisterCompacted(output, sources.AsSpan());
             if (registered)
             {

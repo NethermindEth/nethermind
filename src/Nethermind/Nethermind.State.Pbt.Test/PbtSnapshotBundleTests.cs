@@ -1278,7 +1278,7 @@ public class PbtSnapshotBundleTests
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
         SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
         CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null));
+        Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null, PooledRefCountingMemoryProvider.Instance));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));

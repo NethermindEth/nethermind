@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.Persistence.BloomFilter;
@@ -131,17 +132,6 @@ public static class PbtRetainedSnapshotBuilder
     private static byte[] EncodeChunk(ReadOnlySpan<byte> payload)
     {
         if (payload.Length is <= 0 or > PbtRetainedFormat.ChunkSize) throw new InvalidDataException("Invalid retained PBT chunk length.");
-        if (payload.Length == 1 && payload[0] < 0x80) return [payload[0]];
-        int lengthBytes = payload.Length > ushort.MaxValue ? 3 : payload.Length > byte.MaxValue ? 2 : 1;
-        int header = payload.Length <= 55 ? 1 : 1 + lengthBytes;
-        byte[] encoded = new byte[header + payload.Length];
-        if (header == 1) encoded[0] = (byte)(0x80 + payload.Length);
-        else
-        {
-            encoded[0] = (byte)(0xB7 + lengthBytes);
-            for (int i = 0; i < lengthBytes; i++) encoded[1 + i] = (byte)(payload.Length >> (8 * (lengthBytes - 1 - i)));
-        }
-        payload.CopyTo(encoded.AsSpan(header));
-        return encoded;
+        return Rlp.Encode(payload).Bytes;
     }
 }

@@ -134,15 +134,13 @@ public class RefCountingMemoryTests
         SlabRefCountingMemoryProvider provider = new(allocator);
         RefCountingMemory memory = provider.Rent(100);
         memory.GetSpan().Fill(7);
-        memory.Shrink(60);
         memory.AcquireLease();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(memory.GetSpan().Length, Is.EqualTo(60));
+            Assert.That(memory.GetSpan().Length, Is.EqualTo(100));
             Assert.That(memory.GetSpan().IndexOfAnyExcept((byte)7), Is.EqualTo(-1));
             Assert.That(memory.Capacity, Is.EqualTo(112), "the size class above 100 with quantum 16");
-            Assert.That(provider.RoundUpCapacity(100), Is.EqualTo(112));
             Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount + 1));
             Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity + 112));
         }
@@ -180,20 +178,6 @@ public class RefCountingMemoryTests
         ((IDisposable)memory).Dispose();
         ((IDisposable)memory).Dispose();
         Assert.Throws<ObjectDisposedException>(() => ((IDisposable)memory).Dispose());
-    }
-
-    [Test]
-    public void Shrink_narrows_the_value_to_what_a_producer_wrote()
-    {
-        byte[] rented = ArrayPool<byte>.Shared.Rent(64);
-        for (byte i = 0; i < 10; i++) rented[i] = i;
-
-        using RefCountingMemory mem = RefCountingMemory.Owning(rented, 10);
-        mem.Shrink(4);
-        Assert.That(mem.GetSpan().ToArray(), Is.EqualTo(rented[..4]));
-
-        mem.Shrink(0);
-        Assert.That(mem.GetSpan().IsEmpty);
     }
 
     private sealed class TrackingMemoryManager(byte[] array) : MemoryManager<byte>

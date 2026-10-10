@@ -40,40 +40,27 @@ public static class Metrics
     [Description("Total size-class capacity of active slab-allocated native RefCountingMemory instances in bytes")]
     public static long ActiveNativeRefCountingMemoryCapacity => Volatile.Read(ref _activeNativeRefCountingMemoryCapacity);
 
-    internal static void ReportRefCountingMemoryAllocation(RefCountingMemory.BackingKind backingKind, int capacity)
+    internal static void ReportRefCountingMemoryAllocation(RefCountingMemory.BackingKind backingKind, int capacity) =>
+        Report(backingKind, 1, capacity);
+
+    internal static void ReportRefCountingMemoryRelease(RefCountingMemory.BackingKind backingKind, int capacity) =>
+        Report(backingKind, -1, -capacity);
+
+    private static void Report(RefCountingMemory.BackingKind backingKind, int count, int capacity)
     {
         switch (backingKind)
         {
             case RefCountingMemory.BackingKind.Pooled:
-                Interlocked.Increment(ref _activePooledRefCountingMemoryCount);
+                Interlocked.Add(ref _activePooledRefCountingMemoryCount, count);
                 Interlocked.Add(ref _activePooledRefCountingMemoryCapacity, capacity);
                 break;
             case RefCountingMemory.BackingKind.RocksDb:
-                Interlocked.Increment(ref _activeRocksDbRefCountingMemoryCount);
+                Interlocked.Add(ref _activeRocksDbRefCountingMemoryCount, count);
                 Interlocked.Add(ref _activeRocksDbRefCountingMemoryCapacity, capacity);
                 break;
             case RefCountingMemory.BackingKind.Native:
-                Interlocked.Increment(ref _activeNativeRefCountingMemoryCount);
+                Interlocked.Add(ref _activeNativeRefCountingMemoryCount, count);
                 Interlocked.Add(ref _activeNativeRefCountingMemoryCapacity, capacity);
-                break;
-        }
-    }
-
-    internal static void ReportRefCountingMemoryRelease(RefCountingMemory.BackingKind backingKind, int capacity)
-    {
-        switch (backingKind)
-        {
-            case RefCountingMemory.BackingKind.Pooled:
-                Interlocked.Decrement(ref _activePooledRefCountingMemoryCount);
-                Interlocked.Add(ref _activePooledRefCountingMemoryCapacity, -capacity);
-                break;
-            case RefCountingMemory.BackingKind.RocksDb:
-                Interlocked.Decrement(ref _activeRocksDbRefCountingMemoryCount);
-                Interlocked.Add(ref _activeRocksDbRefCountingMemoryCapacity, -capacity);
-                break;
-            case RefCountingMemory.BackingKind.Native:
-                Interlocked.Decrement(ref _activeNativeRefCountingMemoryCount);
-                Interlocked.Add(ref _activeNativeRefCountingMemoryCapacity, -capacity);
                 break;
         }
     }

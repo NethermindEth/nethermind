@@ -283,7 +283,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null));
+            Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -295,7 +295,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null, PooledRefCountingMemoryProvider.Instance);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
