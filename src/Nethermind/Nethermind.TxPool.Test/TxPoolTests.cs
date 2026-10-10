@@ -145,7 +145,7 @@ namespace Nethermind.TxPool.Test
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
             AcceptTxResult result = ownsTransaction
-                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out _)
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(rejection switch
             {
@@ -184,7 +184,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
             byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
-            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, peer: null, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled: true);
             using (Assert.EnterMultipleScope())
@@ -211,7 +211,7 @@ namespace Nethermind.TxPool.Test
             };
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -255,7 +255,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -272,7 +272,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(incomingTxFilter: filter);
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -302,7 +302,7 @@ namespace Nethermind.TxPool.Test
             _txPool = derived;
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle, out _);
+            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, peer: null, out bool canRecycle);
 
             using (Assert.EnterMultipleScope())
             {
@@ -335,8 +335,8 @@ namespace Nethermind.TxPool.Test
             RlpReader reader = new(encoded.Bytes);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
-            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid, out _);
-            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate, out _);
+            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer: null, out bool canRecycleInvalid);
+            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, peer: null, out bool canRecycleDuplicate);
 
             using (Assert.EnterMultipleScope())
             {
@@ -4700,13 +4700,14 @@ namespace Nethermind.TxPool.Test
                 Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
         }
 
-        // A peer's validation budget stays charged when the pool rejects a transaction after validating it, so a
-        // prefix that approves and then fails a later filter cannot hand the peer its charge back.
-        [TestCase(true, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSignaturesAndSimulation")]
-        [TestCase(false, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSimulationAlone")]
-        public void SubmitOwnedTx_ReportsFrameValidationRan_ForARejectionAfterSimulationButNotForADuplicate(bool withSignatures)
+        // A prefix that approves and then fails a later filter cost the full validation, so the sending peer pays for it;
+        // a duplicate is turned away before any validation work and costs it nothing.
+        [TestCase(true, TestName = "SubmitOwnedTx_ChargesThePeer_ForARejectionAfterSignaturesAndSimulation")]
+        [TestCase(false, TestName = "SubmitOwnedTx_ChargesThePeer_ForARejectionAfterSimulationAlone")]
+        public void SubmitOwnedTx_ChargesThePeer_ForARejectionAfterValidationButNotForADuplicate(bool withSignatures)
         {
-            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
             Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             if (!withSignatures)
@@ -4715,16 +4716,86 @@ namespace Nethermind.TxPool.Test
                 tx.Hash = tx.CalculateHash();
             }
             EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+            object peer = new();
+            PeerValidationShares shares = _txPool.PeerValidationShares!;
 
-            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForRejected);
-            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForDuplicate);
+            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+            long spentAfterRejection = shares.SpentTicks(peer);
+            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rejected, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
-                Assert.That(ranForRejected, Is.True, "the prefix ran before the exposure filter rejected the transaction");
+                Assert.That(spentAfterRejection, Is.GreaterThan(0), "the prefix ran before the exposure filter rejected the transaction");
                 Assert.That(duplicate, Is.EqualTo(AcceptTxResult.AlreadyKnown));
-                Assert.That(ranForDuplicate, Is.False, "a duplicate is turned away before any validation work");
+                Assert.That(shares.SpentTicks(peer), Is.EqualTo(spentAfterRejection), "a duplicate costs no validation");
+            }
+        }
+
+        // Under spam an attacker spends the per-head budget, and honest transactions are deferred after their
+        // signatures verified; charging that to the honest peer would hand the attacker its share too.
+        [Test]
+        public void SubmitOwnedTx_DeferralForTheNodesOwnBound_IsNotChargedToThePeer()
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head"),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            object peer = new();
+            // One gas below its entry charge, so the native shortcut declines it and it reaches the simulator.
+            Transaction tx = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+                Assert.That(_txPool.PeerValidationShares!.SpentTicks(peer), Is.Zero);
+            }
+        }
+
+        // The share's charge sits beside the accept/reject branches of submission, never between them: an accepted
+        // transaction must not run the rejection cleanup.
+        internal void AssertAcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = fairShare });
+            Transaction tx = Build.A.Transaction.WithNonce(0).WithGasPrice(1.GWei).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            long discarded = Metrics.PendingTransactionsDiscarded;
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, new object(), out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(Metrics.PendingTransactionsDiscarded, Is.EqualTo(discarded));
+            }
+        }
+
+        [Test]
+        public void SubmitOwnedTx_PeerThatSpentItsShare_IsDroppedBeforeValidation()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            object spent = new();
+            object fresh = new();
+            PeerValidationShares shares = _txPool.PeerValidationShares!;
+            shares.HasShare(spent, headGeneration: 0);
+            shares.Charge(spent, headGeneration: 0, ticks: long.MaxValue / 2);
+            // One gas below its entry charge, so the native shortcut declines it and it is simulated.
+            Transaction first = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult dropped = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(first, spent, out _);
+            AcceptTxResult simulated = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(first, fresh, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dropped, Is.EqualTo(AcceptTxResult.FramePeerValidationBudgetSpent));
+                Assert.That(simulated, Is.EqualTo(AcceptTxResult.FrameSimulationFailed), "a peer with share left is still validated");
+                simulator.Received(1).Simulate(first, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>());
             }
         }
 
@@ -7198,11 +7269,11 @@ namespace Nethermind.TxPool.Test
         /// <summary>Recreates the pool over a stubbed prefix simulator answering with <paramref name="result"/>.</summary>
         /// <remarks>The verify-gas bound is out of scope for these tests, so it is disabled and whatever
         /// filter the test is about is what binds.</remarks>
-        private IFrameTxPrefixSimulator CreatePoolWithSimulator(FrameTxSimulationResult result, ISpecProvider specProvider = null)
+        private IFrameTxPrefixSimulator CreatePoolWithSimulator(FrameTxSimulationResult result, ISpecProvider specProvider = null, TxPoolConfig config = null)
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             SimulatesAs(simulator, result);
-            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
+            _txPool = CreatePool(config ?? new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
                 specProvider ?? new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             return simulator;
         }
@@ -7748,5 +7819,28 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+    }
+
+    [TestFixture, NonParallelizable]
+    public class AcceptedTransactionMetricsTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        [TestCase(false, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded")]
+        [TestCase(true, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded_WithFairShares")]
+        public async Task AcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                fixture.AssertAcceptedTransactionIsNotCountedAsDiscarded(fairShare);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
     }
 }
