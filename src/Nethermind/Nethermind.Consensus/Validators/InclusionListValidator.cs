@@ -74,8 +74,9 @@ public static class InclusionListValidator
                 included[idx] = true;
         }
 
+        // EIP-8288: only block capacity over the final dependency union excuses an omission; local proving bounds do not.
         HashSet<FrameDependency> dependencies = spec.IsEip8288Enabled ? [.. Eip8288Dependencies.ForBlock(block)] : [];
-        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies);
+        LeanProofCapacity.AppendBudget capacity = LeanProofCapacity.CreateAppendBudget(dependencies, LeanProofCapacity.Block);
         Dictionary<AddressAsKey, AccountStruct>? senderCache = null;
         for (int i = 0; i < il.Length; i++)
         {

@@ -1,13 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -201,6 +205,56 @@ public class InclusionListValidatorTests
             Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
             Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
         }
+    }
+
+    // EIP-8288: only block capacity over the final dependency union excuses omitting an entry the list's proof covers;
+    // the native proof envelope does not, and dependencies already in the block consume no capacity.
+    [TestCase(Eip8288Constants.MaxProofDependencies, 0, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = false, TestName = "Full proof envelope is no omission ground")]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = true, TestName = "Full block excuses a new dependency")]
+    [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, true, ExpectedResult = false, TestName = "Full block still fits a dependency it has")]
+    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanStarkScheme, false, ExpectedResult = true, TestName = "Full leanSTARK capacity excuses a new leanSTARK")]
+    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = false, TestName = "Full leanSTARK capacity still fits a leanSPHINCS")]
+    public bool Only_block_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
+    {
+        FrameDependency[] blockDeps = new FrameDependency[blockDependencies];
+        for (int i = 0; i < blockDependencies; i++)
+            blockDeps[i] = new(i < blockLeanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(i.ToString()), default);
+        Transaction blockTx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressB,
+            Frames = [.. blockDeps.Chunk(Eip8288Constants.MaxDependenciesPerFrame)
+                .Select(static chunk => new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, Eip8288Dependencies.Serialize(chunk)))],
+            FrameSignatures = [],
+        };
+        blockTx.Hash = blockTx.CalculateHash();
+
+        FrameDependency dependency = present ? blockDeps[^1] : new(scheme, ValueKeccak.Compute("omitted"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null,
+            dependency.Scheme == Eip8288Constants.LeanStarkScheme ? Eip8288Constants.LeanStarkVerificationGas : Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        entry.Hash = entry.CalculateHash();
+
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).WithTransactions(blockTx)
+            .WithInclusionListTransactions([entry]).TestObject;
+        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        Assert.That(InclusionListProofValidator.SelectEligible([entry], proof, null, new AcceptingVerifier(), spec, out _, out string? error),
+            Has.Length.EqualTo(1), error);
+        return InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
+            proof, new AcceptingVerifier(), frameCanInclude: static _ => true);
+    }
+
+    private sealed class AcceptingVerifier : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     private static Transaction BuildFrameTx() => new()
