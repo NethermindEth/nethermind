@@ -859,11 +859,17 @@ public class ProofWrapperServiceTests
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }
 
-    [Test]
-    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification()
+    // EIPs#12473 and EIP-8437: an aggregate within EIP-8288's limits that the local verifier cannot check is refused
+    // locally, not invalid; one beyond those limits is still invalid.
+    [TestCase(false, ProofWrapperAcceptanceStatus.Refused)]
+    [TestCase(true, ProofWrapperAcceptanceStatus.Invalid)]
+    public async Task Aggregate_beyond_the_local_proof_capacity_is_refused_without_verification(bool aboveLeanStarkLimit,
+        ProofWrapperAcceptanceStatus expected)
     {
+        int leanStark = aboveLeanStarkLimit ? Eip8288Constants.MaxLeanStarkDepsPerAggregate + 1 : 0;
         FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
-            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, Keccak.Compute(i.ToString()).ValueHash256, default))];
+            .Select(i => new FrameDependency(i < leanStark ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme,
+                Keccak.Compute(i.ToString()).ValueHash256, default))];
         List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(deps);
         byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
         {
@@ -876,8 +882,41 @@ public class ProofWrapperServiceTests
         ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
-            Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That((await service.VerifyClaimedProofsAsync(wrapper)).Status, Is.EqualTo(expected));
+            if (!aboveLeanStarkLimit)
+                Assert.That((await service.AcceptDetailedAsync(wrapper)).Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Inclusion_list_beyond_the_local_proof_capacity_is_refused_without_verification()
+    {
+        FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies + 1)
+            .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, Keccak.Compute(i.ToString()).ValueHash256, default))];
+        static TxFrame Frame(FrameDependency[] frameDeps) => new(FrameMode.DepVerify, FrameFlags.None, null,
+            (ulong)frameDeps.Length * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize(frameDeps));
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            NonceKeys = [UInt256.Zero],
+            ChainId = 1,
+            SenderAddress = Address.Zero,
+            Frames = [Frame(deps[..Eip8288Constants.MaxDependenciesPerFrame]), Frame(deps[Eip8288Constants.MaxDependenciesPerFrame..])]
+        };
+        transaction.Hash = transaction.CalculateHash();
+        byte[] package = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
+        {
+            Transactions = [transaction],
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
+        }).Bytes;
+        FakeLeanProofVerifier verifier = new(true);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), verifier);
+
+        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Refused), result.Result.Error);
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }
     }

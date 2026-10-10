@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -409,6 +410,10 @@ public class LeanTransportTests
             .SetName("Oversized transaction request");
         yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
             LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(1), LeanRlp.EncodeBytes([1])))).ToHexString()).SetName("Envelope with non-OK status");
+        yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
+            LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(3), LeanRlp.EncodeBytes([])))).ToHexString()).SetName("Transactions status 3");
+        yield return new TestCaseData(new TransactionsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
+            LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(5), LeanRlp.EncodeBytes([])))).ToHexString()).SetName("Transactions unknown status");
         yield return new TestCaseData(new ObjectsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeUInt(1),
             LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(0), small.Encoded, LeanRlp.EncodeBytes([1])))).ToHexString())
             .SetName("Auxiliary for kind 1");
@@ -481,10 +486,25 @@ public class LeanTransportTests
             Dependency(Eip8288Constants.LeanSphincsScheme, padding: 1))).SetName("Dependency with nonzero scheme padding");
         yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(Full(envelope)), 1, null, LeanRlp.EncodeList()))
             .SetName("Mode 1 with proof list");
+        byte[][] hashEntries = [.. Enumerable.Range(0, Eip8288Constants.MaxTxsPerWrapper + 1)
+            .Select(i => ValueKeccak.Compute(BitConverter.GetBytes(i)).Bytes.ToArray()).Order(Bytes.Comparer).Select(h => ByHash(LeanRlp.EncodeBytes(h)))];
+        yield return new TestCaseData(LeanProtocol.KindWrapper, Wrapper(LeanRlp.EncodeList(hashEntries))).SetName("Kind 1 above MAX_TXS_PER_WRAPPER");
+        yield return new TestCaseData(LeanProtocol.KindInclusionList, LeanRlp.EncodeList(
+            LeanRlp.EncodeList([.. Enumerable.Repeat(envelope, LeanProtocol.MaxTxsPerPackage + 1)]), LeanRlp.EncodeList(LeanRlp.EncodeBytes([]), hash)))
+            .SetName("Kind 3 above MAX_TXS_PER_PACKAGE");
         yield return new TestCaseData(LeanProtocol.KindBlockProof, LeanRlp.EncodeList(LeanRlp.EncodeBytes([1]), LeanRlp.EncodeBytes([1])))
             .SetName("Kind 2 extra field");
         yield return new TestCaseData(LeanProtocol.KindInclusionList, LeanRlp.EncodeList(LeanRlp.EncodeList(envelope),
             LeanRlp.EncodeList(LeanRlp.EncodeBytes([1])))).SetName("Kind 3 without deps hash");
+    }
+
+    [Test]
+    public void Kind_3_body_at_MAX_TXS_PER_PACKAGE_is_canonical()
+    {
+        byte[] envelope = LeanRlp.EncodeBytes([0x7f, 0x00]);
+        byte[] body = LeanRlp.EncodeList(LeanRlp.EncodeList([.. Enumerable.Repeat(envelope, LeanProtocol.MaxTxsPerPackage)]),
+            LeanRlp.EncodeList(LeanRlp.EncodeBytes([]), LeanRlp.EncodeBytes(TestItem.KeccakA.Bytes)));
+        Assert.DoesNotThrow(() => LeanBodies.Check(LeanProtocol.KindInclusionList, body));
     }
 
     [TestCaseSource(nameof(InvalidBodies))]

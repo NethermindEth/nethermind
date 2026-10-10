@@ -193,7 +193,7 @@ public static class Eip8288Dependencies
     /// </summary>
     /// <remarks>Wrapper pruning, FOCIL merging and block assembly all use this rule, so a dependency shared with any retained
     /// transaction is kept even when another transaction declaring it is removed.</remarks>
-    /// <param name="inputDeps">The union of the dependencies the input proofs cover.</param>
+    /// <param name="inputDeps">The union of the dependencies the input proofs cover, including mode-0 direct witnesses.</param>
     /// <param name="retainedDeps">The dependency union of the selected transactions.</param>
     /// <exception cref="ArgumentException">A retained dependency is not covered by the input proofs.</exception>
     public static List<FrameDependency> DiscardDependencies(IEnumerable<FrameDependency> inputDeps, IEnumerable<FrameDependency> retainedDeps)

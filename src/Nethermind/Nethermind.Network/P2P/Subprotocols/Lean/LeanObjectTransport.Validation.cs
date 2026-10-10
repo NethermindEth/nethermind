@@ -17,7 +17,10 @@ public sealed partial class LeanObjectTransport
 {
     private const int MaxBusyRetries = 50;
 
-    private enum Verdict { Valid, Invalid, LocalFailure }
+    /// <summary>The outcome of validating a completed object.</summary>
+    /// <remarks><see cref="Refused"/> is an object within EIP-8288's limits that the local verifier cannot check: EIP-8437
+    /// requires refusing it locally without treating it as invalid, so it is neither penalized nor tombstoned.</remarks>
+    private enum Verdict { Valid, Invalid, LocalFailure, Refused }
 
     /// <summary>Moves a fully received assembly into the bounded validation queue once its completion copy can be reserved.</summary>
     /// <remarks>Without room the assembly stays charged and is retried on the timer until it expires.</remarks>
@@ -181,6 +184,11 @@ public sealed partial class LeanObjectTransport
             case Verdict.Invalid:
                 Reject(assembly, error ?? "invalid proof object");
                 break;
+            case Verdict.Refused:
+                Interlocked.Increment(ref _stats.LocalFailures);
+                LeanMetrics.Record(descriptor.Kind, LeanEvent.LocalFailure);
+                if (_logger.IsDebug) _logger.Debug($"lean/1 refused {descriptor} beyond local verifier capacity: {error}");
+                break;
             default:
                 lock (_gate)
                 {
@@ -261,6 +269,8 @@ public sealed partial class LeanObjectTransport
                     return (Verdict.Valid, null);
                 case ProofWrapperAcceptanceStatus.Invalid:
                     return (Verdict.Invalid, result.Result.Error);
+                case ProofWrapperAcceptanceStatus.Refused:
+                    return (Verdict.Refused, result.Result.Error);
                 case ProofWrapperAcceptanceStatus.Busy when attempt < MaxBusyRetries:
                     await Task.Delay(LeanLimits.BusyRetry, cancellation).ConfigureAwait(false);
                     continue;

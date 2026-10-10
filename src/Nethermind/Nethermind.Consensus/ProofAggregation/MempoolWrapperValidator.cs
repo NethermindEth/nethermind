@@ -12,7 +12,8 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// Validates an EIP-8288 mempool wrapper per the spec "Mempool Wrapper Object" rules and the EIP-8437 kind-1 rules: every
 /// transaction is a frame transaction within the per-transaction limits, the dependency list is their union, mode 0 stays
 /// within the direct witness limits and verifies each witness, and mode 1 stays within <c>MAX_DEPS_PER_AGGREGATE</c> and
-/// <c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c> and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>, even for an empty list.
+/// <c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c> and carries one recursive STARK that verifies against <c>get_deps_hash(deps)</c>. A wrapper with
+/// empty <c>deps</c> uses mode 0 with no proofs.
 /// </summary>
 public static class MempoolWrapperValidator
 {
@@ -25,6 +26,7 @@ public static class MempoolWrapperValidator
     public const string TooManyStarkDeps = "mode 0 wrapper exceeds MAX_LEANSTARK_DEPS_PER_WRAPPER";
     public const string TooManyAggregateDeps = "mode 1 wrapper exceeds MAX_DEPS_PER_AGGREGATE";
     public const string TooManyAggregateStarkDeps = "mode 1 wrapper exceeds MAX_LEANSTARK_DEPS_PER_AGGREGATE";
+    public const string EmptyAggregate = "a wrapper with empty deps must use mode 0";
     public const string TooManyTransactions = "wrapper exceeds MAX_TXS_PER_WRAPPER";
     public const string ProofCountMismatch = "mode 0 wrapper must carry exactly one proof per dependency";
     public const string InvalidProof = "a wrapper dependency proof failed verification";
@@ -109,7 +111,7 @@ public static class MempoolWrapperValidator
             : ValidateRecursive(wrapper, verifier, ref error);
     }
 
-    /// <summary>Applies the direct witness limits to mode 0, and <c>MAX_DEPS_PER_AGGREGATE</c> and
+    /// <summary>Applies the direct witness limits to mode 0, and a nonempty list within <c>MAX_DEPS_PER_AGGREGATE</c> and
     /// <c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c> to mode 1.</summary>
     private static bool CheckModeLimits(MempoolWrapper wrapper, out string? error)
     {
@@ -122,7 +124,8 @@ public static class MempoolWrapperValidator
                 else if (stark > Eip8288Constants.MaxLeanStarkDepsPerWrapper) error = TooManyStarkDeps;
                 break;
             case MempoolWrapper.ModeRecursive:
-                if (wrapper.Deps.Count > Eip8288Constants.MaxDepsPerAggregate) error = TooManyAggregateDeps;
+                if (wrapper.Deps.Count == 0) error = EmptyAggregate;
+                else if (wrapper.Deps.Count > Eip8288Constants.MaxDepsPerAggregate) error = TooManyAggregateDeps;
                 else if (Eip8288Dependencies.CountByScheme(wrapper.Deps).Stark > Eip8288Constants.MaxLeanStarkDepsPerAggregate)
                     error = TooManyAggregateStarkDeps;
                 break;
@@ -177,8 +180,7 @@ public static class MempoolWrapperValidator
             return false;
         }
 
-        // Unlike a block, a mode-1 wrapper carries a verifying proof even for an empty dependency list.
-        if (!RecursiveStarkAggregator.VerifyAggregateProof(verifier, in depsHash, recursiveStark.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(verifier, wrapper.Deps.Count, in depsHash, recursiveStark.StarkProof))
         {
             error = InvalidProof;
             return false;

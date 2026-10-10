@@ -28,7 +28,9 @@ public static class Eip8288Constants
     public const int MaxLeanStarkDepsPerBlock = 16;
 
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
-    /// <remarks>Below <see cref="MaxDepsPerBlock"/>: a local proving bound, not a consensus or FOCIL omission bound.</remarks>
+    /// <remarks>Below <see cref="MaxDepsPerBlock"/> and <see cref="MaxDepsPerAggregate"/>: a local proving and verification bound, not a
+    /// consensus or FOCIL omission bound. Wrappers and inclusion-list packages within EIP-8288's limits but above it are refused
+    /// locally, never treated as invalid.</remarks>
     public const int MaxProofDependencies = 256;
     public const int MaxGenericStarkProofs = 16;
     public const int MaxLeanStarkInstructions = 2048;
@@ -66,24 +68,25 @@ public static class Eip8288Constants
     /// <summary>Mempool aggregation cadence in milliseconds.</summary>
     public const int AggregationInterval = 1_000;
 
-    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper; EIP-8437 <c>MAX_DIRECT_SIGS_PER_WRAPPER</c>.</summary>
+    /// <summary>Mode-0 (direct witness) leanSPHINCS dependencies per wrapper (<c>MAX_LEANSIG_DEPS_PER_WRAPPER</c>).</summary>
     public const int MaxLeanSigDepsPerWrapper = 16;
 
-    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper; EIP-8437 <c>MAX_DIRECT_STARKS_PER_WRAPPER</c>.</summary>
+    /// <summary>Mode-0 (direct witness) leanSTARK dependencies per wrapper (<c>MAX_LEANSTARK_DEPS_PER_WRAPPER</c>).</summary>
     public const int MaxLeanStarkDepsPerWrapper = 1;
 
-    /// <summary>Mode-1 (aggregate) dependencies per wrapper; mode-0 witness limits do not apply to an aggregate.</summary>
+    /// <summary>Mode-1 (aggregate) dependencies per wrapper (<c>MAX_DEPS_PER_AGGREGATE</c>); mode-0 witness limits do not apply.</summary>
     /// <remarks>A mempool bound, distinct from <see cref="MaxDepsPerBlock"/> though equal to it, so one aggregate fits an empty block.
     /// It never excuses an inclusion-list omission.</remarks>
     public const int MaxDepsPerAggregate = 4096;
 
-    /// <summary>Mode-1 (aggregate) leanSTARK dependencies per wrapper, counted within <see cref="MaxDepsPerAggregate"/>.</summary>
+    /// <summary>Mode-1 (aggregate) leanSTARK dependencies per wrapper (<c>MAX_LEANSTARK_DEPS_PER_AGGREGATE</c>), counted within
+    /// <see cref="MaxDepsPerAggregate"/>.</summary>
     public const int MaxLeanStarkDepsPerAggregate = 16;
 
-    /// <summary>Transactions per wrapper, in either mode.</summary>
+    /// <summary>Transactions per wrapper, in either mode (<c>MAX_TXS_PER_WRAPPER</c>).</summary>
     public const int MaxTxsPerWrapper = 4096;
 
-    /// <summary>Serialized wrapper ceiling, in either mode, using the EIP-8437 kind-1 encoding.</summary>
+    /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>).</summary>
     /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
     public const int MaxWrapperBytes = 64 * 1024 * 1024;
 

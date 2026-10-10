@@ -158,6 +158,30 @@ public class RecursiveStarkAggregatorTests
             "retained dependencies absent from the inputs need another proof");
     }
 
+    // EIPs#12473: input_deps includes dependencies covered only by mode-0 direct witnesses.
+    [Test]
+    public void Direct_witness_dependencies_count_as_discard_inputs()
+    {
+        FrameDependency a = Sphincs("a"), b = Sphincs("b"), c = Sphincs("c");
+        AggregationInput input = new()
+        {
+            Deps = [a],
+            Witnesses = [new byte[] { 1 }],
+            RecursiveProofs = [new RecursiveProofInput([b, c], [9])],
+            Discards = Eip8288Dependencies.DiscardDependencies([a, b, c], [b, c])
+        };
+        AggregationInput combined = RecursiveStarkAggregator.Combine(
+            [new() { Deps = [c], Witnesses = [new byte[] { 1 }] }, new() { RecursiveProofs = [new RecursiveProofInput([a, b], [9])] }], [b, c]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.Discards, Is.EqualTo(new[] { a }));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> deps, out _), Is.True);
+            Assert.That(deps, Is.EqualTo(Eip8288Dependencies.Canonicalize([b, c])));
+            Assert.That(combined.Deps, Is.EqualTo(new[] { c }), "a retained dependency covered only by a direct witness is an input");
+            Assert.That(combined.Discards, Is.EqualTo(new[] { a }));
+        }
+    }
+
     [Test]
     public void Pruning_a_recursive_input_discards_only_dependencies_no_retained_transaction_needs()
     {

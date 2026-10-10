@@ -17,18 +17,15 @@ public static class RecursiveStarkAggregator
     private const int MaxRecursiveChildren = 2;
     private const int DirectBatchSize = 4;
 
-    /// <summary>Runs the STARK check of a block proof or inclusion-list package against a dependency list.</summary>
+    /// <summary>Runs the STARK check of a block proof, inclusion-list package or mode-1 wrapper against a dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
-    /// a proof that verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. Mode-1
-    /// wrappers have no empty-proof exception and use <see cref="VerifyAggregateProof"/>.</remarks>
+    /// a proof that verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. A mode-1
+    /// wrapper never has an empty list: one with empty <c>deps</c> uses mode 0.</remarks>
     public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
-        => dependencyCount == 0 ? proof.IsEmpty : VerifyAggregateProof(verifier, in depsHash, proof);
-
-    /// <summary>Runs the EIP-8437 STARK check of a mode-1 wrapper, which needs a verifying proof even for an empty
-    /// dependency list.</summary>
-    public static bool VerifyAggregateProof(ILeanProofVerifier verifier, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
-        => proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
-            && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
+        => dependencyCount == 0
+            ? proof.IsEmpty
+            : proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
+                && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)

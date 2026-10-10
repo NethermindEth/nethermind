@@ -406,22 +406,32 @@ public class MempoolWrapperTests
         }
     }
 
-    [TestCase(false, true, null)]
-    [TestCase(true, true, MempoolWrapperValidator.InvalidProof)]
-    [TestCase(false, false, MempoolWrapperValidator.InvalidProof)]
-    public void Empty_aggregate_needs_a_verifying_proof(bool emptyProof, bool verifies, string? expected)
+    // EIPs#12473: a wrapper with empty deps uses mode 0 with an empty proofs list; mode 1 with empty deps is invalid.
+    [TestCase(MempoolWrapper.ModeDirect, 0, null)]
+    [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.ProofCountMismatch)]
+    [TestCase(MempoolWrapper.ModeRecursive, 0, MempoolWrapperValidator.EmptyAggregate)]
+    [TestCase(MempoolWrapper.ModeRecursive, 1, MempoolWrapperValidator.EmptyAggregate)]
+    public void Empty_deps_wrapper_is_valid_only_in_mode_0(byte mode, int proofBytes, string? expected)
     {
-        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive, [[]]);
+        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(mode, [[]]);
         MempoolWrapper wrapper = new()
         {
             Transactions = batch.Transactions,
-            Mode = MempoolWrapper.ModeRecursive,
+            Mode = mode,
             Deps = [],
-            RecursiveStark = new RecursiveStark(emptyProof ? [] : [1], new Hash256(Eip8288Dependencies.ComputeDepsHash([])))
+            Proofs = mode == MempoolWrapper.ModeDirect ? [.. Enumerable.Repeat(new byte[] { 1 }, proofBytes)] : null,
+            RecursiveStark = mode == MempoolWrapper.ModeRecursive
+                ? new RecursiveStark(new byte[proofBytes], new Hash256(Eip8288Dependencies.ComputeDepsHash([])))
+                : null
         };
-        bool valid = MempoolWrapperValidator.Validate(wrapper, new FakeLeanProofVerifier(verifies), out string? error, resolve);
-        Assert.That(valid, Is.EqualTo(expected is null), error);
-        Assert.That(error, Is.EqualTo(expected));
+        FakeLeanProofVerifier verifier = new(true);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected is null), error);
+            Assert.That(error, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.Zero, "rejected before verification; an empty list has nothing to verify");
+        }
     }
 
     [Test]

@@ -24,7 +24,7 @@ public static class LeanBodies
         LeanRlpReader wrapper = outer.ReadList();
         outer.End();
         LeanRlpReader transactions = wrapper.ReadList();
-        int count = transactions.CountRemaining(LeanProtocol.MaxTxsPerObject);
+        int count = transactions.CountRemaining(Eip8288Constants.MaxTxsPerWrapper);
         if (count == 0) throw new RlpException("Wrapper carries no transactions");
         List<WrapperEntry> entries = new(count);
         ValueHash256 previous = default;
@@ -96,7 +96,7 @@ public static class LeanBodies
         LeanRlpReader package = outer.ReadList();
         outer.End();
         LeanRlpReader transactions = package.ReadList();
-        int count = transactions.CountRemaining(LeanProtocol.MaxTxsPerObject);
+        int count = transactions.CountRemaining(LeanProtocol.MaxTxsPerPackage);
         for (int i = 0; i < count; i++)
             if (transactions.ReadBytes().Length == 0) throw new RlpException("Empty inclusion-list envelope");
         LeanRlpReader proof = package.ReadList();

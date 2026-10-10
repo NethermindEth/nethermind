@@ -189,7 +189,7 @@ public class LeanObjectTransportTests
     }
 
     [Test]
-    public async Task Cancelled_fetch_discards_late_responses_without_penalty()
+    public async Task Cancelled_fetch_discards_late_responses_without_penalty([Values] bool corrupt)
     {
         using LeanTestNode node = new();
         FakeLink a = new();
@@ -203,7 +203,9 @@ public class LeanObjectTransportTests
         await cancellation.CancelAsync();
         Assert.That(await fetch.WaitAsync(Timeout), Is.Null);
         Assert.That(peer.Live.Keys, Is.EqualTo(new[] { request.RequestId }), "a cancelled request keeps its slot until its terminal response");
-        Serve(node, peer, request, descriptor, body, tree);
+        // EIP-8437: post-cancellation chunks are discarded without hashing, so a bad branch is never seen.
+        byte[] served = corrupt ? [.. body.Select(static b => (byte)~b)] : body;
+        Serve(node, peer, request, descriptor, served, tree);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peer.Live, Is.Empty, "Served crossing Cancel releases the slot");
@@ -364,6 +366,51 @@ public class LeanObjectTransportTests
             Assert.That(a.Penalties, Has.One.Contains("not enabled by the profile"), "rejected by the transport's body check");
             Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False, "rejected before proof verification");
             Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty, "nothing is recovered for an invalid wrapper");
+        }
+    }
+
+    // EIPs#12473 and EIP-8437: an object within EIP-8288's limits that the local verifier cannot check is refused locally.
+    [TestCase("wrapper by hash")]
+    [TestCase("wrapper")]
+    [TestCase("package")]
+    public async Task Object_beyond_the_local_verifier_capacity_is_refused_without_penalty_or_tombstone(string kind)
+    {
+        using LeanTestNode node = new();
+        FakeLink a = new();
+        LeanPeer peer = node.Connect(a);
+        // Each transaction within MAX_SIGS_PER_TX; together above the native capacity, within MAX_DEPS_PER_AGGREGATE.
+        Transaction[] transactions = [.. Enumerable.Range(0, Eip8288Constants.MaxProofDependencies / Eip8288Constants.MaxSigsPerTx + 1).Select(t =>
+        {
+            FrameDependency[] deps = [.. Enumerable.Range(0, Eip8288Constants.MaxSigsPerTx)
+                .Select(i => new FrameDependency(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute(BitConverter.GetBytes(t * 1000 + i)), default))];
+            Transaction transaction = new()
+            {
+                Type = TxType.FrameTx,
+                NonceKeys = [UInt256.Zero],
+                ChainId = 1,
+                SenderAddress = Address.Zero,
+                Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)deps.Length * Eip8288Constants.LeanSphincsVerificationGas,
+                    UInt256.Zero, Eip8288Dependencies.Serialize(deps))]
+            };
+            transaction.Hash = new Hash256(ValueKeccak.Compute(Envelope(transaction)));
+            return transaction;
+        })];
+        byte[] body = kind == "package" ? InclusionList(ChunkBytes, transactions) : Wrapper(ChunkBytes, kind == "wrapper by hash", transactions);
+        LeanDescriptor descriptor = kind == "package"
+            ? LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+                LeanDescriptor.InclusionListContext(ValueKeccak.Compute(body)), body, out LeanChunkTree tree)
+            : Describe(body, out tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        ServeAll(node, peer, a, descriptor, body, tree, []);
+
+        await Until(() => node.Transport.CompletionBytes == 0 && node.Transport.AssemblyCount == 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(a.Penalties, Is.Empty);
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.False);
+            Assert.That(node.Transport.IsStored(descriptor.ObjectId), Is.False, "neither admitted nor relayed");
+            Assert.That(node.Verifier.Entered.Task.IsCompleted, Is.False, "refused before proof verification");
+            Assert.That(a.Sent<GetTransactionsMessage>(), Is.Empty, "a refused wrapper is not recovered");
         }
     }
 

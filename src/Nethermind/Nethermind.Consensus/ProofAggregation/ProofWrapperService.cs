@@ -85,7 +85,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
             }
-            if (ExceedsLocalCapacity(decoded)) return ProofWrapperAcceptance.LocalFailure(LocalAggregateCapacity);
+            if (ExceedsLocalCapacity(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
             IReadOnlyList<WrapperTransaction> received = decoded.Transactions;
             if (recovered is { Count: > 0 }) decoded = WithRecovered(decoded, recovered);
             // Envelopes resolving the received hash entries, from the pool or recovered from peers.
@@ -189,7 +189,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
             }
-            if (ExceedsLocalCapacity(decoded)) return ProofWrapperAcceptance.LocalFailure(LocalAggregateCapacity);
+            if (ExceedsLocalCapacity(decoded)) return ProofWrapperAcceptance.Refused(LocalAggregateCapacity);
             ValueHash256 wrapperHash = ValueKeccak.Compute(wrapper);
             if (_verifiedWrappers.TryGetValue(wrapperHash, out string? known))
                 return known is null ? new(ProofWrapperAcceptanceStatus.Accepted, Result<Hash256[]>.Success([])) : ProofWrapperAcceptance.Invalid(known);
@@ -215,9 +215,12 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         finally { Volatile.Write(ref _admissionActive, 0); }
     }
 
-    /// <summary>Whether an aggregate exceeds what the local proof store and prover can hold, a non-penalizing refusal.</summary>
+    /// <summary>Whether an aggregate within EIP-8288's limits exceeds what the native verifier can check.</summary>
+    /// <remarks>EIP-8288 and EIP-8437 make this a local refusal, not invalidity. Aggregates beyond EIP-8288's own limits
+    /// are left to validation, which rejects them.</remarks>
     private static bool ExceedsLocalCapacity(MempoolWrapper wrapper)
-        => wrapper.Mode == MempoolWrapper.ModeRecursive && wrapper.Deps.Count > Eip8288Constants.MaxProofDependencies;
+        => wrapper.Mode == MempoolWrapper.ModeRecursive && wrapper.Deps.Count > Eip8288Constants.MaxProofDependencies
+            && Eip8288Dependencies.CountByScheme(wrapper.Deps).Stark <= Eip8288Constants.MaxLeanStarkDepsPerAggregate;
 
     /// <summary>Verifies a proof-bearing inclusion list and admits its transactions.</summary>
     public async Task<Result<Hash256[]>> AcceptInclusionListAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
@@ -243,6 +246,9 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             catch (RlpException) { return ProofWrapperAcceptance.Invalid("Invalid proof inclusion list RLP."); }
             foreach (Transaction transaction in decoded.Transactions)
                 if (!Preflight(transaction, out string? frameError)) return ProofWrapperAcceptance.Invalid(frameError!);
+            // A dependency set the native verifier cannot check is refused locally, not judged invalid.
+            if (LeanProofCapacity.CapacityError(new HashSet<FrameDependency>(InclusionListProofValidator.DependenciesOf(decoded.Transactions))) is { } capacityError)
+                return ProofWrapperAcceptance.Refused(capacityError);
             (bool valid, List<FrameDependency> canonical, string? error) = await Task.Run(() =>
             {
                 bool proofValid = InclusionListProofValidator.Validate(decoded, leanProofVerifier, out List<FrameDependency> proven, out string? proofError);
