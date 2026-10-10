@@ -26,7 +26,7 @@ public class MaterializedLogsResponseWriterTests
 {
     [Test]
     public async Task Materialized_logs_preserve_exact_response_bytes(
-        [Values(0, 1, 127, 128, 512)] int count, [Values] bool typed, [Values] bool indented)
+        [Values(0, 1, 127, 128, 512, 4096)] int count, [Values] bool typed, [Values] bool indented)
     {
         using JsonRpcResponse response = CreateLogsResponse(count, typed, new JsonRpcId("a\"\\\n"));
         JsonSerializerOptions options = indented ? EthereumJsonSerializer.JsonOptionsIndented : EthereumJsonSerializer.JsonOptions;
@@ -40,10 +40,28 @@ public class MaterializedLogsResponseWriterTests
         {
             Assert.That(writer.Bytes, Is.EqualTo(expected.WrittenSpan.ToArray()));
             Assert.That(writer.FlushCount > 1, Is.EqualTo(count >= 128 && !indented));
-            if (count >= 128 && !indented) Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(64 * 1024 + 1024));
+            if (count >= 128 && !indented) Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(1024 * 1024 + 1024));
         }
         using JsonDocument document = JsonDocument.Parse(writer.Bytes);
         Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(count));
+    }
+
+    [Test]
+    public async Task Materialized_logs_WhenOutputExceedsOneMiB_CoalesceSubsequentFlushes()
+    {
+        using JsonRpcResponse response = CreateLogsResponse(4096, typed: true, new JsonRpcId(42));
+        RecordingPipeWriter writer = new();
+
+        await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.FirstFlushBytes, Is.LessThanOrEqualTo(16 * 1024 + 1024), "first-byte delivery stays prompt");
+            Assert.That(writer.SecondFlushBytes, Is.GreaterThanOrEqualTo(1024 * 1024), "subsequent output is coalesced before flushing");
+            Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(1024 * 1024 + 1024), "backpressure stays bounded by a chunk plus one log");
+            Assert.That(writer.FlushCount, Is.LessThanOrEqualTo((writer.Bytes.Length + 1024 * 1024 - 1) / (1024 * 1024) + 1),
+                "transport flushes scale with bytes per chunk rather than the smaller first flush");
+        }
     }
 
     [TestCase(false, TestName = "MaterializedLogs_NullEntriesPreserveBytes")]
@@ -63,7 +81,7 @@ public class MaterializedLogsResponseWriterTests
         {
             Assert.That(writer.Bytes, Is.EqualTo(expected.WrittenSpan.ToArray()));
             Assert.That(writer.FlushCount, Is.GreaterThan(1));
-            Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(64 * 1024 + (oversized ? 256 * 1024 : 0) + 1024));
+            Assert.That(writer.PeakUnflushedBytes, Is.LessThanOrEqualTo(1024 * 1024 + (oversized ? 256 * 1024 : 0) + 1024));
         }
     }
 
@@ -358,6 +376,7 @@ public class MaterializedLogsResponseWriterTests
         private int _flushed;
         public int FlushCount { get; private set; }
         public int FirstFlushBytes { get; private set; }
+        public int SecondFlushBytes { get; private set; }
         public long PeakUnflushedBytes { get; private set; }
         public int Failure { get; init; }
         public bool FailAdvance { get; init; }
@@ -385,6 +404,7 @@ public class MaterializedLogsResponseWriterTests
             LastToken = cancellationToken;
             FlushCount++;
             if (FlushCount == 1) FirstFlushBytes = _buffer.WrittenCount;
+            if (FlushCount == 2) SecondFlushBytes = _buffer.WrittenCount - _flushed;
             _flushed = _buffer.WrittenCount;
             if (Failure == 1) throw new IOException("Transport failed");
             if (Gate is not null && FlushCount == 1) return new(Gate.Task);

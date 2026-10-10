@@ -26,7 +26,7 @@ public static class JsonRpcResponseWriter
 {
     private const int MaterializedLogsStreamingThreshold = 128;
     private const int MaterializedLogsFirstFlushBytes = 16 * 1024;
-    private const int MaterializedLogsFlushBytes = 64 * 1024;
+    private const int MaterializedLogsFlushBytes = 1024 * 1024;
     private static readonly Lazy<JsonTypeInfo<FilterLog>?> _materializedLogTypeInfo = new(GetMaterializedLogTypeInfo);
     private static readonly byte[] BatchStart = [(byte)'['];
     private static readonly byte[] BatchSeparator = [(byte)','];
