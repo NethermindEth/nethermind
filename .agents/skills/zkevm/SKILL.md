@@ -28,7 +28,7 @@ A guest is Nethermind's stateless block validator, compiled with bflat into a RI
 | `Nethermind.{Core,Trie,Evm}.ZkEvm.Test` | Unit tests of code compiled under `ZK_EVM` |
 | `tools/StatelessInputGen` | Builds stateless inputs from a live node |
 
-`-p:EnableZkEvm=true` defines `ZK_EVM` and trims the build to what a guest can run. Code behind `#if ZK_EVM` / `#if !ZK_EVM` only differs in that build, so test it with the switch.
+`-p:EnableZkEvm=true` defines `ZK_EVM` and trims the build to what a guest can run. Build-specific code lives in `*.std.cs` / `*.zkevm.cs` files (or `std/` / `zkevm/` folders), each compiled only in its build, rather than behind `#if ZK_EVM`. Code that differs per build is only exercised with the switch, so test it with the switch.
 
 There is no exception unwinding in the zkVM runtime. A throw goes to `ZkvmThrow`, which writes `StatelessExecutor.FailureOutput`. That is why the failure result is encoded before anything that can throw.
 
