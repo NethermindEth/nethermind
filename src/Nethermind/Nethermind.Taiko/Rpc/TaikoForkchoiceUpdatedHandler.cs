@@ -3,6 +3,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -38,7 +39,8 @@ internal class TaikoForkchoiceUpdatedHandler(
     ILogManager logManager,
     IBlockProcessingPauseControl pauseControl,
     BlockTreeMutationLock mutationLock,
-    IStateReader stateReader) : ForkchoiceUpdatedHandler(
+    IStateReader stateReader,
+    IReceiptConfig? receiptConfig = null) : ForkchoiceUpdatedHandler(
     blockTree,
     poSSwitcher,
     payloadPreparationService,
@@ -54,7 +56,8 @@ internal class TaikoForkchoiceUpdatedHandler(
     logManager,
     pauseControl,
     mutationLock,
-    stateReader)
+    stateReader,
+    receiptConfig)
 {
     protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)

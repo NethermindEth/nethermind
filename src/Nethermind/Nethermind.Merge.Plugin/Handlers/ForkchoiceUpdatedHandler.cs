@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -51,7 +52,8 @@ public class ForkchoiceUpdatedHandler(
     ILogManager logManager,
     IBlockProcessingPauseControl pauseControl,
     BlockTreeMutationLock mutationLock,
-    IStateReader stateReader) : IForkchoiceUpdatedHandler
+    IStateReader stateReader,
+    IReceiptConfig? receiptConfig = null) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
@@ -73,6 +75,9 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    private readonly ProcessingOptions _reprocessingOptions = receiptConfig?.StoreReceipts ?? true
+        ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts
+        : ProcessingOptions.EthereumMerge;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -83,6 +88,29 @@ public class ForkchoiceUpdatedHandler(
         return await ApplyForkchoiceUpdate(newHeadHeader, forkchoiceState, payloadAttributes)
             ?? ValidateAttributes(payloadAttributes, version)
             ?? StartBuildingPayload(newHeadHeader!, forkchoiceState, payloadAttributes);
+    }
+
+    /// <summary>Queues the head for processing again when it is in the tree on a processed parent but was never processed.</summary>
+    /// <remarks>
+    /// A block leaves the processing queue without a verdict when its processing throws or runs past
+    /// <c>Blocks.BlockProcessingTimeoutMs</c>. A forkchoice update alone would otherwise leave it there: suggesting a
+    /// known block again does nothing, and without a beacon pivot sync does not start. Blocks inserted by beacon sync
+    /// are left to sync. Not awaited, as this runs inside <see cref="ApplyForkchoiceUpdate"/>'s priority boost.
+    /// </remarks>
+    private void ReprocessUnprocessedHead(BlockHeader head, BlockInfo headInfo, BlockHeader parent)
+    {
+        if (headInfo.IsBeaconInfo
+            || !_blockTree.WasProcessed(parent.Number, parent.GetOrCalculateHash())
+            || !stateReader.HasStateForBlock(parent))
+        {
+            return;
+        }
+
+        Block? block = _blockTree.FindBlock(head.GetOrCalculateHash(), BlockTreeLookupOptions.None, head.Number);
+        if (block is null) return;
+
+        if (_logger.IsInfo) _logger.Info($"Processing head {block.ToString(Block.Format.Short)} again: it was left unprocessed on a processed parent.");
+        _ = processingQueue.Enqueue(block, _reprocessingOptions);
     }
 
     /// <summary>
@@ -234,6 +262,7 @@ public class ForkchoiceUpdatedHandler(
             int processingQueueCount = processingQueue.Count;
             if (processingQueueCount == 0)
             {
+                ReprocessUnprocessedHead(newHeadHeader, blockInfo, blockParent);
                 peerRefresher.RefreshPeers(newHeadHeader.Hash!, newHeadHeader.ParentHash!, finalizedBlockHash);
                 blockCacheService.FinalizedHash = finalizedBlockHash;
                 blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
