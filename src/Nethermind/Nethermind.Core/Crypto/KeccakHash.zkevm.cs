@@ -207,6 +207,7 @@ public sealed partial class KeccakHash
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // a full branch's lanes are written, and ComputeHash256OfEdited reads no other.
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
+            Debug.Assert(((nuint)states & 7) == 0);
             for (int i = 0; i < count; i++)
             {
                 byte[] node = nodes[i];
@@ -255,7 +256,7 @@ public sealed partial class KeccakHash
         fixed (byte* data = input, original = previous)
         {
             bool absorbed = StrictAlignmentFlag.IsActive && ((nuint)data & 7) == 0
-                ? TryAbsorbEdited(ref lane, AlignedDown(data), original, index)
+                ? TryAbsorbEdited(ref lane, AlignedDown(data), AlignedDown(original), index)
                 : TryAbsorbEdited(ref lane, data, original, index);
             if (!absorbed)
             {

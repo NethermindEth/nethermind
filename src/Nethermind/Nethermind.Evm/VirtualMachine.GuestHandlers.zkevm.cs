@@ -197,10 +197,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary><paramref name="bottom"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
         /// <remarks>The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static unsafe ref byte AlignedBottom(ref byte bottom) =>
-            ref StrictAlignmentFlag.IsActive
+        private static unsafe ref byte AlignedBottom(ref byte bottom)
+        {
+            Debug.Assert(((nuint)Unsafe.AsPointer(ref bottom) & (EvmStack.WordSize - 1)) == 0);
+            return ref StrictAlignmentFlag.IsActive
                 ? ref Unsafe.AsRef<byte>((void*)((nuint)Unsafe.AsPointer(ref bottom) & ~(nuint)(EvmStack.WordSize - 1)))
                 : ref bottom;
+        }
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>
