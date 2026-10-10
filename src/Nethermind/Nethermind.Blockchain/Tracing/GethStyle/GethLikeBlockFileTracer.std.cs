@@ -16,7 +16,7 @@ using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable
+public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable, IGethFileTraceSink
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -71,13 +71,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        if (!LimitReached)
-        {
-            TypeInfoJsonSerializer.Serialize(_jsonWriter,
-                new TxTraceSummary(trace.ReturnValue.ToHexString(false), $"0x{trace.Gas:x}"),
-                _serializerOptions);
-            GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
-        }
+        DumpActionEnd(trace.ReturnValue, trace.Gas, null);
 
         DisposeFileStreamIfAny();
 
@@ -95,8 +89,13 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = new(_file);
 
         ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
-        return _txTracer = new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
+        return _txTracer = new(this, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
+
+    void IGethFileTraceSink.WriteEntry(GethTxFileTraceEntry entry) => DumpTraceEntry(entry);
+
+    void IGethFileTraceSink.WriteActionEnd(ReadOnlyMemory<byte> output, ulong gas, string? error) =>
+        DumpActionEnd(output, gas, error);
 
     private void DisposeFileStreamIfAny()
     {
@@ -114,6 +113,23 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         if (!LimitReached)
             TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+        if (LimitReached) _txTracer?.StopCapture();
+    }
+
+    private void DumpActionEnd(ReadOnlyMemory<byte> output, ulong gasUsed, string? error)
+    {
+        if (LimitReached)
+            return;
+
+        _jsonWriter!.WriteStartObject();
+        _jsonWriter.WritePropertyName("output");
+        _jsonWriter.WriteStringValue(output.Span.ToHexString(false));
+        _jsonWriter.WritePropertyName("gasUsed");
+        HexWriter.WriteUlongHexStringValue(_jsonWriter, gasUsed);
+        if (error is not null)
+            _jsonWriter.WriteString("error", error);
+        _jsonWriter.WriteEndObject();
+        GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
         if (LimitReached) _txTracer?.StopCapture();
     }
 

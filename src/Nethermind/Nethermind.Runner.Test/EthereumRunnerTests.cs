@@ -109,7 +109,7 @@ public class EthereumRunnerTests
             Assert.That(waiting.IsCompleted, Is.False, "RPC startup must wait for cleanup.");
             released.SetResult();
             if (cancelStartup)
-                Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
+                await Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
             else
                 await waiting.WaitAsync(RunnerTimeout);
         }
@@ -469,38 +469,38 @@ public class EthereumRunnerTests
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cancellation_does_not_create_storage()
+    public async Task Startup_pipeline_warmup_cancellation_does_not_create_storage()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
+        await Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
             WarmupConfig(dataDirectory.Path), false, new CancellationToken(canceled: true)));
 
         Assert.That(Directory.Exists(dataDirectory.Path), Is.False);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
+    public async Task Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
     {
         ChainSpec spec = LoadWarmupChainSpec();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
 
-        Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
+        await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
             WarmupConfig(dataDirectory.Path), flatState, cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
 
         Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_propagates_rpc_bind_failure()
+    public async Task Startup_pipeline_warmup_propagates_rpc_bind_failure()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
         System.Net.Sockets.TcpListener? occupied = null;
         try
         {
-            Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(directory.Path), false, cancellation.Token, configureContainer: builder =>
                 {
                     IJsonRpcConfig? config = null;
@@ -626,7 +626,7 @@ public class EthereumRunnerTests
     }
 
     [Test, Platform("Win")]
-    public void Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
+    public async Task Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
@@ -635,7 +635,7 @@ public class EthereumRunnerTests
         FileStream? lockedFile = null;
         try
         {
-            Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
                 configureContainer: CancelWhenRpcStarts(cancellation, () =>
                 {
@@ -1068,9 +1068,12 @@ public class EthereumRunnerTests
                 if (cancel)
                 {
                     cts.Cancel();
+                    await Assert.ThatAsync(() => task.WaitAsync(RunnerTimeout), Throws.InstanceOf<OperationCanceledException>());
                 }
-
-                await task.WaitAsync(RunnerTimeout);
+                else
+                {
+                    await task.WaitAsync(RunnerTimeout);
+                }
             }
             finally
             {
