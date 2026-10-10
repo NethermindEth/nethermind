@@ -15,4 +15,10 @@
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Core">
+    <!-- Only OpenVM's runtime exports the XORIN instruction Keccak absorbs aligned input with. -->
+    <type fullname="Nethermind.Core.Crypto.OpenVmXorinFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>
