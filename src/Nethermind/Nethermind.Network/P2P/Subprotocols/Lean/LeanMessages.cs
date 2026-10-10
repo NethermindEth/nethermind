@@ -505,7 +505,8 @@ public sealed class TransactionsMessageSerializer : LeanMessageSerializer<Transa
         {
             LeanRlpReader item = list.ReadList();
             byte status = item.ReadUInt8();
-            if (status > (byte)LeanResultStatus.TooLarge) throw new RlpException("Unknown result status");
+            // Unsupported does not apply: GetTransactions names no profile or kind.
+            if (status is > (byte)LeanResultStatus.TooLarge or (byte)LeanResultStatus.Unsupported) throw new RlpException("Unknown result status");
             ReadOnlySpan<byte> envelope = item.ReadBytes();
             item.End();
             if ((status == (byte)LeanResultStatus.Ok) == (envelope.Length == 0)) throw new RlpException("Result status disagrees with its envelope");

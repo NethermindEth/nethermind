@@ -62,20 +62,38 @@ internal sealed class LeanBoundedSet(int capacity)
 /// <remarks>Only objects that passed reconstruction and kind validation, or were produced locally, are added.</remarks>
 internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, int maxObjects = LeanLimits.MaxStoreObjects)
 {
-    internal sealed class Entry(LeanDescriptor descriptor, byte[] body, LeanChunkTree tree, LeanHeaderSkeleton? skeleton, ValueHash256[] transactions)
+    /// <param name="descriptor">The object's descriptor.</param>
+    /// <param name="body">The canonical body.</param>
+    /// <param name="tree">The body's chunk tree.</param>
+    /// <param name="skeleton">The kind-2 header skeleton.</param>
+    /// <param name="transactions">Hashes of the kind-1 body's full entries, answering transaction-hash lookups.</param>
+    /// <param name="envelopes">Envelopes retained for the kind-1 body's hash entries, so the transactions it offers by hash
+    /// stay recoverable through GetTransactions after leaving the pool.</param>
+    internal sealed class Entry(LeanDescriptor descriptor, byte[] body, LeanChunkTree tree, LeanHeaderSkeleton? skeleton, ValueHash256[] transactions,
+        Dictionary<ValueHash256, byte[]>? envelopes = null)
     {
         public LeanDescriptor Descriptor { get; } = descriptor;
         public byte[] Body { get; } = body;
         public LeanChunkTree Tree { get; } = tree;
         public LeanHeaderSkeleton? Skeleton { get; } = skeleton;
         public ValueHash256[] Transactions { get; } = transactions;
+        public Dictionary<ValueHash256, byte[]>? Envelopes { get; } = envelopes;
         public LinkedListNode<ValueHash256>? Node { get; set; }
-        public long Bytes => Body.Length + (2L << Tree.Depth) * 32 + (Skeleton?.Encoded.Length ?? 0) + 512;
+        public long Bytes { get; } = body.Length + (2L << tree.Depth) * 32 + (skeleton?.Encoded.Length ?? 0) + 512 + EnvelopeBytes(envelopes);
+
+        private static long EnvelopeBytes(Dictionary<ValueHash256, byte[]>? envelopes)
+        {
+            long bytes = 0;
+            if (envelopes is not null)
+                foreach (byte[] envelope in envelopes.Values) bytes += envelope.Length + 64;
+            return bytes;
+        }
     }
 
     private readonly Dictionary<ValueHash256, Entry> _objects = [];
     private readonly Dictionary<ValueHash256, ValueHash256> _primary = [];
     private readonly Dictionary<ValueHash256, ValueHash256> _byTransaction = [];
+    private readonly Dictionary<ValueHash256, ValueHash256> _byEnvelope = [];
     private readonly LinkedList<ValueHash256> _order = new();
 
     public long Bytes { get; private set; }
@@ -98,6 +116,14 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
         return _objects.TryGetValue(objectId, out entry!) && entry.Descriptor.Kind == selector.Kind && entry.Descriptor.ProfileId == selector.ProfileId;
     }
 
+    /// <summary>Finds an envelope retained for a hash entry of a stored wrapper.</summary>
+    public bool TryGetEnvelope(in ValueHash256 transaction, out byte[] envelope)
+    {
+        envelope = null!;
+        return _byEnvelope.TryGetValue(transaction, out ValueHash256 objectId) && _objects.TryGetValue(objectId, out Entry? entry)
+            && entry.Envelopes?.TryGetValue(transaction, out envelope!) == true;
+    }
+
     public bool TryAdd(Entry entry)
     {
         ValueHash256 objectId = entry.Descriptor.ObjectId;
@@ -109,6 +135,8 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
         if (entry.Descriptor.Kind != LeanProtocol.KindWrapper)
             _primary[PrimaryKey(entry.Descriptor.Kind, entry.Descriptor.PrimaryKey)] = objectId;
         foreach (ValueHash256 transaction in entry.Transactions) _byTransaction[transaction] = objectId;
+        if (entry.Envelopes is not null)
+            foreach (ValueHash256 transaction in entry.Envelopes.Keys) _byEnvelope[transaction] = objectId;
         return true;
     }
 
@@ -131,6 +159,9 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
         }
         foreach (ValueHash256 transaction in entry.Transactions)
             if (_byTransaction.TryGetValue(transaction, out ValueHash256 current) && current == objectId) _byTransaction.Remove(transaction);
+        if (entry.Envelopes is not null)
+            foreach (ValueHash256 transaction in entry.Envelopes.Keys)
+                if (_byEnvelope.TryGetValue(transaction, out ValueHash256 current) && current == objectId) _byEnvelope.Remove(transaction);
     }
 
     // Block hashes and package hashes share one map, so the kind is folded into the key.
@@ -173,6 +204,9 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
     public long Created { get; } = now;
     public long LastProgress { get; set; } = now;
     public bool Progressed { get; set; }
+
+    /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
+    public bool Cancelled { get; set; }
 }
 
 internal sealed class LeanObjectsRequest(ulong id, long now, LeanSelector[] selectors) : LeanOutgoingRequest(id, now)
@@ -230,6 +264,15 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton
 
     /// <summary>Whether the reconstructed object goes through kind validation and, if valid, into the served store.</summary>
     public bool Validate { get; set; }
+
+    /// <summary>Cancels validation and transaction recovery of a completed body when the assembly expires.</summary>
+    public CancellationTokenSource? Processing { get; set; }
+
+    /// <summary>Whether processing of the completed body has begun, so expiry cancels it instead of releasing the body.</summary>
+    public bool Started { get; set; }
+
+    /// <summary>Wrappers waiting on this object for direct transaction recovery; its new chunks advance their idle timers.</summary>
+    public List<LeanAssembly> Dependents { get; } = [];
 
     /// <summary>Callers waiting for the integrity-checked body: kind-2 sidecar fetches and transaction-hash recovery.</summary>
     public List<TaskCompletionSource<byte[]?>> Waiters { get; } = [];

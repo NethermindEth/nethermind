@@ -85,6 +85,9 @@ public sealed partial class LeanObjectTransport
                 outbox.Flush();
                 return;
             }
+            // A held descriptor's profile, kind and size are checked against the peer's Status before serving.
+            else if (!peer.Status.SupportsKind(entry.Descriptor.Kind) || Array.IndexOf(peer.Status.Profiles, entry.Descriptor.ProfileId) < 0)
+                status = LeanCompleteStatus.Unsupported;
             else if (entry.Descriptor.ByteLength > peer.Status.MaxObjectBytes) status = LeanCompleteStatus.TooLarge;
             else
             {
@@ -199,9 +202,7 @@ public sealed partial class LeanObjectTransport
         for (int i = 0; i < hashes.Length; i++)
         {
             results[i] = (busy ? LeanResultStatus.Busy : LeanResultStatus.Unavailable, []);
-            if (busy || !_txPool.TryGetPendingTransaction(hashes[i], out Transaction? transaction)) continue;
-            byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
-            if (ValueKeccak.Compute(envelope) != hashes[i]) continue;
+            if (busy || FindEnvelope(hashes[i]) is not { } envelope) continue;
             int length = TransactionsMessageSerializer.EncodeResult(LeanResultStatus.Ok, envelope).Length - NonOkResultBytes;
             if (length + others + NonOkResultBytes > LeanProtocol.MaxTxResponseBytes - ResponseOverhead) results[i] = (LeanResultStatus.TooLarge, []);
             else if (length > remaining) results[i] = (LeanResultStatus.Busy, []);
@@ -212,6 +213,17 @@ public sealed partial class LeanObjectTransport
             }
         }
         peer.Link.Send(new TransactionsMessage(message.RequestId, results));
+    }
+
+    /// <summary>Finds a canonical envelope in the pool or retained with a served wrapper; never searches history or asks peers.</summary>
+    private byte[]? FindEnvelope(in ValueHash256 hash)
+    {
+        if (_txPool.TryGetPendingTransaction(hash, out Transaction? transaction))
+        {
+            byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+            if (ValueKeccak.Compute(envelope) == hash) return envelope;
+        }
+        lock (_gate) return _store.TryGetEnvelope(hash, out byte[] retained) ? retained : null;
     }
 
     /// <summary>Builds the sidecar of a recent canonical block on demand; true when a proof had to be hashed.</summary>

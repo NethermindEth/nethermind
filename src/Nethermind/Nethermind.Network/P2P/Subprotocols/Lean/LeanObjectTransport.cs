@@ -56,6 +56,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private TaskCompletionSource _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _incompleteBytes;
     private long _completionBytes;
+    private int _pendingValidations;
     private bool _validating;
     private bool _disposed;
     private long _lastStats;
@@ -235,13 +236,23 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     {
         private List<(LeanPeer Peer, LeanMessage Message)>? _messages;
         private List<(LeanPeer Peer, string Reason)>? _penalties;
+        private List<CancellationTokenSource>? _cancellations;
 
         public void Send(LeanPeer peer, LeanMessage message) => (_messages ??= []).Add((peer, message));
 
         public void Penalize(LeanPeer peer, string reason) => (_penalties ??= []).Add((peer, reason));
 
+        /// <summary>Cancels work after the lock is released, since cancellation callbacks may resume awaiting code inline.</summary>
+        public void Cancel(CancellationTokenSource source) => (_cancellations ??= []).Add(source);
+
         public void Flush()
         {
+            if (_cancellations is not null)
+                foreach (CancellationTokenSource source in _cancellations)
+                {
+                    try { source.Cancel(); }
+                    catch (ObjectDisposedException) { }
+                }
             if (_messages is not null)
                 foreach ((LeanPeer peer, LeanMessage message) in _messages)
                     if (!peer.Closed) peer.Link.Send(message);
