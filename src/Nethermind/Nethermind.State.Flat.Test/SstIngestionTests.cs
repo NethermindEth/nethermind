@@ -550,14 +550,7 @@ public class SstIngestionTests
             batch.Set(dedupedKey, [0x0a]);
             batch.Set(dedupedKey, [0x0b]);
 
-            byte[] filler = new byte[64 * 1024];
-            Span<byte> key = stackalloc byte[32];
-            for (int i = 0; i < 2100; i++)
-            {
-                BitConverter.TryWriteBytes(key, i);
-                key[8] = 0xff;
-                batch.Set(key, filler);
-            }
+            WriteMoreThanOneChunk(batch);
 
             batch.Set(overwrittenKey, [0x02]);
             batch.Set(deletedKey, null);
@@ -569,6 +562,39 @@ public class SstIngestionTests
         Assert.That(accountDb.Get(overwrittenKey), Is.EqualTo(new byte[] { 0x02 }));
         Assert.That(accountDb.Get(deletedKey), Is.Null);
         Assert.That(accountDb.Get(dedupedKey), Is.EqualTo(new byte[] { 0x0b }));
+    }
+
+    private static void WriteMoreThanOneChunk(ISstIngestWriteBatch batch)
+    {
+        byte[] filler = new byte[64 * 1024];
+        Span<byte> key = stackalloc byte[32];
+        for (int i = 0; i < 2100; i++)
+        {
+            BitConverter.TryWriteBytes(key, i);
+            key[8] = 0xff;
+            batch.Set(key, filler);
+        }
+    }
+
+    [Test]
+    public void Batch_larger_than_the_chunk_cap_seals_into_files_that_ingest_below_L0()
+    {
+        string scratchPath = Path.Combine(_dbPath, "scratch-db");
+        using ISstIngestWriteBatch batch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account)).StartSstIngestBatch();
+        WriteMoreThanOneChunk(batch);
+        string[] files = [.. batch.SealToStagedFiles()];
+
+        using RocksDb scratch = RocksDb.Open(new DbOptions().SetCreateIfMissing(true), scratchPath, new ColumnFamilies());
+        scratch.IngestExternalFiles(files, new IngestExternalFileOptions().SetMoveFiles(true), scratch.GetDefaultColumnFamily());
+        List<LiveFileMetadata> live = scratch.GetLiveFilesMetadata()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(files, Has.Length.GreaterThan(1));
+            Assert.That(live, Has.Count.EqualTo(files.Length));
+            Assert.That(live.Select(static f => f.FileMetadata.FileLevel), Has.All.GreaterThan(0));
+            Assert.That(Directory.GetFiles(Path.Combine(_dbPath, "sst_ingest")), Is.Empty);
+        }
     }
 
     [Test]
@@ -888,7 +914,7 @@ public class SstIngestionTests
     }
 
     [Test]
-    public void Roll_forward_skips_an_ingested_column_whose_earlier_chunk_was_not_unlinked()
+    public void Roll_forward_skips_an_ingested_column_whose_earlier_file_was_not_unlinked()
     {
         StateId s1 = State(1, 1);
         StateId s2 = State(2, 2);
@@ -897,43 +923,26 @@ public class SstIngestionTests
             batch.SetAccount(Addr, new Account(100));
         }
 
-        byte[] accountKey = ValueKeccak.Compute("rewritten-across-chunks"u8).ToByteArray();
-        byte[] storageKey = ValueKeccak.Compute("pending-storage"u8).ToByteArray();
+        byte[] accountKey = ValueKeccak.Compute("rewritten-by-the-later-file"u8).ToByteArray();
+        ISstIngestible accountColumn = (ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account);
 
-        ISstIngestWriteBatch accountBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Account)).StartSstIngestBatch();
-        ISstIngestWriteBatch storageBatch = ((ISstIngestible)_db.GetColumnDb(FlatDbColumns.Storage)).StartSstIngestBatch();
-        try
+        using (ISstIngestWriteBatch firstBatch = accountColumn.StartSstIngestBatch())
+        using (ISstIngestWriteBatch secondBatch = accountColumn.StartSstIngestBatch())
         {
-            accountBatch.Set(accountKey, [0x01]);
-            byte[] filler = new byte[64 * 1024];
-            Span<byte> key = stackalloc byte[32];
-            for (int i = 0; i < 2100; i++)
-            {
-                BitConverter.TryWriteBytes(key, i);
-                key[8] = 0xff;
-                accountBatch.Set(key, filler);
-            }
-            accountBatch.Set(accountKey, [0x02]);
-            storageBatch.Set(storageKey, [0xb2]);
-
-            string[] accountFiles = [.. accountBatch.SealToStagedFiles()];
-            Assert.That(accountFiles, Has.Length.GreaterThan(1));
-            List<(FlatDbColumns Column, string Name)> stagedFiles =
-                [.. WithColumn(FlatDbColumns.Account, accountFiles), .. WithColumn(FlatDbColumns.Storage, storageBatch.SealToStagedFiles())];
+            firstBatch.Set(accountKey, [0x01]);
+            secondBatch.Set(accountKey, [0x02]);
+            string firstFile = firstBatch.SealToStagedFiles().Single();
+            string secondFile = secondBatch.SealToStagedFiles().Single();
 
             using (IColumnsWriteBatch<FlatDbColumns> markerBatch = _db.StartWriteBatch())
-                BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, stagedFiles);
+                BasePersistence.SetIngestMarker(markerBatch.GetColumnBatch(FlatDbColumns.Metadata), s2, [.. WithColumn(FlatDbColumns.Account, [firstFile, secondFile])]);
             _db.Flush(onlyWal: true);
 
-            string firstChunkCopy = accountFiles[0] + ".copy";
-            File.Copy(accountFiles[0], firstChunkCopy);
-            accountBatch.IngestStagedFiles();
-            File.Move(firstChunkCopy, accountFiles[0]);
-        }
-        finally
-        {
-            accountBatch.Dispose();
-            storageBatch.Dispose();
+            string firstFileCopy = firstFile + ".copy";
+            File.Copy(firstFile, firstFileCopy);
+            firstBatch.IngestStagedFiles();
+            secondBatch.IngestStagedFiles();
+            File.Move(firstFileCopy, firstFile);
         }
 
         Reopen();
@@ -941,7 +950,6 @@ public class SstIngestionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_db.GetColumnDb(FlatDbColumns.Account).Get(accountKey), Is.EqualTo(new byte[] { 0x02 }));
-            Assert.That(_db.GetColumnDb(FlatDbColumns.Storage).Get(storageKey), Is.EqualTo(new byte[] { 0xb2 }));
             using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
             {
                 Assert.That(reader.CurrentState, Is.EqualTo(s2));

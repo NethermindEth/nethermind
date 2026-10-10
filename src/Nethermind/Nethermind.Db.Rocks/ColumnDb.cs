@@ -205,6 +205,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
     {
         private const long MaxBufferedBytes = 128L * 1024 * 1024;
         private const int SlabSize = 1 << 20;
+        private const int RunBufferSize = 1 << 20;
+        private const int RunHeaderSize = 2 * sizeof(int);
 
         // Worst-case permanent retention: slabs <= 1024 x 1 MiB = 1 GiB; entries <= 6 arrays/bucket over 2^16..2^22 x 32 B ~= 1.5 GiB.
         // 6 covers peak concurrency: six column batches alive per persist, one persist in flight.
@@ -218,6 +220,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         private readonly ColumnDb _columnDb = columnDb;
         private readonly ArrayPoolList<byte[]> _slabs = new(_slabListPool, 16);
         private readonly ArrayPoolList<string> _stagedFiles = new(4);
+        private readonly ArrayPoolList<string> _runFiles = new(4);
         private Entry[] _index = _entryPool.Rent(1 << 16);
         private int _count;
         private int _slabIndex = -1;
@@ -266,7 +269,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _count++;
 
             _bufferedBytes += length + Unsafe.SizeOf<Entry>();
-            if (_bufferedBytes >= MaxBufferedBytes) FlushChunk();
+            if (_bufferedBytes >= MaxBufferedBytes) SpillRun();
         }
 
         private static ulong ReadPrefix(ReadOnlySpan<byte> key)
@@ -350,14 +353,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             EntryComparer comparer = new(_slabs.UnsafeGetInternalArray());
             _index.AsSpan(0, _count).Sort(comparer);
 
-            Directory.CreateDirectory(_columnDb.IngestStagingDir);
-            string file = Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.sst");
+            string file = NextStagingPath("sst");
 
             try
             {
-                ColumnFamilyOptions writerOptions = _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
-                    ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
-                using SstFileWriter writer = new(_envOptions, writerOptions);
+                using SstFileWriter writer = new(_envOptions, WriterOptions());
                 rocksdb_sstfilewriter_t* writerHandle = (rocksdb_sstfilewriter_t*)writer.Handle;
                 writer.Open(file);
                 for (int i = 0; i < _count; i++)
@@ -381,15 +381,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             }
             catch (Exception writerError)
             {
-                if (writerError is RocksDbException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx, scheduleRepairMarker: false);
-                try
-                {
-                    if (File.Exists(file)) File.Delete(file);
-                }
-                catch (Exception cleanupError)
-                {
-                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete partial SST file '{file}' after a writer error; it will be swept on next startup. {cleanupError}");
-                }
+                HandleWriterError(writerError, file);
                 throw;
             }
 
@@ -397,9 +389,224 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             Clear();
         }
 
+        private string NextStagingPath(string extension)
+        {
+            Directory.CreateDirectory(_columnDb.IngestStagingDir);
+            return Path.Combine(_columnDb.IngestStagingDir, $"{_columnDb.Name}_{Interlocked.Increment(ref _sstIngestSeq)}.{extension}");
+        }
+
+        private ColumnFamilyOptions WriterOptions() =>
+            _columnDb._mainDb.GetColumnFamilyOptions(_columnDb.Name)
+                ?? throw new InvalidOperationException($"No column family options registered for column {_columnDb.Name} of {_columnDb._mainDb.Name}");
+
+        private void HandleWriterError(Exception writerError, string? file)
+        {
+            if (writerError is RocksDbException dbEx) _columnDb._mainDb.HandleFatalDbError(dbEx, scheduleRepairMarker: false);
+            if (file is null) return;
+            try
+            {
+                if (File.Exists(file)) File.Delete(file);
+            }
+            catch (Exception cleanupError)
+            {
+                if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete partial SST file '{file}' after a writer error; it will be swept on next startup. {cleanupError}");
+            }
+        }
+
+        /// <summary>Writes the buffered entries to a temporary sorted run file and empties the buffer.</summary>
+        /// <remarks>
+        /// A run holds one record per key, the latest write, as <c>[i32 keyLen][i32 valLen, -1 = delete][key][value]</c>
+        /// in key order. Runs are merged into the staged SST files by <see cref="MergeRunsToStagedFiles"/>, so the files
+        /// of one batch never overlap however many times the buffer filled up.
+        /// </remarks>
+        private void SpillRun()
+        {
+            if (_count == 0) return;
+
+            EntryComparer comparer = new(_slabs.UnsafeGetInternalArray());
+            _index.AsSpan(0, _count).Sort(comparer);
+
+            string file = NextStagingPath("run");
+            _runFiles.Add(file);
+            using (FileStream stream = new(file, FileMode.CreateNew, FileAccess.Write, FileShare.None, RunBufferSize))
+            {
+                Span<byte> header = stackalloc byte[RunHeaderSize];
+                for (int i = 0; i < _count; i++)
+                {
+                    ref Entry e = ref _index[i];
+                    if (i + 1 < _count && comparer.IsSameKey(in e, in _index[i + 1])) continue;
+                    BinaryPrimitives.WriteInt32LittleEndian(header, e.KeyLen);
+                    BinaryPrimitives.WriteInt32LittleEndian(header[sizeof(int)..], e.ValLen);
+                    stream.Write(header);
+                    stream.Write(_slabs[e.Slab].AsSpan(e.Offset, e.KeyLen + Math.Max(e.ValLen, 0)));
+                }
+            }
+
+            Clear();
+        }
+
+        /// <summary>Merges the spilled runs into staged SST files whose key ranges do not overlap.</summary>
+        /// <remarks>
+        /// K-way merge that streams one record per run. Of the records sharing a key only the one from the newest run is
+        /// written, a delete included. A new output file starts once the current one holds <see cref="MaxBufferedBytes"/>,
+        /// always between two keys, so the outputs are globally sorted and RocksDB can ingest them below L0.
+        /// </remarks>
+        private void MergeRunsToStagedFiles()
+        {
+            RunReader?[] readers = new RunReader?[_runFiles.Count];
+            SstFileWriter? writer = null;
+            string? file = null;
+            try
+            {
+                ColumnFamilyOptions writerOptions = WriterOptions();
+                PriorityQueue<RunReader, RunReader> heads = new(readers.Length, RunReaderComparer.Instance);
+                for (int i = 0; i < readers.Length; i++)
+                {
+                    RunReader reader = readers[i] = new RunReader(_runFiles[i], i);
+                    if (reader.MoveNext()) heads.Enqueue(reader, reader);
+                }
+
+                long writtenBytes = 0;
+                while (heads.TryDequeue(out RunReader? newest, out _))
+                {
+                    if (writer is not null && writtenBytes >= MaxBufferedBytes)
+                    {
+                        writer.Finish();
+                        writer.Dispose();
+                        writer = null;
+                        _stagedFiles.Add(file!);
+                        file = null;
+                    }
+
+                    if (writer is null)
+                    {
+                        file = NextStagingPath("sst");
+                        writer = new SstFileWriter(_envOptions, writerOptions);
+                        writer.Open(file);
+                        writtenBytes = 0;
+                    }
+
+                    WriteRecord(writer, newest.Record, newest.KeyLen, newest.ValLen);
+                    writtenBytes += newest.KeyLen + Math.Max(newest.ValLen, 0);
+
+                    while (heads.TryPeek(out RunReader? older, out _) && older.Key.SequenceEqual(newest.Key))
+                    {
+                        heads.Dequeue();
+                        if (older.MoveNext()) heads.Enqueue(older, older);
+                    }
+
+                    if (newest.MoveNext()) heads.Enqueue(newest, newest);
+                }
+
+                if (writer is not null)
+                {
+                    writer.Finish();
+                    writer.Dispose();
+                    writer = null;
+                    _stagedFiles.Add(file!);
+                    file = null;
+                }
+            }
+            catch (Exception writerError)
+            {
+                writer?.Dispose();
+                HandleWriterError(writerError, file);
+                throw;
+            }
+            finally
+            {
+                foreach (RunReader? reader in readers) reader?.Dispose();
+                DeleteRunFiles();
+            }
+        }
+
+        /// <summary>Appends one record to an open SST file writer.</summary>
+        /// <remarks>
+        /// Safety: <paramref name="record"/> holds <paramref name="keyLen"/> key bytes followed by the value bytes (none
+        /// for a delete, which is <paramref name="valLen"/> below zero), so every pointer handed to the native call stays
+        /// within the pinned array.
+        /// </remarks>
+        private static unsafe void WriteRecord(SstFileWriter writer, byte[] record, int keyLen, int valLen)
+        {
+            rocksdb_sstfilewriter_t* writerHandle = (rocksdb_sstfilewriter_t*)writer.Handle;
+            fixed (byte* data = &MemoryMarshal.GetArrayDataReference(record))
+            {
+                sbyte* err = null;
+                if (valLen < 0) RocksDbNative.rocksdb_sstfilewriter_delete(writerHandle, (sbyte*)data, (UIntPtr)keyLen, &err);
+                else RocksDbNative.rocksdb_sstfilewriter_put(writerHandle, (sbyte*)data, (UIntPtr)keyLen, (sbyte*)(data + keyLen), (UIntPtr)valLen, &err);
+                if (err is not null) throw new RocksDbNativeException((IntPtr)err);
+            }
+        }
+
+        private void DeleteRunFiles()
+        {
+            foreach (string file in _runFiles)
+            {
+                try
+                {
+                    if (File.Exists(file)) File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                    if (_columnDb._mainDb.Logger.IsDebug) _columnDb._mainDb.Logger.Debug($"Failed to delete SST ingest run file '{file}'; it will be swept on next startup. {e}");
+                }
+            }
+            _runFiles.Clear();
+        }
+
+        /// <summary>Streams the records of one spilled run, holding a single record in memory.</summary>
+        private sealed class RunReader(string file, int index) : IDisposable
+        {
+            private readonly FileStream _stream = new(file, FileMode.Open, FileAccess.Read, FileShare.Read, RunBufferSize, FileOptions.SequentialScan);
+
+            public int Index => index;
+            public byte[] Record { get; private set; } = new byte[256];
+            public int KeyLen { get; private set; }
+            public int ValLen { get; private set; }
+            public ReadOnlySpan<byte> Key => Record.AsSpan(0, KeyLen);
+
+            public bool MoveNext()
+            {
+                Span<byte> header = stackalloc byte[RunHeaderSize];
+                int read = _stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
+                if (read == 0) return false;
+                if (read < header.Length) throw new EndOfStreamException($"SST ingest run file '{file}' is truncated");
+
+                KeyLen = BinaryPrimitives.ReadInt32LittleEndian(header);
+                ValLen = BinaryPrimitives.ReadInt32LittleEndian(header[sizeof(int)..]);
+                int length = KeyLen + Math.Max(ValLen, 0);
+                if (Record.Length < length) Record = new byte[Math.Max(length, Record.Length * 2)];
+                _stream.ReadExactly(Record, 0, length);
+                return true;
+            }
+
+            public void Dispose() => _stream.Dispose();
+        }
+
+        /// <summary>Orders run heads by key; of equal keys the head of the newer run comes first.</summary>
+        private sealed class RunReaderComparer : IComparer<RunReader>
+        {
+            public static readonly RunReaderComparer Instance = new();
+
+            public int Compare(RunReader? x, RunReader? y)
+            {
+                int c = x!.Key.SequenceCompareTo(y!.Key);
+                return c != 0 ? c : y.Index.CompareTo(x.Index);
+            }
+        }
+
         public IReadOnlyList<string> SealToStagedFiles()
         {
-            FlushChunk();
+            if (_runFiles.Count == 0)
+            {
+                FlushChunk();
+            }
+            else
+            {
+                SpillRun();
+                MergeRunsToStagedFiles();
+            }
+
             return _stagedFiles;
         }
 
@@ -423,10 +630,13 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                 }
             }
             _stagedFiles.Clear();
+            DeleteRunFiles();
         }
 
         public void Dispose()
         {
+            DeleteRunFiles();
+            _runFiles.Dispose();
             foreach (byte[] slab in _slabs)
             {
                 if (slab.Length == SlabSize) _slabPool.Return(slab);
