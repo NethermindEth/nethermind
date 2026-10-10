@@ -377,7 +377,7 @@ fn decode_stark(
     }
     let mut r = Reader { bytes: witness };
     let code = r.blob()?;
-    if keccak(code) != *vk {
+    if keccak(&[&eip8288_mixed::GENERIC_VK_DOMAIN[..], code].concat()) != *vk {
         return Err(());
     }
     let program = stark_program(code)?;
@@ -868,19 +868,19 @@ mod tests {
             ),
             (
                 vec![a],
-                "6921fc8275ae947e76ab603255f550b615341fb880a8635996d30b55201d28f6",
+                "aef5a1c0fbd299e930670837a1d8525a37ebfbb3139edfa972cb84788484afe6",
             ),
             (
                 vec![b, a, c, a],
-                "27ad454def73a88020d3f7a6428cd790cf354b531b0447013027e7fa277b9e13",
+                "db319771cd52a8a6eadb4273e07df5fbf2a405592e956e3fe6f3121f9cb3b897",
             ),
             (
                 vec![g1],
-                "3ae64e624f1d16e19a7699b95f501134828652df566420f26a4f298b5bb54b9a",
+                "2eacc579313017124720641cf33287809cb02437e8f381c427e0f5aa8162db93",
             ),
             (
                 vec![g2, a, g1, c],
-                "ba1180b0f634d713dbf9b5b87e68a36786f550676d2b05d4f49f699eeb42e90f",
+                "2523de87398f08d0bb08e78b1ff651b0452a1c12fe8dbae806a4c8ffe7fbaf31",
             ),
         ] {
             let digest = commitment(&canonical(deps));
@@ -892,6 +892,7 @@ mod tests {
                 expected
             );
         }
+        assert_ne!(commitment(&[a]), commitment(&[g1]));
     }
 
     #[test]
@@ -1006,6 +1007,47 @@ mod tests {
         let empty = prove_aggregate(&commitment(&[]), &discard).unwrap();
         assert!(empty.is_empty());
         assert!(prove_aggregate(&commitment(&[dep]), &discard).is_err());
+        // The scheme is bound: the same data and key under leanSTARK is another dependency.
+        let mut restated = dep;
+        restated[31] = 0x11;
+        for proof in [&leaf, &root] {
+            assert!(verify_aggregate(&commitment(&[restated]), proof).is_err());
+        }
+        let mut other_scheme = Vec::new();
+        put_number(&mut other_scheme, 0);
+        put_number(&mut other_scheme, 1);
+        put_deps(&mut other_scheme, &[dep]);
+        put_blob(&mut other_scheme, &leaf);
+        put_deps(&mut other_scheme, &[restated]);
+        assert!(prove_aggregate(&commitment(&[]), &other_scheme).is_err());
+        let kept = prove_aggregate(&commitment(&[dep]), &other_scheme).unwrap();
+        verify_aggregate(&commitment(&[dep]), &kept).unwrap();
+        // Unknown schemes fail in direct, recursive and discard lists alike.
+        for scheme in [0x00, 0x12] {
+            let mut unknown = dep;
+            unknown[31] = scheme;
+            let mut direct = Vec::new();
+            put_number(&mut direct, 1);
+            direct.extend_from_slice(&unknown);
+            put_blob(&mut direct, &signature);
+            put_number(&mut direct, 0);
+            put_deps(&mut direct, &[]);
+            let mut nested = Vec::new();
+            put_number(&mut nested, 0);
+            put_number(&mut nested, 1);
+            put_deps(&mut nested, &[dep, unknown]);
+            put_blob(&mut nested, &leaf);
+            put_deps(&mut nested, &[unknown]);
+            let mut discarded = Vec::new();
+            put_number(&mut discarded, 0);
+            put_number(&mut discarded, 1);
+            put_deps(&mut discarded, &[dep]);
+            put_blob(&mut discarded, &leaf);
+            put_deps(&mut discarded, &[unknown]);
+            for input in [direct, nested, discarded] {
+                assert!(prove_aggregate(&commitment(&[dep]), &input).is_err());
+            }
+        }
     }
     #[test]
     fn binary_recursion_preserves_overlapping_parents_and_partial_discards() {
@@ -1141,7 +1183,7 @@ mod tests {
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "6deed6ff48d7e4af71132fb8cdc5224d16574d0358a94d274af5caee648c80ad"
+            "c77fc9fe635aa8ba3c34028af0134e155391f8f76ad76f2e598b6823e0e7f7d1"
         );
         let mut limits = [0u32; 9];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);

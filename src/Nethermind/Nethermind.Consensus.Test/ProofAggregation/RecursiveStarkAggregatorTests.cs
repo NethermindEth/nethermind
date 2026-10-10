@@ -90,6 +90,38 @@ public class RecursiveStarkAggregatorTests
         Assert.That(RecursiveStarkAggregator.TryAggregate(input, Rejecting, out _, out _), Is.False);
     }
 
+    [TestCase("direct")]
+    [TestCase("recursive")]
+    [TestCase("discard")]
+    public void Aggregate_rejects_unknown_schemes_in_every_list(string list)
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency unknown = new(0x12, a.DataHash, a.VerificationKey);
+        AggregationInput input = list switch
+        {
+            "direct" => new() { Deps = [unknown], Witnesses = [new byte[] { 1 }] },
+            "recursive" => new() { RecursiveProofs = [new RecursiveProofInput([a, unknown], [9])], Discards = [unknown] },
+            _ => new() { Deps = [a], Witnesses = [new byte[] { 1 }], Discards = [unknown] },
+        };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out _, out _), Is.False);
+    }
+
+    [Test]
+    public void Discard_keeps_the_same_data_and_key_under_the_other_scheme()
+    {
+        FrameDependency sphincs = Sphincs("a");
+        FrameDependency stark = new(Eip8288Constants.LeanStarkScheme, sphincs.DataHash, sphincs.VerificationKey);
+        AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([sphincs, stark], [9])], Discards = [stark] };
+
+        Assert.That(RecursiveStarkAggregator.TryAggregate(input, Accepting, out IReadOnlyList<FrameDependency> filtered, out ValueHash256 hash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filtered, Is.EqualTo(new[] { sphincs }));
+            Assert.That(hash, Is.Not.EqualTo(Eip8288Dependencies.ComputeDepsHash([stark])));
+        }
+    }
+
     [Test]
     public void Proof_store_prunes_recursive_dependencies_and_copies_witnesses([Values] bool recursive)
     {

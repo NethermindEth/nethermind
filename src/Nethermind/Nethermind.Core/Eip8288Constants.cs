@@ -45,10 +45,10 @@ public static class Eip8288Constants
     public const byte LeanSphincsScheme = 0x10;
     public const byte LeanStarkScheme = 0x11;
 
-    /// <summary>Prototype switch accepting leanSTARK dependencies.</summary>
-    /// <remarks>EIP-8288 reserves <see cref="LeanStarkScheme"/> until <c>get_deps_hash</c> is defined for it;
-    /// <see cref="Eip8288Dependencies.ComputeDepsHash"/> defines it for this prototype.</remarks>
-    public const bool LeanStarkPrototypeEnabled = true;
+    /// <summary>Whether <see cref="LeanStarkScheme"/> is in the EIP-8288 <c>enabled_schemes</c>, with <see cref="LeanSphincsScheme"/>.</summary>
+    /// <remarks>The set is fixed with <see cref="AggregatedVk"/>, whose circuit enforces it on every dependency list it reads.
+    /// The pinned circuit enables leanSTARK under its generic CPU-proof dependency profile; changing this needs a circuit and key to match.</remarks>
+    public const bool LeanStarkSchemeEnabled = true;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
     public const ulong LeanStarkVerificationGas = 30_000;
@@ -81,5 +81,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("6deed6ff48d7e4af71132fb8cdc5224d16574d0358a94d274af5caee648c80ad");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("c77fc9fe635aa8ba3c34028af0134e155391f8f76ad76f2e598b6823e0e7f7d1");
 }

@@ -235,6 +235,13 @@ public static class RecursiveStarkAggregator
         depsHash = default;
 
         if (input.Deps.Count != input.Witnesses.Count) return false;
+        // Every list the circuit reads holds enabled schemes only, discarded dependencies included.
+        if (!AllAccepted(input.Deps) || !AllAccepted(input.Discards)) return false;
+        foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
+        {
+            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
+            if (!AllAccepted(recursiveProof.InnerDeps)) return false;
+        }
 
         List<FrameDependency> allDeps = [];
         for (int i = 0; i < input.Deps.Count; i++)
@@ -253,7 +260,6 @@ public static class RecursiveStarkAggregator
 
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
-            if (recursiveProof.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(input));
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
             if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);
@@ -272,6 +278,13 @@ public static class RecursiveStarkAggregator
 
         filteredDeps = Eip8288Dependencies.Canonicalize(filtered);
         depsHash = Eip8288Dependencies.ComputeDepsHash(filteredDeps);
+        return true;
+    }
+
+    private static bool AllAccepted(IReadOnlyList<FrameDependency> dependencies)
+    {
+        foreach (FrameDependency dependency in dependencies)
+            if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) return false;
         return true;
     }
 }
