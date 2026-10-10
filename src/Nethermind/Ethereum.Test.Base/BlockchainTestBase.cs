@@ -202,6 +202,7 @@ public abstract class BlockchainTestBase
         IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
+        BlockDecoder blockDecoder = container.Resolve<BlockDecoder>();
         blockchainProcessingQueue.Start();
 
         try
@@ -219,7 +220,8 @@ public abstract class BlockchainTestBase
 
                 test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
-                Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+                RlpReader genesisReader = new(test.GenesisRlp.Bytes);
+                Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
                 using ManualResetEvent genesisProcessed = new(false);
@@ -268,7 +270,7 @@ public abstract class BlockchainTestBase
                     if (args.ProcessingResult != ProcessingResult.Success)
                         asyncBlockError = args.Message ?? args.Exception?.Message;
                 };
-                Result<BlockHeader> suggestResult = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+                Result<BlockHeader> suggestResult = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader, blockDecoder);
                 parentHeader = suggestResult.Data!;
                 lastValidationError = suggestResult.Error;
             }
@@ -357,10 +359,10 @@ public abstract class BlockchainTestBase
     /// block was rejected, the rejection message in <see cref="Result{TData}.Error"/> (the header
     /// is still populated — rejection of an expected-invalid block does not fail the test).
     /// </returns>
-    private static Result<BlockHeader> SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    private static Result<BlockHeader> SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader, BlockDecoder blockDecoder)
     {
         string? lastBlockError = null;
-        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
+        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp, blockDecoder);
         for (int i = 0; i < correctRlp.Count; i++)
         {
             // Setting IsPostMerge here would bypass PoSSwitcher and hide divergences
@@ -822,7 +824,7 @@ public abstract class BlockchainTestBase
         Assert.That(((IResultWrapper)response).Result.ResultType, Is.EqualTo(ResultType.Success));
     }
 
-    private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
+    private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp, BlockDecoder blockDecoder)
     {
         List<(Block Block, string ExpectedException)> correctRlp = [];
         for (int i = 0; i < test.Blocks!.Length; i++)
@@ -831,7 +833,8 @@ public abstract class BlockchainTestBase
             try
             {
                 byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
-                Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
+                RlpReader blockReader = new(rlpBytes);
+                Block suggestedBlock = blockDecoder.DecodeComplete(ref blockReader);
 
                 // EEST omits blockHeader (and the parsed body fields) for invalid-block fixtures
                 // because there is no canonical header for a block that must be rejected. The

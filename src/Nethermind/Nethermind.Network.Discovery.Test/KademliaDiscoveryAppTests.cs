@@ -42,7 +42,7 @@ public class KademliaDiscoveryAppTests
         await app.StartAsync();
         await app.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        InvalidOperationException? exception = Assert.ThrowsAsync<InvalidOperationException>(async () => await app.DisposeAsync());
+        InvalidOperationException? exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await app.DisposeAsync());
 
         Assert.That(exception?.Message, Is.EqualTo("Stop failed"));
         Assert.That(app.Stopped.Task.IsCompletedSuccessfully, Is.True);

@@ -127,7 +127,7 @@ public class ReceiptDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(logEntry.Address.Bytes.Length, Is.Zero);
-            Assert.That(logEntry.Data.Length, Is.Zero);
+            Assert.That(logEntry.DataLength, Is.Zero);
             Assert.That(logEntry.TopicsRlp.Length, Is.Zero);
         }
     }

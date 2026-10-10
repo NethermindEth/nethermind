@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -164,8 +163,7 @@ public partial class BlockProcessor(
         BlockHeader header = block.Header;
 
         // EIP-7668: set before tracing so receipts are built with the zero-length bloom instead of computing one.
-        // Genesis keeps the bloom it was declared with.
-        if (spec.IsEip7668Enabled && !block.IsGenesis) header.Bloom = Bloom.ZeroLength;
+        if (spec.IsEip7668Enabled) header.Bloom = Bloom.ZeroLength;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
@@ -178,9 +176,9 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec, _balManager.GetParentSpec(header)))
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.RecentRootPredeployNotEmpty);
+            _systemContractHandler.InstallPredeploys(spec);
         }
         CommitState(spec);
 
@@ -209,7 +207,7 @@ public partial class BlockProcessor(
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
         // EIP-7668: ProcessBlock set the zero-length header bloom and the receipts were built with it, so no blooms are computed.
-        bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
+        bool bloomsRemoved = spec.IsEip7668Enabled;
         bool inBackground = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts);
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
         using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved ? StartBloomComputation(receipts) : null;
