@@ -23,8 +23,8 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
         [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
         [CancunTimestamp] = CancunGnosis.Instance,
-        [PragueTimestamp] = PragueGnosis.Instance,
-        [OsakaTimestamp] = OsakaGnosis.Instance,
+        [PragueTimestamp] = new PragueGnosis { DepositContractAddress = Eip6110Constants.ChiadoDepositContractAddress },
+        [OsakaTimestamp] = new OsakaGnosis { DepositContractAddress = Eip6110Constants.ChiadoDepositContractAddress },
     })
     { }
 
