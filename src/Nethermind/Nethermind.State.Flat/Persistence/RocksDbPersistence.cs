@@ -430,10 +430,9 @@ public class RocksDbPersistence : IPersistence, IDisposable
     /// Each column is ingested by a single atomic <c>IngestExternalFiles</c> call, and move-ingest unlinks the sources
     /// only after that call succeeds. The staging directory is fsynced before the marker, so a listed file can only be
     /// absent because its column went live. A column with any file absent is therefore skipped as a whole, and its
-    /// remaining files are deleted: a source whose unlink failed after a successful ingest must not be re-ingested
-    /// alone, because it would restore a key that a later chunk of the same column overwrote. A column with every file
-    /// present is re-ingested as the same set in the same order, which gives the same result whether or not it already
-    /// went live.
+    /// remaining files are deleted: they are sources whose unlink failed after a successful ingest, so their rows are
+    /// already applied. A column with every file present is re-ingested as the same set in the same order, which gives
+    /// the same result whether or not it already went live.
     /// </remarks>
     private static void RollForwardPendingIngest(IColumnsDb<FlatDbColumns> db, string stagingDir, (StateId To, (FlatDbColumns Column, string Name)[] Files) pending, ILogger logger)
     {
