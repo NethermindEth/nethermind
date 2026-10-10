@@ -272,6 +272,32 @@ chmod -R a+rwX "$work/io"   # the runner image runs as uid 1001
 read -ra extra_args_arr <<< "$JB_EXTRA_ARGS"
 docker_common=(--rm --name "$CONTAINER_NAME" --network host -w /jb -v "$work/src:/jb:ro" -v "$work/io:/io")
 docker rm -fv "$CONTAINER_NAME" >/dev/null 2>&1 || true
+if [[ "$JB_BENCHMARK_CONFIG" == "config/benchmark/ethcall-heavy-synthetic.yaml" ]]; then
+  mkdir -p "$work/io/diagnostics-bin"
+  cat > "$work/io/diagnostics-bin/k6" <<'SH'
+#!/bin/sh
+set -eu
+if [ "$1" = run ] && [ -f "$2" ]; then
+  awk '
+    /^export default/ { print "let failuresLogged = 0;"; exports++ }
+    /\/\/ Checks/ {
+      print "      if (response.status !== 200 && failuresLogged++ === 0) {"
+      print "        let rpcError;"
+      print "        try { rpcError = response.json().error; } catch (e) {}"
+      print "        console.error(JSON.stringify({http_status: response.status, rpc_error_code: rpcError?.code, rpc_error_message: typeof rpcError?.message === \"string\" ? rpcError.message.slice(0, 160) : undefined, k6_error_code: response.error_code}));"
+      print "      }"
+      hooks++
+    }
+    { print }
+    END { if (exports != 1 || hooks != 1) exit 1 }
+  ' "$2" > "$2.diagnostic"
+  mv "$2.diagnostic" "$2"
+fi
+exec /usr/bin/k6 "$@"
+SH
+  chmod +x "$work/io/diagnostics-bin/k6"
+  docker_common+=(-e PATH=/io/diagnostics-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin)
+fi
 
 # Resource sampling brackets container execution only.
 sampler_pid=""
