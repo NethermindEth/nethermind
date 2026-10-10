@@ -3,7 +3,8 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 # Checks that the images we publish carry Nethermind's OCI labels rather than the ones they would
-# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's).
+# otherwise inherit from the .NET base image (which in turn inherits Ubuntu's). It also checks
+# required exposed-port metadata on the published client images.
 #
 # The labels fed by a build arg are the fragile ones: an ARG is scoped to the stage that declares
 # it, so a final stage that does not redeclare COMMIT_HASH, VERSION and BUILD_TIMESTAMP still
@@ -155,6 +156,7 @@ mkdir "$stub_context/publish"
 
 failures=0
 labels=''
+exposed_ports=''
 
 check_label() {
   local key=$1 want=$2 got
@@ -168,6 +170,18 @@ check_label() {
   fi
 
   printf '  ok   %s = %s\n' "$key" "$got"
+}
+
+check_exposed_port() {
+  local port=$1
+
+  if ! jq -e --arg port "$port" 'type == "object" and has($port)' <<< "$exposed_ports" > /dev/null; then
+    printf '  FAIL exposed port %s is missing\n' "$port" >&2
+    failures=$((failures + 1))
+    return
+  fi
+
+  printf '  ok   exposed port %s\n' "$port"
 }
 
 for dockerfile in "${dockerfiles[@]}"; do
@@ -214,6 +228,7 @@ for dockerfile in "${dockerfiles[@]}"; do
   "${build[@]}"
 
   labels=$(docker image inspect --format '{{json .Config.Labels}}' "$tag")
+  exposed_ports=$(docker image inspect --format '{{json .Config.ExposedPorts}}' "$tag")
 
   echo "Checking the labels of $tag"
   check_label org.opencontainers.image.title "$title"
@@ -227,11 +242,19 @@ for dockerfile in "${dockerfiles[@]}"; do
   check_label org.opencontainers.image.revision "$commit_hash"
   # build_timestamp is RFC 3339 by construction, so matching it exactly is also the format check.
   check_label org.opencontainers.image.created "$build_timestamp"
+
+  case "$dockerfile" in
+    Dockerfile | Dockerfile.chiseled)
+      echo "Checking the exposed ports of $tag"
+      check_exposed_port 30303/tcp
+      check_exposed_port 30303/udp
+      ;;
+  esac
 done
 
 if [[ $failures -gt 0 ]]; then
-  echo "$failures label check(s) failed" >&2
+  echo "$failures image metadata check(s) failed" >&2
   exit 1
 fi
 
-echo "All image labels are correct"
+echo "All image labels and required exposed ports are correct"
