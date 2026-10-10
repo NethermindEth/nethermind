@@ -7459,6 +7459,159 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <summary>A forkchoice update to the parent of the head takes the head off the main chain without naming it as
+        /// the replaced block of any later head, so its transactions come back only through the removal itself.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_block_the_head_moved_back_past()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
+            Transaction b0 = GetTransaction(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (Transaction tx in new[] { a0, a1, b0 })
+                {
+                    Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                }
+            }
+
+            Block parent = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block head = Build.A.Block.WithParent(parent).WithTransactions(a0, a1, b0).TestObject;
+            await RaiseCanonicalHeadAndWait(head);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: the head's txs left the pool");
+
+            // Head moves back to the parent, then a sibling of the old head that re-includes only b0 is built on it.
+            _blockTree.RaiseBlockRemovedFromMain(head);
+            await RaiseCanonicalHeadAndWait(parent);
+            Block sibling = Build.A.Block.WithParent(parent).WithTransactions(b0).TestObject;
+            await RaiseCanonicalHeadAndWait(sibling);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(a0.Hash!, out _), Is.True);
+                Assert.That(_txPool.TryGetPendingTransaction(a1.Hash!, out _), Is.True);
+                Assert.That(_txPool.TryGetPendingTransaction(b0.Hash!, out _), Is.False, "re-included by the sibling");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+            }
+        }
+
+        /// <summary>Removed blocks are reported tip first; their transactions must still return in nonce order.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_blocks_the_head_moved_back_past_in_nonce_order()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(a1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block first = Build.A.Block.WithParent(ancestor).WithTransactions(a0).TestObject;
+            Block second = Build.A.Block.WithParent(first).WithTransactions(a1).TestObject;
+            await RaiseCanonicalHeadAndWait(first);
+            await RaiseCanonicalHeadAndWait(second);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: both blocks' txs left the pool");
+
+            List<Hash256> readded = [];
+            _txPool.NewPending += (_, e) => readded.Add(e.Transaction.Hash!);
+            _blockTree.RaiseBlockRemovedFromMain(second);
+            _blockTree.RaiseBlockRemovedFromMain(first);
+            await RaiseCanonicalHeadAndWait(ancestor);
+
+            Assert.That(readded, Is.EqualTo(new[] { a0.Hash, a1.Hash }));
+        }
+
+        /// <summary>A removed block that cannot be read is skipped: the others are re-added and later heads still apply.</summary>
+        [Test]
+        public async Task should_skip_unreadable_block_the_head_moved_back_past()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Transaction b0 = GetTransaction(TestItem.PrivateKeyB, TestItem.AddressC, 0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(b0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block first = Build.A.Block.WithParent(ancestor).WithTransactions(a0).TestObject;
+            Block second = Build.A.Block.WithParent(first).WithTransactions(b0).TestObject;
+            await RaiseCanonicalHeadAndWait(first);
+            await RaiseCanonicalHeadAndWait(second);
+
+            _blockTree.UnreadableBlockHash = second.Hash;
+            _blockTree.RaiseBlockRemovedFromMain(second);
+            _blockTree.RaiseBlockRemovedFromMain(first);
+            // Bounded, so a failed load that skips the head fails the test rather than hanging it.
+            await RaiseCanonicalHeadAndWait(ancestor).WaitAsync(TimeSpan.FromSeconds(10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(a0.Hash!, out _), Is.True, "the readable block's tx is re-added");
+                Assert.That(_txPool.TryGetPendingTransaction(b0.Hash!, out _), Is.False, "the unreadable block's tx is skipped");
+            }
+
+            await RaiseCanonicalHeadAndWait(Build.A.Block.WithParent(ancestor).WithTransactions(a0).WithExtraData([1]).TestObject)
+                .WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "a later head still removes the txs it includes");
+        }
+
+        /// <summary>A rewind deeper than <see cref="Reorganization.MaxDepth"/> re-adds only the lowest blocks of it, also
+        /// when the head completing it is skipped while syncing and a later head re-adds them instead.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_only_the_lowest_blocks_of_a_rewind_deeper_than_reorg_depth(
+            [Values] bool completingHeadSkippedWhileSyncing)
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 1024, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            int depth = (int)Reorganization.MaxDepth + 2;
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block[] removed = new Block[depth];
+            Block parent = ancestor;
+            for (int i = 0; i < depth; i++)
+            {
+                Transaction tx = GetTransaction(Build.A.PrivateKey.TestObject, TestItem.AddressC, 0);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                parent = removed[i] = Build.A.Block.WithParent(parent).WithTransactions(tx).TestObject;
+                await RaiseCanonicalHeadAndWait(parent);
+            }
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: every block's tx left the pool");
+
+            for (int i = depth - 1; i >= 0; i--)
+            {
+                _blockTree.RaiseBlockRemovedFromMain(removed[i]);
+            }
+
+            if (completingHeadSkippedWhileSyncing)
+            {
+                _blockTree.Head = ancestor;
+                _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(parent.Number + 1_000).TestObject;
+                _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(ancestor));
+                await RaiseCanonicalHeadAndWait(Build.A.Block.WithParent(ancestor).WithExtraData([1]).TestObject);
+            }
+            else
+            {
+                await RaiseCanonicalHeadAndWait(ancestor);
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < depth; i++)
+                {
+                    bool kept = (ulong)i < Reorganization.MaxDepth;
+                    Assert.That(_txPool.TryGetPendingTransaction(removed[i].Transactions[0].Hash!, out _), Is.EqualTo(kept), $"tx of rewound block {i}");
+                }
+            }
+        }
+
         [Test]
         [Category("Flaky"), Retry(3)]
         public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()
