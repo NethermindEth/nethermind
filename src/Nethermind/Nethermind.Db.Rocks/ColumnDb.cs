@@ -447,9 +447,11 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
         /// <summary>Merges the spilled runs into staged SST files whose key ranges do not overlap.</summary>
         /// <remarks>
-        /// K-way merge that streams one record per run. Of the records sharing a key only the one from the newest run is
-        /// written, a delete included. A new output file starts once the current one holds <see cref="MaxBufferedBytes"/>,
-        /// always between two keys, so the outputs are globally sorted and RocksDB can ingest them below L0.
+        /// K-way merge that streams one record per run and reads the entries still buffered straight from memory, as the
+        /// newest source. Of the records sharing a key only the one from the newest source is written, a delete included.
+        /// A new output file starts once the current one holds <see cref="MaxBufferedBytes"/>, always between two keys, so
+        /// the outputs are globally sorted and RocksDB can ingest them below L0. The runs are deleted only when the merge
+        /// ends, so the staging directory briefly holds about twice the bytes this batch persists.
         /// </remarks>
         private void MergeRunsToStagedFiles()
         {
@@ -459,15 +461,18 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             try
             {
                 ColumnFamilyOptions writerOptions = WriterOptions();
-                PriorityQueue<RunReader, RunReader> heads = new(readers.Length, RunReaderComparer.Instance);
+                PriorityQueue<MergeSource, MergeSource> heads = new(readers.Length + 1, MergeSourceComparer.Instance);
                 for (int i = 0; i < readers.Length; i++)
                 {
                     RunReader reader = readers[i] = new RunReader(_runFiles[i], i);
                     if (reader.MoveNext()) heads.Enqueue(reader, reader);
                 }
 
+                BufferedEntries buffered = new(this, readers.Length);
+                if (buffered.MoveNext()) heads.Enqueue(buffered, buffered);
+
                 long writtenBytes = 0;
-                while (heads.TryDequeue(out RunReader? newest, out _))
+                while (heads.TryDequeue(out MergeSource? newest, out _))
                 {
                     if (writer is not null && writtenBytes >= MaxBufferedBytes)
                     {
@@ -489,7 +494,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
                     WriteRecord(writer, newest.Record, newest.KeyLen, newest.ValLen);
                     writtenBytes += newest.KeyLen + Math.Max(newest.ValLen, 0);
 
-                    while (heads.TryPeek(out RunReader? older, out _) && older.Key.SequenceEqual(newest.Key))
+                    while (heads.TryPeek(out MergeSource? older, out _) && older.Key.SequenceEqual(newest.Key))
                     {
                         heads.Dequeue();
                         if (older.MoveNext()) heads.Enqueue(older, older);
@@ -517,6 +522,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             {
                 foreach (RunReader? reader in readers) reader?.Dispose();
                 DeleteRunFiles();
+                Clear();
             }
         }
 
@@ -524,12 +530,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         /// <remarks>
         /// Safety: <paramref name="record"/> holds <paramref name="keyLen"/> key bytes followed by the value bytes (none
         /// for a delete, which is <paramref name="valLen"/> below zero), so every pointer handed to the native call stays
-        /// within the pinned array.
+        /// within the pinned span.
         /// </remarks>
-        private static unsafe void WriteRecord(SstFileWriter writer, byte[] record, int keyLen, int valLen)
+        private static unsafe void WriteRecord(SstFileWriter writer, ReadOnlySpan<byte> record, int keyLen, int valLen)
         {
             rocksdb_sstfilewriter_t* writerHandle = (rocksdb_sstfilewriter_t*)writer.Handle;
-            fixed (byte* data = &MemoryMarshal.GetArrayDataReference(record))
+            fixed (byte* data = &MemoryMarshal.GetReference(record))
             {
                 sbyte* err = null;
                 if (valLen < 0) RocksDbNative.rocksdb_sstfilewriter_delete(writerHandle, (sbyte*)data, (UIntPtr)keyLen, &err);
@@ -554,18 +560,66 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _runFiles.Clear();
         }
 
+        /// <summary>One sorted input of the merge, positioned on a single record: the key bytes followed by the value bytes.</summary>
+        private abstract class MergeSource(int index)
+        {
+            public int Index => index;
+            public int KeyLen { get; protected set; }
+            public int ValLen { get; protected set; }
+            public abstract ReadOnlySpan<byte> Record { get; }
+            public ReadOnlySpan<byte> Key => Record[..KeyLen];
+
+            public abstract bool MoveNext();
+        }
+
+        /// <summary>Walks the entries still buffered in memory in key order, yielding the latest write of each key.</summary>
+        private sealed class BufferedEntries : MergeSource
+        {
+            private readonly SstIngestWriteBatch _batch;
+            private readonly EntryComparer _comparer;
+            private int _next;
+            private int _current;
+
+            public BufferedEntries(SstIngestWriteBatch batch, int index) : base(index)
+            {
+                _batch = batch;
+                _comparer = new EntryComparer(batch._slabs.UnsafeGetInternalArray());
+                batch._index.AsSpan(0, batch._count).Sort(_comparer);
+            }
+
+            public override ReadOnlySpan<byte> Record
+            {
+                get
+                {
+                    ref Entry e = ref _batch._index[_current];
+                    return _batch._slabs[e.Slab].AsSpan(e.Offset, e.KeyLen + Math.Max(e.ValLen, 0));
+                }
+            }
+
+            public override bool MoveNext()
+            {
+                Entry[] index = _batch._index;
+                int count = _batch._count;
+                while (_next + 1 < count && _comparer.IsSameKey(in index[_next], in index[_next + 1])) _next++;
+                if (_next >= count) return false;
+
+                _current = _next++;
+                KeyLen = index[_current].KeyLen;
+                ValLen = index[_current].ValLen;
+                return true;
+            }
+        }
+
         /// <summary>Streams the records of one spilled run, holding a single record in memory.</summary>
-        private sealed class RunReader(string file, int index) : IDisposable
+        private sealed class RunReader(string file, int index) : MergeSource(index), IDisposable
         {
             private readonly FileStream _stream = new(file, FileMode.Open, FileAccess.Read, FileShare.Read, RunBufferSize, FileOptions.SequentialScan);
+            private byte[] _record = new byte[256];
+            private int _length;
 
-            public int Index => index;
-            public byte[] Record { get; private set; } = new byte[256];
-            public int KeyLen { get; private set; }
-            public int ValLen { get; private set; }
-            public ReadOnlySpan<byte> Key => Record.AsSpan(0, KeyLen);
+            public override ReadOnlySpan<byte> Record => _record.AsSpan(0, _length);
 
-            public bool MoveNext()
+            public override bool MoveNext()
             {
                 Span<byte> header = stackalloc byte[RunHeaderSize];
                 int read = _stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
@@ -574,21 +628,21 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
                 KeyLen = BinaryPrimitives.ReadInt32LittleEndian(header);
                 ValLen = BinaryPrimitives.ReadInt32LittleEndian(header[sizeof(int)..]);
-                int length = KeyLen + Math.Max(ValLen, 0);
-                if (Record.Length < length) Record = new byte[Math.Max(length, Record.Length * 2)];
-                _stream.ReadExactly(Record, 0, length);
+                _length = KeyLen + Math.Max(ValLen, 0);
+                if (_record.Length < _length) _record = new byte[Math.Max(_length, _record.Length * 2)];
+                _stream.ReadExactly(_record, 0, _length);
                 return true;
             }
 
             public void Dispose() => _stream.Dispose();
         }
 
-        /// <summary>Orders run heads by key; of equal keys the head of the newer run comes first.</summary>
-        private sealed class RunReaderComparer : IComparer<RunReader>
+        /// <summary>Orders merge heads by key; of equal keys the head of the newer source comes first.</summary>
+        private sealed class MergeSourceComparer : IComparer<MergeSource>
         {
-            public static readonly RunReaderComparer Instance = new();
+            public static readonly MergeSourceComparer Instance = new();
 
-            public int Compare(RunReader? x, RunReader? y)
+            public int Compare(MergeSource? x, MergeSource? y)
             {
                 int c = x!.Key.SequenceCompareTo(y!.Key);
                 return c != 0 ? c : y.Index.CompareTo(x.Index);
@@ -603,7 +657,6 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             }
             else
             {
-                SpillRun();
                 MergeRunsToStagedFiles();
             }
 
