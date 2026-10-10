@@ -720,4 +720,24 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    // EIP-8288 discard_dependencies: the FOCIL proof covers {a, b}; the omitted entry declared a and b, the included
+    // one declares a, so only b leaves the claim.
+    [Test]
+    public void Pruning_an_omitted_focil_entry_retains_dependencies_shared_with_included_transactions()
+    {
+        FrameDependency a = Sphincs("a");
+        FrameDependency b = Sphincs("b");
+        AggregationInput focil = new() { RecursiveProofs = [new([a, b], [1])] };
+        AggregationInput included = new() { Deps = [a], Witnesses = [new byte[] { 2 }] };
+        AggregationInput combined = RecursiveStarkAggregator.Combine([focil, included], [a]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.Discards, Is.EqualTo(new[] { b }));
+            Assert.That(combined.Deps, Is.Empty);
+            Assert.That(combined.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(RecursiveStarkAggregator.TryAggregate(combined, Accepting, out IReadOnlyList<FrameDependency> proven, out _), Is.True);
+            Assert.That(proven, Is.EqualTo(new[] { a }));
+        }
+    }
+
 }
