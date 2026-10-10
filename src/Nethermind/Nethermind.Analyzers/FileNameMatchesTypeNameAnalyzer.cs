@@ -13,7 +13,8 @@ namespace Nethermind.Analyzers;
 /// Reports .cs files whose name does not match the single top-level type they contain.
 /// Files with zero or more than one top-level type are ignored.
 /// Attribute types may drop the <c>Attribute</c> suffix from the file name.
-/// Partial types and generic types may use <c>TypeName.Descriptor.cs</c> form.
+/// Partial types and generic types may use <c>TypeName.Descriptor.cs</c> form, and so may any type in a build-variant
+/// file (<c>TypeName.std.cs</c> or <c>TypeName.zkevm.cs</c>), which holds one build's whole definition of the type.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
@@ -29,7 +30,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true,
         description: "Each .cs file with a single top-level type should be named after that type. " +
                      "For attribute types the 'Attribute' suffix may be omitted from the file name. " +
-                     "For partial types the file name may use a 'TypeName.Descriptor.cs' form.");
+                     "For partial types the file name may use a 'TypeName.Descriptor.cs' form, as may build-variant files ('TypeName.std.cs', 'TypeName.zkevm.cs').");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
@@ -63,6 +64,8 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
         bool isGeneric = topLevelTypes[0] is TypeDeclarationSyntax { TypeParameterList.Parameters.Count: > 0 };
 
         string fileBaseName = Path.GetFileNameWithoutExtension(filePath);
+        bool isBuildVariant = fileBaseName.EndsWith(".std", StringComparison.Ordinal)
+            || fileBaseName.EndsWith(".zkevm", StringComparison.Ordinal);
 
         // Attribute types may drop the "Attribute" suffix in the file name
         const string attributeSuffix = "Attribute";
@@ -70,7 +73,7 @@ public sealed class FileNameMatchesTypeNameAnalyzer : DiagnosticAnalyzer
             ? typeName.Substring(0, typeName.Length - attributeSuffix.Length)
             : null;
 
-        if (IsMatch(fileBaseName, typeName, strippedName, isPartial || isGeneric))
+        if (IsMatch(fileBaseName, typeName, strippedName, isPartial || isGeneric || isBuildVariant))
             return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, identifier.GetLocation(), fileBaseName, typeName));
