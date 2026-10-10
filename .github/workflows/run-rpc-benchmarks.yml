@@ -1055,6 +1055,7 @@ jobs:
           fi
 
       - name: Build pinned storage-map baseline
+        if: needs.resolve.outputs.arch != 'arm64'
         shell: bash
         run: |
           set -euo pipefail

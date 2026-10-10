@@ -63,3 +63,50 @@ jobs:
           build-config: ${{ github.event.inputs.build-config || 'release' }}
           docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
           docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+  dispatch-arm-storage-hash:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/perf/rpc-storage-cell-hash-arm-bench' && github.event.inputs.tag == 'rpc-storage-cell-hash-3079116-arm'
+    needs: publish-docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Check out benchmark dispatches
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify both ARM images
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=nethermindeth/nethermind:rpc-storage-map-3791d66-arm
+          candidate=nethermindeth/nethermind:rpc-storage-cell-hash-3079116-arm
+          ready=false
+          for attempt in $(seq 1 90); do
+            baseline_revision="$(docker buildx imagetools inspect "$baseline" --format '{{ index (index .Image "linux/arm64").Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+            candidate_revision="$(docker buildx imagetools inspect "$candidate" --format '{{ index (index .Image "linux/arm64").Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+            if [[ "$baseline_revision" == 3791d66da156f868aea70c8f72988c28a703e0d9 && "$candidate_revision" == "$CANDIDATE_SHA" ]]; then
+              ready=true
+              break
+            fi
+            sleep 30
+          done
+          [[ "$ready" == true ]] || { echo '::error::Matching ARM images were not published in time'; exit 1; }
+          echo "Verified baseline $baseline_revision and candidate $candidate_revision"
+
+      - name: Dispatch heavy and control ARM benchmarks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for corpus in heavy control; do
+            gh api "repos/${GH_REPO}/actions/workflows/run-rpc-benchmarks.yml/dispatches" \
+              --input "scripts/rpc-bench/storage-hash-arm-${corpus}.json"
+          done

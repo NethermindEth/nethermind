@@ -1,0 +1,22 @@
+{
+  "ref": "perf/rpc-storage-cell-hash-arm-bench",
+  "inputs": {
+    "benchmark_tool": "corpus-ab",
+    "arch": "arm64",
+    "client": "nethermind",
+    "reference_client": "none",
+    "state_layout": "flat",
+    "snapshot_block": "25490000",
+    "baseline_image": "nethermindeth/nethermind:rpc-storage-map-3791d66-arm",
+    "docker_image": "nethermindeth/nethermind:rpc-storage-cell-hash-3079116-arm",
+    "rounds": "2",
+    "dottrace": "false",
+    "perf": "false",
+    "dotnet_trace": "false",
+    "rps": "100",
+    "requests_per_cell": "20000",
+    "timings_passes": "40",
+    "corpus": "eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz",
+    "tool_config": "{\"rounds\": 2, \"seed\": 7, \"resource_sampling\": true, \"ref\": \"61ae314e80ae946399413419c13c64a7facc9560\"}"
+  }
+}
