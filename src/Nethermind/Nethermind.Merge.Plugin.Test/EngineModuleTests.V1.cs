@@ -1984,6 +1984,14 @@ public partial class EngineModuleTests
         {
             if (blockHash == Volatile.Read(ref _watched)) WaitEntered.TrySetResult();
         }
+
+        /// <summary>Completes once the handler waits for a watched block to leave the queue while a copy of it is still there.</summary>
+        public TaskCompletionSource RemovalWaitPending { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void OnRemovalWait(Hash256 blockHash, bool pending)
+        {
+            if (pending && blockHash == Volatile.Read(ref _watched)) RemovalWaitPending.TrySetResult();
+        }
     }
 
     /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
@@ -2023,7 +2031,12 @@ public partial class EngineModuleTests
             return false;
         }
 
-        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
+        {
+            ValueTask wait = inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+            if (IsCalledFromHandler()) probe.OnRemovalWait(blockHash, !wait.IsCompleted);
+            return wait;
+        }
 
         public void Start() => inner.Start();
 
@@ -2782,6 +2795,56 @@ public partial class EngineModuleTests
         {
             // No skip: the unprocessed branch falls through and returns Syncing.
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+    }
+
+    /// <summary>
+    /// The ePBS shape: the head moves back to its parent, then a sibling without the old head's transactions becomes
+    /// the head. The old head is never reported as the sibling's replaced block, so its transactions must come back
+    /// through its removal from the main chain.
+    /// </summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_to_the_head_parent_returns_the_head_txs_to_the_pool()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        ExecutionPayload parent = CreateParentBlockRequestOnHead(chain.BlockTree);
+        Transaction[] transactions = BuildTransactions(chain, parent.BlockHash, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _);
+        chain.AddTransactions(transactions);
+        Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.EqualTo(transactions.Length), "precondition: txs pooled");
+
+        Task improved = chain.WaitForImprovedBlock(parent.BlockHash, transactions.Length);
+        string payloadId = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(parent.BlockHash, Keccak.Zero, Keccak.Zero),
+            new PayloadAttributes { Timestamp = parent.Timestamp + 12, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+        await improved;
+        ExecutionPayload head = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        Assert.That((await rpc.engine_newPayloadV1(head)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Task headInPool = chain.WaitForTxPoolHead(head.BlockHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(head.BlockHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        await headInPool;
+        Assert.That(chain.TxPool.GetPendingTransactionsCount(), Is.Zero, "precondition: the head included every pooled tx");
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> rewind = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(parent.BlockHash, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(parent.BlockHash), "precondition: the head moved back to its parent");
+        }
+
+        ExecutionPayload sibling = await CreateBlockRequest(chain, parent, TestItem.AddressD);
+        Assert.That((await rpc.engine_newPayloadV1(sibling)).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        Task siblingInPool = chain.WaitForTxPoolHead(sibling.BlockHash);
+        Assert.That((await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(sibling.BlockHash, Keccak.Zero, Keccak.Zero))).Data.PayloadStatus.Status,
+            Is.EqualTo(PayloadStatus.Valid));
+        await siblingInPool;
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Transaction tx in transactions)
+            {
+                Assert.That(chain.TxPool.TryGetPendingTransaction(tx.Hash!, out _), Is.True, $"tx with nonce {tx.Nonce} must be back in the pool");
+            }
         }
     }
 

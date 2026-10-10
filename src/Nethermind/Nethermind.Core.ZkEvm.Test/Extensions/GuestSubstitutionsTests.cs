@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Resolves every method the ZisK and SP1 guests' substitutions.xml name. ILC applies a substitution only to a
+/// Resolves every method the ZisK and SP1 guests' substitutions.xml files name. ILC applies a substitution only to a
 /// method it finds and otherwise keeps the original body, so a renamed member or a stale signature would
 /// quietly undo the substitution - <c>ZkEvmBitOperations.HasByteReverse</c> would stay false and ZisK would
 /// go back to the mask form without any build noticing.
@@ -22,22 +22,22 @@ public class GuestSubstitutionsTests
     private const BindingFlags AnyMethod =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
-    private static IEnumerable<TestCaseData> SubstitutedMethods() =>
-        SubstitutedMethodsOf("ZiskGuest.substitutions.xml").Concat(SubstitutedMethodsOf("Sp1Guest.substitutions.xml"));
-
-    private static IEnumerable<TestCaseData> SubstitutedMethodsOf(string file)
+    private static IEnumerable<TestCaseData> SubstitutedMethods()
     {
-        XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, file));
-        foreach (XElement assembly in document.Root!.Elements("assembly"))
+        foreach (string guest in new[] { "ZiskGuest", "Sp1Guest" })
         {
-            foreach (XElement type in assembly.Elements("type"))
+            XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, $"{guest}.substitutions.xml"));
+            foreach (XElement assembly in document.Root!.Elements("assembly"))
             {
-                foreach (XElement method in type.Elements("method"))
+                foreach (XElement type in assembly.Elements("type"))
                 {
-                    string assemblyName = (string)assembly.Attribute("fullname")!;
-                    string typeName = (string)type.Attribute("fullname")!;
-                    string signature = (string)method.Attribute("signature")!;
-                    yield return new TestCaseData(assemblyName, typeName, signature).SetName($"{file}: {typeName} {signature}");
+                    foreach (XElement method in type.Elements("method"))
+                    {
+                        string assemblyName = (string)assembly.Attribute("fullname")!;
+                        string typeName = (string)type.Attribute("fullname")!;
+                        string signature = (string)method.Attribute("signature")!;
+                        yield return new TestCaseData(assemblyName, typeName, signature).SetName($"{guest} {typeName} {signature}");
+                    }
                 }
             }
         }

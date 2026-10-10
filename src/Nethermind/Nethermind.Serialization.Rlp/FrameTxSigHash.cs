@@ -12,8 +12,6 @@ namespace Nethermind.Serialization.Rlp;
 // EIP8141-ISSUE: the spec pseudocode for compute_sig_hash mutates tx.signatures in place rather than a copy.
 public static class FrameTxSigHash
 {
-    private static readonly FrameTxDecoder<Transaction> Decoder = new();
-
     /// <summary>The digest a canonical-hash signature entry of <paramref name="transaction"/> signs.</summary>
     /// <remarks>Allocates; prefer <see cref="ComputeValue"/> on the verification path, which this wraps.</remarks>
     public static Hash256 Compute(Transaction transaction) => new(ComputeValue(transaction));
@@ -35,5 +33,5 @@ public static class FrameTxSigHash
     // SkipTypedWrapping makes the decoder emit exactly FRAME_TX_TYPE || rlp(tx).
     private static void WriteTypedForSigning<TWriter>(ref TWriter writer, Transaction transaction)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
-        => Decoder.Encode(transaction, ref writer, RlpBehaviors.SkipTypedWrapping, forSigning: true);
+        => FrameTxDecoder.EncodeTransaction(transaction, ref writer, RlpBehaviors.SkipTypedWrapping, forSigning: true);
 }

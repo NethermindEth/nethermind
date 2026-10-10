@@ -1,0 +1,344 @@
+# Runs the tests-zkevm-benchmark worst-case blocks through the ZisK guest and reports their cost.
+#
+# The release ships one archive per block gas value, each with ~1,200 compute benchmarks. A 30M block
+# emulates in 5-15 s on one core, and emulation time grows roughly with gas, so the blocks are spread
+# over shards whose count scales with the gas value, and each shard runs one block per core. The
+# host-side job runs the same archives through nethtest, which also covers the setup blocks the guest
+# jobs skip.
+name: Stateless benchmark fixtures
+
+on:
+  schedule:
+    - cron: '0 3 * * 6'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag
+        default: tests-zkevm-benchmark@v21.0.5
+        type: string
+      gas_values:
+        description: Gas values
+        default: 30M,60M,100M,150M,200M
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # A dispatched run must not cancel the weekly one on the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  FIXTURES_REPOSITORY: ethereum/execution-specs
+  RELEASE: ${{ inputs.release || 'tests-zkevm-benchmark@v21.0.5' }}
+  GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
+
+jobs:
+  matrix:
+    name: Plan shards
+    runs-on: ubuntu-latest
+    outputs:
+      gas_values: ${{ steps.plan.outputs.gas_values }}
+      shards: ${{ steps.plan.outputs.shards }}
+      shard_counts: ${{ steps.plan.outputs.shard_counts }}
+    steps:
+      - name: Plan shards
+        id: plan
+        env:
+          GAS_VALUES: ${{ inputs.gas_values || '30M,60M,100M,150M,200M' }}
+        run: |
+          set -euo pipefail
+          # Eight shards per 30M of gas; GitHub caps a matrix at 256 jobs.
+          jq -cn --arg values "$GAS_VALUES" '
+            [$values | split(",")[] | gsub("\\s"; "") | select(length > 0)
+              | if test("^[0-9]+M$") then . else error("invalid gas value: \(.)") end] | unique
+            | map({gas: ., shards: ((((.[:-1] | tonumber) * 8 + 29) / 30) | floor)}) as $plan
+            | {
+                gas_values: ($plan | map(.gas)),
+                shards: [$plan[] | .gas as $gas | .shards as $n | range($n) | {gas: $gas, shard: ., shards: $n}],
+                shard_counts: ($plan | map({(.gas): .shards}) | add)
+              }
+            | if (.shards | length) > 256 then error("more than 256 shards") else . end
+          ' > "$RUNNER_TEMP/plan.json"
+          for key in gas_values shards shard_counts; do
+            echo "$key=$(jq -c ".$key" "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+          done
+          jq . "$RUNNER_TEMP/plan.json"
+
+  build:
+    name: Build ZisK guest
+    runs-on: ubuntu-latest
+    env:
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Log in to Docker Hub
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
+        # that don't pass it); those runs pull anonymously as before.
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Build Nethermind
+        working-directory: ${{ env.GUEST_DIR }}
+        run: make build
+
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-zisk
+          path: ${{ env.GUEST_DIR }}/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  host:
+    name: Host ${{ matrix.gas }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gas: ${{ fromJSON(needs.matrix.outputs.gas_values) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Build nethtest
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c release
+
+      - name: Download fixtures
+        env:
+          GAS: ${{ matrix.gas }}
+        run: |
+          set -euo pipefail
+          archive="fixtures_zkevm-benchmark_$(printf '%04d' "${GAS%M}")M.tar.gz"
+          mkdir -p "$RUNNER_TEMP/fixtures"
+          curl -fsSL --retry 3 "https://github.com/$FIXTURES_REPOSITORY/releases/download/$RELEASE/$archive" \
+            | tar -xz -C "$RUNNER_TEMP/fixtures"
+
+      - name: Run nethtest
+        working-directory: src/Nethermind
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/nethtest.json"
+          artifacts/bin/Nethermind.Test.Runner/release/nethtest --zkevmTest -p 4 \
+            -i "$RUNNER_TEMP/fixtures/fixtures/blockchain_tests" > "$results"
+          # nethtest exits zero on failed cases, so the verdict comes from its JSON.
+          jq -r '.[] | select(.pass != true) | "::error::\(.name): \(.error // "failed")"' "$results"
+          total=$(jq 'length' "$results")
+          failed=$(jq '[.[] | select(.pass != true)] | length' "$results")
+          echo "Host stateless execution: $((total - failed)) of $total blocks passed" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ "$total" -gt 0 && "$failed" -eq 0 ]]
+
+  guest:
+    name: ZisK ${{ matrix.gas }} ${{ matrix.shard }}
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 64
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.shards) }}
+    env:
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
+      GAS: ${{ matrix.gas }}
+      SHARD: ${{ matrix.shard }}
+      SHARDS: ${{ matrix.shards }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind-zisk
+          path: ${{ env.GUEST_DIR }}/bin
+
+      - name: Prepare inputs
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/fixtures.tar.gz"
+          curl -fsSL --retry 3 \
+            "https://github.com/$FIXTURES_REPOSITORY/releases/download/$RELEASE/fixtures_zkevm-benchmark_$(printf '%04d' "${GAS%M}")M.tar.gz" \
+            -o "$archive"
+          fixtures="$RUNNER_TEMP/fixtures"
+          mkdir -p "$fixtures"
+          tar -xzf "$archive" -C "$fixtures" fixtures/.meta/index.json
+          # Only this shard's files: the 200M archive alone unpacks to several gigabytes.
+          scripts/zkevm-benchmark/inputs.cs paths \
+            --index "$fixtures/fixtures/.meta/index.json" --shard "$SHARD" --shards "$SHARDS" \
+            | sed 's|^|fixtures/|' > "$RUNNER_TEMP/paths.txt"
+          tar -xzf "$archive" -C "$fixtures" -T "$RUNNER_TEMP/paths.txt"
+          rm "$archive"
+          scripts/zkevm-benchmark/inputs.cs frame \
+            --index "$fixtures/fixtures/.meta/index.json" --shard "$SHARD" --shards "$SHARDS" \
+            --root "$fixtures/fixtures" --out "$GUEST_DIR/bin" --manifest "$RUNNER_TEMP/manifest.json"
+          rm -rf "$fixtures"
+          chmod +x "$GUEST_DIR/bin/nethermind"
+
+          # Blocks that knowingly fail are not run, so the scheduled run stays green on everything else;
+          # the report still lists them. Each entry is a test case as the fixture names it.
+          KNOWN_FAILURES=(
+            # At 200M these never finish: ~80% through the block the guest stops making progress and
+            # spins until the emulator's step limit. Each scales linearly up to 150M.
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_256_exp_2-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_264_exp_2-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_408_gas_base_heavy-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_min_gas_balanced-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_min_gas_base_heavy-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_vul_nagydani_2_qube-benchmark-gas-value_200M]'
+            'test_modexp[fork_Amsterdam-blockchain_test-mod_vul_nagydani_2_square-benchmark-gas-value_200M]'
+          )
+          known='.id | split("::")[1] as $case | $ARGS.positional | index($case) != null'
+          mkdir -p "$RUNNER_TEMP/results"
+          jq --arg gas "$GAS" "[.[] | select($known) | {gas: \$gas, id}]" "$RUNNER_TEMP/manifest.json" \
+            --args "${KNOWN_FAILURES[@]}" > "$RUNNER_TEMP/results/$GAS-$SHARD.skipped.json"
+          jq -r ".[] | select($known) | .input" "$RUNNER_TEMP/manifest.json" --args "${KNOWN_FAILURES[@]}" \
+            | while read -r input; do rm -f "$GUEST_DIR/bin/$input"; done
+          jq "[.[] | select($known | not)]" "$RUNNER_TEMP/manifest.json" --args "${KNOWN_FAILURES[@]}" \
+            > "$RUNNER_TEMP/manifest.run.json"
+          mv "$RUNNER_TEMP/manifest.run.json" "$RUNNER_TEMP/manifest.json"
+
+      - name: Log in to Docker Hub
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
+        # that don't pass it); those runs pull anonymously as before.
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Measure
+        working-directory: ${{ env.GUEST_DIR }}
+        run: |
+          set -euo pipefail
+          # ziskemu is single-threaded, so one block runs per core. Each writes only its own directory
+          # and the logs are printed afterwards in manifest order, so concurrent runs never interleave.
+          #
+          # The costliest 30M block runs ~1.7G steps, emulation time grows with gas, and a worker on a
+          # slow runner sharing it with three others manages ~5M steps/s: a quarter-minute per million
+          # gas leaves ~1.4x headroom over that.
+          BLOCK_MINUTES=$(( ${GAS%M} / 4 > 15 ? ${GAS%M} / 4 : 15 ))
+          export BLOCK_MINUTES
+          measure() {
+            local input=$1 output=$2 dir="$RUNNER_TEMP/blocks/$1" status=0 verdict=ok
+            mkdir -p "$dir"
+            timeout "${BLOCK_MINUTES}m" make stats INPUT="$input" < /dev/null > "$dir/stats.log" 2>&1 || status=$?
+            if [[ "$status" -eq 124 ]]; then
+              verdict="timed out after $BLOCK_MINUTES minutes"
+            elif grep -q 'EmulationNoCompleted' "$dir/stats.log"; then
+              verdict="did not finish within the emulator's step limit"
+            elif [[ "$status" -ne 0 ]]; then
+              verdict="the guest exited with $status"
+            elif ! grep -Fxq "$output" "$dir/stats.log"; then
+              verdict="output mismatch"
+            elif grep -qE 'Exception|Invalid Block' "$dir/stats.log"; then
+              verdict="the run logged an exception or an invalid block"
+            elif ! python3 -I "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+              --input "$input" --log "$dir/stats.log" --into "$dir/row.json"; then
+              verdict="no cost figures in the log"
+            fi
+            echo "$verdict" > "$dir/verdict"
+            rm -f "bin/$input"
+          }
+          export -f measure
+          jq -r '.[] | "\(.input) \(.output)"' "$RUNNER_TEMP/manifest.json" \
+            | xargs -r -P "$(nproc)" -L 1 bash -c 'measure "$@"' _
+
+          failed=0
+          : > "$RUNNER_TEMP/failures.tsv"
+          while read -r input id; do
+            dir="$RUNNER_TEMP/blocks/$input"
+            echo "::group::${input} ${id}"
+            cat "$dir/stats.log" 2> /dev/null || true
+            echo "::endgroup::"
+            verdict=$(cat "$dir/verdict" 2> /dev/null || echo "the run produced no verdict")
+            if [[ "$verdict" != ok ]]; then
+              echo "::error::${id}: ${verdict}"
+              printf '%s\t%s\n' "$id" "$verdict" >> "$RUNNER_TEMP/failures.tsv"
+              failed=$((failed + 1))
+            fi
+          done < <(jq -r '.[] | "\(.input) \(.id)"' "$RUNNER_TEMP/manifest.json")
+
+          # The rows are written even when blocks failed, so one bad block does not hide the rest of the
+          # shard from the report; the failures go beside them and the report lists them.
+          mkdir -p "$RUNNER_TEMP/results"
+          shopt -s nullglob
+          rows=("$RUNNER_TEMP"/blocks/*/row.json)
+          if [[ ${#rows[@]} -gt 0 ]]; then
+            jq -s --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
+              ($manifest[0] | INDEX(.input)) as $ids | add | map({gas: $gas, id: $ids[.input].id} + del(.input))
+            ' "${rows[@]}" > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          else
+            echo '[]' > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          fi
+          if [[ "$failed" -gt 0 ]]; then
+            jq -R -s --arg gas "$GAS" '
+              split("\n") | map(select(length > 0) | split("\t") | {gas: $gas, id: .[0], reason: .[1]})
+            ' "$RUNNER_TEMP/failures.tsv" > "$RUNNER_TEMP/results/$GAS-$SHARD.failed.json"
+            echo "::error::$failed block(s) failed"
+            exit 1
+          fi
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.gas }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/results
+          if-no-files-found: warn
+          retention-days: 1
+
+  report:
+    name: Report
+    needs: [matrix, guest]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: ${{ runner.temp }}/results
+          merge-multiple: true
+
+      - name: Summarize
+        env:
+          SHARD_COUNTS: ${{ needs.matrix.outputs.shard_counts }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          scripts/zkevm-benchmark/summarize.cs \
+            --results "$RUNNER_TEMP/results" --release "$RELEASE" --commit "$GITHUB_SHA" \
+            --shards "$SHARD_COUNTS" --into "$RUNNER_TEMP/zkevm-benchmark.json" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload merged results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkevm-benchmark-results
+          path: ${{ runner.temp }}/zkevm-benchmark.json
+          if-no-files-found: warn
+          retention-days: 90

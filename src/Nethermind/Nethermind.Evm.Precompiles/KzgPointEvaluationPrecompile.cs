@@ -34,6 +34,9 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
+    /// <summary>Describes why a proof whose commitment matches the versioned hash failed to verify.</summary>
+    private static partial string DescribeFailedVerification(ReadOnlySpan<byte> z, ReadOnlySpan<byte> y, ReadOnlySpan<byte> commitment, ReadOnlySpan<byte> proof);
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Result<byte[]> RunInternal(ReadOnlyMemory<byte> inputData)
@@ -49,10 +52,11 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
         ReadOnlySpan<byte> proof = inputSpan[144..192];
         Span<byte> hash = stackalloc byte[32];
 
-        bool success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) &&
-            hash.SequenceEqual(versionedHash) &&
-            KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
+        if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) || !hash.SequenceEqual(versionedHash))
+            return Errors.MismatchedVersionedHash;
 
-        return success ? _successResult : Errors.Failed;
+        return KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof)
+            ? _successResult
+            : DescribeFailedVerification(z, y, commitment, proof);
     }
 }
