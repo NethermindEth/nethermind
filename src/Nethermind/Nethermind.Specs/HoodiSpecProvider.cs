@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -18,20 +17,15 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public const ulong BPO2Timestamp = 0x69149118;
     public const ulong BeaconChainGenesisTimestampConst = 0x67d81118;
 
-    private static IReleaseSpec? _prague;
-
-    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress });
-
     private HoodiSpecProvider() : this(new ForkSchedule
     {
         [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = Shanghai.Instance,
         [CancunTimestamp] = Cancun.Instance,
-        [PragueTimestamp] = Prague,
-        [OsakaTimestamp] = Osaka.Instance,
-        [BPO1Timestamp] = BPO1.Instance,
-        [BPO2Timestamp] = BPO2.Instance,
+        [PragueTimestamp] = new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [OsakaTimestamp] = new Osaka { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [BPO1Timestamp] = new BPO1 { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
+        [BPO2Timestamp] = new BPO2 { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress },
     })
     { }
 
