@@ -92,6 +92,10 @@ internal sealed class BlockFootprints(Block block)
         if ((uint)index < (uint)ProbeBits.Length) Interlocked.Or(ref ProbeBits[index], bit);
     }
 
+    internal readonly ulong[] ProbePaths = new ulong[block.Transactions.Length];
+
+    internal ulong ProbePathAt(int index) => (uint)index < (uint)ProbePaths.Length ? Volatile.Read(ref ProbePaths[index]) : 0;
+
     internal int ProbeBitsAt(int index) => (uint)index < (uint)ProbeBits.Length ? Volatile.Read(ref ProbeBits[index]) : -1;
 
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
@@ -99,6 +103,8 @@ internal sealed class BlockFootprints(Block block)
     {
         Volatile.Write(ref _footprints[index], footprint);
         ProbeMark(index, 128);
+        if ((uint)index < (uint)ProbePaths.Length) Volatile.Write(ref ProbePaths[index], Nethermind.Evm.PathProbe.Armed ? Nethermind.Evm.PathProbe.Hash | 1UL : 0UL);
+        Nethermind.Evm.PathProbe.Armed = false;
         Index(index, footprint, seededAt);
     }
 

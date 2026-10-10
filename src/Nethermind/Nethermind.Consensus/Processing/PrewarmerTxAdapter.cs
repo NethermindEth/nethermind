@@ -54,10 +54,18 @@ public class PrewarmerTxAdapter(
                 return result;
             }
 
+            bool probePath = _probeClass is >= 2 and <= 5;
+            if (probePath) Nethermind.Evm.PathProbe.Hash = 0;
             TransactionResult executed = prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites
                 ? ExecuteReportingWrites(transaction, txTracer, committed)
                 : baseAdapter.Execute(transaction, txTracer);
             int probeClass = _probeClass;
+            if (probePath)
+            {
+                ulong warmPath = preWarmer.ProbePathAtMain();
+                ProbeAdd(warmPath == 0 ? 24 : warmPath == (Nethermind.Evm.PathProbe.Hash | 1UL) ? 22 : 23, transaction, probeStart);
+            }
+
             if (probeClass == 4 && _probeFootprint is not null && ProbeIsAdditive(_probeFootprint, transaction)) probeClass = 5;
             ProbeAdd(probeClass, transaction, probeStart);
             if (probeClass == 1)
@@ -167,10 +175,10 @@ public class PrewarmerTxAdapter(
         return true;
     }
     private static readonly string[] ProbeNames = ["rep", "miss", "rej_acct", "rej_ro", "rej_rw", "rej_add", "other",
-        "m_none", "m_late", "m_running", "m_op_acct", "m_op_restore", "m_op_value", "m_failed", "m_nonce", "m_plain", "m_exc", "m_disc", "m_stored", "m_other", "m_nofp", "m_op_misc"];
-    private readonly long[] _probeCount = new long[22];
-    private readonly long[] _probeGas = new long[22];
-    private readonly long[] _probeTicks = new long[22];
+        "m_none", "m_late", "m_running", "m_op_acct", "m_op_restore", "m_op_value", "m_failed", "m_nonce", "m_plain", "m_exc", "m_disc", "m_stored", "m_other", "m_nofp", "m_op_misc", "path_same", "path_diff", "path_unk"];
+    private readonly long[] _probeCount = new long[25];
+    private readonly long[] _probeGas = new long[25];
+    private readonly long[] _probeTicks = new long[25];
     private int _probeMissBits;
 
     private static int ProbeMissClass(int bits)

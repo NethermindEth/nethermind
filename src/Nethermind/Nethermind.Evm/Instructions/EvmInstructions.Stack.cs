@@ -175,7 +175,9 @@ public static partial class EvmInstructions
                 IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
-                if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
+                bool probeUntaken = EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked());
+                PathProbe.Mix(destination, !probeUntaken);
+                if (probeUntaken)
                 {
                     // Move forward by 2 bytes + JUMPI
                     programCounter += Size + 1;

@@ -164,9 +164,11 @@ public static partial class EvmInstructions
         // The condition sits directly below the destination, so one depth check covers both.
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte condition = ref stack.Pop2BytesByRefUnchecked();
+        bool probeTaken = !EvmStack.IsSlotZero(ref condition);
+        PathProbe.Mix((uint)Unsafe.As<byte, ulong>(ref Unsafe.Add(ref condition, EvmStack.WordSize)), probeTaken);
 
         // Only a taken jump reads the destination, so an untaken one never decodes it.
-        if (!EvmStack.IsSlotZero(ref condition))
+        if (probeTaken)
         {
             nint destination = JumpDestination(ref Unsafe.Add(ref condition, EvmStack.WordSize), ref stack);
             if (destination < 0) goto InvalidJumpDestination;

@@ -1046,6 +1046,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
+    internal ulong ProbePathAtMain() => Volatile.Read(ref _footprints)?.ProbePathAt(_mainThreadTxIndex) ?? 0;
+
     internal int ProbeBitsAtMain() => Volatile.Read(ref _footprints)?.ProbeBitsAt(_mainThreadTxIndex) ?? -1;
 
     public CacheType ClearCaches()
@@ -1485,6 +1487,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         blockState.Footprints?.ProbeMark(txIndex, 4);
         try
         {
+            Nethermind.Evm.PathProbe.Hash = 0;
+            Nethermind.Evm.PathProbe.Armed = true;
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (!result) blockState.Footprints?.ProbeMark(txIndex, 32);
@@ -1627,6 +1631,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
             recorder.Start(blockState.PreWarmer, position, token);
             running = true;
+            Nethermind.Evm.PathProbe.Hash = 0;
+            Nethermind.Evm.PathProbe.Armed = true;
             TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
