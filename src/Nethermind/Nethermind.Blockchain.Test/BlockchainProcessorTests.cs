@@ -835,7 +835,8 @@ public class BlockchainProcessorTests
 
         // The loop survived the failure: the block queued behind it is recovered and processed into the head.
         context.Processed(_block1D2).BecomesNewHead()
-            .Processed(_blockC2D100).BecomesNewHead();
+            .Processed(_blockC2D100).BecomesNewHead()
+            .IsProcessingBlocks(true, 60);
     }
 
     // Same hash, but a header of its own without the author recovery sets, so the recovery step sees it afresh.
