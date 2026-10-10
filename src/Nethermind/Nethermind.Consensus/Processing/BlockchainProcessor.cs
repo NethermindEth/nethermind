@@ -86,7 +86,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly IProcessingStats _stats;
 
     private CancellationTokenSource? _loopCancellationSource;
-    // Set only while the processing loop works on a queue entry; re-armed as each block of its branch starts.
+    // Set only while the processing loop works on a queue entry; armed as each block of its branch starts, so loading
+    // and preparing the branch is not charged to its first block.
     private CancellationTokenSource? _blockDeadline;
     private Hash256? _deadlineBlockHash;
     // The block that last ran out of time, and how many times in a row: each retry of it gets twice the time, so a
@@ -682,7 +683,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 _stats.Start();
                 _deadlineBlockHash = blockRef.BlockHash;
-                deadline?.CancelAfter(BlockProcessingTimeout(blockRef.BlockHash));
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), deadline?.Token ?? CancellationToken, out string? error);
 
                 if (processedBlock is null)

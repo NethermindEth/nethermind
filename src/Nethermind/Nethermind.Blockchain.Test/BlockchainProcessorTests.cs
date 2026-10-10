@@ -515,6 +515,13 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        /// <summary>Runs <paramref name="action"/> on every state lookup, as the branch builder makes walking back through unprocessed ancestors.</summary>
+        public ProcessingTestContext OnStateLookup(Action<BlockHeader> action)
+        {
+            _stateReader.When(x => x.HasStateForBlock(Arg.Any<BlockHeader>())).Do(call => action(call.Arg<BlockHeader>()));
+            return this;
+        }
+
         public ProcessingTestContext OnBlockProcessed(Action<Block> action)
         {
             _branchProcessor.BlockProcessed += (_, args) => action(args.Block);
@@ -965,6 +972,30 @@ public class BlockchainProcessorTests
         await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
             .FullyProcessed(_block0).BecomesGenesis()
             .OnBlockProcessing(_ => time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 5)))
+            .QueuedAsBranch(block1, block2);
+
+        context.Processed(block1);
+        context.Processed(block2).BecomesNewHead();
+    }
+
+    /// <summary>
+    /// Loading and preparing a branch is not charged to its first block: a branch whose preparation alone takes longer
+    /// than one block's limit is processed when each of its blocks fits.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Processing_timeout_does_not_charge_branch_preparation_to_the_first_block()
+    {
+        const int timeoutMs = 1_000;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
+        BlockDeadlineTimeProvider time = new();
+        bool blockStarted = false;
+        await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnStateLookup(_ =>
+            {
+                if (!blockStarted) time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 5));
+            })
+            .OnBlockProcessing(_ => blockStarted = true)
             .QueuedAsBranch(block1, block2);
 
         context.Processed(block1);
