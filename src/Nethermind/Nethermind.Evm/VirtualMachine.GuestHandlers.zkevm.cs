@@ -195,9 +195,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref bottom, index * EvmStack.WordSize);
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
-        /// <remarks>The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction to clear the bits above it.</remarks>
+        /// <remarks>
+        /// The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction
+        /// to clear the bits above it. Without Zbb a reversal is a long software sequence, so the two bytes swap directly.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static nuint ReadBigEndianUInt16(ulong bytes) => (nuint)(BinaryPrimitives.ReverseEndianness(bytes) >> 48);
+        private static nuint ReadBigEndianUInt16(ulong bytes) => ZkEvmBitOperations.HasByteReverse
+            ? (nuint)(BinaryPrimitives.ReverseEndianness(bytes) >> 48)
+            : (nuint)(((bytes & 0xFF) << 8) | ((bytes >> 8) & 0xFF));
 
         /// <summary>Marks a direct tail transfer that the opcode weaver emits into the calling handler.</summary>
         /// <remarks>The target is last to match the calli evaluation stack; this method must never survive weaving.</remarks>
@@ -1171,7 +1176,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 // The leading limb takes the bytes that do not fill a whole one, or a whole one; the rest follow it whole.
                 int leadingBytes = ((TOpCount.Count - 1) & 7) + 1;
                 int limbs = (TOpCount.Count + 7) >> 3;
-                ulong leading = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref immediates)) >> (64 - 8 * leadingBytes);
+                ulong leading = ZkEvmBitOperations.ReadUInt64BigEndian(ref immediates) >> (64 - 8 * leadingBytes);
                 ref byte rest = ref Unsafe.Add(ref immediates, leadingBytes);
                 if (limbs == 1)
                 {
@@ -1200,7 +1205,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>The big-endian limb <paramref name="index"/> limbs past <paramref name="bytes"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ReadBigEndianLimb(ref byte bytes, nint index) =>
-            BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, index * sizeof(ulong))));
+            ZkEvmBitOperations.ReadUInt64BigEndian(ref Unsafe.Add(ref bytes, index * sizeof(ulong)));
 
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
         /// <remarks>
@@ -1338,10 +1343,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!Unsafe.IsNullRef(ref destination))
                     {
                         // The value is the word below the offset; memory holds it big-endian.
-                        Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -1)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 8), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -2)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 16), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -3)));
-                        Unsafe.WriteUnaligned(ref Unsafe.Add(ref destination, 24), BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref offset, -4)));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref destination, Unsafe.Add(ref offset, -1));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 8), Unsafe.Add(ref offset, -2));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 16), Unsafe.Add(ref offset, -3));
+                        ZkEvmBitOperations.WriteUInt64BigEndian(ref Unsafe.Add(ref destination, 24), Unsafe.Add(ref offset, -4));
                         head -= 2;
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = handlers[PairAt(ref ip)];
@@ -1761,10 +1766,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         bottom = ref stack.Bottom;
                         // The hash lands big-endian over the length; the slot holds it in limb layout.
                         ref ulong hash = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-                        ulong limb3 = BinaryPrimitives.ReverseEndianness(hash);
-                        ulong limb2 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 1));
-                        ulong limb1 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 2));
-                        ulong limb0 = BinaryPrimitives.ReverseEndianness(Unsafe.Add(ref hash, 3));
+                        ulong limb3 = ZkEvmBitOperations.Bswap64(hash);
+                        ulong limb2 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 1));
+                        ulong limb1 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 2));
+                        ulong limb0 = ZkEvmBitOperations.Bswap64(Unsafe.Add(ref hash, 3));
                         hash = limb0;
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
