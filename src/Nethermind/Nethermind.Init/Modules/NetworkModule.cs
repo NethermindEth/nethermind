@@ -83,6 +83,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
             .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
+            .AddModule(new LeanEthp2pModule(configProvider.GetConfig<INetworkConfig>()))
             .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.AnnounceObjectsMessage, Subprotocols.Lean.AnnounceObjectsMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.GetObjectsMessage, Subprotocols.Lean.GetObjectsMessageSerializer>()
