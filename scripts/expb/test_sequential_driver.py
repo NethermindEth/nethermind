@@ -249,6 +249,18 @@ class RenderTests(unittest.TestCase):
     BASE = {"scenarios": {"nethermind": {"image": "placeholder"}}}
     IMAGE = {"id": "image-1-abc", "image": "nethermindeth/nethermind:tag"}
 
+    def test_storage_map_local_images_skip_forced_pull_without_changing_the_template(self) -> None:
+        base = {"pull_images": True, **self.BASE}
+        for image_name, expected in (
+            ("nethermind-rpcbench:storage-map-baseline-0e016e5", False),
+            ("nethermind-rpcbench:storage-map-bounded-3791d66", False),
+            (self.IMAGE["image"], True),
+        ):
+            with self.subTest(image=image_name), environment():
+                config, _ = driver.render(base, {**self.IMAGE, "image": image_name}, 1)
+                self.assertEqual(config["pull_images"], expected)
+                self.assertTrue(base["pull_images"])
+
     def test_compute_warm_supplies_the_gas_cap_the_warmup_needs(self) -> None:
         # The per-block eth_simulateV1 warm-up exhausts the default 100M RPC gas budget on dense
         # blocks and silently leaves them un-warmed, so the mode raises the cap itself.

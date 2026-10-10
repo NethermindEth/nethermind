@@ -528,7 +528,17 @@ for entry in "${schedule[@]}"; do
       warm_cell="$SCRATCH_ROOT/warmup-cell/heavy/$label"
       measured_seed="$JB_SEED"
       JB_SEED=$((measured_seed + 1000))
-      run_cell "$JB_BENCHMARK_CONFIG" "$CORPUS_WARMUP_RPS" "${WARMUP_SECONDS}s" "$warm_cell" "$ctype" "$label" || exit 1
+      if ! run_cell "$JB_BENCHMARK_CONFIG" "$CORPUS_WARMUP_RPS" "${WARMUP_SECONDS}s" "$warm_cell" "$ctype" "$label"; then
+        warm_diagnostics="$OUT_DIR/warmup-failures/$label"
+        mkdir -p "$warm_diagnostics"
+        for diagnostic in jsonbench.log summary.json jsonbench-summary.md; do
+          [[ ! -f "$warm_cell/$diagnostic" ]] || cp "$warm_cell/$diagnostic" "$warm_diagnostics/"
+        done
+        docker inspect "$cname" > "$warm_diagnostics/node-inspect.json" || true
+        STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
+        echo "::error::${label}: heavy warmup failed; diagnostics saved in ${warm_diagnostics}"
+        exit 1
+      fi
       JB_SEED="$measured_seed"
     fi
     for rps in $RPS_LIST; do

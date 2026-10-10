@@ -136,6 +136,8 @@ def read_cgroup_limits(done: threading.Event, report: list[str]) -> None:
 
 def render(base: dict, image: dict, run: int) -> tuple[dict, str]:
     config = json.loads(json.dumps(base))
+    if image["image"].startswith("nethermind-rpcbench:storage-map-"):
+        config["pull_images"] = False
     amount = parse_amount(get("AMOUNT"))
     for old, new in (("<<DELAY>>", get("DELAY_SECONDS", "0")), ("<<AMOUNT>>", get("AMOUNT")), ("/mnt/sda/expb-data", get("EXPB_DATA_DIR")), ("/mnt/sda/nethermind-flat-snapshot", get("FLAT_SNAPSHOT_DIR")), ("/mnt/sda/nethermind-flat-25490000", get("FLAT_SNAPSHOT_BLOCK_DIR"))):
         config = json.loads(json.dumps(config).replace(old, new))
