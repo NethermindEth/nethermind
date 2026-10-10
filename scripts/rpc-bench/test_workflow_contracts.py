@@ -349,7 +349,8 @@ class ResolverExecutionTests(unittest.TestCase):
     def test_single_node_gas_cap_defaults_and_override(self):
         for tool, node, expected in (({}, {}, "1000000000"),
                                      ({"eth_call_corpus": True}, {}, "1000000000000"),
-                                     ({}, {"rpc_gas_cap": 2000000000}, "2000000000")):
+                                     ({}, {"rpc_gas_cap": 2000000000}, "2000000000"),
+                                     ({}, {"rpc_gas_cap": 10**15 - 1}, "999999999999999")):
             with self.subTest(tool=tool, node=node):
                 result, output = self.run_resolver(json.dumps(tool), IN_TOOL="jsonbench",
                                                    IN_NODE_CONFIG=json.dumps(node))
@@ -357,7 +358,7 @@ class ResolverExecutionTests(unittest.TestCase):
                 self.assertEqual(expected, github_outputs(output)["rpc_gas_cap"])
 
     def test_invalid_or_ignored_gas_caps_are_rejected(self):
-        for cap in (0, -1, 1.5, "2000000000", True, False, [], {}, 10**18):
+        for cap in (0, -1, 1.5, "2000000000", True, False, [], {}, 10**15, 10**18):
             with self.subTest(cap=cap):
                 result, _ = self.run_resolver("{}", IN_TOOL="jsonbench",
                                                IN_NODE_CONFIG=json.dumps({"rpc_gas_cap": cap}))

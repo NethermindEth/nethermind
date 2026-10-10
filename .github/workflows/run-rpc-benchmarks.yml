@@ -597,8 +597,8 @@ jobs:
           rpc_gas_cap="$(nc '.rpc_gas_cap')"
           if [[ "$(echo "${node_config}" | jq -r '.rpc_gas_cap != null')" == "true" ]]; then
             [[ "${sweep}" != "true" ]] || fail "node_config.rpc_gas_cap is supported only by single-node tools."
-            [[ "$(echo "${node_config}" | jq -r '.rpc_gas_cap | type')" == "number" && "${rpc_gas_cap}" =~ ^[1-9][0-9]*$ && ${#rpc_gas_cap} -le 18 ]] \
-              || fail "node_config.rpc_gas_cap must be a positive JSON integer of at most 18 digits."
+            [[ "$(echo "${node_config}" | jq -r '.rpc_gas_cap | type')" == "number" && "${rpc_gas_cap}" =~ ^[1-9][0-9]*$ && ${#rpc_gas_cap} -le 15 ]] \
+              || fail "node_config.rpc_gas_cap must be a positive JSON integer of at most 15 digits."
           elif [[ "${eth_call_corpus}" == "true" ]]; then
             rpc_gas_cap="1000000000000"
           else

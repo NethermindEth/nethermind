@@ -68,7 +68,7 @@ snapshots/runs when a clean A/B is required.
 ### Single-node gas cap
 
 For `jsonbench`, `flood` and `ethcallchaos`, set `node_config.rpc_gas_cap` to a
-positive JSON integer, for example `{"rpc_gas_cap":2000000000}`. The resolved
+positive JSON integer of at most 15 digits, for example `{"rpc_gas_cap":2000000000}`. The resolved
 cap is passed to both nodes when a reference client is used. Existing defaults
 remain 1B gas, or 1T for private-corpus single-node runs. This key is refused in
 sweep presets rather than silently ignored.
