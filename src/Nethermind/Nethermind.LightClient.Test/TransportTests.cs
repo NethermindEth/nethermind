@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using Autofac;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -12,15 +14,35 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Network;
+using Nethermind.Network.Discovery;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Proofs;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.LightClient.Test;
 
 public class TransportTests
 {
+    [Test]
+    public async Task Execution_transport_uses_discv5_without_direct_bootnode_candidates()
+    {
+        await using ExecutionPeerTransport transport = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
+            new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0);
+        IContainer services = (IContainer)typeof(ExecutionPeerTransport)
+            .GetField("_services", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(services.Resolve<IDiscoveryConfig>().DiscoveryVersion, Is.EqualTo(DiscoveryVersion.V5));
+            Assert.That(services.Resolve<NodesLoaderOptions>().LoadBootnodesAsPeerCandidates, Is.False);
+        }
+
+        await foreach (Node node in services.Resolve<NodesLoader>().DiscoverNodes(default))
+            Assert.That(node.IsBootnode, Is.False);
+    }
+
     [Test]
     public void Gloas_provisional_execution_status_uses_a_post_merge_block_number_and_current_fork_id()
     {

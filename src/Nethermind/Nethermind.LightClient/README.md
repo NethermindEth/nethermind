@@ -138,12 +138,14 @@ The beacon side uses
 [light-client bootstrap, updates-by-range, finality and optimistic req/resp](https://github.com/ethereum/consensus-specs/blob/master/specs/altair/light-client/p2p-interface.md)
 with SSZ-snappy framing and fork-context checks. The execution side uses
 [SNAP account/storage ranges and bytecode](https://github.com/ethereum/devp2p/blob/master/caps/snap.md).
-It runs Nethermind's discv4/discv5 discovery, RLPx, `eth/68`–`eth/72` and
+It runs Nethermind's discv5 execution discovery, RLPx, `eth/68`–`eth/72` and
 `snap/1` or `snap/2` as the network schedule requires. Execution proofs are
 cached in memory; it does no full block synchronization. Peers can withhold
 recent selected state; this affects availability, never the returned
 value. The startup checkpoint remains a trusted input, whether supplied directly
-or fetched from the selected HTTPS provider.
+or fetched from the selected HTTPS provider. Chain-spec bootnodes and default
+ENRs seed discovery; direct public-network RLPx candidates come from discovered
+peer records from discv5 or the signed DNS ENR tree.
 
 ## Security and current scope
 
@@ -236,3 +238,8 @@ negotiated SNAP, and returned `0x301f02576d753a` wei for
 `eth_getBalance(0xde198901C5ee4611142E0c61DfbbCEc7ab468F32, finalized)`
 from a locally verified account-range proof. That result is
 0.013544893799298362 ETH at the verified finalized block; balances change over time.
+
+On 2026-10-10, with discv5-only execution discovery, a mainnet run reached
+13 execution peers and 8 SNAP peers and returned verified `eth_getBalance`,
+`eth_getCode` and WETH `eth_call` results. The client logged 183.0 ms,
+253.6 ms and 382.5 ms for those requests, respectively.

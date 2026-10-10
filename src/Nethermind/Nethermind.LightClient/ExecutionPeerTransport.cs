@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
@@ -98,7 +99,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             ClientIdMatcher = "(?i)^(?!.*enrscout)",
         };
         SyncConfig sync = new() { SnapSync = true, FastSync = false };
-        ConfigProvider config = new(init, net, sync, new FlatDbConfig { Enabled = false });
+        DiscoveryConfig discovery = new() { DiscoveryVersion = DiscoveryVersion.V5 };
+        ConfigProvider config = new(init, net, sync, discovery, new FlatDbConfig { Enabled = false });
         ContainerBuilder builder = new();
         builder.RegisterModule(new NethermindModule(chainSpec, config, logManager));
         bool snap2 = chainSpec.Parameters.Eip7928TransitionTimestamp is ulong activation && timestamp >= activation;
