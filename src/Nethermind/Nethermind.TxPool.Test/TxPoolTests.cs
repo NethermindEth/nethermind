@@ -145,7 +145,7 @@ namespace Nethermind.TxPool.Test
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
             AcceptTxResult result = ownsTransaction
-                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _)
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out _)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(rejection switch
             {
@@ -184,7 +184,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
             byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
-            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled: true);
             using (Assert.EnterMultipleScope())
@@ -211,7 +211,7 @@ namespace Nethermind.TxPool.Test
             };
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -255,7 +255,7 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool();
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -272,7 +272,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool(incomingTxFilter: filter);
             Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
 
-            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -302,7 +302,7 @@ namespace Nethermind.TxPool.Test
             _txPool = derived;
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
 
-            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle);
+            AcceptTxResult result = ((IRecyclableTxPool)derived).SubmitOwnedTx(tx, out bool canRecycle, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -335,8 +335,8 @@ namespace Nethermind.TxPool.Test
             RlpReader reader = new(encoded.Bytes);
             Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
 
-            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid);
-            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate);
+            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid, out _);
+            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate, out _);
 
             using (Assert.EnterMultipleScope())
             {
@@ -4698,6 +4698,34 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None),
                 Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+
+        // A peer's validation budget stays charged when the pool rejects a transaction after validating it, so a
+        // prefix that approves and then fails a later filter cannot hand the peer its charge back.
+        [TestCase(true, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSignaturesAndSimulation")]
+        [TestCase(false, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSimulationAlone")]
+        public void SubmitOwnedTx_ReportsFrameValidationRan_ForARejectionAfterSimulationButNotForADuplicate(bool withSignatures)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            if (!withSignatures)
+            {
+                tx.FrameSignatures = [];
+                tx.Hash = tx.CalculateHash();
+            }
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+
+            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForRejected);
+            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForDuplicate);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+                Assert.That(ranForRejected, Is.True, "the prefix ran before the exposure filter rejected the transaction");
+                Assert.That(duplicate, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(ranForDuplicate, Is.False, "a duplicate is turned away before any validation work");
+            }
         }
 
         [Test]

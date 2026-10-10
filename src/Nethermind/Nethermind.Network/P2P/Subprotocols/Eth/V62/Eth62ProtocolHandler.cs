@@ -77,6 +77,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected void IgnorePooledTransactionResponse() => _floodController.ClearPooledTransactionRequests();
 
+        /// <summary>This peer's budget for failing frame transaction validation, or <see langword="null"/> when unlimited.</summary>
+        private protected virtual PeerValidationGasBudget? FrameValidationBudget => null;
+
         public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
@@ -398,10 +401,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
+            PeerValidationGasBudget? budget = tx.SupportsFrames ? FrameValidationBudget : null;
+            ulong validationGas = budget is null ? 0 : FrameTxValidation.ValidationWorkGas(tx);
+            if (budget is not null && !budget.TryReserve(validationGas))
+            {
+                // Out of budget: dropped unvalidated, and counted against the peer whose failing validations spent it.
+                _floodController.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+                if (isTrace) Log(tx, AcceptTxResult.FramePeerValidationBudgetSpent);
+                ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+                return;
+            }
+
             bool canRecycle = false;
+            bool validationRan = false;
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle, out validationRan)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            // Validation the pool ran for a transaction it then rejected stays charged, whichever filter rejected it,
+            // unless the pool deferred it for a bound of its own: that load is the node's, not this peer's.
+            bool charged = !accepted
+                && accepted != AcceptTxResult.FrameSimulationDeferred
+                && (validationRan || accepted == AcceptTxResult.FrameSimulationFailed);
+            if (budget is not null && !charged) budget.Refund(validationGas);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
