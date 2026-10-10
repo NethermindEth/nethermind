@@ -23,7 +23,7 @@ public static class EraManifestGenerator
     /// <param name="network">The era1 filename prefix.</param>
     /// <param name="outputDirectory">The directory to write the manifests to. Existing manifests are overwritten.</param>
     /// <exception cref="EraException">
-    /// No era1 files were found, the files do not cover contiguous epochs, a file cannot be read,
+    /// No era1 files were found, the files do not cover contiguous epochs and block ranges, a file cannot be read,
     /// or a file's stored accumulator does not match its content or its name.
     /// </exception>
     public static async Task GenerateAsync(string eraPath, string network, string outputDirectory, IFileSystem fileSystem, CancellationToken cancellation = default)
@@ -119,10 +119,11 @@ public static class EraManifestGenerator
 
         string[] accumulators = new string[eraFiles.Length];
         string[] checksums = new string[eraFiles.Length];
+        (ulong FirstBlock, ulong LastBlock)[] blockRanges = new (ulong, ulong)[eraFiles.Length];
         await Parallel.ForAsync(0, eraFiles.Length, cancellation, async (i, cancel) =>
         {
             string fileName = Path.GetFileName(eraFiles[i]);
-            (ValueHash256 accumulator, ValueHash256 calculatedAccumulator, ValueHash256 checksum) = await ReadEraFile(eraFiles[i], cancel);
+            (ValueHash256 accumulator, ValueHash256 calculatedAccumulator, ValueHash256 checksum, ulong firstBlock, ulong lastBlock) = await ReadEraFile(eraFiles[i], cancel);
             if (accumulator != calculatedAccumulator)
                 throw new EraVerificationException($"Computed accumulator does not match stored accumulator in {fileName}.");
 
@@ -133,17 +134,24 @@ public static class EraManifestGenerator
 
             accumulators[i] = $"{accumulator} {fileName}";
             checksums[i] = $"{checksum} {fileName}";
+            blockRanges[i] = (firstBlock, lastBlock);
         });
+
+        for (int i = 1; i < blockRanges.Length; i++)
+        {
+            if (blockRanges[i - 1].LastBlock == ulong.MaxValue || blockRanges[i].FirstBlock != blockRanges[i - 1].LastBlock + 1)
+                throw new EraVerificationException($"{Path.GetFileName(eraFiles[i - 1])} covers blocks {blockRanges[i - 1].FirstBlock}-{blockRanges[i - 1].LastBlock}, but {Path.GetFileName(eraFiles[i])} covers blocks {blockRanges[i].FirstBlock}-{blockRanges[i].LastBlock}. The era1 files must cover contiguous block ranges in epoch order.");
+        }
 
         return (accumulators, checksums);
     }
 
-    private static async Task<(ValueHash256 Accumulator, ValueHash256 CalculatedAccumulator, ValueHash256 Checksum)> ReadEraFile(string eraFile, CancellationToken cancellation)
+    private static async Task<(ValueHash256 Accumulator, ValueHash256 CalculatedAccumulator, ValueHash256 Checksum, ulong FirstBlock, ulong LastBlock)> ReadEraFile(string eraFile, CancellationToken cancellation)
     {
         try
         {
             using EraReader reader = new(eraFile);
-            return (reader.ReadAccumulator(), await reader.CalculateAccumulator(cancellation), reader.CalculateChecksum());
+            return (reader.ReadAccumulator(), await reader.CalculateAccumulator(cancellation), reader.CalculateChecksum(), reader.FirstBlock, reader.LastBlock);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {

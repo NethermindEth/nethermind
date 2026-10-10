@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -95,6 +96,93 @@ public class EraManifestGeneratorTests
         await EraManifestGenerator.GenerateAsync(eraFile, EraTestModule.TestNetwork, output.Path, FileSystem);
 
         Assert.That(await File.ReadAllLinesAsync(Path.Combine(output.Path, EraExporter.AccumulatorFileName)), Is.EqualTo(new[] { exportedAccumulators[1] }));
+    }
+
+    [TestCase(7UL, 0UL, 31UL)]
+    [TestCase(16UL, 19UL, 58UL)]
+    [TestCase(16UL, 19UL, 25UL)]
+    [TestCase(16UL, 32UL, 63UL)]
+    public async Task GenerateAndVerifyAsync_ContiguousExportedBlockRanges_PreservesManifests(ulong eraSize, ulong start, ulong end)
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(64)
+            .AddSingleton<IEraConfig>(new EraConfig { MaxEra1Size = eraSize, NetworkName = EraTestModule.TestNetwork })
+            .Build();
+        string directory = container.ResolveTempDirPath();
+        await container.Resolve<IEraExporter>().Export(directory, start, end);
+        string accumulatorsPath = Path.Combine(directory, EraExporter.AccumulatorFileName);
+        string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        byte[] exportedAccumulators = await File.ReadAllBytesAsync(accumulatorsPath);
+        byte[] exportedChecksums = await File.ReadAllBytesAsync(checksumsPath);
+
+        await EraManifestGenerator.GenerateAsync(directory, EraTestModule.TestNetwork, directory, FileSystem);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await File.ReadAllBytesAsync(accumulatorsPath), Is.EqualTo(exportedAccumulators));
+            Assert.That(await File.ReadAllBytesAsync(checksumsPath), Is.EqualTo(exportedChecksums));
+            Assert.That(await EraManifestGenerator.VerifyAsync(directory, EraTestModule.TestNetwork, FileSystem), Is.Empty);
+        }
+    }
+
+    public enum BlockRangeDefect
+    {
+        RelabeledGap,
+        Overlap,
+        Reversed,
+    }
+
+    [Test]
+    public async Task GenerateOrVerifyAsync_NonContiguousBlockRanges_ThrowsBeforeChangingManifests([Values] BlockRangeDefect defect, [Values] bool verify)
+    {
+        await using IContainer container = EraTestModule.BuildContainerBuilderWithBlockTreeOfLength(48).Build();
+        string directory = container.ResolveTempDirPath();
+        Directory.CreateDirectory(directory);
+        (ulong firstStart, ulong secondStart) = defect switch
+        {
+            BlockRangeDefect.RelabeledGap => (0UL, 32UL),
+            BlockRangeDefect.Overlap => (0UL, 8UL),
+            BlockRangeDefect.Reversed => (16UL, 0UL),
+            _ => throw new ArgumentOutOfRangeException(nameof(defect)),
+        };
+        ulong[] starts = [firstStart, secondStart];
+        string[] accumulators = new string[starts.Length];
+        string[] checksums = new string[starts.Length];
+        for (int i = 0; i < starts.Length; i++)
+        {
+            using TempPath export = TempPath.GetTempDirectory();
+            await container.Resolve<IEraExporter>().Export(export.Path, starts[i], starts[i] + 15);
+            string eraFile = Directory.GetFiles(export.Path, "*.era1").Single();
+            using EraReader reader = new(eraFile);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.FirstBlock, Is.EqualTo(starts[i]));
+                Assert.That(reader.LastBlock, Is.EqualTo(starts[i] + 15));
+            }
+
+            Hash256 accumulator = new(reader.ReadAccumulator());
+            string fileName = EraPathUtils.Filename(EraTestModule.TestNetwork, (ulong)i, accumulator);
+            File.Copy(eraFile, Path.Combine(directory, fileName));
+            accumulators[i] = $"{accumulator} {fileName}";
+            checksums[i] = $"{reader.CalculateChecksum()} {fileName}";
+        }
+
+        string accumulatorsPath = Path.Combine(directory, EraExporter.AccumulatorFileName);
+        string checksumsPath = Path.Combine(directory, EraExporter.ChecksumsFileName);
+        await File.WriteAllLinesAsync(accumulatorsPath, accumulators);
+        await File.WriteAllLinesAsync(checksumsPath, checksums);
+        byte[] originalAccumulators = await File.ReadAllBytesAsync(accumulatorsPath);
+        byte[] originalChecksums = await File.ReadAllBytesAsync(checksumsPath);
+
+        Assert.That(() => verify
+                ? (Task)EraManifestGenerator.VerifyAsync(directory, EraTestModule.TestNetwork, FileSystem)
+                : EraManifestGenerator.GenerateAsync(directory, EraTestModule.TestNetwork, directory, FileSystem),
+            Throws.TypeOf<EraVerificationException>().With.Message.Contains("contiguous block ranges in epoch order"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await File.ReadAllBytesAsync(accumulatorsPath), Is.EqualTo(originalAccumulators));
+            Assert.That(await File.ReadAllBytesAsync(checksumsPath), Is.EqualTo(originalChecksums));
+        }
     }
 
     [Test]
