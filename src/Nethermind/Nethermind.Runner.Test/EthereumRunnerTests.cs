@@ -183,7 +183,6 @@ public class EthereumRunnerTests
     [TestCase("foundation", false, true, WarmupSecretChange.Replaced)]
     [TestCase("amsterdam", false, false)]
     [TestCase("amsterdam", true, false)]
-    [TestCase("bogota", false, false)]
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
     [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
@@ -233,14 +232,6 @@ public class EthereumRunnerTests
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
             {
-                if (chain == "bogota")
-                {
-                    builder.AddDecorator<IJsonRpcConfig>((_, config) =>
-                    {
-                        File.WriteAllLines(config.CallsFilterFilePath, ["^eth_chainId$", "^eth_call$", "^engine_newPayloadV6$", "^engine_forkchoiceUpdatedV5$"]);
-                        return config;
-                    });
-                }
                 builder.AddDecorator<IJsonRpcLocalStats>((_, stats) => new SuccessCountingRpcStats(stats, "eth_call"));
                 builder.RegisterBuildCallback(container =>
                 {
@@ -612,12 +603,11 @@ public class EthereumRunnerTests
 
     private static ChainSpec LoadWarmupChainSpec(string chain = "foundation")
     {
-        if (chain is "amsterdam" or "bogota")
+        if (chain == "amsterdam")
         {
             using Stream source = typeof(IConfig).Assembly.GetManifestResourceStream("Nethermind.Config.chainspec.hoodi.json")!;
             JsonNode genesis = JsonNode.Parse(source)!;
             genesis["config"]!["amsterdamTime"] = 0;
-            if (chain == "bogota") genesis["config"]!["bogotaTime"] = 0;
             using MemoryStream modified = new(System.Text.Encoding.UTF8.GetBytes(genesis.ToJsonString()));
             return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), NullLogManager.Instance).Load(modified);
         }
