@@ -25,18 +25,24 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
 /// transaction.
 /// </summary>
+/// <remarks>
+/// The pipe is flushed whenever the unflushed output reaches the flush threshold, including partway through
+/// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
+/// buffer grow with the size of each entry.
+/// </remarks>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
-    private const int DefaultFlushIntervalEntries = 8192;
+    internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
+    private const int ReturnDataHexChunkBytes = 1024;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private Transaction? _transaction;
-    private readonly int _flushIntervalEntries;
+    private readonly int _flushThresholdBytes;
 
     private bool _hasPendingOpcode;
     private int _pendingPc;
@@ -57,7 +63,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
-    private byte[]? _returnDataHexBuffer;
 
     private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
@@ -65,7 +70,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private readonly long _limit;
     private long _resultSize;
-    private int _entriesSinceLastFlush;
+    private long _flushedBytes;
     private bool _disposed;
 
     public GethLikeTxDirectStreamingTracer(
@@ -74,19 +79,20 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
-        int flushIntervalEntries = DefaultFlushIntervalEntries,
+        int flushThresholdBytes = DefaultFlushThresholdBytes,
         long destroyRefund = 0)
         : base(options, destroyRefund)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
+        if (flushThresholdBytes <= 0) throw new ArgumentOutOfRangeException(nameof(flushThresholdBytes));
 
         _transaction = transaction;
         _limit = options.Limit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
-        _flushIntervalEntries = flushIntervalEntries;
+        _flushThresholdBytes = flushThresholdBytes;
+        _flushedBytes = writer.BytesCommitted;
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -117,7 +123,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         }
         _storageByAddress.Clear();
         _pendingStorageMap = null;
-        _entriesSinceLastFlush = 0;
         _resultSize = 0;
         ResetTrace();
     }
@@ -264,7 +269,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
         if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
-        if (_returnDataHexBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataHexBuffer); _returnDataHexBuffer = null; }
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
         _storageByAddress.Dispose();
 
@@ -278,7 +282,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (!_hasPendingOpcode) return;
         WriteOpcodeJson();
         _hasPendingOpcode = false;
-        MaybeFlushToWire();
+        FlushToWireIfOverThreshold();
     }
 
     private void WriteOpcodeJson()
@@ -308,21 +312,22 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteReturnDataValue()
     {
-        // Encode "0x"-prefixed hex straight into a pooled scratch buffer and emit it as a raw JSON
-        // string, avoiding the intermediate string allocation on every traced opcode after a call.
-        int hexLength = _returnDataByteCount * 2;
-        int tokenLength = hexLength + 4; // quotes + "0x"
-        EnsureBuffer(ref _returnDataHexBuffer, tokenLength);
-
-        Span<byte> token = _returnDataHexBuffer.AsSpan(0, tokenLength);
-        token[0] = (byte)'"';
-        token[1] = (byte)'0';
-        token[2] = (byte)'x';
-        _returnDataBuffer.AsSpan(0, _returnDataByteCount).OutputBytesToByteHex(token.Slice(3, hexLength), extraNibble: false);
-        token[tokenLength - 1] = (byte)'"';
-
+        // Hex-encode in fixed-size string segments so a large return value is flushed as it is written instead of
+        // being materialized as one token first; hex digits are never escaped, so the bytes match a single string.
+        Span<byte> hex = stackalloc byte[Math.Min(_returnDataByteCount, ReturnDataHexChunkBytes) * 2];
         _writer.WritePropertyName("returnData"u8);
-        _writer.WriteRawValue(token, skipInputValidation: true);
+        _writer.WriteStringValueSegment("0x"u8, isFinalSegment: false);
+        ReadOnlySpan<byte> remaining = _returnDataBuffer.AsSpan(0, _returnDataByteCount);
+        while (remaining.Length > ReturnDataHexChunkBytes)
+        {
+            remaining[..ReturnDataHexChunkBytes].OutputBytesToByteHex(hex, extraNibble: false);
+            _writer.WriteStringValueSegment(hex, isFinalSegment: false);
+            remaining = remaining[ReturnDataHexChunkBytes..];
+            FlushToWireIfOverThreshold();
+        }
+        Span<byte> last = hex[..(remaining.Length * 2)];
+        remaining.OutputBytesToByteHex(last, extraNibble: false);
+        _writer.WriteStringValueSegment(last, isFinalSegment: true);
     }
 
     private void WriteStackArrayIfPresent()
@@ -350,6 +355,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             {
                 HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: true);
             }
+            FlushToWireIfOverThreshold();
         }
         _writer.WriteEndArray();
     }
@@ -360,17 +366,17 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {
             HexWriter.WriteUInt256StorageSlot(_writer, kv.Key, kv.Value);
+            FlushToWireIfOverThreshold();
         }
         _writer.WriteEndObject();
     }
 
-    private void MaybeFlushToWire()
+    private void FlushToWireIfOverThreshold()
     {
-        if (_pipeWriter is null) return;
-        if (++_entriesSinceLastFlush < _flushIntervalEntries) return;
+        if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < _flushThresholdBytes) return;
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
-        _entriesSinceLastFlush = 0;
+        _flushedBytes = _writer.BytesCommitted;
     }
 
 }

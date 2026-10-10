@@ -141,7 +141,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         if (_generatingBlockAccessList is null) { base.SetNonce(address, nonce); return; }
 
         // Deliberately no AddAccountRead: the probe belongs to the tracer, not the caller, and EIP-7928 lists
-        // only actual changes. PredeployInstaller.Install is the sole caller that can write a no-op nonce.
+        // only actual changes.
         ulong oldNonce = GetNonceInternal(address);
         base.SetNonce(address, nonce);
         if (nonce != oldNonce)
@@ -180,6 +180,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
 
         AssertCurrentStorageValue(in storageCell, in currentValue);
+        if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
+            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
         _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
         State.Set(in storageCell, in newValue, in currentValue);
     }
