@@ -421,7 +421,8 @@ public class DebugBridge : IDebugBridge
     public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, ulong? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         BlockHeader? header = _blockTree.FindHeader(blockParameter);
-        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(header);
+        // Bundles without their own block overrides run on the header with the trace options' overrides applied.
+        IReleaseSpec? spec = header is null ? null : _specProvider.GetSpec(gethTraceOptions?.BlockOverrides?.ApplyTo(header) ?? header);
         foreach (TransactionBundle bundle in bundles)
         {
             yield return GetBundleTrace(bundle, blockParameter, gasCap, spec, cancellationToken, gethTraceOptions);
@@ -433,7 +434,7 @@ public class DebugBridge : IDebugBridge
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToValidatedTransaction(gasCap: gasCap, spec: spec);
+            Result<Transaction> txResult = spec is null ? txForRpc.ToValidatedTransaction(gasCap: gasCap) : txForRpc.ToCallTransaction(spec, gasCap);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);

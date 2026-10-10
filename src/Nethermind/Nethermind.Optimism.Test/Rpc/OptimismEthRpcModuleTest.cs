@@ -256,6 +256,38 @@ public class OptimismEthRpcModuleTest
     }
 
     [Test]
+    public async Task Send_transaction_rejects_an_explicit_type_its_fields_do_not_fit()
+    {
+        ITxSealer sealer = Substitute.For<ITxSealer>();
+        using TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: null /* explicitly using null to behave as Sequencer */,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: sealer,
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        // Type 0x0 with dynamic fees runs as an EIP-1559 call, but a sent transaction must not change type.
+        JsonElement rpcTx = JsonSerializer.Deserialize<JsonElement>($$"""
+            {
+                "type": "0x0",
+                "from": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+                "to": "{{TestItem.AddressB}}",
+                "gas": "0x76c0",
+                "maxFeePerGas": "0x9184e72a000",
+                "maxPriorityFeePerGas": "0x1",
+                "nonce": "0x0"
+            }
+            """);
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendTransaction", rpcTx);
+
+        sealer.DidNotReceive().TrySeal(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}").And.Contain("conflicts with the fields present"));
+    }
+
+    [Test]
     public async Task GetTransactionByHash_ReturnsCorrectTransactionType()
     {
         Transaction tx = Build.A.Transaction

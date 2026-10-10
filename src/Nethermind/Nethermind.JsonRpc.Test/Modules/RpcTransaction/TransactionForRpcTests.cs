@@ -60,6 +60,19 @@ public class TransactionForRpcTests
     [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
     [TestCase("""{"gasPrice":"0x1","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
     [TestCase("""{"gasPrice":"0x1","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"type":"0x2","gasPrice":"0x1"}""", typeof(LegacyTransactionForRpc))]
+    [TestCase("""{"type":"0x0","maxFeePerGas":"0x2","maxPriorityFeePerGas":"0x1"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x1","maxFeePerGas":"0x2"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x0","accessList":[]}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"type":"0x2","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"maxFeePerGas":"0x2","type":"0x3","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"type":"0x3","maxFeePerGas":"0x2"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x4","accessList":[]}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"type":"0x4","blobVersionedHashes":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"maxFeePerGas":"0x2","blobs":[]}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"type":"0x3","authorizationList":[]}""", typeof(SetCodeTransactionForRpc))]
+    [TestCase("""{"type":"0x6","blobVersionedHashes":[]}""", typeof(FrameTransactionForRpc))]
+    [TestCase("""{"frames":[],"blobVersionedHashes":[]}""", typeof(FrameTransactionForRpc))]
     public void Deserializes_polymorphically_when_declared_as_SignableTransactionForRpc(string json, Type expectedType)
     {
         SignableTransactionForRpc tx = _serializer.Deserialize<SignableTransactionForRpc>(json)
@@ -102,6 +115,83 @@ public class TransactionForRpcTests
         Assert.That(tx.BlobVersionedHashes?.Length, Is.EqualTo(1));
         Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)7));
     }
+
+    [Test]
+    public void Explicit_type_does_not_drop_the_dynamic_fees()
+    {
+        Transaction tx = ToTransaction("""{"type":"0x0","maxFeePerGas":"0x9","maxPriorityFeePerGas":"0x7"}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
+            Assert.That(tx.MaxFeePerGas, Is.EqualTo((UInt256)9));
+            Assert.That(tx.MaxPriorityFeePerGas, Is.EqualTo((UInt256)7));
+        }
+    }
+
+    [Test]
+    public void Explicit_type_does_not_drop_the_authorization_list()
+    {
+        Transaction tx = ToTransaction(
+            """{"type":"0x2","maxFeePerGas":"0x7","authorizationList":[{"chainId":"0x1","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","nonce":"0x0","yParity":"0x0","r":"0x1","s":"0x1"}]}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Type, Is.EqualTo(TxType.SetCode));
+            Assert.That(tx.AuthorizationList?.Length, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Unknown_explicit_type_is_rejected_even_beside_typed_fields() =>
+        Assert.Throws<JsonException>(() => DeserializeTransactionForRpc("""{"type":"0x5","maxFeePerGas":"0x7"}"""));
+
+    [Test]
+    public void Fields_no_single_transaction_type_carries_are_rejected(
+        [Values(
+            """{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000001"],"authorizationList":[]}""",
+            """{"frames":[],"authorizationList":[]}""")] string json) =>
+        Assert.Throws<JsonException>(() => DeserializeTransactionForRpc(json));
+
+    [TestCase("""{"type":"0x0","maxFeePerGas":"0x7"}""", null)]
+    [TestCase("""{"type":"0x2","authorizationList":[]}""", null)]
+    [TestCase("""{"type":"0x4","blobVersionedHashes":[]}""", null)]
+    [TestCase("""{"type":"0x3","maxFeePerGas":"0x7"}""", typeof(BlobTransactionForRpc))]
+    [TestCase("""{"type":"0x2","gasPrice":"0x7"}""", typeof(EIP1559TransactionForRpc))]
+    [TestCase("""{"type":"0x1","gasPrice":"0x7"}""", typeof(AccessListTransactionForRpc))]
+    [TestCase("""{"type":"0x0","gasPrice":"0x7"}""", typeof(LegacyTransactionForRpc))]
+    [TestCase("""{"maxFeePerGas":"0x7"}""", typeof(EIP1559TransactionForRpc))]
+    public void Signing_applies_the_requested_type_or_reports_a_conflict(string json, Type? expectedType)
+    {
+        Result<TransactionForRpc> requested = DeserializeTransactionForRpc(json).WithRequestedType();
+
+        if (expectedType is null)
+        {
+            Assert.That(requested.IsError, Is.True);
+            return;
+        }
+
+        Assert.That(requested.Data, Is.TypeOf(expectedType));
+    }
+
+    [Test]
+    public void Requested_type_keeps_the_fields_when_signing()
+    {
+        TransactionForRpc requested = DeserializeTransactionForRpc("""{"type":"0x2","gasPrice":"0x7","nonce":"0x1","gas":"0x5208"}""").WithRequestedType().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.TypeOf<EIP1559TransactionForRpc>());
+            Assert.That(((EIP1559TransactionForRpc)requested).GasPrice, Is.EqualTo((UInt256)7));
+            Assert.That(((EIP1559TransactionForRpc)requested).Nonce, Is.EqualTo(1UL));
+            Assert.That(requested.Gas, Is.EqualTo(0x5208UL));
+        }
+    }
+
+    [TestCase("""{"type":"0x3","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","maxFeePerGas":"0x9","maxPriorityFeePerGas":"0x7"}""", TxType.EIP1559)]
+    [TestCase("""{"type":"0x4","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","gasPrice":"0x7","accessList":[]}""", TxType.AccessList)]
+    public void Explicit_type_adds_no_requirement_to_a_call(string json, TxType expected) =>
+        Assert.That(ToTransaction(json).Type, Is.EqualTo(expected));
 
     [Test]
     public void Explicit_dynamic_fees_take_precedence_over_gasPrice()

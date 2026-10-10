@@ -12,8 +12,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
 
@@ -61,6 +63,40 @@ public abstract class TransactionForRpc
     [JsonIgnore]
     internal bool IsTypeDefaulted { get; set; }
 
+    // The explicit `type` the request named, if any. Set only during JSON deserialization.
+    [JsonIgnore]
+    internal TxType? RequestedType { get; set; }
+
+    /// <summary>
+    /// This request as the explicit type it named, for the methods that build or sign a transaction. For the
+    /// Ethereum types the fields pick the class during deserialization, so a call never takes a requirement
+    /// from its type. A signed transaction keeps the requested type instead. It applies when the fields name
+    /// no type of their own (a defaulted class) or when its class derives from the fields' class, so it carries
+    /// every field they do; any other requested type conflicts with the fields.
+    /// </summary>
+    public Result<TransactionForRpc> WithRequestedType()
+    {
+        if (RequestedType is not { } requested || (requested == Type && !IsTypeDefaulted)) return this;
+
+        // The copy is never defaulted, so the requested type survives later defaulting by spec.
+        Type? requestedClass = TransactionJsonConverter.ClassOf(requested);
+        if (requestedClass is null || !(IsTypeDefaulted || GetType().IsAssignableFrom(requestedClass)))
+            return Result<TransactionForRpc>.Fail($"type {(byte)requested} conflicts with the fields present, which need type {(byte?)Type}");
+
+        TransactionForRpc promoted = (TransactionForRpc)Activator.CreateInstance(requestedClass)!;
+        foreach (PropertyInfo property in requestedClass.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            // The requested class shares every property this request has with it, through a common base class;
+            // an overriding property reads through that shared definition.
+            MethodInfo? getter = property.GetGetMethod()?.GetBaseDefinition();
+            if (getter?.DeclaringType is { } declaringType && declaringType.IsInstanceOfType(this) && property.GetSetMethod() is not null)
+                property.SetValue(promoted, getter.Invoke(this, null));
+        }
+
+        promoted.RequestedType = requested;
+        return promoted;
+    }
+
     [JsonConstructor]
     protected TransactionForRpc() { }
 
@@ -96,13 +132,30 @@ public abstract class TransactionForRpc
     /// so the first failing check still names the request.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
+        => CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+
+    private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
+        this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+        && maxFeePerGas < maxPriorityFeePerGas
+        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+            ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
+            : result;
+
+    /// <summary>
+    /// Converts an unsigned call that runs in a block of <paramref name="spec"/>, as <see cref="ToValidatedTransaction"/>
+    /// does, or as <see cref="ToTransaction"/> does without <paramref name="validateFeeCapOrder"/>. The call's fields
+    /// chose its type, so a field that fork lacks names a type it doesn't enable, even when its value is zero or empty,
+    /// and a call that converts is rejected before its fee cap order is checked; a defaulted type names no field. Transactions to
+    /// build or sign don't run in a known block, so they stay outside this check: they convert with
+    /// <see cref="ToValidatedTransaction"/>, or without <paramref name="checksFork"/> when they run as a call to
+    /// estimate their gas.
+    /// </summary>
+    public Result<Transaction> ToCallTransaction(IReleaseSpec spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
-        Result<Transaction> result = ToTransaction(validateUserInput: true, gasCap, spec);
-        return this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
-            && maxFeePerGas < maxPriorityFeePerGas
-            && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
-                ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
-                : result;
+        Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        if (checksFork && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
+            return TxErrorMessages.InvalidTxType(spec.Name);
+        return validateFeeCapOrder ? CheckFeeCapOrder(result) : result;
     }
 
     private TxType ResolveType(IReleaseSpec? spec)
@@ -169,6 +222,22 @@ public abstract class TransactionForRpc
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
         private static int _repopulatableSlotCount;
         private readonly GeneratedJsonDispatch _generated = new();
+        private static Registry _registry = new([], [], [], [], []);
+
+        // An immutable view of the registered types and their discriminator fields. It is published whole, so
+        // a read that races a registration never mixes the indices of two generations.
+        private sealed class Registry(TxTypeInfo[] types, string[] names, byte[][] namesUtf8, ulong[] typesByName, ulong[] namesByType)
+        {
+            // Newest type first, so the lowest bit of a bitset over Types is the newest type.
+            public TxTypeInfo[] Types { get; } = types;
+            // Every discriminator field name across the types.
+            public string[] Names { get; } = names;
+            public byte[][] NamesUtf8 { get; } = namesUtf8;
+            // Per name, the bitset of Types it indicates.
+            public ulong[] TypesByName { get; } = typesByName;
+            // Per type, the bitset of Names it has a property for.
+            public ulong[] NamesByType { get; } = namesByType;
+        }
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
@@ -193,7 +262,16 @@ public abstract class TransactionForRpc
         /// <summary>Gets the registered type's refill slot, or -1 when it does not support refilling.</summary>
         internal static int GetRepopulatableSlot(TxType txType) => _txTypesByType[(byte)txType]?.RepopulatableSlot ?? -1;
 
-        internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
+        internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
+        {
+            lock (_txTypes)
+            {
+                Register<T>();
+                Volatile.Write(ref _registry, BuildRegistry());
+            }
+        }
+
+        private static void Register<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
             Type txType = typeof(T);
             string[] uniqueProperties = txType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -213,7 +291,8 @@ public abstract class TransactionForRpc
                 Type = txType,
                 RepopulatableSlot = slot,
                 FromTransactionFunc = T.FromTransaction,
-                DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
+                DiscriminatorProperties = uniqueProperties,
+                PropertyNames = Array.ConvertAll(txType.GetProperties(BindingFlags.Public | BindingFlags.Instance), static p => p.Name)
             };
 
             _txTypesByType[(byte)typeInfo.TxType] = typeInfo;
@@ -241,17 +320,53 @@ public abstract class TransactionForRpc
             }
         }
 
+        [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
+        internal static Type? ClassOf(TxType type)
+        {
+            foreach (TxTypeInfo typeInfo in Volatile.Read(ref _registry).Types)
+            {
+                if (typeInfo.TxType == type) return typeInfo.Type;
+            }
+
+            return null;
+        }
+
+        // Registration reorders the types and can add field names, so the registry is rebuilt each time.
+        private static Registry BuildRegistry()
+        {
+            TxTypeInfo[] types = [.. _txTypes];
+            string[] names = types.SelectMany(t => t.DiscriminatorProperties).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            // Bitsets over the names in DeriveTxType are ulong too.
+            Debug.Assert(names.Length <= 64);
+
+            ulong[] typesByName = new ulong[names.Length];
+            ulong[] namesByType = new ulong[types.Length];
+            for (int n = 0; n < names.Length; n++)
+            {
+                for (int i = 0; i < types.Length; i++)
+                {
+                    if (types[i].DiscriminatorProperties.Contains(names[n], StringComparer.OrdinalIgnoreCase))
+                        typesByName[n] |= 1UL << i;
+                    if (types[i].PropertyNames.Contains(names[n], StringComparer.OrdinalIgnoreCase))
+                        namesByType[i] |= 1UL << n;
+                }
+            }
+
+            return new Registry(types, names, Array.ConvertAll(names, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant())), typesByName, namesByType);
+        }
+
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
 
-            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
+            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted, out TxType? requestedType);
 
             TransactionForRpc? result = (TransactionForRpc?)TypeInfoJsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
+                result.RequestedType = requestedType;
             }
             return result;
         }
@@ -259,13 +374,16 @@ public abstract class TransactionForRpc
         private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
         private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
 
-        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
+        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted, out TxType? requestedType)
         {
+            Registry registry = Volatile.Read(ref _registry);
             TxType? setType = null;
             bool hasGasPrice = false;
-            // Bit i set ⇒ non-null discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            // Bit i set ⇒ non-null discriminator for registry.Types[i] seen; lowest bit wins (registration order).
             // An explicit null is the same as omitting the member, as in geth, which keys on non-nil fields.
             ulong discriminated = 0;
+            // Bit n set ⇒ non-null registry.Names[n] seen.
+            ulong seen = 0;
 
             if (reader.TokenType == JsonTokenType.StartObject)
             {
@@ -275,12 +393,10 @@ public abstract class TransactionForRpc
                     {
                         reader.Read();
                         setType = TypeInfoJsonSerializer.Deserialize<TxType?>(ref reader, options);
-                        // Explicit type fully determines the concrete class — stop scanning large payloads.
-                        if (setType is not null) break;
                         continue;
                     }
 
-                    ulong matched = 0;
+                    int name = -1;
                     bool isGasPrice = false;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
@@ -288,16 +404,13 @@ public abstract class TransactionForRpc
                     }
                     else
                     {
-                        int count = _txTypes.Count;
-                        for (int i = 0; i < count; i++)
+                        byte[][] names = registry.NamesUtf8;
+                        for (int n = 0; n < names.Length; n++)
                         {
-                            foreach (byte[] discriminator in _txTypes[i].DiscriminatorPropertiesUtf8)
+                            if (NameEqualsIgnoreCase(ref reader, names[n]))
                             {
-                                if (NameEqualsIgnoreCase(ref reader, discriminator))
-                                {
-                                    matched |= 1UL << i;
-                                    break;
-                                }
+                                name = n;
+                                break;
                             }
                         }
                     }
@@ -305,7 +418,11 @@ public abstract class TransactionForRpc
                     reader.Read();
                     if (reader.TokenType != JsonTokenType.Null)
                     {
-                        discriminated |= matched;
+                        if (name != -1)
+                        {
+                            seen |= 1UL << name;
+                            discriminated |= registry.TypesByName[name];
+                        }
                         hasGasPrice |= isGasPrice;
                     }
 
@@ -313,29 +430,43 @@ public abstract class TransactionForRpc
                 }
             }
 
-            Type? viaDiscriminator = null;
-            if (discriminated != 0)
-            {
-                viaDiscriminator = _txTypes[BitOperations.TrailingZeroCount(discriminated)].Type;
-            }
+            requestedType = setType;
 
             if (setType is not null)
             {
-                isDefaulted = false;
-                foreach (TxTypeInfo candidate in _txTypes)
+                int index = -1;
+                for (int i = 0; i < registry.Types.Length; i++)
                 {
-                    if (candidate.TxType == setType) return candidate.Type;
+                    if (registry.Types[i].TxType == setType)
+                    {
+                        index = i;
+                        break;
+                    }
                 }
 
-                throw new JsonException("Unknown transaction type");
+                if (index == -1) throw new JsonException("Unknown transaction type");
+
+                // For the Ethereum types up to set-code the fields pick the class, so a call neither drops a field
+                // nor takes a requirement from its explicit type; the signing methods apply it afterwards
+                // (WithRequestedType). Any other type, such as a chain extension, picks its class as before.
+                if (setType > TxType.SetCode)
+                    discriminated |= 1UL << index;
             }
 
             // Discriminator field is a strong signal — not a default. It wins over gasPrice, otherwise a
             // legacy-priced request would silently lose its accessList/blobVersionedHashes/authorizationList.
-            if (viaDiscriminator is not null)
+            // The newest indicated type must have every discriminator field seen; fields no single type
+            // carries, such as blobVersionedHashes with authorizationList, are rejected rather than dropped.
+            if (discriminated != 0)
             {
+                int index = BitOperations.TrailingZeroCount(discriminated);
+                TxTypeInfo selected = registry.Types[index];
+                ulong missing = seen & ~registry.NamesByType[index];
+                if (missing != 0)
+                    throw new JsonException($"{registry.Names[BitOperations.TrailingZeroCount(missing)]} is not a field of transaction type {(byte)selected.TxType}");
+
                 isDefaulted = false;
-                return viaDiscriminator;
+                return selected.Type;
             }
 
             if (hasGasPrice)
@@ -385,17 +516,19 @@ public abstract class TransactionForRpc
         class TxTypeInfo
         {
             public TxType TxType { get; set; }
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)]
             public Type Type { get; set; }
             public int RepopulatableSlot { get; set; } = -1;
             public FromTransactionFunc FromTransactionFunc { get; set; }
-            public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
+            public string[] DiscriminatorProperties { get; set; } = [];
+            public string[] PropertyNames { get; set; } = [];
         }
     }
 
     public static TransactionForRpc FromTransaction(Transaction transaction, in TransactionForRpcContext? extraData = null) =>
         TransactionJsonConverter.FromTransaction(transaction, extraData ?? default);
 
-    public static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
+    public static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }
 
 /// <summary>

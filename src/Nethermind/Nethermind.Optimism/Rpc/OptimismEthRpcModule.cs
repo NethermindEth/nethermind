@@ -138,6 +138,10 @@ public class OptimismEthRpcModule(
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
             return feeError;
 
+        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
+            return ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput);
+        rpcTx = (SignableTransactionForRpc)requested;
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {

@@ -27,6 +27,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public byte[][]? BlobVersionedHashes { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonDiscriminator]
     public byte[][]? Blobs { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
