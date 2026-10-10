@@ -129,6 +129,24 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        /// <summary>
+        /// Applies the EIP-8360 end-of-transaction finalization to every live <c>TCREATE</c> account.
+        /// </summary>
+        /// <remarks>
+        /// Code, nonce and storage are dropped and the balance is kept as a fresh nonce-0, code-less account; an
+        /// empty one stays deleted per EIP-161. Accounts on the destroy list are left to self-destruct finalization.
+        /// </remarks>
+        private protected static void FinalizeTransientCreates(IWorldState worldState, in StackAccessTracker accessTracker, bool commit)
+        {
+            foreach (AddressAsKey transientCreate in accessTracker.TransientCreates!.Keys)
+            {
+                if (!accessTracker.IsTransientCreate(worldState, transientCreate, out _) || accessTracker.DestroyList.Contains(transientCreate)) continue;
+
+                UInt256 balance = worldState.GetBalance(transientCreate);
+                DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
+            }
+        }
+
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
         /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
         /// keeps cumulative validation work under the budget.</remarks>
@@ -1518,6 +1536,12 @@ namespace Nethermind.Evm.TransactionProcessing
                         {
                             goto FailContractCreate;
                         }
+                    }
+
+                    if (accessedItems.TransientCreates is not null)
+                    {
+                        FinalizeTransientCreates(WorldState, in accessedItems,
+                            opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled));
                     }
 
                     // EIP-8037: defer destroy list processing to after PayFees so that

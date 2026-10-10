@@ -431,6 +431,36 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Original_balance_is_the_balance_at_transaction_start()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+
+        // After a commit the committed state is the transaction start.
+        provider.AddToBalance(_address1, 2, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+        Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+
+        // A transaction stacked without a commit starts at its snapshot.
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalance(_address1, 8, Frontier.Instance);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+
+        // Reverting the transaction drops its start, back to the commit.
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+
+        // A write after the revert must not see the dropped start.
+        provider.AddToBalance(_address1, 16, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+    }
+
+    [Test]
     public void Keep_in_cache()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);

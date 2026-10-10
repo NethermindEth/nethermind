@@ -329,6 +329,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             lookup[(int)Instruction.CREATE2] = GetCreateHandler<EvmInstructions.OpCreate2, TTracingInst, TCancelable>(spec);
         }
+        if (SpecFlags.Eip8360(spec))
+            lookup[(int)Instruction.TCREATE] = GetCreateHandler<EvmInstructions.OpTCreate, TTracingInst, TCancelable>(spec);
         if (spec.StaticCallEnabled)
             lookup[(int)Instruction.STATICCALL] = GetCallHandler<EvmInstructions.OpStaticCall, TTracingInst, TCancelable>(spec);
         if (spec.RevertOpcodeEnabled)
@@ -464,12 +466,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip8038 : struct, IEip8038Flag
         where Eip2780 : struct, IFlag
         where Eip8279 : struct, IFlag =>
+        SpecFlags.Eip8360(spec)
+            ? GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780, Eip8279, OnFlag>(spec)
+            : GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780, Eip8279, OffFlag>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
+        GetCallHandler<TOpCall, TTracingInst, TCancelable, Eip2929, Eip150, Eip158, Eip8038, Eip2780, Eip8279, Eip8360>(IReleaseSpec spec)
+        where TOpCall : struct, EvmInstructions.IOpCall
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where Eip2929 : struct, IFlag
+        where Eip150 : struct, IFlag
+        where Eip158 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
+        where Eip2780 : struct, IFlag
+        where Eip8279 : struct, IFlag
+        where Eip8360 : struct, IFlag =>
         (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
         {
-            (true, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
-            (true, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
-            (false, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
-            (false, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279>>, TTracingInst, TCancelable>(),
+            (true, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OnFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, true) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OnFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, false) => OpcodeHandler<CallOpcode<TOpCall, TTracingInst, OffFlag, OffFlag, EvmInstructions.CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>(),
         };
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
@@ -537,9 +555,24 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip8279 : struct, IFlag =>
+        SpecFlags.Eip8360(spec)
+            ? GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038, Eip8279, OnFlag>(spec)
+            : GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038, Eip8279, OffFlag>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
+        GetCreateHandler<TOpCreate, TTracingInst, TCancelable, Eip2929, Eip150, Eip3860, Eip8038, Eip8279, Eip8360>(IReleaseSpec spec)
+        where TOpCreate : struct, EvmInstructions.IOpCreate
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where Eip2929 : struct, IFlag
+        where Eip150 : struct, IFlag
+        where Eip3860 : struct, IFlag
+        where Eip8038 : struct, IEip8038Flag
+        where Eip8279 : struct, IFlag
+        where Eip8360 : struct, IFlag =>
         SpecFlags.Eip8037<Eip8038>(spec)
-            ? OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OnFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038, Eip8279>>, TTracingInst, TCancelable>()
-            : OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OffFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038, Eip8279>>, TTracingInst, TCancelable>();
+            ? OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OnFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>()
+            : OpcodeHandler<CreateOpcode<TOpCreate, TTracingInst, OffFlag, EvmInstructions.CreateSpec<Eip2929, Eip150, Eip3860, Eip8038, Eip8279, Eip8360>>, TTracingInst, TCancelable>();
 
     private static void ConfigureAccessOpcodes<TTracingInst, TCancelable, Eip2929>(delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] lookup, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
@@ -576,8 +609,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.EXTCODECOPY] = OpcodeHandler<ExtCodeCopyOpcode<TTracingInst, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>();
         if (spec.ExtCodeHashOpcodeEnabled)
             lookup[(int)Instruction.EXTCODEHASH] = OpcodeHandler<ExtCodeHashOpcode<TTracingInst, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.SLOAD] = OpcodeHandler<SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.SSTORE] = SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279>(spec);
+        // EIP-8360 storage redirection is compiled only into tables for specs that enable it.
+        lookup[(int)Instruction.SLOAD] = SpecFlags.Eip8360(spec)
+            ? OpcodeHandler<SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279, OnFlag>, TTracingInst, TCancelable>()
+            : OpcodeHandler<SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279, OffFlag>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.SSTORE] = SpecFlags.Eip8360(spec)
+            ? SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OnFlag>(spec)
+            : SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, OffFlag>(spec);
         lookup[(int)Instruction.SELFDESTRUCT] =
             GetSelfDestructHandler<TTracingInst, TCancelable, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec);
     }
@@ -638,12 +676,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
         where Eip6780 : struct, IFlag
         where Eip8246 : struct, IFlag =>
+        SpecFlags.Eip8360(spec)
+            ? GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246, OnFlag>(spec)
+            : GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246, OffFlag>(spec);
+
+    private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
+        GetSelfDestructHandler<TTracingInst, TCancelable, TAccess, Eip8038, Eip150, Eip158, Eip6780, Eip8246, Eip8360>(IReleaseSpec spec)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag
+        where TAccess : struct, EvmInstructions.IAccessSpec
+        where Eip8038 : struct, IEip8038Flag
+        where Eip150 : struct, IFlag
+        where Eip158 : struct, IFlag
+        where Eip6780 : struct, IFlag
+        where Eip8246 : struct, IFlag
+        where Eip8360 : struct, IFlag =>
         (SpecFlags.Eip8037<Eip8038>(spec), SpecFlags.Eip7708<Eip8038>(spec)) switch
         {
-            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
-            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
-            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
-            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038>>, TTracingInst, TCancelable>(),
+            (true, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (true, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OnFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, true) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OnFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
+            (false, false) => TerminatingOpcodeHandler<SelfDestructOpcode<OffFlag, OffFlag, EvmInstructions.SelfDestructSpec<TAccess, Eip150, Eip158, Eip6780, Eip8246, Eip8038, Eip8360>>, TTracingInst, TCancelable>(),
         };
 
     private readonly struct BadInstructionOpcode : IOpcodeBody
@@ -1390,54 +1443,65 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
     [SkipLocalsInit]
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
-        SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279>(IReleaseSpec spec)
+        SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279, Eip8360>(IReleaseSpec spec)
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
-        where Eip8279 : struct, IFlag =>
+        where Eip8279 : struct, IFlag
+        where Eip8360 : struct, IFlag =>
         SpecFlags.NetGasMetering(spec)
             ? SpecFlags.Eip2200(spec)
                 ? SpecFlags.Eip8037<Eip8038>(spec)
-                    ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OnFlag, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>()
-                    : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OffFlag, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>()
+                    ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OnFlag, Eip8038, Eip2929, Eip8279, Eip8360>, TTracingInst, TCancelable>()
+                    : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OnFlag, OffFlag, Eip8038, Eip2929, Eip8279, Eip8360>, TTracingInst, TCancelable>()
                 : SpecFlags.Eip8037<Eip8038>(spec)
-                    ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OnFlag, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>()
-                    : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OffFlag, Eip8038, Eip2929, Eip8279>, TTracingInst, TCancelable>()
-            : OpcodeHandler<SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929>, TTracingInst, TCancelable>();
+                    ? OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OnFlag, Eip8038, Eip2929, Eip8279, Eip8360>, TTracingInst, TCancelable>()
+                    : OpcodeHandler<SStoreMeteredOpcode<TTracingInst, OffFlag, OffFlag, Eip8038, Eip2929, Eip8279, Eip8360>, TTracingInst, TCancelable>()
+            : OpcodeHandler<SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929, Eip8360>, TTracingInst, TCancelable>();
 
+    // EIP-8360: in the context of a TCREATE account, SLOAD and SSTORE behave as TLOAD and TSTORE.
     [SkipLocalsInit]
-    private readonly struct SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279> : IOpcodeBody
+    private readonly struct SLoadOpcode<TTracingInst, Eip8038, Eip2929, Eip8279, Eip8360> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
         where Eip8279 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(ref stack, ref gas, vm);
+            Eip8360.IsActive && vm.VmState.IsTransientCreateContext
+                ? EvmInstructions.InstructionTLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSLoad<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
-    private readonly struct SStoreMeteredOpcode<TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929, Eip8279> : IOpcodeBody
+    private readonly struct SStoreMeteredOpcode<TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929, Eip8279, Eip8360> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where TStipendFix : struct, IFlag
         where TEip8037 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
         where Eip8279 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929, Eip8279>(ref stack, ref gas, vm);
+            Eip8360.IsActive && vm.VmState.IsTransientCreateContext
+                ? EvmInstructions.InstructionTStore(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSStoreMetered<TGasPolicy, TTracingInst, TStipendFix, TEip8037, Eip8038, Eip2929, Eip8279>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
-    private readonly struct SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929> : IOpcodeBody
+    private readonly struct SStoreUnmeteredOpcode<TTracingInst, Eip8038, Eip2929, Eip8360> : IOpcodeBody
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
         where Eip2929 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSStoreUnmetered<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
+            Eip8360.IsActive && vm.VmState.IsTransientCreateContext
+                ? EvmInstructions.InstructionTStore(ref stack, ref gas, vm)
+                : EvmInstructions.InstructionSStoreUnmetered<TGasPolicy, TTracingInst, Eip8038, Eip2929>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]

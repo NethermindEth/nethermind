@@ -56,6 +56,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private Dictionary<Hash256AsKey, byte[]>.AlternateLookup<ValueHash256> _codeBatchAlternate;
 
     private readonly List<Change> _changes = new(Resettable.StartCapacity);
+    // Positions in _changes where each transaction still in the journal started; GetOriginalBalance reads below the top one.
+    private readonly Stack<int> _transactionChangesSnapshots = new();
     internal IWorldStateScopeProvider.IScope? _tree;
 
     private bool _needsStateRootUpdate;
@@ -135,6 +137,29 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     {
         Account? account = GetThroughCache(address);
         return ref account is not null ? ref account.Balance : ref _zero;
+    }
+
+    /// <summary>Returns the balance <paramref name="address"/> had at the start of the current transaction.</summary>
+    /// <remarks>
+    /// The transaction starts at the last transaction snapshot, or at the last commit when there is none. Walks the
+    /// account's changes back to the newest one at or before that point; with none, the committed state holds the value.
+    /// </remarks>
+    public UInt256 GetOriginalBalance(Address address)
+    {
+        int transactionStart = _transactionChangesSnapshots.TryPeek(out int snapshot) ? snapshot : Resettable.EmptyPosition;
+        if (_intraTxCache.TryGetValue(address, out int index))
+        {
+            ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+            while (index > transactionStart)
+            {
+                index = changes[index].PrevIdx;
+                if (index == -1) return GetState(address)?.Balance ?? UInt256.Zero;
+            }
+
+            return changes[index].Account?.Balance ?? UInt256.Zero;
+        }
+
+        return GetState(address)?.Balance ?? UInt256.Zero;
     }
 
     public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -366,10 +391,18 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         PushDelete(address);
     }
 
-    public int TakeSnapshot()
+    public int TakeSnapshot() => TakeSnapshot(newTransactionStart: false);
+
+    /// <summary>Creates a restartable snapshot.</summary>
+    /// <param name="newTransactionStart">A transaction starts here, so <see cref="GetOriginalBalance"/> reads the state before it.</param>
+    public int TakeSnapshot(bool newTransactionStart)
     {
         int currentPosition = _changes.Count - 1;
         if (_logger.IsTrace) Trace(currentPosition);
+        if (newTransactionStart && currentPosition != Resettable.EmptyPosition)
+        {
+            _transactionChangesSnapshots.Push(currentPosition);
+        }
 
         return currentPosition;
 
@@ -395,6 +428,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         // Ahead of the no-op check: an unanchored re-stage sits one past the log, so it is unwound
         // even by a restore to the current position.
         if (_codeInsertJournal.Count > 0) RestoreCodeInserts(snapshot);
+        while (_transactionChangesSnapshots.TryPeek(out int transactionStart) && transactionStart > snapshot)
+        {
+            _transactionChangesSnapshots.Pop();
+        }
         // No-op if already at the desired snapshot
         if (snapshot == lastIndex) return;
         InvalidateFrontCache();
@@ -591,6 +628,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         InvalidateFrontCache();
         _changes.Clear();
+        _transactionChangesSnapshots.Clear();
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
@@ -1086,6 +1124,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _nullAccountReads.ClearAndTrim();
         InvalidateFrontCache();
         _changes.Clear();
+        _transactionChangesSnapshots.Clear();
         _needsStateRootUpdate = false;
 
         [MethodImpl(MethodImplOptions.NoInlining)]

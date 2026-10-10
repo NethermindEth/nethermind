@@ -53,6 +53,13 @@ public class VmState<TGasPolicy> : IDisposable
     /// </summary>
     public bool NewAccountCharged { get; private set; } // TODO: move to CallEnv
 
+    /// <summary>
+    /// EIP-8360: the executing account is a <c>TCREATE</c> account, so storage opcodes act on transient storage
+    /// and <c>CREATE2</c> halts. Also true for code it runs through <c>DELEGATECALL</c> or <c>CALLCODE</c>.
+    /// </summary>
+    /// <remarks>Set on frame entry only under specs that enable EIP-8360; handlers for other specs never read it.</remarks>
+    public bool IsTransientCreateContext { get; internal set; } // TODO: move to CallEnv
+
     // EIP-7979 return addresses: allocated on the first CALLSUB, then kept with the pooled state.
     private int[]? _returnStack;
     private int _returnStackHead;
@@ -301,7 +308,7 @@ public class VmState<TGasPolicy> : IDisposable
     public Address From => ExecutionType switch
     {
         ExecutionType.STATICCALL or ExecutionType.CALL or ExecutionType.CALLCODE or ExecutionType.CREATE
-            or ExecutionType.CREATE2 or ExecutionType.TRANSACTION => Env.Caller,
+            or ExecutionType.CREATE2 or ExecutionType.TCREATE or ExecutionType.TRANSACTION => Env.Caller,
         ExecutionType.DELEGATECALL => Env.ExecutingAccount,
         _ => throw new ArgumentOutOfRangeException(),
     };

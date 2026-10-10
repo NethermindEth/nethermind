@@ -73,6 +73,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
         => State.GetOriginal(in storageCell, out value);
 
+    public virtual UInt256 GetOriginalBalance(Address address)
+        => State.GetOriginalBalance(address);
+
     public virtual void Get(in StorageCell storageCell, out UInt256 value)
         => State.Get(in storageCell, out value);
 

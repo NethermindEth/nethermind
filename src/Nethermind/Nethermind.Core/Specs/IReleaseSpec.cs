@@ -522,6 +522,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-8360: TCREATE opcode, creating contracts whose code, nonce and storage exist only for one transaction.
+        /// </summary>
+        bool IsEip8360Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>

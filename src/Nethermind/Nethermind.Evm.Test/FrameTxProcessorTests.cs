@@ -84,6 +84,21 @@ public partial class FrameTxProcessorTests
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
 
+    /// <summary>Rebases the fixture on Bogota with only EIP-8360 and the frame-transaction EIPs this fixture runs on.</summary>
+    private void UseBogotaWithEip8360()
+    {
+        _spec = new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8250Enabled = true,
+            IsEip8272Enabled = true,
+            IsEip7906Enabled = true,
+            IsEip8360Enabled = true
+        };
+        _specProvider = new TestSpecProvider(_spec);
+        _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
+    }
+
     [Test]
     public void Execute_SimulateReportsGasBeforeRefunds([Values] bool clearStorage, [Values] bool postTxReverts)
     {
@@ -508,6 +523,58 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
             Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1 + endowment), "the endowed child was created and its self-destruct transferred the balance, so a vacuous pass where the CREATE2 never ran is ruled out");
             Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+        }
+    }
+
+    [Test]
+    public void Execute_FrameTcreatesContract_KeepsOnlyItsBalanceAfterTheFrameTx()
+    {
+        UseBogotaWithEip8360();
+        byte[] runtime = [(byte)Instruction.PUSH0];
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 2).Op(Instruction.POP).Op(Instruction.STOP).Done, 10);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo((UInt256)8), "the TCREATE ran and moved its endowment");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)2), "EIP-8360 keeps the balance");
+            Assert.That(_stateProvider.GetNonce(tcreated), Is.EqualTo(0UL), "EIP-8360 resets the nonce at the end of the frame tx");
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False, "EIP-8360 drops the code at the end of the frame tx");
+        }
+    }
+
+    [Test]
+    public void Execute_LaterFrameFundsATcreateAccount_ChargesTheEip8360StateGas([Values] bool creatingFrameReverts)
+    {
+        // A reverted TCREATE leaves an ordinary new account, which pays the same state gas once, not twice.
+        UseBogotaWithEip8360();
+        byte[] init = Prepare.EvmCode.ForInitOf([(byte)Instruction.PUSH0]).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Prepare observer = Prepare.EvmCode.TCreate(init, salt, 0).Op(Instruction.POP);
+        DeployContract(Observer, (creatingFrameReverts ? observer.Revert(0, 0) : observer.Op(Instruction.STOP)).Done);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Sender, target: tcreated, value: 3)), tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(creatingFrameReverts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState), "the account's first balance pays new-account state gas once");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)3));
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False);
         }
     }
 

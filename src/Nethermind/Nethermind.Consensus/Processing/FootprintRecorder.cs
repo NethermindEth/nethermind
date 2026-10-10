@@ -521,6 +521,17 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (atStart > account.MinimumBalance) account.MinimumBalance = atStart;
     }
 
+    public override UInt256 GetOriginalBalance(Address address)
+    {
+        UInt256 balance = base.GetOriginalBalance(address);
+        if (!_active) return balance;
+        // The run's first access to an account records its starting balance, which this read must match.
+        ref AccountPrecondition account = ref Require(address, AccountFields.Balance);
+        account.BalanceValueReads++;
+        if (account.Balance != balance) _opaque = true;
+        return balance;
+    }
+
     public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         base.GetOriginal(in storageCell, out value);
