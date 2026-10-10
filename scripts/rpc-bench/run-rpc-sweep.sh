@@ -496,11 +496,17 @@ for entry in "${schedule[@]}"; do
   cname="rpcbench-sweep-${label}-${GITHUB_RUN_ID:-local}"
   snap="$(snap_path "$ctype")"; iso="$(db_isolation_for "$ctype")"
   echo "::group::sweep ${label} (type=${ctype}, image=${img}, db=${snap}, isolation=${iso}, head=${SNAPSHOT_BLOCK})"
+  gas_cap=1000000000
+  if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+    gas_cap="$CORPUS_RPC_GAS_CAP"
+  elif [[ "$JB_BENCHMARK_CONFIG" == "config/benchmark/ethcall-heavy-synthetic.yaml" ]]; then
+    gas_cap=2000000000
+  fi
   if ! CLIENT="$ctype" INSTANCE="primary" NODE_IMAGE="$img" DB_SOURCE="$snap" DB_ISOLATION="$iso" \
        SCRATCH_ROOT="$SCRATCH_ROOT" STATE_DIR="$cst" NETWORK="$NETWORK" JSONRPC_MODULES="$JSONRPC_MODULES" \
        LAYOUT_FLAGS="$NM_LAYOUT_FLAGS" ADDITIONAL_FLAGS="$arm_flags" ARM_SCRATCH_DIR="$arm_scratch_dir" \
        HEALTH_TIMEOUT="$HEALTH_TIMEOUT" DOTTRACE="false" \
-       RPC_GAS_CAP="$([[ "$JB_ETH_CALL_CORPUS" == "true" ]] && echo "$CORPUS_RPC_GAS_CAP")" \
+       RPC_GAS_CAP="$gas_cap" \
        NODE_ENV_VARS="${NODE_ENV_VARS:-}${arm_env:+ $arm_env}" \
        DIAG_DIR="$DIAG_DIR" CONTAINER_NAME="$cname" RPC_PORT="8545" "$here/start-node.sh"; then
     if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$USING_SAVED_BASELINE" != "true" && -z "$BASELINE_LABEL" ]]; then
@@ -518,6 +524,13 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
+    if [[ "$JB_BENCHMARK_CONFIG" == "config/benchmark/ethcall-heavy-synthetic.yaml" && "$WARMUP_SECONDS" -gt 0 ]]; then
+      warm_cell="$SCRATCH_ROOT/warmup-cell/heavy/$label"
+      measured_seed="$JB_SEED"
+      JB_SEED=$((measured_seed + 1000))
+      run_cell "$JB_BENCHMARK_CONFIG" "$CORPUS_WARMUP_RPS" "${WARMUP_SECONDS}s" "$warm_cell" "$ctype" "$label" || exit 1
+      JB_SEED="$measured_seed"
+    fi
     for rps in $RPS_LIST; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
@@ -527,7 +540,7 @@ for entry in "${schedule[@]}"; do
       done
       mcell="$OUT_DIR/mix/${label}/${rps}"
       echo "-- MIX ${label} @ rps=${rps} --"
-      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" "" "$cname" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
     done
   fi

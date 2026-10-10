@@ -1054,6 +1054,24 @@ jobs:
             exit 1
           fi
 
+      - name: Build pinned storage-map baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_sha=0e016e5d2aaf110599ca7dc2f80a40d47ca117f5
+          baseline_image=nethermind-rpcbench:storage-map-baseline-0e016e5
+          revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+          if [[ "$revision" != "$baseline_sha" ]]; then
+            git fetch --depth=1 origin "$baseline_sha"
+            baseline_context="$(mktemp -d "${RUNNER_TEMP}/storage-map-baseline.XXXXXX")"
+            git archive "$baseline_sha" | tar -x -C "$baseline_context"
+            source_date_epoch="$(git log -1 --format=%ct "$baseline_sha")"
+            docker build "$baseline_context" -f "$baseline_context/Dockerfile" -t "$baseline_image" \
+              --build-arg BUILD_CONFIG=release --build-arg CI=true \
+              --build-arg COMMIT_HASH="$baseline_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+          fi
+          docker image inspect "$baseline_image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
+
       - name: Prepare Docker image
         env:
           IMAGE_MODE: ${{ needs.resolve.outputs.image_mode }}
