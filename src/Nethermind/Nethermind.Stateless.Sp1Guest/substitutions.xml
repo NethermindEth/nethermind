@@ -1,0 +1,27 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions only this guest applies, on top of the shared
+  ../Nethermind.Stateless.Guest/substitutions.xml.
+-->
+<linker>
+  <assembly fullname="Nethermind.Evm.Precompiles">
+    <!-- SP1's libzkevm takes BLS12-381 points in zkcrypto's layout rather than EIP-2537's. -->
+    <type fullname="Nethermind.Evm.Precompiles.Sp1Bls12381LayoutFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only SP1's runtime exports the 256-bit modular multiplication precompile MULMOD runs on. -->
+    <type fullname="Nethermind.Evm.Sp1Uint256MulModFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Only SP1's runtime exports the SHA-256 extend and compress precompiles merkleization hashes pairs with. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.Sp1Sha256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>

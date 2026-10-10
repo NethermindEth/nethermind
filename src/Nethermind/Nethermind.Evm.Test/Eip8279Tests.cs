@@ -44,6 +44,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private static readonly Address Callee = TestItem.AddressE;
     private static readonly Address RevertingWriter = TestItem.AddressF;
     private static readonly Address RevertingRestorer = new("0x00000000000000000000000000000000000c0de5");
+    private static readonly Address StarvedWriter = new("0x00000000000000000000000000000000000c0de6");
+    private static readonly Address StarvedCopier = new("0x00000000000000000000000000000000000c0de7");
     private static readonly Address Precompile = new("0x0000000000000000000000000000000000000004");
 
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
@@ -56,38 +58,45 @@ public class Eip8279Tests : VirtualMachineTestsBase
     {
         yield return Case("Cold BALANCE", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.BALANCE), 20);
         yield return Case("Repeated BALANCE meters once", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.BALANCE).PushData(ColdAccount).Op(Instruction.BALANCE), 20);
-        yield return Case("BALANCE of a precompile", Prepare.EvmCode.PushData(Precompile).Op(Instruction.BALANCE), 0);
-        yield return Case("BALANCE of the executing account", Prepare.EvmCode.PushData(Executing).Op(Instruction.BALANCE), 0);
+        // First touch is tracked per transaction, not by warmth: pre-warmed accounts still meter.
+        yield return Case("BALANCE of a precompile", Prepare.EvmCode.PushData(Precompile).Op(Instruction.BALANCE), 20);
+        yield return Case("BALANCE of the executing account", Prepare.EvmCode.PushData(Executing).Op(Instruction.BALANCE), 20);
         yield return Case("Cold EXTCODESIZE", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.EXTCODESIZE), 20);
         yield return Case("Cold EXTCODEHASH", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.EXTCODEHASH), 20);
         yield return Case("Cold EXTCODECOPY", Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(ColdAccount).Op(Instruction.EXTCODECOPY), 20);
+        yield return Case("Empty EXTCODECOPY", Prepare.EvmCode.PushData(0).PushData(0).PushData(0).PushData(ColdAccount).Op(Instruction.EXTCODECOPY), 20);
         yield return Case("Cold SLOAD", Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD), 32);
         yield return Case("Repeated SLOAD meters once", Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).PushData(1).Op(Instruction.SLOAD), 32);
         yield return Case("Cold SSTORE zero to non-zero", SStore(2, 1), 64);
         yield return Case("SSTORE of the original value", SStore(1, 5), 32);
-        yield return Case("Net-zero SSTORE round trip", SStore(1, 7).PushData(5).PushData(1).Op(Instruction.SSTORE), 32);
+        yield return Case("Net-zero SSTORE round trip gives nothing back", SStore(1, 7).PushData(5).PushData(1).Op(Instruction.SSTORE), 64);
         yield return Case("Repeated distinct writes meter the value once", SStore(1, 7).PushData(8).PushData(1).Op(Instruction.SSTORE).PushData(9).PushData(1).Op(Instruction.SSTORE), 64);
+        yield return Case("Leaving the original value again re-meters the value", SStore(1, 7).PushData(5).PushData(1).Op(Instruction.SSTORE).PushData(8).PushData(1).Op(Instruction.SSTORE), 96);
         yield return Case("Clearing a slot keeps its value bytes", SStore(1, 0), 64);
         yield return Case("CALL without value", Prepare.EvmCode.Call(ColdAccount, 50_000), 20);
-        yield return Case("CALL with value", Prepare.EvmCode.CallWithValue(ColdAccount, 50_000, 1), 20 + 32);
-        yield return Case("CALL with value to a warm precompile", Prepare.EvmCode.CallWithValue(Precompile, 50_000, 1), 32);
+        yield return Case("CALL with value", Prepare.EvmCode.CallWithValue(ColdAccount, 50_000, 1), 20 + 64);
+        yield return Case("CALL with value to a precompile", Prepare.EvmCode.CallWithValue(Precompile, 50_000, 1), 20 + 64);
         yield return Case("CALLCODE with value adds no balance bytes", Prepare.EvmCode.CallCode(ColdAccount, 50_000, 1), 20);
         yield return Case("DELEGATECALL", Prepare.EvmCode.DelegateCall(ColdAccount, 50_000), 20);
         yield return Case("STATICCALL", Prepare.EvmCode.StaticCall(ColdAccount, 50_000), 20);
-        yield return Case("Reverted CALL with value is not rewound", Prepare.EvmCode.CallWithValue(Callee, 50_000, 1), 20 + 32 + 32);
+        yield return Case("Reverted CALL with value is not rewound", Prepare.EvmCode.CallWithValue(Callee, 50_000, 1), 20 + 64 + 32);
         yield return Case("SLOAD in a reverted frame is not rewound", Prepare.EvmCode.Call(Callee, 50_000), 20 + 32);
-        // The reverted frame's key and value bytes stay counted and the slot turns cold again, so the committed write
-        // re-meters its key; restoring the original value then gives the value bytes back.
-        yield return Case("Restoring a slot refunds value bytes metered in a reverted frame",
-            Prepare.EvmCode.DelegateCall(RevertingWriter, 50_000).PushData(5).PushData(1).Op(Instruction.SSTORE), 20 + 32 + 32 + 32 - 32);
-        // Not journaled, as in the reference: a restore in a reverted frame gives the value bytes back although the slot stays 7.
-        yield return Case("Give-back in a reverted frame is not undone",
-            SStore(1, 7).DelegateCall(RevertingRestorer, 50_000), 32 + 32 + 20 - 32);
-        yield return Case("SELFDESTRUCT sweeping to another account", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.SELFDESTRUCT), 20 + 32);
-        yield return Case("SELFDESTRUCT to itself", Prepare.EvmCode.PushData(Executing).Op(Instruction.SELFDESTRUCT), 0);
-        yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8);
-        yield return Case("CREATE with endowment", Prepare.EvmCode.Create([], 1), 20 + 8 + 32);
-        yield return Case("CREATE deploying code", Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf([1, 2, 3, 4, 5]).Done, 0), 20 + 8 + 5);
+        // The reverted frame's slot turns cold again, but its key was already metered for the transaction.
+        yield return Case("Accesses after a reverted frame are not re-metered", Prepare.EvmCode.Call(Callee, 50_000).Call(Callee, 50_000), 20 + 32);
+        // The reverted write's key and value bytes stay counted; the committed write of the original value adds none.
+        yield return Case("Write in a reverted frame stays metered",
+            Prepare.EvmCode.DelegateCall(RevertingWriter, 50_000).PushData(5).PushData(1).Op(Instruction.SSTORE), 20 + 32 + 32);
+        yield return Case("Restoring write in a reverted frame meters nothing",
+            SStore(1, 7).DelegateCall(RevertingRestorer, 50_000), 32 + 32 + 20);
+        // Bytes are metered only once the operation's execution gas is paid: a frame too short for the charge counts none.
+        yield return Case("SSTORE out of gas on the write charge meters no value bytes", Prepare.EvmCode.Call(StarvedWriter, 8_000), 20 + 32);
+        yield return Case("EXTCODECOPY out of gas on its charge meters no address bytes", Prepare.EvmCode.Call(StarvedCopier, 50_000), 20);
+        yield return Case("SELFDESTRUCT sweeping to another account", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.SELFDESTRUCT), 20 + 64);
+        yield return Case("SELFDESTRUCT to itself", Prepare.EvmCode.PushData(Executing).Op(Instruction.SELFDESTRUCT), 20);
+        // The new address, the creator's nonce and the new contract's nonce.
+        yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8 + 8);
+        yield return Case("CREATE with endowment", Prepare.EvmCode.Create([], 1), 20 + 8 + 8 + 64);
+        yield return Case("CREATE deploying code", Prepare.EvmCode.Create(Prepare.EvmCode.ForInitOf([1, 2, 3, 4, 5]).Done, 0), 20 + 8 + 8 + 5);
 
         static TestCaseData Case(string name, Prepare code, int bytes) => new TestCaseData(code.STOP().Done, (ulong)bytes).SetName(name);
     }
@@ -136,13 +145,13 @@ public class Eip8279Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Call_meters_the_cold_delegation_target([Values] bool warmTarget)
+    public void Call_meters_the_delegation_target_once([Values] bool touchedTarget)
     {
         Address authority = new("0x0000000000000000000000000000000000000042");
         TestState.CreateAccount(authority, 0);
         CodeInfoRepository.SetDelegation(ColdAccount, authority, Spec8279);
         Prepare code = Prepare.EvmCode;
-        if (warmTarget) code.PushData(ColdAccount).Op(Instruction.BALANCE).Op(Instruction.POP);
+        if (touchedTarget) code.PushData(ColdAccount).Op(Instruction.BALANCE).Op(Instruction.POP);
         code.Call(authority, 50_000).STOP();
 
         (ulong gasSpent, ulong staticFloor, _, _) = Run(code.Done, GasLimit);
@@ -151,7 +160,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Create_collision_meters_no_nonce_bytes()
+    public void Create_collision_meters_only_the_creator_nonce()
     {
         Address created = ContractAddress.From(Executing, UInt256.Zero);
         TestState.CreateAccount(created, 0, nonce: 1);
@@ -166,7 +175,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.TransactionExecuted, Is.True, result.ToString());
-            Assert.That(vm.TxExecutionContext.BalDataMeter!.BalDataBytes, Is.EqualTo(Eip8279Constants.AddressBytes));
+            Assert.That(vm.TxExecutionContext.BalDataMeter!.BalDataBytes, Is.EqualTo(Eip8279Constants.AddressBytes + Eip8279Constants.NonceBytes));
             Assert.That(TestState.GetNonce(created), Is.EqualTo(1UL));
         }
     }
@@ -179,7 +188,7 @@ public class Eip8279Tests : VirtualMachineTestsBase
             .PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done;
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
         ulong staticFloor = IntrinsicGasCalculator.Calculate(tx, Spec8279).FloorGas;
-        tx.GasLimit = staticFloor + (Eip8279Constants.AddressBytes + Eip8279Constants.NonceBytes) * Eip8131Constants.FloorGasPerByte;
+        tx.GasLimit = staticFloor + (Eip8279Constants.AddressBytes + 2 * Eip8279Constants.NonceBytes) * Eip8131Constants.FloorGasPerByte;
 
         (_, CallOutputTracer tracer, _, _) = Execute(block, tx);
 
@@ -256,6 +265,10 @@ public class Eip8279Tests : VirtualMachineTestsBase
         TestState.InsertCode(RevertingRestorer, SStore(1, 5).Revert(0, 0).Done, Spec8279);
         TestState.CreateAccount(RevertingWriter, 0);
         TestState.InsertCode(RevertingWriter, SStore(1, 7).Revert(0, 0).Done, Spec8279);
+        TestState.CreateAccount(StarvedWriter, 0);
+        TestState.InsertCode(StarvedWriter, SStore(2, 1).Done, Spec8279);
+        TestState.CreateAccount(StarvedCopier, 0);
+        TestState.InsertCode(StarvedCopier, Prepare.EvmCode.PushData(1_000_000).PushData(0).PushData(0).PushData(ColdAccount).Op(Instruction.EXTCODECOPY).Done, Spec8279);
         TestState.CreateAccount(Executing, 1.Ether);
         TestState.Set(new StorageCell(Executing, 1), (UInt256)5);
         return PrepareTx(Activation, gasLimit, code, new byte[FloorBindingCalldataBytes], 1);

@@ -433,6 +433,39 @@ public class ChildCacheTests
     }
 
     [Test]
+    public void Reset_AfterGetOrAddOnly_ClearsCache()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+        _cache.GetOrAdd(null, in path, new TrieNode(NodeType.Leaf, hash));
+        Assert.That(_cache.Count, Is.EqualTo(1), "precondition: GetOrAdd into an empty bucket is counted");
+
+        _cache.Reset();
+
+        Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a node added only through GetOrAdd must not survive Reset");
+    }
+
+    [Test]
+    public void Reset_WhenUnused_LeavesAnEmptyUsableCache()
+    {
+        int capacity = _cache.Capacity;
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+
+        _cache.Reset();
+        _cache.Set(null, in path, new TrieNode(NodeType.Leaf, hash));
+        _cache.Reset();
+        _cache.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Capacity, Is.EqualTo(capacity), "resetting an unused cache must not resize it");
+            Assert.That(_cache.Count, Is.EqualTo(0), "the cache is empty after Reset");
+            Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a reset after a reset must not resurrect a node");
+        }
+    }
+
+    [Test]
     public void Count_IncrementsOnSet()
     {
         Assert.That(_cache.Count, Is.EqualTo(0));

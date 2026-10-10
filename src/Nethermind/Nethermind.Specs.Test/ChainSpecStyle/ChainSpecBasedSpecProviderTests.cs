@@ -1005,6 +1005,7 @@ public class ChainSpecBasedSpecProviderTests
             Parameters = new ChainParameters
             {
                 Eip8141TransitionTimestamp = eip8141Timestamp,
+                Eip7843TransitionTimestamp = eip8141Timestamp,
                 Eip8250TransitionTimestamp = eip8250Timestamp,
                 Eip8272TransitionTimestamp = eip8272Timestamp,
                 Eip7906TransitionTimestamp = eip7906Timestamp,

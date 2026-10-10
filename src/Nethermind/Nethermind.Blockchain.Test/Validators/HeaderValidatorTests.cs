@@ -215,14 +215,14 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom, [Values(0ul, 1ul)] ulong number)
     {
         bool expectedResult = eip7668 == zeroLengthBloom;
         IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
             new OneLoggerLogManager(new(_testLogger)));
         BlockHeader header = Build.A.BlockHeader
-            .WithNumber(1)
+            .WithNumber(number)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(Keccak.Zero)
