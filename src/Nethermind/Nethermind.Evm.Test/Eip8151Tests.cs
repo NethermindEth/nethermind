@@ -367,6 +367,27 @@ public class Eip8151Tests : VirtualMachineTestsBase
         if (eip8151Enabled) Assert.That(signer!.Code.ToArray(), Is.EqualTo(ContractCode), "recovered account code");
     }
 
+    // The VM reports the read, so the tracer follows ecRecover wherever an override moved it, not the address 0x01.
+    [TestCase(true, TestName = "Prestate_tracer_follows_a_moved_ecrecover(ecRecover moved away from 0x01)")]
+    [TestCase(false, TestName = "Prestate_tracer_follows_a_moved_ecrecover(SHA-256 moved onto 0x01)")]
+    public void Prestate_tracer_follows_a_moved_ecrecover(bool ecRecoverMoved)
+    {
+        CreateProcessor(parallel: false, ecRecoverMoved
+            ? (PrecompiledAddresses.ECRecover.Value, MovedPrecompileTarget)
+            : (Sha256Precompile.Address, PrecompiledAddresses.ECRecover.Value));
+        DeploySigner(ContractCode);
+        (Block Block, Transaction Tx) prepared = PrepareTx(Activation, TxGasLimit,
+            MeasureEcRecover(Prepare.EvmCode, 0, Instruction.CALL, PrecompileGasLimit, ValidInput, ecRecoverMoved ? MovedPrecompileTarget : null).Done);
+        GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(
+            GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer }, prepared.Block, prepared.Tx, TestState, _spec);
+
+        Run(prepared, tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        Dictionary<AddressAsKey, NativePrestateTracerAccount> prestate = (Dictionary<AddressAsKey, NativePrestateTracerAccount>)trace.CustomTracerResult!.Value;
+        Assert.That(prestate.ContainsKey(Signer), Is.EqualTo(ecRecoverMoved), "recovered account in prestate");
+    }
+
     [Test]
     public void Access_list_tracer_includes_the_recovered_address([Values] bool eip8151Enabled)
     {

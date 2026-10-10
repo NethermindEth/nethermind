@@ -6,9 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -36,7 +34,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
     private readonly bool _diffMode;
-    private readonly IReleaseSpec? _eip8151Spec;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -45,8 +42,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to = null,
         Address? beneficiary = null,
-        Transaction? transaction = null,
-        IReleaseSpec? spec = null)
+        Transaction? transaction = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -57,7 +53,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
-        _eip8151Spec = spec?.IsEip8151Enabled == true ? spec : null;
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -167,23 +162,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         IsTracingStack = RequiresStack(_op);
     }
 
-    public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output. The VM reports it, so the
+    /// account is found wherever a state override moved ecRecover, and only when the read happened.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
     {
-        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        if (_eip8151Spec is not null && isPrecompileCall && _error is null && to.Equals(ECRecoverPrecompile.Address))
-        {
-            LookupRecoveredAccount(input, _eip8151Spec);
-        }
-    }
-
-    /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output.</remarks>
-    private void LookupRecoveredAccount(ReadOnlyMemory<byte> input, IReleaseSpec spec)
-    {
-        Result<byte[]> output = ECRecoverPrecompile.Instance.Run(input, spec);
-        if (output && output.Data!.Length == 32)
-        {
-            LookupAccount(new Address(output.Data.AsSpan(12)));
-        }
+        base.ReportPrecompileAccountRead(address);
+        if (_error is null) LookupAccount(address);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)

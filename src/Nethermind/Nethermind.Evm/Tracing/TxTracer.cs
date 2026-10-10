@@ -83,6 +83,7 @@ public abstract class TxTracer : ITxTracer
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     { }
     public virtual void ReportActionRemainingGas(ulong gas) { }
+    public virtual void ReportPrecompileAccountRead(Address address) { }
     public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
     public virtual void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportBlockHash(Hash256 blockHash) { }

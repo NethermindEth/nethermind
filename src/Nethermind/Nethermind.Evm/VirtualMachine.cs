@@ -1505,6 +1505,7 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         _worldState.AddAccountRead(recovered);
+        if (IsTracingActions) _txTracer.ReportPrecompileAccountRead(recovered);
         ReadOnlySpan<byte> code = _codeInfoRepository.GetCachedCodeInfo(recovered, followDelegation: false, spec, out _).CodeSpan;
         if (!code.IsEmpty && !Eip7702Constants.IsDelegatedCode(code))
         {
