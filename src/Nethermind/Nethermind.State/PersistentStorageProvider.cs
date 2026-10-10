@@ -1127,6 +1127,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         internal const int MaxRetainedEntries = 256 * 1024;
         internal const int MaxRetainedCapacity = 128 * 1024;
+        private const int MaxReuseCapacityFactor = 4;
         private readonly IEqualityComparer<TKey> _comparer = comparer ?? EqualityComparer<TKey>.Default;
         private readonly Lock _lock = new();
         private readonly List<OptimizedDictionary<TKey, TValue>> _retained = [];
@@ -1136,13 +1137,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             lock (_lock)
             {
-                int best = -1;
+                int bestFit = -1;
+                int largestNearby = -1;
                 for (int i = 0; i < _retained.Count; i++)
                 {
                     int capacity = _retained[i].Capacity;
-                    if (capacity >= minCapacity && (best < 0 || capacity > _retained[best].Capacity)) best = i;
+                    if (capacity < minCapacity) continue;
+
+                    if (bestFit < 0 || capacity < _retained[bestFit].Capacity) bestFit = i;
+                    if (capacity <= (long)minCapacity * MaxReuseCapacityFactor
+                        && (largestNearby < 0 || capacity > _retained[largestNearby].Capacity)) largestNearby = i;
                 }
 
+                int best = largestNearby >= 0 ? largestNearby : bestFit;
                 if (best >= 0)
                 {
                     OptimizedDictionary<TKey, TValue> retained = _retained[best];

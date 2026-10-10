@@ -415,29 +415,45 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Large_map_pool_reuses_the_largest_fitting_map([Values] bool returnLargestFirst)
+    public void Large_map_pool_reuses_the_largest_nearby_map([Values] bool returnLargestFirst)
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
-        OptimizedDictionary<UInt256, int> smaller = new(2048, UInt256Comparer.Instance);
-        OptimizedDictionary<UInt256, int> larger = new(16384, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> smaller = new(1024, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(2048, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> oversized = new(65536, UInt256Comparer.Instance);
         smaller.Add(UInt256.One, 7);
         larger.Add(UInt256.One, 9);
 
         pool.Return(returnLargestFirst ? larger : smaller);
         pool.Return(returnLargestFirst ? smaller : larger);
+        pool.Return(oversized);
 
         OptimizedDictionary<UInt256, int> rented = pool.Rent(1024);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rented, Is.SameAs(larger));
             Assert.That(rented, Is.Empty);
-            Assert.That(rented.Capacity, Is.GreaterThanOrEqualTo(16384));
+            Assert.That(rented.Capacity, Is.InRange(2048, 4096));
         }
 
         rented.Add(UInt256.One, 11);
         pool.Return(rented);
         Assert.That(pool.Rent(1024), Is.SameAs(larger).And.Empty);
         Assert.That(pool.Rent(1024), Is.SameAs(smaller).And.Empty);
+        Assert.That(pool.Rent(1024), Is.SameAs(oversized));
+    }
+
+    [Test]
+    public void Large_map_pool_falls_back_to_best_fit_when_all_maps_are_oversized([Values] bool returnLargestFirst)
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> smaller = new(16384, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(65536, UInt256Comparer.Instance);
+        pool.Return(returnLargestFirst ? larger : smaller);
+        pool.Return(returnLargestFirst ? smaller : larger);
+
+        Assert.That(pool.Rent(1024), Is.SameAs(smaller));
+        Assert.That(pool.Rent(1024), Is.SameAs(larger));
     }
 
     [Test]
