@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Zkvm.Abstractions;
 
@@ -34,7 +35,10 @@ public static unsafe partial class EvmInstructions
     {
         if (!ZiskFlag.IsActive)
         {
-            UInt256.MultiplyMod(in a, in b, in m, out result);
+            if (Sp1Uint256MulModFlag.IsActive)
+                Sp1MulMod256(in a, in b, in m, out result);
+            else
+                UInt256.MultiplyMod(in a, in b, in m, out result);
             return;
         }
 
@@ -42,6 +46,31 @@ public static unsafe partial class EvmInstructions
         fixed (UInt256* pa = &a, pb = &b, pm = &m, pr = &result)
             Accelerators.MulMod256((ulong*)pa, (ulong*)pb, (ulong*)pm, (ulong*)pr);
     }
+
+    /// <remarks>
+    /// The precompile takes the multiplier and the modulus side by side and overwrites the multiplicand with the
+    /// product, all 8-byte aligned, so the operands go through locals.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static void Sp1MulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
+    {
+        UInt256 product = a;
+        Sp1MulModOperands operands;
+        operands.Multiplier = b;
+        operands.Modulus = m;
+        Sp1Uint256MulMod((ulong*)&product, (ulong*)&operands);
+        result = product;
+    }
+
+    private struct Sp1MulModOperands
+    {
+        public UInt256 Multiplier;
+        public UInt256 Modulus;
+    }
+
+    /// <summary>SP1's <c>x = x * y mod m</c>, with <c>m</c> the 32 bytes after <c>y</c>.</summary>
+    [DllImport("__Internal", EntryPoint = "zkvm_uint256_mulmod", ExactSpelling = true), SuppressGCTransition]
+    private static extern void Sp1Uint256MulMod(ulong* x, ulong* y);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)

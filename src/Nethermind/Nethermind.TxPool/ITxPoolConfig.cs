@@ -37,7 +37,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` lifts the static admission limit. Raising this setting does not raise the fixed `Eip8141Constants.MaxVerifyGas` simulation budget or signature verification ceiling. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` lifts the static admission limit. The validation-prefix simulation budget is this value, and never less than `Eip8141Constants.MaxVerifyGas`. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
@@ -64,8 +64,8 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
 
-    /// <summary>Whether MATCHA sender width gates keyed-nonce frame transactions beyond the baseline. Defaults to <c>false</c>.</summary>
-    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond the single EIP-8141 baseline transaction must spend sender width, earned from the gas the sender's finalized keyed-nonce frame transactions paid. Also rejects a keyed-nonce frame transaction whose nonce keys overlap a pending one of the same sender. Experimental.")]
+    /// <summary>Whether MATCHA sender and paymaster width gate frame transactions beyond the baseline. Defaults to <c>false</c>.</summary>
+    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond the single EIP-8141 baseline transaction must spend sender width, earned from the gas the sender's finalized keyed-nonce frame transactions paid. Also rejects a keyed-nonce frame transaction whose nonce keys overlap a pending one of the same sender. The same rule applies to a code-carrying paymaster in place of the EIP-8141 cap on its pending sponsored frame transactions: each one beyond the single baseline transaction must spend paymaster width, earned from the gas of the finalized frame transactions the paymaster paid for. Experimental.")]
     bool FrameTxWidthEnabled { get; set; }
 
     /// <summary>MATCHA <c>safety_factor</c> in permille of the declared admission gas. Defaults to <c>1000</c>, minimum <c>1000</c>.</summary>
@@ -73,7 +73,7 @@ public interface ITxPoolConfig : IConfig
     ulong FrameTxWidthSafetyFactorPermille { get; set; }
 
     /// <summary>MATCHA <c>width_cap</c> in gas. Defaults to <c>0</c>, which lifts the cap.</summary>
-    [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender may hold. Newly finalized gas earns width only up to this cap; lowering it never shrinks width already earned. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
+    [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender or a paymaster may hold. Newly finalized gas earns width only up to this cap; lowering it never shrinks width already earned. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
     ulong FrameTxWidthCap { get; set; }
 
     [ConfigItem(DefaultValue = "524288",

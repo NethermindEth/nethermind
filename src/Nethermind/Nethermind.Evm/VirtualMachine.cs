@@ -269,6 +269,9 @@ public partial class VirtualMachine<TGasPolicy>(
     partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
+    /// <summary>The block context fields opcodes read since the caller last reset it.</summary>
+    internal BlockContextReads BlockContextReads { get; set; }
+
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
@@ -281,21 +284,15 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
 
-    /// <summary>Whether accessing <paramref name="address"/> now is the cold, first-touch access EIP-8279 meters.</summary>
-    /// <remarks>
-    /// Mirrors the cold charge: precompiles are always warm, and access-list tracing prices every access warm.
-    /// </remarks>
-    internal bool IsColdBalAccess(Address address) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(address) && !_blockExecutionContext.Spec.IsPrecompile(address);
+    /// <summary>Meters the address bytes the transaction's first access to <paramref name="address"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalAddress(Address address) => _txExecutionContext.BalDataMeter?.TryMeterAddress(address) ?? true;
 
-    /// <inheritdoc cref="IsColdBalAccess(Address)"/>
-    internal bool IsColdBalAccess(in StorageCell storageCell) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(in storageCell);
-
-    /// <summary>Meters the address bytes a cold access to <paramref name="address"/> is about to add.</summary>
-    /// <returns><see langword="false"/> when the access is cold and metering it runs out of gas.</returns>
-    internal bool TryMeterColdBalAccess(Address address) =>
-        !IsColdBalAccess(address) || TryMeterBalData(Eip8279Constants.AddressBytes);
+    /// <summary>Meters the key bytes the transaction's first access to <paramref name="storageCell"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalStorageKey(in StorageCell storageCell) => _txExecutionContext.BalDataMeter?.TryMeterStorageKey(in storageCell) ?? true;
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
@@ -1455,7 +1452,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
@@ -1489,9 +1486,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    protected static string GetErrorString(IPrecompile precompile, string? error)
-        => $"Precompile {precompile.Name} failed with error: {error}";
+    /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
+    protected static string GetErrorString(string? error)
+        => error ?? EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()!;
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
@@ -1703,7 +1700,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
+        {
             TGasPolicy.ClearExecutionGas(ref gas);
+            BlockContextReads |= BlockContextReads.OutOfGas;
+        }
 
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
