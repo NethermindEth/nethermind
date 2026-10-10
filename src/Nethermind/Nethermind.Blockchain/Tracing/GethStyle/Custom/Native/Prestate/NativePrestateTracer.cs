@@ -34,6 +34,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
     private readonly bool _diffMode;
+    private readonly bool _disableCode;
+    private readonly bool _disableStorage;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -56,6 +58,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
+        _disableCode = config.DisableCode;
+        _disableStorage = config.DisableStorage;
         if (_diffMode)
         {
             _poststate = [];
@@ -257,8 +261,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
                 UInt256 nonce = account.Nonce;
-                ReadOnlyMemory<byte> code = _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
+                ReadOnlyMemory<byte> code = _disableCode ? default : _worldState.GetCode(addr);
+                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code)
+                {
+                    CodeHash = account.CodeHash != default(ValueHash256) && account.CodeHash != Keccak.OfAnEmptyString.ValueHash256
+                        ? account.CodeHash : (ValueHash256?)null
+                });
             }
             else
             {
@@ -272,6 +280,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     protected void LookupStorage(Address addr, UInt256 index)
     {
+        if (_disableStorage) return;
+
         NativePrestateTracerAccount account = _prestate[addr];
         account.Storage ??= [];
 
@@ -283,7 +293,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     }
 
     private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty;
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty && account.CodeHash is null;
 
     private void ProcessDiffState()
     {
@@ -297,7 +307,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             NativePrestateTracerAccount poststateAccount = new(
                 poststateAccountStruct.Balance,
                 poststateAccountStruct.Nonce,
-                _worldState.GetCode(addr));
+                _disableCode ? default : _worldState.GetCode(addr));
             NativePrestateTracerAccount? diffAccount = new();
 
             bool modified = false;
@@ -311,13 +321,20 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 modified = true;
                 diffAccount.Nonce = poststateAccount.Nonce;
             }
-            if (!poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
+            ValueHash256 postCodeHash = _worldState.AccountExists(addr) ? poststateAccountStruct.CodeHash : default;
+            if (postCodeHash != (prestateAccount.CodeHash ?? Keccak.OfAnEmptyString.ValueHash256))
+            {
+                modified = true;
+                diffAccount.CodeHash = postCodeHash;
+            }
+            if (!_disableCode && !poststateAccount.Code.Span.SequenceEqual(prestateAccount.Code.Span))
             {
                 modified = true;
                 diffAccount.Code = poststateAccount.Code;
+                diffAccount.IncludeEmptyCode = poststateAccount.Code.IsEmpty;
             }
 
-            if (prestateAccount.Storage is not null)
+            if (!_disableStorage && prestateAccount.Storage is not null)
             {
                 foreach ((UInt256 index, UInt256 prestateStorage) in prestateAccount.Storage)
                 {
@@ -348,7 +365,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a created account counts as new when it was empty before, judged by balance, nonce and code alone.
+            // a created account counts as new when it was empty before, judged by balance, nonce and code hash.
             if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
         }

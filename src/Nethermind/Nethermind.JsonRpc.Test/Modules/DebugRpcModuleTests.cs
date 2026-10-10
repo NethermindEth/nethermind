@@ -1077,6 +1077,95 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
+    private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
+    [
+        new TestCaseData(false, false, false, false, false).SetName("Prestate_includes_code_and_storage"),
+        new TestCaseData(false, true, false, false, false).SetName("Prestate_disables_code_only"),
+        new TestCaseData(false, false, true, false, false).SetName("Prestate_disables_storage_only"),
+        new TestCaseData(false, true, true, false, false).SetName("Prestate_disables_code_and_storage"),
+        new TestCaseData(false, false, false, false, true).SetName("Prestate_retains_cleared_storage"),
+        new TestCaseData(false, true, false, false, true).SetName("Prestate_retains_cleared_storage_without_code"),
+        new TestCaseData(false, false, false, true, false).SetName("Prestate_retains_storage_before_reverted_write"),
+        new TestCaseData(false, false, false, true, true).SetName("Prestate_retains_storage_before_reverted_clear"),
+        new TestCaseData(true, false, false, false, false).SetName("Prestate_diff_includes_storage_write"),
+        new TestCaseData(true, true, false, false, false).SetName("Prestate_diff_includes_storage_write_without_code"),
+        new TestCaseData(true, false, false, false, true).SetName("Prestate_diff_includes_storage_clear"),
+        new TestCaseData(true, true, false, false, true).SetName("Prestate_diff_includes_storage_clear_without_code"),
+        new TestCaseData(true, false, true, false, false).SetName("Prestate_diff_omits_disabled_storage_changes"),
+        new TestCaseData(true, false, false, true, false).SetName("Prestate_diff_omits_reverted_storage_write"),
+        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear")
+    ];
+
+    [TestCaseSource(nameof(PrestateFieldOptionCases))]
+    public async Task Debug_traceCall_prestate_respects_field_options(
+        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage)
+    {
+        using Context ctx = await Context.Create();
+        string sender = TestItem.AddressA.ToString();
+        string contract = TestItem.AddressC.ToString();
+        string beneficiary = TestItem.AddressD.ToString();
+        const string balance = "0x100000000000000000000";
+        const string zeroWord = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        const string oneWord = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        string code = "0x6000545060" + (clearStorage ? "00" : "01") + "600055" + (revert ? "60006000fd" : "00");
+        Dictionary<string, object> overrides = new()
+        {
+            [sender] = new { balance, nonce = "0x1", code = "0x" },
+            [contract] = new { balance, nonce = "0x1", code, state = new Dictionary<string, string> { [zeroWord] = clearStorage ? oneWord : zeroWord } },
+            [beneficiary] = new { balance, nonce = "0x1", code = "0x" }
+        };
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new { from = sender, to = contract, gas = "0x186a0" }, "latest",
+            new
+            {
+                tracer = "prestateTracer",
+                tracerConfig = new { diffMode, disableCode, disableStorage },
+                stateOverrides = overrides,
+                blockOverrides = new { feeRecipient = beneficiary }
+            });
+
+        JObject contractPre = new()
+        {
+            ["balance"] = balance,
+            ["nonce"] = 1,
+            ["codeHash"] = Keccak.Compute(Bytes.FromHexString(code)).ToString()
+        };
+        if (!disableCode) contractPre["code"] = code;
+        JObject expected;
+        if (diffMode)
+        {
+            JObject pre = new() { [sender] = new JObject { ["balance"] = balance, ["nonce"] = 1 } };
+            JObject post = new() { [sender] = new JObject { ["nonce"] = 2 } };
+            if (!disableStorage && !revert)
+            {
+                if (clearStorage) contractPre["storage"] = new JObject { [zeroWord] = oneWord };
+                pre[contract] = contractPre;
+                JObject contractPost = [];
+                if (!clearStorage) contractPost["storage"] = new JObject { [zeroWord] = oneWord };
+                post[contract] = contractPost;
+            }
+            expected = new JObject { ["pre"] = pre, ["post"] = post };
+        }
+        else
+        {
+            if (!disableStorage) contractPre["storage"] = new JObject { [zeroWord] = clearStorage ? oneWord : zeroWord };
+            expected = new JObject
+            {
+                [sender] = new JObject { ["balance"] = balance, ["nonce"] = 1 },
+                [contract] = contractPre,
+                [beneficiary] = new JObject { ["balance"] = balance, ["nonce"] = 1 }
+            };
+        }
+
+        JObject result = JObject.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(result["result"], Is.EqualTo(expected).Using(JToken.EqualityComparer), response);
+        }
+    }
+
     [Test]
     public async Task Debug_traceCall_CREATE_replayed_back_to_back_does_not_throw_code_missing()
     {
