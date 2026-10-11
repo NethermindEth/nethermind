@@ -25,22 +25,29 @@ public class EthereumGasPolicyTests
     /// reporting warm and the next access would be charged warm gas instead of cold.
     /// </remarks>
     [Test]
-    public void Reverted_warm_up_is_cold_again()
+    public void Reverted_warm_up_is_cold_again([Values(1, 32, 64)] int cellCount)
     {
-        StorageCell cell = new(TestItem.AddressA, UInt256.One);
         StorageCell other = new(TestItem.AddressB, UInt256.One);
         using StackAccessTracker tracker = new();
 
+        StorageCell[] cells = new StorageCell[cellCount];
         tracker.TakeSnapshot();
-        tracker.WarmUp(in cell);
-
-        // Read it twice: the second read is the one served from the memo.
-        Assert.That(tracker.IsCold(in cell), Is.False);
-        Assert.That(tracker.IsCold(in cell), Is.False);
+        for (int i = 0; i < cells.Length; i++)
+        {
+            cells[i] = WarmCacheCell(i + 1);
+            Assert.That(tracker.WarmUp(in cells[i]), Is.True, "Each new cell starts cold.");
+        }
+        for (int i = 0; i < cells.Length; i++)
+        {
+            Assert.That(tracker.IsCold(in cells[i]), Is.False, "Every warmed cell must be found across contract switches.");
+        }
 
         tracker.Restore();
 
-        Assert.That(tracker.IsCold(in cell), Is.True, "the warm-up was reverted");
+        for (int i = 0; i < cells.Length; i++)
+        {
+            Assert.That(tracker.IsCold(in cells[i]), Is.True, "Restore must invalidate every cached warm cell.");
+        }
         Assert.That(tracker.IsCold(in other), Is.True);
     }
 
@@ -50,17 +57,21 @@ public class EthereumGasPolicyTests
     /// <remarks>The pool's localCapacity is 1, so a same-thread dispose-then-rent reuses the one state
     /// deterministically; this pins the Clear() -> ForgetWarm() path that Restore()'s test does not.</remarks>
     [Test]
-    public void Pooled_reset_drops_the_remembered_cell()
+    public void Pooled_reset_drops_the_remembered_cell([Values(1, 32, 64)] int cellCount)
     {
-        StorageCell cell = new(TestItem.AddressA, UInt256.One);
+        StorageCell[] cells = new StorageCell[cellCount];
         object returnedState;
         using (StackAccessTracker first = new())
         {
             returnedState = first.AccessedAddresses;
-            first.WarmUp(in cell);
+            for (int i = 0; i < cells.Length; i++)
+            {
+                cells[i] = WarmCacheCell(i + 1);
+                first.WarmUp(in cells[i]);
+            }
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+                Assert.That(first.IsCold(in cells[0]), Is.False, "sets the memo");
                 Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
             }
         }
@@ -71,7 +82,10 @@ public class EthereumGasPolicyTests
         Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+            for (int i = 0; i < cells.Length; i++)
+            {
+                Assert.That(second.IsCold(in cells[i]), Is.True, "A pooled reset must forget all warm cells.");
+            }
             Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
         }
     }
@@ -97,6 +111,34 @@ public class EthereumGasPolicyTests
     }
 
     [Test]
+    public void WarmUp_CollidingContracts_PreservesExactMembership()
+    {
+        StorageCell first = WarmCacheCell(1);
+        StorageCell collision = WarmCacheCell(33);
+        StorageCell coldCollision = WarmCacheCell(65);
+        StorageCell otherSlot = new(first.Address, new UInt256(2));
+        using StackAccessTracker tracker = new();
+        for (int i = 0; i < 4; i++)
+        {
+            Assert.That(tracker.WarmUp(in first), Is.EqualTo(i == 0), "Repeated accesses must not charge cold gas.");
+            Assert.That(tracker.WarmUp(in collision), Is.EqualTo(i == 0), "Collisions must fall back to exact set membership.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracker.IsCold(in coldCollision), Is.True, "A cache collision cannot warm another contract.");
+                Assert.That(tracker.IsCold(in otherSlot), Is.True, "A warm contract cannot warm another storage slot.");
+            }
+        }
+        Assert.That(tracker.AccessedStorageCells, Is.EqualTo(new[] { first, collision }), "Cache hits must preserve set order and contents.");
+    }
+
+    private static StorageCell WarmCacheCell(int suffix)
+    {
+        byte[] bytes = new byte[20];
+        bytes[19] = (byte)suffix;
+        return new StorageCell(new Address(bytes), UInt256.One);
+    }
+
+    [Test]
     public void Address_warm_up_matches_by_value_in_insertion_order()
     {
         using StackAccessTracker tracker = new();
@@ -117,7 +159,7 @@ public class EthereumGasPolicyTests
     /// </summary>
     /// <remarks>Each frame holds its own copy of the tracker over one shared state, as the VM's frames do.</remarks>
     [Test]
-    public void Nested_frame_restore_preserves_parent_accesses([Values(1, 4, 16)] int depth, [Values] bool tracing)
+    public void Nested_frame_restore_preserves_parent_accesses([Values(1, 4, 16, 64)] int depth, [Values] bool tracing)
     {
         using StackAccessTracker parent = new(tracing);
         parent.WarmUp(TestItem.AddressA);

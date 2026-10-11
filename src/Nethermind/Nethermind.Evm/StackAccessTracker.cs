@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+#if !ZK_EVM
+using System.Runtime.CompilerServices;
+#endif
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
@@ -113,6 +116,11 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
+#if !ZK_EVM
+        private const int WarmCellCacheSize = 32;
+        private readonly StorageCell[] _warmCells = new StorageCell[WarmCellCacheSize];
+        private uint _warmCellsMask;
+#endif
 
         /// <remarks>
         /// A loop reading one slot asks this of the same cell every iteration, and the set probe costs about as
@@ -142,19 +150,53 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             return wasCold;
         }
 
+#if ZK_EVM
         private bool IsKnownWarm(in StorageCell storageCell) => _hasLastWarmCell && _lastWarmCell.Equals(in storageCell);
+#else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsKnownWarm(in StorageCell storageCell)
+        {
+            if (_hasLastWarmCell && _lastWarmCell.Equals(in storageCell)) return true;
+
+            int index = WarmCellIndex(in storageCell);
+            if ((_warmCellsMask & (1U << index)) == 0 || !_warmCells[index].Equals(in storageCell)) return false;
+
+            _lastWarmCell = storageCell;
+            _hasLastWarmCell = true;
+            return true;
+        }
+
+        private static int WarmCellIndex(in StorageCell storageCell) =>
+            (storageCell.Address.Bytes[18] ^ storageCell.Address.Bytes[19]) & (WarmCellCacheSize - 1);
+#endif
 
         private void RememberWarm(in StorageCell storageCell)
         {
             _lastWarmCell = storageCell;
             _hasLastWarmCell = true;
+#if !ZK_EVM
+            int index = WarmCellIndex(in storageCell);
+            _warmCells[index] = storageCell;
+            _warmCellsMask |= 1U << index;
+#endif
         }
 
+#if ZK_EVM
         public void ForgetWarm() => _hasLastWarmCell = false;
+#else
+        public void ForgetWarm()
+        {
+            _hasLastWarmCell = false;
+            _warmCellsMask = 0;
+        }
+#endif
 
         private void Clear()
         {
             ForgetWarm();
+#if !ZK_EVM
+            Array.Clear(_warmCells);
+#endif
             AccessedAddresses.Clear();
             AccessedStorageCells.Clear();
             Logs.Clear();
