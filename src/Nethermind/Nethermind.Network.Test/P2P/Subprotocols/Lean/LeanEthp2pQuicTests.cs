@@ -47,11 +47,12 @@ public class LeanEthp2pQuicTests
 
     internal sealed class QuicNode : IAsyncDisposable
     {
-        private QuicNode(PrivateKey key, TestBroadcastProfile? profile)
+        private QuicNode(PrivateKey key, TestBroadcastProfile? profile, Action<NetworkConfig>? configure)
         {
             Key = key;
             Node = new LeanTestNode(manualTime: false);
             Config = new NetworkConfig { LocalIp = "127.0.0.1", LeanEthp2pPort = 0, LeanBindings = LeanBinding.Ethp2p, LeanCommonBinding = LeanBinding.Ethp2p };
+            configure?.Invoke(Config);
             Host = new LeanEthp2pHost(Node.Transport, Config, new InsecureProtectedPrivateKey(key), LimboLogs.Instance, profile);
         }
 
@@ -61,9 +62,9 @@ public class LeanEthp2pQuicTests
         public LeanEthp2pHost Host { get; }
         public LeanEthp2pRecord Record => new(Key.PublicKey, Host.LocalEndPoint!);
 
-        public static async Task<QuicNode> Start(PrivateKey key, TestBroadcastProfile? profile = null)
+        public static async Task<QuicNode> Start(PrivateKey key, TestBroadcastProfile? profile = null, Action<NetworkConfig>? configure = null)
         {
-            QuicNode node = new(key, profile);
+            QuicNode node = new(key, profile, configure);
             await node.Host.StartAsync(CancellationToken.None);
             return node;
         }
@@ -285,6 +286,34 @@ public class LeanEthp2pQuicTests
         await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
         Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
         await Until(() => b.Node.Transport.PeerCount == 1, "the listener still accepting");
+    }
+
+    [Test]
+    public async Task Static_peer_keeps_a_reserved_slot()
+    {
+        NodeRecord unreachable = new();
+        unreachable.SetEntry(new IpEntry(IPAddress.Loopback));
+        unreachable.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyC.CompressedPublicKey));
+        unreachable.SetEntry(new LeanqEntry(9));
+        unreachable.EnrSequence = 1;
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyC).Sign(unreachable);
+        await using QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB, configure: config =>
+        {
+            config.MaxActivePeers = 2;
+            config.LeanEthp2pStaticPeers = unreachable.ToString();
+        });
+        await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
+        await using QuicNode c = await QuicNode.Start(TestItem.PrivateKeyC);
+        await using QuicNode d = await QuicNode.Start(TestItem.PrivateKeyD);
+
+        Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
+        await Until(() => b.Host.ConnectionCount == 1, "a in the free slot");
+        await d.Host.DialAsync(b.Record, CancellationToken.None);
+        await Until(() => d.Host.ConnectionCount == 0, "b refusing d, as the other slot is the static peer's");
+        Assert.That(b.Host.ConnectionCount, Is.EqualTo(1));
+
+        Assert.That(await c.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
+        await Until(() => b.Host.ConnectionCount == 2, "the static peer in its reserved slot");
     }
 
     [Test]
