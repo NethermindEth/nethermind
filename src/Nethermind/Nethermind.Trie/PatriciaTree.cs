@@ -688,7 +688,7 @@ namespace Nethermind.Trie
                 TrieNode? child = node;
                 node = cStack.Node;
 
-                if (IsUnchangedPendingLevel(node, cStack.ChildIdx, cStack.OriginalChild, child))
+                if (IsUnchangedPendingLevel(node, (int)cStack.ChildIdx, cStack.OriginalChild, child))
                 {
                     path.TruncateMut(originalPathLength);
                     traverseStack.Clear();
@@ -723,7 +723,7 @@ namespace Nethermind.Trie
                 }
 
                 // Branch only
-                int nib = cStack.ChildIdx;
+                int nib = (int)cStack.ChildIdx;
 
                 bool hasRemove = false;
                 if (TracksPath) path.TruncateOne();
@@ -860,7 +860,8 @@ namespace Nethermind.Trie
         private record struct TraverseStackFrame
         {
             public TrieNode Node;
-            public int ChildIdx;
+            // Word-sized, as is the stack's count: a zkVM guest proves a 32-bit access at several times an aligned 64-bit one.
+            public nint ChildIdx;
             public TrieNode? OriginalChild;
         }
 
@@ -873,17 +874,17 @@ namespace Nethermind.Trie
             }
 
             private Inline64 _entries;
-            private int _count;
+            private nint _count;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
+            public void Push(TraverseStackFrame frame) => _entries[(int)_count++] = frame;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool TryPop(out TraverseStackFrame frame)
             {
                 if (_count == 0) { frame = default; return false; }
-                frame = _entries[--_count];
-                if (ReleasesPoppedFrames) _entries[_count] = default; // release references
+                frame = _entries[(int)--_count];
+                if (ReleasesPoppedFrames) _entries[(int)_count] = default; // release references
                 return true;
             }
 
@@ -891,11 +892,11 @@ namespace Nethermind.Trie
             {
                 if (_count != 0)
                 {
-                    _entries[.._count].Clear();
+                    _entries[..(int)_count].Clear();
                     _count = 0;
                 }
             }
-            public int Count => _count;
+            public int Count => (int)_count;
         }
 
         private CappedArray<byte> GetNew(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool isNodeRead)
