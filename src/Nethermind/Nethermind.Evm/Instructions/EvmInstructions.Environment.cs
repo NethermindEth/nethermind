@@ -795,9 +795,8 @@ public static partial class EvmInstructions
             return tracedPush;
         }
 
-        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
-        // from state, and materialising a Hash256 for it allocates once per call for a value the next
-        // instruction discards.
+        // Push the bytes the provider already holds rather than materialising a Hash256 for a value the next
+        // instruction discards. EIP-7709 is served by InstructionBlockHashFromState instead.
         ReadOnlySpan<byte> blockHashBytes = default;
         bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
 
@@ -805,6 +804,60 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    }
+
+    /// <summary>
+    /// Implements <c>BLOCKHASH</c> under EIP-7709, serving the hash from the EIP-2935 history contract's storage.
+    /// </summary>
+    /// <remarks>
+    /// Selected in place of <see cref="InstructionBlockHash{TGasPolicy,TTracingInst}"/> when EIP-7709 is enabled, so the
+    /// block-tree path is unchanged on forks without it. Arguments outside the last
+    /// <see cref="Eip2935Constants.BlockHashServeWindow"/> blocks return zero without touching state, even though the
+    /// ring buffer may still hold them. Within the window the read has the full effects of <c>SLOAD</c> on
+    /// <c>arg % HISTORY_SERVE_WINDOW</c>: the cold/warm charge, warming of the slot (not of the history contract's
+    /// account, as in execution-specs), EIP-8279 metering of the storage key, and state-access recording through
+    /// <see cref="VirtualMachine{TGasPolicy}.WorldState"/>.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.OutOfGas"/> if the base cost or
+    /// the storage access cannot be paid; <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionBlockHashFromState<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<BlockHashGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
+
+        ulong currentNumber = vm.BlockExecutionContext.Header.Number;
+        if (!a.IsUint64 || a.u0 >= currentNumber || currentNumber - a.u0 > Eip2935Constants.BlockHashServeWindow)
+        {
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
+        IReleaseSpec spec = vm.Spec;
+        StorageCell storageCell = new(
+            spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
+            new UInt256(a.u0 % spec.Eip2935RingBufferSize));
+
+        if (!TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
+            || !TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec)
+            || !vm.TryMeterBalStorageKey(in storageCell))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+
+        vm.WorldState.Get(in storageCell, out UInt256 value);
+        EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(in value);
+
+        if (DispatchFlags.ConstTracing && vm.TxTracer.IsTracingBlockHash && !value.IsZero)
+        {
+            vm.TxTracer.ReportBlockHash(new Hash256(value.ToBigEndian()));
+        }
+
+        return pushResult;
     }
 
     /// <summary>

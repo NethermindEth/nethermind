@@ -170,7 +170,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.RETURNDATACOPY] = OpcodeHandler<ReturnDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
 
-        lookup[(int)Instruction.BLOCKHASH] = OpcodeHandler<BlockHashOpcode<TTracingInst>, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.BLOCKHASH] = spec.IsEip7709Enabled
+            ? OpcodeHandler<BlockHashFromStateOpcode<TTracingInst>, TTracingInst, TCancelable>()
+            : OpcodeHandler<BlockHashOpcode<TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.COINBASE] = OpcodeHandler<BlkAddressOpcode<EvmInstructions.OpCoinbase<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.TIMESTAMP] = OpcodeHandler<BlkUInt64Opcode<EvmInstructions.OpTimestamp<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.NUMBER] = OpcodeHandler<BlkUInt64Opcode<EvmInstructions.OpNumber<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
@@ -1136,6 +1138,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionBlockHash<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
+    private readonly struct BlockHashFromStateOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionBlockHashFromState<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]

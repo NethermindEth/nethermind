@@ -23,6 +23,16 @@ public static class Eip2935Constants
     public static readonly ulong RingBufferSize = 8191;
 
     /// <summary>
+    /// The <c>BLOCKHASH_SERVE_WINDOW</c> parameter of
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7709#specification">EIP-7709</see>.
+    /// </summary>
+    /// <remarks>
+    /// <c>BLOCKHASH</c> serves a narrower window than the ring buffer it reads from: the slot for a block older than
+    /// this window may still hold a hash, but the opcode must return zero for it.
+    /// </remarks>
+    public const ulong BlockHashServeWindow = 256;
+
+    /// <summary>
     /// The deployed bytecode of the EIP-2935 history-storage contract.
     /// </summary>
     public static readonly byte[] Code = Bytes.FromHexString("3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500");

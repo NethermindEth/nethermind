@@ -1,11 +1,9 @@
 // SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
 // SPDX-License-Identifier:LGPL-3.0-only
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -19,7 +17,6 @@ namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAccessList
 {
-
     public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
     {
         if (!TryGetParentHashCell(blockHeader, spec, out StorageCell blockHashStoreCell)) return;
@@ -61,44 +58,4 @@ public class BlockhashStore(IWorldState worldState) : IBlockhashStore, IHasAcces
         return true;
     }
 
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec)
-    {
-        if (!TryGetHistoryCell(currentHeader, requiredBlockNumber, spec, out StorageCell blockHashStoreCell))
-        {
-            return null;
-        }
-
-        worldState.Get(blockHashStoreCell, out UInt256 data);
-        return data.IsZero ? null : new Hash256(data.ToBigEndian());
-    }
-
-    /// <inheritdoc/>
-    public bool TryGetBlockHashFromState(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec, Span<byte> destination)
-    {
-        if (!TryGetHistoryCell(currentHeader, requiredBlockNumber, spec, out StorageCell blockHashStoreCell))
-        {
-            return false;
-        }
-
-        worldState.Get(blockHashStoreCell, out UInt256 data);
-        if (data.IsZero) return false;
-
-        data.ToBigEndian(destination);
-        return true;
-    }
-
-    private static bool TryGetHistoryCell(BlockHeader currentHeader, ulong requiredBlockNumber, IReleaseSpec spec, out StorageCell blockHashStoreCell)
-    {
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + spec.Eip2935RingBufferSize < currentHeader.Number)
-        {
-            blockHashStoreCell = default;
-            return false;
-        }
-
-        UInt256 blockIndex = new(requiredBlockNumber % spec.Eip2935RingBufferSize);
-        Address eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        blockHashStoreCell = new StorageCell(eip2935Account, blockIndex);
-        return true;
-    }
 }
