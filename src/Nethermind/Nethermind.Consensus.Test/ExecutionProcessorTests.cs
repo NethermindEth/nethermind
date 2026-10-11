@@ -225,6 +225,29 @@ public class ExecutionProcessorTests
        ));
     }
 
+    [Test]
+    public void ShouldCallTheRequestContractsConfiguredBySpec()
+    {
+        Address customWithdrawals = TestItem.AddressA;
+        Address customConsolidations = TestItem.AddressB;
+        _stateProvider.CreateAccount(customWithdrawals, AccountBalance);
+        _stateProvider.CreateAccount(customConsolidations, AccountBalance);
+        _stateProvider.InsertCode(customWithdrawals, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, Prague.Instance);
+        _stateProvider.InsertCode(customConsolidations, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, Prague.Instance);
+        _stateProvider.Commit(_specProvider.GenesisSpec);
+        _spec.Eip7002ContractAddress.Returns(customWithdrawals);
+        _spec.Eip7251ContractAddress.Returns(customConsolidations);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, [], _spec);
+
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customWithdrawals), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customConsolidations), Arg.Any<CallOutputTracer>());
+        _transactionProcessor.DidNotReceive().Execute(Arg.Is<Transaction>(t => t.To == eip7002Account || t.To == eip7251Account), Arg.Any<CallOutputTracer>());
+    }
+
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
         CreateDepositLogEntry(EncodeDepositEventData(requestDataParts));
 
