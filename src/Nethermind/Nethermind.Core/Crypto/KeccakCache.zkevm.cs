@@ -22,8 +22,8 @@ public static partial class KeccakCache
     internal const int MemoSlotBits = 17;
     private const int MemoSlotCount = 1 << MemoSlotBits;
 
-    // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the multiplied hash
-    // is shifted by 32 and the index is undefined, at 32 the count folds to one slot while the index
+    // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the shift is by 64,
+    // which C# wraps to 0, so the index is unbounded; at 32 the count folds to one slot while the index
     // reaches 2^32 and the store runs off the array.
     private const nuint MemoSlotBitsInRange = ((nuint)MemoSlotBits - 1) + (31 - (nuint)MemoSlotBits);
 
@@ -395,8 +395,9 @@ public static partial class KeccakCache
     private static ref ulong SlotOf(ref ulong memo, ulong mixed)
     {
         ulong folded = mixed ^ (mixed >> 32);
+        // The top bits of the product's low half, taken by shifts: masking it is a 32-bit multiply and a zero-extend on RV64.
         return ref Unsafe.Add(
             ref memo,
-            (nuint)(((folded * MemoSlotMultiplier) & uint.MaxValue) >> (32 - MemoSlotBits)) << MemoSlotShift);
+            (nuint)(((folded * MemoSlotMultiplier) << 32) >> (64 - MemoSlotBits)) << MemoSlotShift);
     }
 }
