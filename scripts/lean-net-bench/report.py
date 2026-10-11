@@ -32,8 +32,9 @@ def load(specs):
                     if not label.endswith(suffix):
                         continue
                     label = label[: -len(suffix)]
-                if LABEL.match(label):
-                    latest[label] = entry  # the latest run of a label in a file wins
+                # The latest run of a label in a file wins, unless it failed to start and an earlier one did not.
+                if LABEL.match(label) and not (entry.get("error") == "nodes did not connect" and label in latest):
+                    latest[label] = entry
         for label, entry in latest.items():
             topology, workload, mode, rtt, loss = LABEL.match(label).groups()
             cells.setdefault((topology, workload), {}).setdefault((float(rtt), float(loss), mode), []).append(entry)
