@@ -78,6 +78,7 @@ namespace Nethermind.Init.Steps
 
         private readonly TaskCompletionSource _blocksProcessedTaskSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.SetResult();
+        // Raised after every dequeued block and batch, possibly again before the continuation above unsubscribes.
+        private void OnProcessingQueueEmpty(object? sender, EventArgs e) => _blocksProcessedTaskSource.TrySetResult();
     }
 }
