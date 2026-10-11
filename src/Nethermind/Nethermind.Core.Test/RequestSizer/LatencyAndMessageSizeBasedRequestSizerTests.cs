@@ -25,6 +25,9 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
     [TestCase(50, 10000, 2, 1)]
     [TestCase(500, 0, 2, 1)]
     [TestCase(50, 0, 1, 1)]
+    [TestCase(0, 0, 0, 2)] // nothing came back (the peer lacks the items): no signal about capacity, keep the size
+    [TestCase(50, 0, 0, 2)]
+    [TestCase(500, 0, 0, 1)] // but a slow empty answer still shrinks it
     public async Task TestChangeInRequestSize(int latencyMs, long responseSize, int responseCount, int afterRequestSize)
     {
         ManualTimeProvider timeProvider = new();
@@ -47,5 +50,27 @@ public class LatencyAndMessageSizeBasedRequestSizerTests
             _sampleRequest, (cappedRequest) => Task.FromResult((cappedRequest, (long)0)));
 
         Assert.That(modifiedRequestSize.Count, Is.EqualTo(afterRequestSize));
+    }
+
+    [Test]
+    public async Task Empty_answers_do_not_drive_the_size_to_the_minimum()
+    {
+        ManualTimeProvider timeProvider = new();
+        LatencyAndMessageSizeBasedRequestSizer sizer = new(
+            1, 128,
+            TimeSpan.FromMilliseconds(20),
+            TimeSpan.FromMilliseconds(200),
+            1000,
+            4,
+            timeProvider: timeProvider
+        );
+        int[] request = Enumerable.Range(0, 128).ToArray();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await sizer.Run<int[], int, int>(request, static _ => Task.FromResult((Array.Empty<int>(), 0L)));
+        }
+
+        Assert.That(sizer.RequestSize, Is.EqualTo(4));
     }
 }

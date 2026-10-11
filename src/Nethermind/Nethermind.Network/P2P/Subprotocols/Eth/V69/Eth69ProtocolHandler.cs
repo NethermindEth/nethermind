@@ -112,6 +112,7 @@ public class Eth69ProtocolHandler(
         Session.IsNetworkIdMatched = SyncServer.NetworkId == status.NetworkId;
         HeadNumber = status.LatestBlock;
         HeadHash = status.LatestBlockHash;
+        EarliestBlock = status.EarliestBlock;
         NotifyProtocolInitialized(eventArgs);
     }
 
@@ -136,6 +137,7 @@ public class Eth69ProtocolHandler(
             _remoteHeadBlockHash = blockRangeUpdate.LatestBlockHash;
             HeadNumber = blockRangeUpdate.LatestBlock;
             HeadHash = blockRangeUpdate.LatestBlockHash;
+            EarliestBlock = blockRangeUpdate.EarliestBlock;
         }
     }
 
