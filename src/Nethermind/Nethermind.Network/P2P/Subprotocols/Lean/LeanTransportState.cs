@@ -186,6 +186,9 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status)
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
 
+    /// <summary>Wanted objects this peer announced while the assembly limits were reached, oldest first.</summary>
+    public List<(LeanDescriptor Descriptor, long Announced)> Deferred { get; } = [];
+
     /// <summary>Control messages awaiting sending, queued under the transport lock so request IDs leave in order.</summary>
     public ConcurrentQueue<LeanMessage> Outgoing { get; } = new();
 

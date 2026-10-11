@@ -893,6 +893,38 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task Announcements_beyond_the_assembly_limit_are_fetched_as_slots_free()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        Dictionary<ValueHash256, (LeanDescriptor Descriptor, byte[] Body, LeanChunkTree Tree)> objects = [];
+        for (int i = 0; i < 2 * LeanLimits.MaxAssembliesPerPeer; i++)
+        {
+            byte[] body = Wrapper(ChunkBytes, false, FrameTransaction(40 + i));
+            LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+            objects[descriptor.ObjectId] = (descriptor, body, tree);
+        }
+
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([.. objects.Values.Select(o => o.Descriptor).OrderBy(d => d.ObjectId.ToString())]));
+        Assert.That(node.Transport.AssemblyCount, Is.EqualTo(LeanLimits.MaxAssembliesPerPeer));
+        HashSet<ulong> served = [];
+        await Until(() =>
+        {
+            while (link.Sent<GetChunksMessage>().FirstOrDefault(r => !served.Contains(r.RequestId)) is { } request)
+            {
+                served.Add(request.RequestId);
+                (LeanDescriptor descriptor, byte[] body, LeanChunkTree tree) = objects[request.ObjectId];
+                Serve(node, peer, request, descriptor, body, tree);
+            }
+            // Completed bodies waiting for a validation slot are retried on the timer.
+            node.Tick(TimeSpan.Zero);
+            return objects.Keys.All(id => node.Transport.IsStored(id));
+        });
+        Assert.That(link.Penalties, Is.Empty);
+    }
+
+    [Test]
     public void Stored_objects_are_announced_to_a_new_peer_in_ascending_object_id_order()
     {
         using LeanTestNode node = new();

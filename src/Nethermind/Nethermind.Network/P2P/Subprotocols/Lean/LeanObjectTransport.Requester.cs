@@ -38,12 +38,55 @@ public sealed partial class LeanObjectTransport
                     existing.AddSource(peer);
                     continue;
                 }
-                if (peer.Assemblies >= LeanLimits.MaxAssembliesPerPeer) continue;
-                if (TryCreateAssembly(descriptor, null, peer, now) is { } assembly) assembly.Validate = true;
+                if (peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
+                    assembly.Validate = true;
+                // Senders suppress repeated announcements, so a wanted object refused by the limits waits for capacity to free.
+                else Defer(peer, descriptor, now);
             }
             Schedule(outbox, now);
         }
         outbox.Flush();
+    }
+
+    /// <summary>Keeps an announcement refused by the assembly limits in the peer's bounded cache, dropping the oldest.</summary>
+    private static void Defer(LeanPeer peer, LeanDescriptor descriptor, long now)
+    {
+        List<(LeanDescriptor Descriptor, long Announced)> deferred = peer.Deferred;
+        foreach ((LeanDescriptor pending, _) in deferred)
+            if (pending.ObjectId == descriptor.ObjectId) return;
+        if (deferred.Count >= LeanLimits.MaxDeferredPerPeer) deferred.RemoveAt(0);
+        deferred.Add((descriptor, now));
+    }
+
+    /// <summary>Starts or joins assemblies for deferred announcements as capacity frees, oldest first.</summary>
+    /// <remarks>An entry is dropped once its object is held, tombstoned or being assembled, or once it outlives
+    /// <see cref="LeanLimits.DeferredLifetime"/>; an assembly's timers start only when it is created.</remarks>
+    private void StartDeferred(long now)
+    {
+        foreach (LeanPeer peer in _peers)
+        {
+            List<(LeanDescriptor Descriptor, long Announced)> deferred = peer.Deferred;
+            int kept = 0;
+            for (int i = 0; i < deferred.Count; i++)
+            {
+                (LeanDescriptor descriptor, long announced) = deferred[i];
+                ValueHash256 objectId = descriptor.ObjectId;
+                if (_store.Contains(objectId) || _tombstones.Contains(objectId, now)
+                    || _clock.GetElapsedTime(announced, now) >= LeanLimits.DeferredLifetime) continue;
+                if (_assemblies.TryGetValue(objectId, out LeanAssembly? existing))
+                {
+                    existing.AddSource(peer);
+                    continue;
+                }
+                if (peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
+                {
+                    assembly.Validate = true;
+                    continue;
+                }
+                deferred[kept++] = deferred[i];
+            }
+            deferred.RemoveRange(kept, deferred.Count - kept);
+        }
     }
 
     private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, LeanPeer? origin, long now)
@@ -70,6 +113,7 @@ public sealed partial class LeanObjectTransport
     private void Schedule(Outbox outbox, long now)
     {
         if (_disposed) return;
+        StartDeferred(now);
         // Block import waits on sidecars, so they are scheduled before gossip objects.
         foreach (bool waited in (ReadOnlySpan<bool>)[true, false])
         {

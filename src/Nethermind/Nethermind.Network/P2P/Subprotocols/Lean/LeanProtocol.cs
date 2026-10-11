@@ -91,6 +91,12 @@ public static class LeanLimits
     public const ulong MaxObjectBytes = 16 * 1024 * 1024;
     public const int MaxAssemblies = 32;
     public const int MaxAssembliesPerPeer = 8;
+
+    /// <summary>Announced objects kept pending per peer while the assembly limits are reached.</summary>
+    public const int MaxDeferredPerPeer = LeanProtocol.MaxAnnouncements;
+
+    /// <summary>How long a pending announcement stays eligible for retrieval.</summary>
+    public static readonly TimeSpan DeferredLifetime = LeanProtocol.MaxAssemblyIdle;
     public const long MaxIncompleteBytes = 64 * 1024 * 1024;
     public const long MaxPeerBytes = 24 * 1024 * 1024;
     public const long MaxCompletionBytes = 48 * 1024 * 1024;

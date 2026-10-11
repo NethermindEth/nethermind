@@ -134,6 +134,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         _peers.Remove(peer);
         foreach (LeanOutgoingRequest request in peer.Live.Values) Fail(request, peer);
         peer.Live.Clear();
+        peer.Deferred.Clear();
         foreach (LeanServing serving in peer.Serving.Values)
         {
             serving.CompleteWritten = true;
