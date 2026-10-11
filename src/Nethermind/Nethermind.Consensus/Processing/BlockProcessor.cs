@@ -244,7 +244,7 @@ public partial class BlockProcessor(
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
                         if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
-                            ScheduleProductionProof(producing, includable, attempted, deps, depsHash, kept, leanProofStore);
+                            ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore);
                         throw new LeanProofNotReadyException(limit);
                     }
                     AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
@@ -267,18 +267,18 @@ public partial class BlockProcessor(
     /// <summary>Schedules the cheapest statement that makes more of this body's transactions includable.</summary>
     /// <remarks>
     /// A verified statement for an earlier body is narrowed first, with one discarding call, to the transactions it still
-    /// makes includable: its other transactions were included while it was being proven, and a statement for the whole body
-    /// takes a recursive merge per new child. Otherwise the whole body is proven, either by folding every witness again or
-    /// by extending a verified overlapping statement and discarding what the body no longer needs.
+    /// makes includable: its other transactions were included while it was being proven. Otherwise the statement covers what
+    /// the body needs once the transactions of the proven set go into this block; a statement that also covered them would
+    /// need another discarding call after their inclusion. It is proven either by folding every witness again or by
+    /// extending a verified overlapping statement and discarding what the body no longer needs.
     /// </remarks>
     private void ScheduleProductionProof(BlockToProduce producing, IncludableTransactions includable, HashSet<FrameDependency> attempted,
-        List<FrameDependency> deps, in ValueHash256 depsHash, int provenKept, LeanProofStore store)
+        List<FrameDependency> deps, in ValueHash256 depsHash, HashSet<FrameDependency> provenLimit, int provenKept, LeanProofStore store)
     {
-        List<RecursiveProofInput> overlaps = store.ProvenOverlaps(attempted, MaxExtensionCandidates);
         RecursiveProofInput narrowed = default;
         HashSet<FrameDependency>? narrowedNeeded = null;
         int narrowedKept = provenKept;
-        foreach (RecursiveProofInput parent in overlaps)
+        foreach (RecursiveProofInput parent in store.ProvenOverlaps(attempted, MaxExtensionCandidates))
         {
             HashSet<FrameDependency> within = [.. parent.InnerDeps];
             within.IntersectWith(attempted);
@@ -289,23 +289,28 @@ public partial class BlockProcessor(
         }
         if (narrowedNeeded is not null)
         {
-            List<FrameDependency> target = Eip8288Dependencies.Canonicalize(narrowedNeeded);
+            List<FrameDependency> narrowedTarget = Eip8288Dependencies.Canonicalize(narrowedNeeded);
             List<FrameDependency> discards = [];
             foreach (FrameDependency dependency in narrowed.InnerDeps)
                 if (!narrowedNeeded.Contains(dependency)) discards.Add(dependency);
-            _productionProofCache.TrySchedule(target, Eip8288Dependencies.ComputeDepsHash(target),
+            _productionProofCache.TrySchedule(narrowedTarget, Eip8288Dependencies.ComputeDepsHash(narrowedTarget),
                 new AggregationInput { RecursiveProofs = [narrowed], Discards = discards }, store);
             return;
         }
-        AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+        HashSet<FrameDependency> pending = includable.NeededAfter(provenLimit);
+        if (pending.Count == 0) return;
+        List<FrameDependency> target = pending.Count == deps.Count ? deps : Eip8288Dependencies.Canonicalize(pending);
+        if (store.TryGetRecursiveProof(target, out _)) return;
+        ValueHash256 targetHash = pending.Count == deps.Count ? depsHash : Eip8288Dependencies.ComputeDepsHash(target);
+        AggregationInput scheduled = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target);
         long cost = RecursiveStarkAggregator.EstimatedCost(scheduled);
-        foreach (RecursiveProofInput parent in overlaps)
+        foreach (RecursiveProofInput parent in store.ProvenOverlaps(pending, MaxExtensionCandidates))
         {
-            AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps, parent);
+            AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, target, parent);
             long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
             if (extendedCost < cost) (scheduled, cost) = (extended, extendedCost);
         }
-        _productionProofCache.TrySchedule(deps, depsHash, scheduled, store);
+        _productionProofCache.TrySchedule(target, targetHash, scheduled, store);
     }
 
     /// <summary>The transactions of a body with their dependencies and nonce domains, to simulate restricting it.</summary>
@@ -332,9 +337,9 @@ public partial class BlockProcessor(
         /// A transaction is kept when its dependencies lie in the set and every earlier transaction of its nonce domain is kept,
         /// as a skipped nonce blocks the rest of that sender's sequence.
         /// </remarks>
-        public int Keep(IReadOnlySet<FrameDependency> limit, HashSet<FrameDependency> needed)
+        public int Keep(IReadOnlySet<FrameDependency> limit, HashSet<FrameDependency> needed, bool[]? kept = null)
         {
-            int kept = 0;
+            int count = 0;
             _blocked.Clear();
             for (int i = 0; i < _dependencies.Length; i++)
             {
@@ -345,9 +350,10 @@ public partial class BlockProcessor(
                     continue;
                 }
                 needed.UnionWith(_dependencies[i]);
-                kept++;
+                if (kept is not null) kept[i] = true;
+                count++;
             }
-            return kept;
+            return count;
         }
 
         /// <summary>Picks the proven dependency set that keeps the most transactions includable.</summary>
@@ -371,6 +377,26 @@ public partial class BlockProcessor(
                 bestKept = kept;
             }
             return (best, bestKept);
+        }
+
+        /// <summary>The dependencies the body still needs once the transactions kept under <paramref name="limit"/> are included.</summary>
+        /// <remarks>
+        /// A dependency only kept transactions use leaves with them. One that several transactions share stays: later
+        /// transactions keep reusing it, and a statement without it would lose them to every statement that has it.
+        /// </remarks>
+        public HashSet<FrameDependency> NeededAfter(IReadOnlySet<FrameDependency> limit)
+        {
+            Dictionary<FrameDependency, int> uses = [];
+            foreach (List<FrameDependency> dependencies in _dependencies)
+                foreach (FrameDependency dependency in dependencies)
+                    uses[dependency] = uses.GetValueOrDefault(dependency) + 1;
+            bool[] kept = new bool[_dependencies.Length];
+            Keep(limit, [], kept);
+            HashSet<FrameDependency> needed = [];
+            for (int i = 0; i < _dependencies.Length; i++)
+                foreach (FrameDependency dependency in _dependencies[i])
+                    if (!kept[i] || uses[dependency] > 1) needed.Add(dependency);
+            return needed;
         }
     }
 

@@ -594,9 +594,40 @@ public class Eip8288BlockProductionTests
         {
             release.Set();
         }
-        Assert.That(() => proofs.TryGetRecursiveProof(Eip8288Dependencies.Canonicalize([proven, pending]), out _), Is.True.After(5000, 20),
-            "the full statement is proven for a later pass");
+        Assert.That(() => proofs.TryGetRecursiveProof([pending], out _), Is.True.After(5000, 20),
+            "the transactions after the proven set are proven for the next block");
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Scheduled_production_proof_leaves_out_what_only_the_proven_transactions_use()
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency shared = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-shared"), default);
+        FrameDependency proven = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-proven"), default);
+        FrameDependency pending = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("after-pending"), default);
+        foreach (FrameDependency dependency in (FrameDependency[])[shared, proven, pending]) proofs.AddVerified([dependency], [[1]], null);
+        List<FrameDependency> statement = Eip8288Dependencies.Canonicalize([shared, proven]);
+        proofs.AddCachedRecursive(statement, Eip8288Dependencies.ComputeDepsHash(statement).ToByteArray());
+        Transaction[] kept = [CreateTransaction(chain, shared, [1]), CreateTransaction(chain, shared, [2]), CreateTransaction(chain, proven, [3])];
+        foreach (Transaction transaction in (Transaction[])[.. kept, CreateTransaction(chain, pending, [4])])
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        using CancellationTokenSource deadline = new();
+        Block? block = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
+
+        List<FrameDependency> next = Eip8288Dependencies.Canonicalize([shared, pending]);
+        Assert.That(() => proofs.TryGetRecursiveProof(next, out _), Is.True.After(5000, 20),
+            "the shared dependency stays for the transactions that keep reusing it");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions, Is.EquivalentTo(kept));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+            Assert.That(verifier.LastInput!.Deps, Is.EquivalentTo(next));
+            Assert.That(verifier.LastInput.RecursiveProofs, Is.Empty);
+        }
     }
 
     [TestCase(1, false)]
@@ -606,19 +637,21 @@ public class Eip8288BlockProductionTests
         CountingVerifier verifier = new();
         LeanProofStore proofs = new();
         using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        // The proven transactions wait behind the added one's nonce, so the statement covers the whole body.
+        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
+        proofs.AddVerified([added], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
         FrameDependency[] proven = new FrameDependency[provenCount];
         for (int i = 0; i < proven.Length; i++)
         {
             proven[i] = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"extend-proven:{i}"), default);
             proofs.AddVerified([proven[i]], [[1]], null);
-            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [(UInt256)(i + 1)]), TxHandlingOptions.PersistentBroadcast),
+            Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, proven[i], [UInt256.Zero], nonce: (ulong)i + 1), TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.Accepted));
         }
         List<FrameDependency> provenSet = Eip8288Dependencies.Canonicalize(proven);
         proofs.AddCachedRecursive(provenSet, Eip8288Dependencies.ComputeDepsHash(provenSet).ToByteArray());
-        FrameDependency added = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("extend-added"), default);
-        proofs.AddVerified([added], [[1]], null);
-        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
         using CancellationTokenSource deadline = new();
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
@@ -629,13 +662,13 @@ public class Eip8288BlockProductionTests
         {
             Assert.That(verifier.ProofCalls, Is.EqualTo(1), "one native call proves the statement");
             Assert.That(verifier.LastInput!.RecursiveProofs, Has.Count.EqualTo(extended ? 1 : 0));
-            Assert.That(verifier.LastInput.Deps, Is.EqualTo(extended ? new[] { added } : full.ToArray()),
+            Assert.That(verifier.LastInput.Deps, Is.EquivalentTo(extended ? new[] { added } : full.ToArray()),
                 extended ? "eight proven signatures cost more to fold again than one merge" : "one signature is cheaper to fold than to merge");
         }
     }
 
     [Test]
-    public async Task Stale_production_statement_is_narrowed_to_its_pending_transactions_and_then_extended()
+    public async Task Stale_production_statement_is_narrowed_to_its_pending_transactions_before_the_rest_is_proven()
     {
         CountingVerifier verifier = new();
         LeanProofStore proofs = new();
@@ -656,7 +689,6 @@ public class Eip8288BlockProductionTests
         proofs.AddVerified([added], [[1]], null);
         Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, added, [100]), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         List<FrameDependency> narrowed = Eip8288Dependencies.Canonicalize(pending);
-        List<FrameDependency> full = Eip8288Dependencies.Canonicalize([.. pending, added]);
         using CancellationTokenSource deadline = new();
 
         Block? first = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
@@ -671,12 +703,12 @@ public class Eip8288BlockProductionTests
         }
 
         Block? next = await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token);
-        Assert.That(() => proofs.TryGetRecursiveProof(full, out _), Is.True.After(5000, 20));
+        Assert.That(() => proofs.TryGetRecursiveProof([added], out _), Is.True.After(5000, 20));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(next!.Transactions, Has.Length.EqualTo(pending.Length), "the narrowed statement makes its transactions includable");
-            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one native call extends the narrowed statement to the whole body");
-            Assert.That(verifier.LastInput!.RecursiveProofs.Select(static parent => parent.InnerDeps), Is.EqualTo(new[] { narrowed }));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(2), "one native call proves what the narrowed statement leaves out");
+            Assert.That(verifier.LastInput!.RecursiveProofs, Is.Empty);
             Assert.That(verifier.LastInput.Discards, Is.Empty);
             Assert.That(verifier.LastInput.Deps, Is.EqualTo(new[] { added }));
         }
