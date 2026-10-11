@@ -2792,7 +2792,7 @@ jobs:
           set -euo pipefail
           for entry in \
             3791d66da156f868aea70c8f72988c28a703e0d9:storage-map-baseline-3791d66 \
-            8d7f47994e69ee2d68a2f828be4a89c1d0fc167f:storage-map-lazy-reuse-8d7f479; do
+            e275a022ada42c13f3c8e3651a4e965c70b42524:storage-map-lazy-scope-e275a02; do
             source_ref="${entry%%:*}"
             image="nethermind-rpcbench:${entry#*:}"
             git fetch --depth=1 origin "$source_ref"
