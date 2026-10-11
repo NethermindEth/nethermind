@@ -395,8 +395,9 @@ internal class VotesManager : IVotesManager, IDisposable
                 return;
             }
 
-            Address signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
-            ref int signCount = ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
+            // Peers supply the certificates: a signature that recovers nothing is invalid, not a crash.
+            Address? signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
+            ref int signCount = ref signer is null ? ref Unsafe.NullRef<int>() : ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
             if (Unsafe.IsNullRef(ref signCount))
             {
