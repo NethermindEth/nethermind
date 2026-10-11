@@ -215,11 +215,7 @@ internal static partial class RlpHelpers
         return DecodeLargerByteArraySpan(data, position, prefix, limit, size, out value);
     }
 
-#if !ZK_EVM
-    // Cold path, kept out of line so the short-string case above stays small. The guest wants the
-    // opposite: with no call, its byte-string decodes are 1.3M ziskemu steps cheaper.
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#endif
+    [MethodImpl(LargerByteArrayInlining)]
     private static int DecodeLargerByteArraySpan(
         ReadOnlySpan<byte> data, int position, int prefix, RlpLimit? limit, int size, out ReadOnlySpan<byte> value)
     {
