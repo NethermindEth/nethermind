@@ -39,6 +39,7 @@ public class Eip8360Tests : VirtualMachineTestsBase
 {
     private static readonly IReleaseSpec EnabledSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true };
     private static readonly ISpecProvider EnabledSpecProvider = new TestSpecProvider(EnabledSpec);
+    private static readonly IReleaseSpec SetCodeFromSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8360Enabled = true, IsEip8298Enabled = true };
 
     private static readonly Address Factory = TestItem.AddressC;
     private static readonly Address Library = TestItem.AddressD;
@@ -692,6 +693,56 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(Storage(sameTransaction ? Factory : Library, 1), Is.EqualTo(ToWord(created)), "the CREATE succeeded");
             Assert.That(PersistedCode(runtime), Is.SequenceEqualTo(runtime), "the persistent account needs the code");
             Assert.That(TestState.GetCode(created), Is.SequenceEqualTo(runtime));
+            AssertFinalized(tcreated, UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Setcodefrom_rejects_a_tcreate_account_as_its_source()
+    {
+        byte[] init = Prepare.EvmCode.ForInitOf(ReturnWord(Prepare.EvmCode.PushData(42))).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        byte[] factoryCode = Prepare.EvmCode
+            .Data(TCreateAndStore(init, UInt256.Zero))
+            .SETCODEFROM(tcreated).PushData(1).Op(Instruction.SSTORE)
+            .STOP()
+            .Done;
+        InstallCode(Factory, factoryCode);
+
+        Assert.That(Run(SetCodeFromSpec).StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)));
+            Assert.That(FactorySlot(1), Is.EqualTo(UInt256.Zero), "a TCREATE account is created in the transaction, so it is no valid source");
+            Assert.That(TestState.GetCode(Factory), Is.SequenceEqualTo(factoryCode));
+        }
+    }
+
+    [Test]
+    public void Setcodefrom_in_tcreate_initcode_lasts_until_finalization()
+    {
+        InstallCode(Library, ReturnWord(Prepare.EvmCode.PushData(42)));
+        byte[] init = Prepare.EvmCode.SETCODEFROM(Library).Op(Instruction.POP).STOP().Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, Prepare.EvmCode
+            .Data(TCreateAndStore(init, UInt256.Zero))
+            .Data(CallAndStoreWord(tcreated, UInt256.Zero, slot: 1))
+            .STOP()
+            .Done, 10);
+
+        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState,
+            new EthereumVirtualMachine(new TestBlockhashProvider(SpecProvider), SpecProvider, LimboLogs.Instance),
+            new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
+
+        Assert.That(Run(SetCodeFromSpec, processor).StatusCode, Is.EqualTo(StatusCode.Success));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)));
+            Assert.That(FactorySlot(1), Is.EqualTo((UInt256)42), "the adopted code runs within the transaction");
+            Assert.That(tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(tcreated)!.CodeChange, Is.Null,
+                "finalization discards the adopted code");
             AssertFinalized(tcreated, UInt256.Zero);
         }
     }
