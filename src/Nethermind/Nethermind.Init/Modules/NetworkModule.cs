@@ -42,6 +42,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        // EIP-8437: lean/1 is advertised over RLPx only when that binding is supported.
+        if ((networkConfig.LeanBindings & LeanBinding.Rlpx) != 0) builder.AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>();
+        builder.AddModule(new LeanEthp2pModule(networkConfig));
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddSingleton<SyncedTxGossipPolicy>()
@@ -79,11 +83,9 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
-            .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
             .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
             .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
-            .AddModule(new LeanEthp2pModule(configProvider.GetConfig<INetworkConfig>()))
             .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.AnnounceObjectsMessage, Subprotocols.Lean.AnnounceObjectsMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.GetObjectsMessage, Subprotocols.Lean.GetObjectsMessageSerializer>()

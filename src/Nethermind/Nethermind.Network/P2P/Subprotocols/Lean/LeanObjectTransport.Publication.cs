@@ -176,6 +176,7 @@ public sealed partial class LeanObjectTransport
             if (_produced.TryGetValue(hash.ValueHash256, out RecursiveStark? produced)) return produced;
             if (_store.TryLookup(selector, out LeanObjectStore.Entry entry))
                 return new RecursiveStark(LeanBodies.ParseBlockProof(entry.Body).ToArray(), new Hash256(entry.Descriptor.BlockDepsHash));
+            if (BroadcastSidecar(hash.ValueHash256, block, depsHash) is { } broadcast) return broadcast;
         }
         if (_blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
             is { RecursiveStark: { } known }) return known;
@@ -191,6 +192,7 @@ public sealed partial class LeanObjectTransport
                 Task signal;
                 lock (_gate)
                 {
+                    if (BroadcastSidecar(hash.ValueHash256, block, depsHash) is { } broadcast) return broadcast;
                     signal = _hintSignal.Task;
                     if (_hints.TryGetValue(hash.ValueHash256, out List<LeanPeer>? hinted))
                         foreach (LeanPeer peer in hinted) if (!peer.Closed && !asked.Contains(peer)) candidates.Add(peer);
@@ -204,6 +206,7 @@ public sealed partial class LeanObjectTransport
                     {
                         Interlocked.Increment(ref _stats.SidecarsFetched);
                         LeanMetrics.Record(LeanProtocol.KindBlockProof, LeanEvent.SidecarFetched);
+                        LeanMetrics.Transferred(LeanProtocol.KindBlockProof, broadcast: false, Stopwatch.GetElapsedTime(started));
                         if (_logger.IsInfo) _logger.Info($"lean/1 recovered the block proof of {block.ToString(Block.Format.Short)} from {candidate} in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:N0} ms");
                         return proof;
                     }

@@ -11,6 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 /// <summary>Invalid stream data under the ethp2p binding: the binding is terminated.</summary>
 internal sealed class LeanEthp2pViolationException(string message) : Exception(message);
 
+/// <summary>The stream is not a retrieval stream; the shared dispatcher routes it.</summary>
+internal sealed class LeanEthp2pOtherStreamException(byte selector) : Exception($"stream selector {selector} is not a retrieval stream")
+{
+    public byte Selector { get; } = selector;
+}
+
 /// <summary>Receives what an incoming stream carries.</summary>
 internal interface ILeanEthp2pStreamHandler
 {
@@ -36,7 +42,7 @@ internal enum LeanEthp2pStreamEnd
     Complete
 }
 
-/// <summary>Incremental parser of one incoming unidirectional stream under the EIP-8437 ethp2p binding.</summary>
+/// <summary>Incremental parser of one incoming retrieval stream under the EIP-8437 ethp2p profile.</summary>
 /// <remarks>
 /// The stream type, request ID, message ID and payload length are checked before any payload byte is read or buffered.
 /// A terminal response is held until FIN, so extra bytes after it are rejected before the request retires.
@@ -125,7 +131,7 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
                 Type = _small[0];
                 if (Type == LeanEthp2pProtocol.ControlStream) Next(Stage.Header, LeanEthp2pProtocol.FrameHeaderBytes);
                 else if (Type == LeanEthp2pProtocol.ResponseStream) Next(Stage.RequestId, sizeof(ulong));
-                else throw new LeanEthp2pViolationException($"unknown stream type {Type}");
+                else throw new LeanEthp2pOtherStreamException(_small[0]);
                 break;
             case Stage.RequestId:
                 RequestId = BinaryPrimitives.ReadUInt64BigEndian(_small);
