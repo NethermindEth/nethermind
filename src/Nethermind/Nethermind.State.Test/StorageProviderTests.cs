@@ -2470,6 +2470,31 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+#if ZK_EVM
+    [Test]
+    public void Get_ManyReads_IndexesOriginalValuesEagerly()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Commit(Frontier.Instance);
+        for (int i = 1; i <= 2048; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        OptimizedDictionary<StorageCell, UInt256> originals =
+            (OptimizedDictionary<StorageCell, UInt256>)GetPrivateField(provider._persistentStorageProvider, "_originalValues");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(originals.Count, Is.EqualTo(2048), "Guest reads must index every original value immediately.");
+            Assert.That(typeof(PersistentStorageProvider).GetField("_pendingOriginalValues", BindingFlags.Instance | BindingFlags.NonPublic), Is.Null,
+                "The guest must not allocate a deferred capture buffer.");
+        }
+        provider.Commit(Frontier.Instance);
+        Assert.That(originals.Count, Is.Zero, "Commit must clear the guest original-value index.");
+    }
+
+#else
     [Test]
     public void Commit_ReadOnlyRounds_ReusesPendingBuffer([Values(2, 2048)] int slotCount)
     {
@@ -2527,6 +2552,8 @@ public class StorageProviderTests(bool useFlat)
 
         Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
     }
+
+#endif
 
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
