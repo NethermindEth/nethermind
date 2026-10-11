@@ -485,24 +485,64 @@ public class LeanBroadcastTests
         using LeanTestNode node = new();
         FakeLink link = new();
         LeanPeer peer = node.Connect(link);
-        byte[] package = InclusionList(3 * LeanProtocol.ChunkBytes, FrameTransaction(7));
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
-        Assert.That(node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
+        LeanDescriptor descriptor = BroadcastPackage(node, 7);
+        TimeSpan wait = node.Transport.BroadcastWait;
         node.Transport.OnBroadcastProgress(descriptor);
 
         node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
-        node.Tick(TimeSpan.FromMilliseconds(40));
+        TimeSpan? wake = node.Time!.TimerDueTime;
+        node.Tick(wait / 2);
         node.Transport.OnBroadcastProgress(descriptor);
-        node.Tick(TimeSpan.FromMilliseconds(40));
+        node.Tick(wait / 2);
         GetChunksMessage[] deferred = link.Sent<GetChunksMessage>();
-        // No new shard for longer than the deferral bound: the object is retrieved within its unchanged deadlines.
-        node.Tick(TimeSpan.FromSeconds(1));
+        // No new shard for a round trip: the object is retrieved within its unchanged deadlines.
+        node.Tick(wait);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deferred, Is.Empty, "chunks are not requested while shards keep arriving");
+            Assert.That(wake, Is.EqualTo(wait), "the timer fires when the deferral ends rather than at the next tick");
             Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
         }
+    }
+
+    [Test]
+    public void Shards_trickling_in_defer_retrieval_only_a_few_round_trips_after_the_manifest()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        LeanDescriptor descriptor = BroadcastPackage(node, 8);
+        TimeSpan wait = node.Transport.BroadcastWait;
+        node.Transport.OnBroadcastProgress(descriptor);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+
+        int ticks = 0;
+        while (link.Sent<GetChunksMessage>().Length == 0 && ticks++ < 100)
+        {
+            node.Tick(wait / 2);
+            node.Transport.OnBroadcastProgress(descriptor);
+        }
+        Assert.That(ticks * (wait / 2), Is.LessThanOrEqualTo(3 * wait));
+    }
+
+    [Test]
+    public void A_slow_peer_does_not_lengthen_the_broadcast_wait()
+    {
+        using LeanTestNode node = new();
+        LeanPeer fast = node.Connect(new FakeLink("fast")), slow = node.Connect(new FakeLink("slow"));
+        node.Transport.SampleRoundTrip(fast, Stopwatch.Frequency / 10);
+        node.Transport.SampleRoundTrip(slow, 10 * Stopwatch.Frequency);
+        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(100)).Within(TimeSpan.FromMilliseconds(1)));
+    }
+
+    /// <summary>A kind-3 package whose broadcast was admitted, starting its shared assembly.</summary>
+    private static LeanDescriptor BroadcastPackage(LeanTestNode node, int seed)
+    {
+        byte[] package = InclusionList(3 * LeanProtocol.ChunkBytes, FrameTransaction(seed));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
+        Assert.That(node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
+        return descriptor;
     }
 
     [Test]

@@ -33,19 +33,26 @@ public sealed partial class LeanObjectTransport
     private const int MaxBroadcastSidecars = 16;
     private const int MaxBroadcastProgress = 256;
 
-    /// <summary>Bounds of the wait for broadcast shards, about one round trip, before retrieving an object they cover.</summary>
+    /// <summary>Bounds of the wait for a new broadcast shard, about one round trip, before retrieving the object instead.</summary>
     private static readonly TimeSpan MinBroadcastDeferral = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan MaxBroadcastDeferral = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DefaultRoundTrip = TimeSpan.FromMilliseconds(200);
 
+    /// <summary>Retrieval waits at most this many round trips after a manifest is accepted, however often shards arrive.</summary>
+    private const int MaxBroadcastDeferrals = 3;
+
     private readonly Dictionary<ValueHash256, (LeanDescriptor Descriptor, byte[] Proof)> _broadcastSidecars = [];
     private readonly Queue<ValueHash256> _broadcastSidecarOrder = [];
 
-    /// <summary>When each object with an accepted manifest last made broadcast progress, keyed by <see cref="BroadcastKey"/>.</summary>
-    private readonly Dictionary<ValueHash256, long> _broadcastProgress = [];
+    /// <summary>When each object's manifest was accepted and when its broadcast last made progress, keyed by
+    /// <see cref="BroadcastKey"/>; kept until its session ends, so a later shard cannot restart the deferral.</summary>
+    private readonly Dictionary<ValueHash256, (long Accepted, long Last)> _broadcastProgress = [];
 
-    /// <summary>Smoothed time to the first chunk of a chunk request, in timestamp ticks; zero until measured.</summary>
+    /// <summary>The lowest peer round trip, in <see cref="Stopwatch"/> ticks; zero until measured.</summary>
     private long _roundTrip;
+
+    /// <summary>When the transport timer next fires, in timestamp ticks.</summary>
+    private long _nextTick = long.MaxValue;
 
     /// <summary>The chain ID and genesis hash that scope manifest IDs and channels, or null while the genesis is unknown.</summary>
     internal (UInt256 ChainId, ValueHash256 Genesis)? BroadcastScope => CreateStatus() is { } status ? (status.ChainId, status.GenesisHash) : null;
@@ -84,14 +91,21 @@ public sealed partial class LeanObjectTransport
 
     /// <summary>Records an accepted manifest or a new checked shard of its object.</summary>
     /// <remarks>EIP-8437: while new checked shards arrive, chunk requests for the object wait; retrieval resumes once none has
-    /// arrived for about one round trip. Deferral changes no assembly or request deadline.</remarks>
+    /// arrived for about one round trip, and at most <see cref="MaxBroadcastDeferrals"/> round trips after the manifest was
+    /// accepted. Deferral changes no assembly or request deadline.</remarks>
     internal void OnBroadcastProgress(LeanDescriptor descriptor)
     {
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
+            ValueHash256 key = BroadcastKey(descriptor);
+            if (_broadcastProgress.TryGetValue(key, out (long Accepted, long Last) progress))
+            {
+                _broadcastProgress[key] = (progress.Accepted, now);
+                return;
+            }
             if (_broadcastProgress.Count >= MaxBroadcastProgress) PruneBroadcastProgress(now);
-            if (_broadcastProgress.Count < MaxBroadcastProgress) _broadcastProgress[BroadcastKey(descriptor)] = now;
+            if (_broadcastProgress.Count < MaxBroadcastProgress) _broadcastProgress[key] = (now, now);
         }
     }
 
@@ -109,38 +123,60 @@ public sealed partial class LeanObjectTransport
     /// <summary>How much longer retrieval waits for the broadcast covering <paramref name="key"/>; zero when none is progressing.</summary>
     private TimeSpan BroadcastDeferral(in ValueHash256 key, long now)
     {
-        if (_broadcastProgress.Count == 0 || !_broadcastProgress.TryGetValue(key, out long last)) return TimeSpan.Zero;
-        TimeSpan remaining = BroadcastWait - _clock.GetElapsedTime(last, now);
+        if (_broadcastProgress.Count == 0 || !_broadcastProgress.TryGetValue(key, out (long Accepted, long Last) progress)) return TimeSpan.Zero;
+        TimeSpan wait = BroadcastWait;
+        TimeSpan remaining = Min(wait - _clock.GetElapsedTime(progress.Last, now),
+            MaxBroadcastDeferrals * wait - _clock.GetElapsedTime(progress.Accepted, now));
         return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
     }
 
-    /// <summary>The smoothed round trip within <see cref="MinBroadcastDeferral"/> and <see cref="MaxBroadcastDeferral"/>.</summary>
-    private TimeSpan BroadcastWait
+    /// <summary>The lowest peer round trip within <see cref="MinBroadcastDeferral"/> and <see cref="MaxBroadcastDeferral"/>.</summary>
+    /// <remarks>The lowest, so a slow or stalling peer cannot lengthen the wait, and no peer can shorten it below its real round trip.</remarks>
+    internal TimeSpan BroadcastWait
     {
         get
         {
             if (_roundTrip == 0) return DefaultRoundTrip;
-            TimeSpan roundTrip = TimeSpan.FromSeconds((double)_roundTrip / _clock.TimestampFrequency);
+            TimeSpan roundTrip = Stopwatch.GetElapsedTime(0, _roundTrip);
             return roundTrip < MinBroadcastDeferral ? MinBroadcastDeferral : roundTrip > MaxBroadcastDeferral ? MaxBroadcastDeferral : roundTrip;
         }
     }
 
-    /// <summary>Drops progress entries that no longer defer retrieval.</summary>
+    /// <summary>Drops the oldest progress entries, which outlived any session that could still deliver shards.</summary>
     private void PruneBroadcastProgress(long now)
     {
-        if (_broadcastProgress.Count == 0) return;
-        TimeSpan wait = BroadcastWait;
         List<ValueHash256>? stale = null;
-        foreach ((ValueHash256 key, long last) in _broadcastProgress)
-            if (_clock.GetElapsedTime(last, now) >= wait) (stale ??= []).Add(key);
+        foreach ((ValueHash256 key, (long accepted, _)) in _broadcastProgress)
+            if (_clock.GetElapsedTime(accepted, now) >= LeanProtocol.MaxAssemblyAge) (stale ??= []).Add(key);
         if (stale is not null) foreach (ValueHash256 key in stale) _broadcastProgress.Remove(key);
     }
 
-    /// <summary>Folds the time to a chunk request's first chunk into the smoothed round trip.</summary>
-    private void SampleRoundTrip(long elapsed)
+    /// <summary>Folds the time from sending a chunk request to its first chunk into the peer's round trip.</summary>
+    internal void SampleRoundTrip(LeanPeer peer, long elapsed)
     {
         if (elapsed <= 0) return;
-        _roundTrip = _roundTrip == 0 ? elapsed : _roundTrip + (elapsed - _roundTrip) / 8;
+        peer.RoundTrip = peer.RoundTrip == 0 ? elapsed : peer.RoundTrip + (elapsed - peer.RoundTrip) / 8;
+        UpdateRoundTrip();
+    }
+
+    /// <summary>Recomputes the lowest round trip over connected peers.</summary>
+    private void UpdateRoundTrip()
+    {
+        long lowest = 0;
+        foreach (LeanPeer peer in _peers)
+            if (peer.RoundTrip > 0 && (lowest == 0 || peer.RoundTrip < lowest)) lowest = peer.RoundTrip;
+        _roundTrip = lowest;
+    }
+
+    /// <summary>Brings the timer forward to when a deferral ends, so retrieval resumes then rather than at the next tick.</summary>
+    private void WakeAfter(TimeSpan delay, long now)
+    {
+        long wake = now + (long)(delay.TotalSeconds * _clock.TimestampFrequency);
+        if (wake >= _nextTick) return;
+        _nextTick = wake;
+        _timer.Change(delay, LeanLimits.Tick);
     }
 
     internal void ReleaseBroadcast(long codedBytes)

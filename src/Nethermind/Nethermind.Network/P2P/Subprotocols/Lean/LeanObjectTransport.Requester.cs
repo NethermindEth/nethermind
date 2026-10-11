@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -147,7 +148,11 @@ public sealed partial class LeanObjectTransport
                     || assembly.Sources.Count == 0) continue;
                 if (!waited && _incompleteBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) return;
                 // Shards of an accepted manifest are still arriving: requesting its chunks would transfer the object twice.
-                if (BroadcastDeferral(BroadcastKey(assembly.Descriptor), now) > TimeSpan.Zero) continue;
+                if (BroadcastDeferral(BroadcastKey(assembly.Descriptor), now) is var deferral && deferral > TimeSpan.Zero)
+                {
+                    WakeAfter(deferral, now);
+                    continue;
+                }
                 ScheduleAssembly(assembly, outbox, now);
             }
         }
@@ -179,7 +184,7 @@ public sealed partial class LeanObjectTransport
                 LeanChunksRequest request = new(++source.LastIssued, now, assembly, [.. indices]);
                 foreach (int index in request.Indices) assembly.InFlight[index] = source;
                 Issue(source, request);
-                outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices));
+                outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices), request);
                 issued = true;
             }
         }
@@ -242,7 +247,7 @@ public sealed partial class LeanObjectTransport
         // A valid first response for a requested index advances the request, even when another peer already supplied the
         // chunk; only a newly verified missing chunk advances the assembly.
         long now = _clock.GetTimestamp();
-        if (!request.Progressed) SampleRoundTrip(now - request.Created);
+        if (!request.Progressed && Volatile.Read(ref request.Sent) is > 0 and var sent) SampleRoundTrip(peer, Stopwatch.GetTimestamp() - sent);
         request.LastProgress = now;
         request.Progressed = true;
         peer.Stalls = 0;
@@ -453,8 +458,9 @@ public sealed partial class LeanObjectTransport
             if (_disposed) return;
             now = _clock.GetTimestamp();
             ExpireRequests(now, outbox);
+            _nextTick = now + (long)(LeanLimits.Tick.TotalSeconds * _clock.TimestampFrequency);
             ExpireAssemblies(now, outbox);
-            PruneBroadcastProgress(now);
+            UpdateRoundTrip();
             // TryComplete can remove an assembly that nobody waits for, so iterate a snapshot.
             foreach (LeanAssembly assembly in (LeanAssembly[])[.. _assemblies.Values])
                 if (assembly.IsComplete && !assembly.Queued && !assembly.Dropped) TryComplete(assembly, outbox);

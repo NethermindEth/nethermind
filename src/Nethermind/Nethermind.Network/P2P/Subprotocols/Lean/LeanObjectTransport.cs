@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -257,9 +258,9 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         private List<(LeanPeer Peer, string Reason)>? _penalties;
         private List<CancellationTokenSource>? _cancellations;
 
-        public void Send(LeanPeer peer, LeanMessage message)
+        public void Send(LeanPeer peer, LeanMessage message, LeanOutgoingRequest? request = null)
         {
-            peer.Outgoing.Enqueue(message);
+            peer.Outgoing.Enqueue((message, request));
             if (!(_recipients ??= []).Contains(peer)) _recipients.Add(peer);
         }
 
@@ -289,8 +290,12 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             {
                 try
                 {
-                    while (peer.Outgoing.TryDequeue(out LeanMessage? message))
-                        if (!peer.Closed) peer.Link.Send(message);
+                    while (peer.Outgoing.TryDequeue(out (LeanMessage Message, LeanOutgoingRequest? Request) item))
+                    {
+                        if (peer.Closed) continue;
+                        if (item.Request is { } request) Volatile.Write(ref request.Sent, Stopwatch.GetTimestamp());
+                        peer.Link.Send(item.Message);
+                    }
                 }
                 finally
                 {

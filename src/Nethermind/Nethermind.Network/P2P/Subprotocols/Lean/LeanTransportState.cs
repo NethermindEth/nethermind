@@ -189,11 +189,16 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNod
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
 
+    /// <summary>Smoothed time from sending a chunk request to its first chunk, in <see cref="System.Diagnostics.Stopwatch"/>
+    /// ticks; zero until measured.</summary>
+    public long RoundTrip { get; set; }
+
     /// <summary>Wanted objects this peer announced while the assembly limits were reached, oldest first.</summary>
     public List<(LeanDescriptor Descriptor, long Announced)> Deferred { get; } = [];
 
-    /// <summary>Control messages awaiting sending, queued under the transport lock so request IDs leave in order.</summary>
-    public ConcurrentQueue<LeanMessage> Outgoing { get; } = new();
+    /// <summary>Control messages awaiting sending, queued under the transport lock so request IDs leave in order, each with
+    /// the request it issues, if any.</summary>
+    public ConcurrentQueue<(LeanMessage Message, LeanOutgoingRequest? Request)> Outgoing { get; } = new();
 
     /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>
     public int Sending;
@@ -252,6 +257,10 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
 
     /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
     public bool Cancelled { get; set; }
+
+    /// <summary>The <see cref="System.Diagnostics.Stopwatch"/> timestamp at which the request was handed to the connection;
+    /// zero until then. Written by the sending thread.</summary>
+    public long Sent;
 
     /// <summary>An ethp2p response stream was opened for this request; a second one is a protocol violation.</summary>
     public bool Streamed { get; set; }
