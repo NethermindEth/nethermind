@@ -145,9 +145,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256 balance = worldState.GetBalance(transientCreate);
                 DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
             }
-
-            // No account refers to the code any more; destroy-list accounts are deleted without reading it.
-            worldState.DiscardTransientCode();
         }
 
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
@@ -266,12 +263,14 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
-            {
-                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
-            }
+            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+                ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
+                : Execute(tx, tracer, opts);
 
-            TransactionResult result = Execute(tx, tracer, opts);
+            // EIP-8360: every end path drops the transaction's TCREATE code, a failed or rejected transaction's
+            // included, since block production commits only once per block.
+            if (VirtualMachine.BlockExecutionContext.Spec.IsEip8360Enabled) WorldState.DiscardTransientCode();
+
             if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
             return result;
         }

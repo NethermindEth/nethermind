@@ -172,13 +172,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// and is never written to the code database.
     /// </summary>
     /// <remarks>
-    /// The code is dropped by <see cref="DiscardTransientCode"/> once the transaction has finalized its accounts, or
-    /// else by the next <see cref="Commit(IReleaseSpec, IWorldStateTracer, bool, bool)"/> or <see cref="Reset"/>.
+    /// The code is dropped by <see cref="DiscardTransientCode"/> when the transaction ends, by which time it has
+    /// finalized the accounts, and by <see cref="Commit(IReleaseSpec, IWorldStateTracer, bool, bool)"/> and <see cref="Reset"/>.
     /// A persistent deployment of the same code still stages it for the code database through <see cref="InsertCode"/>.
     /// </remarks>
     void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec);
 
-    /// <summary>Drops the code installed by <see cref="InsertTransientCode"/>, which the transaction has finalized.</summary>
+    /// <summary>Drops the code installed by <see cref="InsertTransientCode"/>, at the end of a transaction.</summary>
     /// <remarks>Not tied to <see cref="ResetTransient"/>, which also runs between EIP-8141 frames of one transaction.</remarks>
     void DiscardTransientCode();
 

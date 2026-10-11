@@ -665,6 +665,28 @@ public class Eip8360Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void A_failed_transaction_leaves_no_code_behind_in_block_production()
+    {
+        // Block production commits once per block, so the transaction's end must drop the code itself.
+        byte[] runtime = PaddedRuntime(44);
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        InstallCode(Factory, Prepare.EvmCode.Data(TCreateAndStore(init, UInt256.Zero)).Revert(0, 0).Done);
+        Transaction tx = Build.A.Transaction.WithTo(Factory).WithGasLimit(GasLimit).WithNonce(TestState.GetNonce(Sender))
+            .SignedAndResolved(_ecdsa, SenderKey).TestObject;
+        Block block = Build.A.Block.WithNumber(BlockNumber).WithTimestamp(Timestamp).WithGasLimit(GasLimit).WithTransactions(tx).TestObject;
+        TestAllTracerWithOutput tracer = CreateTracer();
+
+        _processor.BuildUp(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(() => TestState.GetCode(ValueKeccak.Compute(runtime)), Throws.InstanceOf<InvalidOperationException>(),
+                "the reverted transaction's TCREATE code is still served");
+        }
+    }
+
+    [Test]
     public void Code_shared_with_a_persistent_deployment_reaches_the_code_db([Values] bool tcreateFirst, [Values] bool sameTransaction, [Values] bool buildUp)
     {
         byte[] runtime = PaddedRuntime(43);
