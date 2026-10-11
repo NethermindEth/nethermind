@@ -46,6 +46,12 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddServiceStopper()
             .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
             .AddSingleton<GCKeeper>()
+            .AddSingleton<GcPacer, IInitConfig, ILogManager>((initConfig, logManager) => new GcPacer(
+                initConfig.GcPaceGen0IntervalMs,
+                initConfig.GcPaceGen1IntervalMs,
+                initConfig.GcPaceGen2IntervalMs,
+                initConfig.GcPaceWarmupSeconds,
+                logManager))
             .AddModule(new AppInputModule(chainSpec, configProvider, logManager))
             .AddModule(new NetworkModule(configProvider))
             .AddModule(new DiscoveryModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<INetworkConfig>()))
