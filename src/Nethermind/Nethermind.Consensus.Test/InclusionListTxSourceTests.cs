@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
@@ -49,24 +50,27 @@ public class InclusionListTxSourceTests
         LegacyInclusionListTxSource legacy = new();
         IInclusionListTxSource source = legacy;
         Transaction transaction = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        byte[][] list = [Encode(transaction)];
-        RecursiveStark proof = new([1], Keccak.Zero);
-        byte[] dependencies = [1];
         PayloadAttributes attributes = new()
         {
-            InclusionListTransactions = list,
-            InclusionListRecursiveStark = proof,
-            InclusionListProvenDependencies = dependencies
+            InclusionLists = [new InclusionListV1
+            {
+                CommitteeIndex = 5,
+                Transactions = [Encode(transaction)],
+                RecursiveStark = new RecursiveStarkV1 { StarkProof = [1], DepsHash = Keccak.Zero }
+            }]
         };
+        byte[][] list = attributes.CombinedInclusionListTransactions!;
 
-        source.Set(list, Bogota.Instance, proof, dependencies);
+        source.Set(list, Bogota.Instance, attributes.InclusionLists);
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).TestObject);
         source.ApplyInclusionList(block, attributes);
 
         Assert.That(legacy.List, Is.SameAs(list));
         Assert.That(block.InclusionListTransactions.Single().Nonce, Is.EqualTo(transaction.Nonce));
-        Assert.That(block.InclusionListRecursiveStark, Is.SameAs(proof));
-        Assert.That(block.InclusionListProvenDependencies, Is.SameAs(dependencies));
+        Assert.That(block.InclusionLists, Has.Count.EqualTo(1));
+        Assert.That(block.InclusionLists[0].CommitteeIndex, Is.EqualTo(5));
+        Assert.That(block.InclusionLists[0].Transactions, Is.EqualTo(block.InclusionListTransactions));
+        Assert.That(block.InclusionLists[0].Proof!.StarkProof, Is.EqualTo(new byte[] { 1 }));
         Assert.That(block.InclusionListProofInput, Is.Null);
     }
 
@@ -83,13 +87,12 @@ public class InclusionListTxSourceTests
         data[31] = Eip8288Constants.LeanSphincsScheme;
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
-        byte[][] list = [Encode(transaction)];
         List<FrameDependency> deps = Eip8288Dependencies.ForTransaction(transaction);
-        byte[] proven = Eip8288Dependencies.Serialize(deps);
-        RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)));
-        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof, InclusionListProvenDependencies = proven };
-        source.Set(list, spec, proof, proven);
-        source.Set(list, spec, proof, proven);
+        RecursiveStarkV1 proof = new() { StarkProof = [1], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)) };
+        PayloadAttributes attributes = new() { InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = proof }] };
+        byte[][] list = attributes.CombinedInclusionListTransactions!;
+        source.Set(list, spec, attributes.InclusionLists);
+        source.Set(list, spec, attributes.InclusionLists);
         Assert.That(verifier.VerificationCalls, Is.Zero);
         Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
         BlockToProduce firstBuild = new(Build.A.BlockHeader.WithNumber(1).TestObject);
@@ -98,15 +101,65 @@ public class InclusionListTxSourceTests
         source.ApplyInclusionList(nextBuild, attributes);
         Assert.That(nextBuild.InclusionListTransactions, Is.SameAs(firstBuild.InclusionListTransactions));
         Assert.That(nextBuild.InclusionListProofInput, Is.SameAs(firstBuild.InclusionListProofInput));
-        source.Set(list, spec, proof, proven);
+        source.Set(list, spec, attributes.InclusionLists);
         // The registered build owns its snapshot even if the caller mutates the encoded list.
         list[0][0] = 0xff;
         for (int improvement = 0; improvement < 12; improvement++)
             Assert.That(GetTransactions(source, attributes).Single().Nonce, Is.Zero);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         Assert.That(store.Covers(transaction), Is.True);
-        proof.StarkProof[0] = 2;
+        proof.StarkProof![0] = 2;
         Assert.That(GetTransactions(source, attributes), Is.Empty);
+    }
+
+    // EIPs#12475: each counted list's proof is checked on its own; the build aggregates only valid list proofs.
+    [Test]
+    public void Each_list_proof_is_checked_and_aggregated_separately()
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+        FakeLeanProofVerifier verifier = new(true);
+        InclusionListTxSource source = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
+            new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore());
+        static Transaction DependencyTx(ulong nonce, string message)
+        {
+            Transaction transaction = FrameTx(nonce, null!);
+            byte[] data = new byte[Eip8288Constants.DependencyTripleLength];
+            data[31] = Eip8288Constants.LeanSphincsScheme;
+            Keccak.Compute(message).Bytes.CopyTo(data.AsSpan(32));
+            transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
+            transaction.GasLimit = FrameTxValidation.TotalGasLimit(transaction.Frames);
+            return transaction;
+        }
+        Transaction unproven = DependencyTx(0, "unproven");
+        Transaction proven = DependencyTx(1, "proven");
+        List<FrameDependency> provenDeps = Eip8288Dependencies.ForTransaction(proven);
+        PayloadAttributes attributes = new()
+        {
+            InclusionLists =
+            [
+                // A commitment that does not match the list's dependencies fails before any verifier call.
+                new InclusionListV1 { CommitteeIndex = 4, Transactions = [Encode(unproven)], RecursiveStark = new() { StarkProof = [1], DepsHash = Keccak.Zero } },
+                new InclusionListV1
+                {
+                    CommitteeIndex = 11,
+                    Transactions = [Encode(proven)],
+                    RecursiveStark = new() { StarkProof = [2], DepsHash = new Hash256(Eip8288Dependencies.ComputeDepsHash(provenDeps)) }
+                }
+            ]
+        };
+        source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
+        BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).TestObject);
+        source.ApplyInclusionList(block, attributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }));
+            Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(2));
+            Assert.That(block.InclusionLists!.Select(static list => list.CommitteeIndex), Is.EqualTo(new ulong[] { 4, 11 }));
+            Assert.That(block.InclusionListProofInput!.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(block.InclusionListProofInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(provenDeps));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -118,10 +171,12 @@ public class InclusionListTxSourceTests
             new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance, verifier, new LeanProofStore());
         Transaction transaction = FrameTx(0, null!);
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, 0, UInt256.Zero, new byte[96])];
-        byte[][] list = [Encode(transaction)];
-        RecursiveStark proof = new([1], Keccak.Zero);
-        PayloadAttributes attributes = new() { InclusionListTransactions = list, InclusionListRecursiveStark = proof };
-        source.Set(list, spec, proof);
+        PayloadAttributes attributes = new()
+        {
+            InclusionLists = [new InclusionListV1 { Transactions = [Encode(transaction)], RecursiveStark = new RecursiveStarkV1 { StarkProof = [1], DepsHash = Keccak.Zero } }]
+        };
+        byte[][] list = attributes.CombinedInclusionListTransactions!;
+        source.Set(list, spec, attributes.InclusionLists);
         Assert.That(GetTransactions(source, attributes), Is.Empty);
         Assert.That(verifier.VerificationCalls, Is.Zero);
     }

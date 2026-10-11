@@ -2967,8 +2967,9 @@ public class BlockTreeTests
             invalid[i].Header.RecursiveStark = new RecursiveStark(proof, TestItem.KeccakA);
             if (withInclusionProof)
             {
-                invalid[i].InclusionListRecursiveStark = new RecursiveStark(proof, TestItem.KeccakB);
-                invalid[i].InclusionListTransactions = [Build.A.Transaction.TestObject];
+                Transaction[] listTransactions = [Build.A.Transaction.TestObject];
+                invalid[i].InclusionLists = [new CommitteeInclusionList(3, listTransactions, new RecursiveStark(proof, TestItem.KeccakB))];
+                invalid[i].InclusionListTransactions = listTransactions;
             }
             if (i == capacity) Assert.That(tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid), Is.Not.Null);
             tree.ReportBadBlock(invalid[i]);
@@ -2984,13 +2985,14 @@ public class BlockTreeTests
         if (withInclusionProof)
         {
             Assert.That(returned.InclusionListTransactions, Is.SameAs(invalid[0].InclusionListTransactions));
-            Assert.That(returned.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
-            returned.InclusionListRecursiveStark.StarkProof[0] = 99;
+            Assert.That(returned.InclusionLists![0].CommitteeIndex, Is.EqualTo(3));
+            Assert.That(returned.InclusionLists[0].Proof!.StarkProof[0], Is.EqualTo(7));
+            returned.InclusionLists[0].Proof!.StarkProof[0] = 99;
         }
         Block again = tree.FindBlock(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!;
         Assert.That(again.Header.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
         Assert.That(tree.FindHeader(invalid[0].Hash, BlockTreeLookupOptions.AllowInvalid)!.RecursiveStark!.StarkProof[0], Is.EqualTo(7));
-        if (withInclusionProof) Assert.That(again.InclusionListRecursiveStark!.StarkProof[0], Is.EqualTo(7));
+        if (withInclusionProof) Assert.That(again.InclusionLists![0].Proof!.StarkProof[0], Is.EqualTo(7));
     }
 
     [Test]

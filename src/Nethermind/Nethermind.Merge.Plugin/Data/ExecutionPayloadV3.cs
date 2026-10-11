@@ -3,12 +3,12 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.Decoders;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -47,16 +47,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        if (InclusionListRecursiveStark is { } inclusionProof
-            && (InclusionListTransactions is null || !inclusionProof.HasValidShape))
-        {
-            return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
-        }
-
-        if (InclusionListProvenDependencies is { } dependencies
-            && (InclusionListRecursiveStark is null || InclusionListTransactions is null
-                || !Nethermind.Consensus.ProofAggregation.InclusionListProofValidator.HasValidMetadataLength(dependencies)))
-            return Result<Block>.Fail("Invalid inclusion-list proven dependencies");
+        if (InclusionLists is not null && InclusionListV1.Validate(InclusionLists) is { } inclusionListError)
+            return Result<Block>.Fail(inclusionListError);
 
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
@@ -69,9 +61,17 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.BlobGasUsed = BlobGasUsed;
         block.Header.ExcessBlobGas = ExcessBlobGas;
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
-        block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
-        block.InclusionListRecursiveStark = InclusionListRecursiveStark;
-        block.InclusionListProvenDependencies = InclusionListProvenDependencies;
+        if (InclusionLists is not null)
+        {
+            // Each list is decoded on its own, so its proof stays with exactly its transactions.
+            CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
+            block.InclusionLists = lists;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+        }
+        else
+        {
+            block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxs(InclusionListTransactions, true).Transactions : null;
+        }
         if (RecursiveStarkProof is null && RecursiveStarkBlockDepsHash is not null)
         {
             return Result<Block>.Fail($"Missing {nameof(RecursiveStarkProof)}");

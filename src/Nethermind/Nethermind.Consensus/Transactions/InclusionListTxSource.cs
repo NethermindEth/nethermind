@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core.Crypto;
@@ -33,7 +34,7 @@ public class InclusionListTxSource(
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
-        if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
+        if (payloadAttributes?.CombinedInclusionListTransactions is not { Length: > 0 } il) return [];
         if (!_decodedByAttributes.TryGetValue(il, out BuildInclusionList? decoded))
         {
             // A miss means Set was never called for these attributes, e.g. an oversized IL that
@@ -43,7 +44,7 @@ public class InclusionListTxSource(
         }
 
         if (decoded.DependenciesEnabled != specProvider.GetSpec(targetBlock).IsEip8288Enabled
-            || !decoded.MatchesProof(payloadAttributes.InclusionListRecursiveStark, payloadAttributes.InclusionListProvenDependencies)) return [];
+            || !decoded.MatchesLists(payloadAttributes.InclusionLists)) return [];
         return decoded.Prepared.Value.Eligible;
     }
 
@@ -54,7 +55,7 @@ public class InclusionListTxSource(
     /// <inheritdoc/>
     /// <remarks>Inputs are snapshotted within the IL byte bounds. Decoding, sender recovery and proof
     /// verification are deferred until the first <see cref="GetTransactions"/> call.</remarks>
-    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, RecursiveStark? proof, byte[]? provenDependencies = null)
+    public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, IReadOnlyList<InclusionListV1>? lists)
     {
         if (inclusionListTransactions.Length > Eip7805Constants.MaxAggregateInclusionListTransactions) return;
         long bytes = 0;
@@ -63,24 +64,22 @@ public class InclusionListTxSource(
             bytes += transaction?.Length ?? 0;
             if (bytes > Eip7805Constants.MaxAggregateInclusionListBytes) return;
         }
-        if (provenDependencies is not null && !InclusionListProofValidator.HasValidMetadataLength(provenDependencies)) return;
-        if (proof is not null && !proof.HasValidShape) return;
+        if (lists is not null && InclusionListV1.Validate([.. lists]) is not null) return;
         if (_decodedByAttributes.TryGetValue(inclusionListTransactions, out BuildInclusionList? existing)
             && ReferenceEquals(existing.Spec, spec)
-            && existing.MatchesInput(inclusionListTransactions, proof, provenDependencies)) return;
+            && existing.MatchesInput(inclusionListTransactions, lists)) return;
         byte[][] snapshot = new byte[inclusionListTransactions.Length][];
         for (int i = 0; i < snapshot.Length; i++) snapshot[i] = inclusionListTransactions[i] is { } entry ? entry.AsSpan().ToArray() : null!;
-        RecursiveStark? proofSnapshot = proof is null ? null : new(proof.StarkProof.AsSpan().ToArray(), proof.BlockDepsHash);
-        byte[]? dependencySnapshot = provenDependencies is null ? null : provenDependencies.AsSpan().ToArray();
+        InclusionListV1[]? listSnapshot = lists is null ? null : InclusionListV1.Snapshot(lists);
         _decodedByAttributes.AddOrUpdate(inclusionListTransactions, new BuildInclusionList(spec, snapshot,
-            proofSnapshot, dependencySnapshot, new Lazy<PreparedInclusionList>(() => PrepareSafely(snapshot, proofSnapshot, dependencySnapshot, spec))));
+            listSnapshot, new Lazy<PreparedInclusionList>(() => PrepareSafely(snapshot, listSnapshot, spec))));
     }
 
-    private PreparedInclusionList PrepareSafely(byte[][] snapshot, RecursiveStark? proof, byte[]? provenDependencies, IReleaseSpec spec)
+    private PreparedInclusionList PrepareSafely(byte[][] snapshot, InclusionListV1[]? lists, IReleaseSpec spec)
     {
         try
         {
-            return Prepare(snapshot, proof, provenDependencies, spec);
+            return Prepare(snapshot, lists, spec);
         }
         catch (Exception ex) when (ex is RlpException or ArgumentException)
         {
@@ -92,63 +91,71 @@ public class InclusionListTxSource(
     /// <inheritdoc/>
     public void ApplyInclusionList(BlockToProduce block, PayloadAttributes? attributes)
     {
-        if (attributes?.InclusionListTransactions is not { } input
+        if (attributes?.CombinedInclusionListTransactions is not { } input
             || !_decodedByAttributes.TryGetValue(input, out BuildInclusionList? decoded)
             || decoded.DependenciesEnabled != specProvider.GetSpec(block.Header).IsEip8288Enabled
-            || !decoded.MatchesProof(attributes.InclusionListRecursiveStark, attributes.InclusionListProvenDependencies)) return;
+            || !decoded.MatchesLists(attributes.InclusionLists)) return;
         PreparedInclusionList prepared = decoded.Prepared.Value;
         block.InclusionListTransactions = prepared.All;
-        block.InclusionListRecursiveStark = decoded.Proof;
-        block.InclusionListProvenDependencies = decoded.ProvenDependencies;
+        block.InclusionLists = prepared.Lists;
         block.InclusionListProofInput = prepared.ProofInput;
     }
 
-    private PreparedInclusionList Prepare(byte[][] snapshot, RecursiveStark? proof, byte[]? provenDependencies, IReleaseSpec spec)
+    private PreparedInclusionList Prepare(byte[][] snapshot, InclusionListV1[]? lists, IReleaseSpec spec)
     {
-        Transaction[] transactions = _decoder.Value.DecodeAndRecover(snapshot, spec);
+        CommitteeInclusionList[]? decodedLists = null;
+        Transaction[] transactions;
+        if (lists is null) transactions = _decoder.Value.DecodeAndRecover(snapshot, spec);
+        else
+        {
+            decodedLists = new CommitteeInclusionList[lists.Length];
+            for (int i = 0; i < lists.Length; i++)
+                decodedLists[i] = new CommitteeInclusionList(lists[i].CommitteeIndex,
+                    _decoder.Value.DecodeAndRecover(lists[i].Transactions!, spec), lists[i].RecursiveStark?.ToRecursiveStark());
+            transactions = CommitteeInclusionList.Flatten(decodedLists);
+        }
         Transaction[] eligible = transactions;
         AggregationInput? proofInput = null;
         if (spec.IsEip8288Enabled)
         {
-            eligible = InclusionListProofValidator.SelectEligible(transactions, proof, provenDependencies, proofVerifier,
-                spec, out List<FrameDependency> deps, out string? error);
-            if (error is not null && _logger.IsWarn) _logger.Warn($"Discarding proof-dependent inclusion-list entries: {error}.");
-            if (deps.Count > 0)
+            // Each list's proof covers only that list; a list whose proof fails still binds its dependency-free entries.
+            eligible = InclusionListProofValidator.SelectEligible(transactions, decodedLists, proofVerifier, spec,
+                out List<RecursiveProofInput> proven);
+            if (proven.Count > 0)
             {
                 // This private build snapshot retains coverage independently of a full shared cache.
-                IReadOnlyList<FrameDependency> ownedDeps = deps.AsReadOnly();
-                RecursiveProofInput parent = new(ownedDeps, proof!.StarkProof, ValueKeccak.Compute(proof.StarkProof));
-                proofInput = new AggregationInput { RecursiveProofs = [parent] };
-                proofStore?.AddVerified(deps, null, proof.StarkProof);
+                proofInput = new AggregationInput { RecursiveProofs = proven };
+                foreach (RecursiveProofInput parent in proven)
+                    proofStore?.AddVerified(parent.InnerDeps, null, MemoryMarshal.TryGetArray(parent.Proof, out ArraySegment<byte> proof)
+                        && proof.Offset == 0 && proof.Count == proof.Array!.Length ? proof.Array : parent.Proof.ToArray());
             }
         }
         Transaction[] ordered = OrderForProduction(FilterBlobs((Transaction[])eligible.Clone()));
-        return new(transactions, System.Array.AsReadOnly(ordered), proofInput);
+        return new(transactions, decodedLists, System.Array.AsReadOnly(ordered), proofInput);
     }
 
-    private sealed record PreparedInclusionList(Transaction[] All, IReadOnlyList<Transaction> Eligible, AggregationInput? ProofInput)
+    private sealed record PreparedInclusionList(Transaction[] All, CommitteeInclusionList[]? Lists, IReadOnlyList<Transaction> Eligible,
+        AggregationInput? ProofInput)
     {
-        public static readonly PreparedInclusionList Empty = new([], [], null);
+        public static readonly PreparedInclusionList Empty = new([], null, [], null);
     }
 
-    private sealed record BuildInclusionList(IReleaseSpec Spec, byte[][] EncodedTransactions, RecursiveStark? Proof,
-        byte[]? ProvenDependencies, Lazy<PreparedInclusionList> Prepared)
+    private sealed record BuildInclusionList(IReleaseSpec Spec, byte[][] EncodedTransactions, InclusionListV1[]? Lists,
+        Lazy<PreparedInclusionList> Prepared)
     {
         public bool DependenciesEnabled => Spec.IsEip8288Enabled;
 
-        public bool MatchesInput(byte[][] transactions, RecursiveStark? proof, byte[]? provenDependencies)
+        public bool MatchesInput(byte[][] transactions, IReadOnlyList<InclusionListV1>? lists)
         {
-            if (transactions.Length != EncodedTransactions.Length || !MatchesProof(proof, provenDependencies)) return false;
+            if (transactions.Length != EncodedTransactions.Length || !InclusionListV1.AreEqual(Lists, lists)) return false;
             for (int i = 0; i < transactions.Length; i++)
                 if (!transactions[i].AsSpan().SequenceEqual(EncodedTransactions[i])) return false;
             return true;
         }
 
-        public bool MatchesProof(RecursiveStark? proof, byte[]? provenDependencies)
-            => (Proof is null ? proof is null : proof is not null && Proof.BlockDepsHash == proof.BlockDepsHash
-                && Proof.StarkProof.AsSpan().SequenceEqual(proof.StarkProof))
-                && (ProvenDependencies is null ? provenDependencies is null : provenDependencies is not null
-                    && ProvenDependencies.AsSpan().SequenceEqual(provenDependencies));
+        /// <summary>Whether a build's lists still have the registered positions and proofs; the transactions are identified
+        /// by the flattened array instance the build is keyed by, and this snapshot owns their bytes.</summary>
+        public bool MatchesLists(IReadOnlyList<InclusionListV1>? lists) => InclusionListV1.AreEqual(Lists, lists, compareTransactions: false);
     }
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its

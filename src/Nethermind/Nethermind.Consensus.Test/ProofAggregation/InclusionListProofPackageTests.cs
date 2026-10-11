@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
@@ -38,12 +39,11 @@ public class InclusionListProofPackageTests
         Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
-        byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
-        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
-        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         proof.StarkProof[0] = 2;
-        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.True);
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.True);
         Assert.That(verifier.VerificationCalls, Is.EqualTo(2));
     }
 
@@ -54,13 +54,12 @@ public class InclusionListProofPackageTests
         InclusionListProofVerifier verifier = new(backend);
         Transaction transaction = DepTx(Eip8288Constants.LeanSphincsScheme);
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction);
-        byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
         for (int check = 0; check < 4; check++)
-            Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+            Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.EqualTo(valid));
         Assert.That(backend.VerificationCalls, Is.EqualTo(1));
         proof.StarkProof[0] = 2;
-        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _, provenDependencies: metadata), Is.EqualTo(valid));
+        Assert.That(InclusionListProofValidator.Validate([transaction], proof, verifier, out _, out _), Is.EqualTo(valid));
         Assert.That(backend.VerificationCalls, Is.EqualTo(2));
     }
 
@@ -117,8 +116,7 @@ public class InclusionListProofPackageTests
     [TestCase("uncovered")]
     [TestCase("invalid-proof")]
     [TestCase("missing-proof")]
-    [TestCase("without-metadata")]
-    [TestCase("mismatched-metadata")]
+    [TestCase("valid")]
     public void Eligibility_preserves_independent_entries_when_one_frame_or_package_is_bad(string scenario)
     {
         Transaction ordinary = new();
@@ -128,43 +126,67 @@ public class InclusionListProofPackageTests
         // The proof must commit to dependencies(transactions) exactly; "uncovered" proves only the first entry's.
         List<FrameDependency> proven = Eip8288Dependencies.Canonicalize([.. Eip8288Dependencies.ForTransaction(covered),
             .. scenario == "uncovered" ? [] : Eip8288Dependencies.ForTransaction(other)]);
-        byte[] metadata = Eip8288Dependencies.Serialize(scenario == "mismatched-metadata" ? Eip8288Dependencies.ForTransaction(covered) : proven);
         RecursiveStark? proof = scenario == "missing-proof" ? null : new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(proven)));
         FakeLeanProofVerifier verifier = new(scenario != "invalid-proof");
 
-        Transaction[] eligible = InclusionListProofValidator.SelectEligible([covered, other, ordinary], proof,
-            scenario == "without-metadata" ? null : metadata, verifier, Eip8288Prototype.Instance, out _, out _);
+        Transaction[] eligible = InclusionListProofValidator.SelectEligible([], [new CommitteeInclusionList(0, [covered, other, ordinary], proof)],
+            verifier, Eip8288Prototype.Instance, out _);
 
         Assert.That(eligible, scenario switch
         {
             "malformed" => Is.EqualTo(new[] { covered, ordinary }),
-            "without-metadata" => Is.EqualTo(new[] { covered, other, ordinary }),
+            "valid" => Is.EqualTo(new[] { covered, other, ordinary }),
             _ => Is.EqualTo(new[] { ordinary })
         });
-        Assert.That(verifier.VerificationCalls, Is.EqualTo(scenario is "malformed" or "invalid-proof" or "without-metadata" ? 1 : 0));
+        Assert.That(verifier.VerificationCalls, Is.EqualTo(scenario is "malformed" or "invalid-proof" or "valid" ? 1 : 0));
     }
 
-    [TestCase("duplicate")]
-    [TestCase("padding")]
-    [TestCase("unknown-scheme")]
-    [TestCase("oversized")]
-    public void Noncanonical_or_oversized_membership_metadata_is_rejected_before_native(string scenario)
+    // EIPs#12475: obligations are derived per list. A failed proof affects only its own list, whose dependency-free entries
+    // still bind; another list with a valid proof can still require the same transaction.
+    [Test]
+    public void Each_list_proof_binds_only_its_own_entries()
     {
-        Transaction covered = ValidDependencyFrame(default);
-        byte[] metadata = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(covered));
-        metadata = scenario switch
+        Transaction ordinary = new() { Hash = Keccak.Compute("ordinary") };
+        Transaction shared = ValidDependencyFrame(ValueKeccak.Compute("shared"));
+        Transaction onlyInvalid = ValidDependencyFrame(ValueKeccak.Compute("only-invalid"));
+        List<FrameDependency> sharedDeps = Eip8288Dependencies.ForTransaction(shared);
+        List<FrameDependency> invalidDeps = Eip8288Dependencies.Canonicalize([.. sharedDeps, .. Eip8288Dependencies.ForTransaction(onlyInvalid)]);
+        RecursiveStark invalidProof = new([2], new Hash256(Eip8288Dependencies.ComputeDepsHash(invalidDeps)));
+        RecursiveStark validProof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(sharedDeps)));
+        ProofBytesVerifier verifier = new(valid: [1]);
+
+        Transaction[] eligible = InclusionListProofValidator.SelectEligible([],
+            [new CommitteeInclusionList(2, [shared, onlyInvalid, ordinary], invalidProof), new CommitteeInclusionList(9, [shared], validProof)],
+            verifier, Eip8288Prototype.Instance, out List<RecursiveProofInput> proven);
+
+        using (Assert.EnterMultipleScope())
         {
-            "duplicate" => [.. metadata, .. metadata],
-            "oversized" => new byte[Eip8288Constants.MaxInclusionListDependencyBytes + Eip8288Constants.DependencyTripleLength],
-            _ => metadata
-        };
-        if (scenario == "padding") metadata[0] = 1;
-        if (scenario == "unknown-scheme") metadata[31] = 1;
+            Assert.That(eligible, Is.EqualTo(new[] { ordinary, shared }));
+            Assert.That(proven, Has.Count.EqualTo(1));
+            Assert.That(proven[0].InnerDeps, Is.EqualTo(sharedDeps));
+            Assert.That(proven[0].Proof.ToArray(), Is.EqualTo(validProof.StarkProof));
+        }
+    }
+
+    [Test]
+    public void Without_per_list_input_only_dependency_free_entries_bind()
+    {
+        Transaction ordinary = new();
+        Transaction covered = ValidDependencyFrame(default);
         FakeLeanProofVerifier verifier = new(true);
-        RecursiveStark proof = new([1], new Hash256(ValueKeccak.Compute(metadata)));
-        Assert.That(InclusionListProofValidator.SelectEligible([covered], proof, metadata, verifier,
-            Eip8288Prototype.Instance, out _, out _), Is.Empty);
+        Assert.That(InclusionListProofValidator.SelectEligible([covered, ordinary], null, verifier, Eip8288Prototype.Instance, out _),
+            Is.EqualTo(new[] { ordinary }));
         Assert.That(verifier.VerificationCalls, Is.Zero);
+    }
+
+    /// <summary>Accepts exactly the proofs whose bytes are listed.</summary>
+    private sealed class ProofBytesVerifier(byte[] valid) : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => false;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => proof.SequenceEqual(valid);
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     private static Transaction ValidDependencyFrame(ValueHash256 message)

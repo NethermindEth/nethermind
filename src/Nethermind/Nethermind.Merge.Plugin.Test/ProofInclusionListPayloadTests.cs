@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
@@ -17,172 +19,192 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class ProofInclusionListPayloadTests
 {
-    [Test]
-    public void Version_errors_precede_inclusion_proof_shape_errors()
+    private static readonly OverridableReleaseSpec PerListSpec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+    private static PayloadAttributes Attributes(InclusionListV1[]? lists, byte[][]? flattened = null) => new()
     {
-        PayloadAttributes attributes = new()
-        {
-            Timestamp = 1,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = TestItem.AddressA,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = Keccak.Zero,
-            SlotNumber = 1,
-            TargetGasLimit = 30_000_000,
-            InclusionListTransactions = []
-        };
-        TestSpecProvider provider = new(Bogota.Instance);
+        Timestamp = 1,
+        PrevRandao = Keccak.Zero,
+        SuggestedFeeRecipient = TestItem.AddressA,
+        Withdrawals = [],
+        ParentBeaconBlockRoot = Keccak.Zero,
+        SlotNumber = 1,
+        TargetGasLimit = 30_000_000,
+        InclusionListTransactions = flattened,
+        InclusionLists = lists
+    };
+
+    [Test]
+    public void Version_errors_precede_inclusion_list_shape_errors()
+    {
+        PayloadAttributes attributes = Attributes([]);
+        TestSpecProvider provider = new(PerListSpec);
         PayloadAttributesValidationResult expected = attributes.Validate(provider, 4, out string? expectedError);
-        attributes.InclusionListRecursiveStark = new([], Keccak.Zero);
+        attributes.InclusionLists = [new() { CommitteeIndex = 99, Transactions = [] }];
         Assert.That(attributes.Validate(provider, 4, out string? actualError), Is.EqualTo(expected));
         Assert.That(actualError, Is.EqualTo(expectedError));
-
-        ExecutionPayloadV4 payload = new()
-        {
-            Withdrawals = [],
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-            SlotNumber = 1,
-            BlockAccessList = [],
-            InclusionListRecursiveStark = new([], Keccak.Zero)
-        };
-        ExecutionPayloadParams<ExecutionPayloadV4> parameters = new(payload, [], Keccak.Zero, [], []);
-        Assert.That(parameters.ValidateParams(Bogota.Instance, 4, out string? error), Is.EqualTo(ValidationResult.Fail));
-        Assert.That(error, Does.StartWith("Slot number"));
     }
 
-    [Test]
-    public void Compliance_digest_separates_transactions_from_proof_metadata()
+    // EIPs#12475: PayloadAttributesV6 carries the per-list form once EIP-8288 and EIP-7805 are both active; the flattened
+    // PayloadAttributesV5 is refused there and the per-list form is refused without EIP-8288.
+    [TestCase(true, 6, true, PayloadAttributesValidationResult.Success)]
+    [TestCase(true, 5, false, PayloadAttributesValidationResult.UnsupportedFork)]
+    [TestCase(false, 5, false, PayloadAttributesValidationResult.Success)]
+    [TestCase(false, 6, true, PayloadAttributesValidationResult.UnsupportedFork)]
+    public void Attributes_version_follows_the_per_list_fork(bool eip8288, int fcuVersion, bool perList, PayloadAttributesValidationResult expected)
     {
-        byte[] proofBytes = [1];
-        Hash256 proofHash = new(ValueKeccak.Compute(proofBytes));
-        Block ordinary = Build.A.Block.TestObject;
-        ordinary.InclusionListTransactions = [new() { Hash = TestItem.KeccakA }, new() { Hash = TestItem.KeccakB }, new() { Hash = proofHash }];
-        Block proven = Build.A.Block.TestObject;
-        proven.InclusionListTransactions = [new() { Hash = TestItem.KeccakA }];
-        proven.InclusionListRecursiveStark = new(proofBytes, TestItem.KeccakB);
-        ValueHash256 digest = NewPayloadHandler.ComputeInclusionListDigest(proven);
-        Assert.That(digest, Is.Not.EqualTo(NewPayloadHandler.ComputeInclusionListDigest(ordinary)));
-        proofBytes[0] = 2;
-        Assert.That(NewPayloadHandler.ComputeInclusionListDigest(proven), Is.Not.EqualTo(digest));
+        OverridableReleaseSpec spec = eip8288 ? PerListSpec : new(Bogota.Instance);
+        PayloadAttributes attributes = perList ? Attributes([]) : Attributes(null, []);
+        Assert.That(attributes.Validate(new TestSpecProvider(spec), fcuVersion, out string? error), Is.EqualTo(expected), error);
     }
 
-    [TestCase("missing-list")]
+    [TestCase(true, 6, false)]
+    [TestCase(true, 7, true)]
+    [TestCase(false, 6, true)]
+    [TestCase(false, 7, false)]
+    public void New_payload_version_follows_the_per_list_fork(bool eip8288, int version, bool expected)
+    {
+        IReleaseSpec spec = eip8288 ? PerListSpec : Bogota.Instance;
+        ExecutionPayloadV4 payload = new() { Timestamp = 1 };
+        Assert.That(payload.ValidateForkOnNewPayload(new TestSpecProvider(spec), version), Is.EqualTo(expected));
+    }
+
+    [TestCase("missing-transactions")]
+    [TestCase("duplicate-position")]
+    [TestCase("position-out-of-range")]
+    [TestCase("empty-transaction")]
+    [TestCase("oversized-list")]
     [TestCase("missing-hash")]
+    [TestCase("missing-proof-bytes")]
     [TestCase("empty-proof")]
     [TestCase("proof-for-empty-dependencies")]
     [TestCase("oversized-proof")]
-    public void Invalid_sidecar_shape_is_rejected_at_each_payload_entry_point(string invalidShape)
+    public void Invalid_list_shape_is_rejected_at_each_entry_point(string invalidShape)
     {
-        byte[][]? transactions = invalidShape == "missing-list" ? null : [];
-        RecursiveStark proof = new(invalidShape switch
+        RecursiveStarkV1 proof = new()
         {
-            "empty-proof" => [],
-            "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
-            _ => [1]
-        }, invalidShape switch
+            StarkProof = invalidShape switch
+            {
+                "missing-proof-bytes" => null,
+                "empty-proof" => [],
+                "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
+                _ => [1]
+            },
+            DepsHash = invalidShape switch
+            {
+                "missing-hash" => null,
+                "proof-for-empty-dependencies" => new Hash256(Eip8288Dependencies.ComputeDepsHash([])),
+                _ => Keccak.Zero
+            }
+        };
+        InclusionListV1[] lists = invalidShape switch
         {
-            "missing-hash" => null!,
-            "proof-for-empty-dependencies" => new Hash256(Eip8288Dependencies.ComputeDepsHash([])),
-            _ => Keccak.Zero
-        });
-        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
-        PayloadAttributes attributes = new() { InclusionListTransactions = transactions, InclusionListRecursiveStark = proof };
-        Assert.That(attributes.Validate(new TestSpecProvider(spec), 5, out _),
+            "missing-transactions" => [new() { Transactions = null }],
+            "duplicate-position" => [new() { CommitteeIndex = 4, Transactions = [] }, new() { CommitteeIndex = 4, Transactions = [] }],
+            "position-out-of-range" => [new() { CommitteeIndex = Eip7805Constants.InclusionListCommitteeSize, Transactions = [] }],
+            "empty-transaction" => [new() { Transactions = [[]] }],
+            "oversized-list" => [new() { Transactions = [new byte[Eip7805Constants.MaxBytesPerInclusionList + 1]] }],
+            _ => [new() { Transactions = [], RecursiveStark = proof }]
+        };
+        Assert.That(InclusionListV1.Validate(lists), Is.Not.Null);
+        Assert.That(Attributes(lists).Validate(new TestSpecProvider(PerListSpec), 6, out _),
             Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
-        payload.InclusionListTransactions = transactions;
-        payload.InclusionListRecursiveStark = proof;
-        ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], transactions);
-        Assert.That(parameters.ValidateParams(spec, 6, out _), Is.EqualTo(ValidationResult.Fail));
-        Assert.That(payload.TryGetBlock().IsError, Is.True);
-    }
-
-    [TestCase("orphan")]
-    [TestCase("partial-triple")]
-    [TestCase("oversized")]
-    public void Invalid_membership_wire_shape_is_rejected_before_a_build(string shape)
-    {
-        byte[] metadata = shape switch
-        {
-            "partial-triple" => [1],
-            "oversized" => new byte[Eip8288Constants.MaxInclusionListDependencyBytes + Eip8288Constants.DependencyTripleLength],
-            _ => []
-        };
-        OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
-        RecursiveStark? proof = shape == "orphan" ? null : new([1], Keccak.Zero);
-        PayloadAttributes attributes = new()
-        {
-            Timestamp = 1,
-            PrevRandao = Keccak.Zero,
-            SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = [],
-            ParentBeaconBlockRoot = Keccak.Zero,
-            SlotNumber = 1,
-            TargetGasLimit = 30_000_000,
-            InclusionListTransactions = [],
-            InclusionListRecursiveStark = proof,
-            InclusionListProvenDependencies = metadata
-        };
-        Assert.That(attributes.Validate(new TestSpecProvider(spec), 5, out _), Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
-        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
-        payload.InclusionListTransactions = [];
-        payload.InclusionListRecursiveStark = proof;
-        payload.InclusionListProvenDependencies = metadata;
-        Assert.That(new ExecutionPayloadParams<ExecutionPayloadV3>(payload, [], Keccak.Zero, [], [])
-            .ValidateParams(spec, 6, out _), Is.EqualTo(ValidationResult.Fail));
+        ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], null, lists);
+        Assert.That(parameters.ValidateParams(PerListSpec, 7, out _), Is.EqualTo(ValidationResult.Fail));
+        payload.InclusionLists = lists;
         Assert.That(payload.TryGetBlock().IsError, Is.True);
     }
 
     [Test]
-    public void Inclusion_proof_is_input_metadata_and_is_not_echoed_by_get_payload()
+    public void Attributes_reject_a_flattened_list_beside_the_per_list_form()
+        => Assert.That(Attributes([], []).Validate(new TestSpecProvider(PerListSpec), 6, out _),
+            Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes));
+
+    [Test]
+    public void Per_list_proofs_are_input_only_and_decoded_per_list()
     {
-        RecursiveStark proof = new([1], Keccak.Zero);
+        Transaction first = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction second = Build.A.Transaction.WithNonce(2).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        InclusionListV1[] lists =
+        [
+            new() { CommitteeIndex = 7, Transactions = [Encode(first), [0xc0]], RecursiveStark = new() { StarkProof = [1], DepsHash = Keccak.Zero } },
+            new() { CommitteeIndex = 2, Transactions = [Encode(second)] }
+        ];
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        block.InclusionListTransactions = [];
-        block.InclusionListRecursiveStark = proof;
-        byte[] metadata = new byte[Eip8288Constants.DependencyTripleLength];
-        block.InclusionListProvenDependencies = metadata;
-        block = block.WithReplacedHeader(block.Header.Clone());
-        Assert.That(block.InclusionListRecursiveStark, Is.SameAs(proof));
-        Assert.That(block.InclusionListProvenDependencies, Is.SameAs(metadata));
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        Assert.That(payload.InclusionListRecursiveStark, Is.Null);
-        Assert.That(payload.InclusionListProvenDependencies, Is.Null);
-        // The CL supplies its own list proof on newPayload.
-        payload.InclusionListRecursiveStark = proof;
-        payload.InclusionListProvenDependencies = metadata;
+        Assert.That(payload.InclusionLists, Is.Null);
+        payload.InclusionLists = lists;
         Result<Block> result = payload.TryGetBlock();
         Assert.That(result.IsError, Is.False, result.Error);
-        Assert.That(result.Data!.InclusionListRecursiveStark, Is.SameAs(proof));
-        Assert.That(result.Data.InclusionListProvenDependencies, Is.SameAs(metadata));
+        Block decoded = result.Data!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.InclusionLists, Has.Count.EqualTo(2));
+            Assert.That(decoded.InclusionLists![0].CommitteeIndex, Is.EqualTo(7));
+            Assert.That(decoded.InclusionLists[0].Transactions.Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }), "an undecodable entry is dropped");
+            Assert.That(decoded.InclusionLists[0].Proof!.StarkProof, Is.EqualTo(new byte[] { 1 }));
+            Assert.That(decoded.InclusionLists[1].Proof, Is.Null);
+            Assert.That(decoded.InclusionListTransactions!.Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1, 2 }));
+            Assert.That(decoded.WithReplacedHeader(decoded.Header.Clone()).InclusionLists, Is.SameAs(decoded.InclusionLists));
+        }
     }
 
     [Test]
-    public void Membership_metadata_is_bound_to_payload_and_compliance_cache_ids()
+    public void Compliance_digest_binds_list_split_positions_and_proofs()
     {
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
-        PayloadAttributes a = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Zero), InclusionListProvenDependencies = [] };
-        PayloadAttributes b = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Zero), InclusionListProvenDependencies = [1] };
-        Assert.That(a.GetPayloadId(parent), Is.Not.EqualTo(b.GetPayloadId(parent)));
-        Block block = Build.A.Block.TestObject;
-        block.InclusionListTransactions = [];
-        block.InclusionListRecursiveStark = a.InclusionListRecursiveStark;
-        block.InclusionListProvenDependencies = a.InclusionListProvenDependencies;
-        ValueHash256 original = NewPayloadHandler.ComputeInclusionListDigest(block);
-        block.InclusionListProvenDependencies = b.InclusionListProvenDependencies;
-        Assert.That(NewPayloadHandler.ComputeInclusionListDigest(block), Is.Not.EqualTo(original));
+        Transaction a = new() { Hash = TestItem.KeccakA }, b = new() { Hash = TestItem.KeccakB };
+        byte[] proofBytes = [1];
+        static ValueHash256 Digest(params CommitteeInclusionList[] lists)
+        {
+            Block block = Build.A.Block.TestObject;
+            block.InclusionLists = lists;
+            block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+            return NewPayloadHandler.ComputeInclusionListDigest(block);
+        }
+        RecursiveStark proof = new(proofBytes, TestItem.KeccakC);
+        ValueHash256 original = Digest(new(0, [a], proof), new(1, [b], null));
+        Block flattened = Build.A.Block.TestObject;
+        flattened.InclusionListTransactions = [a, b];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NewPayloadHandler.ComputeInclusionListDigest(flattened), Is.Not.EqualTo(original));
+            Assert.That(Digest(new CommitteeInclusionList(0, [a, b], proof)), Is.Not.EqualTo(original), "list split");
+            Assert.That(Digest(new(5, [a], proof), new(1, [b], null)), Is.Not.EqualTo(original), "committee position");
+            Assert.That(Digest(new(0, [a], null), new(1, [b], proof)), Is.Not.EqualTo(original), "which list carries the proof");
+            Assert.That(Digest(new(0, [a], new RecursiveStark(proofBytes, TestItem.KeccakD)), new(1, [b], null)), Is.Not.EqualTo(original), "deps hash");
+        }
+        proofBytes[0] = 2;
+        Assert.That(Digest(new(0, [a], proof), new(1, [b], null)), Is.Not.EqualTo(original), "proof bytes");
     }
 
     [Test]
-    public void Payload_id_commits_to_inclusion_proof()
+    public void Payload_id_commits_to_each_list()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        PayloadAttributes original = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Zero) };
-        PayloadAttributes replacedProof = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([2], Keccak.Zero) };
-        PayloadAttributes replacedCommitment = new() { InclusionListTransactions = [], InclusionListRecursiveStark = new([1], Keccak.Compute("deps")) };
-        Assert.That(original.GetPayloadId(parent), Is.Not.EqualTo(replacedProof.GetPayloadId(parent)));
-        Assert.That(original.GetPayloadId(parent), Is.Not.EqualTo(replacedCommitment.GetPayloadId(parent)));
+        static InclusionListV1 List(ulong index, byte proof, Hash256 depsHash) =>
+            new() { CommitteeIndex = index, Transactions = [[0x01]], RecursiveStark = new() { StarkProof = [proof], DepsHash = depsHash } };
+        string original = Attributes([List(0, 1, Keccak.Zero)]).GetPayloadId(parent);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Attributes([List(1, 1, Keccak.Zero)]).GetPayloadId(parent), Is.Not.EqualTo(original));
+            Assert.That(Attributes([List(0, 2, Keccak.Zero)]).GetPayloadId(parent), Is.Not.EqualTo(original));
+            Assert.That(Attributes([List(0, 1, Keccak.Compute("deps"))]).GetPayloadId(parent), Is.Not.EqualTo(original));
+            Assert.That(Attributes([new() { Transactions = [[0x01]] }]).GetPayloadId(parent), Is.Not.EqualTo(original));
+            Assert.That(Attributes(null, [[0x01]]).GetPayloadId(parent), Is.Not.EqualTo(original));
+        }
     }
+
+    [Test]
+    public void Combined_transactions_flatten_the_lists_once()
+    {
+        PayloadAttributes attributes = Attributes([new() { CommitteeIndex = 3, Transactions = [[1], [2]] }, new() { CommitteeIndex = 0, Transactions = [[3]] }]);
+        byte[][] combined = attributes.CombinedInclusionListTransactions!;
+        Assert.That(combined, Is.EqualTo(new byte[][] { [1], [2], [3] }));
+        Assert.That(attributes.CombinedInclusionListTransactions, Is.SameAs(combined), "the array identifies the build");
+    }
+
+    private static byte[] Encode(Transaction transaction) => Nethermind.Serialization.Rlp.TxDecoder.Instance
+        .Encode(transaction, Nethermind.Serialization.Rlp.RlpBehaviors.SkipTypedWrapping).Bytes;
 }

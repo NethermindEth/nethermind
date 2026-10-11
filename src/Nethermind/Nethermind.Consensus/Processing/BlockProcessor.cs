@@ -102,8 +102,7 @@ public partial class BlockProcessor(
             {
                 BlockAccessList = block.BlockAccessList,
                 InclusionListTransactions = block.InclusionListTransactions,
-                InclusionListProvenDependencies = block.InclusionListProvenDependencies,
-                InclusionListRecursiveStark = block.InclusionListRecursiveStark
+                InclusionLists = block.InclusionLists
             };
         }
         TxReceipt[] receipts;

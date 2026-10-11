@@ -57,18 +57,17 @@ public class NativeInclusionListTests
         NativeLeanProofVerifierTests.AssertBareStarkProof(proofBytes, dependencies);
         Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proofBytes), Is.True);
         if (scenario == "bad-proof") proofBytes[^1] ^= 1;
-        RecursiveStark proof = new(proofBytes, new Hash256(commitment));
-        byte[] metadata = Eip8288Dependencies.Serialize(dependencies);
-        byte[][] encoded = InclusionListDecoder.Encode([ordinary, bad, covered]);
         PayloadAttributes attributes = new()
         {
-            InclusionListTransactions = encoded,
-            InclusionListRecursiveStark = proof,
-            InclusionListProvenDependencies = metadata
+            InclusionLists = [new InclusionListV1
+            {
+                Transactions = InclusionListDecoder.Encode([ordinary, bad, covered]),
+                RecursiveStark = new RecursiveStarkV1 { StarkProof = proofBytes, DepsHash = new Hash256(commitment) }
+            }]
         };
         InclusionListTxSource source = new(new EthereumEcdsa(chain.SpecProvider.ChainId), chain.SpecProvider,
             LimboLogs.Instance, NativeLeanProofVerifier.Instance);
-        source.Set(encoded, spec, proof, metadata);
+        source.Set(attributes.CombinedInclusionListTransactions!, spec, attributes.InclusionLists);
         BlockToProduce block = new(Build.A.BlockHeader.WithNumber(1).WithGasLimit(30_000_000).TestObject);
         source.ApplyInclusionList(block, attributes);
         Transaction[] offered = [.. source.GetTransactions(chain.BlockTree.Head!.Header, block.Header, block.GasLimit, attributes)];
@@ -82,8 +81,7 @@ public class NativeInclusionListTests
                 .LifetimeScope.Resolve<IInclusionListSatisfactionChecker>();
             Block ordinaryOnly = block.WithReplacedHeader(block.Header.Clone());
             ordinaryOnly.InclusionListTransactions = [ordinary];
-            ordinaryOnly.InclusionListRecursiveStark = null;
-            ordinaryOnly.InclusionListProvenDependencies = null;
+            ordinaryOnly.InclusionLists = null;
             Assert.That(checker.IsSatisfied(ordinaryOnly, ordinaryOnly, chain.MainWorldState), Is.False,
                 "the funded code-free ordinary sender is independently appendable");
             Assert.That(checker.IsSatisfied(block, block, chain.MainWorldState), Is.False,

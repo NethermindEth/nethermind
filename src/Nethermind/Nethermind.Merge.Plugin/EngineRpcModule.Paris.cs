@@ -96,6 +96,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
+        executionPayload.InclusionLists = executionPayloadParams.InclusionLists;
 
         if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {

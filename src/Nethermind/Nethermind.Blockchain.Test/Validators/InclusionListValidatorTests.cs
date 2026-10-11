@@ -46,7 +46,7 @@ public class InclusionListValidatorTests
             Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data)];
         Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(full ? 30_000_000UL : 0)
             .WithInclusionListTransactions(dependencies ? [transaction] : []).TestObject;
-        if (!dependencies) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
+        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, dependencies ? null : new([1], Keccak.Zero))];
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
         Assert.That(IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
@@ -56,7 +56,7 @@ public class InclusionListValidatorTests
         => IsSatisfied(block, block.InclusionListTransactions, state, spec, validator);
 
     private static bool IsSatisfied(Block block, Transaction[]? list, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator validator)
-        => InclusionListValidator.IsSatisfied(block, list, state, spec, validator, block.InclusionListRecursiveStark,
+        => InclusionListValidator.IsSatisfied(block, list, state, spec, validator, block.InclusionLists,
             Substitute.For<ILeanProofVerifier>());
 
     public static IEnumerable<TestCaseData> SatisfactionCases
@@ -242,10 +242,45 @@ public class InclusionListValidatorTests
         RecursiveStark proof = new([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])));
         OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
 
-        Assert.That(InclusionListProofValidator.SelectEligible([entry], proof, null, new AcceptingVerifier(), spec, out _, out string? error),
-            Has.Length.EqualTo(1), error);
+        CommitteeInclusionList[] lists = [new(0, [entry], proof)];
+        Assert.That(InclusionListProofValidator.SelectEligible([entry], lists, new AcceptingVerifier(), spec, out _), Has.Length.EqualTo(1));
         return InclusionListValidator.IsSatisfied(block, [entry], StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator,
-            proof, new AcceptingVerifier(), frameCanInclude: static _ => true);
+            lists, new AcceptingVerifier(), frameCanInclude: static _ => true);
+    }
+
+    // EIPs#12475: obligations are derived per counted list. An entry with dependencies binds through a list only if that
+    // list's proof is valid, and a failed proof in one list does not stop an independent list from requiring it.
+    [TestCase(false, false, ExpectedResult = true, TestName = "Entry under only an invalid proof imposes no obligation")]
+    [TestCase(false, true, ExpectedResult = false, TestName = "Another list with a valid proof still requires the entry")]
+    [TestCase(true, false, ExpectedResult = false, TestName = "Entry under a valid proof is required")]
+    public bool Each_list_proof_derives_its_own_obligations(bool firstValid, bool secondList)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("entry"), default);
+        Transaction entry = BuildFrameTx();
+        entry.GasLimit = 1_000_000;
+        entry.Frames = [.. entry.Frames!, new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
+            UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
+        entry.Hash = entry.CalculateHash();
+        Hash256 depsHash = new(Eip8288Dependencies.ComputeDepsHash([dependency]));
+        List<CommitteeInclusionList> lists = [new(0, [entry], new RecursiveStark(firstValid ? [1] : [2], depsHash))];
+        if (secondList) lists.Add(new(9, [entry], new RecursiveStark([1], depsHash)));
+        Block block = Build.A.Block.WithGasLimit(30_000_000).WithGasUsed(1_000_000).TestObject;
+        block.InclusionLists = lists;
+        block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip8288Enabled = true };
+
+        return InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, 10.Ether, 0), spec,
+            _txValidator, lists, new ProofBytesVerifier(), frameCanInclude: static _ => true);
+    }
+
+    /// <summary>Accepts only the one-byte proof <c>[1]</c>.</summary>
+    private sealed class ProofBytesVerifier : ILeanProofVerifier
+    {
+        public void EnsureAvailable() { }
+        public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
+        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => proof is [1];
+        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     private sealed class AcceptingVerifier : ILeanProofVerifier

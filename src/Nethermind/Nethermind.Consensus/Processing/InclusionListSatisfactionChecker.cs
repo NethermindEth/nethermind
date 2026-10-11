@@ -23,7 +23,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
-            worldState, spec, txValidator, suggestedBlock.InclusionListRecursiveStark,
+            worldState, spec, txValidator, suggestedBlock.InclusionLists,
             proofVerifier, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)

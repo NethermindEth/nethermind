@@ -1553,7 +1553,7 @@ public class SszMiddlewareTests
     public async Task GetPayload_proof_extensions_preserve_the_SSZ_response_contract(bool inclusionProof)
     {
         Block block = MakeMinimalBlock();
-        if (inclusionProof) block.InclusionListRecursiveStark = new([1], Keccak.Zero);
+        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new([1], Keccak.Zero))];
         else block.Header.RecursiveStark = new([1], Keccak.Zero);
         GetPayloadV6Result result = new(block, UInt256.Zero, new BlobsBundleV2(block), [], false);
         _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(result));

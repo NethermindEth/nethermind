@@ -49,8 +49,7 @@ public partial class BlockTree
             ValueHash256 hash = block.Hash!.ValueHash256;
             _knownInvalid.Set(hash);
             if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
-                (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
-                (block.InclusionListProvenDependencies?.Length ?? 0) > Eip8288Constants.MaxInclusionListDependencyBytes)
+                block.InclusionLists is { Count: > Eip7805Constants.InclusionListCommitteeSize } || HasOversizedListProof(block))
             {
                 Delete(hash);
                 return;
@@ -76,8 +75,27 @@ public partial class BlockTree
             _proofBytes -= ProofBytes(node.Value);
         }
 
-        public static long ProofBytes(Block block) => (long)(block.Header.RecursiveStark?.StarkProof.Length ?? 0) +
-            (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) + (block.InclusionListProvenDependencies?.Length ?? 0);
+        public static long ProofBytes(Block block)
+        {
+            long bytes = block.Header.RecursiveStark?.StarkProof.Length ?? 0;
+            foreach (CommitteeInclusionList list in block.InclusionLists ?? []) bytes += list.Proof?.StarkProof.Length ?? 0;
+            return bytes;
+        }
+
+        private static bool HasOversizedListProof(Block block)
+        {
+            foreach (CommitteeInclusionList list in block.InclusionLists ?? [])
+                if ((list.Proof?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes) return true;
+            return false;
+        }
+
+        private static CommitteeInclusionList[]? Copy(IReadOnlyList<CommitteeInclusionList>? lists)
+        {
+            if (lists is null) return null;
+            CommitteeInclusionList[] copy = new CommitteeInclusionList[lists.Count];
+            for (int i = 0; i < copy.Length; i++) copy[i] = new(lists[i].CommitteeIndex, lists[i].Transactions, Copy(lists[i].Proof));
+            return copy;
+        }
 
         private static RecursiveStark? Copy(RecursiveStark? proof) => proof is null ? null :
             new RecursiveStark((byte[])proof.StarkProof.Clone(), proof.BlockDepsHash);
@@ -92,8 +110,7 @@ public partial class BlockTree
                 GeneratedBlockAccessList = block.GeneratedBlockAccessList,
                 ExecutionRequests = block.ExecutionRequests,
                 InclusionListTransactions = block.InclusionListTransactions,
-                InclusionListRecursiveStark = Copy(block.InclusionListRecursiveStark),
-                InclusionListProvenDependencies = (byte[]?)block.InclusionListProvenDependencies?.Clone(),
+                InclusionLists = Copy(block.InclusionLists),
                 IsInclusionListSatisfied = block.IsInclusionListSatisfied,
                 AccountChanges = block.AccountChanges,
                 EncodedSize = block.EncodedSize,

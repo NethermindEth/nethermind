@@ -245,7 +245,7 @@ public class GetPayloadDirectResponseTests
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
         block.Header.RecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("deps"));
-        if (inclusionProof) block.InclusionListRecursiveStark = new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps"));
+        if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new RecursiveStark(new byte[proofLength], Keccak.Compute("il-deps")))];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);
         IStreamableResult direct = CreateDirectResult(6, block, blobsBundle, executionRequests);
@@ -254,7 +254,7 @@ public class GetPayloadDirectResponseTests
         byte[] actual = await WriteStreamableAsync(direct);
 
         Assert.That(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonNode.Parse(actual)), Is.True);
-        Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionListRecursiveStark"], Is.Null);
+        Assert.That(JsonNode.Parse(actual)!["executionPayload"]!["inclusionLists"], Is.Null);
     }
 
     [Test]

@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionListRecursiveStark = InclusionListRecursiveStark, InclusionListProvenDependencies = InclusionListProvenDependencies };
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
 
     public BlockHeader Header { get; }
 
@@ -139,11 +139,10 @@ public class Block
     [JsonIgnore]
     public Transaction[]? InclusionListTransactions { get; set; }
 
+    /// <summary>The counted inclusion lists with their EIP-8288 dependency proofs, when the Engine API supplied them per list.</summary>
+    /// <remarks>Their transactions are also flattened into <see cref="InclusionListTransactions"/>.</remarks>
     [JsonIgnore]
-    public RecursiveStark? InclusionListRecursiveStark { get; set; }
-
-    [JsonIgnore]
-    public byte[]? InclusionListProvenDependencies { get; set; }
+    public IReadOnlyList<CommitteeInclusionList>? InclusionLists { get; set; }
 
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).

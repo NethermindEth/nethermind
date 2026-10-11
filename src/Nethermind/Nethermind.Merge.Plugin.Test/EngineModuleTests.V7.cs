@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1264,16 +1265,10 @@ public partial class EngineModuleTests
             return Inner.TryEvaluate(blockHash, inclusionListTransactions);
         }
 
-        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof)
+        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists)
         {
             BeforeEvaluate?.Invoke();
-            return Inner.TryEvaluate(blockHash, inclusionListTransactions, proof);
-        }
-
-        public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, RecursiveStark? proof, byte[]? provenDependencies)
-        {
-            BeforeEvaluate?.Invoke();
-            return Inner.TryEvaluate(blockHash, inclusionListTransactions, proof, provenDependencies);
+            return Inner.TryEvaluate(blockHash, inclusionListTransactions, lists);
         }
     }
 

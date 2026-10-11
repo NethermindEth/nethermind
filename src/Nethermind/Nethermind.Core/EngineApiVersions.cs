@@ -19,6 +19,8 @@ public static class EngineApiVersions
         public const int V3 = 3; // Cancun/Prague/Osaka
         public const int V4 = 4; // Amsterdam
         public const int V5 = 5; // Bogota
+        // Prototype-only: EIP-8288's per-list inclusion-list version is not yet in execution-apis or the test fixtures.
+        public const int V6 = 6; // Bogota with EIP-8288 per-list inclusion lists
         public const int Latest = V5;
     }
 
@@ -31,6 +33,8 @@ public static class EngineApiVersions
         public const int V4 = 4; // Prague/Osaka
         public const int V5 = 5; // Amsterdam
         public const int V6 = 6; // Bogota
+        // Prototype-only: EIP-8288's per-list inclusion-list version is not yet in execution-apis or the test fixtures.
+        public const int V7 = 7; // Bogota with EIP-8288 per-list inclusion lists
         public const int Latest = V6;
     }
 

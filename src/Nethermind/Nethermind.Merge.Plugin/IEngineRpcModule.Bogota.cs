@@ -33,6 +33,27 @@ public partial interface IEngineRpcModule : IRpcModule
     Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions);
 
     [JsonRpcMethod(
+        Description = "Verifies the payload against each counted inclusion list and its EIP-8288 dependency proof, and returns the verification status (including inclusion-list compliance) and hash of the last valid block.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV7(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionListV1[]? inclusionLists);
+
+    [JsonRpcMethod(
+        Description = "Verifies the payload against each counted inclusion list and its EIP-8288 dependency proof, and returns the verification status, hash of the last valid block, and the execution witness when the payload is valid.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV7(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionListV1[]? inclusionLists);
+
+    [JsonRpcMethod(
+        Description = "Applies fork choice and starts building a new block if payload attributes are present.",
+        IsSharable = true,
+        IsImplemented = true)]
+    Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV6(
+        ForkchoiceStateV1 forkchoiceState,
+        PayloadAttributes? payloadAttributes = null,
+        [JsonRpcParameter(ConverterType = typeof(BlobCellBitArrayConverter))] BitArray? custodyColumns = null);
+
+    [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]

@@ -21,7 +21,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     /// <summary>An inclusion list retained for a payload that could not yet be validated.</summary>
-    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, RecursiveStark? Proof, byte[]? ProvenDependencies);
+    private readonly record struct RetainedInclusionList(ulong Number, byte[][] Transactions, bool Accepted, InclusionListV1[]? Lists);
     private readonly record struct InclusionListAnswer(ulong Number, bool Satisfied);
 
     private readonly Dictionary<Hash256, InclusionListAnswer> _inclusionListAnswers = [];
@@ -51,6 +51,20 @@ public partial class EngineRpcModule : IEngineRpcModule
         => NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
             EngineApiVersions.NewPayload.V6);
+
+    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV7(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, InclusionListV1[]? inclusionLists)
+        => NewPayloadWithInclusionList(
+            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, null, inclusionLists),
+            EngineApiVersions.NewPayload.V7);
+
+    public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV7(
+        ExecutionPayloadV4 executionPayload,
+        Hash256?[] blobVersionedHashes,
+        Hash256? parentBeaconBlockRoot,
+        byte[][]? executionRequests,
+        InclusionListV1[]? inclusionLists)
+        => _newPayloadWithWitnessHandlerV6.HandleAsync(
+            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, null, inclusionLists));
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(
         ExecutionPayloadV4 executionPayload,
@@ -90,8 +104,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         {
             SetRetainedInclusionList(blockHash,
                 executionPayloadParams.ExecutionPayload.BlockNumber, retained,
-                status.Status == PayloadStatus.Accepted, executionPayloadParams.ExecutionPayload.InclusionListRecursiveStark,
-                executionPayloadParams.ExecutionPayload.InclusionListProvenDependencies);
+                status.Status == PayloadStatus.Accepted, executionPayloadParams.InclusionLists);
         }
 
         return ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
@@ -111,13 +124,22 @@ public partial class EngineRpcModule : IEngineRpcModule
             ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
             : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
 
+    /// <summary>Bogota with EIP-8288: <c>PayloadAttributesV6</c> carries each counted inclusion list with its dependency proof.</summary>
+    public Task<ResultWrapper<ForkchoiceUpdatedV2Result>> engine_forkchoiceUpdatedV6(
+        ForkchoiceStateV1 forkchoiceState,
+        PayloadAttributes? payloadAttributes = null,
+        BitArray? custodyColumns = null)
+        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
+            ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
+            : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V6);
+
     /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdated"/> and maps
     /// its result onto the Bogota <see cref="ForkchoiceUpdatedV2Result"/> shape.</summary>
     protected async Task<ResultWrapper<ForkchoiceUpdatedV2Result>> ForkchoiceUpdatedWithInclusionList(
         ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         // Out of fork the attributes are rejected below with -38005, so don't retain the list at all.
-        if (payloadAttributes?.InclusionListTransactions is { } ilTxs
+        if (payloadAttributes?.CombinedInclusionListTransactions is { } ilTxs
             && _specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)) is { IsEip7805Enabled: true } spec)
         {
             // An oversized IL is a no-op, not a protocol error. Set only registers the list: decoding and
@@ -128,7 +150,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             else
             {
-                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionListRecursiveStark, payloadAttributes.InclusionListProvenDependencies);
+                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionLists);
             }
         }
 
@@ -156,15 +178,13 @@ public partial class EngineRpcModule : IEngineRpcModule
     private bool? GetInclusionListSatisfied(Hash256 headBlockHash)
     {
         byte[][] retained;
-        RecursiveStark? proof;
-        byte[]? provenDependencies;
+        InclusionListV1[]? lists;
         lock (_inclusionListLock)
         {
             if (_inclusionListAnswers.TryGetValue(headBlockHash, out InclusionListAnswer cached)) return cached.Satisfied;
             if (!_retainedInclusionLists.TryGetValue(headBlockHash, out RetainedInclusionList state)) return null;
             retained = state.Transactions;
-            proof = state.Proof;
-            provenDependencies = state.ProvenDependencies;
+            lists = state.Lists;
         }
 
         bool? evaluated;
@@ -172,8 +192,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         {
             // Sender recovery and state reads delay the payloadId response; accepted, as only a head newPayloadV6
             // left unanswered pays it, and publishing the answer caps it at once per head.
-            evaluated = proof is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained)
-                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, proof, provenDependencies);
+            evaluated = lists is null ? _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained)
+                : _inclusionListComplianceEvaluator.TryEvaluate(headBlockHash, retained, lists);
         }
         // The head is already applied and a build may be under way, and bogota.md permits a null answer, so
         // a state read that hits a pruned or still-healing subtrie must not fail the forkchoice update.
@@ -197,7 +217,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             return null;
         }
 
-        PublishInclusionListAnswer(headBlockHash, retained, proof, provenDependencies, answer);
+        PublishInclusionListAnswer(headBlockHash, retained, lists, answer);
 
         return answer;
     }
@@ -212,14 +232,14 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, RecursiveStark? proof = null, byte[]? provenDependencies = null)
+    internal void SetRetainedInclusionList(Hash256 blockHash, ulong number, byte[][] retained, bool accepted, InclusionListV1[]? lists = null)
     {
         lock (_inclusionListLock)
         {
             RemoveInclusionListAnswer(blockHash);
             if (!IsAfterFinalization(blockHash, number)) return;
             RemoveRetainedInclusionList(blockHash);
-            _retainedInclusionLists[blockHash] = new RetainedInclusionList(number, retained, accepted, proof, provenDependencies);
+            _retainedInclusionLists[blockHash] = new RetainedInclusionList(number, retained, accepted, lists);
             if (!accepted)
             {
                 _syncingInclusionListOrder.Add(blockHash);
@@ -248,13 +268,12 @@ public partial class EngineRpcModule : IEngineRpcModule
     /// but only while that is still the list retained for it.</summary>
     /// <remarks>A concurrent <c>engine_newPayloadV6</c> may have retained a newer list, which outranks anything
     /// derived from the older one.</remarks>
-    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, RecursiveStark? proof, byte[]? provenDependencies, bool answer)
+    private void PublishInclusionListAnswer(Hash256 blockHash, byte[][] retained, InclusionListV1[]? lists, bool answer)
     {
         lock (_inclusionListLock)
         {
             if (_retainedInclusionLists.TryGetValue(blockHash, out RetainedInclusionList current)
-                && ReferenceEquals(current.Transactions, retained) && ReferenceEquals(current.Proof, proof)
-                && ReferenceEquals(current.ProvenDependencies, provenDependencies))
+                && ReferenceEquals(current.Transactions, retained) && ReferenceEquals(current.Lists, lists))
             {
                 RemoveRetainedInclusionList(blockHash);
                 if (IsAfterFinalization(blockHash, current.Number))

@@ -187,9 +187,8 @@ public class ProofInclusionListEnforcementTests
         List<FrameDependency> inclusionDependencies = Eip8288Dependencies.ForTransaction(transaction);
         byte[] inclusionProof = scenario is "bounded-proof" or "generic-compressed-union"
             ? LeanProofTestEnvelope.CreateMaximal(inclusionDependencies) : LeanProofTestEnvelope.Create(inclusionDependencies, 0);
-        block.InclusionListRecursiveStark = scenario == "missing-proof" ? null
-            : new RecursiveStark(generic ? inclusionProof : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash));
-        block.InclusionListProvenDependencies = Eip8288Dependencies.Serialize(Eip8288Dependencies.ForTransaction(transaction));
+        block.InclusionLists = [new CommitteeInclusionList(0, block.InclusionListTransactions!, scenario == "missing-proof" ? null
+            : new RecursiveStark(generic ? inclusionProof : [1], scenario == "wrong-commitment" ? Keccak.Zero : new Hash256(depsHash)))];
         (ulong, ulong)? originalDimensions = block.Header.GasUsedPerDimension;
         ulong originalGasUsed = block.GasUsed;
         UInt256 balance = state.GetBalance(sender);
