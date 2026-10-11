@@ -2377,18 +2377,22 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
+    public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer([Values(1, 2048)] int slotCount)
     {
         using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell readCell = new(TestItem.AddressA, 1);
-
-        provider.Get(readCell, out _);
+        StorageCell[] readCells = new StorageCell[slotCount];
+        for (int i = 0; i < readCells.Length; i++)
+        {
+            readCells[i] = new StorageCell(TestItem.AddressA, (UInt256)(i + 1));
+            provider.Get(readCells[i], out _);
+        }
+        provider.Get(readCells[0], out _);
 
         ReadCollectingStorageTracer tracer = new();
         provider.Commit(Frontier.Instance, tracer);
 
-        Assert.That(tracer.Reads, Does.Contain(readCell));
+        Assert.That(tracer.Reads, Is.EquivalentTo(readCells));
 
         // The round's read capture must be cleared by the read-only commit:
         // a subsequent commit without new reads reports nothing.
@@ -2396,6 +2400,33 @@ public class StorageProviderTests(bool useFlat)
         provider.Commit(Frontier.Instance, secondRoundTracer);
 
         Assert.That(secondRoundTracer.Reads, Is.Empty);
+    }
+
+    [Test]
+    public void Original_values_survive_a_write_after_many_read_only_accesses([Values(2, 2048)] int slotCount)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        for (int i = 1; i <= slotCount; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        provider.Set(first, (UInt256)23);
+        provider.GetOriginal(first, out UInt256 original);
+        provider.Get(first, out UInt256 current);
+        provider.GetOriginal(first, out UInt256 repeatedOriginal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original, Is.EqualTo((UInt256)17));
+            Assert.That(current, Is.EqualTo((UInt256)23));
+            Assert.That(repeatedOriginal, Is.EqualTo(original));
+        }
     }
 
     [TestCase(RoundBoundary.None)]
