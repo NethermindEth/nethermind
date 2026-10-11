@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -150,10 +151,12 @@ public static class IntrinsicGasCalculator
     /// authorizations, which runs outside the EVM's out-of-gas handling, never meters at runtime.
     /// </remarks>
     internal static ulong CalculateAuthorizationBalBytes(Transaction transaction, IReleaseSpec spec) =>
-        spec.IsEip8279Enabled && transaction.AuthorizationList is { Length: int authorizationsCount }
+        SpecFlags.Eip8279(spec) && transaction.AuthorizationList is { Length: int authorizationsCount }
             ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
             : 0;
 
+    // One caller; the zkEVM guest stopped inlining it once EIP-8279 grew it.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
         spec switch
         {
