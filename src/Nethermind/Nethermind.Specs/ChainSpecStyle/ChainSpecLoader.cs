@@ -215,7 +215,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             MergeForkIdTransition = parameters.MergeForkIdTransition,
             TerminalTotalDifficulty = parameters.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = parameters.TerminalPoWBlockNumber,
-            BlobSchedule = parameters.BlobSchedule,
+            BlobSchedule = CollapseBlobSchedule(parameters.BlobSchedule),
 
             Eip7594TransitionTimestamp = parameters.Eip7594TransitionTimestamp,
             Eip7939TransitionTimestamp = parameters.Eip7939TransitionTimestamp,
@@ -267,6 +267,19 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
 
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
+    }
+
+    /// <summary>Keeps the last listed settings for each timestamp, so forks that activate together apply the latest fork's limits.</summary>
+    private static SortedSet<BlobScheduleSettings> CollapseBlobSchedule(List<BlobScheduleSettings> blobSchedule)
+    {
+        SortedSet<BlobScheduleSettings> collapsed = [];
+        foreach (BlobScheduleSettings settings in blobSchedule)
+        {
+            collapsed.Remove(settings);
+            collapsed.Add(settings);
+        }
+
+        return collapsed;
     }
 
     internal static TValue? LoadDependentParam<TTransition, TValue>(
