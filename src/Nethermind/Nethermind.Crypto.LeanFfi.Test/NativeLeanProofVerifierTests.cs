@@ -108,11 +108,11 @@ public class NativeLeanProofVerifierTests
     [Test]
     public void Two_maximum_child_proofs_fit_the_aggregation_input_budget()
     {
-        RecursiveProofInput child = new([Dependency("sphincs")], new byte[Eip8288Constants.MaxProofBytes]);
+        RecursiveProofInput child = new([Dependency("sphincs")], new byte[Eip8288Constants.MaxAggregateProofBytes]);
         byte[] encoded = NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child] });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(encoded.Length, Is.GreaterThan(2 * Eip8288Constants.MaxProofBytes));
+            Assert.That(encoded.Length, Is.GreaterThan(2 * Eip8288Constants.MaxAggregateProofBytes));
             Assert.That(encoded.Length, Is.LessThanOrEqualTo(Eip8288Constants.MaxAggregationInputBytes));
         }
         Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(new() { RecursiveProofs = [child, child, child] }));

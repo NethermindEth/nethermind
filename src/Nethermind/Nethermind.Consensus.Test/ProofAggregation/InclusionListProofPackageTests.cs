@@ -288,8 +288,8 @@ public class InclusionListProofPackageTests
         });
     }
 
-    [TestCase(Eip8288Constants.MaxProofBytes, true)]
-    [TestCase(Eip8288Constants.MaxProofBytes + 1, false)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
     public void Proof_decoder_matches_native_size_bound(int proofBytes, bool accepted)
     {
         InclusionListProofPackage list = new()

@@ -19,12 +19,13 @@ public static class RecursiveStarkAggregator
 
     /// <summary>Runs the STARK check of a block proof, inclusion-list package or mode-1 wrapper against a dependency list.</summary>
     /// <remarks>An empty dependency list carries an empty <c>stark_proof</c> and invokes no verifier; any other list needs
-    /// a proof that verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. A mode-1
-    /// wrapper never has an empty list: one with empty <c>deps</c> uses mode 0.</remarks>
+    /// a proof within <see cref="Eip8288Constants.MaxAggregateProofBytes"/>, checked before the verifier runs, that verifies
+    /// against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>. A mode-1 wrapper never has an
+    /// empty list: one with empty <c>deps</c> uses mode 0.</remarks>
     public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
         => dependencyCount == 0
             ? proof.IsEmpty
-            : proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
+            : proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
                 && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
 
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
@@ -103,7 +104,7 @@ public static class RecursiveStarkAggregator
             {
                 // The same verified statement needs no new recursive guest execution.
                 cancellationToken.ThrowIfCancellationRequested();
-                if (parent.Proof.Length is 0 or > Eip8288Constants.MaxProofBytes
+                if (parent.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes
                     || !verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, parent.Proof.Span))
                     throw new InvalidOperationException("Invalid recursive dependency proof.");
                 cancellationToken.ThrowIfCancellationRequested();
@@ -257,6 +258,8 @@ public static class RecursiveStarkAggregator
 
         foreach (RecursiveProofInput recursiveProof in input.RecursiveProofs)
         {
+            // A recursive input above MAX_AGGREGATE_PROOF_BYTES is rejected before its verifier runs.
+            if (recursiveProof.Proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes) return false;
             ValueHash256 innerHash = Eip8288Dependencies.ComputeDepsHash(recursiveProof.InnerDeps);
             if (!verifier.VerifyRecursiveStark(in innerHash, Eip8288Constants.AggregatedVk, recursiveProof.Proof.Span)) return false;
             allDeps.AddRange(recursiveProof.InnerDeps);

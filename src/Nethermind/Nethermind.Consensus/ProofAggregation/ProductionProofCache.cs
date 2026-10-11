@@ -143,7 +143,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
             if (TryGet(key, out byte[]? cached)) return cached!;
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
             byte[] proof = verifier.ProveRecursiveStark(in statement, aggregatedVk, input);
-            if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
+            if (proof.Length is 0 or > Eip8288Constants.MaxAggregateProofBytes
                 || !verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof))
                 throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
             byte[] owned = (byte[])proof.Clone();

@@ -19,13 +19,13 @@ public class BlockHeadersMessageSerializerTests
     public void A_maximum_size_proof_header_roundtrips()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxProofBytes], Keccak.Zero);
+        header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxAggregateProofBytes], Keccak.Zero);
         using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(1) { header });
         BlockHeadersMessageSerializer serializer = new();
 
         using BlockHeadersMessage decoded = serializer.Deserialize(serializer.Serialize(message));
 
-        Assert.That(decoded.BlockHeaders[0].RecursiveStark!.StarkProof.Length, Is.EqualTo(Eip8288Constants.MaxProofBytes));
+        Assert.That(decoded.BlockHeaders[0].RecursiveStark!.StarkProof.Length, Is.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
     }
 
     [Test]

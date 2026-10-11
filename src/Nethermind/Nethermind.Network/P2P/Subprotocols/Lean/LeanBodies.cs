@@ -67,7 +67,7 @@ public static class LeanBodies
                     break;
                 }
             case 1:
-                content.ReadBytes();
+                CheckAggregateProof(content.ReadBytes());
                 break;
             default:
                 throw new RlpException("Unknown wrapper mode");
@@ -84,6 +84,7 @@ public static class LeanBodies
         outer.End();
         ReadOnlySpan<byte> proof = list.ReadBytes();
         list.End();
+        CheckAggregateProof(proof);
         return proof;
     }
 
@@ -101,7 +102,7 @@ public static class LeanBodies
             if (transactions.ReadBytes().Length == 0) throw new RlpException("Empty inclusion-list envelope");
         LeanRlpReader proof = package.ReadList();
         package.End();
-        proof.ReadBytes();
+        CheckAggregateProof(proof.ReadBytes());
         proof.ReadHash();
         proof.End();
     }
@@ -116,6 +117,13 @@ public static class LeanBodies
             case LeanProtocol.KindInclusionList: CheckInclusionList(body); break;
             default: throw new RlpException($"Unknown object kind {kind}");
         }
+    }
+
+    /// <summary>EIP-8437 applies the fork's <c>MAX_AGGREGATE_PROOF_BYTES</c> to every aggregate proof before proof decoding or
+    /// verification; the transport's object ceiling does not replace it.</summary>
+    private static void CheckAggregateProof(ReadOnlySpan<byte> proof)
+    {
+        if (proof.Length > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof exceeds MAX_AGGREGATE_PROOF_BYTES");
     }
 
     private static int OffsetOf(ReadOnlySpan<byte> body, ReadOnlySpan<byte> value) =>

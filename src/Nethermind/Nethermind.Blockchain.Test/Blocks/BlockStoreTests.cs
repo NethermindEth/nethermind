@@ -152,7 +152,7 @@ public class BlockStoreTests
         for (int i = 0; i < proofs.Length; i++)
         {
             Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
-            byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+            byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
             proofs[i] = new(proof);
             block.Header.RecursiveStark = new(proof, TestItem.KeccakA);
             store.Cache(block);

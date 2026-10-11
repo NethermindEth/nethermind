@@ -78,7 +78,7 @@ public class ProofInclusionListPayloadTests
         RecursiveStark proof = new(invalidShape switch
         {
             "empty-proof" => [],
-            "oversized-proof" => new byte[Eip8288Constants.MaxProofBytes + 1],
+            "oversized-proof" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
             _ => [1]
         }, invalidShape switch
         {

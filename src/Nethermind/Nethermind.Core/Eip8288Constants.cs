@@ -36,17 +36,23 @@ public static class Eip8288Constants
     public const int MaxLeanStarkInstructions = 2048;
     public const int MaxInclusionListDependencyBytes = MaxProofDependencies * DependencyTripleLength;
 
-    /// <summary>Maximum encoded native witness or recursive proof size.</summary>
+    /// <summary>Maximum encoded native direct witness, such as a mode-0 leanSTARK proof.</summary>
     public const int MaxProofBytes = 8 * 1024 * 1024;
 
-    /// <summary>Prototype acceptance bound for the serialized mixed guest proof, which is the whole <c>stark_proof</c>.</summary>
-    public const int MaxMixedGuestProofBytes = MaxProofBytes;
+    /// <summary>EIP-8288 <c>MAX_AGGREGATE_PROOF_BYTES</c>: the bound on every serialized recursive aggregate proof, including a
+    /// private recursive input, checked before proof decoding or verification.</summary>
+    /// <remarks>The spec leaves the value to the activating fork as part of the <see cref="AggregatedVk"/> profile; this is the
+    /// pinned prototype profile's value, which the native backend reports back.</remarks>
+    public const int MaxAggregateProofBytes = 8 * 1024 * 1024;
+
+    /// <summary>Native acceptance bound for the serialized mixed guest proof, which is the whole <c>stark_proof</c>.</summary>
+    public const int MaxMixedGuestProofBytes = MaxAggregateProofBytes;
 
     /// <summary>Maximum native aggregation input, including two maximum-sized child proofs and metadata.</summary>
     public const int MaxAggregationInputBytes = 18 * 1024 * 1024;
 
-    /// <summary>Maximum encoded ETH header response, including room around an 8 MiB proof.</summary>
-    public const int MaxHeaderResponseBytes = MaxProofBytes + 1024 * 1024;
+    /// <summary>Maximum encoded ETH header response, including room around a maximum-sized aggregate proof.</summary>
+    public const int MaxHeaderResponseBytes = MaxAggregateProofBytes + 1024 * 1024;
 
     /// <summary>Encoded public key and signature size of the pinned NiceTry/Daisugi Keccak SPHINCS scheme.</summary>
     public const int LeanSphincsWitnessBytes = 32 + 6176;

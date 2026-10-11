@@ -38,7 +38,7 @@ public sealed class InclusionListProofPackageDecoder : RlpDecoder<InclusionListP
 
         decoderContext.Check(txCheck);
         int proofCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-        byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
+        byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxAggregateProofBytes, nameof(RecursiveStark.StarkProof)));
         Hash256 depsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
         decoderContext.Check(proofCheck);
 

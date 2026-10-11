@@ -511,6 +511,29 @@ public class LeanTransportTests
     public void Noncanonical_bodies_are_rejected(byte kind, byte[] body) =>
         Assert.Throws<RlpException>(() => LeanBodies.Check(kind, body));
 
+    // EIP-8437: an aggregate proof above MAX_AGGREGATE_PROOF_BYTES but within the transport ceiling is rejected before proof
+    // decoding or verification; the object ceiling does not replace the proof-format limit.
+    [Test]
+    public void Aggregate_proofs_are_bounded_before_validation(
+        [Values(LeanProtocol.KindWrapper, LeanProtocol.KindBlockProof, LeanProtocol.KindInclusionList)] byte kind,
+        [Values(0, 1)] int excess)
+    {
+        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes + excess];
+        byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
+        dependency[31] = Eip8288Constants.LeanSphincsScheme;
+        byte[] body = kind switch
+        {
+            LeanProtocol.KindWrapper => LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(0), LeanRlp.EncodeBytes([0x7f, 0x00]))),
+                LeanRlp.EncodeUInt(1), LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeBytes(dependency)), LeanRlp.EncodeBytes(proof))),
+            LeanProtocol.KindBlockProof => LeanBodies.EncodeBlockProof(proof),
+            _ => LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeBytes([0x7f, 0x00])),
+                LeanRlp.EncodeList(LeanRlp.EncodeBytes(proof), LeanRlp.EncodeBytes(TestItem.KeccakA.Bytes)))
+        };
+        Assert.That((ulong)body.Length, Is.LessThanOrEqualTo(LeanProtocol.MaxObjectBytes));
+        if (excess == 0) Assert.DoesNotThrow(() => LeanBodies.Check(kind, body));
+        else Assert.That(() => LeanBodies.Check(kind, body), Throws.InstanceOf<RlpException>().With.Message.Contains("MAX_AGGREGATE_PROOF_BYTES"));
+    }
+
     internal static BlockHeader ProofHeader(byte[] proof, Hash256? depsHash = null, ulong number = 7)
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithTimestamp(1000).TestObject;

@@ -764,4 +764,34 @@ public class RecursiveStarkAggregatorTests
         }
     }
 
+    // EIP-8288 MAX_AGGREGATE_PROOF_BYTES: a proof at the bound still needs full verification; one byte longer is rejected
+    // before the verifier runs.
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, false, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, true, 0)]
+    public void Stark_check_bounds_the_proof_before_verification(int length, bool verdict, int expectedCalls)
+    {
+        FakeLeanProofVerifier verifier = new(verdict);
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash([Sphincs("a")]);
+        bool valid = RecursiveStarkAggregator.VerifyStarkCheck(verifier, 1, in depsHash, new byte[length]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(verdict && expectedCalls == 1));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(expectedCalls));
+        }
+    }
+
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
+    public void Recursive_input_above_the_aggregate_proof_bound_fails_before_its_verifier_runs(int length, bool expected)
+    {
+        FakeLeanProofVerifier verifier = new(true);
+        AggregationInput input = new() { RecursiveProofs = [new RecursiveProofInput([Sphincs("a")], new byte[length])] };
+        bool valid = RecursiveStarkAggregator.TryAggregate(input, verifier, out _, out _);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(expected ? 1 : 0));
+        }
+    }
 }

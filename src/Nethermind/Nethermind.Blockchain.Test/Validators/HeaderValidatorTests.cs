@@ -78,7 +78,7 @@ public class HeaderValidatorTests
         _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStark(shape switch
         {
             "empty" or "empty-deps" => [],
-            "oversized" => new byte[Eip8288Constants.MaxProofBytes + 1],
+            "oversized" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
             _ => [1]
         }, shape switch
         {

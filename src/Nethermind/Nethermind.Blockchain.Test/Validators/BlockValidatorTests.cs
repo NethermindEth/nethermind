@@ -205,18 +205,37 @@ public class BlockValidatorTests
     }
 
     [Test]
-    public void Eip8288_rejects_invalid_proof_size([Values(0, NativeLeanProofVerifier.MaxProofBytes + 1)] int length)
+    public void Eip8288_rejects_invalid_proof_size([Values(0, Eip8288Constants.MaxAggregateProofBytes + 1)] int length)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.Header.RecursiveStark = new RecursiveStark(new byte[length], new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
+        FixedLeanProofVerifier verifier = new(true);
 
-        bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true))
-            .ValidateSuggestedBlock(block, parent, out string? error);
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.False);
             Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(verifier.RecursiveCalls, Is.Zero, "rejected before proof decoding or verification");
+        }
+    }
+
+    // EIPs#12474: a proof at MAX_AGGREGATE_PROOF_BYTES passes the length check but still requires full verification.
+    [Test]
+    public void Eip8288_proof_at_the_aggregate_bound_is_still_verified([Values] bool verdict)
+    {
+        (Block block, BlockHeader parent) = Eip8288Block();
+        block.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxAggregateProofBytes],
+            new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block)));
+        FixedLeanProofVerifier verifier = new(verdict);
+
+        bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(verdict));
+            Assert.That(verifier.RecursiveCalls, Is.EqualTo(1));
         }
     }
 

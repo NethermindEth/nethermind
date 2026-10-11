@@ -71,7 +71,7 @@ public class SyncServerTests
         Assert.That(headers.Select(header => header.Number), Is.EqualTo(Enumerable.Range(0, 64).Select(number => (ulong)number)));
     }
 
-    [TestCase(Eip8288Constants.MaxProofBytes, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, 1)]
     [TestCase(4 * 1024 * 1024, 2)]
     public void Large_proof_headers_stop_loading_at_byte_budget(int proofBytes, int expectedCount)
     {
@@ -197,7 +197,7 @@ public class SyncServerTests
         {
             loads++;
             Assert.That(loads, Is.LessThanOrEqualTo(3));
-            BlockHeader header = ProofHeader(call.ArgAt<ulong>(0), Eip8288Constants.MaxProofBytes);
+            BlockHeader header = ProofHeader(call.ArgAt<ulong>(0), Eip8288Constants.MaxAggregateProofBytes);
             header.Timestamp = 1;
             return header;
         });

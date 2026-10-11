@@ -137,7 +137,7 @@ public class HeaderStore(
     {
         if (header.RecursiveStark?.StarkProof.Length is > MaxCachedProofBytes)
         {
-            if (header.RecursiveStark.StarkProof.Length > Eip8288Constants.MaxProofBytes) return;
+            if (header.RecursiveStark.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes) return;
             _headerCache.Delete(in header.Hash.ValueHash256);
             ProofHeaderCache cache = Volatile.Read(ref _proofCache) ??
                 Interlocked.CompareExchange(ref _proofCache, new ProofHeaderCache(), null) ?? _proofCache!;

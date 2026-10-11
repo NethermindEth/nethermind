@@ -100,7 +100,7 @@ public static class InclusionListProofValidator
         ILeanProofVerifier verifier, out string? error)
     {
         error = InvalidProof;
-        if (proof?.BlockDepsHash is null || proof.StarkProof is not { Length: <= Eip8288Constants.MaxProofBytes }) return false;
+        if (proof?.BlockDepsHash is null || proof.StarkProof is not { Length: <= Eip8288Constants.MaxAggregateProofBytes }) return false;
         if (encodedDependencies is not null && !Eip8288Dependencies.Serialize(required).AsSpan().SequenceEqual(encodedDependencies))
         {
             error = ProvenDependenciesMismatch;

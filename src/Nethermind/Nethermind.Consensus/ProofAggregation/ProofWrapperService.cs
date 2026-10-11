@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvider,
     IBlockFinder blockFinder, LeanProofStore leanProofStore, ILeanProofVerifier leanProofVerifier, IChainHeadInfoProvider? headInfo = null)
 {
-    internal const int MaxWrapperTransactionBytes = LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxProofBytes - 4096;
+    internal const int MaxWrapperTransactionBytes = LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes - 4096;
 
     /// <summary>Local scheduling target for leanSPHINCS dependencies in one produced mode-1 batch.</summary>
     /// <remarks>Not a validity limit: received aggregates may carry up to <see cref="Eip8288Constants.MaxDepsPerAggregate"/>.</remarks>

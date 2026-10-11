@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Rlp
             if (position != headerCheck)
             {
                 int recursiveStarkCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxProofBytes, nameof(RecursiveStark.StarkProof)));
+                byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxAggregateProofBytes, nameof(RecursiveStark.StarkProof)));
                 Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
                 decoderContext.Check(recursiveStarkCheck);
                 blockHeader.RecursiveStark = new RecursiveStark(starkProof, blockDepsHash);

@@ -480,7 +480,7 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Transactions, Has.Count.EqualTo(7));
-            Assert.That(first.Length, Is.LessThan(LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxProofBytes));
+            Assert.That(first.Length, Is.LessThan(LeanProofStore.MaxWrapperBytes - Eip8288Constants.MaxAggregateProofBytes));
             Assert.That(ValueKeccak.Compute(second), Is.Not.EqualTo(ValueKeccak.Compute(first)));
             Assert.That(decoded.Transactions.Concat(Decode(second).Transactions).Select(transaction => transaction.Full!.Hash).Distinct().Count(), Is.EqualTo(10));
             Assert.That(verifier.ProofCalls, Is.EqualTo(1));

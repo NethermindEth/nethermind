@@ -111,7 +111,7 @@ public class LeanObjectTransportTests
         using LeanTestNode node = new();
         FakeLink a = new("a"), b = new("b");
         LeanPeer peerA = node.Connect(a), peerB = node.Connect(b);
-        byte[] body = Wrapper(Eip8288Constants.MaxProofBytes - ChunkBytes, false, FrameTransaction(2));
+        byte[] body = Wrapper(Eip8288Constants.MaxAggregateProofBytes - ChunkBytes, false, FrameTransaction(2));
         LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
         node.Transport.OnAnnounce(peerA, new AnnounceObjectsMessage([descriptor]));
         node.Transport.OnAnnounce(peerB, new AnnounceObjectsMessage([descriptor]));

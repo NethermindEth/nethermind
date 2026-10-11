@@ -79,7 +79,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
         if (RecursiveStarkProof is not null)
         {
-            if (RecursiveStarkProof.Length > NativeLeanProofVerifier.MaxProofBytes)
+            if (RecursiveStarkProof.Length > Eip8288Constants.MaxAggregateProofBytes)
             {
                 return Result<Block>.Fail($"{nameof(RecursiveStarkProof)} exceeds the proof size limit");
             }

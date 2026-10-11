@@ -78,8 +78,8 @@ public class HeaderDecoderTests
         }, Throws.InstanceOf<RlpException>());
     }
 
-    [TestCase(Eip8288Constants.MaxProofBytes, true)]
-    [TestCase(Eip8288Constants.MaxProofBytes + 1, false)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, true)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, false)]
     public void Recursive_stark_decode_obeys_the_native_size_bound(int proofLength, bool valid)
     {
         BlockHeader header = Build.A.BlockHeader.WithMixHash(Keccak.Compute("mix_hash")).WithNonce(1000).TestObject;

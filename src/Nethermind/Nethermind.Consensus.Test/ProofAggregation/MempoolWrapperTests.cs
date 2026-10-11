@@ -406,17 +406,19 @@ public class MempoolWrapperTests
         }
     }
 
-    // EIPs#12473: a wrapper with empty deps uses mode 0 with an empty proofs list; mode 1 with empty deps is invalid.
+    // EIPs#12473: a wrapper of transactions without dependency verification frames has empty deps and uses mode 0 with an
+    // empty proofs list; mode 1 with empty deps is invalid.
     [TestCase(MempoolWrapper.ModeDirect, 0, null)]
     [TestCase(MempoolWrapper.ModeDirect, 1, MempoolWrapperValidator.ProofCountMismatch)]
     [TestCase(MempoolWrapper.ModeRecursive, 0, MempoolWrapperValidator.EmptyAggregate)]
     [TestCase(MempoolWrapper.ModeRecursive, 1, MempoolWrapperValidator.EmptyAggregate)]
     public void Empty_deps_wrapper_is_valid_only_in_mode_0(byte mode, int proofBytes, string? expected)
     {
-        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(mode, [[]]);
+        Hash256 hash = Keccak.Compute("no-dependency-frame");
+        Transaction transaction = new() { Type = TxType.FrameTx, Frames = [] };
         MempoolWrapper wrapper = new()
         {
-            Transactions = batch.Transactions,
+            Transactions = ByHash(hash),
             Mode = mode,
             Deps = [],
             Proofs = mode == MempoolWrapper.ModeDirect ? [.. Enumerable.Repeat(new byte[] { 1 }, proofBytes)] : null,
@@ -425,12 +427,62 @@ public class MempoolWrapperTests
                 : null
         };
         FakeLeanProofVerifier verifier = new(true);
-        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, h => h == hash ? transaction : null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected is null), error);
             Assert.That(error, Is.EqualTo(expected));
             Assert.That(verifier.VerificationCalls, Is.Zero, "rejected before verification; an empty list has nothing to verify");
+        }
+    }
+
+    // EIPs#12473: a dependency verification frame still requires a triple, so it cannot yield an empty union; and empty deps
+    // must not omit a dependency a transaction declares.
+    [TestCase(MempoolWrapper.ModeDirect, true, MempoolWrapperValidator.MalformedDependencyFrame)]
+    [TestCase(MempoolWrapper.ModeRecursive, true, MempoolWrapperValidator.MalformedDependencyFrame)]
+    [TestCase(MempoolWrapper.ModeDirect, false, MempoolWrapperValidator.DepsMismatch)]
+    [TestCase(MempoolWrapper.ModeRecursive, false, MempoolWrapperValidator.DepsMismatch)]
+    public void Empty_deps_require_transactions_without_dependency_frames(byte mode, bool emptyFrame, string expected)
+    {
+        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(mode, [emptyFrame ? [] : [Sphincs("declared")]]);
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = batch.Transactions,
+            Mode = mode,
+            Deps = [],
+            Proofs = mode == MempoolWrapper.ModeDirect ? [] : null,
+            RecursiveStark = mode == MempoolWrapper.ModeRecursive ? new RecursiveStark([], new Hash256(Eip8288Dependencies.ComputeDepsHash([]))) : null
+        };
+        FakeLeanProofVerifier verifier = new(true);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(error, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.Zero);
+        }
+    }
+
+    // EIPs#12474: a mode-1 proof above MAX_AGGREGATE_PROOF_BYTES is rejected before verification.
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes, null, 1)]
+    [TestCase(Eip8288Constants.MaxAggregateProofBytes + 1, MempoolWrapperValidator.InvalidProof, 0)]
+    public void Aggregate_proof_size_is_bounded_before_verification(int length, string? expected, int calls)
+    {
+        (MempoolWrapper batch, Func<Hash256, Transaction?> resolve) = Batch(MempoolWrapper.ModeRecursive, [[Sphincs("a")]]);
+        MempoolWrapper wrapper = new()
+        {
+            Transactions = batch.Transactions,
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = batch.Deps,
+            RecursiveStark = new RecursiveStark(new byte[length], batch.RecursiveStark!.BlockDepsHash)
+        };
+        FakeLeanProofVerifier verifier = new(true);
+        bool valid = MempoolWrapperValidator.Validate(wrapper, verifier, out string? error, resolve);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(expected is null), error);
+            Assert.That(error, Is.EqualTo(expected));
+            Assert.That(verifier.VerificationCalls, Is.EqualTo(calls));
         }
     }
 

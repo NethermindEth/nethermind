@@ -2956,7 +2956,7 @@ public class BlockTreeTests
     public void Large_invalid_proofs_are_byte_bounded_and_remain_private([Values] bool withInclusionProof)
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
-        byte[] proof = new byte[Eip8288Constants.MaxProofBytes];
+        byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
         proof[0] = 7;
         int bytesPerBlock = proof.Length * (withInclusionProof ? 2 : 1);
         int capacity = Math.Min(BlockTree.MaxLargeInvalidBlocks, BlockTree.MaxInvalidProofCacheBytes / bytesPerBlock);
@@ -2998,7 +2998,7 @@ public class BlockTreeTests
     {
         BlockTree tree = Build.A.BlockTree().WithBadBlockStore(Substitute.For<IBadBlockStore>()).OfChainLength(3).TestObject;
         Block invalid = Build.A.Block.WithParent(tree.Head!).WithNumber(4).TestObject;
-        invalid.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxProofBytes + 1], TestItem.KeccakA);
+        invalid.Header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxAggregateProofBytes + 1], TestItem.KeccakA);
         tree.ReportBadBlock(invalid);
         Assert.That(tree.FindBlock(invalid.Hash, BlockTreeLookupOptions.AllowInvalid), Is.Null);
         Assert.That(tree.SuggestBlock(invalid), Is.EqualTo(AddBlockResult.InvalidBlock));

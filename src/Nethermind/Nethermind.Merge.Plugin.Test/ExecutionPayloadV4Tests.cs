@@ -197,7 +197,7 @@ public class ExecutionPayloadV4Tests
             GasLimit = 30_000_000,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             StateRoot = Keccak.EmptyTreeHash,
-            RecursiveStarkProof = new byte[Eip8288Constants.MaxProofBytes + 1],
+            RecursiveStarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
             RecursiveStarkBlockDepsHash = new byte[Hash256.Size],
         };
 

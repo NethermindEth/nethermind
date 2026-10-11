@@ -442,7 +442,7 @@ public class Eip8288BlockProductionTests
     [Test]
     public void Production_step_cache_releases_old_proofs_under_byte_pressure()
     {
-        CountingVerifier verifier = new() { ProofPaddingBytes = Eip8288Constants.MaxProofBytes - 32 };
+        CountingVerifier verifier = new() { ProofPaddingBytes = Eip8288Constants.MaxAggregateProofBytes - 32 };
         ProductionProofCache cache = new(verifier);
         FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("large-0"), default);
         AggregationInput initial = new() { Deps = [first], Witnesses = [new byte[] { 1 }] };
@@ -455,7 +455,7 @@ public class Eip8288BlockProductionTests
             cache.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
                 new() { Deps = [next], Witnesses = [new byte[] { 1 }] });
         }
-        Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxProofBytes));
+        Assert.That(cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial), Has.Length.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
         Assert.That(verifier.ProofCalls, Is.EqualTo(6));
     }
 

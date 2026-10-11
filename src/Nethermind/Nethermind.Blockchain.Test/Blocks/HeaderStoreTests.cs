@@ -89,7 +89,7 @@ public class HeaderStoreTests
 
     [Test]
     public void Large_proof_cache_evicts_by_bytes_and_count_preserving_recent_headers(
-        [Values(Eip8288Constants.MaxProofBytes, 65 * 1024)] int proofBytes)
+        [Values(Eip8288Constants.MaxAggregateProofBytes, 65 * 1024)] int proofBytes)
     {
         HeaderStore store = new(new MemDb(), new MemDb());
         int capacity = Math.Min(HeaderStore.MaxLargeProofHeaders, HeaderStore.MaxLargeProofCacheBytes / proofBytes);

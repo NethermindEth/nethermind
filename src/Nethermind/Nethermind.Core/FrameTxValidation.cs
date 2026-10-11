@@ -836,18 +836,13 @@ public static class FrameTxValidation
         return true;
     }
 
-    private static bool IsWellFormedDependencyFrame(TxFrame frame, out string? error)
+    /// <summary>Checks the triples of a dependency verification frame: at least one and at most
+    /// <see cref="Eip8288Constants.MaxDependenciesPerFrame"/>, each zero-padded with an enabled scheme.</summary>
+    /// <remarks>These are the frame validity checks that precede EIP-8288 capacity checks and fix the transaction's dependency
+    /// union: an unsupported scheme invalidates the transaction rather than being filtered out of it.</remarks>
+    public static bool IsWellFormedDependencyData(ReadOnlySpan<byte> data, out string? error)
     {
         error = null;
-
-        // EIP-8288: the absent target, not the zero address; FRAMEPARAM then resolves it to the sender.
-        if (frame.Target is not null || !frame.Value.IsZero || frame.Flags != 0)
-        {
-            error = DependencyFrameShape;
-            return false;
-        }
-
-        ReadOnlySpan<byte> data = frame.Data.Span;
         if (data.Length == 0 || data.Length % Eip8288Constants.DependencyTripleLength != 0)
         {
             error = DependencyFrameDataLength;
@@ -861,7 +856,6 @@ public static class FrameTxValidation
             return false;
         }
 
-        ulong expectedGas = 0;
         for (int i = 0; i < count; i++)
         {
             ReadOnlySpan<byte> triple = data.Slice(i * Eip8288Constants.DependencyTripleLength, Eip8288Constants.DependencyTripleLength);
@@ -876,8 +870,30 @@ public static class FrameTxValidation
                 error = InvalidDependencyScheme;
                 return false;
             }
+        }
 
-            expectedGas += triple[31] == Eip8288Constants.LeanStarkScheme
+        return true;
+    }
+
+    private static bool IsWellFormedDependencyFrame(TxFrame frame, out string? error)
+    {
+        error = null;
+
+        // EIP-8288: the absent target, not the zero address; FRAMEPARAM then resolves it to the sender.
+        if (frame.Target is not null || !frame.Value.IsZero || frame.Flags != 0)
+        {
+            error = DependencyFrameShape;
+            return false;
+        }
+
+        if (!IsWellFormedDependencyData(frame.Data.Span, out error)) return false;
+
+        ReadOnlySpan<byte> data = frame.Data.Span;
+        int count = data.Length / Eip8288Constants.DependencyTripleLength;
+        ulong expectedGas = 0;
+        for (int i = 0; i < count; i++)
+        {
+            expectedGas += data[i * Eip8288Constants.DependencyTripleLength + 31] == Eip8288Constants.LeanStarkScheme
                 ? Eip8288Constants.LeanStarkVerificationGas
                 : Eip8288Constants.LeanSphincsVerificationGas;
         }

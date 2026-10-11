@@ -48,8 +48,8 @@ public partial class BlockTree
         {
             ValueHash256 hash = block.Hash!.ValueHash256;
             _knownInvalid.Set(hash);
-            if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
-                (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxProofBytes ||
+            if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
+                (block.InclusionListRecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
                 (block.InclusionListProvenDependencies?.Length ?? 0) > Eip8288Constants.MaxInclusionListDependencyBytes)
             {
                 Delete(hash);
