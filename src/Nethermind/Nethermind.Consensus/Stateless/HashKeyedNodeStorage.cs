@@ -69,15 +69,22 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         HashNodes(values, state.Length, keys);
 
         nint[] lengths = new nint[bucketCount];
-        for (int i = 0; i < count; i++)
+        // Unchecked: the mask keeps a bucket below bucketCount and every array is count long, while the
+        // bounds checks would load each array's 32-bit length, a narrow access, per node.
+        ref NodeKey firstKey = ref MemoryMarshal.GetArrayDataReference(keys);
+        ref nint firstHead = ref MemoryMarshal.GetArrayDataReference(heads);
+        ref nint firstNext = ref MemoryMarshal.GetArrayDataReference(next);
+        ref nint firstLength = ref MemoryMarshal.GetArrayDataReference(lengths);
+        for (nint i = 0; i < count; i++)
         {
-            ref readonly NodeKey key = ref keys[i];
+            ref readonly NodeKey key = ref Unsafe.Add(ref firstKey, i);
             nint bucket = key.Bucket(bucketMask);
-            nint head = heads[bucket];
-            if (head != Overflowed && ++lengths[bucket] <= MaxBucketLength)
+            ref nint headSlot = ref Unsafe.Add(ref firstHead, bucket);
+            nint head = headSlot;
+            if (head != Overflowed && ++Unsafe.Add(ref firstLength, bucket) <= MaxBucketLength)
             {
-                next[i] = head;
-                heads[bucket] = i + 1;
+                Unsafe.Add(ref firstNext, i) = head;
+                headSlot = i + 1;
                 continue;
             }
 
