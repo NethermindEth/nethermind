@@ -494,6 +494,33 @@ public class LeanBroadcastTests
         }
     }
 
+    [TestCase(true, TestName = "Manifest with a wrong shard hash")]
+    [TestCase(false, TestName = "Manifest with a wrong body hash")]
+    public async Task Holder_forwards_nothing_its_manifest_does_not_commit(bool wrongShardHash)
+    {
+        using BroadcastNode origin = new(), holder = new(), receiver = new();
+        (LinkPeer originToHolder, LinkPeer holderToOrigin) = Link(origin, holder);
+        (LinkPeer holderToReceiver, LinkPeer receiverToHolder) = Link(holder, receiver);
+        (LeanBroadcastManifest committed, _) = await Package(holder, 7);
+        LeanBroadcastManifest manifest = wrongShardHash
+            ? Altered(committed, hashes: h => { h[0] = default; })
+            : Altered(committed, bodySha: default(ValueHash256));
+
+        LeanBroadcastVerdict verdict = holder.Engine.OnSessionOpen(holderToOrigin, new LeanSessOpen(manifest.Channel(1, LeanTestNode.Genesis.ValueHash256),
+            LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256)), manifest.Preamble(TestBroadcastProfile.Sign(manifest), []), []),
+            out string? reason);
+
+        await Task.Delay(300);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict, Is.Not.EqualTo(LeanBroadcastVerdict.Invalid), reason);
+            Assert.That(receiver.Engine.SessionCount + origin.Engine.SessionCount, Is.Zero, "the holder opened no session toward its peers");
+            Assert.That(holderToReceiver.Delivered.Concat(holderToOrigin.Delivered), Is.Empty, "the holder forwarded no shard");
+            Assert.That(new[] { originToHolder, holderToOrigin, holderToReceiver, receiverToHolder }.SelectMany(p => p.Penalties), Is.Empty,
+                "a manifest fault penalizes no relay");
+        }
+    }
+
     [Test]
     public async Task Originating_requires_a_fully_validated_object()
     {
