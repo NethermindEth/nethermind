@@ -55,6 +55,8 @@ public class HeaderStore(
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
+        if (_headerCache.Get(in blockHash.ValueHash256) is { } cached) return cached;
+
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
         BlockHeader? header = null;

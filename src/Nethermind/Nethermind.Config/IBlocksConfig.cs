@@ -60,11 +60,25 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PrefetchBlockAccessListCode { get; set; }
+
+    /// <summary>Whether block processing takes over a transaction's pre-warm run instead of executing it again.</summary>
+    /// <remarks>
+    /// On by default. Requires <see cref="PreWarming"/>, and applies only on the Ethereum transaction processor, to blocks
+    /// without a block access list (EIP-7928) and before EIP-8037.
+    /// </remarks>
+    [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHandoff { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
     [ConfigItem(Description = "The genesis block load timeout, in milliseconds.", DefaultValue = "40000")]
     int GenesisTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "The longest a single block may take to process, in milliseconds. It is checked between transactions and as the next block starts, so a single long transaction or the final commit can run past it. A block that runs out of time is abandoned without being marked invalid, and each retry of it gets twice the time, up to 16 times this value. `0` or a negative value disables it.", DefaultValue = "180000")]
+    int BlockProcessingTimeoutMs { get; set; }
 
     [ConfigItem(Description = "The max transaction bytes to add in block production, in kilobytes.", DefaultValue = "7936")]
     long BlockProductionMaxTxKilobytes { get; set; }

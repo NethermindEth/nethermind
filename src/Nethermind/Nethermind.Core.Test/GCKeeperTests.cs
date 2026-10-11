@@ -16,6 +16,57 @@ namespace Nethermind.Core.Test;
 public class GCKeeperTests
 {
     [Test]
+    public async Task Stop_waits_for_queued_entry([Values] bool releaseBeforeStop)
+    {
+        RegionRuntime runtime = new();
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        if (releaseBeforeStop) lease.Dispose();
+
+        Task stop = keeper.StopAsync();
+        Assert.That(stop.IsCompleted, Is.False);
+        queued[0].Execute();
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Starts, Is.Zero);
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Stop_waits_for_running_entry()
+    {
+        using ManualResetEventSlim entering = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        RegionRuntime runtime = new() { BeforeStart = () => { entering.Set(); proceed.Wait(); } };
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        await AssertStopWaitsUntilReleased(keeper, entering, proceed, Task.Run(queued[0].Execute));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Ends, Is.EqualTo(1));
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Stop_waits_for_region_release()
+    {
+        using ManualResetEventSlim ending = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        RegionRuntime runtime = new() { BeforeEnd = () => { ending.Set(); proceed.Wait(); } };
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        queued[0].Execute();
+        await AssertStopWaitsUntilReleased(keeper, ending, proceed, Task.Run(lease.Dispose));
+        Assert.That(runtime.IsActive, Is.False);
+    }
+
+    [Test]
     public void Released_before_dispatch_skips_entry([Values] bool shutdown)
     {
         List<IThreadPoolWorkItem> queued = [];
@@ -396,6 +447,22 @@ public class GCKeeperTests
         }
     }
 
+    private static async Task AssertStopWaitsUntilReleased(GCKeeper keeper, ManualResetEventSlim reached, ManualResetEventSlim proceed, Task work)
+    {
+        Task stop = Task.CompletedTask;
+        try
+        {
+            Assert.That(reached.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            stop = keeper.StopAsync();
+            Assert.That(stop.IsCompleted, Is.False);
+        }
+        finally
+        {
+            proceed.Set();
+            await Task.WhenAll(work, stop).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
     private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
@@ -417,6 +484,7 @@ public class GCKeeperTests
         }
         public Exception? EndFailure { get; init; }
         public Action? BeforeStart { get; init; }
+        public Action? BeforeEnd { get; init; }
         public bool Refuse { get; init; }
         public bool Throw { get; init; }
         public int Starts { get; private set; }
@@ -431,6 +499,7 @@ public class GCKeeperTests
         }
         public void End()
         {
+            BeforeEnd?.Invoke();
             Ends++;
             IsActive = false;
             if (EndFailure is not null) throw EndFailure;
@@ -566,6 +635,22 @@ public class GCKeeperTests
             release.Set();
             await Task.WhenAll(collection, cancellation, collectionReleased.Task).WaitAsync(TimeSpan.FromSeconds(5));
         }
+    }
+
+    [Test]
+    public async Task Stop_waits_for_committed_collection()
+    {
+        using ManualResetEventSlim collecting = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        RegionRuntime runtime = new() { BeforeCollect = () => { collecting.Set(); proceed.Wait(); } };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static item => item.Execute());
+        keeper.TryStartNoGCRegion().Dispose();
+        await AssertStopWaitsUntilReleased(keeper, collecting, proceed, Task.CompletedTask);
+        Assert.That(runtime.Collections, Has.Count.EqualTo(1));
     }
 
     private static GCKeeper CreateKeeper(int delay = 60_000)

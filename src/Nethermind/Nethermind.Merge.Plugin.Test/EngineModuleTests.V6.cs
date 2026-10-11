@@ -734,7 +734,7 @@ public partial class EngineModuleTests
             Assert.That(blobCells, Has.Length.EqualTo(requestedMask.Count));
             Assert.That(proofs, Has.Length.EqualTo(requestedMask.Count));
             Assert.That(blobCells[0], Is.EqualTo(availableCells[0]));
-            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length).ToArray(), Is.EqualTo(expectedProofs[0]));
+            Assert.That(proofs[0]!.AsSpan(0, expectedProofs[0].Length), Is.SequenceEqualTo(expectedProofs[0]));
             Assert.That(blobCells[1], Is.Null);
             Assert.That(proofs[1], Is.Null);
         }
@@ -929,7 +929,7 @@ public partial class EngineModuleTests
         foreach (int _ in requestedMask.EnumerateSetBits())
         {
             Assert.That(actual.BlobCells![expectedIndex], Is.EqualTo(expectedCells[expectedCellsOffset + expectedIndex]));
-            Assert.That(actual.Proofs![expectedIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length).ToArray(), Is.EqualTo(expectedProofs[expectedIndex]));
+            Assert.That(actual.Proofs![expectedIndex]!.AsSpan(0, expectedProofs[expectedIndex].Length), Is.SequenceEqualTo(expectedProofs[expectedIndex]));
             expectedIndex++;
         }
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
@@ -25,7 +26,8 @@ public class AccountChangesAtIndex(Address address)
     public bool? AccountExists { get; internal set; }
 
     public UInt256? PreTxBalance { get; internal set; }
-    public byte[]? PreTxCode { get; internal set; }
+    /// <summary>The code before the transaction, or <see langword="default"/> until a code change records it.</summary>
+    public ReadOnlyMemory<byte> PreTxCode { get; internal set; }
     private Dictionary<UInt256, PreTxStorage>? _preTxStorage;
 
     private readonly Dictionary<UInt256, StorageChange> _storageChanges = new(UInt256Comparer.GetOptimized());
@@ -58,6 +60,13 @@ public class AccountChangesAtIndex(Address address)
         return needsUndo;
     }
 
+    /// <summary>Records a slot's transaction prestate known before its first write, such as one hidden by a storage clear.</summary>
+    public void SeedPreTxStorage(in UInt256 key, in UInt256 value)
+    {
+        _preTxStorage ??= new Dictionary<UInt256, PreTxStorage>(8, UInt256Comparer.GetOptimized());
+        _preTxStorage.TryAdd(key, new PreTxStorage(in value, ulong.MaxValue));
+    }
+
     /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
     public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
     {
@@ -85,7 +94,7 @@ public class AccountChangesAtIndex(Address address)
         CodeChange = null;
         AccountExists = null;
         PreTxBalance = null;
-        PreTxCode = null;
+        PreTxCode = default;
         _preTxStorage?.ClearAndTrim();
         _storageChanges.ClearAndTrim();
         _storageReads.ClearAndTrim();

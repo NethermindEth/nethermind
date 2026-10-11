@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -15,6 +16,10 @@ namespace Nethermind.Db
     {
         private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = [];
         private readonly bool _neverPrune;
+
+        // RocksDB commits a write batch and takes a snapshot atomically across column families; without this
+        // lock a snapshot could see part of a batch (e.g. flat's current-state marker ahead of its data).
+        private readonly Lock _commitLock = new();
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)
         {
@@ -55,11 +60,12 @@ namespace Nethermind.Db
 
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
 
-        public IColumnsWriteBatch<TKey> StartWriteBatch() => new InMemoryColumnWriteBatch<TKey>(this);
+        public IColumnsWriteBatch<TKey> StartWriteBatch() => new AtomicColumnsWriteBatch(this);
 
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
             Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = [];
+            using Lock.Scope _ = _commitLock.EnterScope();
             foreach (KeyValuePair<TKey, SnapshotableMemDb> kvp in _columnDbs)
             {
                 snapshots[kvp.Key] = kvp.Value.CreateSnapshot();
@@ -80,6 +86,21 @@ namespace Nethermind.Db
             foreach (SnapshotableMemDb db in _columnDbs.Values)
             {
                 db.Flush(onlyWal);
+            }
+        }
+
+        private sealed class AtomicColumnsWriteBatch(SnapshotableMemColumnsDb<TKey> columnsDb) : IColumnsWriteBatch<TKey>
+        {
+            private readonly InMemoryColumnWriteBatch<TKey> _batch = new(columnsDb);
+
+            public IWriteBatch GetColumnBatch(TKey key) => _batch.GetColumnBatch(key);
+
+            public void Clear() => _batch.Clear();
+
+            public void Dispose()
+            {
+                using Lock.Scope _ = columnsDb._commitLock.EnterScope();
+                _batch.Dispose();
             }
         }
 

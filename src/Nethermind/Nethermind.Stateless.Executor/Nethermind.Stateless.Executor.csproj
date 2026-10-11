@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <AssemblyName>Nethermind.Stateless.Executor</AssemblyName>
     <RootNamespace>Nethermind.Stateless.Execution</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

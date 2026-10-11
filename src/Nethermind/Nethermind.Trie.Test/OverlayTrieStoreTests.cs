@@ -39,8 +39,8 @@ public class OverlayTrieStoreTests
         // Modify the overlay tree
         PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
         overlaidTree.RootHash = originalRoot;
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
-        Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[0].BytesToArray()));
+        Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[1].BytesToArray()));
         overlaidTree.Set(TestItem.Keccaks[2].Bytes, TestItem.Keccaks[2].BytesToArray());
         overlaidTree.Set(TestItem.Keccaks[3].Bytes, TestItem.Keccaks[3].BytesToArray());
         overlaidTree.Commit();
@@ -54,10 +54,10 @@ public class OverlayTrieStoreTests
         overlaidTree.RootHash = newRoot;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
-            Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[1].BytesToArray()));
-            Assert.That(overlaidTree.Get(TestItem.Keccaks[2].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[2].BytesToArray()));
-            Assert.That(overlaidTree.Get(TestItem.Keccaks[3].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[3].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[0].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[1].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[1].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[2].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[2].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[3].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[3].BytesToArray()));
         }
 
         // Now we clear it
@@ -69,7 +69,7 @@ public class OverlayTrieStoreTests
         Action act = () =>
         {
             overlaidTree.RootHash = newRoot;
-            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray(), Is.EqualTo(TestItem.Keccaks[0].BytesToArray()));
+            Assert.That(overlaidTree.Get(TestItem.Keccaks[0].Bytes), Is.SequenceEqualTo(TestItem.Keccaks[0].BytesToArray()));
         };
         Assert.That(act, Throws.TypeOf<MissingTrieNodeException>()); // The root is now missing.
 

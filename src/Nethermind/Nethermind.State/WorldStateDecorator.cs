@@ -37,6 +37,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+        => State.ApplyBal(bal);
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
@@ -52,10 +55,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual ReadOnlyMemory<byte> GetCode(Address address)
         => State.GetCode(address);
 
-    public virtual byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => State.GetCode(in codeHash);
 
     public virtual bool IsContract(Address address)
@@ -107,6 +110,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void ClearStorage(Address address)
         => State.ClearStorage(address);
 
+    public virtual bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        => State.TryGetStorageBeforeClear(in storageCell, out value);
+
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
 
@@ -124,6 +130,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => State.InsertCode(address, in codeHash, code, spec, isGenesis);
+
+    public virtual bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => State.AdoptCode(address, in codeHash, code, spec);
 
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => State.AddToBalance(address, in balanceChange, spec, out oldBalance);
@@ -163,6 +172,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
+
+    public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
+        => State.NoteMinimumBalance(address, in minimum);
 
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();

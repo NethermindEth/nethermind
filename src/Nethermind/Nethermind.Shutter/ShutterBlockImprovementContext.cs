@@ -155,7 +155,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
-            Metrics.ShutterKeysMissed++;
+            Metrics.IncrementShutterKeysMissed();
             if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys not received in time for slot {slot}.");
 
             return _best.CurrentBestBlock;

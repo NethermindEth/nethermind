@@ -3,10 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -17,10 +14,10 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
-public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState) : IOverridableCodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository, IWorldState worldState, CodeOverrideStore? overrides = null) : IOverridableCodeInfoRepository
 {
-    private readonly Dictionary<Address, CodeOverride> _codeOverrides = [];
-    private readonly Dictionary<Address, (CodeInfo codeInfo, Address initialAddr)> _precompileOverrides = [];
+    private readonly Dictionary<Address, (CodeInfo codeInfo, ValueHash256 codeHash)> _codeOverrides = (overrides ??= new CodeOverrideStore()).Code;
+    private readonly Dictionary<Address, CodeInfo> _precompileOverrides = overrides.Precompiles;
 
     public bool IsCodeOverridable => true;
 
@@ -28,23 +25,34 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     {
         delegationAddress = null;
         // Moved precompiles are rare, so skip the hash lookup when there are none.
-        if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile)) return precompile.codeInfo;
+        if (_precompileOverrides.Count != 0 && _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile)) return precompile;
 
-        if (TryGetCodeOverride(codeSource, out CodeInfo? result))
+        if (TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result))
         {
             return !result.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegationAddress) &&
                    followDelegation
-                ? GetCachedCodeInfo(delegationAddress, false, vmSpec, out Address? _)
+                ? GetDelegatedCodeInfo(delegationAddress, vmSpec)
                 : result;
         }
 
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A code override, including one at a precompile's address, runs as code. A precompile's address otherwise
+    /// resolves to its code in the world state, as in geth, so code an earlier block's override left there still runs.
+    /// A move destination resolves to its own code, not to the precompile moved there.
+    /// </remarks>
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        TryGetCodeOverride(target, vmSpec, out CodeInfo? result) ? result
+        : vmSpec.IsPrecompile(target) ? new CodeInfo(worldState.GetCode(target))
+        : codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
+
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
-        _precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile) ? precompile.codeInfo.Precompile
-        : TryGetCodeOverride(codeSource, out CodeInfo? result) ? result.Precompile
+        _precompileOverrides.TryGetValue(codeSource, out CodeInfo? precompile) ? precompile.Precompile
+        : TryGetCodeOverride(codeSource, vmSpec, out CodeInfo? result) ? result.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
@@ -53,18 +61,12 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value)
-    {
-        ValueHash256 codeHash = worldState.GetCodeHash(key);
-        Debug.Assert(value.IsPrecompile || ValueKeccak.Compute(value.CodeSpan) == codeHash,
-            $"The world state must hold the override code at {key} before {nameof(SetCodeOverride)}");
-        _codeOverrides[key] = new(value, codeHash);
-    }
+        CodeInfo value) => _codeOverrides[key] = (value, worldState.GetCodeHash(key));
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {
-        _precompileOverrides[targetAddr] = (this.GetCachedCodeInfo(precompileAddr, vmSpec), precompileAddr);
-        _codeOverrides[precompileAddr] = new(new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
+        _precompileOverrides[targetAddr] = this.GetCachedCodeInfo(precompileAddr, vmSpec);
+        _codeOverrides[precompileAddr] = (new CodeInfo(worldState.GetCode(precompileAddr)), worldState.GetCodeHash(precompileAddr));
     }
 
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
@@ -72,45 +74,38 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public bool TryGetDelegation(Address address, IReleaseSpec vmSpec,
         [NotNullWhen(true)] out Address? delegatedAddress) =>
-        TryGetCodeOverride(address, out CodeInfo? result)
+        TryGetCodeOverride(address, vmSpec, out CodeInfo? result)
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.CodeSpan, out delegatedAddress)
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
 
-    /// <summary>Resolves the code override for <paramref name="address"/>, if one was set.</summary>
+    /// <summary>Finds the code this repository answers <paramref name="address"/> with, ahead of the inner repository.</summary>
     /// <remarks>
-    /// SETCODEFROM (EIP-8298) and EIP-7702 delegations write code to the world state directly, so an override is
-    /// served only while the state still holds the code hash it was set against. Once it does not, the address
-    /// serves the code in state instead, still as an override so an overridden precompile stays shadowed. A reverted
-    /// write restores the hash, and with it the original analysed code or precompile override.
+    /// An override answers while the account still has the code hash it had when the override was set, so any change
+    /// of the account's code ends it: code written while the call runs, an authorization, and destroying the account
+    /// (a SELFDESTRUCT before Cancun), which does not pass through this repository. The world state journals the code
+    /// hash, so a reverted change brings the override back. At a precompile's address, which an override turned into
+    /// an ordinary account, an ended override leaves the world state's code, not the precompile the inner repository
+    /// would answer with.
     /// </remarks>
-    private bool TryGetCodeOverride(Address address, [NotNullWhen(true)] out CodeInfo? codeInfo)
+    private bool TryGetCodeOverride(Address address, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo)
     {
-        ref CodeOverride entry = ref CollectionsMarshal.GetValueRefOrNullRef(_codeOverrides, address);
-        if (Unsafe.IsNullRef(ref entry))
+        if (_codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) entry))
         {
-            codeInfo = null;
-            return false;
+            if (worldState.GetCodeHash(address) == entry.codeHash)
+            {
+                codeInfo = entry.codeInfo;
+                return true;
+            }
+
+            if (vmSpec.IsPrecompile(address))
+            {
+                codeInfo = worldState.GetCodeHash(address) == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : new CodeInfo(worldState.GetCode(address));
+                return true;
+            }
         }
 
-        ValueHash256 codeHash = worldState.GetCodeHash(address);
-        if (entry.CurrentHash != codeHash)
-        {
-            entry.CurrentCode = codeHash == entry.OriginalHash
-                ? entry.OriginalCode
-                : codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : CodeInfoRepository.GetCodeInfo(worldState, address, in codeHash);
-            entry.CurrentHash = codeHash;
-        }
-
-        codeInfo = entry.CurrentCode;
-        return true;
-    }
-
-    private struct CodeOverride(CodeInfo codeInfo, ValueHash256 codeHash)
-    {
-        public readonly CodeInfo OriginalCode = codeInfo;
-        public readonly ValueHash256 OriginalHash = codeHash;
-        public CodeInfo CurrentCode = codeInfo;
-        public ValueHash256 CurrentHash = codeHash;
+        codeInfo = null;
+        return false;
     }
 
     public void ResetOverrides()
@@ -119,11 +114,15 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         _codeOverrides.Clear();
     }
 
-    public void ResetPrecompileOverrides()
+    /// <remarks>
+    /// Also drops the code overrides at <paramref name="spec"/>'s precompile addresses, moved-away origins included,
+    /// so each block dispatches its precompiles again, even at an address a fork made a precompile since.
+    /// </remarks>
+    public void ResetPrecompileOverrides(IReleaseSpec spec)
     {
-        foreach ((Address _, (CodeInfo codeInfo, Address initialAddr) precompileInfo) in _precompileOverrides)
+        foreach (Address address in _codeOverrides.Keys)
         {
-            _codeOverrides.Remove(precompileInfo.initialAddr);
+            if (spec.IsPrecompile(address)) _codeOverrides.Remove(address);
         }
         _precompileOverrides.Clear();
     }

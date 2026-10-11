@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -50,6 +51,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
+        Trace.Gas = gasSpent.SpentGas;
         Trace.ReturnValue = output ?? [];
     }
 
@@ -62,6 +64,8 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop
         EvmExceptionType.OutOfGas => "OutOfGas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };
@@ -157,6 +161,13 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     {
         if (IsTracingFullMemory && CurrentTraceEntry is not null)
             CurrentTraceEntry.Memory = memoryTrace.ToRawWordBytes();
+    }
+
+    /// <inheritdoc/>
+    public override void SetOperationReturnData(ReadOnlySpan<byte> returnData)
+    {
+        if (CurrentTraceEntry is not null && !returnData.IsEmpty)
+            CurrentTraceEntry.ReturnData = returnData.ToHexString(true);
     }
 
     public override GethLikeTxTrace BuildResult()

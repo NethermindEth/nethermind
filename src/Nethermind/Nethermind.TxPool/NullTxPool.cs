@@ -48,6 +48,8 @@ namespace Nethermind.TxPool
 
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
+        public long GetRemovalGeneration(Address sender) => 0;
+
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;

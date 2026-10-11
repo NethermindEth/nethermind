@@ -43,7 +43,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             _receiptCanonicalityMonitor?.Dispose();
         }
 
-        // The subscription disposes each receipt once its send completes, so the payload is captured during the send.
         private string? GetTransactionReceiptsSubscriptionResult(
             TransactionHashesFilter? filter,
             ReceiptsEventArgs receiptsEventArgs,

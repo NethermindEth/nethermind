@@ -15,6 +15,58 @@ namespace Nethermind.Evm.Test.Tracing
     public class BlockReceiptsTracerTests
     {
         [Test]
+        public void Nested_receipts_tracers_retain_frame_data([Values] bool failedFrame, [Values] bool blockHandlesFrames)
+        {
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithType(TxType.FrameTx).TestObject).TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer, IFrameTxReceiptTracer>();
+            IBlockTracer leafBlock = blockHandlesFrames
+                ? Substitute.For<IBlockTracer, IFrameTxReceiptTracer>()
+                : Substitute.For<IBlockTracer>();
+            leafBlock.StartNewTxTrace(Arg.Any<Transaction>()).Returns(leaf);
+            BlockReceiptsTracer inner = new();
+            inner.SetOtherTracer(leafBlock);
+            BlockReceiptsTracer middle = new();
+            BlockReceiptsTracer outer = new();
+            middle.SetOtherTracer(inner);
+            outer.SetOtherTracer(middle);
+            outer.StartNewBlockTrace(block);
+            outer.StartNewTxTrace(block.Transactions[0]);
+            TxFrameReceipt[] frames = [new(StatusCode.Success, 10, 0, []), new(failedFrame ? StatusCode.Failure : StatusCode.Success, 20, 0, [])];
+
+            IFrameTxReceiptTracer leafFrames = (IFrameTxReceiptTracer)leaf;
+            if (leafBlock is IFrameTxReceiptTracer blockFrames)
+            {
+                blockFrames.When(t => t.ReportFrameTxReceipt(TestItem.AddressA, frames))
+                    .Do(_ => leafFrames.ReportFrameTxReceipt(TestItem.AddressA, frames));
+            }
+
+            outer.ReportFrameEnd(1, null);
+            outer.ReportFramesRolledBack(0, 1);
+            outer.ReportFrameTxReceipt(TestItem.AddressA, frames);
+            outer.MarkAsSuccess(TestItem.AddressB, 100, [], []);
+
+            leafFrames.Received(1).ReportFrameTxReceipt(TestItem.AddressA, frames);
+            leafFrames.Received(1).ReportFrameEnd(1, null);
+            leafFrames.Received(1).ReportFramesRolledBack(0, 1);
+            if (leafBlock is IFrameTxReceiptTracer receivingBlock)
+            {
+                receivingBlock.Received(1).ReportFrameTxReceipt(TestItem.AddressA, frames);
+                receivingBlock.DidNotReceive().ReportFrameEnd(Arg.Any<int>(), Arg.Any<EvmExceptionType?>());
+                receivingBlock.DidNotReceive().ReportFramesRolledBack(Arg.Any<int>(), Arg.Any<int>());
+            }
+            BlockReceiptsTracer[] tracers = [outer, middle, inner];
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (BlockReceiptsTracer tracer in tracers)
+                {
+                    Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(failedFrame ? StatusCode.Failure : StatusCode.Success));
+                    Assert.That(tracer.TxReceipts[0].Payer, Is.EqualTo(TestItem.AddressA));
+                    Assert.That(tracer.TxReceipts[0].FrameReceipts, Is.SameAs(frames));
+                }
+            }
+        }
+
+        [Test]
         public void Sets_state_root_if_provided_on_success()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;

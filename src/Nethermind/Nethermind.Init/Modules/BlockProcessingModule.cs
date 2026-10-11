@@ -57,6 +57,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddFirst<IBlockPreprocessorStep>(static ctx => ctx.Resolve<RecoverSignatures>())
             // The prewarmer waits on the recovery this instance has in flight rather than polling the transactions.
             .Bind<ISenderRecoveryTracker, RecoverSignatures>()
+            .AddLast<IBlockPreprocessorStep, BlockAccessListRecoveryStep>()
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
@@ -85,6 +86,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
             .AddScoped<BalTxProcessorFactory>()
+            .AddScoped<ZeroNonceStorageAccountsTransition>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
@@ -115,7 +117,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .Map<IBlockProcessingPauseControl, MainProcessingContext>(ctx => (IBlockProcessingPauseControl)ctx.BlockchainProcessor)
             .Bind<IMainProcessingContext, MainProcessingContext>()
 
-            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
+            .AddSingleton<INonceManager, IChainHeadInfoProvider, IStateHeaderProvider, IStateReader>((chainHeadInfoProvider, stateHeaderProvider, stateReader) =>
+                new NonceManager(chainHeadInfoProvider, stateHeaderProvider, stateReader))
             .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
                 mainProcessingContext.BranchProcessor,
                 chainHeadInfoProvider,
@@ -133,6 +136,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<FrameTxWidthLedger>()
+                .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>

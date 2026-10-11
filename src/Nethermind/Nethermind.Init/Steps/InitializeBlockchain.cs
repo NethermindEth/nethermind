@@ -21,8 +21,7 @@ namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(
         typeof(InitializeBlockTree),
-        typeof(SetupKeyStore),
-        typeof(InitializePrecompiles)
+        typeof(SetupKeyStore)
     )]
     public class InitializeBlockchain(
         INethermindApi api,
@@ -70,6 +69,7 @@ namespace Nethermind.Init.Steps
                 _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
+                _api.Context.Resolve<FrameTxWidthLedger>(),
                 _txGossipPolicy,
                 frameTxPrefixSimulator: _api.Context.ResolveOptional<IFrameTxPrefixSimulator>()
             );

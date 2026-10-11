@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -620,7 +621,7 @@ public class AdminModuleTests
 
         Assert.That(peerInfo.Id, Is.Not.Null, "a hashed-id PeerInfo JSON must still produce a non-null id");
         Assert.That(peerInfo.Id.Bytes.Length, Is.EqualTo(64), "the public key payload retains its 64-byte length even when the JSON only carried the 32-byte hash");
-        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32).ToArray(), Is.EqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
+        Assert.That(peerInfo.Id.Bytes.AsSpan(32, 32), Is.SequenceEqualTo(expectedHashBytes), "the hash bytes from the JSON must occupy the last 32 bytes of the public key payload");
     }
 
     [TestCase(true, TestName = "pause delegates to Pause")]

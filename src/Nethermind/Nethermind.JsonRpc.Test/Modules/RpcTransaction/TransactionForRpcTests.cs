@@ -117,6 +117,28 @@ public class TransactionForRpcTests
         Assert.That(rpcTx.ToTransaction(validateUserInput: true).Error, Is.EqualTo(RpcTransactionErrors.GasPriceInEip1559));
     }
 
+    [TestCase("""{"type":"0x2","to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", "maxFeePerGas (10) < maxPriorityFeePerGas (20)", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", "maxFeePerGas (10) < maxPriorityFeePerGas (20)", TestName = "Fee cap order is checked before the missing contract data")]
+    [TestCase("""{"type":"0x2","to":"0x0000000000000000000000000000000000000001","gasPrice":"0x1","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""", RpcTransactionErrors.GasPriceInEip1559, TestName = "Gas price conflict is checked before the fee cap order")]
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0x14","maxPriorityFeePerGas":"0xa"}""", RpcTransactionErrors.ContractCreationWithoutData, TestName = "Ordered fees reach the missing contract data check")]
+    public void ToValidatedTransaction_rejects_a_fee_cap_below_the_priority_fee_where_it_always_did(string json, string expected) =>
+        Assert.That(DeserializeTransactionForRpc(json).ToValidatedTransaction().Error, Is.EqualTo(expected), "first failing check");
+
+    [Test]
+    public void ToTransaction_with_input_validation_leaves_the_fee_cap_order_to_the_caller()
+    {
+        TransactionForRpc rpcTx = DeserializeTransactionForRpc(
+            """{"type":"0x2","to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x14"}""");
+
+        Result<Transaction> result = rpcTx.ToTransaction(validateUserInput: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.False, result.Error);
+            Assert.That(result.Data!.MaxFeePerGas, Is.EqualTo((UInt256)10), "fee cap as requested");
+        }
+    }
+
     private Transaction ToTransaction(string json)
     {
         TransactionForRpc rpcTx = DeserializeTransactionForRpc(json);

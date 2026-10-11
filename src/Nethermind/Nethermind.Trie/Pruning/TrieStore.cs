@@ -285,13 +285,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
-    private bool DirtyNodesIsNodeCached(TrieStoreDirtyNodesCache.Key key) =>
+    private bool DirtyNodesIsNodeCached(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).IsNodeCached(key);
 
-    private TrieNode DirtyNodesFromCachedRlpOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
+    private TrieNode DirtyNodesFromCachedRlpOrUnknown(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FromCachedRlpOrUnknown(key);
 
-    private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
+    private TrieNode DirtyNodesFindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FindCachedOrUnknown(key);
 
     private TrieNode SaveOrReplaceInDirtyNodesCache(
@@ -539,7 +539,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             : FindCachedOrUnknown(key, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
+    private TrieNode FindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
     // Used only in tests
     public void Dump()
@@ -1473,7 +1473,6 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     ) : IBlockCommitter
     {
         internal TrieNode? StateRoot;
-        private int _concurrency = Environment.ProcessorCount;
 
         public void Dispose() => trieStore.FinishBlockCommit(commitSet, StateRoot);
 
@@ -1483,18 +1482,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return new PruningTrieStoreCommitter(this, trieStore, commitSet.BlockNumber, address, root);
         }
 
-        public bool TryRequestConcurrencyQuota()
-        {
-            if (Interlocked.Decrement(ref _concurrency) >= 0)
-            {
-                return true;
-            }
-
-            ReturnConcurrencyQuota();
-            return false;
-        }
-
-        public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _concurrency);
+        public bool SupportsParallelCommit => true;
     }
 
     private class PruningTrieStoreCommitter(
@@ -1526,9 +1514,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         public TrieNode CommitNode(ref TreePath path, TrieNode node) =>
             trieStore.CommitAndInsertToDirtyNodes(blockNumber, address, ref path, node);
 
-        public bool TryRequestConcurrentQuota() => blockCommitter.TryRequestConcurrencyQuota();
-
-        public void ReturnConcurrencyQuota() => blockCommitter.ReturnConcurrencyQuota();
+        public bool TryEnableParallelCommit() => true;
     }
 
     internal static class HashHelpers
@@ -1717,7 +1703,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
-        public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
+        public TrieNode FindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
         {
             int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];

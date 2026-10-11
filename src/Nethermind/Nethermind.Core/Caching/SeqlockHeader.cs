@@ -161,12 +161,16 @@ internal static class SeqlockHeader
             : tickerB <= tickerC ? b : c;
 
     /// <summary>
-    /// Generate 3 distinct indices in [0, 8) from a timestamp, with xorshift mixing.
+    /// Generate 3 distinct indices in [0, 8) from a seed, with multiplicative and xorshift mixing.
     /// </summary>
+    /// <remarks>
+    /// Seeds are recency stamps plus a thread probe, which on a coarse clock step by little between evictions; the xorshift
+    /// alone leaves such seeds sampling some ways far more than others, so the golden-ratio multiply spreads them first.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (int a, int b, int c) Pick3Indices(long now)
+    public static (int a, int b, int c) Pick3Indices(long seed)
     {
-        uint r = (uint)now;
+        uint r = (uint)(((ulong)seed * 0x9E3779B97F4A7C15UL) >> 32);
         r ^= r >> 13;
         r ^= r << 17;
         r ^= r >> 5;

@@ -30,8 +30,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly IReleaseSpec Spec = spec;
 #endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
-        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame =
-            SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
+        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> InitializeFrame = SelectInitializeFrame(spec);
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
@@ -39,6 +38,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
             spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
     }
+
+    /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> SelectInitializeFrame(IReleaseSpec spec);
 
     private static void InitializeFrameCore<Eip158>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag

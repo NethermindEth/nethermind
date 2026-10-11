@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Config
 {
-    public class BlocksConfig : IBlocksConfig
+    public partial class BlocksConfig : IBlocksConfig
     {
         public const int MaxBlockSizeKilobytes = 10240;
         public const int MaxCLWrapperKilobytes = 2048;
@@ -68,19 +68,20 @@ namespace Nethermind.Config
 
         public int MempoolPreWarmConcurrency { get; set; } = 0;
 
+        // Off: with parallel execution, reading code ahead has not beaten reading it on demand.
+        public bool PrefetchBlockAccessListCode { get; set; }
+
+        public bool PreWarmHandoff { get; set; } = true;
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 
-        // The 0.25 default emits an FP constant load the guest's ISA gate rejects; only block production reads it.
-        public double SingleBlockImprovementOfSlot { get; set; }
-#if !ZK_EVM
-            = 0.25;
-#endif
-
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public int BlockProcessingTimeoutMs { get; set; } = 180_000;
 
         public bool ParallelExecution { get; set; } = true;
         public bool ParallelExecutionBatchRead { get; set; } = true;

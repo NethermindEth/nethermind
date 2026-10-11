@@ -119,23 +119,13 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             int logIndexStart = GetLogIndexStart(txs, storedReceipts, txIndex);
 
+            TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };
             receiptWithProof.Receipt = new ReceiptForRpc(
                 txHash,
-                receipt,
+                provenReceipt,
                 block.Timestamp,
                 txs[txIndex].GetGasInfo(spec, block.Header),
                 logIndexStart);
-            // ReceiptForRpc (and each LogEntryForRpc) copies the stored Index and block coordinates; the proofs below
-            // attest to the resolved block and the transaction's position in it.
-            receiptWithProof.Receipt.TransactionIndex = txIndex;
-            receiptWithProof.Receipt.BlockHash = block.Hash;
-            receiptWithProof.Receipt.BlockNumber = block.Number;
-            foreach (LogEntryForRpc log in receiptWithProof.Receipt.Logs)
-            {
-                log.TransactionIndex = txIndex;
-                log.BlockHash = block.Hash!;
-                log.BlockNumber = block.Number;
-            }
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, tracedReceipts, txIndex);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), txIndex);
 

@@ -9,6 +9,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
@@ -125,7 +126,7 @@ public class ZeroNettyFrameMergerTests
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(packet.PacketType, Is.EqualTo(i + 2));
-                        Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payloads[i]));
+                        Assert.That(packet.Content.AsSpan(), Is.SequenceEqualTo(payloads[i]));
                     }
                 }
                 finally
@@ -157,13 +158,13 @@ public class ZeroNettyFrameMergerTests
             {
                 Assert.That(packet.Content, Is.SameAs(frame), "the complete frame needs no slice wrapper");
                 Assert.That(packet.PacketType, Is.EqualTo(2));
-                Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payload[1..]));
+                Assert.That(packet.Content.AsSpan(), Is.SequenceEqualTo(payload[1..]));
                 Assert.That(frame.ReferenceCount, Is.EqualTo(1));
             }
 
             channel.WriteInbound(BuildFrame([3, 42], contextId: 0));
             channel.FinishAndReleaseAll();
-            Assert.That(packet.Content.AsSpan().ToArray(), Is.EqualTo(payload[1..]),
+            Assert.That(packet.Content.AsSpan(), Is.SequenceEqualTo(payload[1..]),
                 "a downstream owner may retain the packet across subsequent reads and channel shutdown");
         }
         finally

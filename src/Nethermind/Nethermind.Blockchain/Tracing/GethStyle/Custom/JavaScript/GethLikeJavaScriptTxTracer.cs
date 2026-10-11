@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
@@ -94,7 +93,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
-            return new RenderedJson(JsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+            return new RenderedJson(TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
         }
         finally
         {

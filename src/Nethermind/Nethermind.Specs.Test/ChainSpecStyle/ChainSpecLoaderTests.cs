@@ -9,6 +9,7 @@ using System.Text;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -175,6 +176,52 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
 
         Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
+    }
+
+    /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
+    private static ChainSpec LoadChainSpecWithTransition(string transitionParam, ulong transitionTimestamp)
+    {
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "{{transitionParam}}": "0x{{transitionTimestamp:x}}" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
+    [Test]
+    public void Genesis_requests_hash_matches_builder_request_activation([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip8282TransitionTimestamp", transitionTimestamp);
+        bool activeAtGenesis = transitionTimestamp == 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip8282Enabled, Is.EqualTo(activeAtGenesis));
+            Assert.That(chainSpec.Genesis!.Header.RequestsHash, Is.EqualTo(activeAtGenesis ? ExecutionRequestExtensions.EmptyRequestsHash : null));
+        }
+    }
+
+    [Test]
+    public void Genesis_logs_bloom_is_zero_length_when_eip7668_is_active([Values(0ul, 1ul)] ulong transitionTimestamp)
+    {
+        ChainSpec chainSpec = LoadChainSpecWithTransition("eip7668TransitionTimestamp", transitionTimestamp);
+        bool activeAtGenesis = transitionTimestamp == 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GenesisSpec.IsEip7668Enabled, Is.EqualTo(activeAtGenesis));
+            Assert.That(chainSpec.Genesis!.Header.Bloom, Is.SameAs(activeAtGenesis ? Bloom.ZeroLength : Bloom.Empty));
+        }
     }
 
     [Test]

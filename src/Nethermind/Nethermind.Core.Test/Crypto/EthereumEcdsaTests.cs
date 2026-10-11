@@ -43,11 +43,13 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(TxType.EIP1559, true, true)]
         [TestCase(TxType.Blob, true)]
         [TestCase(TxType.SetCode, true)]
+        [TestCase(TxType.Legacy, true, false, 2048)]
+        [TestCase(TxType.EIP1559, true, false, 2048)]
         public void TryRecoverPublicKey_from_the_encoding_matches_recovery_from_the_transaction(
-            TxType txType, bool eip155, bool useSignatureChainId = false)
+            TxType txType, bool eip155, bool useSignatureChainId = false, int dataLength = 0)
         {
             PrivateKey key = Build.A.PrivateKey.TestObject;
-            Transaction tx = BuildSigned(txType, key, eip155);
+            Transaction tx = BuildSigned(txType, key, eip155, dataLength);
             EthereumEcdsa ecdsa = new(useSignatureChainId ? BlockchainIds.Sepolia : TestBlockchainIds.ChainId);
 
             byte[] encoded = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
@@ -58,7 +60,7 @@ namespace Nethermind.Core.Test.Crypto
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.True);
-                Assert.That(recovered.ToArray(), Is.EqualTo(ecdsa.RecoverPublicKey(tx, useSignatureChainId)!.PrefixedBytes));
+                Assert.That(recovered, Is.SequenceEqualTo(ecdsa.RecoverPublicKey(tx, useSignatureChainId)!.PrefixedBytes));
                 Assert.That(PublicKey.ComputeAddress(recovered[1..]), Is.EqualTo(key.Address));
             }
         }
@@ -111,9 +113,11 @@ namespace Nethermind.Core.Test.Crypto
             }
         }
 
-        private static Transaction BuildSigned(TxType txType, PrivateKey key, bool eip155)
+        private static Transaction BuildSigned(TxType txType, PrivateKey key, bool eip155, int dataLength = 0)
         {
             TransactionBuilder<Transaction> builder = Build.A.Transaction.WithType(txType).WithChainId(TestBlockchainIds.ChainId);
+
+            if (dataLength > 0) builder = builder.WithData(new byte[dataLength]);
 
             if (txType == TxType.Blob) builder = builder.WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1);
             if (txType == TxType.SetCode) builder = builder.WithAuthorizationCodeIfAuthorizationListTx();

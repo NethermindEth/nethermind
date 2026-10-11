@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.CodeAnalysis;
@@ -277,7 +278,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.ShouldRevert, Is.False);
-                Assert.That(result.Output.ToArray(), Is.EqualTo(expected));
+                Assert.That(result.Output, Is.SequenceEqualTo(expected));
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(largeOutput.Length));
             }
         }
@@ -299,7 +300,7 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.Assigned, Is.True);
                 Assert.That(result.ShouldRevert, Is.EqualTo(reverts));
-                Assert.That(result.Output.ToArray(), Is.EqualTo(assignedOutput));
+                Assert.That(result.Output, Is.SequenceEqualTo(assignedOutput));
             }
         }
 
@@ -324,7 +325,7 @@ namespace Nethermind.Evm.Test
 
             ExecuteDirect(secondCode);
 
-            Assert.That(retainedOutput.ToArray(), Is.EqualTo(firstOutput));
+            Assert.That(retainedOutput, Is.SequenceEqualTo(firstOutput));
         }
 
         [Test]
@@ -357,7 +358,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.None));
-                Assert.That(result.Output.ToArray(), Is.EqualTo(new byte[] { 0x2a }));
+                Assert.That(result.Output, Is.SequenceEqualTo(new byte[] { 0x2a }));
             }
         }
 
@@ -385,7 +386,7 @@ namespace Nethermind.Evm.Test
                 Prepare.EvmCode.StoreDataInMemory(0, fillerOutput).RETURN(0, (UInt256)fillerOutput.Length).Done,
                 SpecProvider.GenesisSpec);
 
-            Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "precondition: the create stores the returned bytes");
+            Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "precondition: the create stores the returned bytes");
 
             ExecuteDirect(Prepare.EvmCode
                 .CALL(100_000, filler, 0, 0, 0, 0, 0).Op(Instruction.POP)
@@ -395,7 +396,7 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.GreaterThanOrEqualTo(fillerOutput.Length), "the nested return went through the reusable scratch");
-                Assert.That(TestState.GetCode(deployed), Is.EqualTo(runtimeCode), "later return staging must not rewrite stored code");
+                Assert.That(TestState.GetCode(deployed), Is.SequenceEqualTo(runtimeCode), "later return staging must not rewrite stored code");
             }
         }
 
@@ -415,8 +416,8 @@ namespace Nethermind.Evm.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(tracer.Outputs.Count, Is.GreaterThanOrEqualTo(2));
-                Assert.That(tracer.Outputs[0].ToArray(), Is.EqualTo(largeOutput));
-                Assert.That(tracer.Outputs[1].ToArray(), Is.EqualTo(smallOutput));
+                Assert.That(tracer.Outputs[0], Is.SequenceEqualTo(largeOutput));
+                Assert.That(tracer.Outputs[1], Is.SequenceEqualTo(smallOutput));
                 Assert.That(Machine.RetainedReturnDataScratchLength, Is.Zero);
             }
         }
@@ -607,7 +608,7 @@ namespace Nethermind.Evm.Test
             RetainedCreateInputTracer tracer = new(Machine);
 
             Execute(tracer, createCode);
-            Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+            Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
 
             byte[] replacement = new byte[EvmPooledMemory.WordSize];
             Array.Fill(replacement, (byte)0xa5);
@@ -621,7 +622,7 @@ namespace Nethermind.Evm.Test
             {
                 Assert.That(tracer.CreateReverted, Is.True);
                 Assert.That(tracer.SecondTopLevelState, Is.SameAs(tracer.FirstTopLevelState));
-                Assert.That(tracer.CreateInput.ToArray(), Is.EqualTo(initCode));
+                Assert.That(tracer.CreateInput, Is.SequenceEqualTo(initCode));
             }
         }
 

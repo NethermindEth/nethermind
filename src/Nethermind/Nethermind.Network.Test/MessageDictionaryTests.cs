@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -10,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using Nethermind.Network.Test.P2P.Subprotocols;
 using NSubstitute;
 using NUnit.Framework;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
@@ -130,6 +132,36 @@ public class MessageDictionaryTests
         Assert.That(() => dictionary.Handle(9999, (inner, 100L), 100), Throws.TypeOf<SubprotocolException>());
 
         inner.Received().Dispose();
+    }
+
+    [Test]
+    public void ThrowIfNotRequested_keeps_a_pending_request_pending()
+    {
+        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+        using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
+        _testMessageDictionary.Send(request);
+
+        _testMessageDictionary.ThrowIfNotRequested(UndecodableResponse.Create(111));
+        _testMessageDictionary.Handle(111, response, 100);
+
+        Assert.That(request.CompletionSource.Task.Result, Is.SameAs(response));
+    }
+
+    [TestCaseSource(nameof(UncorrelatedContents))]
+    public void ThrowIfNotRequested_rejects_uncorrelated_content(IByteBuffer content)
+    {
+        _testMessageDictionary.Send(CreateRequest(111));
+
+        Assert.That(() => _testMessageDictionary.ThrowIfNotRequested(content), Throws.TypeOf<SubprotocolException>());
+    }
+
+    private static IEnumerable<TestCaseData> UncorrelatedContents()
+    {
+        yield return new TestCaseData(UndecodableResponse.Create(112)).SetName("Not pending request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0x80])).SetName("Unreadable request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>())).SetName("Empty payload");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1])).SetName("List shorter than its header");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01])).SetName("Request id shorter than its header");
     }
 
     private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)

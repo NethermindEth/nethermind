@@ -801,17 +801,19 @@ namespace Nethermind.Core.Extensions
             state.Bytes.AsSpan().OutputBytesToCharHexWithEip55Checksum(chars, state.WithZeroX, state.LeadingZeros);
         });
 
-        internal static uint[] Lookup32 = CreateLookup32("x2");
-        private static uint[] CreateLookup32(string format)
+        internal static uint[] Lookup32 = CreateLookup32();
+        // Plain arithmetic rather than formatting each byte, which allocated and parsed a string per entry.
+        private static uint[] CreateLookup32()
         {
             uint[] result = new uint[256];
             for (int i = 0; i < 256; i++)
             {
-                string s = i.ToString(format);
-                result[i] = s[0] + ((uint)s[1] << 16);
+                result[i] = HexDigit(i >> 4) + (HexDigit(i & 0xF) << 16);
             }
 
             return result;
+
+            static uint HexDigit(int nibble) => (uint)(nibble < 10 ? '0' + nibble : 'a' - 10 + nibble);
         }
 
         public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)
@@ -894,31 +896,49 @@ namespace Nethermind.Core.Extensions
                 data = data[i..];
             }
 
-            // Word-at-a-time tail. This is the whole loop on targets without vector acceleration
-            // (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
-            // intrinsic gas calculation.
-            ref byte tail = ref MemoryMarshal.GetReference(data);
+            return totalZeros + CountZerosWordAtATime(data);
+        }
+
+        /// <summary>Counts the zero bytes in <paramref name="data"/> a word at a time, without vector instructions.</summary>
+        /// <remarks>
+        /// The tail of <see cref="CountZeros(ReadOnlySpan{byte})"/>, and its whole loop on targets without vector
+        /// acceleration (e.g. the zkVM guest), where a byte-at-a-time scan of transaction calldata dominates
+        /// intrinsic gas calculation. Each byte lane of an accumulator counts the non-zero bytes at its position,
+        /// so a word costs a few ALU ops and the lanes are summed once per chunk.
+        /// </remarks>
+        internal static int CountZerosWordAtATime(ReadOnlySpan<byte> data)
+        {
+            // Lanes reach at most 31, so the sum of all eight fits the byte a multiply-fold leaves it in.
+            const int maxChunkBytes = 31 * sizeof(ulong);
+            ref byte bytes = ref MemoryMarshal.GetReference(data);
+            int wordBytes = data.Length & ~(sizeof(ulong) - 1);
+            int nonZeros = 0;
             int offset = 0;
-            for (; offset <= data.Length - sizeof(ulong); offset += sizeof(ulong))
+            while (offset < wordBytes)
             {
-                ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref tail, offset));
-                // Sets 0x80 in every zero byte. The shorter `(w - 0x01..) & ~w & 0x80..` form is not
-                // usable here: it only reports whether *some* byte is zero, because a borrow out of
-                // one byte corrupts its neighbour's flag. This form carries within each byte only.
-                ulong zeroFlags = ~((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) | 0x7F7F7F7F7F7F7F7FUL);
-                // Sum the flags without PopCount, which lacks a hardware instruction on some targets.
-                totalZeros += (int)((zeroFlags >> 7) * 0x0101010101010101UL >> 56);
+                int chunkEnd = Math.Min(wordBytes, offset + maxChunkBytes);
+                ulong laneCounts = 0;
+                for (; offset < chunkEnd; offset += sizeof(ulong))
+                {
+                    ulong word = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, offset));
+                    // Sets 0x80 in every non-zero byte; the add carries within each byte only, so lanes stay apart.
+                    laneCounts += ((((word & 0x7F7F7F7F7F7F7F7FUL) + 0x7F7F7F7F7F7F7F7FUL) | word) >> 7) & 0x0101010101010101UL;
+                }
+
+                // Sum the lanes without PopCount, which lacks a hardware instruction on some targets.
+                nonZeros += (int)((laneCounts * 0x0101010101010101UL) >> 56);
             }
 
+            int zeros = wordBytes - nonZeros;
             for (; offset < data.Length; offset++)
             {
-                if (Unsafe.Add(ref tail, offset) == 0)
+                if (Unsafe.Add(ref bytes, offset) == 0)
                 {
-                    totalZeros++;
+                    zeros++;
                 }
             }
 
-            return totalZeros;
+            return zeros;
         }
 
         [DebuggerStepThrough]

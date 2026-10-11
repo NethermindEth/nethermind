@@ -317,7 +317,23 @@ public class FrameTxSignatureValidatorTests
         Address derivedSigner = new(Keccak.Compute(raw.AsSpan(64)).Bytes[12..]);
         tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, derivedSigner, default, raw)];
 
-        bool ok = FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, p256Precompile: null, _spec, out string? error);
+        bool ok = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, p256Precompile: null, _spec, out string? error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ok, Is.False);
+            Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.P256NotSupported));
+        }
+    }
+
+    [Test]
+    public void Validate_P256PlaceholderWithoutPrecompile_RejectedAsNotSupported([Values] bool skipVerification)
+    {
+        Transaction tx = CreateFrameTx();
+        byte[] signature = skipVerification ? new byte[TxFrameSignature.P256SignatureLength] : [];
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeP256, null, default, signature)];
+
+        ValueHash256? sigHash = null;
+        bool ok = FrameTxSignatureValidator.Validate(tx, ref sigHash, _ethereumEcdsa, p256Precompile: null, _spec, out string? error, allowEmptySignatures: true, skipVerification);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ok, Is.False);
@@ -347,8 +363,51 @@ public class FrameTxSignatureValidatorTests
         Assert.That(error, Is.Not.Null);
     }
 
+    [Test]
+    public void RecoverSecp256k1Signers_LetsValidationSkipRecovery()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+        Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.False);
+
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        Assert.That(FrameTxSignatureValidator.Secp256k1SignersRecovered(tx), Is.True);
+        Assert.That(FrameTxSignatureValidator.Validate(tx, Substitute.For<IEthereumEcdsa>(), SecP256r1Precompile.Instance, _spec, out string? error), Is.True);
+        Assert.That(error, Is.Null);
+    }
+
+    [Test]
+    public void RecoverSecp256k1Signers_TxChangedAfterRecovery_StaleSignerRejected()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.MaxFeePerBlobGas = 3;
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x01)];
+        tx.FrameSignatures = [Secp256k1Entry(tx, TestItem.PrivateKeyB, signer: TestItem.PrivateKeyB.Address)];
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        tx.BlobVersionedHashes = [BlobVersionedHash(0x02)];
+
+        Assert.That(Validate(tx, out string? error), Is.False);
+        Assert.That(error, Is.EqualTo(FrameTxSignatureValidator.InvalidSecp256k1Signer));
+    }
+
+    [Test]
+    public void RecoverSecp256k1Signers_HighS_LeftUnrecovered()
+    {
+        Transaction tx = CreateFrameTx();
+        byte[] highS = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        highS[1] = 1;
+        highS.AsSpan(33).Fill(0xFF);
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressB, default, highS)];
+
+        FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ethereumEcdsa);
+
+        Assert.That(tx.FrameSignatures[0].Recovered, Is.Null);
+    }
+
     private bool Validate(Transaction tx, out string? error) =>
-        FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
+        FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
 
     private TxFrameSignature Secp256k1Entry(Transaction tx, PrivateKey key, Address? signer)
     {

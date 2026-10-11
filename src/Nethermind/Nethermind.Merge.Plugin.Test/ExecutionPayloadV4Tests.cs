@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -109,6 +111,25 @@ public class ExecutionPayloadV4Tests
             Assert.That(payload.ValidateForkOnNewPayload(specProvider, EngineApiVersions.NewPayload.V6),
                 Is.EqualTo(accepted == EngineApiVersions.NewPayload.V6));
         }
+    }
+
+    [TestCase(typeof(ExecutionPayloadV4), null, null)]
+    [TestCase(typeof(ExecutionPayloadV4), "withdrawals", "withdrawals")]
+    [TestCase(typeof(ExecutionPayloadV4), "blobGasUsed", "blobGasUsed")]
+    [TestCase(typeof(ExecutionPayloadV4), "blockAccessList", "blockAccessList")]
+    [TestCase(typeof(ExecutionPayloadV4), "slotNumber", "slotNumber")]
+    [TestCase(typeof(ExecutionPayloadV3), "excessBlobGas", "excessBlobGas")]
+    [TestCase(typeof(ExecutionPayloadV3), "blockAccessList", null)]
+    [TestCase(typeof(ExecutionPayloadV3), "slotNumber", null)]
+    public void Deserialization_tracks_the_required_fields_of_the_payload_version(Type payloadType, string? omittedField, string? expectedUnboundField)
+    {
+        ExecutionPayloadV4 complete = new() { Withdrawals = [], BlobGasUsed = 0, ExcessBlobGas = 0, BlockAccessList = [0xc0], SlotNumber = 1 };
+        JsonObject json = JsonSerializer.SerializeToNode(complete, EthereumJsonSerializer.JsonOptions)!.AsObject();
+        if (omittedField is not null) json.Remove(omittedField);
+
+        ExecutionPayload payload = (ExecutionPayload)json.Deserialize(payloadType, EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(payload.HasUnboundField ? payload.UnboundFieldName : null, Is.EqualTo(expectedUnboundField));
     }
 
     private static IEnumerable<TestCaseData> MalformedBlockAccessLists()

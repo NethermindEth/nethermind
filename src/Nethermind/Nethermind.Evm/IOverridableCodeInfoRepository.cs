@@ -9,14 +9,13 @@ namespace Nethermind.Evm;
 
 public interface IOverridableCodeInfoRepository : ICodeInfoRepository
 {
-    /// <summary>Serves <paramref name="value"/> as the code at <paramref name="key"/>.</summary>
+    /// <summary>Makes <paramref name="key"/> run <paramref name="value"/> until the account's code changes in the world state.</summary>
     /// <remarks>
-    /// The world state must already hold <paramref name="value"/>'s code at <paramref name="key"/>: the override is
-    /// served only while the state keeps that code hash, and after a direct write (SETCODEFROM, EIP-7702) is reverted
-    /// the original override is restored. A precompile <paramref name="value"/> carries no code and is exempt.
+    /// Write the code to the world state first. The override records the account's code hash when it is set, so code
+    /// written afterwards ends it at once.
     /// </remarks>
     void SetCodeOverride(IReleaseSpec vmSpec, Address key, CodeInfo value);
     void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr);
     void ResetOverrides();
-    void ResetPrecompileOverrides();
+    void ResetPrecompileOverrides(IReleaseSpec spec);
 }

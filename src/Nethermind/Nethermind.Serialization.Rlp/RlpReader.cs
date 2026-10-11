@@ -198,6 +198,12 @@ public ref struct RlpReader
         return keccak;
     }
 
+    public Hash256 DecodeZeroPrefixLogTopic0()
+    {
+        Position = RlpHelpers.DecodeZeroPrefixLogTopic0(Data, Position, out Hash256 topic);
+        return topic;
+    }
+
     public void DecodeKeccakStructRef(out Hash256StructRef keccak)
     {
         if (!ReadKeccakPrefix(allowNull: true))

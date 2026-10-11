@@ -380,8 +380,8 @@ public class SimpleTransferFastPathDifferentialTests
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after) =>
             Events.Add($"Nonce({address},{before?.ToString() ?? "null"},{after?.ToString() ?? "null"})");
 
-        public override void ReportCodeChange(Address address, byte[]? before, byte[]? after) =>
-            Events.Add($"Code({address},{before?.ToHexString() ?? "null"},{after?.ToHexString() ?? "null"})");
+        public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after) =>
+            Events.Add($"Code({address},{(before.IsNull() ? "null" : before.Span.ToHexString())},{(after.IsNull() ? "null" : after.Span.ToHexString())})");
 
         public override void ReportAccountRead(Address address) =>
             Events.Add($"AccountRead({address})");

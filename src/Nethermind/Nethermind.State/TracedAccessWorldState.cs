@@ -141,7 +141,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         if (_generatingBlockAccessList is null) { base.SetNonce(address, nonce); return; }
 
         // Deliberately no AddAccountRead: the probe belongs to the tracer, not the caller, and EIP-7928 lists
-        // only actual changes. PredeployInstaller.Install is the sole caller that can write a no-op nonce.
+        // only actual changes.
         ulong oldNonce = GetNonceInternal(address);
         base.SetNonce(address, nonce);
         if (nonce != oldNonce)
@@ -154,9 +154,15 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         if (_generatingBlockAccessList is not null)
         {
-            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address) ?? [], code);
+            _generatingBlockAccessList.AddCodeChange(address, GetCodeInternal(address), code);
         }
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
+    }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        _generatingBlockAccessList?.AddAdoptedCodeChange(address, GetCodeInternal(address), code, in codeHash);
+        return base.AdoptCode(address, in codeHash, code, spec);
     }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
@@ -180,6 +186,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         }
 
         AssertCurrentStorageValue(in storageCell, in currentValue);
+        if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
+            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
         _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
         State.Set(in storageCell, in newValue, in currentValue);
     }
@@ -225,7 +233,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return ref base.GetCodeHash(address);
     }
 
-    public override byte[]? GetCode(Address address)
+    public override ReadOnlyMemory<byte> GetCode(Address address)
     {
         if (_generatingBlockAccessList is null) return base.GetCode(address);
 
@@ -445,8 +453,8 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return codeChange is not null;
     }
 
-    private byte[]? GetCodeInternal(Address address)
-        => GetCodeCurrent(address) ?? base.GetCode(address);
+    private ReadOnlyMemory<byte> GetCodeInternal(Address address)
+        => GetCodeCurrent(address) is { } code ? code : base.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
         => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : base.GetCodeHash(address);

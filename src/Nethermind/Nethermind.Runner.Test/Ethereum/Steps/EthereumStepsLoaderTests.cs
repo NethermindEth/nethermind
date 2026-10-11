@@ -11,6 +11,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Init;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Snapshot;
@@ -77,6 +78,9 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(CommandStep)),
                 new StepInfo(typeof(SelfCancellingStep)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
+                new StepInfo(typeof(StepObservingCancellation)),
+                new StepInfo(typeof(FailingOptionalStep)),
+                new StepInfo(typeof(RequiredDependentStep)),
         ]);
 
     [Test]
@@ -101,7 +105,7 @@ public class EthereumStepsLoaderTests
     }
 
     private static void AssertStepInfosEquivalent(IEnumerable<StepInfo> actual, IEnumerable<StepInfo> expected) =>
-        Assert.That(actual.Select(StepInfoKey).Order().ToArray(), Is.EqualTo(expected.Select(StepInfoKey).Order().ToArray()));
+        Assert.That(actual.Select(StepInfoKey).Order(), Is.SequenceEqualTo(expected.Select(StepInfoKey).Order()));
 
     private static string StepInfoKey(StepInfo stepInfo) =>
         string.Join("|",

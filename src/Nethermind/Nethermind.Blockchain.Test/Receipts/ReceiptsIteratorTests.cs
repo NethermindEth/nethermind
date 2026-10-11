@@ -37,16 +37,16 @@ public class ReceiptsIteratorTests
 
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
         iterator.RecoverIfNeeded(ref receipt);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressA.Bytes.ToArray()));
-        Assert.That(receipt.TxHash.Bytes.ToArray(), Is.EqualTo(block.Transactions[0].Hash!.BytesToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressA.Bytes));
+        Assert.That(receipt.TxHash.Bytes, Is.SequenceEqualTo(block.Transactions[0].Hash!.BytesToArray()));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
         iterator.RecoverIfNeeded(ref receipt);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressB.Bytes.ToArray()));
-        Assert.That(receipt.TxHash.Bytes.ToArray(), Is.EqualTo(block.Transactions[1].Hash!.BytesToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressB.Bytes));
+        Assert.That(receipt.TxHash.Bytes, Is.SequenceEqualTo(block.Transactions[1].Hash!.BytesToArray()));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
         iterator.RecoverIfNeeded(ref receipt);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressC.Bytes.ToArray()));
-        Assert.That(receipt.TxHash.Bytes.ToArray(), Is.EqualTo(block.Transactions[1].Hash!.BytesToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
+        Assert.That(receipt.TxHash.Bytes, Is.SequenceEqualTo(block.Transactions[1].Hash!.BytesToArray()));
     }
 
     [Test]
@@ -66,15 +66,15 @@ public class ReceiptsIteratorTests
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressA.Bytes.ToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressA.Bytes));
         Assert.That(receipt.TxHash.Bytes.Length, Is.EqualTo(0));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressB.Bytes.ToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressB.Bytes));
         Assert.That(receipt.TxHash.Bytes.Length, Is.EqualTo(0));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
         iterator.RecoverIfNeeded(ref receipt);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressC.Bytes.ToArray()));
-        Assert.That(receipt.TxHash.Bytes.ToArray(), Is.EqualTo(block.Transactions[1].Hash!.BytesToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
+        Assert.That(receipt.TxHash.Bytes, Is.SequenceEqualTo(block.Transactions[1].Hash!.BytesToArray()));
     }
 
     [Test]
@@ -94,11 +94,11 @@ public class ReceiptsIteratorTests
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressA.Bytes.ToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressA.Bytes));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressB.Bytes.ToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressB.Bytes));
         Assert.That(iterator.TryGetNext(out receipt), Is.True);
-        Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressC.Bytes.ToArray()));
+        Assert.That(receipt.Sender.Bytes, Is.SequenceEqualTo(TestItem.AddressC.Bytes));
     }
 
     [Test]

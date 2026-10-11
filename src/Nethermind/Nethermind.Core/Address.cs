@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -29,10 +30,11 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(default(ValueAddress));
-        public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
+        // Byte literals rather than hex parsing: keeps the class preinitializable by ILC (no class-constructor check per use).
+        public static Address MaxValue { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
-        public static Address SystemUser { get; } = new(SystemUserHex);
+        public static Address SystemUser { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe]);
 
         private readonly ValueAddress _bytes;
 
@@ -141,13 +143,15 @@ namespace Nethermind.Core
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
+                ThrowInvalidLength(bytes.Length, nameof(bytes));
             }
 
             _bytes = new ValueAddress(bytes);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowInvalidLength(int length, string paramName) =>
+            throw new ArgumentException($"{nameof(Address)} should be {Size} bytes long and is {length} bytes long", paramName);
 
         internal Address(in ValueAddress bytes) => _bytes = bytes;
 
@@ -237,8 +241,7 @@ namespace Nethermind.Core
         /// An address is always 20 bytes, so the body skips the length-dispatching <see cref="SpanExtensions.FastHash"/>
         /// for the dedicated 20-byte hasher.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
+        internal partial int GetHashCodeNonVirtual();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -297,6 +300,9 @@ namespace Nethermind.Core
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
+
+        /// <summary>Returns the 64-bit hash of this address' storage cell at <paramref name="index"/>.</summary>
+        internal partial long GetHashCode64(in UInt256 index);
 
         /// <summary>Whether this address could name a precompile at all: sixteen leading zero bytes.</summary>
         /// <remarks>The membership test every CALL pays. Two loads reject an ordinary contract, against

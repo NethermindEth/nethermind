@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -29,10 +30,16 @@ internal sealed class HistoricalTrieNodeBuilder
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut), CancellationToken = budget.CancellationToken };
     }
 
-    public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
+    /// <param name="fromCache">True when the node cache served the node; a prefetched or rebuilt node is a miss.</param>
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 expected, out bool fromCache)
     {
-        ValueHash256 expected = expectedHash.ValueHash256;
-        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
+        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null)
+        {
+            fromCache = true;
+            return cached;
+        }
+
+        fromCache = false;
 
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
@@ -45,7 +52,7 @@ internal sealed class HistoricalTrieNodeBuilder
 
         throw new StateUnavailableException(
             $"The node at {path} as of block {_block} rebuilt to {(rlp is null ? "nothing" : ValueKeccak.Compute(rlp).ToString())} instead of the " +
-            $"{expectedHash} its parent commits to. The flat history rows below that path do not reproduce the proven " +
+            $"{expected} its parent commits to. The flat history rows below that path do not reproduce the proven " +
             "state root, so no proof is served for this height.");
     }
 
@@ -81,18 +88,15 @@ internal sealed class HistoricalTrieNodeBuilder
 
     public static void Prefetch(IReadOnlyList<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
     {
-        try
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(
+            options.MaxDegreeOfParallelism > 0 ? options.MaxDegreeOfParallelism : Environment.ProcessorCount);
+        ParallelUnbalancedWork.For(0, work.Count, options, work, static (i, items) =>
         {
-            Parallel.ForEach(work, options, static item =>
-            {
-                byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
-                if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
-            });
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+            (HistoricalTrieNodeBuilder Builder, TreePath Path) item = items[i];
+            byte[]? rlp = item.Builder.ResolveRlp(item.Path, parallelChildren: item.Path.Length == 0 && item.Builder._fanOut > 1, allowRebuild: false);
+            if (rlp is not null) item.Builder._prefetched![item.Path] = rlp;
+            return items;
+        });
     }
 
     private byte[]? ResolveRlp(in TreePath path, bool parallelChildren, bool allowRebuild = true) => ResolveRlp(path, parallelChildren, out _, allowRebuild);
@@ -213,14 +217,8 @@ internal sealed class HistoricalTrieNodeBuilder
 
     private void RunFanOut(Action<int> child)
     {
-        try
-        {
-            Parallel.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
-        }
-        catch (AggregateException e)
-        {
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.Flatten().InnerExceptions[0]).Throw();
-        }
+        using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Math.Max(1, _fanOut));
+        ParallelUnbalancedWork.For(0, BranchRlp.ChildCount, _fanOutOptions, child);
     }
 
     private byte[]? Compose(in TreePath path, bool parallelChildren, bool allowRebuild)

@@ -16,10 +16,10 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null) =>
-        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager);
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, IKeyValueStoreWithBatching? codeDb = null) =>
+        CreateForTest(UnavailableStateHeaderProvider.Instance, dbProvider, logManager, codeDb);
 
-    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IStateHeaderProvider stateHeaderProvider, IDbProvider? dbProvider = null, ILogManager? logManager = null, IKeyValueStoreWithBatching? codeDb = null)
     {
         PruningConfig pruningConfig = new();
         TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
@@ -33,7 +33,7 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
+        return new WorldState(new TrieStoreScopeProvider(trieStore, codeDb ?? dbProvider.CodeDb, stateHeaderProvider, logManager), logManager);
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null, IStateHeaderProvider? stateHeaderProvider = null)

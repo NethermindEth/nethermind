@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-/// <summary>EIP-8141 frame introspection and approval opcodes, plus the EIP-8272 reference reader.
+/// <summary>EIP-8141 frame introspection and approval opcodes.
 /// Each exceptional-halts outside a frame transaction, where <see cref="FrameTxContext"/> is absent.</summary>
 public static unsafe partial class EvmInstructions
 {
@@ -48,11 +48,12 @@ public static unsafe partial class EvmInstructions
         }
 
         // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in offset, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory))
         {
             return EvmExceptionType.OutOfGas;
         }
+
+        Span<byte> returnData = vm.VmState.Memory.LoadSpanAfterGas(in offset, in length);
 
         // Charged immediately before the consumption that writes the new state, after every execution charge.
         long nonceStateGas = ctx.NonceStateGas<TGasPolicy>(in plan, vm.WorldState);
@@ -77,21 +78,19 @@ public static unsafe partial class EvmInstructions
     }
 
     /// <summary>TXPARAM (0xb0): read a transaction-scoped field.</summary>
-    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D, 0x0E, 0x10 and 0x11.</typeparam>
-    /// <typeparam name="TEip8272">Whether the fork defines the recent-root reference count at index 0x0F.</typeparam>
+    /// <typeparam name="TEip8250">Whether the fork defines the keyed-nonce indices 0x0D through 0x10.</typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250, TEip8272>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionTxParam<TGasPolicy, TTracingInst, TEip8250>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TEip8250 : struct, IFlag
-        where TEip8272 : struct, IFlag
     {
         FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
         if (ctx is null) return EvmExceptionType.BadInstruction;
 
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         if (!stack.PopUInt256(out UInt256 param)) return EvmExceptionType.StackUnderflow;
-        if (param > 0x11U) return EvmExceptionType.BadInstruction;
+        if (param > 0x10U) return EvmExceptionType.BadInstruction;
 
         byte[]?[]? blobHashes = vm.TxExecutionContext.BlobVersionedHashes;
         return param.u0 switch
@@ -108,40 +107,12 @@ public static unsafe partial class EvmInstructions
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)ctx.Frames.Length),
             0x0A => stack.PushUInt256<TTracingInst>((UInt256)ctx.CurrentFrameIndex),
             0x0B => stack.PushUInt256<TTracingInst>((UInt256)ctx.Signatures.Length),
-            // The two extensions claim disjoint indices, so each is gated on its own fork rather than
-            // on one shared ceiling: 0x0F must stay undefined on a chain with EIP-8250 but not EIP-8272.
             0x0C => stack.PushUInt256<TTracingInst>((UInt256)(ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in gas))),
-            0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
-            0x0E when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
+            0x0D when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
+            0x0E when TEip8250.IsActive => stack.PushUInt256<TTracingInst>((UInt256)(ctx.NonceKeys?.Length ?? 1)),
+            0x0F when TEip8250.IsActive => stack.PushBytes<TTracingInst>(ctx.NonceKeysHash.BytesAsSpan),
             0x10 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.NonceKeys is { } keys ? keys[0] : UInt256.Zero),
-            0x11 when TEip8250.IsActive => stack.PushUInt256<TTracingInst>(ctx.LegacyNonce),
-            0x0F when TEip8272.IsActive => stack.PushUInt256<TTracingInst>((UInt256)ctx.RecentRootReferences.Length),
             _ => EvmExceptionType.BadInstruction,
-        };
-    }
-
-    /// <summary>RECENTROOTREFLOAD (0xb6): read one field of a declared recent-root reference.</summary>
-    /// <remarks>Reads the signed envelope, not the predeploy's storage, and it was checked against the
-    /// pre-state before any frame ran, so the opcode is legal in every frame mode including <c>VERIFY</c>.</remarks>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-    {
-        FrameTxContext? ctx = vm.TxExecutionContext.FrameTxContext;
-        if (ctx is null) return EvmExceptionType.BadInstruction;
-
-        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        // Spec stack order: field on top, index second — the reverse of FRAMEPARAM and SIGPARAM.
-        if (!stack.PopUInt256(out UInt256 field, out UInt256 index)) return EvmExceptionType.StackUnderflow;
-        if (index >= (UInt256)ctx.RecentRootReferences.Length || field > 2) return EvmExceptionType.BadInstruction;
-
-        RecentRootReference reference = ctx.RecentRootReferences[(int)index.u0];
-        return field.u0 switch
-        {
-            0 => stack.PushBytes<TTracingInst>(reference.SourceId.BytesAsSpan),
-            1 => stack.PushUInt256<TTracingInst>((UInt256)reference.Slot),
-            _ => stack.PushBytes<TTracingInst>(reference.Root.BytesAsSpan),
         };
     }
 

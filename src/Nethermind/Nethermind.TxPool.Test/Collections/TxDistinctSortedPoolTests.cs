@@ -123,4 +123,70 @@ public class TxDistinctSortedPoolTests
                 "the keyed count must not survive the entry, or the sender's nonce window shrinks by one for good");
         }
     }
+
+    /// <summary>The stranded entry above leaves the key map without leaving the bucket, so only the key-map removal
+    /// can report that its hash is gone.</summary>
+    [Test]
+    public void Counts_a_removal_from_the_key_map_that_leaves_the_bucket_untouched()
+    {
+        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        Transaction keyedTx = KeyedTx();
+        TxDistinctSortedPool pool = Pool(blobs: false, AccountTx(4, 110, TestItem.KeccakA), accountTx, keyedTx,
+            AccountTx(6, 90, TestItem.KeccakD), AccountTx(7, 80, TestItem.KeccakE));
+        long before = pool.GetRemovalGeneration(Sender);
+
+        MarkKeyedAndReprice(pool, keyedTx, accountTx, siblingGasBottleneck: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.ContainsKey(keyedTx.Hash!), Is.False, "precondition: the key map lost the entry");
+            Assert.That(pool.GetBucketCount(Sender), Is.EqualTo(5), "precondition: the bucket kept it");
+            Assert.That(pool.GetRemovalGeneration(Sender), Is.Not.EqualTo(before));
+        }
+    }
+
+    /// <summary>Capacity eviction's fallback takes the stranded entry out of the bucket alone, and then evicts a
+    /// worse transaction of another sender, so only the bucket removal can report this sender's loss.</summary>
+    [Test]
+    public void Counts_a_removal_from_the_bucket_alone()
+    {
+        Transaction n4 = AccountTx(4, 110, TestItem.KeccakA);
+        Transaction accountTx = AccountTx(SharedNonce, 100, TestItem.KeccakC);
+        Transaction keyedTx = KeyedTx();
+        Transaction n6 = AccountTx(6, 90, TestItem.KeccakD);
+        Transaction n7 = AccountTx(7, 80, TestItem.KeccakE);
+
+        TxDistinctSortedPool pool = Pool(blobs: false, n4, accountTx, keyedTx, n6, n7);
+        MarkKeyedAndReprice(pool, keyedTx, accountTx, siblingGasBottleneck: 10);
+        Reprice(pool, accountTx, gasBottleneck: 100);
+        pool.TryRemove(n7.Hash!);
+        pool.TryRemove(n6.Hash!);
+        long before = pool.GetRemovalGeneration(Sender);
+
+        Transaction victim = OtherSenderTx("victim", gasBottleneck: 60);
+        pool.TryInsert(victim.Hash!, victim);
+        for (int i = 0; i < 4; i++)
+        {
+            Transaction filler = OtherSenderTx($"filler{i}", gasBottleneck: 1000);
+            pool.TryInsert(filler.Hash!, filler);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetBucketCount(Sender), Is.EqualTo(2), "precondition: eviction swept the stranded entry out of the bucket");
+            Assert.That(pool.ContainsKey(victim.Hash!), Is.False, "precondition: the key-map eviction took the other sender's transaction");
+            Assert.That(pool.GetRemovalGeneration(Sender), Is.Not.EqualTo(before));
+        }
+    }
+
+    private static Transaction OtherSenderTx(string seed, uint gasBottleneck)
+    {
+        Hash256 hash = Keccak.Compute(seed);
+        return Build.A.Transaction
+            .WithNonce(0)
+            .WithSenderAddress(new Address(hash.Bytes[..20]))
+            .WithGasBottleneck(gasBottleneck)
+            .WithHash(hash)
+            .TestObject;
+    }
 }

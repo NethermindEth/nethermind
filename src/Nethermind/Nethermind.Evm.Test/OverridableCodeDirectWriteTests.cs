@@ -98,7 +98,7 @@ public class OverridableCodeDirectWriteTests : VirtualMachineTestsBase
         CodeInfo original = _repository.GetCachedCodeInfoNoDelegation(Target, Spec);
         Snapshot snapshot = TestState.TakeSnapshot();
 
-        if (writer == Writer.SetCodeFrom) TestState.InsertCode(Target, Keccak.Compute(SourceCode), SourceCode, Spec);
+        if (writer == Writer.SetCodeFrom) TestState.AdoptCode(Target, ValueKeccak.Compute(SourceCode), SourceCode, Spec);
         else _repository.SetDelegation(Source, Target, Spec);
 
         Assert.That(_repository.GetCachedCodeInfoNoDelegation(Target, Spec).Code.ToArray(), Is.EqualTo(CodeAfter(writer)), "after the write");

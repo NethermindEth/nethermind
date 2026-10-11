@@ -116,8 +116,8 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             Execute(MainnetSpecProvider.OsakaActivation, callCode);
-            Assert.That(TestState.GetCode(expectedAddress), Is.Not.Empty, "delegation code should be preserved");
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(expectedAddress)), Is.True, "original delegation should remain");
+            Assert.That(TestState.GetCode(expectedAddress).ToArray(), Is.Not.Empty, "delegation code should be preserved");
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(expectedAddress)), Is.True, "original delegation should remain");
         }
 
         /// <summary>

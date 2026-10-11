@@ -6,9 +6,12 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransaction<EIP1559TransactionForRpc>
 {
     public new static TxType TxType => TxType.EIP1559;
@@ -27,11 +30,13 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     public EIP1559TransactionForRpc() { }
 
     public EIP1559TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         MaxFeePerGas = transaction.MaxFeePerGas;
         MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
-        // ReSharper disable once VirtualMemberCallInConstructor
         GasPrice = extraData.BaseFee is not null
             ? transaction.CalculateEffectiveGasPrice(eip1559Enabled: true, extraData.BaseFee.Value)
             : transaction.MaxFeePerGas;
@@ -44,9 +49,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             // Reject ambiguous input: both gasPrice and EIP-1559 fields
             if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
                 return RpcTransactionErrors.GasPriceInEip1559;
-
-            if (MaxFeePerGas < MaxPriorityFeePerGas)
-                return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
         }
 
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
