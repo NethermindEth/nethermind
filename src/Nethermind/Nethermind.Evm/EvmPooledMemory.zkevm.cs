@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
 
@@ -144,4 +145,13 @@ public partial struct EvmPooledMemory
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref word, 2 * sizeof(ulong)), 0UL);
         Unsafe.WriteUnaligned(ref Unsafe.Add(ref word, 3 * sizeof(ulong)), 0UL);
     }
+
+    private static byte[] RentLarge(int minLength, out ulong initializedSize)
+    {
+        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
+        initializedSize = isFresh ? (ulong)array.Length : 0;
+        return array;
+    }
+
+    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
 }

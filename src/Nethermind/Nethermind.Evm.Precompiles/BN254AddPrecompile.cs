@@ -35,12 +35,13 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
     }
 
+    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
+    partial void CountCall();
+
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-#if !ZK_EVM
-        Metrics.Bn254AddPrecompile++;
-#endif
+        CountCall();
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {

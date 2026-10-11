@@ -15,15 +15,10 @@
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
   </assembly>
-  <assembly fullname="Nethermind.Evm">
-    <!-- Only ZisK's runtime exports the arith256 routines behind DIV, MOD, ADDMOD and MULMOD, so the
-         shared build leaves the flag off and this guest turns it on; ILC folds every check it gates. -->
-    <type fullname="Nethermind.Evm.ZiskArith256Flag">
-      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
-    </type>
-    <!-- Only this guest links jump_dest.S, the JUMPDEST bitmap precompile, so the shared build leaves the
-         flag off and this guest turns it on; ILC folds the check it gates. -->
-    <type fullname="Nethermind.Evm.CodeAnalysis.ZiskJumpDestFlag">
+  <assembly fullname="Nethermind.Core">
+    <!-- The shared build leaves the flag off and this guest turns it on, switching on what only ZisK
+         offers (see ZiskFlag); ILC folds every check it gates. -->
+    <type fullname="Nethermind.Core.ZiskFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
@@ -32,16 +27,6 @@
          shared build leaves the flag off and this guest turns it on; ILC folds the check it gates. -->
     <type fullname="Nethermind.Serialization.Ssz.Merkleization.ZiskSha256FFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
-    </type>
-  </assembly>
-  <assembly fullname="Nethermind.Core">
-    <!-- ZisK runs memmove as a precompile, so Bytes.Copy calls it directly rather than through corelib. -->
-    <type fullname="Nethermind.Core.Extensions.ZiskMemmoveFlag">
-      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
-    </type>
-    <!-- ZisK lowers Zbb's rev8 to one native instruction, so byte swaps take ReverseEndianness. -->
-    <type fullname="Nethermind.Core.Extensions.ZkEvmBitOperations">
-      <method signature="System.Boolean get_HasByteReverse()" body="stub" value="true" />
     </type>
   </assembly>
 </linker>

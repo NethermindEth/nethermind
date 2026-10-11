@@ -442,11 +442,11 @@ public sealed partial class KeccakHash
         : PaddedLastWord(data + length, length & 7);
 
     /// <summary>Zeroes all twenty-five lanes of a state.</summary>
-    /// <remarks>Where <see cref="ZiskMemmoveFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
+    /// <remarks>Where <see cref="ZiskFlag"/> is on this is one DMA <c>memset</c> rather than twenty-five stores.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ZeroState(ref ulong lane)
     {
-        if (ZiskMemmoveFlag.IsActive)
+        if (ZiskFlag.IsActive)
         {
             Bytes.Memset(Unsafe.AsPointer(ref lane), 0, STATE_LANES * sizeof(ulong));
             return;
@@ -483,12 +483,12 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Absorbs the first rate block of <paramref name="data"/> into a state whose rate lanes are uninitialized.</summary>
-    /// <remarks>Into an all-zero state an XOR is a copy, so where <see cref="ZiskMemmoveFlag"/> is on the block goes
+    /// <remarks>Into an all-zero state an XOR is a copy, so where <see cref="ZiskFlag"/> is on the block goes
     /// through the zkVM's DMA <c>memmove</c>: one call instead of seventeen load/store pairs.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void CopyFirstBlock(ref ulong lane, byte* data)
     {
-        if (ZiskMemmoveFlag.IsActive)
+        if (ZiskFlag.IsActive)
         {
             Bytes.Memmove(Unsafe.AsPointer(ref lane), data, HASH_DATA_AREA);
             return;
