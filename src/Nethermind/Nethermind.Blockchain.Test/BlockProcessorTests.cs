@@ -2293,6 +2293,25 @@ public partial class BlockProcessorTests
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
+    /// <summary>
+    /// Cancellation leaves the real processing stack as cancellation, never as an invalid block: the processing
+    /// timeout relies on it to abandon a block without a verdict.
+    /// </summary>
+    [Test]
+    public async Task BranchProcessor_surfaces_cancellation_rather_than_an_invalid_block()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).WithTransactions(3, chain.SpecProvider.GetSpec(parent.Header)).TestObject;
+
+        Assert.Catch<OperationCanceledException>(() => chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance,
+            new CancellationToken(true)));
+    }
+
     [TestCase(true, 2)]
     [TestCase(false, 1)]
     public async Task BranchProcessor_retries_only_parallel_bal_failures(bool retryable, int expectedAttempts)
@@ -2910,6 +2929,25 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void IncrementalValidation_throws_when_cancelled()
+    {
+        GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        RecordingTransactionProcessedEventHandler handler = new();
+
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        Assert.Throws<OperationCanceledException>(() => balManager.IncrementalValidation(
+            block,
+            BuildGasResults(gasConsumed),
+            BuildParallelReceiptTracers(block, gasConsumed),
+            handler,
+            new CancellationToken(true)));
+        Assert.That(handler.Events, Is.Empty);
+    }
+
+    [Test]
     public void Failed_parallel_validation_harvests_canonical_receipt_metadata()
     {
         GasConsumed[] gasConsumed =
@@ -3290,6 +3328,51 @@ public partial class BlockProcessorTests
             Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
             Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
         });
+    }
+
+    [Test]
+    public void Bal_validation_stops_executing_once_cancelled([Values] bool sequential)
+    {
+        const int txCount = 4096;
+        const int cancelAfter = 8;
+        Block block = BuildParallelValidationBlock(txCount);
+        ProcessingOptions options = sequential ? ProcessingOptions.ForceSequentialBlockAccessList : ProcessingOptions.None;
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, options);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton<IBlockAccessListManager>(balManager)
+            .Build();
+        MainProcessingContext processingContext = (MainProcessingContext)container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = processingContext.WorldState.BeginScope(IWorldState.PreGenesis);
+        IBlockProcessor.IBlockTransactionsExecutor executor = processingContext.LifetimeScope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, options, receiptsTracer, cancellation.Token));
+        // Workers already inside a transaction finish it.
+        Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(cancelAfter + 2 * Environment.ProcessorCount));
+    }
+
+    [Test]
+    public void Validation_stops_executing_once_cancelled()
+    {
+        const int cancelAfter = 8;
+        Block block = BuildParallelValidationBlock(64);
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        BlockProcessor.BlockValidationTransactionsExecutor executor = new(transactionProcessor, stateProvider);
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, cancellation.Token));
+        Assert.That(transactionProcessor.ExecutedCount, Is.EqualTo(cancelAfter));
     }
 
     [Test]
@@ -4004,6 +4087,26 @@ public partial class BlockProcessorTests
             args.TxReceipt.GasUsedTotal,
             args.HeaderGasUsed,
             args.Transaction.Nonce));
+    }
+
+    /// <summary>Counts executed transactions and cancels once <c>cancelAfter</c> of them have run.</summary>
+    private sealed class CancellingTransactionProcessorAdapter(int cancelAfter, CancellationTokenSource cancellation) : ITransactionProcessorAdapter
+    {
+        private int _executedCount;
+
+        public int ExecutedCount => Volatile.Read(ref _executedCount);
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            if (Interlocked.Increment(ref _executedCount) == cancelAfter) cancellation.Cancel();
+            transaction.BlockGasUsed = GasCostOf.Transaction;
+            txTracer.MarkAsSuccess(Address.Zero, GasCostOf.Transaction, [], []);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
     }
 
     /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
