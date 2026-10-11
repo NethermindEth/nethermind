@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Sockets;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -254,5 +255,39 @@ public class JsonRpcUrlCollectionTests
             { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, [ModuleType.Eth, ModuleType.Engine]) },
             { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, [ModuleType.Eth, ModuleType.Web3])}
         }, Is.EqualTo(urlCollection));
+    }
+
+    [Test]
+    public void Additional_url_with_engine_module_gets_the_engine_request_body_cap()
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            Enabled = true,
+            EnabledModules = _enabledModules,
+            AdditionalRpcUrls = ["http://127.0.0.1:8551|http|eth;engine", "http://127.0.0.1:8546|http|eth"]
+        };
+
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(urlCollection[8551].MaxRequestBodySize, Is.EqualTo(SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API));
+            Assert.That(urlCollection[8546].MaxRequestBodySize, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Default_ws_url_keeps_the_engine_request_body_cap()
+    {
+        JsonRpcConfig jsonRpcConfig = new()
+        {
+            Enabled = true,
+            EnabledModules = [.. _enabledModules, ModuleType.Engine],
+            WebSocketsPort = 8546
+        };
+
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+
+        Assert.That(urlCollection[8546].MaxRequestBodySize, Is.EqualTo(SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API));
     }
 }
