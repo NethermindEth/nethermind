@@ -104,8 +104,8 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
-    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads, at the contract
+    /// addresses the spec resolves for this block, which are the same addresses the dequeue calls target.
     /// </remarks>
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
     {
@@ -115,28 +115,28 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         bool hasContract = false;
         if (spec.WithdrawalRequestsEnabled)
         {
-            AddQueueContract(builder, _withdrawalTransaction);
+            AddQueueContract(builder, spec.Eip7002ContractAddress!);
             hasContract = true;
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
-            AddQueueContract(builder, _consolidationTransaction);
+            AddQueueContract(builder, spec.Eip7251ContractAddress!);
             hasContract = true;
         }
 
         if (spec.BuilderRequestsEnabled)
         {
-            AddQueueContract(builder, _builderDepositTransaction);
-            AddQueueContract(builder, _builderExitTransaction);
+            AddQueueContract(builder, _builderDepositTransaction.To!);
+            AddQueueContract(builder, _builderExitTransaction.To!);
             hasContract = true;
         }
 
         return hasContract ? builder.Build() : null;
 
-        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
+        static void AddQueueContract(AccessList.Builder builder, Address queueContract)
         {
-            builder.AddAddress(dequeueCall.To!);
+            builder.AddAddress(queueContract);
             for (ulong slot = 0; slot < QueueStorageOffset; slot++)
             {
                 UInt256 index = slot;
@@ -157,14 +157,14 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
 
             if (spec.WithdrawalRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7002ContractAddress, ref requests, _withdrawalTransaction,
+                ReadRequests(block, state, spec.Eip7002ContractAddress!, ref requests, ForContract(_withdrawalTransaction, spec.Eip7002ContractAddress!),
                     ExecutionRequestType.WithdrawalRequest,
                     BlockErrorMessages.WithdrawalsContractEmpty, BlockErrorMessages.WithdrawalsContractFailed);
             }
 
             if (spec.ConsolidationRequestsEnabled)
             {
-                ReadRequests(block, state, spec.Eip7251ContractAddress, ref requests, _consolidationTransaction,
+                ReadRequests(block, state, spec.Eip7251ContractAddress!, ref requests, ForContract(_consolidationTransaction, spec.Eip7251ContractAddress!),
                     ExecutionRequestType.ConsolidationRequest,
                     BlockErrorMessages.ConsolidationsContractEmpty, BlockErrorMessages.ConsolidationsContractFailed);
             }
@@ -268,6 +268,20 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         data.AsSpan(dataOffset + AbiWordSize, length).CopyTo(buffer.Slice(bufferOffset, length));
         bufferOffset += length;
     }
+
+    /// <summary>Returns the dequeue call for <paramref name="contractAddress"/>, reusing the prehashed template when the chain uses the predeploy.</summary>
+    private static SystemCall ForContract(SystemCall template, Address contractAddress) =>
+        template.To == contractAddress
+            ? template
+            : new SystemCall
+            {
+                Value = 0,
+                Data = Array.Empty<byte>(),
+                To = contractAddress,
+                SenderAddress = Address.SystemUser,
+                GasLimit = GasLimit,
+                GasPrice = 0,
+            };
 
     private void ReadRequests(Block block, IWorldState state, Address contractAddress, ref ArrayPoolListRef<byte[]> requests,
         Transaction systemTx, ExecutionRequestType type, string contractEmptyError, string contractFailedError)
