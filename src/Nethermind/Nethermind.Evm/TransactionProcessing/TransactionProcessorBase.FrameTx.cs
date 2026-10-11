@@ -31,7 +31,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private IBlockAccessListSource? BeginPostTxDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
     {
         // The in-pool prefix simulation stops before the body, so no POST_TX frame ever runs under it.
-        if (!spec.IsEip7906Enabled
+        if (!SpecFlags.Eip7906(spec)
             || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
             || tx.Frames is not { } frames
@@ -95,8 +95,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private TransactionResult ExecuteFrameTx<TTracing>(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec)
         where TTracing : struct, IFlag
     {
-        if (!spec.IsEip8141Enabled)
+        if (!SpecFlags.Eip8141(spec))
         {
+            // The zkEVM build answers the rule with a constant, so a spec outside its fork range is rejected
+            // rather than judged by a rule that does not describe it.
+            SpecFlags.Validate(spec);
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail(TxErrorMessages.InvalidTxType(spec.Name));
         }
 
