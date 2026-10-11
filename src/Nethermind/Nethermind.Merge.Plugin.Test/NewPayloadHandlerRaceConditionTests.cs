@@ -86,8 +86,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
-        payload.OnDecoding = workers => decodingWorkers = workers;
         Transaction[] transactions = payload.TryGetTransactions().Data!;
+        ISenderRecoveryProgress? progressAtBlockConstruction = null;
+        payload.OnDecoding = workers =>
+        {
+            decodingWorkers = workers;
+            progressAtBlockConstruction = recovery.GetInFlight(transactions);
+        };
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
             wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
@@ -107,6 +112,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 Assert.That(entered.Task.IsCompleted, Is.EqualTo(!singleProcessor));
                 Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
                 Assert.That(progress, singleProcessor ? Is.Null : Is.Not.Null);
+                Assert.That(progressAtBlockConstruction, Is.SameAs(progress));
             }
         }
         finally

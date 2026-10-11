@@ -282,6 +282,22 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_IntrinsicGasFailure_IsRejectedWithValidatorError([Values(31, 32)] int transactionCount)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance);
+        using MergeTestBlockchain disposeChain = chain;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+        payload.Transactions = Enumerable.Range(0, transactionCount).Select(i => TxDecoder.Instance.EncodeTx(
+            Build.A.Transaction.WithNonce((ulong)i).WithGasLimit(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            RlpBehaviors.SkipTypedWrapping).Bytes).ToArray();
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, [], payload.ParentBeaconBlockRoot);
+
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: Nethermind.Core.Messages.TxErrorMessages.IntrinsicGasTooLow);
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload, MergeTestBlockchain chain)

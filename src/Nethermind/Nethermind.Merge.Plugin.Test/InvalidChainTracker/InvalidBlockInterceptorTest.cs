@@ -6,11 +6,14 @@ using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -46,6 +49,29 @@ public class InvalidBlockInterceptorTest
 
     [TearDown]
     public void TearDown() => (_invalidBlockInterceptor as IDisposable)?.Dispose();
+
+    [Test]
+    public void Prepared_transactions_preserve_invalid_chain_tracking([Values] bool valid)
+    {
+        Assume.That(Core.Cpu.RuntimeInformation.IsSingleProcessor, Is.False);
+        ITxValidator txValidator = Substitute.For<ITxValidator>();
+        txValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>())
+            .Returns(valid ? ValidationResult.Success : new ValidationResult("invalid transaction"));
+        BlockValidator validator = new(txValidator, Always.Valid, Always.Valid,
+            new TestSingleReleaseSpecProvider(Byzantium.Instance), LimboLogs.Instance);
+        InvalidBlockInterceptor interceptor = new(validator, _tracker, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent)
+            .WithTransactions(Enumerable.Repeat(Build.A.Transaction.SignedAndResolved().TestObject, 32).ToArray()).TestObject;
+        using BlockValidator.TransactionValidation? prepared = interceptor.PrepareTransactions(block);
+        Assert.That(prepared, Is.Not.Null);
+
+        Assert.That(interceptor.ValidateSuggestedBlock(block, parent, out _, validateHashes: false, prepared), Is.EqualTo(valid));
+
+        _tracker.Received().SetChildParent(block.Hash!, block.ParentHash!);
+        _tracker.Received(valid ? 0 : 1).OnInvalidBlock(block.Hash!, block.ParentHash);
+        txValidator.Received(valid ? 32 : 1).IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>());
+    }
 
     [TestCase(true, false)]
     [TestCase(false, true)]
