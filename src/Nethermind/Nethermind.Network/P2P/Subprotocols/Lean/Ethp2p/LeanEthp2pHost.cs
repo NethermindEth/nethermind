@@ -62,7 +62,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     public static bool IsSupported => QuicListener.IsSupported && QuicConnection.IsSupported;
 
     /// <summary>The bound UDP endpoint, or null before start or when QUIC is unavailable.</summary>
-    public IPEndPoint? LocalEndPoint { get; private set; }
+    public IPEndPoint? LocalEndPoint { get; internal set; }
 
     internal int ConnectionCount { get { lock (_lock) return _connections.Count; } }
 
