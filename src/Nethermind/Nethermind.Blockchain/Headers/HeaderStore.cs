@@ -16,31 +16,71 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
 
-public class HeaderStore(
-    [KeyFilter(DbNames.Headers)] IDb headerDb,
-    [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb,
-    IHeaderDecoder? decoder = null)
-    : IHeaderStore, IClearableCache
+public class HeaderStore : IHeaderStore, IClearableCache
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
-    private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
+    private readonly IDb _headerDb;
+    private readonly IDb _blockNumberDb;
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    // Headers written off the engine API path, as the bodies they belong to are; null when deferral is off. The block
+    // data the persistence barrier makes durable before a block's state includes them, so on a restart from persisted
+    // state no header it needs is missing.
+    private readonly DeferredWriteOverlay<BlockHeader>? _pending;
 
-    public void Insert(BlockHeader header)
+    public HeaderStore(
+        [KeyFilter(DbNames.Headers)] IDb headerDb,
+        [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb,
+        IHeaderDecoder? decoder = null,
+        IDeferredBlockDataWriter? deferredWriter = null,
+        IStatePersistenceBarrier? persistenceBarrier = null)
+    {
+        _headerDb = headerDb;
+        _blockNumberDb = blockNumberDb;
+        _headerDecoder = decoder ?? new HeaderDecoder();
+
+        if (deferredWriter is { Enabled: true })
+        {
+            _pending = new DeferredWriteOverlay<BlockHeader>(deferredWriter, WriteHeader);
+            IStatePersistenceBarrier barrier = persistenceBarrier ?? NullStatePersistenceBarrier.Instance;
+            barrier.RegisterFlush(() => headerDb.Flush(onlyWal: true));
+            barrier.RegisterFlush(() => blockNumberDb.Flush(onlyWal: true));
+        }
+    }
+
+    public void Insert(BlockHeader header) => WriteHeader(header.Number, header.Hash!, header);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Readers find the header at once through the pending overlay; the header is encoded and written by the deferred
+    /// writer. Nothing that changes its encoding is mutated after a block is suggested.
+    /// </remarks>
+    public void InsertDeferred(BlockHeader header)
+    {
+        if (_pending is null)
+        {
+            Insert(header);
+            return;
+        }
+
+        _pending.Publish(header.Number, header.Hash!, header);
+    }
+
+    private void WriteHeader(ulong blockNumber, Hash256 blockHash, BlockHeader header)
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
-        headerDb.Set(header.Number, header.Hash!, rlp);
-        InsertBlockNumber(header.Hash, header.Number);
+        _headerDb.Set(blockNumber, blockHash, rlp);
+        InsertBlockNumber(blockHash, blockNumber);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
-        using IWriteBatch headerWriteBatch = headerDb.StartWriteBatch();
-        using IWriteBatch blockNumberWriteBatch = blockNumberDb.StartWriteBatch();
+        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
 
         Span<byte> blockNumberSpan = stackalloc byte[8];
         foreach (BlockHeader header in headers)
@@ -56,25 +96,39 @@ public class HeaderStore(
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         if (_headerCache.Get(in blockHash.ValueHash256) is { } cached) return cached;
+        if (_pending is not null && _pending.TryGet(blockHash, out BlockHeader pending)) return pending;
 
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
-        return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
 
     public void Delete(Hash256 blockHash)
     {
+        if (_pending is not null)
+        {
+            // Removed with the database delete under the overlay's lock, so a queued write cannot bring it back.
+            _pending.Remove(blockHash, () => DeleteFromDb(blockHash));
+        }
+        else
+        {
+            DeleteFromDb(blockHash);
+        }
+    }
+
+    private void DeleteFromDb(Hash256 blockHash)
+    {
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
-        blockNumberDb.Delete(blockHash);
-        headerDb.Delete(blockHash);
+        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
+        _blockNumberDb.Delete(blockHash);
+        _headerDb.Delete(blockHash);
         _headerCache.Delete(in blockHash.ValueHash256);
     }
 
@@ -82,11 +136,12 @@ public class HeaderStore(
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
-        blockNumberDb.Set(blockHash, blockNumberSpan);
+        _blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
     public ulong? GetBlockNumber(Hash256 blockHash)
     {
+        if (_pending is not null && _pending.TryGet(blockHash, out BlockHeader pending)) return pending.Number;
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
@@ -96,7 +151,7 @@ public class HeaderStore(
 
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        Span<byte> numberSpan = blockNumberDb.GetSpan(blockHash);
+        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
         try
         {
@@ -109,7 +164,7 @@ public class HeaderStore(
         }
         finally
         {
-            blockNumberDb.DangerousReleaseMemory(numberSpan);
+            _blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
     }
 
@@ -119,7 +174,7 @@ public class HeaderStore(
     private Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive, int capacity)
     {
         Dictionary<ValueHash256, BlockHeader> prefetched = new(capacity);
-        if (toExclusive <= fromInclusive || headerDb is not ISortedKeyValueStore sorted) return prefetched;
+        if (toExclusive <= fromInclusive || _headerDb is not ISortedKeyValueStore sorted) return prefetched;
 
         Span<byte> startKey = stackalloc byte[NumberPrefixedKeyLength];
         Span<byte> endKey = stackalloc byte[NumberPrefixedKeyLength];
