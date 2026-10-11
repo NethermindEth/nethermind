@@ -123,21 +123,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             project: Nethermind.Merge.AuRa.Test
             chunk: ''
-        include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
-          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+        include:
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-24.04-arm, project: Nethermind.Synchronization.Test, chunk: 3of4 }
@@ -154,21 +140,7 @@ jobs:
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
-          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
-          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
-    steps:
+    steps: &test-steps
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -189,9 +161,11 @@ jobs:
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+            run_tests=(dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -199,12 +173,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+          "${run_tests[@]}" "${test_args[@]}" $flags
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -217,7 +191,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
+            "${run_tests[@]}" "${test_args[@]}" $flags
           fi
 
       - name: Upload dumps
@@ -236,9 +210,52 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-coverage
-          path: src/Nethermind/artifacts/bin/${{ matrix.project }}/release/TestResults/*.cobertura.xml
+          path: src/Nethermind/${{ matrix.project }}/TestResults/*.cobertura.xml
+          if-no-files-found: error
           retention-days: 1
 
+
+  # macOS/Windows build their test project in-job instead of using the Linux artifact,
+  # so they start right away instead of waiting for the build.
+  tests-native:
+    name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        include: # macOS/Windows only for OS-sensitive tests (I/O, networking, sockets)
+          - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
+          - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
+          - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Enr.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Network.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Runner.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Sockets.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
+          - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+    steps: *test-steps
   tests-spec:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
     needs: build
@@ -276,6 +293,7 @@ jobs:
 
       - name: Fetch submodules
         if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
+        background: true
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -289,6 +307,9 @@ jobs:
         with:
           variant: release
 
+      - name: Wait for submodules
+        wait-all:
+
       - name: ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
@@ -296,9 +317,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.project }}.csproj          # binaries from the shared Linux artifact
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.project }}/release/${{ matrix.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.project }}.csproj -c release  # Windows/macOS: no artifact, build in-job
+            run_tests=(dotnet test --project ${{ matrix.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -306,12 +329,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+          "${run_tests[@]}" "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -324,7 +347,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}"
+            "${run_tests[@]}" "${test_args[@]}"
           fi
 
       - name: Upload dumps
@@ -349,9 +372,7 @@ jobs:
         runner:
           - ubuntu-latest
           - ubuntu-24.04-arm
-          - windows-latest
-          - macos-latest
-        test:
+        test: &legacy-blockchain-chunks
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
@@ -360,7 +381,7 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-    steps:
+    steps: &chunked-test-steps
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         run: git config --system core.longpaths true
@@ -369,6 +390,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
+        background: true
         uses: ./.github/actions/fetch-submodules
         with:
           submodules: recursive
@@ -382,6 +404,9 @@ jobs:
         with:
           variant: release
 
+      - name: Wait for submodules
+        wait-all:
+
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test
         working-directory: src/Nethermind/${{ matrix.test.project }}
@@ -389,9 +414,11 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            dotnet restore ${{ matrix.test.project }}.csproj
+            # Run the prebuilt test host directly: dotnet test would restore and evaluate the project first.
+            run_tests=(../artifacts/bin/${{ matrix.test.project }}/release/${{ matrix.test.project }} --results-directory TestResults)
           else
             dotnet build ${{ matrix.test.project }}.csproj -c release
+            run_tests=(dotnet test --project ${{ matrix.test.project }}.csproj -c release --no-build --no-restore)
           fi
           dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           # A hung test host is killed with a dump of every thread instead of running into the job
@@ -399,12 +426,12 @@ jobs:
           # a mini dump keeps the write and upload inside whatever job budget the hang leaves.
           # A host that dies mid-run leaves a dump, a crash report where the runtime writes one, and a
           # sequence log of the tests in flight; on its own, exit code 7 names neither test nor cause.
-          test_args=(--no-build --no-restore
+          test_args=(
             --hangdump --hangdump-timeout 8m --hangdump-type Mini
             --crashdump --crashdump-type Mini --crash-report-if-supported)
 
           set +e
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+          "${run_tests[@]}" "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -417,7 +444,7 @@ jobs:
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             echo "crashed=true" >> "$GITHUB_OUTPUT"  # keep the dump the crash just wrote, even if the retry passes
-            dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
+            "${run_tests[@]}" "${test_args[@]}"
           fi
 
       - name: Upload dumps
@@ -431,6 +458,19 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+
+  tests-chunked-native:
+    name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - windows-latest
+          - macos-latest
+        test: *legacy-blockchain-chunks
+    steps: *chunked-test-steps
   # EEST and zkEVM fixtures (formerly the Ethereum.Blockchain.Pyspec.Test shards) run
   # through the reusable nethtest workflow: same fixture releases, all fixture formats.
   # setup_group "all" runs both configuration groups - the sequential (patricia) baseline
@@ -477,7 +517,7 @@ jobs:
 
   tests-summary:
     name: Tests summary
-    needs: [tests, tests-spec, tests-chunked, nethtest, matrix-guard]
+    needs: [tests, tests-native, tests-spec, tests-chunked, tests-chunked-native, nethtest, matrix-guard]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -485,8 +525,10 @@ jobs:
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-native.result }}" == "success" && \
             "${{ needs.tests-spec.result }}" == "success" && \
             "${{ needs.tests-chunked.result }}" == "success" && \
+            "${{ needs.tests-chunked-native.result }}" == "success" && \
             "${{ needs.nethtest.result }}" == "success" && \
             "${{ needs.matrix-guard.result }}" == "success" \
           ]]
@@ -529,6 +571,5 @@ jobs:
 
   hive-tests:
     name: Hive tests
-    needs: tests-summary
-    if: github.event_name == 'pull_request' && needs.tests-summary.result == 'success'
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/hive-tests.yml

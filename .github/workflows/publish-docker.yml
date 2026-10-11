@@ -41,14 +41,6 @@ jobs:
             --format '{{ index (index .Image "linux/amd64").Config.Labels "org.opencontainers.image.revision" }}' || true)
           if [ "$revision" = "$GITHUB_SHA" ]; then echo "unchanged=true" >> "$GITHUB_OUTPUT"; fi
 
-      - name: Free up disk space
-        if: steps.nightly.outputs.unchanged != 'true'
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
       - name: Check out repository
         if: steps.nightly.outputs.unchanged != 'true'
         uses: actions/checkout@v6

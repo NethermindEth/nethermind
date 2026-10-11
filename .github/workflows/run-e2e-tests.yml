@@ -42,14 +42,15 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
           restore-keys: nuget-${{ runner.os }}-
 
-      - name: Build Nethermind Docker image
-        run: docker build -t nethermind:integration-tests -f Dockerfile .
+      - parallel:
+          - name: Build Nethermind Docker image
+            run: docker build -t nethermind:integration-tests -f Dockerfile .
 
-      - name: Build EngineApiProxy Docker image
-        run: docker build -t engine-api-proxy:integration-tests -f tools/EngineApiProxy/Dockerfile .
+          - name: Build EngineApiProxy Docker image
+            run: docker build -t engine-api-proxy:integration-tests -f tools/EngineApiProxy/Dockerfile .
 
-      - name: Build integration tests
-        run: dotnet build src/Nethermind/Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj -c Release
+          - name: Build integration tests
+            run: dotnet build src/Nethermind/Nethermind.IntegrationTests/Nethermind.IntegrationTests.csproj -c Release
 
       - name: Run E2E tests
         env:
