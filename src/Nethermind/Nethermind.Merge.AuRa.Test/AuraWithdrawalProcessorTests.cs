@@ -3,8 +3,10 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -52,6 +54,25 @@ public class AuraWithdrawalProcessorTests
             Arg.Is<UInt256>(4),
             Arg.Is<IList<ulong>>(a => values.AsEnumerable().SequenceEqual(new[] { 1_000_000UL, 2_000_000UL })),
             Arg.Is<IList<Address>>(a => addresses.AsEnumerable().SequenceEqual(new[] { Address.SystemUser, Address.Zero })));
+    }
+
+    [Test]
+    public void Should_report_contract_failure_as_invalid_block()
+    {
+        IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
+        AuraWithdrawalProcessor withdrawalProcessor = new(contract, LimboLogs.Instance);
+        Block block = Build.A.Block
+            .WithNumber(123)
+            .WithWithdrawals(Build.A.Withdrawal.WithAmount(1_000_000UL).WithRecipient(Address.Zero).TestObject)
+            .TestObject;
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.WithdrawalsEnabled.Returns(true);
+
+        // Contract.CallCore wraps every reverted or faulted system call in AbiException.
+        contract.When(c => c.ExecuteWithdrawals(block.Header, Arg.Any<UInt256>(), Arg.Any<IList<ulong>>(), Arg.Any<IList<Address>>()))
+            .Throw(new AbiException("System call to executeSystemWithdrawals returned error 'revert'"));
+
+        Assert.Throws<InvalidBlockException>(() => withdrawalProcessor.ProcessWithdrawals(block, spec));
     }
 
     [Test]

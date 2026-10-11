@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Abi;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -56,7 +57,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException)
+        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is AbiException)
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }
