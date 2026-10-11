@@ -11,6 +11,6 @@ public sealed partial class JournalSet<T> where T : notnull, IEquatable<T>
     public partial void Clear()
     {
         _set.Clear();
-        _items.Clear();
+        GuestList<T>.Reset(_items);
     }
 }

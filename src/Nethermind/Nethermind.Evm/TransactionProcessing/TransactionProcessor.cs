@@ -105,12 +105,13 @@ namespace Nethermind.Evm.TransactionProcessing
             public readonly bool IsTracingState = tracer.IsTracingState;
             public readonly bool IsTracingReceipt = tracer.IsTracingReceipt;
             public readonly bool IsCollectingLogs = tracer.IsCollectingLogs;
-            public readonly bool IsTracingLogs = tracer.IsTracingLogs;
-            public readonly bool IsTracingInstructions = tracer.IsTracingInstructions;
+            // A build without tracing skips these reads: its tracer sets none, which DispatchFlags.Validate checks on every EVM-executed transaction.
+            public readonly bool IsTracingLogs = DispatchFlags.ConstTracing && tracer.IsTracingLogs;
+            public readonly bool IsTracingInstructions = DispatchFlags.ConstTracing && tracer.IsTracingInstructions;
             public readonly bool IsTracingMemory = tracer.IsTracingMemory;
-            public readonly bool IsTracingAccess = tracer.IsTracingAccess;
-            public readonly bool IsTracingRefunds = tracer.IsTracingRefunds;
-            public readonly bool IsTracingActions = tracer.IsTracingActions;
+            public readonly bool IsTracingAccess = DispatchFlags.ConstTracing && tracer.IsTracingAccess;
+            public readonly bool IsTracingRefunds = DispatchFlags.ConstTracing && tracer.IsTracingRefunds;
+            public readonly bool IsTracingActions = DispatchFlags.ConstTracing && tracer.IsTracingActions;
         }
 
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)

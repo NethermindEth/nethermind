@@ -38,7 +38,11 @@ namespace Nethermind.Core.Collections
         public IEnumerator<T> GetEnumerator() => _list.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_list).GetEnumerator();
         public void Add(T item) => _list.Add(item);
+#if ZK_EVM
+        public void Clear() => GuestList<T>.Reset(_list);
+#else
         public void Clear() => _list.Clear();
+#endif
         public bool Contains(T item) => _list.Contains(item);
         public void CopyTo(T[] array, int arrayIndex) => _list.CopyTo(array, arrayIndex);
         public bool Remove(T item) => throw new NotSupportedException("Cannot remove from Journal, use Restore(int snapshot) instead.");

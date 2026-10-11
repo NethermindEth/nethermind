@@ -326,14 +326,15 @@ public partial class VirtualMachine<TGasPolicy>(
     {
         // Initialize dependencies for transaction tracing and state access.
         _txTracer = txTracer;
-        IsTracingActions = txTracer.IsTracingActions;
-        IsTracingRefunds = txTracer.IsTracingRefunds;
-        _isCancelableCached = txTracer.IsCancelable;
-        IsTracingAccess = txTracer.IsTracingAccess;
-        IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage;
+        // A build without tracing never reads these back, and DispatchFlags.Validate below rejects a tracer that sets them.
+        IsTracingActions = DispatchFlags.ConstTracing && txTracer.IsTracingActions;
+        IsTracingRefunds = DispatchFlags.ConstTracing && txTracer.IsTracingRefunds;
+        _isCancelableCached = DispatchFlags.ConstCancelable && txTracer.IsCancelable;
+        IsTracingAccess = DispatchFlags.ConstTracing && txTracer.IsTracingAccess;
+        IsTracingOpLevelStorage = DispatchFlags.ConstTracing && txTracer.IsTracingOpLevelStorage;
         IsTracingImplicitStop = TTracingInst.IsActive && txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
-        _tracerAllowsReturnScratch = !txTracer.IsTracingActions
-            && !txTracer.IsTracingInstructions
+        _tracerAllowsReturnScratch = !IsTracingActions
+            && !(DispatchFlags.ConstTracing && txTracer.IsTracingInstructions)
             && !txTracer.IsTracingMemory
             && !txTracer.IsTracingReturnData;
         DispatchFlags.Validate(txTracer);
