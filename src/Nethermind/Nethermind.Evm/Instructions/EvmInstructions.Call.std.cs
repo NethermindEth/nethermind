@@ -87,4 +87,23 @@ public static partial class EvmInstructions
         result = stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
         return true;
     }
+
+    // Mainline keeps CreateFullCallFrame out-of-line for icache locality on the common path.
+    private const MethodImplOptions FullCallFrameInlining = MethodImplOptions.NoInlining;
+
+    private const bool InlinesPrecompileFrames = false;
+
+    private static partial EvmExceptionType InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputOffset,
+        long outputLength,
+        in Snapshot snapshot,
+        ref EvmStack stack,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
+        where TTracingInst : struct, IFlag =>
+        throw new UnreachableException();
 }

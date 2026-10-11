@@ -415,6 +415,63 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Large_map_pool_reuses_the_largest_nearby_map([Values] bool returnLargestFirst)
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> smaller = new(1024, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(2048, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> oversized = new(65536, UInt256Comparer.Instance);
+        smaller.Add(UInt256.One, 7);
+        larger.Add(UInt256.One, 9);
+
+        pool.Return(returnLargestFirst ? larger : smaller);
+        pool.Return(returnLargestFirst ? smaller : larger);
+        pool.Return(oversized);
+
+        OptimizedDictionary<UInt256, int> rented = pool.Rent(1024);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented, Is.SameAs(larger));
+            Assert.That(rented, Is.Empty);
+            Assert.That(rented.Capacity, Is.InRange(2048, 4096));
+        }
+
+        rented.Add(UInt256.One, 11);
+        pool.Return(rented);
+        Assert.That(pool.Rent(1024), Is.SameAs(larger).And.Empty);
+        Assert.That(pool.Rent(1024), Is.SameAs(smaller).And.Empty);
+        Assert.That(pool.Rent(1024), Is.SameAs(oversized));
+    }
+
+    [Test]
+    public void Large_map_pool_falls_back_to_best_fit_when_all_maps_are_oversized([Values] bool returnLargestFirst)
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> smaller = new(16384, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(65536, UInt256Comparer.Instance);
+        pool.Return(returnLargestFirst ? larger : smaller);
+        pool.Return(returnLargestFirst ? smaller : larger);
+
+        Assert.That(pool.Rent(1024), Is.SameAs(smaller));
+        Assert.That(pool.Rent(1024), Is.SameAs(larger));
+    }
+
+    [Test]
+    public void Large_map_pool_does_not_exceed_its_retained_capacity_budget()
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> first = new(65536, UInt256Comparer.Instance);
+        int retainedCount = PersistentStorageProvider.LargeMapPool<UInt256, int>.MaxRetainedEntries / first.Capacity;
+        OptimizedDictionary<UInt256, int>[] maps = new OptimizedDictionary<UInt256, int>[retainedCount + 1];
+        maps[0] = first;
+        for (int i = 1; i < maps.Length; i++) maps[i] = new(65536, UInt256Comparer.Instance);
+        foreach (OptimizedDictionary<UInt256, int> map in maps) pool.Return(map);
+
+        for (int i = 0; i < retainedCount; i++) Assert.That(pool.Rent(65536), Is.SameAs(maps[i]));
+        Assert.That(pool.Rent(65536), Is.Not.SameAs(maps[^1]));
+    }
+
+    [Test]
     public void Large_map_pool_keeps_only_maps_it_can_rent_again()
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);

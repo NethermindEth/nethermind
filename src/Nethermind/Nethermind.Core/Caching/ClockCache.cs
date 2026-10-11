@@ -2,28 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching;
 
-public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition = null, IEqualityComparer<TKey>? comparer = null) : ClockCacheBase<TKey>(maxCapacity)
+public sealed partial class ClockCache<TKey, TValue> : ClockCacheBase<TKey>
     where TKey : struct, IEquatable<TKey>
 {
-#if ZK_EVM
-    private readonly int? _lockPartition = lockPartition;
-    private readonly Dictionary<TKey, LruCacheItem> _cacheMap = new(maxCapacity, comparer ?? throw new ArgumentNullException(nameof(comparer)));
-    private readonly MockLock _lock = new();
-#else
-    private readonly ConcurrentDictionary<TKey, LruCacheItem> _cacheMap = new(lockPartition ?? Collections.CollectionExtensions.LockPartitions, maxCapacity, GenericEqualityComparer.GetOptimized(comparer));
-    private readonly McsLock _lock = new();
-#endif
-
     public TValue Get(TKey key)
     {
         if (MaxCapacity == 0) return default!;
@@ -76,7 +65,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
     private bool SetSlow(TKey key, TValue val)
     {
-#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
+#pragma warning disable IDE0008 // Type depends on the build variant
         using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
@@ -150,7 +139,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return false;
         }
 
-#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
+#pragma warning disable IDE0008 // Type depends on the build variant
         using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
@@ -172,7 +161,7 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     {
         if (MaxCapacity == 0) return;
 
-#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
+#pragma warning disable IDE0008 // Type depends on the build variant
         using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
