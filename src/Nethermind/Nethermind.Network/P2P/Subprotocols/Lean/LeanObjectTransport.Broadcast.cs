@@ -85,7 +85,7 @@ public sealed partial class LeanObjectTransport
     /// <remarks>
     /// A kind-3 package completes its shared assembly and goes through the same validation queue as retrieved objects, so an
     /// invalid package is rejected as such. A kind-2 proof that rebuilds the header committed by the block hash is kept for
-    /// block import, which still checks it against the block's dependencies.
+    /// block import, which still checks it against the block's dependencies. The first such proof for a block is kept.
     /// </remarks>
     internal string? AcceptBroadcastBody(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, byte[] body, long started)
     {
@@ -98,13 +98,12 @@ public sealed partial class LeanObjectTransport
                 return "proof does not rebuild the header of its block hash";
             lock (_gate)
             {
-                if (!_broadcastSidecars.ContainsKey(descriptor.BlockHash))
-                {
-                    if (_broadcastSidecarOrder.Count >= MaxBroadcastSidecars && _broadcastSidecarOrder.TryDequeue(out ValueHash256 oldest))
-                        _broadcastSidecars.Remove(oldest);
-                    _broadcastSidecarOrder.Enqueue(descriptor.BlockHash);
-                }
-                _broadcastSidecars[descriptor.BlockHash] = (descriptor, proof);
+                // The first valid sidecar for a block is kept; a later one cannot replace it.
+                if (_broadcastSidecars.ContainsKey(descriptor.BlockHash)) return null;
+                if (_broadcastSidecarOrder.Count >= MaxBroadcastSidecars && _broadcastSidecarOrder.TryDequeue(out ValueHash256 oldest))
+                    _broadcastSidecars.Remove(oldest);
+                _broadcastSidecarOrder.Enqueue(descriptor.BlockHash);
+                _broadcastSidecars.Add(descriptor.BlockHash, (descriptor, proof));
                 TaskCompletionSource signal = _hintSignal;
                 _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 signal.TrySetResult();
