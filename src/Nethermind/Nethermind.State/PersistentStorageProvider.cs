@@ -115,7 +115,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
+    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope)
+    {
+        _currentScope = scope;
+        if (scope is null)
+        {
+            _pendingOriginalValues?.Dispose();
+            _pendingOriginalValues = null;
+        }
+    }
 
     private IWorldStateScopeProvider.IScope CurrentScope =>
         _currentScope ?? throw new InvalidOperationException("Persistent storage can only be used within a world-state scope.");
