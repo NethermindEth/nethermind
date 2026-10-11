@@ -116,7 +116,7 @@ public sealed partial class LeanObjectTransport
         }
         finally
         {
-            Outbox outbox = new();
+            Outbox outbox = new(_clock);
             CancellationTokenSource? processing;
             lock (_gate)
             {
@@ -242,7 +242,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>Tombstones an invalid object and penalizes every peer that announced or supplied it.</summary>
     private void Reject(LeanAssembly assembly, string reason)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             _tombstones.Add(assembly.Descriptor.ObjectId);
@@ -396,7 +396,7 @@ public sealed partial class LeanObjectTransport
     {
         TaskCompletionSource<byte[]?> waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
         LeanAssembly? assembly;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
@@ -420,7 +420,7 @@ public sealed partial class LeanObjectTransport
 
     private void ReleaseWaiter(LeanAssembly assembly, TaskCompletionSource<byte[]?> waiter, LeanAssembly? dependent)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             assembly.Waiters.Remove(waiter);

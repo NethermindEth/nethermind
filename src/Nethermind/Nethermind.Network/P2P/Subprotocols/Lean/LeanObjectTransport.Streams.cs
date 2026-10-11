@@ -52,7 +52,7 @@ public sealed partial class LeanObjectTransport
     /// </remarks>
     internal void OnResponseAborted(LeanPeer peer, ulong requestId)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed || !peer.Live.Remove(requestId, out LeanOutgoingRequest? request)) return;

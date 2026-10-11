@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -15,7 +14,7 @@ public sealed partial class LeanObjectTransport
     internal void OnAnnounce(LeanPeer peer, AnnounceObjectsMessage message)
     {
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -192,7 +191,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnChunk(LeanPeer peer, in LeanChunkView chunk)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         LeanChunksRequest? request = null;
         int position = -1;
         lock (_gate)
@@ -247,7 +246,7 @@ public sealed partial class LeanObjectTransport
         // A valid first response for a requested index advances the request, even when another peer already supplied the
         // chunk; only a newly verified missing chunk advances the assembly.
         long now = _clock.GetTimestamp();
-        if (!request.Progressed && Volatile.Read(ref request.Sent) is > 0 and var sent) SampleRoundTrip(peer, Stopwatch.GetTimestamp() - sent);
+        if (!request.Progressed && Volatile.Read(ref request.Sent) is >= 0 and var sent) SampleRoundTrip(peer, now - sent);
         request.LastProgress = now;
         request.Progressed = true;
         peer.Stalls = 0;
@@ -279,7 +278,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnComplete(LeanPeer peer, CompleteMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -319,7 +318,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnObjects(LeanPeer peer, ObjectsMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -359,7 +358,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnTransactions(LeanPeer peer, TransactionsMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -385,7 +384,7 @@ public sealed partial class LeanObjectTransport
     internal async Task<LeanObjectResult[]?> RequestObjectsAsync(LeanPeer peer, LeanSelector[] selectors, CancellationToken cancellationToken)
     {
         LeanObjectsRequest request;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
@@ -402,7 +401,7 @@ public sealed partial class LeanObjectTransport
         CancellationToken cancellationToken)
     {
         LeanTransactionsRequest request;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
@@ -432,7 +431,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>Sends Cancel and marks the request; it keeps its slot until a terminal response or its local expiry.</summary>
     private void Cancel(LeanPeer peer, LeanOutgoingRequest request)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed || !peer.Live.TryGetValue(request.Id, out LeanOutgoingRequest? live) || live != request) return;
@@ -451,7 +450,7 @@ public sealed partial class LeanObjectTransport
 
     private void Tick()
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         long now;
         lock (_gate)
         {

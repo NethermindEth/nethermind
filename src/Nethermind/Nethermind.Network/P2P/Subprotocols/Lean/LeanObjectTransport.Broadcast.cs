@@ -48,7 +48,7 @@ public sealed partial class LeanObjectTransport
     /// <see cref="BroadcastKey"/>; kept until its session ends, so a later shard cannot restart the deferral.</summary>
     private readonly Dictionary<ValueHash256, (long Accepted, long Last)> _broadcastProgress = [];
 
-    /// <summary>The lowest peer round trip, in <see cref="Stopwatch"/> ticks; zero until measured.</summary>
+    /// <summary>The lowest peer round trip, in the clock's timestamp ticks; zero until measured.</summary>
     private long _roundTrip;
 
     /// <summary>When the transport timer next fires, in timestamp ticks.</summary>
@@ -139,7 +139,7 @@ public sealed partial class LeanObjectTransport
         get
         {
             if (_roundTrip == 0) return DefaultRoundTrip;
-            TimeSpan roundTrip = Stopwatch.GetElapsedTime(0, _roundTrip);
+            TimeSpan roundTrip = _clock.GetElapsedTime(0, _roundTrip);
             return roundTrip < MinBroadcastDeferral ? MinBroadcastDeferral : roundTrip > MaxBroadcastDeferral ? MaxBroadcastDeferral : roundTrip;
         }
     }
@@ -250,7 +250,7 @@ public sealed partial class LeanObjectTransport
     /// <remarks>Requested retrieval of the same object stops; a body retrieval already completed is validated instead.</remarks>
     private string? QueueBroadcastPackage(LeanDescriptor descriptor, byte[] body, long started)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (_disposed || _store.Contains(descriptor.ObjectId)) return null;

@@ -75,7 +75,7 @@ public sealed partial class LeanObjectTransport
             transactions = [.. full];
         }
         LeanDescriptor descriptor = LeanDescriptor.Create(kind, LocalProfile, context, body, out LeanChunkTree tree);
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (_disposed || !_store.TryAdd(new LeanObjectStore.Entry(descriptor, body, tree, skeleton, transactions, envelopes))) return false;
@@ -258,7 +258,7 @@ public sealed partial class LeanObjectTransport
 
     private void RejectSidecar(LeanDescriptor descriptor, LeanPeer peer)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             _tombstones.Add(descriptor.ObjectId);

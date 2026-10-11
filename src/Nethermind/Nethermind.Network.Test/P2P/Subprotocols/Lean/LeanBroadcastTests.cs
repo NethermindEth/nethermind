@@ -531,9 +531,25 @@ public class LeanBroadcastTests
     {
         using LeanTestNode node = new();
         LeanPeer fast = node.Connect(new FakeLink("fast")), slow = node.Connect(new FakeLink("slow"));
-        node.Transport.SampleRoundTrip(fast, Stopwatch.Frequency / 10);
-        node.Transport.SampleRoundTrip(slow, 10 * Stopwatch.Frequency);
-        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(100)).Within(TimeSpan.FromMilliseconds(1)));
+        node.Transport.SampleRoundTrip(fast, TimeSpan.FromMilliseconds(100).Ticks * node.Time!.TimestampFrequency / TimeSpan.TicksPerSecond);
+        node.Transport.SampleRoundTrip(slow, 10 * node.Time.TimestampFrequency);
+        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(100)));
+    }
+
+    [Test]
+    public void Round_trip_is_measured_on_the_transport_clock_from_sending_to_the_first_chunk()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        byte[] body = Wrapper(3 * LeanProtocol.ChunkBytes, false, FrameTransaction(9));
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        GetChunksMessage request = link.Sent<GetChunksMessage>().Single();
+
+        node.Time!.Advance(TimeSpan.FromMilliseconds(300));
+        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, tree, request.Indices[0]))));
+        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(300)));
     }
 
     /// <summary>A kind-3 package whose broadcast was admitted, starting its shared assembly.</summary>

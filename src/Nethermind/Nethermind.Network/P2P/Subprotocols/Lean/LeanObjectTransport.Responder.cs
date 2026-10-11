@@ -27,7 +27,7 @@ public sealed partial class LeanObjectTransport
                 && builds < MaxOnDemandBuilds && EnsureBlockProof(selector)) builds++;
 
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed || !CheckIncomingId(peer, message.RequestId, outbox))
@@ -66,7 +66,7 @@ public sealed partial class LeanObjectTransport
     internal void OnGetChunks(LeanPeer peer, GetChunksMessage message)
     {
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         LeanServing? serving = null;
         LeanObjectStore.Entry? entry = null;
         lock (_gate)
@@ -144,7 +144,7 @@ public sealed partial class LeanObjectTransport
             stopped = true;
         }
 
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Serving.TryGetValue(serving.Id, out LeanServing? current) && current == serving) peer.Serving.Remove(serving.Id);
@@ -166,7 +166,7 @@ public sealed partial class LeanObjectTransport
 
     internal void OnCancel(LeanPeer peer, CancelMessage message)
     {
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed) return;
@@ -184,7 +184,7 @@ public sealed partial class LeanObjectTransport
     internal void OnGetTransactions(LeanPeer peer, GetTransactionsMessage message)
     {
         bool busy;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Closed || !CheckIncomingId(peer, message.RequestId, outbox))

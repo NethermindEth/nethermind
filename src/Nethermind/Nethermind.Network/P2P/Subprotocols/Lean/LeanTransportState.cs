@@ -189,8 +189,8 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNod
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
 
-    /// <summary>Smoothed time from sending a chunk request to its first chunk, in <see cref="System.Diagnostics.Stopwatch"/>
-    /// ticks; zero until measured.</summary>
+    /// <summary>Smoothed time from sending a chunk request to its first chunk, in the transport clock's timestamp ticks; zero
+    /// until measured.</summary>
     public long RoundTrip { get; set; }
 
     /// <summary>Wanted objects this peer announced while the assembly limits were reached, oldest first.</summary>
@@ -258,9 +258,9 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
     /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
     public bool Cancelled { get; set; }
 
-    /// <summary>The <see cref="System.Diagnostics.Stopwatch"/> timestamp at which the request was handed to the connection;
-    /// zero until then. Written by the sending thread.</summary>
-    public long Sent;
+    /// <summary>The transport clock's timestamp at which the request was handed to the connection; -1 until then. Written by
+    /// the sending thread.</summary>
+    public long Sent = -1;
 
     /// <summary>An ethp2p response stream was opened for this request; a second one is a protocol violation.</summary>
     public bool Streamed { get; set; }
