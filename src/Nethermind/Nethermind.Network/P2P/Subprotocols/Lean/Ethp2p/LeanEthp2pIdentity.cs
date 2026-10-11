@@ -84,9 +84,9 @@ internal static class LeanEthp2pIdentity
         {
             error = Authenticate(certificate, now, out nodeKey);
         }
-        catch (Exception exception) when (exception is AsnContentException or CryptographicException or ArgumentException
-            or FormatException or InvalidOperationException or OverflowException or SecurityUtilityException)
+        catch (Exception exception)
         {
+            // The certificate is attacker-controlled and the parsers and signers throw many exception types: none may escape.
             error = $"malformed certificate: {exception.Message}";
         }
         return error is null;
@@ -171,11 +171,24 @@ internal static class LeanEthp2pIdentity
         if (algorithmReader.HasData) algorithmReader.ReadNull();
         algorithmReader.ThrowIfNotEmpty();
         if (oid == "1.2.840.113549.1.1.10") return false;
+        AsymmetricKeyParameter key = PublicKeyFactory.CreateKey(subjectPublicKeyInfo.ToArray());
+        if (!SignsWith(oid, key)) return false;
         ISigner verifier = SignerUtilities.GetSigner(oid);
-        verifier.Init(false, PublicKeyFactory.CreateKey(subjectPublicKeyInfo.ToArray()));
+        verifier.Init(false, key);
         verifier.BlockUpdate(tbs.Span);
         return verifier.VerifySignature(signature);
     }
+
+    /// <summary>Whether a signature algorithm identifier names the family of the certificate's own key.</summary>
+    /// <remarks>Signers assume their key type, so a mislabelled algorithm is rejected before one is initialized.</remarks>
+    private static bool SignsWith(string oid, AsymmetricKeyParameter key) => key switch
+    {
+        ECPublicKeyParameters => oid.StartsWith("1.2.840.10045.4.", StringComparison.Ordinal),
+        RsaKeyParameters => oid.StartsWith("1.2.840.113549.1.1.", StringComparison.Ordinal),
+        Ed25519PublicKeyParameters => oid == "1.3.101.112",
+        Ed448PublicKeyParameters => oid == "1.3.101.113",
+        _ => false
+    };
 
     /// <summary>Decodes the protobuf <c>PublicKey { KeyType Type = 1; bytes Data = 2; }</c>.</summary>
     private static bool TryDecodePublicKey(ReadOnlySpan<byte> encoded, out ulong keyType, out ReadOnlySpan<byte> data)

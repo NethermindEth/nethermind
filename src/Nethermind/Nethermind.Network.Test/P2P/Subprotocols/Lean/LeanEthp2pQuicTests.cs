@@ -251,15 +251,24 @@ public class LeanEthp2pQuicTests
         }
     };
 
-    [TestCase("libp2p", true, TestName = "Wrong ALPN is refused in the handshake")]
-    [TestCase(LeanEthp2pProtocol.Alpn, false, TestName = "Client without a libp2p certificate is never authenticated")]
-    public async Task Unauthenticated_client_never_reaches_the_transport(string alpn, bool withCertificate)
+    public enum ClientCertificate { Libp2p, None, MislabelledEc, MislabelledRsa }
+
+    [TestCase("libp2p", ClientCertificate.Libp2p, TestName = "Wrong ALPN is refused in the handshake")]
+    [TestCase(LeanEthp2pProtocol.Alpn, ClientCertificate.None, TestName = "Client without a libp2p certificate is never authenticated")]
+    [TestCase(LeanEthp2pProtocol.Alpn, ClientCertificate.MislabelledEc, TestName = "Ed25519 signature algorithm over a P-256 client key is refused")]
+    [TestCase(LeanEthp2pProtocol.Alpn, ClientCertificate.MislabelledRsa, TestName = "ECDSA signature algorithm over an RSA client key is refused")]
+    public async Task Unauthenticated_client_never_reaches_the_transport(string alpn, ClientCertificate kind)
     {
         await using QuicNode b = await QuicNode.Start(TestItem.PrivateKeyB);
-        using X509Certificate2 certificate = LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA);
+        using X509Certificate2? certificate = kind switch
+        {
+            ClientCertificate.Libp2p => LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA),
+            ClientCertificate.None => null,
+            _ => LeanEthp2pTests.MislabelledCertificate(rsaKey: kind == ClientCertificate.MislabelledRsa)
+        };
         try
         {
-            await using QuicConnection client = await QuicConnection.ConnectAsync(RawClient(b.Host.LocalEndPoint!, alpn, withCertificate ? certificate : null));
+            await using QuicConnection client = await QuicConnection.ConnectAsync(RawClient(b.Host.LocalEndPoint!, alpn, certificate));
             // TLS 1.3 clients finish before the server checks their certificate; the server then closes without processing data.
             await using QuicStream stream = await client.OpenOutboundStreamAsync(QuicStreamType.Unidirectional);
             await stream.WriteAsync(new byte[] { LeanEthp2pProtocol.ControlStream });
@@ -272,6 +281,10 @@ public class LeanEthp2pQuicTests
             Assert.That(b.Host.ConnectionCount, Is.Zero);
             Assert.That(b.Node.Transport.PeerCount, Is.Zero);
         }
+
+        await using QuicNode a = await QuicNode.Start(TestItem.PrivateKeyA);
+        Assert.That(await a.Host.DialAsync(b.Record, CancellationToken.None), Is.Not.Null);
+        await Until(() => b.Node.Transport.PeerCount == 1, "the listener still accepting");
     }
 
     [Test]
