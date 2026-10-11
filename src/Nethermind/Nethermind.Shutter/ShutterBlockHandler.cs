@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
@@ -124,38 +125,39 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
+        List<BlockWaitTask> waitTasks;
         lock (_syncObject)
         {
-            _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
-            {
-                waitTask.Value.Dispose();
-            }));
+            waitTasks = _blockWaitTasks.Values.SelectMany(static x => x.Values).ToList();
+            _blockWaitTasks.Clear();
         }
+        waitTasks.ForEach(static waitTask => waitTask.Dispose());
     }
 
+    // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an
+    // in-flight callback returns, and that callback (CancelWaitForBlock) needs the same lock.
     private void CancelWaitForBlock(ulong slot, ulong taskId, bool timeout)
     {
+        BlockWaitTask waitTask;
         lock (_syncObject)
         {
-            if (_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks))
+            if (!_blockWaitTasks.TryGetValue(slot, out Dictionary<ulong, BlockWaitTask>? slotWaitTasks)
+                || !slotWaitTasks.Remove(taskId, out waitTask))
             {
-                if (slotWaitTasks.TryGetValue(taskId, out BlockWaitTask waitTask))
-                {
-                    if (timeout)
-                    {
-                        waitTask.Tcs.TrySetResult(null);
-                    }
-                    else
-                    {
-                        waitTask.Tcs.SetException(new OperationCanceledException());
-                    }
-
-                    waitTask.Dispose();
-                }
-
-                slotWaitTasks.Remove(taskId);
+                return;
             }
         }
+
+        if (timeout)
+        {
+            waitTask.Tcs.TrySetResult(null);
+        }
+        else
+        {
+            waitTask.Tcs.TrySetException(new OperationCanceledException());
+        }
+
+        waitTask.Dispose();
     }
 
     private void OnNewHeadBlock(object? _, BlockEventArgs e)
@@ -173,20 +175,19 @@ public class ShutterBlockHandler : IShutterBlockHandler
             _eon.Update(head.Header);
             _txLoader.LoadFromReceipts(head, _receiptFinder.Get(head), _eon.GetCurrentEonInfo()!.Value.Eon);
 
+            Dictionary<ulong, BlockWaitTask>? waitTasks;
             lock (_syncObject)
             {
                 ulong slot = _time.GetSlot(head.Timestamp * 1000);
                 _slotToBlockHash.Set(slot, head.Hash);
-
-                if (_blockWaitTasks.Remove(slot, out Dictionary<ulong, BlockWaitTask>? waitTasks))
-                {
-                    waitTasks.ForEach(waitTask =>
-                    {
-                        waitTask.Value.Tcs.TrySetResult(head);
-                        waitTask.Value.Dispose();
-                    });
-                }
+                _blockWaitTasks.Remove(slot, out waitTasks);
             }
+
+            waitTasks?.ForEach(waitTask =>
+            {
+                waitTask.Value.Tcs.TrySetResult(head);
+                waitTask.Value.Dispose();
+            });
         }
         else if (_logger.IsDebug)
         {
