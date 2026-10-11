@@ -18,7 +18,6 @@ public interface IInclusionListTxSource : ITxSource
 
     /// <summary>Supplies the counted lists and their EIP-8288 dependency proofs to proof-aware sources.</summary>
     /// <param name="inclusionListTransactions">The lists flattened, identifying the build as in <see cref="Set(byte[][], IReleaseSpec)"/>.</param>
-    /// <param name="spec">The build's spec.</param>
     /// <param name="lists">The counted lists, or <c>null</c> for a flattened list alone.</param>
     void Set(byte[][] inclusionListTransactions, IReleaseSpec spec, IReadOnlyList<InclusionListV1>? lists)
         => Set(inclusionListTransactions, spec);

@@ -113,8 +113,6 @@ public class ProofInclusionListPayloadTests
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(Build.A.Block.TestObject);
         ExecutionPayloadParams<ExecutionPayloadV3> parameters = new(payload, [], Keccak.Zero, [], null, lists);
         Assert.That(parameters.ValidateParams(PerListSpec, 7, out _), Is.EqualTo(ValidationResult.Fail));
-        payload.InclusionLists = lists;
-        Assert.That(payload.TryGetBlock().IsError, Is.True);
     }
 
     [Test]

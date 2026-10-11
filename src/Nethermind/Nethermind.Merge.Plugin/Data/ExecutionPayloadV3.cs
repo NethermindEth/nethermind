@@ -47,9 +47,6 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
 
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
-        if (InclusionLists is not null && InclusionListV1.Validate(InclusionLists) is { } inclusionListError)
-            return Result<Block>.Fail(inclusionListError);
-
         Result<Block> baseResult = base.TryGetBlock(totalDifficulty);
         if (baseResult.IsError)
         {
@@ -63,7 +60,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         block.Header.RequestsHash = ExecutionRequests is not null ? ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequests) : null;
         if (InclusionLists is not null)
         {
-            // Each list is decoded on its own, so its proof stays with exactly its transactions.
+            // ValidateParams has already checked each list's shape. Each list is decoded on its own, so its proof stays
+            // with exactly its transactions.
             CommitteeInclusionList[] lists = InclusionListV1.Decode(InclusionLists);
             block.InclusionLists = lists;
             block.InclusionListTransactions = CommitteeInclusionList.Flatten(lists);

@@ -55,8 +55,6 @@ public static class InclusionListProofValidator
     /// transaction. Each proof covers its list's <c>dependencies(transactions)</c> exactly, so it covers every such entry of
     /// the list or none. Without per-list input, <paramref name="flattened"/> is one list with no proof.</remarks>
     /// <param name="flattened">The flattened inclusion list, used only when <paramref name="lists"/> is <c>null</c>.</param>
-    /// <param name="lists">The counted lists with their proofs.</param>
-    /// <param name="verifier">Checks each list's dependency proof.</param>
     /// <param name="spec">The block's spec, for frame well-formedness.</param>
     /// <param name="proven">Each valid nonempty proof with its dependencies, for the builder's block aggregate.</param>
     /// <returns>The union of every list's binding transactions, each once, in first-appearance order.</returns>

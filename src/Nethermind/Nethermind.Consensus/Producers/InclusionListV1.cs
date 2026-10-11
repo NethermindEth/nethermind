@@ -121,8 +121,6 @@ public sealed class InclusionListV1
     }
 
     /// <summary>Whether two inputs carry the same lists, positions and proofs.</summary>
-    /// <param name="left">One input.</param>
-    /// <param name="right">The other input.</param>
     /// <param name="compareTransactions">Whether to compare transaction bytes too, not just how many each list holds.</param>
     public static bool AreEqual(IReadOnlyList<InclusionListV1>? left, IReadOnlyList<InclusionListV1>? right, bool compareTransactions = true)
     {

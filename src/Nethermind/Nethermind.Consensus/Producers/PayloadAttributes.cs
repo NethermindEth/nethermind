@@ -317,11 +317,11 @@ public class PayloadAttributes
         }
 
         if (result == PayloadAttributesValidationResult.Success && InclusionLists is not null
-            && (InclusionListTransactions is not null || InclusionListV1.Validate(InclusionLists) is not null))
-        {
-            error = InclusionListTransactions is not null
+            && (InclusionListTransactions is not null
                 ? $"{nameof(InclusionListTransactions)} must not be set with {nameof(InclusionLists)}"
-                : InclusionListV1.Validate(InclusionLists);
+                : InclusionListV1.Validate(InclusionLists)) is { } listError)
+        {
+            error = listError;
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 

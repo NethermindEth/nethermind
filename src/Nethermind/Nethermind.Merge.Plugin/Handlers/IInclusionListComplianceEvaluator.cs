@@ -23,8 +23,5 @@ public interface IInclusionListComplianceEvaluator
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions);
 
     /// <summary>Evaluates the counted lists, each with its EIP-8288 dependency proof checked by the configured verifier.</summary>
-    /// <param name="blockHash">Hash of a block this node has committed.</param>
-    /// <param name="inclusionListTransactions">The lists flattened.</param>
-    /// <param name="lists">The counted lists with their proofs.</param>
     bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions, IReadOnlyList<InclusionListV1> lists);
 }
