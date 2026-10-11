@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
 
@@ -54,6 +55,8 @@ public class MainProcessingModuleTests
             Assert.That(rootCodeCache.Get(in codeHash), Is.SameAs(code), "wraps the root's cache");
             Assert.That(mainScope.Resolve<ICodeCache>(), Is.SameAs(blockCodeCache));
             Assert.That(ctx.Resolve<ICodeCache>(), Is.SameAs(rootCodeCache), "outside block processing");
+            Assert.That(mainScope.Resolve<TransactionProcessorAdapterFactory>()(mainScope.Resolve<ITransactionProcessor>()),
+                Is.InstanceOf<BlockCodeCacheTxAdapter>(), "adapters parallel execution builds");
         }
 
         // Leaves the block's copy as the only one.

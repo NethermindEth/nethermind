@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -49,6 +51,159 @@ public class BlockCodeCacheTests
     }
 
     [Test]
+    public void Past_the_cap_code_of_warming_and_finished_transactions_gives_way_to_a_running_transaction()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        Load(cache, count: 3);
+        using (cache.BeginTransaction()) Load(cache, count: 7, first: 3);
+
+        CodeInfo[] codes;
+        using (cache.BeginTransaction()) codes = Load(cache, count: 10, first: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i < 10 ? Is.Null : Is.SameAs(codes[i - 10]), $"code {i}");
+            }
+
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
+    public void Past_the_cap_code_running_transactions_use_is_kept_until_they_finish()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        CodeInfo[] concurrent = [];
+        using ManualResetEventSlim loaded = new();
+        using ManualResetEventSlim finish = new();
+        Thread concurrentTransaction = new(() =>
+        {
+            using (cache.BeginTransaction())
+            {
+                concurrent = Load(cache, count: 4);
+                loaded.Set();
+                finish.Wait();
+            }
+        })
+        { IsBackground = true };
+        CodeInfo[] codes;
+        CodeInfo[] afterFinish;
+        concurrentTransaction.Start();
+        try
+        {
+            Assert.That(loaded.Wait(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction started");
+
+            using (cache.BeginTransaction())
+            {
+                codes = Load(cache, count: 10, first: 4);
+                // Not looking up the concurrent transaction's code here: a hit would make it this transaction's too.
+                using (Assert.EnterMultipleScope())
+                {
+                    for (int i = 4; i < 14; i++)
+                    {
+                        ValueHash256 hash = Hash(i);
+                        Assert.That(cache.Get(in hash), i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
+                    }
+
+                    Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge), "the concurrent transaction's code kept");
+                }
+
+                finish.Set();
+                Assert.That(concurrentTransaction.Join(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction finished");
+                afterFinish = Load(cache, count: 4, first: 14);
+            }
+        }
+        finally
+        {
+            finish.Set();
+            concurrentTransaction.Join();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 18; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i is >= 4 and < 10 ? Is.SameAs(codes[i - 4]) : i >= 14 ? Is.SameAs(afterFinish[i - 14]) : Is.Null, $"code {i} after the concurrent transaction finished");
+            }
+
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
+    public void Past_the_cap_code_a_running_transaction_hit_is_kept_until_it_finishes()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        CodeInfo[] warmed = Load(cache, count: 4);
+
+        CodeInfo[] codes;
+        using (cache.BeginTransaction())
+        {
+            for (int i = 0; i < warmed.Length; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                cache.Get(in hash);
+            }
+
+            codes = Load(cache, count: 10, first: 4);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 14; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i < 4 ? Is.SameAs(warmed[i]) : i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
+            }
+        }
+
+        CodeInfo[] next;
+        using (cache.BeginTransaction()) next = Load(cache, count: 4, first: 14);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), Is.Null, $"warmed code {i} after the transaction finished");
+                hash = Hash(14 + i);
+                Assert.That(cache.Get(in hash), Is.SameAs(next[i]), $"code {14 + i}");
+            }
+        }
+    }
+
+    [Test]
+    public void Past_the_cap_code_is_evicted_by_its_latest_use()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        CodeInfo[] codes;
+        using (cache.BeginTransaction()) codes = Load(cache, count: 10);
+
+        ValueHash256 reused = Hash(0);
+        using (cache.BeginTransaction()) cache.Get(in reused);
+
+        CodeInfo[] next;
+        using (cache.BeginTransaction()) next = Load(cache, count: 1, first: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i == 1 ? Is.Null : Is.SameAs(codes[i]), $"code {i}");
+            }
+
+            ValueHash256 nextHash = Hash(10);
+            Assert.That(cache.Get(in nextHash), Is.SameAs(next[0]));
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
     public void A_limited_view_shares_the_block_but_stops_taking_code_in_at_its_own_limit()
     {
         BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
@@ -75,6 +230,64 @@ public class BlockCodeCacheTests
     }
 
     [Test]
+    public void Code_of_a_block_cleared_while_a_transaction_runs_is_not_kept_alive()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance);
+        WeakReference code;
+        using (cache.BeginTransaction())
+        {
+            code = LoadUnreferenced(cache);
+            cache.ClearBlock();
+        }
+
+        AssertCollected(code);
+    }
+
+    [Test]
+    public void Code_another_cache_loads_in_a_transaction_is_not_kept_alive_by_this_one()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance);
+        BlockCodeCache other = new(NoopCodeCache.Instance);
+        WeakReference code;
+        using (cache.BeginTransaction()) code = LoadUnreferenced(other);
+
+        other.ClearBlock();
+        AssertCollected(code);
+    }
+
+    [Test]
+    public void Code_evicted_before_the_end_of_the_queue_is_not_kept_alive()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 2 * LargeCodeCharge);
+        WeakReference evicted;
+        using (cache.BeginTransaction())
+        {
+            evicted = LoadUnreferenced(cache);
+            Load(cache, count: 1, first: 1);
+        }
+
+        // Evicts code 0 only; code 1's copy stays queued behind it.
+        using (cache.BeginTransaction()) Load(cache, count: 1, first: 2);
+
+        AssertCollected(evicted);
+    }
+
+    [Test]
+    public void Code_evicted_while_an_earlier_user_runs_is_not_kept_alive_when_it_finishes()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: LargeCodeCharge);
+        WeakReference evicted;
+        using (cache.BeginTransaction())
+        {
+            evicted = LoadUnreferenced(cache);
+            using (cache.BeginTransaction()) Hit(cache, 0);
+            using (cache.BeginTransaction()) Load(cache, count: 1, first: 1);
+        }
+
+        AssertCollected(evicted);
+    }
+
+    [Test]
     public void Clearing_the_block_keeps_the_process_wide_cache()
     {
         StaticCodeCache inner = new(maxCapacity: 64);
@@ -95,17 +308,35 @@ public class BlockCodeCacheTests
         Assert.That(cache.Get(in hash), Is.Null);
     }
 
-    private static CodeInfo[] Load(BlockCodeCache cache, int count)
+    private static CodeInfo[] Load(BlockCodeCache cache, int count, int first = 0)
     {
         CodeInfo[] codes = new CodeInfo[count];
         for (int i = 0; i < count; i++)
         {
-            ValueHash256 hash = Hash(i);
+            ValueHash256 hash = Hash(first + i);
             codes[i] = new CodeInfo(new byte[LargeCodeLength]);
             cache.Set(in hash, codes[i]);
         }
 
         return codes;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LoadUnreferenced(BlockCodeCache cache) => new(Load(cache, count: 1)[0]);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Hit(BlockCodeCache cache, int i)
+    {
+        ValueHash256 hash = Hash(i);
+        cache.Get(in hash);
+    }
+
+    private static void AssertCollected(WeakReference code)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(code.IsAlive, Is.False);
     }
 
     private static ValueHash256 Hash(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
