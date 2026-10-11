@@ -53,6 +53,10 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private readonly CancellationTokenSource _stop = new();
     private readonly ITimer _timer;
     private TaskCompletionSource _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Deferred announcements across all peers, and the peer that takes the next freed assembly slot.</summary>
+    private int _deferred;
+    private int _deferredNext;
     private long _incompleteBytes;
     private long _completionBytes;
     private int _pendingValidations;
@@ -134,6 +138,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         _peers.Remove(peer);
         foreach (LeanOutgoingRequest request in peer.Live.Values) Fail(request, peer);
         peer.Live.Clear();
+        _deferred -= peer.Deferred.Count;
         peer.Deferred.Clear();
         foreach (LeanServing serving in peer.Serving.Values)
         {

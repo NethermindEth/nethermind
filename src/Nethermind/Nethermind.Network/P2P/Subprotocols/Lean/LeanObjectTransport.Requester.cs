@@ -49,44 +49,68 @@ public sealed partial class LeanObjectTransport
     }
 
     /// <summary>Keeps an announcement refused by the assembly limits in the peer's bounded cache, dropping the oldest.</summary>
-    private static void Defer(LeanPeer peer, LeanDescriptor descriptor, long now)
+    private void Defer(LeanPeer peer, LeanDescriptor descriptor, long now)
     {
         List<(LeanDescriptor Descriptor, long Announced)> deferred = peer.Deferred;
         foreach ((LeanDescriptor pending, _) in deferred)
             if (pending.ObjectId == descriptor.ObjectId) return;
         if (deferred.Count >= LeanLimits.MaxDeferredPerPeer) deferred.RemoveAt(0);
+        else _deferred++;
         deferred.Add((descriptor, now));
     }
 
-    /// <summary>Starts or joins assemblies for deferred announcements as capacity frees, oldest first.</summary>
-    /// <remarks>An entry is dropped once its object is held, tombstoned or being assembled, or once it outlives
-    /// <see cref="LeanLimits.DeferredLifetime"/>; an assembly's timers start only when it is created.</remarks>
+    /// <summary>Starts or joins assemblies for deferred announcements as capacity frees.</summary>
+    /// <remarks>Peers take freed capacity in turns, one assembly each per round, starting after the last peer served, and each
+    /// peer's oldest entries first. An entry is dropped once its object is held, tombstoned or being assembled, or once it
+    /// outlives <see cref="LeanLimits.DeferredLifetime"/>; an assembly's timers start only when it is created.</remarks>
     private void StartDeferred(long now)
     {
-        foreach (LeanPeer peer in _peers)
+        bool created = true;
+        while (created && _deferred > 0)
         {
-            List<(LeanDescriptor Descriptor, long Announced)> deferred = peer.Deferred;
-            int kept = 0;
-            for (int i = 0; i < deferred.Count; i++)
+            created = false;
+            int count = _peers.Count;
+            if (count == 0) return;
+            int first = _deferredNext % count;
+            for (int p = 0; p < count; p++)
             {
-                (LeanDescriptor descriptor, long announced) = deferred[i];
-                ValueHash256 objectId = descriptor.ObjectId;
-                if (_store.Contains(objectId) || _tombstones.Contains(objectId, now)
-                    || _clock.GetElapsedTime(announced, now) >= LeanLimits.DeferredLifetime) continue;
-                if (_assemblies.TryGetValue(objectId, out LeanAssembly? existing))
-                {
-                    existing.AddSource(peer);
-                    continue;
-                }
-                if (peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
-                {
-                    assembly.Validate = true;
-                    continue;
-                }
-                deferred[kept++] = deferred[i];
+                if (!StartDeferred(_peers[(first + p) % count], now)) continue;
+                created = true;
+                _deferredNext = (first + p + 1) % count;
             }
-            deferred.RemoveRange(kept, deferred.Count - kept);
         }
+    }
+
+    /// <summary>Drops lapsed entries, joins assemblies that exist and starts at most one, if capacity allows.</summary>
+    private bool StartDeferred(LeanPeer peer, long now)
+    {
+        List<(LeanDescriptor Descriptor, long Announced)> deferred = peer.Deferred;
+        bool created = false;
+        int kept = 0;
+        for (int i = 0; i < deferred.Count; i++)
+        {
+            (LeanDescriptor descriptor, long announced) = deferred[i];
+            ValueHash256 objectId = descriptor.ObjectId;
+            if (_store.Contains(objectId) || _tombstones.Contains(objectId, now)
+                || _clock.GetElapsedTime(announced, now) >= LeanLimits.DeferredLifetime) continue;
+            if (_assemblies.TryGetValue(objectId, out LeanAssembly? existing))
+            {
+                existing.AddSource(peer);
+                continue;
+            }
+            // Creation is only tried while both assembly limits leave room; joining and lapsing need no capacity.
+            if (!created && peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && _assemblies.Count < LeanLimits.MaxAssemblies
+                && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
+            {
+                assembly.Validate = true;
+                created = true;
+                continue;
+            }
+            deferred[kept++] = deferred[i];
+        }
+        _deferred -= deferred.Count - kept;
+        deferred.RemoveRange(kept, deferred.Count - kept);
+        return created;
     }
 
     private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, LeanPeer? origin, long now)

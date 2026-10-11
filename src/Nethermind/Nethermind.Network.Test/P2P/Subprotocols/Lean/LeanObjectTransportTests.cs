@@ -925,6 +925,45 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public async Task Freed_assembly_slots_go_to_peers_with_deferred_announcements_in_turn()
+    {
+        using LeanTestNode node = new();
+        FakeLink[] links = [.. Enumerable.Range(0, 6).Select(i => new FakeLink($"p{i}"))];
+        LeanPeer[] peers = [.. links.Select(l => node.Connect(l))];
+        // Four peers fill every assembly slot; two of the first peer's objects are valid and served below.
+        (LeanDescriptor Descriptor, byte[] Body, LeanChunkTree Tree)[] valid = [.. Enumerable.Range(0, 2).Select(i =>
+        {
+            byte[] body = Wrapper(ChunkBytes, false, FrameTransaction(80 + i));
+            return (Describe(body, out LeanChunkTree tree), body, tree);
+        })];
+        node.Transport.OnAnnounce(peers[0], new AnnounceObjectsMessage([.. valid.Select(v => v.Descriptor),
+            .. Enumerable.Range(0, LeanLimits.MaxAssembliesPerPeer - 2).Select(i => Describe(OpaqueWrapperBody(100, i), out _))]));
+        for (int p = 1; p < 4; p++)
+            node.Transport.OnAnnounce(peers[p], new AnnounceObjectsMessage([.. Enumerable.Range(0, LeanLimits.MaxAssembliesPerPeer)
+                .Select(i => Describe(OpaqueWrapperBody(100, 100 * p + i), out _))]));
+        Assert.That(node.Transport.AssemblyCount, Is.EqualTo(LeanLimits.MaxAssemblies));
+        // The fifth peer has more deferred objects than the sixth, and comes first in peer order.
+        node.Transport.OnAnnounce(peers[4], new AnnounceObjectsMessage([.. Enumerable.Range(0, 2).Select(i => Describe(OpaqueWrapperBody(100, 500 + i), out _))]));
+        node.Transport.OnAnnounce(peers[5], new AnnounceObjectsMessage([Describe(OpaqueWrapperBody(100, 600), out _)]));
+        Assert.That(links[4].Sent<GetChunksMessage>().Concat(links[5].Sent<GetChunksMessage>()), Is.Empty);
+
+        foreach ((LeanDescriptor descriptor, byte[] body, LeanChunkTree tree) in valid)
+        {
+            Serve(node, peers[0], links[0].Sent<GetChunksMessage>().First(r => r.ObjectId == descriptor.ObjectId), descriptor, body, tree);
+            await Until(() =>
+            {
+                node.Tick(TimeSpan.Zero);
+                return node.Transport.IsStored(descriptor.ObjectId) && node.Transport.AssemblyCount == LeanLimits.MaxAssemblies;
+            });
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(links[4].Sent<GetChunksMessage>(), Has.Length.EqualTo(1), "one freed slot each");
+            Assert.That(links[5].Sent<GetChunksMessage>(), Has.Length.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Stored_objects_are_announced_to_a_new_peer_in_ascending_object_id_order()
     {
         using LeanTestNode node = new();
