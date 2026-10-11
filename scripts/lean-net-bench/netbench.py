@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+"""EIP-8437 lean/1 network benchmark controller: RLPx (TCP) against ethp2p (QUIC) over emulated links.
+
+Each node is a separate process running LeanNetBenchNode (Nethermind.Network.Test). On Linux with --netns, every node
+gets its own network namespace attached by a veth pair to a bridge in a router namespace. Links are shaped with tc:
+the node side caps the uplink (tbf), the router side caps the downlink (htb) and applies netem delay and loss per
+source, so each topology edge has the configured RTT and loss. Without --netns the nodes share loopback (no shaping).
+
+Usage: netbench.py run --topology chain4 --binding ethp2p --broadcast --kind 3 --proof-bytes 300000 --rtt-ms 50 --loss 1
+       netbench.py teardown
+"""
+import argparse
+import json
+import math
+import os
+import shutil
+import statistics
+import subprocess
+import sys
+import time
+
+ROUTER = "lb-r"
+SUBNET = "10.77.0"
+RLPX_PORT = 30303
+QUIC_PORT = 30304
+
+
+def sh(cmd, check=True):
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if check and result.returncode != 0:
+        raise RuntimeError(f"{cmd}: {result.stderr.strip()}")
+    return result.stdout
+
+
+def topology(name):
+    """Returns (node count, undirected edges)."""
+    if name == "pair":
+        return 2, [(0, 1)]
+    if name.startswith("chain"):
+        n = int(name[5:])
+        return n, [(i, i + 1) for i in range(n - 1)]
+    if name == "cube8":
+        return 8, sorted({tuple(sorted((i, i ^ b))) for i in range(8) for b in (1, 2, 4)})
+    if name == "star4":
+        return 4, [(0, i) for i in range(1, 4)]
+    raise ValueError(name)
+
+
+def distances(n, edges, source):
+    adjacency = {i: set() for i in range(n)}
+    for a, b in edges:
+        adjacency[a].add(b)
+        adjacency[b].add(a)
+    dist = {source: 0}
+    frontier = [source]
+    while frontier:
+        nxt = []
+        for u in frontier:
+            for v in adjacency[u]:
+                if v not in dist:
+                    dist[v] = dist[u] + 1
+                    nxt.append(v)
+        frontier = nxt
+    return dist
+
+
+def ns(i):
+    return f"lb-n{i}"
+
+
+def ip(i):
+    return f"{SUBNET}.{i + 1}"
+
+
+def teardown():
+    for name in sh("ip netns list", check=False).split("\n"):
+        name = name.split(" ")[0]
+        if name.startswith("lb-"):
+            sh(f"ip netns del {name}", check=False)
+
+
+def setup(n):
+    teardown()
+    sh(f"ip netns add {ROUTER}")
+    sh(f"ip -n {ROUTER} link add br0 type bridge")
+    sh(f"ip -n {ROUTER} link set br0 up")
+    sh(f"ip -n {ROUTER} link set lo up")
+    for i in range(n):
+        sh(f"ip netns add {ns(i)}")
+        sh(f"ip -n {ns(i)} link set lo up")
+        sh(f"ip -n {ns(i)} link add eth0 type veth peer name r{i} netns {ROUTER}")
+        sh(f"ip -n {ns(i)} addr add {ip(i)}/24 dev eth0")
+        sh(f"ip -n {ns(i)} link set eth0 up")
+        sh(f"ip -n {ROUTER} link set r{i} master br0")
+        sh(f"ip -n {ROUTER} link set r{i} up")
+        # Segmentation offloads would let tc see 64 KiB super-packets; netem must drop and delay real MTU packets.
+        sh(f"ip netns exec {ns(i)} ethtool -K eth0 tso off gso off gro off", check=False)
+        sh(f"ip netns exec {ROUTER} ethtool -K r{i} tso off gso off gro off", check=False)
+
+
+def shape(n, edges, rtt_ms, loss, rate_mbit):
+    one_way = rtt_ms / 2.0
+    neighbours = {i: set() for i in range(n)}
+    for a, b in edges:
+        neighbours[a].add(b)
+        neighbours[b].add(a)
+    for j in range(n):
+        if rate_mbit:
+            # Uplink: the node's transmit queue is about 1 MiB, enough for one bandwidth-delay product at 100 Mbit/s and 80 ms.
+            sh(f"ip netns exec {ns(j)} tc qdisc replace dev eth0 root tbf rate {rate_mbit}mbit burst 32kb limit 1048576")
+        else:
+            sh(f"ip netns exec {ns(j)} tc qdisc del dev eth0 root", check=False)
+        dev = f"r{j}"
+        sh(f"ip netns exec {ROUTER} tc qdisc del dev {dev} root", check=False)
+        rate = f"{rate_mbit}mbit" if rate_mbit else "10gbit"
+        sh(f"ip netns exec {ROUTER} tc qdisc add dev {dev} root handle 1: htb default 1")
+        sh(f"ip netns exec {ROUTER} tc class add dev {dev} parent 1: classid 1:1 htb rate {rate} ceil {rate}")
+        for i in sorted(neighbours[j]):
+            cls = 10 + i
+            sh(f"ip netns exec {ROUTER} tc class add dev {dev} parent 1:1 classid 1:{cls} htb rate {rate} ceil {rate}")
+            netem = f"delay {one_way}ms" if one_way > 0 else "delay 0ms"
+            if loss > 0:
+                netem += f" loss {loss}%"
+            sh(f"ip netns exec {ROUTER} tc qdisc add dev {dev} parent 1:{cls} handle {cls}: netem {netem} limit 100000")
+            sh(f"ip netns exec {ROUTER} tc filter add dev {dev} parent 1: protocol ip prio 1 u32 match ip src {ip(i)}/32 flowid 1:{cls}")
+
+
+def counters(i):
+    """Interface bytes and packets and the namespace's UDP and TCP error counters."""
+    path = "/sys/class/net/eth0/statistics"
+    out = sh(f"ip netns exec {ns(i)} sh -c 'cat {path}/tx_bytes {path}/rx_bytes {path}/tx_packets {path}/rx_packets; cat /proc/net/snmp'")
+    lines = out.split("\n")
+    values = {"tx_bytes": int(lines[0]), "rx_bytes": int(lines[1]), "tx_packets": int(lines[2]), "rx_packets": int(lines[3])}
+    snmp = lines[4:]
+    for k in range(0, len(snmp) - 1, 2):
+        header, data = snmp[k].split(), snmp[k + 1].split()
+        if not header:
+            continue
+        if header[0] == "Udp:":
+            row = dict(zip(header[1:], data[1:]))
+            values["udp_rcvbuf_errors"] = int(row.get("RcvbufErrors", 0))
+            values["udp_in"] = int(row.get("InDatagrams", 0))
+        elif header[0] == "Tcp:":
+            row = dict(zip(header[1:], data[1:]))
+            values["tcp_retrans"] = int(row.get("RetransSegs", 0))
+            values["tcp_out"] = int(row.get("OutSegs", 0))
+    return values
+
+
+def percentile(values, q):
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, max(0, math.ceil(q * len(ordered)) - 1))]
+
+
+def run(args):
+    n, edges = topology(args.topology)
+    run_dir = os.path.abspath(os.path.join(args.out, args.label or time.strftime("run-%Y%m%d-%H%M%S")))
+    if os.path.exists(run_dir):
+        shutil.rmtree(run_dir)
+    os.makedirs(run_dir)
+    if args.netns:
+        setup(n)
+        shape(n, edges, args.rtt_ms, args.loss, args.rate_mbit)
+
+    neighbours = {i: [] for i in range(n)}
+    for a, b in edges:
+        neighbours[a].append(b)
+        neighbours[b].append(a)
+    port = QUIC_PORT if args.binding == "ethp2p" else RLPX_PORT
+    genesis_ms = int(time.time() * 1000)
+
+    def address(i):
+        return (ip(i), port) if args.netns else ("127.0.0.1", port + 10 * i + 100)
+
+    processes = []
+    for i in range(n):
+        config = {
+            "id": i, "binding": args.binding, "broadcast": args.broadcast, "ip": address(i)[0], "port": address(i)[1],
+            "peers": [{"id": p, "ip": address(p)[0], "port": address(p)[1]} for p in neighbours[i]],
+            "nodes": n, "kind": args.kind, "objects": args.warmup + args.objects, "warmup": args.warmup, "proofBytes": args.proof_bytes, "burst": args.burst,
+            "intervalMs": args.interval_ms, "origins": args.origins, "verifyMs": args.verify_ms, "genesisUnixMs": genesis_ms,
+            "runDir": run_dir, "timeoutSec": args.timeout
+        }
+        path = os.path.join(run_dir, f"config.{i}.json")
+        with open(path, "w") as f:
+            json.dump(config, f)
+        env = dict(os.environ, LEAN_NET_CONFIG=path, DOTNET_gcServer="0", DOTNET_TieredPGO="1")
+        command = [args.dotnet, "exec", args.test_dll, "--filter", "FullyQualifiedName~LeanNetBenchNode", "--no-progress",
+                   "--results-directory", os.path.join(run_dir, f"tr.{i}")]
+        if args.netns:
+            command = ["ip", "netns", "exec", ns(i)] + command
+        if args.cpus:
+            command = ["taskset", "-c", args.cpus] + command
+        log = open(os.path.join(run_dir, f"node.{i}.log"), "w")
+        processes.append((subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT), log))
+
+    def wait_files(prefix, timeout):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if all(os.path.exists(os.path.join(run_dir, f"{prefix}.{i}")) for i in range(n)):
+                return True
+            if any(p.poll() is not None for p, _ in processes):
+                return False
+            time.sleep(0.05)
+        return False
+
+    summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
+               "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "burst": args.burst,
+               "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
+               "loss": args.loss, "rate_mbit": args.rate_mbit, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+    try:
+        if not wait_files("ready", 120):
+            summary["error"] = "nodes did not connect"
+            return summary
+        start_ns = time.time_ns() + 500_000_000
+        with open(os.path.join(run_dir, "start.tmp"), "w") as f:
+            f.write(str(start_ns))
+        os.rename(os.path.join(run_dir, "start.tmp"), os.path.join(run_dir, "start"))
+        # Interface counters cover the measured window only, which opens three seconds after the last warm-up release.
+        measured_ns = start_ns + (args.warmup * args.interval_ms + 3000) * 1_000_000
+        time.sleep(max(0.0, (measured_ns - 20_000_000 - time.time_ns()) / 1e9))
+        before = {i: counters(i) for i in range(n)} if args.netns else None
+        wait_files("done", args.timeout + 30)
+        after = {i: counters(i) for i in range(n)} if args.netns else None
+        open(os.path.join(run_dir, "stop"), "w").close()
+        for p, log in processes:
+            try:
+                p.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                p.kill()
+            log.close()
+    finally:
+        for p, log in processes:
+            if p.poll() is None:
+                p.kill()
+        if args.netns and not args.keep:
+            teardown()
+
+    results = {}
+    for i in range(n):
+        path = os.path.join(run_dir, f"result.{i}.json")
+        if os.path.exists(path):
+            with open(path) as f:
+                results[i] = json.load(f)
+    if len(results) < n:
+        summary["error"] = f"only {len(results)} of {n} results"
+        if not results:
+            return summary
+
+    def origin(index):
+        return index % n if args.origins == "all" else int(args.origins)
+
+    far, by_hops, missing = [], {}, 0
+    body_bytes = None
+    measured_indices = range(args.warmup, args.warmup + args.objects)
+    for index in measured_indices:
+        o = origin(index)
+        t0 = results.get(o, {}).get("originated", {}).get(str(index))
+        if t0 is None:
+            missing += 1
+            continue
+        dist = distances(n, edges, o)
+        worst = None
+        complete = True
+        for i in range(n):
+            if i == o:
+                continue
+            t = results.get(i, {}).get("completed", {}).get(str(index))
+            if t is None:
+                complete = False
+                continue
+            latency = (t - t0) / 1e6
+            by_hops.setdefault(dist[i], []).append(latency)
+            worst = latency if worst is None else max(worst, latency)
+        if complete and worst is not None:
+            far.append(worst)
+        else:
+            missing += 1
+    summary["completed"] = len(far)
+    summary["missing"] = missing
+    summary["latency_ms"] = {"p50": percentile(far, 0.5), "p95": percentile(far, 0.95), "p99": percentile(far, 0.99),
+                             "max": max(far) if far else None, "mean": statistics.mean(far) if far else None}
+    summary["latency_by_hops_p50_ms"] = {str(h): percentile(v, 0.5) for h, v in sorted(by_hops.items())}
+    cpu = sum(r["cpu_user_ms"] + r["cpu_sys_ms"] for r in results.values())
+    summary["cpu_ms_total"] = cpu
+    summary["cpu_ms_per_object"] = cpu / args.objects
+    idle = sum(r["idle_cpu_ms_per_s"] * r["window_ms"] / 1000 for r in results.values())
+    summary["idle_cpu_ms_per_s"] = sum(r["idle_cpu_ms_per_s"] for r in results.values())
+    summary["cpu_net_ms_per_object"] = max(0.0, cpu - idle) / args.objects
+    origins = {origin(index) for index in measured_indices}
+    summary["cpu_ms_origin_per_object"] = sum(results[o]["cpu_user_ms"] + results[o]["cpu_sys_ms"] for o in origins if o in results) / args.objects
+    summary["alloc_mb_per_object"] = sum(r["allocated_bytes"] for r in results.values()) / args.objects / 2**20
+    summary["peak_rss_mb_max"] = max(r["peak_rss_kb"] for r in results.values()) / 1024
+    summary["rss_growth_mb_max"] = max(r["rss_after_kb"] - r["rss_before_kb"] for r in results.values()) / 1024
+    summary["app_bytes"] = sum(r["rlpx_bytes_sent"] for r in results.values()) + sum(
+        v for r in results.values() for k, v in r["ethp2p_stream_bytes"].items() if k.startswith("out/"))
+    summary["coding_ms_total"] = sum(r["coding_micros"] for r in results.values()) / 1000
+    for field in ("transfers", "events"):
+        merged = {}
+        for r in results.values():
+            for k, v in r.get(field, {}).items():
+                if v:
+                    merged[k] = merged.get(k, 0) + v
+        summary[field] = merged
+    if after and before:
+        tx = sum(after[i]["tx_bytes"] - before[i]["tx_bytes"] for i in range(n))
+        summary["wire_bytes"] = tx
+        summary["wire_packets"] = sum(after[i]["tx_packets"] - before[i]["tx_packets"] for i in range(n))
+        summary["udp_rcvbuf_errors"] = sum(after[i].get("udp_rcvbuf_errors", 0) - before[i].get("udp_rcvbuf_errors", 0) for i in range(n))
+        summary["tcp_retrans"] = sum(after[i].get("tcp_retrans", 0) - before[i].get("tcp_retrans", 0) for i in range(n))
+        summary["origin_tx_bytes"] = sum(after[o]["tx_bytes"] - before[o]["tx_bytes"] for o in origins)
+    summary["run_dir"] = run_dir
+    return summary
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    r = sub.add_parser("run")
+    r.add_argument("--topology", default="pair")
+    r.add_argument("--binding", choices=["rlpx", "ethp2p"], default="rlpx")
+    r.add_argument("--broadcast", action="store_true")
+    r.add_argument("--kind", type=int, default=1)
+    r.add_argument("--objects", type=int, default=20)
+    r.add_argument("--warmup", type=int, default=3)
+    r.add_argument("--proof-bytes", type=int, default=270_000)
+    r.add_argument("--burst", type=int, default=1)
+    r.add_argument("--interval-ms", type=int, default=1000)
+    r.add_argument("--origins", default="0")
+    r.add_argument("--verify-ms", type=int, default=0)
+    r.add_argument("--rtt-ms", type=float, default=0)
+    r.add_argument("--loss", type=float, default=0)
+    r.add_argument("--rate-mbit", type=int, default=100)
+    r.add_argument("--timeout", type=int, default=120)
+    r.add_argument("--netns", action="store_true")
+    r.add_argument("--keep", action="store_true")
+    r.add_argument("--cpus", default=None)
+    r.add_argument("--label", default=None)
+    r.add_argument("--out", default="runs")
+    r.add_argument("--results", default=None, help="append the summary to this JSONL file")
+    r.add_argument("--dotnet", default="dotnet")
+    r.add_argument("--test-dll", required=True)
+    sub.add_parser("teardown")
+    args = parser.parse_args()
+    if args.command == "teardown":
+        teardown()
+        return
+    summary = run(args)
+    line = json.dumps(summary)
+    print(line)
+    if args.results:
+        with open(args.results, "a") as f:
+            f.write(line + "\n")
+
+
+if __name__ == "__main__":
+    main()

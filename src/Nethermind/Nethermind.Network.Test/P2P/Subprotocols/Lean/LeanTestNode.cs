@@ -30,6 +30,10 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
     public bool Valid { get; set; } = true;
     public ManualResetEventSlim? Gate { get; set; }
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Simulated recursive STARK verification time, for benchmarks.</summary>
+    public TimeSpan Delay { get; set; }
+
     public void EnsureAvailable() { }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
@@ -38,6 +42,7 @@ internal sealed class LeanTestVerifier : ILeanProofVerifier
     {
         Entered.TrySetResult();
         Gate?.Wait(TimeSpan.FromSeconds(10));
+        if (Delay > TimeSpan.Zero) Thread.Sleep(Delay);
         return Valid;
     }
 
@@ -76,7 +81,7 @@ internal sealed class LeanTestNode : IDisposable
 {
     public static readonly Hash256 Genesis = TestItem.KeccakH;
 
-    public LeanTestNode(bool manualTime = true, IReleaseSpec? spec = null)
+    public LeanTestNode(bool manualTime = true, IReleaseSpec? spec = null, ILogManager? logManager = null)
     {
         Time = manualTime ? new ManualTimeProvider() : null;
         Specs = new TestSingleReleaseSpecProvider(spec ?? Eip8288Prototype.Instance);
@@ -99,7 +104,7 @@ internal sealed class LeanTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, Specs, Tree, ProofStore, Verifier);
-        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, LimboLogs.Instance, null, Time);
+        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, logManager ?? LimboLogs.Instance, null, Time);
     }
 
     public ManualTimeProvider? Time { get; }
