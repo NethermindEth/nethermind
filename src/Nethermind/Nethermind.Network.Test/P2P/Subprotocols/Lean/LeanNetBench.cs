@@ -151,6 +151,8 @@ public class LeanNetBenchNode
                 while (true)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(10), stopRedial.Token);
+                    // The bindings' own view of a connection can lag a replaced session, so the transport's count decides.
+                    if (node.Transport.PeerCount >= config.Peers.Length) continue;
                     foreach (PeerConfig peer in dialed)
                         if (binding.Dial(NodeKey(peer.Id).PublicKey, peer.Ip, peer.Port))
                         {
