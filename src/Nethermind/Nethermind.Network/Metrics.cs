@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -152,5 +153,19 @@ namespace Nethermind.Network
         [GaugeMetric]
         [Description("Bytes charged to incomplete lean/1 assemblies.")]
         public static long LeanIncompleteBytes { get; set; }
+
+        [CounterMetric]
+        [Description("Bytes of EIP-8437 ethp2p QUIC stream data by direction and stream type, excluding QUIC, TLS and UDP overhead. RLPx lean/1 bytes are in the p2p message byte metrics.")]
+        [KeyIsLabel("direction", "stream")]
+        public static NonBlocking.ConcurrentDictionary<P2P.Subprotocols.Lean.LeanStreamBytesKey, long> LeanEthp2pStreamBytes { get; } = new();
+
+        [HistogramMetric(LabelNames = ["kind", "path"],
+            Buckets = [1_000, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000, 1_000_000, 2_500_000, 5_000_000, 10_000_000, 30_000_000, 120_000_000])]
+        [Description("EIP-8437 object transfer time in microseconds: from the announcement or accepted broadcast manifest that started an assembly, or a block-proof request, to the object's validation.")]
+        public static IMetricObserver LeanObjectTransferMicros = NoopMetricObserver.Instance;
+
+        [CounterMetric]
+        [Description("Microseconds spent Reed-Solomon encoding, decoding and re-encoding EIP-8437 broadcast shards.")]
+        public static long LeanBroadcastCodingMicros;
     }
 }

@@ -59,5 +59,9 @@ namespace Nethermind.Network.Config
         public bool FilterPeersBySameSubnet { get; set; } = true;
         public bool FilterDiscoveryNodesByRecentIp { get; set; } = true;
         public bool FilterDiscoveryNodesBySameSubnet { get; set; } = true;
+        public LeanBinding LeanBindings { get; set; } = LeanBinding.Rlpx;
+        public LeanBinding LeanCommonBinding { get; set; } = LeanBinding.Rlpx;
+        public int LeanEthp2pPort { get; set; } = 30304;
+        public string? LeanEthp2pStaticPeers { get; set; }
     }
 }

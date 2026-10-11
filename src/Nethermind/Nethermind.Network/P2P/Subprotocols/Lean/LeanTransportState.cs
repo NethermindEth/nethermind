@@ -171,10 +171,13 @@ internal sealed class LeanObjectStore(long maxBytes = LeanLimits.MaxStoreBytes, 
 }
 
 /// <summary>A negotiated peer's request, credit and suppression state, guarded by the transport lock.</summary>
-internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status)
+/// <remarks>Request IDs are per connection; requests, buffered bytes and verification work are charged to the
+/// <see cref="Node"/> shared by every connection of one authenticated node key.</remarks>
+internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status, LeanNodeBudget? node = null)
 {
     public ILeanLink Link { get; } = link;
     public LeanStatusMessage Status { get; } = status;
+    public LeanNodeBudget Node { get; } = node ?? new LeanNodeBudget(null);
     public bool Closed { get; set; }
 
     public ulong LastIssued { get; set; }
@@ -184,14 +187,49 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status)
     public Dictionary<ulong, LeanServing> Serving { get; } = [];
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
+    public long ChargedBytes { get => Node.ChargedBytes; set => Node.ChargedBytes = value; }
+    public int Assemblies { get => Node.Assemblies; set => Node.Assemblies = value; }
+    public int Stalls { get => Node.Stalls; set => Node.Stalls = value; }
+    public long ThrottledUntil { get => Node.ThrottledUntil; set => Node.ThrottledUntil = value; }
+
+    public bool CanRequest(long now) => !Closed && Node.LiveRequests < LeanProtocol.MaxRequestsPerPeer && ThrottledUntil <= now;
+
+    /// <summary>Whether the node already has <see cref="LeanProtocol.MaxRequestsPerPeer"/> incoming requests being served.</summary>
+    public bool ServingFull => Node.ServingRequests >= LeanProtocol.MaxRequestsPerPeer;
+
+    public override string ToString() => Link.Description;
+}
+
+/// <summary>Budgets shared by every <c>lean/1</c> connection of one node, whichever transport carries it.</summary>
+/// <remarks>EIP-8437: separate connections, including RLPx and ethp2p, do not grant separate per-peer budgets.</remarks>
+internal sealed class LeanNodeBudget(PublicKey? key)
+{
+    public PublicKey? Key { get; } = key;
+    public List<LeanPeer> Connections { get; } = [];
     public long ChargedBytes { get; set; }
     public int Assemblies { get; set; }
     public int Stalls { get; set; }
     public long ThrottledUntil { get; set; }
 
-    public bool CanRequest(long now) => !Closed && Live.Count < LeanProtocol.MaxRequestsPerPeer && ThrottledUntil <= now;
+    public int LiveRequests
+    {
+        get
+        {
+            int count = 0;
+            foreach (LeanPeer peer in Connections) count += peer.Live.Count;
+            return count;
+        }
+    }
 
-    public override string ToString() => Link.Description;
+    public int ServingRequests
+    {
+        get
+        {
+            int count = 0;
+            foreach (LeanPeer peer in Connections) count += peer.Serving.Count;
+            return count;
+        }
+    }
 }
 
 internal abstract class LeanOutgoingRequest(ulong id, long now)
@@ -203,6 +241,9 @@ internal abstract class LeanOutgoingRequest(ulong id, long now)
 
     /// <summary>Cancel was sent: the request keeps its slot until a terminal response or expiry, and its payloads are discarded.</summary>
     public bool Cancelled { get; set; }
+
+    /// <summary>An ethp2p response stream was opened for this request; a second one is a protocol violation.</summary>
+    public bool Streamed { get; set; }
 }
 
 internal sealed class LeanObjectsRequest(ulong id, long now, LeanSelector[] selectors) : LeanOutgoingRequest(id, now)
@@ -276,6 +317,9 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton
     public bool Queued { get; set; }
     public bool MetadataReleased { get; set; }
     public byte[]? Body { get; set; }
+
+    /// <summary>The <see cref="System.Diagnostics.Stopwatch"/> timestamp of the accepted broadcast session that supplied the body.</summary>
+    public long? BroadcastStarted { get; set; }
 
     public bool IsComplete => Received == Chunks.Length;
 
