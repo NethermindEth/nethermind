@@ -163,7 +163,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = $"The EIP-8437 proof-object bindings this node supports: `Rlpx` (the `lean/1` capability), `Ethp2p` (the ethp2p QUIC profile), or both. It must include `{nameof(LeanCommonBinding)}`. Bindings stay inactive until EIP-8288 activates; `Ethp2p` needs libmsquic.", DefaultValue = "Rlpx")]
     LeanBinding LeanBindings { get; set; }
 
-    [ConfigItem(Description = "The network's common EIP-8437 binding, which every participating node supports: `Rlpx` or `Ethp2p`. It is a deployment parameter of the network, not a per-node choice; change it only at a coordinated transition.", DefaultValue = "Rlpx")]
+    [ConfigItem(Description = "The network's common EIP-8437 binding, which every participating node supports: `Rlpx` or `Ethp2p`. It is a deployment parameter of the network, not a per-node choice; change it only at a coordinated transition. When it is `Ethp2p`, the node stops if that binding cannot start.", DefaultValue = "Rlpx")]
     LeanBinding LeanCommonBinding { get; set; }
 
     [ConfigItem(Description = $"The UDP port of the ethp2p binding, advertised in the ENR as `leanq`. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "30304", IsPortOption = true)]

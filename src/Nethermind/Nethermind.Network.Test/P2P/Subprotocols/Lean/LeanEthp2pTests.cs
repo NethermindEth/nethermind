@@ -13,9 +13,12 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Subprotocols.Lean;
@@ -525,5 +528,38 @@ public class LeanEthp2pTests
         NetworkConfig config = new() { LeanBindings = bindings, LeanCommonBinding = common };
         if (valid) Assert.DoesNotThrow(() => LeanEthp2pModule.Validate(config));
         else Assert.Throws<InvalidConfigurationException>(() => LeanEthp2pModule.Validate(config));
+    }
+
+    [TestCase(LeanBinding.Ethp2p, LeanBinding.Ethp2p, false, TestName = "Ethp2p common binding needs a supported platform")]
+    [TestCase(LeanBinding.Rlpx | LeanBinding.Ethp2p, LeanBinding.Ethp2p, false, TestName = "RLPx does not stand in for the Ethp2p common binding")]
+    [TestCase(LeanBinding.Rlpx | LeanBinding.Ethp2p, LeanBinding.Rlpx, true, TestName = "Optional Ethp2p binding on an unsupported platform")]
+    public void Unsupported_platform_rejects_only_an_ethp2p_common_binding(LeanBinding bindings, LeanBinding common, bool valid)
+    {
+        NetworkConfig config = new() { LeanBindings = bindings, LeanCommonBinding = common };
+        if (valid) Assert.DoesNotThrow(() => LeanEthp2pModule.Validate(config, platformSupported: false));
+        else Assert.Throws<InvalidConfigurationException>(() => LeanEthp2pModule.Validate(config, platformSupported: false));
+    }
+
+    [TestCase(LeanBinding.Ethp2p, LeanBinding.Ethp2p, null, TestName = "Ethp2p common binding fails startup")]
+    [TestCase(LeanBinding.Rlpx | LeanBinding.Ethp2p, LeanBinding.Ethp2p, null, TestName = "Ethp2p common binding fails startup with RLPx enabled")]
+    [TestCase(LeanBinding.Rlpx | LeanBinding.Ethp2p, LeanBinding.Rlpx, "lean/1 continues over RLPx", TestName = "Optional binding only warns")]
+    public void Binding_that_cannot_start_is_fatal_only_as_the_common_binding(LeanBinding bindings, LeanBinding common, string? warning)
+    {
+        NetworkConfig config = new() { LeanBindings = bindings, LeanCommonBinding = common };
+        TestLogger logger = new();
+        Task start = StartLeanEthp2p.Start(_ => throw new PlatformNotSupportedException("QUIC is unavailable"), config, new ILogger(logger),
+            CancellationToken.None);
+
+        if (warning is null)
+        {
+            Assert.That(async () => await start, Throws.InstanceOf<InvalidConfigurationException>());
+            Assert.That(new StartLeanEthp2p(null!, config, LimboLogs.Instance).MustInitialize, Is.True);
+        }
+        else
+        {
+            Assert.That(async () => await start, Throws.Nothing);
+            Assert.That(logger.LogList, Has.One.Contains(warning));
+            Assert.That(new StartLeanEthp2p(null!, config, LimboLogs.Instance).MustInitialize, Is.False);
+        }
     }
 }

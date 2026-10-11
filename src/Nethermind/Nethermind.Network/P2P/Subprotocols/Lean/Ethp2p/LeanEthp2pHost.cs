@@ -69,13 +69,10 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     internal LeanBroadcastEngine? Broadcast => _engine;
 
     /// <summary>Binds the listener and starts dialing the configured static peers.</summary>
+    /// <exception cref="PlatformNotSupportedException">QUIC is unavailable on this platform.</exception>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (!IsSupported)
-        {
-            if (_logger.IsWarn) _logger.Warn("lean/1 ethp2p binding is enabled but QUIC is unavailable (install libmsquic); lean/1 continues over RLPx only");
-            return;
-        }
+        if (!IsSupported) throw new PlatformNotSupportedException("QUIC is unavailable (install libmsquic)");
         List<LeanEthp2pRecord> peers = ParseStaticPeers();
         _certificate = LeanEthp2pIdentity.CreateCertificate(_nodeKey.Unprotect());
         QuicListener listener = await QuicListener.ListenAsync(new QuicListenerOptions
