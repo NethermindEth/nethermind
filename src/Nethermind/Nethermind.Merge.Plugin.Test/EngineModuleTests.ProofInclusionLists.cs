@@ -75,12 +75,17 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV2> v6 = await rpc.engine_newPayloadV6(produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, []);
         ResultWrapper<PayloadStatusV2> missingLists = await rpc.engine_newPayloadV7(produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, null);
+        // Answered as V7, not routed to V6 (which would report -38005) by the missing lists.
+        using ResultWrapper<NewPayloadWithWitnessV1Result> witnessMissingLists = await rpc.engine_newPayloadWithWitnessV7(
+            produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, null);
         ResultWrapper<PayloadStatusV2> v7 = await rpc.engine_newPayloadV7(produced.ExecutionPayload, [], Keccak.Zero, produced.ExecutionRequests, []);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(v6.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
             Assert.That(missingLists.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(witnessMissingLists.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(witnessMissingLists.Result.Error, Is.EqualTo(missingLists.Result.Error));
             Assert.That(v7.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(v7.Data.InclusionListSatisfied, Is.True);
         }

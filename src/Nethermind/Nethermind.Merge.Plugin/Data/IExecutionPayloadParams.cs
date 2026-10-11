@@ -319,6 +319,12 @@ public sealed class InclusionListExecutionPayloadParams(
     Hash256? parentBeaconBlockRoot,
     byte[][]? executionRequests,
     byte[][]? inclusionListTransactions,
-    InclusionListV1[]? inclusionLists = null)
+    InclusionListV1[]? inclusionLists = null,
+    int newPayloadVersion = EngineApiVersions.NewPayload.V6)
     : ExecutionPayloadParams<ExecutionPayloadV4>(
-        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions, inclusionLists);
+        executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions, inclusionLists)
+{
+    /// <summary>The <c>engine_newPayload</c> version the request was made through, which a missing
+    /// <see cref="ExecutionPayloadParams.InclusionLists"/> cannot reveal.</summary>
+    public int NewPayloadVersion => newPayloadVersion;
+}

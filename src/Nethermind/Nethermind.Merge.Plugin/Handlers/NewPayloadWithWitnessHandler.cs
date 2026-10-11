@@ -47,10 +47,10 @@ public sealed class NewPayloadWithWitnessHandler(
                 payload.ExecutionRequests));
 
     /// <remarks>Inclusion-list compliance is not part of the witness contract, so the V5 response shape is
-    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>. A request carrying per-list
-    /// inclusion lists is <c>engine_newPayloadWithWitnessV7</c>, submitted through <c>engine_newPayloadV7</c>.</remarks>
+    /// kept and callers read compliance for this head off <c>engine_forkchoiceUpdatedV5</c>. An
+    /// <c>engine_newPayloadWithWitnessV7</c> request is submitted through <c>engine_newPayloadV7</c>, even without lists.</remarks>
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> HandleAsync(InclusionListExecutionPayloadParams request) =>
-        request.InclusionLists is null
+        request.NewPayloadVersion < EngineApiVersions.NewPayload.V7
             ? HandleAsync(
                 request,
                 nameof(IEngineRpcModule.engine_newPayloadWithWitnessV6),
