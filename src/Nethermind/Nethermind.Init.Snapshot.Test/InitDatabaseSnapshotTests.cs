@@ -253,6 +253,20 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    public async Task Execute_RelativeDatabasePath_ExtractsSnapshot()
+    {
+        // The default BaseDbPath is relative to the working directory, which is how most nodes run.
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = Path.GetRelativePath(Environment.CurrentDirectory, _dbPath) });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True);
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(
