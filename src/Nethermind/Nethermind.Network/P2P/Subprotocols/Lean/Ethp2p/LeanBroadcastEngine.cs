@@ -87,7 +87,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
     /// <summary><c>MAX_BROADCAST_SESSIONS</c>: the duties of the three slots a node accepts at once, 17 per slot (one block proof
     /// and 16 EIP-7805 inclusion-list committee positions), with margin.</summary>
     internal const int MaxSessions = 64;
-    internal const int MaxShardsInFlightPerPeer = 4;
+
+    /// <summary>Live CHUNK streams toward one connection across all sessions: EIP-8437's cap of 16.</summary>
+    /// <remarks>Each stream carries one shard of at most 64 KiB, so up to 1 MiB is in flight per round trip, which covers the
+    /// bandwidth-delay product of typical paths; the peer's stream allowance reserves exactly these 16 for CHUNK streams.</remarks>
+    internal const int MaxShardsInFlightPerPeer = 16;
 
     /// <summary>Successful sends per shard for a relay; origins are unlimited (RS strategy <c>ForwardMultiplier</c>).</summary>
     internal const int ForwardMultiplier = 4;
@@ -103,6 +107,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
     private readonly Dictionary<string, Session> _byMessageId = new(StringComparer.Ordinal);
     private readonly Dictionary<(byte Kind, ulong Slot, ulong Duty), ValueHash256> _duties = [];
     private readonly HashSet<ILeanBroadcastPeer> _peers = [];
+    private readonly Dictionary<ILeanBroadcastPeer, int> _inFlight = [];
     private readonly ITimer _timer;
     private readonly ulong _seed = (ulong)Random.Shared.NextInt64();
     private string[]? _channels;
@@ -544,25 +549,48 @@ internal sealed class LeanBroadcastEngine : IDisposable
     private void Dispatch(Session session, Outgoing outgoing)
     {
         if (session.Failed || session.Have == 0) return;
-        foreach (Participant participant in session.Participants.Values)
+        foreach (Participant participant in session.Participants.Values) Dispatch(session, participant, outgoing);
+    }
+
+    /// <summary>Plans sends to one participant while its connection has a free CHUNK stream.</summary>
+    private void Dispatch(Session session, Participant participant, Outgoing outgoing)
+    {
+        if (session.Failed || session.Have == 0 || participant.Completed || participant.Out is null) return;
+        int inFlight = _inFlight.GetValueOrDefault(participant.Peer);
+        while (inFlight < MaxShardsInFlightPerPeer)
         {
-            if (participant.Completed || participant.Out is null) continue;
-            while (BitOperations.PopCount(participant.InFlight) < MaxShardsInFlightPerPeer)
+            uint wanted = session.Have & ~participant.Inventory & ~participant.InFlight;
+            int best = -1;
+            for (uint bits = wanted; bits != 0; bits &= bits - 1)
             {
-                uint wanted = session.Have & ~participant.Inventory & ~participant.InFlight;
-                int best = -1;
-                for (uint bits = wanted; bits != 0; bits &= bits - 1)
-                {
-                    int index = BitOperations.TrailingZeroCount(bits);
-                    if (!session.Origin && session.Sent[index] >= ForwardMultiplier) continue;
-                    if (best < 0 || session.Sent[index] < session.Sent[best]
-                        || (session.Sent[index] == session.Sent[best] && Priority(index) < Priority(best))) best = index;
-                }
-                if (best < 0) break;
-                participant.InFlight |= 1u << best;
-                session.Sent[best]++;
-                outgoing.Send(session, participant, best, session.Shard(best));
+                int index = BitOperations.TrailingZeroCount(bits);
+                if (!session.Origin && session.Sent[index] >= ForwardMultiplier) continue;
+                if (best < 0 || session.Sent[index] < session.Sent[best]
+                    || (session.Sent[index] == session.Sent[best] && Priority(index) < Priority(best))) best = index;
             }
+            if (best < 0) break;
+            participant.InFlight |= 1u << best;
+            session.Sent[best]++;
+            outgoing.Send(session, participant, best, session.Shard(best));
+            inFlight++;
+        }
+        SetInFlight(participant.Peer, inFlight);
+    }
+
+    /// <summary>Records a connection's live CHUNK streams; only connections with streams in flight have an entry.</summary>
+    private void SetInFlight(ILeanBroadcastPeer peer, int inFlight)
+    {
+        if (inFlight > 0) _inFlight[peer] = inFlight;
+        else _inFlight.Remove(peer);
+    }
+
+    /// <summary>Offers a connection's freed CHUNK streams to every session it takes part in.</summary>
+    private void DispatchTo(ILeanBroadcastPeer peer, Outgoing outgoing)
+    {
+        foreach (Session session in _sessions.Values)
+        {
+            if (_inFlight.GetValueOrDefault(peer) >= MaxShardsInFlightPerPeer) return;
+            if (session.Participants.TryGetValue(peer, out Participant? participant)) Dispatch(session, participant, outgoing);
         }
     }
 
@@ -576,9 +604,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
         lock (_gate)
         {
             participant.InFlight &= ~(1u << index);
+            SetInFlight(participant.Peer, _inFlight.GetValueOrDefault(participant.Peer) - 1);
             if (sent) participant.Inventory |= 1u << index;
             else session.Sent[index]--;
             if (sent) Dispatch(session, outgoing);
+            DispatchTo(participant.Peer, outgoing);
         }
         outgoing.Run(this);
     }

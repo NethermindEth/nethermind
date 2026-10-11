@@ -50,7 +50,7 @@ public static class LeanEthp2pProtocol
     /// <summary>Inbound SESS and CHUNK streams allowed at once: one SESS stream per live session and some CHUNK streams.</summary>
     /// <remarks>QUIC has one unidirectional stream limit, so SESS streams, which live as long as their session, must not use up
     /// the allowance that CHUNK and retrieval response streams need.</remarks>
-    public const int MaxBroadcastStreams = LeanBroadcastEngine.MaxSessions + 16;
+    public const int MaxBroadcastStreams = LeanBroadcastEngine.MaxSessions + LeanBroadcastEngine.MaxShardsInFlightPerPeer;
 
     /// <summary>Inbound unidirectional streams per connection: both control streams, one per live response, and broadcast.</summary>
     public const int MaxInboundStreams = 2 + LeanProtocol.MaxRequestsPerPeer + MaxBroadcastStreams;

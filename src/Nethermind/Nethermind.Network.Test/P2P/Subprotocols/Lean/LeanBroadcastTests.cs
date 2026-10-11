@@ -363,6 +363,49 @@ public class LeanBroadcastTests
         }
     }
 
+    /// <summary>A subscribed connection that holds every shard send until released, to observe the sender's CHUNK stream window.</summary>
+    private sealed class HeldPeer : ILeanBroadcastPeer
+    {
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _live, _maxLive, _sent;
+
+        public string Description => "held";
+        public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
+        public bool IsClosed => false;
+        public int Live => Volatile.Read(ref _live);
+        public int MaxLive => Volatile.Read(ref _maxLive);
+        public int Sent => Volatile.Read(ref _sent);
+
+        public bool IsSubscribed(string channel) => true;
+
+        public ILeanBroadcastSession OpenSession(string channel, string messageId, byte[] preamble, byte[] initialUpdate) =>
+            new HeldSession(channel, messageId);
+
+        public async ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
+        {
+            int live = Interlocked.Increment(ref _live);
+            for (int max = Volatile.Read(ref _maxLive); max < live; max = Volatile.Read(ref _maxLive))
+                if (Interlocked.CompareExchange(ref _maxLive, live, max) == max) break;
+            await _release.Task;
+            Interlocked.Decrement(ref _live);
+            Interlocked.Increment(ref _sent);
+            return true;
+        }
+
+        public void Release() => _release.TrySetResult();
+
+        public void Penalize(string reason) { }
+
+        private sealed class HeldSession(string channel, string messageId) : ILeanBroadcastSession
+        {
+            public string Channel { get; } = channel;
+            public string MessageId { get; } = messageId;
+            public void Update(byte[] bitmap) { }
+            public void Complete() { }
+            public void Close() { }
+        }
+    }
+
     private static (LinkPeer AtoB, LinkPeer BtoA) Link(BroadcastNode a, BroadcastNode b)
     {
         LinkPeer toB = new($"{a.GetHashCode()}->b", b), toA = new($"{b.GetHashCode()}->a", a);
@@ -415,6 +458,25 @@ public class LeanBroadcastTests
             Assert.That(originToRelay.Delivered.Distinct().Count(), Is.GreaterThanOrEqualTo(LeanReedSolomon.DataShards));
             Assert.That(new[] { originToRelay, relayToOrigin, relayToReceiver, receiverToRelay }.SelectMany(p => p.Penalties), Is.Empty);
         }
+    }
+
+    [Test]
+    public async Task Shards_in_flight_to_a_connection_are_capped_across_sessions_and_resume_as_streams_free()
+    {
+        using BroadcastNode origin = new();
+        HeldPeer peer = new();
+        origin.Engine.AddPeer(peer);
+        (LeanBroadcastManifest first, _) = await Package(origin, 5, duty: 0);
+        (LeanBroadcastManifest second, _) = await Package(origin, 6, duty: 1);
+
+        Assert.That(origin.Engine.Originate(first, TestBroadcastProfile.Sign(first), []), Is.True);
+        Assert.That(origin.Engine.Originate(second, TestBroadcastProfile.Sign(second), []), Is.True);
+        await Until(() => peer.Live == LeanBroadcastEngine.MaxShardsInFlightPerPeer);
+        peer.Release();
+
+        // Streams freed by one session go to the other, so both codewords reach the peer.
+        await Until(() => peer.Sent == 2 * LeanReedSolomon.TotalShards);
+        Assert.That(peer.MaxLive, Is.EqualTo(LeanBroadcastEngine.MaxShardsInFlightPerPeer));
     }
 
     [Test]
