@@ -75,25 +75,25 @@ public class FundsDistributorTests
     }
 
     [Test]
-    public void DistributeFunds_WhenSendFailsOnSecondKey_OriginalKeyFileUntouched()
+    public async Task DistributeFunds_WhenSendFailsOnSecondKey_OriginalKeyFileUntouched()
     {
         const string originalContents = "0xdeadbeef-key-from-prior-distribute\n";
         File.WriteAllText(_keyFilePath, originalContents);
 
         FundsDistributor distributor = new(BuildClientThatFailsOnNthSend(failOnSendIndex: 2), ChainId, _keyFilePath, LimboLogs.Instance);
 
-        Assert.ThrowsAsync<RpcException>(async () =>
+        await Assert.ThrowsAsync<RpcException>(async () =>
             await distributor.DistributeFunds(_funder, keysToMake: 3, maxFee: OneGwei, maxPriorityFee: OneGwei));
 
         Assert.That(File.ReadAllText(_keyFilePath), Is.EqualTo(originalContents));
     }
 
     [Test]
-    public void DistributeFunds_WhenSendFailsOnSecondKey_PendingFileContainsBothGeneratedKeysWritten()
+    public async Task DistributeFunds_WhenSendFailsOnSecondKey_PendingFileContainsBothGeneratedKeysWritten()
     {
         FundsDistributor distributor = new(BuildClientThatFailsOnNthSend(failOnSendIndex: 2), ChainId, _keyFilePath, LimboLogs.Instance);
 
-        Assert.ThrowsAsync<RpcException>(async () =>
+        await Assert.ThrowsAsync<RpcException>(async () =>
             await distributor.DistributeFunds(_funder, keysToMake: 3, maxFee: OneGwei, maxPriorityFee: OneGwei));
 
         string[] lines = File.ReadAllLines(_pendingPath);
@@ -101,7 +101,7 @@ public class FundsDistributorTests
     }
 
     [Test]
-    public void DistributeFunds_WhenPendingFileFromPriorRunExists_ThrowsBeforeAnyKeyOrTxIsTouched()
+    public async Task DistributeFunds_WhenPendingFileFromPriorRunExists_ThrowsBeforeAnyKeyOrTxIsTouched()
     {
         File.WriteAllText(_pendingPath, "0xrecovery-candidate\n");
         const string originalContents = "0xexisting\n";
@@ -110,12 +110,12 @@ public class FundsDistributorTests
         IJsonRpcClient rpcClient = BuildClientReturningOkForEverySend();
         FundsDistributor distributor = new(rpcClient, ChainId, _keyFilePath, LimboLogs.Instance);
 
-        Assert.ThrowsAsync<IOException>(async () =>
+        await Assert.ThrowsAsync<IOException>(async () =>
             await distributor.DistributeFunds(_funder, keysToMake: 1, maxFee: OneGwei, maxPriorityFee: OneGwei));
 
         Assert.That(File.ReadAllText(_pendingPath), Is.EqualTo("0xrecovery-candidate\n"));
         Assert.That(File.ReadAllText(_keyFilePath), Is.EqualTo(originalContents));
-        rpcClient.DidNotReceive().Post<string>(Arg.Any<string>(), Arg.Any<object?[]>());
+        await rpcClient.DidNotReceive().Post<string>(Arg.Any<string>(), Arg.Any<object?[]>());
     }
 
     private static IJsonRpcClient BuildClientReturningOkForEverySend()

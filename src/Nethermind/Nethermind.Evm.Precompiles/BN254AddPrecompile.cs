@@ -35,12 +35,13 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
     }
 
+    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
+    partial void CountCall();
+
     [SkipLocalsInit]
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-#if !ZK_EVM
-        Metrics.Bn254AddPrecompile++;
-#endif
+        CountCall();
         ReadOnlySpan<byte> input = inputData.Span;
         if (InputLength < input.Length)
         {
@@ -49,15 +50,15 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         }
 
         byte[] output = new byte[OutputLength];
-        bool result = input.Length == InputLength ?
+        string? error = input.Length == InputLength ?
             Add(input, output) :
             RunPaddedInput(input, output);
 
-        return result ? output : Errors.Failed;
+        return error is null ? output : error;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
+    private static string? RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
     {
         // Input is too short - pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];

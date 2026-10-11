@@ -436,7 +436,7 @@ public class Eth70ProtocolHandlerTests
         }
         else
         {
-            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
             Assert.That(exception?.Message, Is.EqualTo("Cumulative gas decreased within block receipts"));
         }
     }
@@ -511,7 +511,7 @@ public class Eth70ProtocolHandlerTests
 
     [TestCase(true, "Receipts response exceeds the request: more than 0 receipts for block 0")]
     [TestCase(false, "Block receipts size exceeds block gas limit allowance")]
-    public void Should_validate_partial_receipts_of_known_block_with_zero_gas_limit(bool bodyKnown, string expectedError)
+    public async Task Should_validate_partial_receipts_of_known_block_with_zero_gas_limit(bool bodyKnown, string expectedError)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithHash(Keccak.Zero)
@@ -525,7 +525,7 @@ public class Eth70ProtocolHandlerTests
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
 
         HandleIncomingStatusMessage();
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () =>
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () =>
             await _handler.GetReceipts([Keccak.Zero], CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
@@ -605,7 +605,7 @@ public class Eth70ProtocolHandlerTests
         }
         else
         {
-            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () =>
+            SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () =>
             {
                 using IOwnedReadOnlyList<TxReceipt[]> result = await act();
             });
@@ -616,7 +616,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [TestCaseSource(nameof(InvalidPartialContinuationCases))]
-    public void Should_reject_invalid_partial_continuation(InvalidPartialContinuationCase testCase)
+    public async Task Should_reject_invalid_partial_continuation(InvalidPartialContinuationCase testCase)
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
@@ -644,12 +644,12 @@ public class Eth70ProtocolHandlerTests
             using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(testCase.RequestedHashes, CancellationToken.None);
         };
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo(testCase.ExpectedExceptionMessage));
     }
 
     [Test]
-    public void Should_reject_when_receipts_response_below_minimum_size()
+    public async Task Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =
         [
@@ -666,12 +666,12 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Does.StartWith("Received partial receipts response below minimum size"));
     }
 
     [Test]
-    public void Should_reject_when_receipt_gas_is_below_minimum_supported_transaction_gas()
+    public async Task Should_reject_when_receipt_gas_is_below_minimum_supported_transaction_gas()
     {
         TxReceipt[] receipts =
         [
@@ -688,7 +688,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo("Intrinsic gas lower bound exceeds block gas used"));
     }
 
@@ -773,7 +773,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_receipts_when_transaction_count_mismatches()
+    public async Task Should_reject_receipts_when_transaction_count_mismatches()
     {
         Hash256 blockHash = TestItem.KeccakA;
         TxReceipt[] receipts =
@@ -792,12 +792,12 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo("Receipt count mismatch with block transactions count"));
     }
 
     [Test]
-    public void Should_reject_receipt_larger_than_transaction_gas_limit_allows()
+    public async Task Should_reject_receipt_larger_than_transaction_gas_limit_allows()
     {
         Hash256 blockHash = TestItem.KeccakA;
         TxReceipt[] receipts =
@@ -816,12 +816,12 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo("Receipt size exceeds transaction gas limit allowance"));
     }
 
     [Test]
-    public void Should_reject_paginated_receipts_when_total_size_exceeds_block_gas_limit_allowance()
+    public async Task Should_reject_paginated_receipts_when_total_size_exceeds_block_gas_limit_allowance()
     {
         SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 16_000;
 
@@ -847,7 +847,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await act());
         Assert.That(exception?.Message, Is.EqualTo("Block receipts size exceeds block gas limit allowance"));
     }
 
@@ -909,7 +909,7 @@ public class Eth70ProtocolHandlerTests
         }
         else
         {
-            SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
+            SubprotocolException? exception = await Assert.ThrowsAsync<SubprotocolException>(async () => await Act());
             Assert.That(exception?.Message, Is.EqualTo(expectedException));
         }
     }

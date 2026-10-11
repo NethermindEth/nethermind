@@ -86,7 +86,7 @@ public class BoundedModulePoolTests
     public async Task Ensure_limited_exclusive()
     {
         await _modulePool.GetModule(false);
-        Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
+        await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
     }
 
     [Test]
@@ -102,7 +102,7 @@ public class BoundedModulePoolTests
             try
             {
                 Assert.That(queued.IsCompleted, Is.False);
-                Assert.ThrowsAsync<LimitExceededException>(() => busyPool.GetModule(false));
+                await Assert.ThrowsAsync<LimitExceededException>(() => busyPool.GetModule(false));
 
                 IEthRpcModule available = await availablePool.GetModule(false);
                 availablePool.ReturnModule(available);
@@ -117,12 +117,12 @@ public class BoundedModulePoolTests
 
     [TestCase(0, typeof(ModuleRentalTimeoutException))]
     [TestCase(-2, typeof(ArgumentOutOfRangeException))] // not a valid timeout: makes the wait itself throw
-    public void Queue_slot_is_released_after_rental_failure(int timeout, Type expectedException)
+    public async Task Queue_slot_is_released_after_rental_failure(int timeout, Type expectedException)
     {
         BoundedModulePool<IEthRpcModule> emptyPool = new(_modulePool.Factory, 0, timeout, new RpcLimits(queuedLimit: 1));
         for (int i = 0; i < 2; i++)
         {
-            Assert.ThrowsAsync(expectedException, () => emptyPool.GetModule(false));
+            await Assert.ThrowsAsync(expectedException, () => emptyPool.GetModule(false));
         }
     }
 
@@ -132,7 +132,7 @@ public class BoundedModulePoolTests
         IEthRpcModule shared = await _modulePool.GetModule(true);
         _modulePool.ReturnModule(shared);
         await _modulePool.GetModule(false);
-        Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
+        await Assert.ThrowsAsync<ModuleRentalTimeoutException>(() => _modulePool.GetModule(false));
     }
 
     [Test]

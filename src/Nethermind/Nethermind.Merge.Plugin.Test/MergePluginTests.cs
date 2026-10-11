@@ -139,11 +139,11 @@ public class MergePluginTests
     }
 
     [Test]
-    public void Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
+    public async Task Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
     {
         using IContainer container = BuildContainer();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
-        Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
+        await Assert.DoesNotThrowAsync(async () => await container.Resolve<InitializeMergePlugin>().Execute(default));
         Assert.DoesNotThrow(() => container.Resolve<IBlockProducerFactory>().InitBlockProducer());
     }
 

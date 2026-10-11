@@ -52,6 +52,8 @@ public class EraExporterTests
 
                     ReadOnlySpan<char> secondWord = lineSpan[(spaceIndex + 1)..];
                     Assert.That(secondWord.EndsWith(".era1".AsSpan()));
+                    string fileName = secondWord.ToString();
+                    Assert.That(File.Exists(Path.Combine(tmpDirectory, fileName)), $"{fileName} does not exist");
                 }
             }
         }

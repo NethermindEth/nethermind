@@ -1049,12 +1049,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public void Ping_should_throw_on_lifecycle_cancellation(CancellationToken token)
+        public async Task Ping_should_throw_on_lifecycle_cancellation(CancellationToken token)
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
             cts.Cancel();
 
-            Assert.CatchAsync<OperationCanceledException>(async () => await _adapter.Ping(_receiver, cts.Token));
+            await Assert.CatchAsync<OperationCanceledException>(async () => await _adapter.Ping(_receiver, cts.Token));
         }
 
         [Test]
@@ -1068,7 +1068,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 return Task.FromException(new InvalidOperationException("send failed"));
             });
 
-            Assert.ThrowsAsync<InvalidOperationException>(async () => await _adapter.Ping(_receiver, token));
+            await Assert.ThrowsAsync<InvalidOperationException>(async () => await _adapter.Ping(_receiver, token));
             Assert.That(sent, Is.Not.Null);
             sent = AddReceiverFarAddress(sent!);
 

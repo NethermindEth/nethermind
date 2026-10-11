@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            _syncReport.FastBlocksBodies.Update(_pivotNumber);
+            _syncReport.FastBlocksBodies.Update(_pivotNumber - _barrier);
             _syncReport.FastBlocksBodies.MarkEnd();
             Flush();
         }

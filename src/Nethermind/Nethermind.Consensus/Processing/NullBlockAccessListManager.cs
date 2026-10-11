@@ -38,8 +38,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
-    public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec) => true;
-    public IReleaseSpec GetParentSpec(BlockHeader header) => throw new InvalidOperationException("NullBlockAccessListManager does not resolve parent specs.");
+    public void InstallPredeploys(IReleaseSpec spec) { }
     public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) { }
