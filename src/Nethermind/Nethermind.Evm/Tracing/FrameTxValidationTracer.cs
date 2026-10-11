@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -96,6 +97,11 @@ public sealed class FrameTxValidationTracer(
 
     public ulong MaxVerifyGas => maxVerifyGas;
 
+    /// <summary>EIP-8298 targets the prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    public IReadOnlyList<FrameTxCodeDependency> CodeDependencies => _codeDependencies ?? (IReadOnlyList<FrameTxCodeDependency>)[];
+
+    private List<FrameTxCodeDependency>? _codeDependencies;
+
     void IFrameTxPrefixTracer.StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target)
     {
         SettleCreate();
@@ -121,6 +127,10 @@ public sealed class FrameTxValidationTracer(
         if (isDeployFrame && IsForbiddenCallTarget(target))
         {
             Violate($"deploy frame target {target} is not an undelegated contract");
+        }
+        else if (isDeployFrame && HasMutableCode(target))
+        {
+            Violate($"deploy frame target {target} has mutable code");
         }
     }
 
@@ -184,6 +194,11 @@ public sealed class FrameTxValidationTracer(
             case Instruction.SELFBALANCE:
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
+            case Instruction.SETCODEFROM when spec.IsEip8298Enabled:
+                // EIP-8298 writes code outside both deploy-frame carve-outs, and copies whatever the source
+                // holds at inclusion, which its owner can change with SETCODEFROM.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
             case Instruction.CREATE:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
@@ -225,6 +240,12 @@ public sealed class FrameTxValidationTracer(
             if (IsForbiddenCallTarget(target))
             {
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
+                return;
+            }
+
+            if (HasMutableCode(target))
+            {
+                Violate($"CALL*/EXTCODE* target {target} has mutable code in validation prefix");
                 return;
             }
         }
@@ -296,6 +317,88 @@ public sealed class FrameTxValidationTracer(
         if (!state.IsContract(target)) return true;
         return state.IsDelegatedCode(target);
     }
+
+    /// <summary>Under EIP-8298, whether a contract other than tx.sender can rewrite its own code by running SETCODEFROM.</summary>
+    /// <remarks>
+    /// Code changes only through SETCODEFROM run in the account's own context, directly or via code it
+    /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
+    /// Direct SETCODEFROM is refused. A target that can only reach it by delegating, such as a proxy
+    /// implementation, is admitted but recorded in <see cref="CodeDependencies"/>, so the pool revalidates
+    /// when its code changes and caps how many pending transactions rely on that account.
+    /// </remarks>
+    private bool HasMutableCode(Address target)
+    {
+        if (!spec.IsEip8298Enabled || target == sender || spec.IsPrecompile(target)) return false;
+
+        ValueHash256 codeHash = state.GetCodeHash(target);
+        (ValueHash256, bool) key = (codeHash, spec.IsEip8024Enabled);
+        if (!MutableCodeCache.TryGet(key, out CodeMutability mutability))
+        {
+            mutability = ScanCodeMutability(state.GetCode(in codeHash).Span, key.Item2);
+            MutableCodeCache.Set(key, mutability);
+        }
+
+        if (mutability == CodeMutability.ViaDelegation) AddCodeDependency(target, codeHash);
+        return mutability == CodeMutability.Direct;
+    }
+
+    private void AddCodeDependency(Address target, in ValueHash256 codeHash)
+    {
+        List<FrameTxCodeDependency> dependencies = _codeDependencies ??= [];
+        foreach (FrameTxCodeDependency dependency in dependencies)
+        {
+            if (dependency.Account == target) return;
+        }
+
+        dependencies.Add(new FrameTxCodeDependency(target, codeHash));
+    }
+
+    internal enum CodeMutability : byte
+    {
+        None,
+        ViaDelegation,
+        Direct,
+    }
+
+    /// <summary>EIP-8298 code mutability verdicts, keyed by code hash and whether EIP-8024 immediates are skipped.</summary>
+    internal static readonly ClockCache<(ValueHash256, bool), CodeMutability> MutableCodeCache =
+        new(4_096, comparer: EqualityComparer<(ValueHash256, bool)>.Default);
+
+    /// <summary>Classifies <paramref name="code"/> by whether it holds SETCODEFROM, or else DELEGATECALL or CALLCODE, as an instruction.</summary>
+    /// <remarks>
+    /// Skips PUSH data, and, under EIP-8024, valid DUPN/SWAPN/EXCHANGE immediates. Those are never PUSH or
+    /// JUMPDEST bytes, so every jump destination stays an instruction boundary of this scan.
+    /// </remarks>
+    private static CodeMutability ScanCodeMutability(ReadOnlySpan<byte> code, bool eip8024)
+    {
+        CodeMutability mutability = CodeMutability.None;
+        for (int i = 0; i < code.Length; i++)
+        {
+            Instruction opcode = (Instruction)code[i];
+            switch (opcode)
+            {
+                case Instruction.SETCODEFROM:
+                    return CodeMutability.Direct;
+                case Instruction.DELEGATECALL or Instruction.CALLCODE:
+                    mutability = CodeMutability.ViaDelegation;
+                    break;
+                case >= Instruction.PUSH1 and <= Instruction.PUSH32:
+                    i += opcode - Instruction.PUSH0;
+                    break;
+                case Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE when eip8024 && HasEip8024Immediate(code, i):
+                    i++;
+                    break;
+            }
+        }
+
+        return mutability;
+    }
+
+    /// <summary>Whether the byte after the DUPN/SWAPN/EXCHANGE at <paramref name="i"/> is its valid EIP-8024 immediate, and so not an instruction.</summary>
+    private static bool HasEip8024Immediate(ReadOnlySpan<byte> code, int i) =>
+        i + 1 < code.Length && ((Instruction)code[i] == Instruction.EXCHANGE
+            ? EvmInstructions.IsValidEip8024PairImmediate(code[i + 1])
+            : EvmInstructions.IsValidEip8024SingleImmediate(code[i + 1]));
 
     /// <summary>EIP-8272: <c>RECENT_ROOT_CODE</c> may read the keys its own frame's tuples derive, and nothing else.</summary>
     private bool IsRecentRootKeyRead(Address address, in UInt256 storageIndex) =>

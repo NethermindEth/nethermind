@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
@@ -131,6 +132,13 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
     }
 
     public void AddCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
+        => AddCodeChange(address, before, after, adoptedCodeHash: null);
+
+    /// <summary>Records code adopted by EIP-8298 <c>SETCODEFROM</c>, which the change records by its hash.</summary>
+    public void AddAdoptedCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after, in ValueHash256 codeHash)
+        => AddCodeChange(address, before, after, codeHash);
+
+    private void AddCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after, ValueHash256? adoptedCodeHash)
     {
         if (before.Span.SequenceEqual(after.Span))
         {
@@ -152,8 +160,9 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
             HasPrevious = previous.HasValue,
         });
 
+        // EIP-8298: the form follows whichever write left the code, so a later adoption makes the change hash-only.
         accountChanges.CodeChange = isFirstCall || !preTxCode.Span.SequenceEqual(after.Span)
-            ? new CodeChange(Index, after.ToArray())
+            ? adoptedCodeHash is { } codeHash ? CodeChange.Adopted(Index, in codeHash, after.ToArray()) : new CodeChange(Index, after.ToArray())
             : null;
     }
 
