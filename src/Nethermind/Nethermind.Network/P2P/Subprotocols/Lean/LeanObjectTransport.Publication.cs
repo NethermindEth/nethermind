@@ -128,7 +128,7 @@ public sealed partial class LeanObjectTransport
             if (selected.Count == LeanProtocol.MaxAnnouncements) break;
         }
         if (selected.Count == 0) return;
-        selected.Sort(static (a, b) => a.ObjectId.Bytes.SequenceCompareTo(b.ObjectId.Bytes));
+        selected.Sort(static (a, b) => a.ObjectId.CompareTo(b.ObjectId));
         foreach (LeanDescriptor descriptor in selected)
         {
             peer.Known.Add(descriptor.ObjectId);

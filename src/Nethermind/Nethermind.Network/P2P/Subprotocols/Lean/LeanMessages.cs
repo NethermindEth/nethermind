@@ -224,7 +224,7 @@ public sealed class AnnounceObjectsMessageSerializer : LeanMessageSerializer<Ann
         for (int i = 0; i < count; i++)
         {
             descriptors[i] = LeanDescriptor.Decode(fields.ReadItem());
-            if (i > 0 && descriptors[i - 1].ObjectId.Bytes.SequenceCompareTo(descriptors[i].ObjectId.Bytes) >= 0)
+            if (i > 0 && descriptors[i - 1].ObjectId.CompareTo(descriptors[i].ObjectId) >= 0)
                 throw new RlpException("Announcements are not in strictly ascending object ID order");
         }
         return new(descriptors);

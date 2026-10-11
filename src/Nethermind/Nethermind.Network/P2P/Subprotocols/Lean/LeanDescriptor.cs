@@ -158,9 +158,9 @@ public readonly record struct LeanSelector(byte Kind, ValueHash256 ProfileId, by
     public int CompareTo(LeanSelector other)
     {
         int result = Kind.CompareTo(other.Kind);
-        if (result == 0) result = ProfileId.Bytes.SequenceCompareTo(other.ProfileId.Bytes);
+        if (result == 0) result = ProfileId.CompareTo(other.ProfileId);
         if (result == 0) result = LookupKind.CompareTo(other.LookupKind);
-        if (result == 0) result = LookupKey.Bytes.SequenceCompareTo(other.LookupKey.Bytes);
+        if (result == 0) result = LookupKey.CompareTo(other.LookupKey);
         return result;
     }
 

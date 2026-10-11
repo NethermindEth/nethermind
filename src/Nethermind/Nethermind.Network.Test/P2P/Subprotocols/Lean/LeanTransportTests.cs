@@ -299,6 +299,10 @@ public class LeanTransportTests
         yield return new TestCaseData(new LeanStatusMessage(10088289, TestItem.KeccakA.ValueHash256, [LeanObjectTransport.LocalProfile], 7, 1 << 24),
             new LeanStatusMessageSerializer()).SetName("Status");
         yield return new TestCaseData(new AnnounceObjectsMessage([descriptor]), new AnnounceObjectsMessageSerializer()).SetName("AnnounceObjects");
+        LeanDescriptor[] several = [.. Enumerable.Range(1, 4).Select(i => VectorDescriptor(VectorBody(i), out _)).OrderBy(d => d.ObjectId.ToString())];
+        yield return new TestCaseData(new AnnounceObjectsMessage(several), new AnnounceObjectsMessageSerializer()).SetName("AnnounceObjects several");
+        yield return new TestCaseData(new GetObjectsMessage(1, [.. hashes.Select(h => new LeanSelector(1, LeanObjectTransport.LocalProfile, 0, h))]),
+            new GetObjectsMessageSerializer()).SetName("GetObjects differing only in lookup key");
         yield return new TestCaseData(new GetObjectsMessage(1, [new(1, LeanObjectTransport.LocalProfile, 0, descriptor.ObjectId),
             new(1, LeanObjectTransport.LocalProfile, 1, hashes[0])]), new GetObjectsMessageSerializer()).SetName("GetObjects");
         yield return new TestCaseData(new ObjectsMessage(1, [new(LeanResultStatus.Ok, descriptor, null), LeanObjectResult.Of(LeanResultStatus.Busy)]),
@@ -369,7 +373,7 @@ public class LeanTransportTests
         yield return new TestCaseData(new AnnounceObjectsMessageSerializer(), LeanRlp.EncodeList().ToHexString()).SetName("Empty announcement");
         yield return new TestCaseData(new AnnounceObjectsMessageSerializer(), LeanRlp.EncodeList(Many(LeanProtocol.MaxAnnouncements + 1, i =>
             VectorDescriptor(VectorBody(i + 1), out _).Encoded)).ToHexString()).SetName("Oversized announcement");
-        yield return new TestCaseData(new AnnounceObjectsMessageSerializer(), (small.ObjectId.Bytes.SequenceCompareTo(large.ObjectId.Bytes) > 0
+        yield return new TestCaseData(new AnnounceObjectsMessageSerializer(), (small.ObjectId.CompareTo(large.ObjectId) > 0
             ? LeanRlp.EncodeList(small.Encoded, large.Encoded) : LeanRlp.EncodeList(large.Encoded, small.Encoded)).ToHexString()).SetName("Unsorted announcement");
         yield return new TestCaseData(new AnnounceObjectsMessageSerializer(), LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(1), profile,
             LeanDescriptor.WrapperContext(), LeanRlp.EncodeUInt(0), hash, hash)).ToHexString()).SetName("Zero-length body");

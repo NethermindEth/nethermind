@@ -893,6 +893,24 @@ public class LeanObjectTransportTests
     }
 
     [Test]
+    public void Stored_objects_are_announced_to_a_new_peer_in_ascending_object_id_order()
+    {
+        using LeanTestNode node = new();
+        for (int i = 0; i < 8; i++) Assert.That(node.Transport.PublishWrapper(Wrapper(10, false, FrameTransaction(60 + i))), Is.True);
+        FakeLink link = new();
+        node.Connect(link);
+
+        AnnounceObjectsMessageSerializer serializer = new();
+        AnnounceObjectsMessage decoded = serializer.Decode(serializer.Encode(link.Sent<AnnounceObjectsMessage>().Single()));
+        string[] ids = [.. decoded.Descriptors.Select(d => d.ObjectId.ToString())];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ids, Has.Length.EqualTo(8));
+            Assert.That(ids, Is.EqualTo(ids.Order(StringComparer.Ordinal)));
+        }
+    }
+
+    [Test]
     public async Task Requests_leave_in_request_id_order_while_another_thread_is_still_sending()
     {
         using LeanTestNode node = new();
