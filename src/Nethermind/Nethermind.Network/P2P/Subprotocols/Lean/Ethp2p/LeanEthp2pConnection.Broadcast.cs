@@ -263,6 +263,8 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
 
     ulong ILeanBroadcastPeer.MaxObjectBytes => Volatile.Read(ref _peer)?.Status.MaxObjectBytes ?? 0;
 
+    bool ILeanBroadcastPeer.IsClosed => Volatile.Read(ref _closeStarted) != 0;
+
     bool ILeanBroadcastPeer.IsSubscribed(string channel)
     {
         lock (_lock) return _remoteChannels.Contains(channel);
