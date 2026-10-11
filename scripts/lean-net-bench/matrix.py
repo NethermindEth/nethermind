@@ -5,6 +5,7 @@
 
 Runs already present in the results file are skipped, so an interrupted matrix resumes where it stopped.
 Usage: matrix.py --test-dll <dll> --dotnet <dotnet> --results results.jsonl [--topologies chain4,cube8,pair] [--match k3]
+       [--modes bcast,ethp2p,rlpx] [--suffix=-rep2]
 """
 import argparse
 import json
@@ -21,17 +22,19 @@ WORKLOADS = {
     "k2": (2, 300_000, 20, 800, 1, "0", True),         # kind-2 block-proof sidecar, ~300 KB
     "k3": (3, 300_000, 20, 800, 1, "0", True),         # kind-3 inclusion-list package, ~300 KB
     "k3b": (3, 300_000, 32, 3000, 16, "all", True),    # 16 packages released at once from every node in turn
+    "k3b1": (3, 300_000, 32, 3000, 16, "0", True),     # 16 packages released at once from one node
 }
+DEFAULT_WORKLOADS = ["k1s", "k1l", "k2", "k3", "k3b"]
 MODES = ["rlpx", "ethp2p", "bcast"]
 
 
-def scenarios(topologies, rtts, losses, workloads):
+def scenarios(topologies, rtts, losses, workloads, modes):
     for topology in topologies:
         for rtt in rtts:
             for loss in losses:
                 for workload in workloads:
                     kind, proof, objects, interval, burst, origins, broadcast = WORKLOADS[workload]
-                    for mode in MODES:
+                    for mode in modes:
                         if mode == "bcast" and not broadcast:
                             continue
                         label = f"{topology}-{workload}-{mode}-r{rtt}-l{loss:g}"
@@ -52,10 +55,11 @@ def main():
     parser.add_argument("--topologies", default="chain4,cube8,pair")
     parser.add_argument("--rtts", default="0,20,50,100")
     parser.add_argument("--losses", default="0,1")
-    parser.add_argument("--workloads", default=",".join(WORKLOADS))
+    parser.add_argument("--workloads", default=",".join(DEFAULT_WORKLOADS))
+    parser.add_argument("--modes", default=",".join(MODES), help="subset and order of rlpx,ethp2p,bcast within each scenario")
     parser.add_argument("--match", default="")
     parser.add_argument("--extra", default="", help="extra netbench.py arguments, space separated")
-    parser.add_argument("--suffix", default="")
+    parser.add_argument("--suffix", default="", help="label suffix; pass a leading dash as --suffix=-x")
     args = parser.parse_args()
 
     done = set()
@@ -70,7 +74,7 @@ def main():
                     done.add(entry["label"])
 
     plan = list(scenarios(args.topologies.split(","), [float(x) for x in args.rtts.split(",")], [float(x) for x in args.losses.split(",")],
-                          args.workloads.split(",")))
+                          args.workloads.split(","), args.modes.split(",")))
     for number, (label, run_args) in enumerate(plan, 1):
         label += args.suffix
         if args.match not in label or label in done:

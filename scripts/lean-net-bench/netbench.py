@@ -23,7 +23,9 @@ import time
 
 PREFIX = os.environ.get("LEAN_NET_PREFIX", "lb")
 ROUTER = f"{PREFIX}-r"
-SUBNET = os.environ.get("LEAN_NET_SUBNET", "10.77.0")
+# Node i is NET.(i+1).1/16: one bridge, but a distinct /24 per node, so the ethp2p per-subnet inbound limit
+# (four per /24 for public addresses, per address for private ones) never groups benchmark peers.
+NET = os.environ.get("LEAN_NET_SUBNET", "10.77")
 RLPX_PORT = 30303
 QUIC_PORT = 30304
 
@@ -72,7 +74,7 @@ def ns(i):
 
 
 def ip(i):
-    return f"{SUBNET}.{i + 1}"
+    return f"{NET}.{i + 1}.1"
 
 
 def teardown():
@@ -92,7 +94,7 @@ def setup(n):
         sh(f"ip netns add {ns(i)}")
         sh(f"ip -n {ns(i)} link set lo up")
         sh(f"ip -n {ns(i)} link add eth0 type veth peer name r{i} netns {ROUTER}")
-        sh(f"ip -n {ns(i)} addr add {ip(i)}/24 dev eth0")
+        sh(f"ip -n {ns(i)} addr add {ip(i)}/16 dev eth0")
         sh(f"ip -n {ns(i)} link set eth0 up")
         sh(f"ip -n {ROUTER} link set r{i} master br0")
         sh(f"ip -n {ROUTER} link set r{i} up")
@@ -148,6 +150,17 @@ def counters(i):
             values["tcp_retrans"] = int(row.get("RetransSegs", 0))
             values["tcp_out"] = int(row.get("OutSegs", 0))
     return values
+
+
+def host_cpu():
+    """Host-wide CPU time from /proc/stat in milliseconds: (busy, idle, steal), for contention from other workloads."""
+    if not os.path.exists("/proc/stat"):
+        return None
+    with open("/proc/stat") as f:
+        fields = [int(x) for x in f.readline().split()[1:]]
+    tick_ms = 1000.0 / os.sysconf("SC_CLK_TCK")
+    user, nice, system, idle, iowait, irq, softirq, steal = (fields + [0] * 8)[:8]
+    return ((user + nice + system + irq + softirq) * tick_ms, (idle + iowait) * tick_ms, steal * tick_ms)
 
 
 def percentile(values, q):
@@ -217,6 +230,7 @@ def run(args):
                "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "burst": args.burst,
                "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
                "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+    cpu_before = cpu_after = None
     try:
         if not wait_files("ready", 120):
             summary["error"] = "nodes did not connect"
@@ -229,8 +243,10 @@ def run(args):
         measured_ns = start_ns + (args.warmup * args.interval_ms + 3000) * 1_000_000
         time.sleep(max(0.0, (measured_ns - 20_000_000 - time.time_ns()) / 1e9))
         before = {i: counters(i) for i in range(n)} if args.netns else None
+        cpu_before, wall_before = host_cpu(), time.time()
         wait_files("done", args.timeout + 30)
         after = {i: counters(i) for i in range(n)} if args.netns else None
+        cpu_after, wall_after = host_cpu(), time.time()
         open(os.path.join(run_dir, "stop"), "w").close()
         for p, log in processes:
             try:
@@ -301,8 +317,17 @@ def run(args):
     summary["alloc_mb_per_object"] = sum(r["allocated_bytes"] for r in results.values()) / args.objects / 2**20
     summary["peak_rss_mb_max"] = max(r["peak_rss_kb"] for r in results.values()) / 1024
     summary["rss_growth_mb_max"] = max(r["rss_after_kb"] - r["rss_before_kb"] for r in results.values()) / 1024
+    if cpu_before and cpu_after:
+        busy, idle_host, steal = (a - b for a, b in zip(cpu_after, cpu_before))
+        total = busy + idle_host + steal
+        # The nodes' own CPU covers a slightly longer window (until stop), so "other" is a lower bound on contention.
+        summary["host"] = {"cores": os.cpu_count(), "window_s": wall_after - wall_before, "busy_pct": 100 * busy / total if total else None,
+                           "steal_pct": 100 * steal / total if total else None,
+                           "other_cores": max(0.0, busy - cpu) / 1000 / (wall_after - wall_before) if wall_after > wall_before else None}
     summary["app_bytes"] = sum(r["rlpx_bytes_sent"] for r in results.values()) + sum(
         v for r in results.values() for k, v in r["ethp2p_stream_bytes"].items() if k.startswith("out/"))
+    summary["redials"] = sum(r.get("redials", 0) for r in results.values())
+    summary["peers_lost_at_end"] = sum(max(0, len(neighbours[i]) - r.get("peers_at_end", 0)) for i, r in results.items())
     summary["coding_ms_total"] = sum(r["coding_micros"] for r in results.values()) / 1000
     for field in ("transfers", "events"):
         merged = {}

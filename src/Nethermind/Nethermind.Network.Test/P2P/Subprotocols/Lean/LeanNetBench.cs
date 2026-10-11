@@ -140,6 +140,28 @@ public class LeanNetBenchNode
         Log($"connected to {node.Transport.PeerCount} peers");
         File.WriteAllText(Path_($"ready.{config.Id}"), "");
 
+        // A peer dropped during the run (for example after a protocol violation) is redialed at the interval of the
+        // ethp2p host's static dialing, as a node keeps its configured peers.
+        int redials = 0;
+        using CancellationTokenSource stopRedial = new();
+        Task redial = Task.Run(async () =>
+        {
+            try
+            {
+                while (true)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10), stopRedial.Token);
+                    foreach (PeerConfig peer in dialed)
+                        if (binding.Dial(NodeKey(peer.Id).PublicKey, peer.Ip, peer.Port))
+                        {
+                            Interlocked.Increment(ref redials);
+                            Log($"redialing node {peer.Id}");
+                        }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+
         while (!File.Exists(Path_("start"))) await Task.Delay(10, deadline.Token);
         await Task.Delay(20, deadline.Token);
         // The start is wall-clock time, the same in every process; release times are kept on the monotonic clock.
@@ -256,6 +278,8 @@ public class LeanNetBenchNode
         }
         await snapshot;
         Snapshot after = Snapshot.Take();
+        await stopRedial.CancelAsync();
+        await redial;
 
         Dictionary<string, object?> result = new()
         {
@@ -283,7 +307,8 @@ public class LeanNetBenchNode
             ["transfers"] = after.Transfers.ToDictionary(static e => e.Key, e => e.Value - before.Transfers.GetValueOrDefault(e.Key)),
             ["coding_micros"] = after.Coding - before.Coding,
             ["shards_accepted"] = binding.Broadcast?.ShardsAccepted ?? 0,
-            ["peers_at_end"] = node.Transport.PeerCount
+            ["peers_at_end"] = node.Transport.PeerCount,
+            ["redials"] = redials
         };
         File.WriteAllText(Path_($"result.{config.Id}.json"), JsonSerializer.Serialize(result, Json));
         Log("result written");
@@ -396,13 +421,16 @@ public class LeanNetBenchNode
 
     internal interface IBenchBinding : IAsyncDisposable
     {
-        void Dial(PublicKey key, string ip, int port);
+        /// <summary>Dials a peer that has no connection or pending dial; returns whether a dial started.</summary>
+        bool Dial(PublicKey key, string ip, int port);
         LeanBroadcastEngine? Broadcast { get; }
     }
 
     /// <summary>The ethp2p QUIC binding, as <see cref="LeanEthp2pQuicTests"/> runs it.</summary>
     private sealed class Ethp2pBinding(LeanEthp2pHost host) : IBenchBinding
     {
+        private readonly ConcurrentDictionary<PublicKey, Task<LeanEthp2pConnection?>> _dials = new();
+
         public static async Task<Ethp2pBinding> StartAsync(PrivateKey key, string ip, int port, LeanTestNode node, BenchBroadcastProfile? profile,
             ILogManager logs)
         {
@@ -415,8 +443,15 @@ public class LeanNetBenchNode
 
         public LeanBroadcastEngine? Broadcast => host.Broadcast;
 
-        public void Dial(PublicKey key, string ip, int port) =>
-            _ = host.DialAsync(new LeanEthp2pRecord(key, new IPEndPoint(IPAddress.Parse(ip), port)), CancellationToken.None);
+        /// <summary>Dials a peer unless a dial is pending or its connection is open, as the host's own static dialing does.</summary>
+        /// <remarks>A second connection from the same side replaces the first, dropping its requests and broadcast sessions.</remarks>
+        public bool Dial(PublicKey key, string ip, int port)
+        {
+            if (_dials.TryGetValue(key, out Task<LeanEthp2pConnection?>? dial)
+                && (!dial.IsCompleted || dial.Result is { Closed.IsCompleted: false })) return false;
+            _dials[key] = host.DialAsync(new LeanEthp2pRecord(key, new IPEndPoint(IPAddress.Parse(ip), port)), CancellationToken.None);
+            return true;
+        }
 
         public ValueTask DisposeAsync() => host.DisposeAsync();
     }
@@ -488,10 +523,11 @@ public class LeanNetBenchNode
 
         public LeanBroadcastEngine? Broadcast => null;
 
-        public void Dial(PublicKey key, string ip, int port)
+        public bool Dial(PublicKey key, string ip, int port)
         {
-            if (sessions.ContainsKey(key)) return;
+            if (sessions.ContainsKey(key)) return false;
             _ = host.ConnectAsync(new Node(key, ip, port));
+            return true;
         }
 
         public async ValueTask DisposeAsync()
