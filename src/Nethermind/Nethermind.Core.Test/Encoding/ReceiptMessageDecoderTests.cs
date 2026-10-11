@@ -44,6 +44,17 @@ public class ReceiptMessageDecoderTests
         Assert.That(DecodeReceipt(encoded).Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Decode_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceiptWithFirstItem(new byte[length]);
+
+        Assert.That(() => DecodeReceipt(encoded), Throws.TypeOf<RlpException>());
+    }
+
     internal static TxReceipt DecodeReceipt(byte[] bytes)
     {
         RlpReader ctx = new(bytes);

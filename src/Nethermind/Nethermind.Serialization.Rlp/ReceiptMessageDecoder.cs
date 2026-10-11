@@ -48,6 +48,11 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
+                if (firstItem.Length != 0 && firstItem.Length != Hash256.Size)
+                {
+                    ThrowUnexpectedPostStateLength(firstItem.Length);
+                }
+
                 txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
                 txReceipt.GasUsedTotal = rlp.DecodeULong(ref position);
             }
@@ -83,6 +88,10 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return txReceipt;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedPostStateLength(int length)
+                => throw new RlpException($"Unexpected post-transaction state length {length}; expected 0 or {Hash256.Size} bytes");
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowUnexpectedReceiptField()
