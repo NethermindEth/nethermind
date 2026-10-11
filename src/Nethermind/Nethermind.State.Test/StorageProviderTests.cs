@@ -2403,7 +2403,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Original_values_survive_a_write_after_many_read_only_accesses([Values(2, 2048)] int slotCount)
+    public void GetOriginal_WriteAfterManyReads_PreservesOriginalValue([Values(2, 2048)] int slotCount)
     {
         using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
@@ -2427,6 +2427,88 @@ public class StorageProviderTests(bool useFlat)
             Assert.That(current, Is.EqualTo((UInt256)23));
             Assert.That(repeatedOriginal, Is.EqualTo(original));
         }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void GetOriginal_ClearAfterPendingReads_PreservesOriginalValue(bool destroy, bool restore)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        for (int i = 1; i <= 2048; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.GetOriginal(first, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero));
+            Assert.That(original, Is.EqualTo((UInt256)17));
+        }
+
+        if (restore)
+        {
+            provider.Restore(snapshot);
+            provider.Get(first, out UInt256 restored);
+            provider.GetOriginal(first, out UInt256 restoredOriginal);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restored, Is.EqualTo((UInt256)17));
+                Assert.That(restoredOriginal, Is.EqualTo((UInt256)17));
+            }
+        }
+    }
+
+    [Test]
+    public void Commit_ReadOnlyRounds_ReusesPendingBuffer([Values(2, 2048)] int slotCount)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
+        provider.Commit(Frontier.Instance);
+        object buffer = null;
+        for (int round = 0; round < 3; round++)
+        {
+            for (int i = 1; i <= slotCount; i++)
+            {
+                provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+            }
+
+            object currentBuffer = GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues");
+            buffer ??= currentBuffer;
+            Assert.That(currentBuffer, Is.SameAs(buffer));
+            provider.Commit(Frontier.Instance);
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
+            Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Commit_OversizedPendingBuffer_ReleasesBuffer()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
+        provider.Commit(Frontier.Instance);
+        for (int i = 1; i <= CoreCollectionExtensions.DefaultTrimAboveCapacity + 1; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        provider.Commit(Frontier.Instance);
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
     }
 
     [TestCase(RoundBoundary.None)]
