@@ -183,16 +183,7 @@ public static partial class EvmInstructions
             if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(delegated)) goto OutOfGas;
         }
 
-        // Charge additional gas if the target account is new or considered empty.
-        // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
-        // from the flat CALL_VALUE above; standalone EIP-2780 adds nothing extra here.
-        bool chargesNewAccount = TSpec.IsEip8038Enabled
-            ? hasValueTransfer && state.IsDeadAccount(target)
-            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
-            {
-                false => !state.AccountExists(target),
-                true => hasValueTransfer && state.IsDeadAccount(target),
-            });
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
@@ -293,6 +284,95 @@ public static partial class EvmInstructions
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    }
+
+    /// <summary>Whether a transfer to <paramref name="target"/> pays the new-account charge under the given fork rules.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool ChargesNewAccount<TSpec>(IWorldState state, Address target, bool hasValueTransfer)
+        where TSpec : struct, ICallSpec =>
+        TSpec.IsEip8038Enabled
+            ? hasValueTransfer && state.IsDeadAccount(target)
+            : !TSpec.IsEip2780Enabled && (TSpec.ClearEmptyAccountWhenTouched switch
+            {
+                false => !state.AccountExists(target),
+                true => hasValueTransfer && state.IsDeadAccount(target),
+            });
+
+    /// <summary>EIP-5920 PAY: transfers value to an address without executing its code.</summary>
+    [SkipLocalsInit]
+    internal static EvmExceptionType InstructionPay<TGasPolicy, TTracingInst, TEip8037, TEip7708, TSpec>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
+        where TSpec : struct, ICallSpec
+    {
+        VmState<TGasPolicy> vmState = vm.VmState;
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+
+        if (!stack.PopUInt256(out UInt256 addressWord, out UInt256 value)) return EvmExceptionType.StackUnderflow;
+        // EIP-5920: halt, rather than truncate, on non-zero high address bytes.
+        if (addressWord.u3 != 0 || (addressWord.u2 >> 32) != 0) return EvmExceptionType.BadInstruction;
+
+        Address target = vm.AddressCache.GetOrCreate(in addressWord);
+        bool hasValueTransfer = !value.IsZero;
+        IReleaseSpec spec = vm.Spec;
+        IWorldState state = vm.WorldState;
+
+        if (hasValueTransfer && !TGasPolicy.UpdateGas(ref gas, TSpec.IsEip8038Enabled ? Eip8038Constants.AccountWrite : GasCostOf.CallValue))
+            goto OutOfGas;
+        if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, target))
+            goto OutOfGas;
+
+        // EIP-8279: meter the target's block access list entry.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(target)) goto OutOfGas;
+
+        // EIP-7928: the target is read even for a zero value.
+        state.AddAccountRead(target);
+        bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
+        if (chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas)) goto OutOfGas;
+
+        // EIP-8279: both post balances, as for a value CALL.
+        Address executingAccount = vmState.Env.ExecutingAccount;
+        if (TSpec.IsEip8279Enabled && hasValueTransfer && target != executingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
+        if (hasValueTransfer && state.GetBalance(executingAccount) < value)
+        {
+            if (chargesNewAccount)
+                vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetNewAccountStateCost());
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(0, 0, value, executingAccount, target, default, ExecutionType.CALL, EvmExceptionType.NotEnoughBalance);
+            return stack.PushZero<TTracingInst, OnFlag>();
+        }
+
+        // Traced as a zero-gas CALL that runs no code.
+        bool reportsAction = vm.IsTracingActions;
+        if (reportsAction)
+        {
+            if (TTracingInst.IsActive) vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+            vm.TxTracer.ReportAction(0, value, executingAccount, target, default, ExecutionType.CALL);
+        }
+
+        // Like a self-CALL, a self-payment writes no balance.
+        if (hasValueTransfer && target != executingAccount)
+        {
+            state.SubtractFromBalance(executingAccount, in value, spec);
+            state.AddToBalanceAndCreateIfNotExists(target, in value, spec);
+            vm.AddTransferLog<TEip7708>(executingAccount, target, in value);
+        }
+
+        if (reportsAction) vm.TxTracer.ReportActionEnd(0, default);
+
+        // Two words were popped, so the push cannot overflow.
+        EvmExceptionType pushResult = stack.PushOne<TTracingInst>();
+        if (TTracingInst.IsActive && reportsAction)
+            vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+        return pushResult;
+
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     }

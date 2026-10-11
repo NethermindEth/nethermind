@@ -451,6 +451,19 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
+    [Test]
+    public void Simulate_PrefixUsesPay_RecordsViolationOnlyWhenEip5920Enabled([Values] bool enabled)
+    {
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip5920Enabled = enabled });
+        byte[] deployed = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.PAY)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, deployed, 1.Ether);
+
+        (_, FrameTxValidationTracer tracer) = SimulateAllowingAbort(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        Assert.That(tracer.ViolationReason, enabled ? Is.EqualTo("banned opcode PAY in validation prefix") : Is.Null);
+    }
+
     [TestCase(true, TestName = "GAS immediately before a call is permitted")]
     [TestCase(false, TestName = "bare GAS is banned")]
     public void Simulate_GasOpcode_OnlyPermittedBeforeACall(bool beforeCall)

@@ -180,6 +180,7 @@ public sealed class FrameTxValidationTracer(
             case Instruction.BLOBBASEFEE:
             case Instruction.INVALID:
             case Instruction.SELFDESTRUCT:
+            case Instruction.PAY when spec.IsEip5920Enabled:
             case Instruction.BALANCE:
             case Instruction.SELFBALANCE:
                 Violate($"banned opcode {opcode} in validation prefix");

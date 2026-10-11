@@ -37,8 +37,8 @@ public class Eip8279Tests : VirtualMachineTestsBase
     private const int FloorBindingCalldataBytes = 20_000;
     private const ulong GasLimit = 2_000_000;
 
-    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true };
-    private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
+    private static readonly IReleaseSpec Spec8279 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = true, IsEip5920Enabled = true };
+    private static readonly IReleaseSpec Spec8131Only = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true, IsEip5920Enabled = true };
     private static readonly Address Executing = TestItem.AddressB;
     private static readonly Address ColdAccount = TestItem.AddressC;
     private static readonly Address Callee = TestItem.AddressE;
@@ -93,6 +93,9 @@ public class Eip8279Tests : VirtualMachineTestsBase
         yield return Case("EXTCODECOPY out of gas on its charge meters no address bytes", Prepare.EvmCode.Call(StarvedCopier, 50_000), 20);
         yield return Case("SELFDESTRUCT sweeping to another account", Prepare.EvmCode.PushData(ColdAccount).Op(Instruction.SELFDESTRUCT), 20 + 64);
         yield return Case("SELFDESTRUCT to itself", Prepare.EvmCode.PushData(Executing).Op(Instruction.SELFDESTRUCT), 20);
+        yield return Case("PAY without value", Eip5920Tests.Pay(Prepare.EvmCode, ColdAccount, 0), 20);
+        yield return Case("PAY with value", Eip5920Tests.Pay(Prepare.EvmCode, ColdAccount, 1), 20 + 64);
+        yield return Case("PAY with value to itself adds no balance bytes", Eip5920Tests.Pay(Prepare.EvmCode, Executing, 1), 20);
         // The new address, the creator's nonce and the new contract's nonce.
         yield return Case("CREATE", Prepare.EvmCode.Create([], 0), 20 + 8 + 8);
         yield return Case("CREATE with endowment", Prepare.EvmCode.Create([], 1), 20 + 8 + 8 + 64);
