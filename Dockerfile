@@ -46,6 +46,18 @@ LABEL org.opencontainers.image.title="Nethermind" \
   org.opencontainers.image.revision="$COMMIT_HASH" \
   org.opencontainers.image.created="$BUILD_TIMESTAMP"
 
+# System.Net.Quic needs libmsquic for the optional EIP-8437 ethp2p binding (Network.LeanBindings=Ethp2p).
+# Ubuntu does not package it, so it comes from Microsoft's signed repository.
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends ca-certificates curl && \
+  curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o /etc/apt/keyrings/microsoft.asc && \
+  echo "deb [signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/ubuntu/26.04/prod resolute main" \
+    > /etc/apt/sources.list.d/microsoft-prod.list && \
+  apt-get update && \
+  apt-get install -y --no-install-recommends libmsquic && \
+  apt-get purge -y --auto-remove curl && \
+  rm -rf /var/lib/apt/lists/*
+
 WORKDIR /nethermind
 
 VOLUME /nethermind/keystore
