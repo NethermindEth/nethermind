@@ -446,7 +446,8 @@ internal sealed class LeanBroadcastEngine : IDisposable
         // A wrong shard is attributable to the peer that supplied it.
         if (!session.Manifest.IsCommittedShard(index, shard)) return LeanBroadcastVerdict.Invalid;
         Outgoing outgoing = new();
-        bool decode = false;
+        int[]? indices = null;
+        byte[][]? shards = null;
         lock (_gate)
         {
             if (session.Participants.TryGetValue(peer, out Participant? participant)) participant.Inventory |= 1u << index;
@@ -456,25 +457,35 @@ internal sealed class LeanBroadcastEngine : IDisposable
             if (session.Count == LeanReedSolomon.DataShards)
             {
                 session.Decoding = true;
-                decode = true;
+                // Expiry or disposal may release the session's shards while it decodes.
+                session.TakeDataShards(out indices, out shards);
             }
             foreach (Participant other in session.Participants.Values) if (other.Out is not null) outgoing.Update(other.Out, session.Have);
             Dispatch(session, outgoing);
         }
         outgoing.Run(this);
-        if (decode) _ = Task.Run(() => Reconstruct(session));
+        if (shards is not null) _ = Task.Run(() => Reconstruct(session, indices!, shards));
         return LeanBroadcastVerdict.Accepted;
     }
 
-    private void Reconstruct(Session session)
+    private void Reconstruct(Session session, int[] indices, byte[][] shards)
     {
-        // The session's shards are frozen while it decodes, so decoding needs no lock.
-        long decoding = Stopwatch.GetTimestamp();
-        byte[]? body = session.Decode(out byte[][]? codeword, out string? error);
-        LeanMetrics.Coding(Stopwatch.GetElapsedTime(decoding));
-        if (body is not null && !_profile.MatchesContext(session.Manifest, body)) error = "object does not match its consensus context";
-        if (body is not null && error is null)
-            error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, session.Manifest.Skeleton, body, session.Started);
+        byte[][]? codeword = null;
+        string? error;
+        try
+        {
+            long decoding = Stopwatch.GetTimestamp();
+            byte[]? body = session.Manifest.Reconstruct(indices, shards, out codeword, out error);
+            LeanMetrics.Coding(Stopwatch.GetElapsedTime(decoding));
+            if (body is not null && !_profile.MatchesContext(session.Manifest, body)) error = "object does not match its consensus context";
+            if (body is not null && error is null)
+                error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, session.Manifest.Skeleton, body, session.Started);
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"lean/1 broadcast {session.MessageId[..16]} reconstruction failed", exception);
+            error = $"reconstruction threw {exception.GetType().Name}";
+        }
         Outgoing outgoing = new();
         lock (_gate)
         {
@@ -686,10 +697,11 @@ internal sealed class LeanBroadcastEngine : IDisposable
             Reconstructed = reconstructed;
         }
 
-        public byte[]? Decode(out byte[][]? codeword, out string? error)
+        /// <summary>The 16 shards held, to decode; called under the engine's lock.</summary>
+        public void TakeDataShards(out int[] indices, out byte[][] shards)
         {
-            int[] indices = new int[LeanReedSolomon.DataShards];
-            byte[][] shards = new byte[LeanReedSolomon.DataShards][];
+            indices = new int[LeanReedSolomon.DataShards];
+            shards = new byte[LeanReedSolomon.DataShards][];
             int found = 0;
             for (int i = 0; i < LeanReedSolomon.TotalShards && found < indices.Length; i++)
                 if (_shards[i] is { } shard)
@@ -697,7 +709,6 @@ internal sealed class LeanBroadcastEngine : IDisposable
                     indices[found] = i;
                     shards[found++] = shard;
                 }
-            return Manifest.Reconstruct(indices, shards, out codeword, out error);
         }
 
         public void Release()

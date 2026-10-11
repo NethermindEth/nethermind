@@ -32,6 +32,7 @@ internal sealed class TestBroadcastProfile : ILeanBroadcastProfile
     public ulong CurrentSlot { get; set; } = 10;
     public bool Unresolved { get; set; }
     public bool ContextMismatch { get; set; }
+    public bool ContextThrows { get; set; }
 
     public DateTimeOffset SlotStart(ulong slot) => _genesis + TimeSpan.FromSeconds(12.0 * ((double)slot - CurrentSlot + 1));
 
@@ -41,7 +42,8 @@ internal sealed class TestBroadcastProfile : ILeanBroadcastProfile
         : signature.SequenceEqual(manifestId.Bytes) ? LeanBroadcastAuthorization.Authorized
         : LeanBroadcastAuthorization.Rejected;
 
-    public bool MatchesContext(LeanBroadcastManifest manifest, ReadOnlySpan<byte> body) => !ContextMismatch;
+    public bool MatchesContext(LeanBroadcastManifest manifest, ReadOnlySpan<byte> body) =>
+        ContextThrows ? throw new InvalidOperationException("context lookup failed") : !ContextMismatch;
 
     public static byte[] Sign(LeanBroadcastManifest manifest) => manifest.Id(1, LeanTestNode.Genesis.ValueHash256).ToByteArray();
 }
@@ -535,6 +537,24 @@ public class LeanBroadcastTests
 
         await Task.Delay(300);
         Assert.That(receiver.Engine.SessionCount, Is.Zero, "no session was opened toward the closed peer");
+    }
+
+    [Test]
+    public async Task Reconstruction_that_throws_fails_its_session()
+    {
+        using BroadcastNode origin = new(), receiver = new(new TestBroadcastProfile { ContextThrows = true });
+        (LinkPeer toReceiver, _) = Link(origin, receiver);
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 9);
+        string channel = manifest.Channel(1, LeanTestNode.Genesis.ValueHash256);
+        string messageId = LeanBroadcastManifest.MessageId(manifest.Id(1, LeanTestNode.Genesis.ValueHash256));
+
+        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+
+        // A session left decoding would still accept its missing shards; a failed one needs none.
+        await Until(() => Enumerable.Range(0, LeanReedSolomon.TotalShards).All(i =>
+            receiver.Engine.ResolveShard(new LeanChunkHeader(channel, messageId, LeanBroadcastWire.ShardId(i), (uint)manifest.ShardBytes),
+                out _, out bool unknown, out string? reason) == LeanBroadcastVerdict.Refused && !unknown && reason == "shard not needed"));
+        Assert.That(toReceiver.Reverse.Penalties, Is.Empty);
     }
 
     [Test]
