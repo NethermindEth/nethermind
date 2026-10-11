@@ -165,6 +165,9 @@ def run(args):
     if args.netns:
         setup(n)
         shape(n, edges, args.rtt_ms, args.loss, args.rate_mbit)
+        for setting in args.sysctl:
+            for i in range(n):
+                sh(f"ip netns exec {ns(i)} sysctl -qw {setting}")
 
     neighbours = {i: [] for i in range(n)}
     for a, b in edges:
@@ -188,7 +191,8 @@ def run(args):
         path = os.path.join(run_dir, f"config.{i}.json")
         with open(path, "w") as f:
             json.dump(config, f)
-        env = dict(os.environ, LEAN_NET_CONFIG=path, DOTNET_gcServer="0", DOTNET_TieredPGO="1")
+        # Runs last seconds, so tiered recompilation would dominate their CPU; full JIT happens during warm-up instead.
+        env = dict(os.environ, LEAN_NET_CONFIG=path, DOTNET_gcServer="0", DOTNET_TieredCompilation="1" if args.tiered else "0")
         command = [args.dotnet, "exec", args.test_dll, "--filter", "FullyQualifiedName~LeanNetBenchNode", "--no-progress",
                    "--results-directory", os.path.join(run_dir, f"tr.{i}")]
         if args.netns:
@@ -211,7 +215,7 @@ def run(args):
     summary = {"label": args.label, "topology": args.topology, "nodes": n, "binding": args.binding, "broadcast": args.broadcast,
                "kind": args.kind, "objects": args.objects, "warmup": args.warmup, "proof_bytes": args.proof_bytes, "burst": args.burst,
                "interval_ms": args.interval_ms, "origins": args.origins, "verify_ms": args.verify_ms, "rtt_ms": args.rtt_ms,
-               "loss": args.loss, "rate_mbit": args.rate_mbit, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
+               "loss": args.loss, "rate_mbit": args.rate_mbit, "sysctl": args.sysctl, "load": open("/proc/loadavg").read().split()[:3] if os.path.exists("/proc/loadavg") else None}
     try:
         if not wait_files("ready", 120):
             summary["error"] = "nodes did not connect"
@@ -337,7 +341,9 @@ def main():
     r.add_argument("--rate-mbit", type=int, default=100)
     r.add_argument("--timeout", type=int, default=120)
     r.add_argument("--netns", action="store_true")
+    r.add_argument("--tiered", action="store_true", help="keep tiered compilation (default: fully optimizing JIT only)")
     r.add_argument("--keep", action="store_true")
+    r.add_argument("--sysctl", action="append", default=[], help="per-namespace sysctl, e.g. net.ipv4.tcp_slow_start_after_idle=0")
     r.add_argument("--cpus", default=None)
     r.add_argument("--label", default=None)
     r.add_argument("--out", default="runs")

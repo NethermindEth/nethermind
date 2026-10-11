@@ -12,6 +12,7 @@ using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.ProofAggregation;
@@ -86,6 +87,8 @@ public class LeanNetBenchNode
         if (path is null) Assert.Ignore("LEAN_NET_CONFIG is not set");
         NodeConfig config = JsonSerializer.Deserialize<NodeConfig>(File.ReadAllText(path), Json)!;
         Metrics.LeanObjectTransferMicros = TransferCounter.Instance;
+        // As in release builds of the runner: leak sampling captures stack traces of pooled buffers, which would dominate RLPx CPU.
+        ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
         ILogManager logs = Environment.GetEnvironmentVariable("LEAN_NET_LOG") is { } level
             ? new TestLogManager(Enum.Parse<LogLevel>(level, true)) : LimboLogs.Instance;
         string Path_(string name) => Path.Combine(config.RunDir, name);
