@@ -55,7 +55,7 @@ RUN expected=AA86F75E427A19DD33346403EE4D7792F748182B && \
   apt-get install -y --no-install-recommends ca-certificates curl gpg && \
   curl -fsSL https://packages.microsoft.com/keys/microsoft-2025.asc -o /etc/apt/keyrings/microsoft-2025.asc && \
   export GNUPGHOME="$(mktemp -d)" && \
-  fingerprint=$(gpg --show-keys --with-colons /etc/apt/keyrings/microsoft-2025.asc | awk -F: '$1 == "fpr" { print $10 }') && \
+  fingerprint=$(gpg --show-keys --with-colons /etc/apt/keyrings/microsoft-2025.asc | awk -F: '$1 == "pub" { pub++ } $1 == "fpr" && !seen++ { fpr = $10 } END { if (pub == 1) print fpr }') && \
   rm -rf "$GNUPGHOME" && \
   if [ "$fingerprint" != "$expected" ]; then \
     echo "microsoft-2025.asc has fingerprint '$fingerprint', expected $expected" >&2; exit 1; \
