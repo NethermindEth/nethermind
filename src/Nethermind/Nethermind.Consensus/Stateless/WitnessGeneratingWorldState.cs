@@ -275,9 +275,20 @@ public class WitnessGeneratingWorldState(
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
+        RecordDeploy(address, in codeHash);
+        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
+    }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        RecordDeploy(address, in codeHash);
+        return base.AdoptCode(address, in codeHash, code, spec);
+    }
+
+    private void RecordDeploy(Address address, in ValueHash256 codeHash)
+    {
         RecordEmptySlots(address);
         if (_inBlockDeployed.Add(codeHash)) _deployOrder.Add(codeHash);
-        return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)

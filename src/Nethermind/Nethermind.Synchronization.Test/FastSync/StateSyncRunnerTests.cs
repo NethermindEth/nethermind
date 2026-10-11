@@ -104,6 +104,33 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _healing.Received(1).FinalizeSync(lastPivot);
     }
 
+    [Test]
+    public async Task Finalizes_only_once_missing_code_is_recovered()
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+
+        BlockHeader firstPivot = blockTree.FindHeader(10)!;
+        BlockHeader lastPivot = blockTree.FindHeader(11)!;
+        SeedBals(container, lastPivot);
+
+        _pivot.GetPivotHeader().Returns(lastPivot);
+        _healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(TestItem.KeccakA);
+        _healing.ApplyRange(TestItem.KeccakA, firstPivot, lastPivot, Arg.Any<CancellationToken>()).Returns((false, lastPivot.StateRoot));
+        // No peer serves the missing bytecode on the first attempt, so finalizing must wait for the second.
+        _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(false, true);
+
+        await runner.RunBalHealing(firstPivot, default);
+
+        Received.InOrder(() =>
+        {
+            _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>());
+            _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>());
+            _healing.FinalizeSync(lastPivot);
+        });
+    }
+
     [TestCase(false, TestName = "Does_not_finalize_when_the_healed_root_does_not_match_the_pivot")]
     [TestCase(true, TestName = "Does_not_finalize_when_the_range_is_lost")]
     public async Task Does_not_finalize_when_healing_cannot_reach_the_pivot(bool rangeLost)
@@ -150,6 +177,7 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
+        _healing.TryRecoverMissingCode(Arg.Any<CancellationToken>()).Returns(true);
         _snapSyncRunner = Substitute.For<ISnapSyncRunner>();
 
         _pivot = Substitute.For<IStateSyncPivot>();

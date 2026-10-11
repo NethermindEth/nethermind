@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -133,6 +134,21 @@ public class BlockAccessListValidationIndexTests
         Assert.That(generatedIndex.ChangesEqual(suggestedIndex, index), Is.False);
     }
 
+    // EIP-8298: a code change matches only in the same form, so adopted code recorded as bytecode is rejected.
+    [Test]
+    public void ChangesEqual_compares_code_change_form([Values] bool suggestedAdopted, [Values] bool generatedAdopted)
+    {
+        byte[] code = [1, 2, 3];
+        ReadOnlyBlockAccessList suggested = Bal(Account(TestItem.AddressC, code: CodeChangeOf(suggestedAdopted)));
+        ReadOnlyBlockAccessList generated = Bal(Account(TestItem.AddressC, code: CodeChangeOf(generatedAdopted)));
+
+        BlockAccessListValidationIndex generatedIndex = BuildPair(suggested, generated, txCount: 3, out BlockAccessListValidationIndex suggestedIndex);
+
+        Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 2), Is.EqualTo(suggestedAdopted == generatedAdopted));
+
+        CodeChange CodeChangeOf(bool adopted) => adopted ? CodeChange.Adopted(2, ValueKeccak.Compute(code), code) : new CodeChange(2, code);
+    }
+
     [Test]
     public void ChangesEqual_does_not_detect_surplus_read_only_account_in_generated()
     {
@@ -233,7 +249,10 @@ public class BlockAccessListValidationIndexTests
             foreach (NonceChange nc in acc.NonceChanges)
                 GetSlice(slicesByIndex, nc.Index).AddNonceChange(acc.Address, nc.Value);
             foreach (CodeChange cc in acc.CodeChanges)
-                GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code);
+            {
+                if (cc.IsAdopted) GetSlice(slicesByIndex, cc.Index).AddAdoptedCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code, cc.CodeHash);
+                else GetSlice(slicesByIndex, cc.Index).AddCodeChange(acc.Address, before: Array.Empty<byte>(), after: cc.Code);
+            }
             foreach (ReadOnlySlotChanges slot in acc.StorageChanges)
             {
                 foreach (StorageChange ch in slot.Changes)

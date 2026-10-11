@@ -321,6 +321,47 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
+    // EIP-8298: [index, new_code] for installed code, [index, b"", new_code_hash] for code adopted by SETCODEFROM.
+    [Test]
+    public void Code_change_roundtrips_in_its_form([Values] bool adopted)
+    {
+        CodeChange original = adopted ? CodeChange.Adopted(1, TestItem.KeccakA.ValueHash256) : new CodeChange(1, [0xab, 0xcd]);
+        string expectedRlp = adopted ? "0xe30180a0" + TestItem.KeccakA.ToString(false) : "0xc40182abcd";
+
+        byte[] encoded = Rlp.Encode(original).Bytes;
+        RlpReader ctx = new(encoded);
+        CodeChange decoded = CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That("0x" + Bytes.ToHexString(encoded), Is.EqualTo(expectedRlp), "encoding");
+            Assert.That(decoded, Is.EqualTo(original), "decoded");
+            Assert.That(decoded.IsAdopted, Is.EqualTo(adopted), "form");
+            Assert.That(decoded.Code, adopted ? Is.Empty : Is.EqualTo(original.Code), "code");
+        }
+    }
+
+    [Test]
+    public void Code_change_forms_are_not_equal_for_the_same_code()
+    {
+        byte[] code = [0xab, 0xcd];
+
+        Assert.That(CodeChange.Adopted(1, ValueKeccak.Compute(code), code), Is.Not.EqualTo(new CodeChange(1, code)));
+    }
+
+    [TestCase("0xe50182abcda0", TestName = "code_change_with_code_and_hash")]
+    [TestCase("0xc50180820102", TestName = "code_change_with_short_hash")]
+    public void Decode_malformed_adopted_code_change_throws_RlpException(string prefix)
+    {
+        byte[] encoded = Bytes.FromHexString(prefix.EndsWith("a0") ? prefix + TestItem.KeccakA.ToString(false) : prefix);
+
+        Assert.That(() =>
+        {
+            RlpReader ctx = new(encoded);
+            CodeChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
     [Test]
     public void Can_decode_then_encode_slot_change()
     {
