@@ -60,6 +60,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
     private LeanPeer? _peer;
     private bool _statusReceived;
     private long _controlBacklog;
+    private ulong _lastResponseId;
     private int _closeStarted;
     private int _activeStreams;
 
@@ -437,12 +438,20 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         }
     }
 
+    /// <summary>The response to an incoming request, created by its first frame; null once it retired or was dropped.</summary>
+    /// <remarks>
+    /// The transport writes the first frame of each response while it handles the request, and requests arrive in consecutive
+    /// ID order on the control stream; so an ID at or below the last one seen without an entry has retired, and a new stream
+    /// for it would be a duplicate response.
+    /// </remarks>
     private OutgoingResponse? GetResponse(ulong requestId)
     {
         lock (_lock)
         {
             if (_responses.TryGetValue(requestId, out OutgoingResponse? response)) return response;
-            if (_closing.IsCancellationRequested || _responses.Count >= MaxOutgoingResponses) return null;
+            if (_closing.IsCancellationRequested || requestId <= _lastResponseId) return null;
+            _lastResponseId = requestId;
+            if (_responses.Count >= MaxOutgoingResponses) return null;
             long now = _clock.GetTimestamp();
             response = new OutgoingResponse(requestId, now);
             _responses.Add(requestId, response);
