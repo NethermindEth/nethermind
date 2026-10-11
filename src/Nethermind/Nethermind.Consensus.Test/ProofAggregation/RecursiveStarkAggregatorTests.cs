@@ -661,6 +661,23 @@ public class RecursiveStarkAggregatorTests
     }
 
     [Test]
+    public void Combining_leaves_out_recursive_children_without_required_dependencies([Values] bool withParent)
+    {
+        FrameDependency required = Sphincs("required");
+        RecursiveProofInput unrelated = new([Sphincs("unrelated")], [2]);
+        AggregationInput input = new() { Deps = [required], Witnesses = [new byte[] { 1 }], RecursiveProofs = [unrelated] };
+        RecursiveProofInput? parent = withParent ? new RecursiveProofInput([required, Sphincs("parent")], [3]) : null;
+
+        AggregationInput combined = RecursiveStarkAggregator.Combine([input], [required], parent);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(combined.RecursiveProofs, Is.EqualTo(withParent ? new[] { parent!.Value } : []));
+            Assert.That(combined.Discards, Is.EqualTo(withParent ? new[] { Sphincs("parent") } : []));
+        }
+    }
+
+    [Test]
     public void Extending_a_parent_discards_its_dependencies_outside_the_required_set()
     {
         FrameDependency kept = Sphincs("kept");

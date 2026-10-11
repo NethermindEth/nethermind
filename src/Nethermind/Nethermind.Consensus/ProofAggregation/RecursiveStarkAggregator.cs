@@ -117,7 +117,7 @@ public static class RecursiveStarkAggregator
             foreach (RecursiveProofInput child in input.RecursiveProofs)
             {
                 if (child.InnerDeps is null) throw new ArgumentException("Uninitialized recursive proof input", nameof(inputs));
-                if (parent is not null && IsCovered(child.InnerDeps, covered)) continue;
+                if (parent is not null && IsCovered(child.InnerDeps, covered) || !Overlaps(child.InnerDeps, wanted)) continue;
                 if (!seenProofs.Add(child.ProofHash)) continue;
                 recursive.Add(child);
                 foreach (FrameDependency dep in child.InnerDeps)
@@ -144,6 +144,14 @@ public static class RecursiveStarkAggregator
             foreach (FrameDependency dependency in dependencies)
                 if (!covered.Contains(dependency)) return false;
             return true;
+        }
+
+        // A child proving nothing the statement needs would only be discarded whole.
+        static bool Overlaps(IReadOnlyList<FrameDependency> dependencies, HashSet<FrameDependency> wanted)
+        {
+            foreach (FrameDependency dependency in dependencies)
+                if (wanted.Contains(dependency)) return true;
+            return false;
         }
     }
 
