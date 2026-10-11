@@ -145,6 +145,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (_inFlight.TryGetValue(hash, out InFlightBlock? inFlight)) inFlight.MarkExecuted();
 
         BlockVerdictEventArgs verdict = new(hash, block.IsInclusionListSatisfied ? ProcessingResult.Success : ProcessingResult.InclusionListUnsatisfied);
+        _stopwatch.Stop();
         try
         {
             BlockExecuted?.Invoke(this, verdict);

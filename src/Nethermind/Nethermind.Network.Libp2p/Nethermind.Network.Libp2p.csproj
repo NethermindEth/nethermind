@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Libp2p.Core" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Identify" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.IpTcp" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Multistream" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Noise" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Ping" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Pubsub" />
+    <PackageReference Include="Nethermind.Libp2p.Protocols.Yamux" />
+    <PackageReference Include="Snappier" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.BeaconChain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Optimism.Test" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+  </ItemGroup>
+</Project>

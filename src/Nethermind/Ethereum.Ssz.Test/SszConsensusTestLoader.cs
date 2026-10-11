@@ -12,8 +12,11 @@ namespace Ethereum.Ssz.Test;
 
 public static class SszConsensusTestLoader
 {
-    private const string ArchiveUrlTemplate = "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}";
-    // v1.6.1 predates the EIP-7916 change that made the base subtree the left child.
+    public const string ArchiveUrlTemplate = "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}";
+    private const string SszGenericPrefix = "tests/general/phase0/ssz_generic";
+
+    // consensus-specs#5524 removed ssz_generic from alpha.14 onward; ssz-specs uses a different schema and has less coverage.
+    // v1.6.x predates EIP-7916 and disagrees on progressive-container roots.
     private const string DefaultVersion = "v1.7.0-alpha.13";
     private const string DefaultArchive = "general.tar.gz";
 
@@ -21,7 +24,8 @@ public static class SszConsensusTestLoader
 
     private static string GetTestsRoot() =>
         s_testsRoot ??= TestFixtureDownloader.EnsureDownloaded(
-            "SszTests", ArchiveUrlTemplate, DefaultVersion, DefaultArchive);
+            "SszTests", ArchiveUrlTemplate, DefaultVersion, DefaultArchive,
+            entry => TestFixtureDownloader.PathUnderPrefix(entry, SszGenericPrefix), extractionTag: SszGenericPrefix);
 
     /// <summary>
     /// Returns the path to the ssz_generic test directory for a given type handler.

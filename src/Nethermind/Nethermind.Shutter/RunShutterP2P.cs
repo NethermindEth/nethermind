@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
@@ -10,6 +9,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Network.Libp2p;
 using Nethermind.Shutter.Config;
 
 namespace Nethermind.Shutter;
@@ -26,16 +26,21 @@ public class RunShutterP2P(IShutterConfig shutterConfig, IShutterApi shutterApi,
     {
         if (_logger.IsInfo) _logger.Info("Initializing Shutter plugin.");
 
-        IEnumerable<Multiaddress> bootnodeP2PAddresses;
+        Multiaddress[] bootnodes;
         try
         {
-            shutterConfig.Validate(out bootnodeP2PAddresses);
+            shutterConfig.Validate();
+            bootnodes = StaticPeerKeeper.ParseStaticPeers(shutterConfig.BootnodeP2PAddresses!, "Shutter.BootnodeP2PAddresses", _logger);
+            if (bootnodes.Length != shutterConfig.BootnodeP2PAddresses!.Length)
+            {
+                throw new ArgumentException("Shutter.BootnodeP2PAddresses contains an invalid bootnode address.");
+            }
         }
         catch (ArgumentException e)
         {
             throw new ShutterPlugin.ShutterLoadingException("Invalid Shutter config", e);
         }
-        _ = shutterApi.StartP2P(bootnodeP2PAddresses, exitSource.Token);
+        _ = shutterApi.StartP2P(bootnodes, exitSource.Token);
 
         return Task.CompletedTask;
     }

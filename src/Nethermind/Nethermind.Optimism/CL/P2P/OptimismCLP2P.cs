@@ -9,8 +9,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -22,14 +20,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
-using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Network;
 using Snappier;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
+using Nethermind.Network.Libp2p;
 using Channel = System.Threading.Channels.Channel;
 
 namespace Nethermind.Optimism.CL.P2P;
@@ -50,7 +47,7 @@ public class OptimismCLP2P : IDisposable
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
-    private LocalPeer? _localPeer;
+    private ILocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
 
@@ -69,7 +66,7 @@ public class OptimismCLP2P : IDisposable
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
-        _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
+        _staticPeerList = StaticPeerKeeper.ParseStaticPeers(staticPeerList, "Optimism CL static peers", _logger);
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _ipResolver = ipResolver;
 
@@ -78,24 +75,32 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3,
-                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = CalculateMessageId
-            })
+            .AddSingleton(CreatePubsubSettings(_blocksV2TopicId))
             .BuildServiceProvider();
     }
+
+    /// <summary>The gossipsub parameters of the OP Stack block gossip on <paramref name="blocksTopicId"/>, unscored.</summary>
+    /// <remarks>OP Stack rollup-node-p2p.md "Message ID computation" takes the L1 message id; op-node p2p/gossip.go BuildMsgIdFn
+    /// hashes it in its Altair form, topic included, which is the id the network's IHAVE lists carry.</remarks>
+    internal static PubsubSettings CreatePubsubSettings(string blocksTopicId) => UnscoredGossip.Configure(new PubsubSettings
+    {
+        ReconnectionAttempts = int.MaxValue,
+        Degree = 3,
+        LowestDegree = 2,
+        HighestDegree = 6,
+        LazyDegree = 3,
+        DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+        GetMessageId = static message => new MessageId(Eth2MessageId.Compute(message.Topic, message.Data.Span)),
+        // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
+        MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+        MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
+    }, [blocksTopicId]);
 
     private void OnMessage(byte[] msg, CancellationToken token)
     {
@@ -232,7 +237,7 @@ public class OptimismCLP2P : IDisposable
         try
         {
             ExecutionPayloadV3? response = null;
-            foreach (ISession peer in _localPeer!.Sessions.ToList().Shuffle(_random))
+            foreach (ISession peer in ((LocalPeer)_localPeer!).Sessions.ToList().Shuffle(_random))
             {
                 response = await TryRequestPayload(peer, payloadNumber, expectedHash, token);
                 if (response is not null)
@@ -302,6 +307,9 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
+    /// <summary>Internal so a test can see which static peers startup kept.</summary>
+    internal IReadOnlyList<Multiaddress> StaticPeersForTest => _staticPeerList;
+
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
@@ -323,11 +331,11 @@ public class OptimismCLP2P : IDisposable
         }
 
         string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
-        _localPeer = (LocalPeer)peerFactory.Create(new Identity());
+        _localPeer = peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
-        _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        _blocksV2Topic.OnMessage += (_, msg) => OnMessage(msg, token);
         try
         {
             await _localPeer.StartListenAsync([address], token);
@@ -347,23 +355,21 @@ public class OptimismCLP2P : IDisposable
 
 
         if (_logger.IsInfo) _logger.Info("CL P2P is started");
+        _ = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, token);
         await MainLoop(token);
     }
 
-    private MessageId CalculateMessageId(Message message)
-    {
-        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
-        sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
-        sha256.AppendData(message.Data.Span);
-        return new MessageId(sha256.GetHashAndReset());
-    }
-
     public void Reset(ulong headNumber) => _headNumber = headNumber;
+
+    /// <summary>Internal so a test can dial from the started host.</summary>
+    internal ILocalPeer? LocalPeerForTest => _localPeer;
 
     public void Dispose()
     {
         _blocksV2Topic?.Unsubscribe();
         _blocksP2PMessageChannel.Writer.Complete();
+        // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
+        _localPeer?.DisposeAsync().AsTask().ContinueWith(static disposal => _ = disposal.Exception,
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }

@@ -1,0 +1,421 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections;
+using System.IO;
+using System.Reflection;
+using Ethereum.Ssz.Test;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+using YamlDotNet.RepresentationModel;
+
+namespace Ethereum.ConsensusSpec.Test;
+
+public static class FuluDriverSupport
+{
+#if MINIMAL_PRESET
+    internal const ConsensusPreset CompiledPreset = ConsensusPreset.Minimal;
+    internal static BeaconChainSpec DefaultSpec { get; } = BeaconChainSpec.Mainnet with
+    {
+        ChainId = 0,
+        CheckpointSyncUrl = null,
+        Bootnodes = [],
+        SecondsPerSlot = Presets.SecondsPerSlot,
+        SlotsPerEpoch = Presets.SlotsPerEpoch,
+        GenesisTime = 0,
+        GenesisValidatorsRoot = Hash256.Zero,
+        Forks = [.. Enumerable.Range(0, 7).Select(static fork => new ForkScheduleEntry([(byte)fork, 0, 0, 1], 0))],
+        BlobSchedule = [],
+        ElectraForkEpoch = 0,
+        FuluForkEpoch = 0,
+        GloasForkVersion = [7, 0, 0, 1],
+    };
+#else
+    internal const ConsensusPreset CompiledPreset = ConsensusPreset.Mainnet;
+    internal static BeaconChainSpec DefaultSpec => BeaconChainSpec.Mainnet;
+#endif
+
+    internal static bool Enumerates(ConsensusPreset preset) =>
+        CompiledPreset == ConsensusPreset.Mainnet || preset == CompiledPreset;
+
+    internal static IEnumerable<TestCaseData> RelativeCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
+        Func<ConsensusPreset, string, string, string, T> createCase)
+    {
+        if (!Enumerates(preset))
+            yield break;
+        foreach (string fork in forks)
+        {
+            string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
+            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(root, marker))
+            {
+                string name = $"{preset}/{fork}/{suite}/{Path.GetRelativePath(root!, caseDir).Replace('\\', '/')}";
+                yield return new TestCaseData(createCase(preset, fork, caseDir, name)).SetName(name);
+            }
+        }
+    }
+
+    internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
+        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false, bool relativeNames = false)
+    {
+        if (!Enumerates(preset))
+            yield break;
+        foreach (string fork in forks)
+        {
+            string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
+            if (root is null)
+                continue;
+            IEnumerable<string> handlerDirs = handlers is null ? (strictHandlerDirectory ? Directory.GetDirectories(root) : ConsensusSpecArchive.SubDirs(root)) : handlers.Select(handler => Path.Combine(root, handler));
+            foreach (string handlerDir in handlerDirs)
+            {
+                string handler = Path.GetFileName(handlerDir);
+                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerDir, marker))
+                {
+                    string caseName = relativeNames ? Path.GetRelativePath(handlerDir, caseDir).Replace('\\', '/') : Path.GetFileName(caseDir);
+                    string name = $"{preset}/{fork}/{suite}/{handler}/{caseName}";
+                    yield return new TestCaseData(createCase(preset, fork, handler, caseDir, name)).SetName(name);
+                }
+            }
+        }
+    }
+
+    public static BeaconStateFulu DecodeState(string path)
+    {
+        byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);
+        BeaconStateFulu.Decode(ssz, out BeaconStateFulu state);
+        return state;
+    }
+
+    public static ForkDriver RequireForkDriver(string fork) =>
+        ForkDriver.ByName.TryGetValue(fork, out ForkDriver? driver)
+            ? driver
+            : throw new NotImplementedInDriverException($"fork '{fork}' has no ForkDriver; its vectors cannot be carried through this pipeline.");
+
+    internal static void Dispatch<TCase>(string fork, TCase testCase,
+        Action<TCase, ForkDriver<BeaconStateFulu>> fulu, Action<TCase, ForkDriver<BeaconStateGloas>> gloas,
+        string unsupported = "state type this suite knows")
+    {
+        switch (RequireForkDriver(fork))
+        {
+            case ForkDriver<BeaconStateFulu> driver:
+                fulu(testCase, driver);
+                break;
+            case ForkDriver<BeaconStateGloas> driver:
+                gloas(testCase, driver);
+                break;
+            case ForkDriver other:
+                throw new NotImplementedInDriverException($"fork '{other.Fork}' has no {unsupported}.");
+        }
+    }
+
+    public static void RequireCompiledPreset(string preset)
+    {
+        if (preset != CompiledPreset.ToString())
+            throw new NotImplementedInDriverException($"This assembly's SSZ bounds use {CompiledPreset}; {preset} state fixtures require their own compiled preset.");
+    }
+
+    /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>
+    public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases)
+    {
+        if (!Enumerates(preset))
+            Assert.Ignore($"This assembly uses {CompiledPreset}.");
+        if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
+            Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
+
+        return [.. (preset == ConsensusPreset.Mainnet ? mainnetCases() : minimalCases()).Select(static data => (TCase)data.Arguments[0]!)];
+    }
+
+    /// <summary>Requires the first case of every key to run successfully, including rejecting not-implemented outcomes.</summary>
+    public static void AssertEveryKeyRunsAVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
+    {
+        Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
+        foreach (IGrouping<string, TCase> byKey in cases.GroupBy(keyOf, StringComparer.Ordinal))
+        {
+            TCase first = byKey.First();
+            Assert.That(() => run(first), Throws.Nothing, $"'{byKey.Key}' does not run its vector {first}");
+        }
+    }
+
+    /// <summary>Requires a runnable case per key; only not-implemented cases defer to the next case.</summary>
+    public static void AssertEveryKeyRunsSomeVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
+    {
+        Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
+        foreach (IGrouping<string, TCase> byKey in cases.GroupBy(keyOf, StringComparer.Ordinal))
+        {
+            Assert.That(byKey.Any(testCase => RunsForReal(run, testCase)), $"'{byKey.Key}' reports every vector not implemented");
+        }
+    }
+
+    private static bool RunsForReal<TCase>(Action<TCase> run, TCase testCase)
+    {
+        try
+        {
+            run(testCase);
+            return true;
+        }
+        catch (NotImplementedInDriverException)
+        {
+            return false;
+        }
+    }
+
+    public static void AssertPostStateRoot<TState>(ForkDriver<TState> driver, string postPath, TState actual, EpochCache cache) where TState : class
+    {
+        (object expectedPost, Hash256 expectedRoot) = driver.DecodePost(postPath);
+        Hash256 actualRoot = driver.StateRoot(actual);
+        Hash256 cachedRoot = driver.CachedRoot(actual, cache);
+        if (cachedRoot != actualRoot)
+            Assert.Fail($"the cache's hasher root {cachedRoot} differs from the full state root {actualRoot}");
+        if (expectedRoot == actualRoot)
+            return;
+
+        List<string> diff = Diff(expectedPost, driver.ForDiff(actual), "state");
+        Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
+    }
+
+    /// <summary>Identifies spec rejections; crashes and SSZ decode failures cannot satisfy an invalid vector.</summary>
+    public static bool IsSpecRejection(Exception thrown) => thrown is BeaconStateException or ForkChoiceException;
+
+    public static void AssertRejected(Exception? thrown, string subject)
+    {
+        if (thrown is null)
+            Assert.Fail($"expected {subject} to be rejected as invalid, but it completed without error");
+        else if (!IsSpecRejection(thrown))
+            Assert.Fail($"expected {subject} to be rejected by a spec assertion, but the pipeline threw {thrown.GetType().Name} on the way: {thrown}");
+    }
+
+    internal static void AssertTransition<TState>(ForkDriver<TState> driver, string postPath, TState state, EpochCache cache,
+        Action apply, string subject, string successFailure) where TState : class
+    {
+        bool expectSuccess = File.Exists(postPath);
+        Exception? thrown = null;
+        try { apply(); }
+        catch (Exception ex) { thrown = ex; }
+
+        if (expectSuccess)
+        {
+            if (thrown is not null)
+                Assert.Fail($"{successFailure}: {thrown}");
+
+            AssertPostStateRoot(driver, postPath, state, cache);
+        }
+        else
+        {
+            AssertRejected(thrown, subject);
+        }
+    }
+
+    public static PubkeyCache BuildPubkeyCache(Validator[] validators)
+    {
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(validators);
+        return pubkeys;
+    }
+
+    /// <summary>Reads config.yaml overrides (tests/formats/README.md), retaining compiled-preset defaults for omitted keys.</summary>
+    /// <remarks>Reads fork epochs/versions, slot duration, MAX_BLOBS_PER_BLOCK_ELECTRA and BLOB_SCHEDULE.</remarks>
+    public static BeaconChainSpec CaseSpec(string casePath)
+    {
+        BeaconChainSpec mainnet = DefaultSpec;
+        string configPath = Path.Combine(casePath, "config.yaml");
+        if (!File.Exists(configPath))
+            return mainnet;
+
+        YamlMappingNode config = LoadMapping(configPath);
+
+        ulong Scalar(string key, ulong fallback) =>
+            config.Children.TryGetValue(new YamlScalarNode(key), out YamlNode? node) ? ulong.Parse(((YamlScalarNode)node).Value!) : fallback;
+
+        byte[] gloasForkVersion = config.Children.TryGetValue(new YamlScalarNode("GLOAS_FORK_VERSION"), out YamlNode? version)
+            ? Bytes.FromHexString(((YamlScalarNode)version).Value!)
+            : mainnet.GloasForkVersion;
+
+        BlobScheduleEntry[] blobSchedule = mainnet.BlobSchedule;
+        if (config.Children.TryGetValue(new YamlScalarNode("BLOB_SCHEDULE"), out YamlNode? schedule))
+        {
+            blobSchedule = [.. ((YamlSequenceNode)schedule).Children.Cast<YamlMappingNode>().Select(static entry => new BlobScheduleEntry(
+                ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("EPOCH")]).Value!),
+                ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("MAX_BLOBS_PER_BLOCK")]).Value!)))];
+        }
+
+        BeaconChainSpec spec = PresetWith(
+            blobSchedule,
+            Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
+            Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
+            Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
+            Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
+            gloasForkVersion);
+        string[] forkNames = ["GENESIS", "ALTAIR", "BELLATRIX", "CAPELLA", "DENEB", "ELECTRA", "FULU"];
+        ForkScheduleEntry[] forks = [.. spec.Forks.Take(7).Select((entry, index) => new ForkScheduleEntry(
+            config.Children.TryGetValue(new YamlScalarNode(forkNames[index] + "_FORK_VERSION"), out YamlNode? value)
+                ? Bytes.FromHexString(((YamlScalarNode)value).Value!) : entry.Version,
+            Scalar(forkNames[index] + "_FORK_EPOCH", entry.Epoch)))];
+        return spec with
+        {
+            SecondsPerSlot = Scalar("SLOT_DURATION_MS", spec.SecondsPerSlot * 1000) / 1000,
+            Forks = spec.GloasForkEpoch == Presets.FarFutureEpoch ? forks : [.. forks, new(gloasForkVersion, spec.GloasForkEpoch)],
+        };
+    }
+
+    /// <summary>Uses the compiled preset with earlier forks at genesis and Gloas at meta.yaml's fork_epoch (tests/formats/transition/README.md).</summary>
+    public static BeaconChainSpec TransitionSpec(ulong gloasForkEpoch)
+    {
+        BeaconChainSpec mainnet = DefaultSpec;
+        BeaconChainSpec spec = PresetWith(mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
+        return spec with { Forks = [.. spec.Forks.Select((entry, index) => index < 7 ? entry with { Epoch = 0 } : entry)] };
+    }
+
+    private static BeaconChainSpec PresetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
+    {
+        BeaconChainSpec mainnet = DefaultSpec;
+        return mainnet with
+        {
+            CheckpointSyncUrl = null,
+            Forks = [.. mainnet.Forks.Take(7).Select((entry, index) => entry with { Epoch = index == 5 ? electraForkEpoch : index == 6 ? fuluForkEpoch : entry.Epoch }),
+                .. (gloasForkEpoch == Presets.FarFutureEpoch ? Array.Empty<ForkScheduleEntry>() : [new(gloasForkVersion, gloasForkEpoch)])],
+            BlobSchedule = blobSchedule,
+            ElectraForkEpoch = electraForkEpoch,
+            FuluForkEpoch = fuluForkEpoch,
+            MaxBlobsPerBlockElectra = maxBlobsPerBlockElectra,
+            GloasForkEpoch = gloasForkEpoch,
+            GloasForkVersion = gloasForkVersion,
+        };
+    }
+
+    /// <summary>Verifies signatures unless bls_setting is 2 (ignored); absent, optional (0) and required (1) settings verify normally.</summary>
+    public static bool ShouldVerifySignatures(string casePath)
+    {
+        string metaPath = Path.Combine(casePath, "meta.yaml");
+        if (!File.Exists(metaPath))
+            return true;
+
+        Dictionary<string, string> meta = ParseFlowMap(metaPath);
+        return !meta.TryGetValue("bls_setting", out string? value) || value != "2";
+    }
+
+    public static bool ReadExecutionValid(string casePath)
+    {
+        string executionPath = Path.Combine(casePath, "execution.yaml");
+        if (!File.Exists(executionPath))
+            return true;
+
+        Dictionary<string, string> meta = ParseFlowMap(executionPath);
+        return !meta.TryGetValue("execution_valid", out string? value) || value == "true";
+    }
+
+    internal static YamlMappingNode LoadMapping(string path)
+    {
+        using StreamReader reader = new(path);
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        return (YamlMappingNode)yaml.Documents[0].RootNode;
+    }
+
+    internal static string Scalar(YamlMappingNode map, string key) => ((YamlScalarNode)map.Children[new YamlScalarNode(key)]).Value!;
+
+    public static Dictionary<string, string> ParseFlowMap(string path)
+    {
+        using StreamReader reader = new(path);
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        Dictionary<string, string> result = new(StringComparer.Ordinal);
+        if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping)
+            return result;
+
+        foreach (KeyValuePair<YamlNode, YamlNode> kv in mapping.Children)
+        {
+            if (kv.Key is YamlScalarNode keyNode && kv.Value is YamlScalarNode valueNode)
+                result[keyNode.Value!] = valueNode.Value!;
+        }
+        return result;
+    }
+
+    public static int ParseScalarInt(string path)
+    {
+        using StreamReader reader = new(path);
+        YamlStream yaml = [];
+        yaml.Load(reader);
+        YamlScalarNode node = (YamlScalarNode)yaml.Documents[0].RootNode;
+        return int.Parse(node.Value!);
+    }
+
+    public static Hash256 StateRoot(BeaconStateFulu state)
+    {
+        BeaconStateFulu.Merkleize(state, out UInt256 root);
+        return new Hash256(root.ToLittleEndian());
+    }
+
+    public static List<string> Diff(object? expected, object? actual, string path, int limit = 20)
+    {
+        List<string> results = [];
+        DiffInto(expected, actual, path, results, limit);
+        return results;
+    }
+
+    private static void DiffInto(object? expected, object? actual, string path, List<string> into, int limit)
+    {
+        if (into.Count >= limit) return;
+        if (Equals(expected, actual)) return;
+        if (expected is null || actual is null)
+        {
+            into.Add($"{path}: expected {Describe(expected)}, actual {Describe(actual)}");
+            return;
+        }
+
+        Type type = expected.GetType();
+        if (type != actual.GetType())
+        {
+            into.Add($"{path}: type mismatch {type.Name} vs {actual.GetType().Name}");
+            return;
+        }
+
+        if (expected is BitArray eBits && actual is BitArray aBits)
+        {
+            if (eBits.Length != aBits.Length)
+            {
+                into.Add($"{path}: bit length {eBits.Length} vs {aBits.Length}");
+                return;
+            }
+            for (int i = 0; i < eBits.Length && into.Count < limit; i++)
+            {
+                if (eBits[i] != aBits[i])
+                    into.Add($"{path}[{i}]: expected {eBits[i]}, actual {aBits[i]}");
+            }
+            return;
+        }
+
+        if (expected is IEnumerable eEnum && actual is IEnumerable aEnum && type != typeof(string))
+        {
+            object?[] eItems = eEnum.Cast<object?>().ToArray();
+            object?[] aItems = aEnum.Cast<object?>().ToArray();
+            if (eItems.Length != aItems.Length)
+            {
+                into.Add($"{path}: length {eItems.Length} vs {aItems.Length}");
+                return;
+            }
+            for (int i = 0; i < eItems.Length && into.Count < limit; i++)
+                DiffInto(eItems[i], aItems[i], $"{path}[{i}]", into, limit);
+            return;
+        }
+
+        if (type.Namespace == "Nethermind.BeaconChain.Types")
+        {
+            foreach (PropertyInfo prop in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (prop.GetIndexParameters().Length > 0) continue;
+                DiffInto(prop.GetValue(expected), prop.GetValue(actual), $"{path}.{prop.Name}", into, limit);
+                if (into.Count >= limit) return;
+            }
+            return;
+        }
+
+        into.Add($"{path}: expected {Describe(expected)}, actual {Describe(actual)}");
+    }
+
+    private static string Describe(object? value) => value?.ToString() ?? "null";
+}

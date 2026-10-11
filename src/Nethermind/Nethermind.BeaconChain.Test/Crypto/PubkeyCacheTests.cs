@@ -1,0 +1,341 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Snappier;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
+
+namespace Nethermind.BeaconChain.Test.Crypto;
+
+public class PubkeyCacheTests
+{
+    // The store key of the first persisted chunk, which holds validators 0 to 65535.
+    private const string FirstChunkKey = "pubkeys:0";
+
+    [Test]
+    public void Builds_extends_persists_and_loads_real_pubkeys()
+    {
+        byte[][] compressed = [.. Enumerable.Range(0, 3).Select(CompressedPubkey)];
+        Validator[] validators = [.. compressed.Select(static pk => new Validator { Pubkey = new BlsPublicKey(pk) })];
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+
+        PubkeyCache cache = new();
+        cache.Build(validators[..2]);
+        cache.Extend(validators, 2);
+        cache.Persist(store);
+
+        PubkeyCache loaded = new();
+        bool loadResult = loaded.TryLoad(store, validators);
+
+        PubkeyCache mismatched = new();
+        bool mismatchedResult = mismatched.TryLoad(store, validators[..2]);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(cache.Count, Is.EqualTo(3));
+        Assert.That(loadResult, Is.True);
+        Assert.That(loaded.Count, Is.EqualTo(3));
+        for (int i = 0; i < validators.Length; i++)
+        {
+            Assert.That(cache.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"built pubkey {i}");
+            Assert.That(loaded.GetPublicKey(i).Compress(), Is.EqualTo(compressed[i]), $"loaded pubkey {i}");
+        }
+        Assert.That(mismatchedResult, Is.False, "count mismatch must force a rebuild");
+    }
+
+    [Test]
+    public void Build_and_extend_throw_with_index_of_a_refused_pubkey([Values("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")] string refused, [Values] bool extend)
+    {
+        Validator[] validators =
+        [
+            new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) },
+            new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(1)) },
+            new Validator { Pubkey = new BlsPublicKey(Bytes.FromHexString(refused)) },
+        ];
+        PubkeyCache cache = new();
+        Action cacheAll = () => cache.Build(validators);
+        if (extend)
+        {
+            cache.Build(validators[..2]);
+            cacheAll = () => cache.Extend(validators, 2);
+        }
+
+        Assert.That(cacheAll, Throws.InvalidOperationException.With.Message.Contains("Validator 2"));
+    }
+
+    [Test]
+    public void A_persisted_infinity_point_is_not_loaded()
+    {
+        Validator[] validators = [.. Enumerable.Range(0, 3).Select(static i => new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(i)) })];
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        cache.Persist(store);
+
+        // blst reads an all-zero affine point as infinity; the middle entry escapes the first-and-last sample check.
+        int pointBytes = Bls.P1Affine.Sz * sizeof(long);
+        byte[] points = Snappy.DecompressToArray(store.GetMetadata(FirstChunkKey)!);
+        points.AsSpan(pointBytes, pointBytes).Clear();
+        store.PutMetadata(FirstChunkKey, Snappy.CompressToArray(points));
+
+        PubkeyCache loaded = new();
+        Assert.That(loaded.TryLoad(store, validators), Is.False);
+        Assert.That(loaded.Count, Is.Zero);
+    }
+
+    [Test]
+    public void Subgroup_checks_are_remembered_across_calls_and_extension()
+    {
+        Validator[] validators =
+        [
+            new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) },
+            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(DeriveKey(1)) },
+            new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(2)) },
+        ];
+        PubkeyCache cache = new();
+        cache.Build(validators[..2]);
+        bool[] first = [cache.IsInSubgroup(0), cache.IsInSubgroup(1)];
+        cache.Extend(validators, 2);
+        bool[] second = [cache.IsInSubgroup(0), cache.IsInSubgroup(1), cache.IsInSubgroup(2)];
+
+        Assert.That(first, Is.EqualTo(new[] { true, false }));
+        Assert.That(second, Is.EqualTo(new[] { true, false, true }));
+    }
+
+    // Re-caching an index must invalidate its old subgroup verdict, including restored caches.
+    [Test]
+    public void Subgroup_checks_follow_a_loaded_cache_and_a_recached_key()
+    {
+        Validator[] validators =
+        [
+            new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) },
+            new Validator { Pubkey = OffSubgroupKeys.WithTorsion(DeriveKey(1)) },
+        ];
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        cache.Persist(store);
+        PubkeyCache loaded = new();
+        bool loadResult = loaded.TryLoad(store, validators);
+        bool[] loadedChecks = [loaded.IsInSubgroup(0), loaded.IsInSubgroup(1)];
+
+        bool before = cache.IsInSubgroup(1);
+        cache.Extend([validators[0], new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(1)) }], 1);
+
+        Assert.That(loadResult, Is.True);
+        Assert.That(loadedChecks, Is.EqualTo(new[] { true, false }));
+        Assert.That((before, cache.IsInSubgroup(1)), Is.EqualTo((false, true)));
+    }
+
+    [Test]
+    public void Warming_remembers_the_verdict_of_every_key_and_can_be_cancelled()
+    {
+        Validator[] validators = MixedRegistry(30);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+
+        Assert.That(() => cache.WarmSubgroupChecks(new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(Enumerable.Range(0, validators.Length).Any(cache.HasSubgroupCheck), Is.False, "a cancelled warm-up checks nothing");
+
+        cache.WarmSubgroupChecks(CancellationToken.None);
+
+        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+        Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+    }
+
+    [Test]
+    public async Task Readers_racing_the_warm_up_get_the_right_verdict_for_every_key()
+    {
+        Validator[] validators = MixedRegistry(1_500);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        using ManualResetEventSlim start = new();
+
+        Task warm = Task.Run(() => { start.Wait(); cache.WarmSubgroupChecks(CancellationToken.None); });
+        Task<int>[] readers = [.. Enumerable.Range(0, 4).Select(reader => Task.Run(() =>
+        {
+            start.Wait();
+            int wrong = 0;
+            do
+            {
+                for (int n = 0; n < validators.Length; n++)
+                {
+                    int i = reader % 2 == 0 ? n : validators.Length - 1 - n;
+                    if (cache.IsInSubgroup(i) == IsOffSubgroup(i))
+                        wrong++;
+                }
+            }
+            while (!warm.IsCompleted);
+            return wrong;
+        }))];
+        start.Set();
+
+        await warm;
+        Assert.That(await Task.WhenAll(readers), Is.All.Zero);
+        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+    }
+
+    [Test]
+    public void A_registry_extension_during_the_warm_up_keeps_every_verdict_of_the_original_keys()
+    {
+        const int original = DistinctKeys;
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+        bool extended = false;
+        // The first pass then stores its verdicts in the array the extension has already copied and replaced.
+        cache.WarmUpPassStarted = () =>
+        {
+            if (!extended)
+            {
+                extended = true;
+                cache.Extend(validators, original);
+            }
+        };
+
+        cache.WarmSubgroupChecks(CancellationToken.None);
+
+        AssertEveryVerdictRemembered(cache, original);
+    }
+
+    [Test]
+    public async Task A_warm_up_that_ends_inside_a_registry_extension_keeps_every_verdict_of_the_original_keys()
+    {
+        const int original = DistinctKeys;
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+        using ManualResetEventSlim decoded = new();
+        using ManualResetEventSlim release = new();
+        cache.ExtensionDecoded = () =>
+        {
+            decoded.Set();
+            release.Wait();
+        };
+
+        Task extend = Task.Factory.StartNew(() => cache.Extend(validators, original), TaskCreationOptions.LongRunning);
+        try
+        {
+            Assert.That(decoded.Wait(TimeSpan.FromSeconds(30)), Is.True, "the extension holds before it publishes");
+            cache.WarmSubgroupChecks(CancellationToken.None);
+        }
+        finally
+        {
+            release.Set();
+        }
+        await extend;
+
+        AssertEveryVerdictRemembered(cache, original);
+    }
+
+    [Test]
+    public async Task A_warm_up_after_the_verdict_copy_waits_for_publication_and_keeps_every_original_verdict()
+    {
+        const int original = DistinctKeys;
+        Validator[] validators = CycledRegistry(original + 1);
+        PubkeyCache cache = new();
+        cache.Build(validators[..original]);
+        TimeSpan timeout = TimeSpan.FromSeconds(30);
+        Task? warm = null;
+        cache.ExtensionChecksCopied = () =>
+        {
+            warm = Task.Factory.StartNew(() => cache.WarmSubgroupChecks(CancellationToken.None), TaskCreationOptions.LongRunning);
+            Assert.That(SpinWait.SpinUntil(() => Enumerable.Range(0, original).All(cache.HasSubgroupCheck), timeout), Is.True,
+                "the warm-up must record every original verdict while the extension holds the copied array");
+            Assert.That(warm.Wait(TimeSpan.FromSeconds(1)), Is.False,
+                "the warm-up's publish check must wait for the extension's swap lock");
+        };
+
+        try
+        {
+            cache.Extend(validators, original);
+        }
+        finally
+        {
+            if (warm is not null)
+                await warm.WaitAsync(timeout);
+        }
+
+        AssertEveryVerdictRemembered(cache, original);
+    }
+
+    private const int DistinctKeys = 64;
+
+    private static Validator[] CycledRegistry(int count)
+    {
+        Validator[] keys = MixedRegistry(DistinctKeys);
+        return [.. Enumerable.Range(0, count).Select(i => keys[i % DistinctKeys])];
+    }
+
+    private static void AssertEveryVerdictRemembered(PubkeyCache cache, int original)
+    {
+        Assert.That(Enumerable.Range(0, original).All(cache.HasSubgroupCheck), Is.True, "no original key is left to an inline check");
+        Assert.That(Enumerable.Range(0, original).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, original).Select(static i => !IsOffSubgroup(i % DistinctKeys))));
+    }
+
+    [TestCase(1, 1)]
+    [TestCase(2, 1)]
+    [TestCase(160, 3)]
+    [TestCase(300, 1)]
+    public void Summed_public_keys_equal_the_one_at_a_time_aggregate(int count, int stride)
+    {
+        Validator[] validators = [.. Enumerable.Range(0, 600).Select(static i => new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(i)) })];
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        ulong[] indices = [.. Enumerable.Range(0, count).Select(i => (ulong)(i * stride + 7))];
+
+        BlsSigner.AggregatedPublicKey oneAtATime = new(new long[Bls.P1.Sz]);
+        foreach (ulong index in indices)
+        {
+            oneAtATime.Aggregate(cache.GetPublicKey((int)index));
+        }
+
+        long[] sum = new long[Bls.P1.Sz];
+        cache.SumPublicKeys(indices, sum);
+
+        Assert.That(new BlsSigner.AggregatedPublicKey(sum).PublicKey.Compress(), Is.EqualTo(oneAtATime.PublicKey.Compress()));
+    }
+
+    // Spec BLS KeyValidate: one refused key rejects the sum; batching still records every checked verdict.
+    [Test]
+    public void Summing_unchecked_keys_remembers_every_verdict_even_when_one_is_refused()
+    {
+        Validator[] validators = MixedRegistry(256);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        ulong[] everyone = [.. Enumerable.Range(0, validators.Length).Select(static i => (ulong)i)];
+
+        bool accepted = cache.TrySumValidPublicKeys(everyone, new long[Bls.P1.Sz]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False, "key 3 is outside G1");
+            Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True, "every requested verdict was recorded");
+        }
+        Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+    }
+
+    [Test]
+    public void Summing_an_index_past_the_cache_throws()
+    {
+        PubkeyCache cache = new();
+        cache.Build([new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) }]);
+
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => cache.SumPublicKeys([0, 1], new long[Bls.P1.Sz]));
+    }
+
+    private static bool IsOffSubgroup(int index) => index % 7 == 3;
+
+    private static Validator[] MixedRegistry(int count) =>
+        [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(DeriveKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
+
+    internal static byte[] CompressedPubkey(int index)
+    {
+        Bls.P1 publicKey = new(DeriveKey(index));
+        return publicKey.Compress();
+    }
+}

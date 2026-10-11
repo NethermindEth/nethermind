@@ -1,0 +1,13 @@
+<Project>
+  <Import Project="../Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);MINIMAL_PRESET</DefineConstants>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Nethermind.BeaconChain/**/*.cs" Exclude="../Nethermind.BeaconChain/**/*.forks.cs;../Nethermind.BeaconChain/obj/**;../Nethermind.BeaconChain/bin/**" />
+    <AdditionalFiles Remove="@(AdditionalFiles)" />
+    <AdditionalFiles Include="../Nethermind.BeaconChain/StateTransition/*.forks.cs;../Nethermind.BeaconChain/Api/Common/*.beacon-json" />
+    <InternalsVisibleTo Include="Ethereum.ConsensusSpec.Minimal.Test" />
+  </ItemGroup>
+</Project>
