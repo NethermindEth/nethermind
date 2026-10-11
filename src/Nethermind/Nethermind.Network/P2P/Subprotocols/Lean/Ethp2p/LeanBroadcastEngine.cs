@@ -84,7 +84,8 @@ internal enum LeanBroadcastVerdict
 /// </remarks>
 internal sealed class LeanBroadcastEngine : IDisposable
 {
-    /// <summary>Concurrent sessions: two slots of one block-proof duty and a 16-member inclusion-list committee, with margin.</summary>
+    /// <summary><c>MAX_BROADCAST_SESSIONS</c>: the duties of the three slots a node accepts at once, 17 per slot (one block proof
+    /// and 16 EIP-7805 inclusion-list committee positions), with margin.</summary>
     internal const int MaxSessions = 64;
     internal const int MaxShardsInFlightPerPeer = 4;
 

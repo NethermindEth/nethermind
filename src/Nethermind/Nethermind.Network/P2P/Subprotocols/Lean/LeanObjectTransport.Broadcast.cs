@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -80,19 +81,26 @@ public sealed partial class LeanObjectTransport
 
     /// <summary>Applies the canonical object checks to a body reconstructed from broadcast shards, then validates it.</summary>
     /// <param name="started">The <see cref="Stopwatch"/> timestamp at which the broadcast session was accepted.</param>
-    /// <returns>Null when the body enters validation or is refused locally; otherwise the producer fault, which does not
-    /// tombstone the object: a broadcast failure is scoped to its manifest.</returns>
+    /// <returns>Null when the body enters validation or is refused locally; otherwise the producer fault. A body that is not
+    /// the one the descriptor commits to, or does not rebuild its block's header, fails only the manifest; a committed body
+    /// that fails kind validation is invalid exactly as if retrieved.</returns>
     /// <remarks>
     /// A kind-3 package completes its shared assembly and goes through the same validation queue as retrieved objects, so an
-    /// invalid package is rejected as such. A kind-2 proof that rebuilds the header committed by the block hash is kept for
-    /// block import, which still checks it against the block's dependencies. The first such proof for a block is kept.
+    /// invalid package, including a noncanonical encoding, is rejected as such. A kind-2 proof that rebuilds the header
+    /// committed by the block hash is kept for block import, which still checks it against the block's dependencies. The
+    /// first such proof for a block is kept.
     /// </remarks>
     internal string? AcceptBroadcastBody(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, byte[] body, long started)
     {
-        List<LeanBodies.WrapperEntry>? entries = null;
-        if (CheckIntegrity(descriptor, body, ref entries) is { } integrityError) return integrityError;
+        if (CheckCommitments(descriptor, body) is { } commitmentError) return commitmentError;
         if (descriptor.Kind == LeanProtocol.KindBlockProof)
         {
+            List<LeanBodies.WrapperEntry>? entries = null;
+            if (CheckEncoding(descriptor, body, ref entries) is { } encodingError)
+            {
+                RejectBroadcastObject(descriptor, encodingError);
+                return encodingError;
+            }
             byte[] proof = LeanBodies.ParseBlockProof(body).ToArray();
             if (ValueKeccak.Compute(skeleton!.Reconstruct(proof, descriptor.BlockDepsHash)) != descriptor.BlockHash)
                 return "proof does not rebuild the header of its block hash";
@@ -112,6 +120,19 @@ public sealed partial class LeanObjectTransport
             return null;
         }
         return QueueBroadcastPackage(descriptor, body, started);
+    }
+
+    /// <summary>Tombstones a committed broadcast object that is invalid, as retrieval would; the signer is at fault, so no relay
+    /// that forwarded its checked shards is penalized.</summary>
+    private void RejectBroadcastObject(LeanDescriptor descriptor, string reason)
+    {
+        lock (_gate)
+        {
+            _tombstones.Add(descriptor.ObjectId);
+            Interlocked.Increment(ref _stats.Invalid);
+        }
+        LeanMetrics.Record(descriptor.Kind, LeanEvent.Invalid);
+        if (_logger.IsInfo) _logger.Info($"lean/1 rejected broadcast {descriptor}: {reason}");
     }
 
     /// <summary>Completes the package's shared assembly with the reconstructed body, so it is validated once, in the bounded queue.</summary>
