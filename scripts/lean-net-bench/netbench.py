@@ -21,8 +21,9 @@ import subprocess
 import sys
 import time
 
-ROUTER = "lb-r"
-SUBNET = "10.77.0"
+PREFIX = os.environ.get("LEAN_NET_PREFIX", "lb")
+ROUTER = f"{PREFIX}-r"
+SUBNET = os.environ.get("LEAN_NET_SUBNET", "10.77.0")
 RLPX_PORT = 30303
 QUIC_PORT = 30304
 
@@ -67,7 +68,7 @@ def distances(n, edges, source):
 
 
 def ns(i):
-    return f"lb-n{i}"
+    return f"{PREFIX}-n{i}"
 
 
 def ip(i):
@@ -77,7 +78,7 @@ def ip(i):
 def teardown():
     for name in sh("ip netns list", check=False).split("\n"):
         name = name.split(" ")[0]
-        if name.startswith("lb-"):
+        if name.startswith(f"{PREFIX}-"):
             sh(f"ip netns del {name}", check=False)
 
 

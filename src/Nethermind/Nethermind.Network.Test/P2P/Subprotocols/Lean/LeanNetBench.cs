@@ -89,8 +89,12 @@ public class LeanNetBenchNode
         Metrics.LeanObjectTransferMicros = TransferCounter.Instance;
         // As in release builds of the runner: leak sampling captures stack traces of pooled buffers, which would dominate RLPx CPU.
         ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
-        ILogManager logs = Environment.GetEnvironmentVariable("LEAN_NET_LOG") is { } level
-            ? new TestLogManager(Enum.Parse<LogLevel>(level, true)) : LimboLogs.Instance;
+        ILogManager logs = Environment.GetEnvironmentVariable("LEAN_NET_LOG") switch
+        {
+            null => LimboLogs.Instance,
+            { } filter when filter.StartsWith("filter:") => new FilteredLogManager(filter["filter:".Length..]),
+            { } level => new TestLogManager(Enum.Parse<LogLevel>(level, true))
+        };
         string Path_(string name) => Path.Combine(config.RunDir, name);
         void Log(string message) => Console.WriteLine($"[node {config.Id} {DateTime.UtcNow:HH:mm:ss.fff}] {message}");
 
@@ -311,6 +315,29 @@ public class LeanNetBenchNode
             }
             return (peak, rss);
         }
+    }
+
+    /// <summary>Writes Info and above, and only the Debug lines matching a pattern, such as protocol violations.</summary>
+    private sealed class FilteredLogManager(string pattern) : ILogManager, InterfaceLogger
+    {
+        private readonly System.Text.RegularExpressions.Regex _debug = new(pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        public ILogger GetClassLogger<T>() => new(this);
+        public ILogger GetLogger(string loggerName) => new(this);
+        public void Info(string text) => Write(text);
+        public void Warn(string text) => Write(text);
+        public void Debug(string text)
+        {
+            if (_debug.IsMatch(text)) Write(text);
+        }
+        public void Trace(string text) { }
+        public void Error(string text, Exception? ex = null) => Write(ex is null ? text : $"{text}: {ex}");
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => false;
+        public bool IsError => true;
+        private static void Write(string text) => Console.WriteLine($"{DateTime.UtcNow:HH:mm:ss.fff} {text}");
     }
 
     /// <summary>Counts validated transfers by kind and path (retrieval or broadcast).</summary>
