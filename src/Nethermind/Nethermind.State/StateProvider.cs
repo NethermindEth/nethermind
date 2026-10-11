@@ -230,6 +230,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     }
 
     /// <summary>Drops the code of the transaction's EIP-8360 <c>TCREATE</c> accounts, which it has finalized.</summary>
+    /// <remarks>Commit and Reset also drop it, for a transaction that ended without finalizing its accounts.</remarks>
     public void ResetTransientCode() => _transientCode?.Clear();
 
     private void SetCodeHash(Address address, Account account, in ValueHash256 codeHash, IReleaseSpec spec, bool isGenesis)
@@ -671,7 +672,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         _committedThisRound.ClearAndTrim();
         _nullAccountReads.ClearAndTrim();
         _intraTxCache.ClearAndTrim();
-        // The transaction has finalized its TCREATE accounts, so nothing left references their code.
+        // A commit ends the transaction, which has finalized its TCREATE accounts by then.
         ResetTransientCode();
 
         AwaitCodeFlush(codeFlushTask);

@@ -38,7 +38,7 @@ public class WitnessGeneratingWorldState(
     private readonly List<ValueHash256> _deployOrder = [];
     private readonly List<(Snapshot Snapshot, int DeployCountSoFar)> _deployFrames = [];
     // EIP-8360 TCREATE code, excluded until the transaction ends: like the verifier's state, it is not journaled,
-    // and is dropped on Commit, ResetTransient and Reset, after which a read of the same code needs the witness.
+    // and is dropped on DiscardTransientCode, Commit and Reset, after which a read of the same code needs the witness.
     private readonly HashSet<ValueHash256> _transientDeployed =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
@@ -316,9 +316,9 @@ public class WitnessGeneratingWorldState(
         _transientDeployed.Clear();
     }
 
-    public override void ResetTransient()
+    public override void DiscardTransientCode()
     {
-        base.ResetTransient();
+        base.DiscardTransientCode();
         _transientDeployed.Clear();
     }
 

@@ -579,6 +579,32 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_LaterFrameRunsTheCodeOfATcreateAccount()
+    {
+        // Transient storage is discarded between frames, but a TCREATE account and its code last the whole transaction.
+        UseBogotaWithEip8360();
+        byte[] runtime = Prepare.EvmCode.Revert(0, 0).Done;
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 0).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Sender, target: tcreated)), tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure), "the later frame ran the reverting code");
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False);
+        }
+    }
+
+    [Test]
     public void CallAndRestore_FrameSelfDestructsSameTxContract_DoesNotLeakTheDestroyMarkAcrossTheRestore()
     {
         byte[] childInitCode = Prepare.EvmCode.PushData(Recipient).Op(Instruction.SELFDESTRUCT).Done;

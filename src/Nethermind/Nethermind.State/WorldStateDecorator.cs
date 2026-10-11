@@ -137,6 +137,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
         => State.InsertTransientCode(address, in codeHash, code, spec);
 
+    public virtual void DiscardTransientCode()
+        => State.DiscardTransientCode();
+
     public virtual bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
         => State.AdoptCode(address, in codeHash, code, spec);
 

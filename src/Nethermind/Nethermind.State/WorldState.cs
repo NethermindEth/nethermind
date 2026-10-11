@@ -242,6 +242,12 @@ namespace Nethermind.State
             _stateProvider.InsertTransientCode(address, codeHash, code, spec);
         }
 
+        public void DiscardTransientCode()
+        {
+            DebugGuardInScope();
+            _stateProvider.ResetTransientCode();
+        }
+
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
@@ -512,7 +518,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
-            _stateProvider.ResetTransientCode();
         }
 
         /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>

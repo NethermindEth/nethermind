@@ -675,13 +675,20 @@ public class StateProviderTests(bool useFlat)
             provider.InsertCode(TestItem.AddressC, code, spec);
         }
 
+        // Transient storage is discarded between EIP-8141 frames, but the code lasts the whole transaction.
+        provider.ResetTransient();
         Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
         Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
 
         // The transaction's finalization removes the account before it ends.
         provider.DeleteAccount(TestItem.AddressB);
         if (endsWithCommit) provider.Commit(spec, commitRoots: false);
-        else provider.ResetTransient();
+        else provider.DiscardTransientCode();
+        if (!alsoDeployedPersistently)
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+
         provider.Commit(spec);
 
         if (alsoDeployedPersistently)

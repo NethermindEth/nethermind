@@ -145,6 +145,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 UInt256 balance = worldState.GetBalance(transientCreate);
                 DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
             }
+
+            // No account refers to the code any more; destroy-list accounts are deleted without reading it.
+            worldState.DiscardTransientCode();
         }
 
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
