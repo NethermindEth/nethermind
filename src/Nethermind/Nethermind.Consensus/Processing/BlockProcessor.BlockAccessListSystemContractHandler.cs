@@ -41,7 +41,7 @@ public partial class BlockProcessor
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => balManager.ProcessWithdrawals(block, spec);
 
-        public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec)
-            => balManager.InstallPredeploys(spec, parentSpec);
+        public void InstallPredeploys(IReleaseSpec spec)
+            => balManager.InstallPredeploys(spec);
     }
 }

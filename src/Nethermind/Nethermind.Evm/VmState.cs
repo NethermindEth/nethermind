@@ -17,7 +17,7 @@ namespace Nethermind.Evm;
 /// State for EVM Calls
 /// </summary>
 [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-public class VmState<TGasPolicy> : IDisposable
+public partial class VmState<TGasPolicy> : IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private static readonly EvmObjectPool<VmState<TGasPolicy>> _statePool = new(
@@ -256,12 +256,7 @@ public class VmState<TGasPolicy> : IDisposable
         _env = env;
         _snapshot = snapshot;
         _accessTracker = stateForAccessLists;
-#if ZK_EVM
-        // Guest only: the EVM memory buffer lives on the per-tx scratch arena (reclaimed at reset), so a
-        // handle left from a prior transaction dangles — reset it so the next growth allocates fresh.
-        // Mainline doesn't need this: Dispose() clears _memory before the VmState returns to the pool.
-        _memory = new(_inlineMemory);
-#endif
+        ResetMemoryFromPriorTransaction();
         if (executionType.IsAnyCreate())
         {
             _accessTracker.WasCreated(env.ExecutingAccount);
@@ -297,6 +292,9 @@ public class VmState<TGasPolicy> : IDisposable
         [DoesNotReturn, StackTraceHidden]
         static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
+
+    /// <summary>Drops the memory a frame kept from its previous transaction; only the guest needs to.</summary>
+    partial void ResetMemoryFromPriorTransaction();
 
     public Address From => ExecutionType switch
     {

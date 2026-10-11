@@ -244,6 +244,9 @@ namespace Nethermind.Facade.Find
 
                                 topics ??= iterator.DecodeTopics(new RlpReader(log.TopicsRlp));
 
+                                byte[] data = log.DataLength == 0 ? [] : new byte[log.DataLength];
+                                log.CopyDataTo(data);
+
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
                                     receipt.BlockNumber,
@@ -252,7 +255,7 @@ namespace Nethermind.Facade.Find
                                     receipt.Index,
                                     txHash ??= receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
-                                    log.Data.ToArray(),
+                                    data,
                                     topics));
                             }
 

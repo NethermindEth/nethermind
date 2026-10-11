@@ -3840,7 +3840,7 @@ public partial class FrameTxProcessorTests
         ValueHash256 salt = TestItem.KeccakA.ValueHash256;
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
 
         Transaction write = FrameTx(nonce: 0, SelfVerifyFrame(),
             Frame(FrameMode.Sender, target: Eip8272Constants.RecentRootAddress, data: [.. salt.Bytes, .. root.Bytes]));
@@ -3857,7 +3857,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_RecentRootVerifyFrame_RecordsThePredeploySlotInBal()
+    public void Execute_RecentRootVerifyFrame_RecordsTheContractSlotInBal()
     {
         const ulong committedSlot = 1_000;
         const ulong headSlot = 1_001;
@@ -3879,10 +3879,10 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? predeploy = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
-        Assert.That(predeploy, Is.Not.Null, "the recent-root predeploy is accessed and recorded in the BAL");
+        AccountChangesAtIndex? recentRoot = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
+        Assert.That(recentRoot, Is.Not.Null, "the recent root contract is accessed and recorded in the BAL");
         UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
-        Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
+        Assert.That(recentRoot.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
     [Test]
@@ -4725,7 +4725,38 @@ public partial class FrameTxProcessorTests
     private static TxFrame RecentRootVerifyFrame(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
         FrameTxTestFrames.RecentRootVerify(RecentRootFrameGas, tuples);
 
-    private void InstallRecentRootPredeploy()
+    [Test]
+    public void Execute_Eip8272DeploymentTransaction_CreatesRecentRootCodeAtItsAddress()
+    {
+        Address deployer = new("0x14bf16d4c9842bf1EbF396e553477C66EB0a8A82");
+        Transaction tx = new()
+        {
+            Type = TxType.Legacy,
+            Nonce = 0,
+            To = null,
+            GasLimit = 0x13d620,
+            GasPrice = 0xe8d4a51000,
+            Data = Bytes.Concat(Bytes.FromHexString("0x61014080600a5f395ff3"), Eip8272Constants.RecentRootCode.Span),
+            Signature = new Signature(new UInt256(0x539), new UInt256(0xfadf66b1e192785c), 27),
+        };
+        tx.Hash = tx.CalculateHash();
+        tx.SenderAddress = new EthereumEcdsa(_specProvider.ChainId).RecoverAddress(tx);
+        _stateProvider.CreateAccount(deployer, 2.Ether);
+        _stateProvider.Commit(Spec);
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Hash, Is.EqualTo(new Hash256("0x56c2adbbfa3ba5dfe47adf48828f6c581134e39e14c3b80e06214de5e5875272")));
+            Assert.That(tx.SenderAddress, Is.EqualTo(deployer));
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetCodeHash(Eip8272Constants.RecentRootAddress), Is.EqualTo(Eip8272Constants.RecentRootCodeHash));
+            Assert.That(_stateProvider.GetNonce(Eip8272Constants.RecentRootAddress), Is.EqualTo(1UL));
+        }
+    }
+
+    private void DeployRecentRootContract()
     {
         if (_stateProvider.AccountExists(Eip8272Constants.RecentRootAddress))
         {
@@ -4739,7 +4770,7 @@ public partial class FrameTxProcessorTests
 
     private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitReference(ulong slot)
     {
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
@@ -4755,12 +4786,13 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
     [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
     [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
-    [TestCase(Instruction.TXTRACE, (byte)0xB7, TestName = "RegistryByte_TXTRACE_0xB7")]
-    [TestCase(Instruction.TXDIFF, (byte)0xB8, TestName = "RegistryByte_TXDIFF_0xB8")]
-    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB9, TestName = "RegistryByte_EVENTDATACOPY_0xB9")]
+    [TestCase(Instruction.TXTRACE, (byte)0xB6, TestName = "RegistryByte_TXTRACE_0xB6")]
+    [TestCase(Instruction.TXDIFF, (byte)0xB7, TestName = "RegistryByte_TXDIFF_0xB7")]
+    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB8, TestName = "RegistryByte_EVENTDATACOPY_0xB8")]
     public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
         => Assert.That((byte)opcode, Is.EqualTo(registryByte));
 
+    [TestCase((byte)0xB9, TestName = "UnallocatedFrameOpcode_0xB9_Halts")]
     [TestCase((byte)0xBA, TestName = "UnallocatedFrameOpcode_0xBA_Halts")]
     [TestCase((byte)0xBB, TestName = "UnallocatedFrameOpcode_0xBB_Halts")]
     [TestCase((byte)0xBC, TestName = "UnallocatedFrameOpcode_0xBC_Halts")]

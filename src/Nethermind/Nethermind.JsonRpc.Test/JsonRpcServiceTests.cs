@@ -566,7 +566,7 @@ public class JsonRpcServiceTests
             }
             else
             {
-                Exception? thrown = Assert.CatchAsync(async () =>
+                Exception? thrown = await Assert.CatchAsync(async () =>
                     await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
                 using (Assert.EnterMultipleScope())
                 {
@@ -660,7 +660,7 @@ public class JsonRpcServiceTests
         {
             if (commitMode == 2)
             {
-                Exception? thrown = Assert.CatchAsync(async () =>
+                Exception? thrown = await Assert.CatchAsync(async () =>
                     await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
                 Assert.That(thrown, Is.SameAs(failure.Exception));
             }

@@ -30,14 +30,20 @@ public class OptimismPrecompileProvider : IPrecompileProvider
 {
     private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = CreatePrecompiles();
 
+    // op-geth's errors for an input over the limit
+    private const string Bn254PairingInputTooLong = "bad elliptic curve pairing input size";
+    private const string BlsG1MsmInputTooLong = "g1 msm input size exceeds maximum";
+    private const string BlsG2MsmInputTooLong = "g2 msm input size exceeds maximum";
+    private const string BlsPairingInputTooLong = "pairing input size exceeds maximum";
+
     private static FrozenDictionary<AddressAsKey, CodeInfo> CreatePrecompiles()
     {
         Dictionary<AddressAsKey, CodeInfo> dict = new(new EthereumPrecompileProvider().GetPrecompiles())
         {
-            [BN254PairingCheckPrecompile.Address] = new(new InputSizeLimitedPrecompile(BN254PairingCheckPrecompile.Instance, Bn254PairingMaxInputSize)),
-            [Bls12381G1MsmPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381G1MsmPrecompile.Instance, BlsG1MsmMaxInputSize)),
-            [Bls12381G2MsmPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381G2MsmPrecompile.Instance, BlsG2MsmMaxInputSize)),
-            [Bls12381PairingCheckPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381PairingCheckPrecompile.Instance, BlsPairingMaxInputSize)),
+            [BN254PairingCheckPrecompile.Address] = new(new InputSizeLimitedPrecompile(BN254PairingCheckPrecompile.Instance, Bn254PairingMaxInputSize, Bn254PairingInputTooLong)),
+            [Bls12381G1MsmPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381G1MsmPrecompile.Instance, BlsG1MsmMaxInputSize, BlsG1MsmInputTooLong)),
+            [Bls12381G2MsmPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381G2MsmPrecompile.Instance, BlsG2MsmMaxInputSize, BlsG2MsmInputTooLong)),
+            [Bls12381PairingCheckPrecompile.Address] = new(new InputSizeLimitedPrecompile(Bls12381PairingCheckPrecompile.Instance, BlsPairingMaxInputSize, BlsPairingInputTooLong)),
         };
         return dict.ToFrozenDictionary();
     }
