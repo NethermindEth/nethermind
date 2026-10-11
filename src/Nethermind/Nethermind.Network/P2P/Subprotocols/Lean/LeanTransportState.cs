@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -184,6 +185,13 @@ internal sealed class LeanPeer(ILeanLink link, LeanStatusMessage status)
     public Dictionary<ulong, LeanServing> Serving { get; } = [];
 
     public LeanBoundedSet Known { get; } = new(LeanLimits.MaxKnownPerPeer);
+
+    /// <summary>Control messages awaiting sending, queued under the transport lock so request IDs leave in order.</summary>
+    public ConcurrentQueue<LeanMessage> Outgoing { get; } = new();
+
+    /// <summary>1 while one thread sends <see cref="Outgoing"/>.</summary>
+    public int Sending;
+
     public long ChargedBytes { get; set; }
     public int Assemblies { get; set; }
     public int Stalls { get; set; }

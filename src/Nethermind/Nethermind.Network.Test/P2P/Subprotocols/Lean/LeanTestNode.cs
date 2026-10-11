@@ -52,9 +52,16 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     private readonly List<string> _penalties = [];
 
     public Func<ChunkMessage, CancellationToken, ValueTask<bool>>? OnChunk { get; set; }
+
+    /// <summary>Runs before a control message is recorded, on the sending thread.</summary>
+    public Action<LeanMessage>? OnSend { get; set; }
     public string Description => name;
 
-    public void Send(LeanMessage message) { lock (_sent) _sent.Add(message); }
+    public void Send(LeanMessage message)
+    {
+        OnSend?.Invoke(message);
+        lock (_sent) _sent.Add(message);
+    }
 
     public async ValueTask<bool> SendChunkAsync(ChunkMessage message, CancellationToken cancellationToken)
     {

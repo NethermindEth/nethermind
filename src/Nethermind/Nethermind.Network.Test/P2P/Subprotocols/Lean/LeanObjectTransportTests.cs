@@ -892,6 +892,38 @@ public class LeanObjectTransportTests
         }
     }
 
+    [Test]
+    public async Task Requests_leave_in_request_id_order_while_another_thread_is_still_sending()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        link.OnSend = message =>
+        {
+            if (message is not GetObjectsMessage) return;
+            sending.TrySetResult();
+            release.Wait(Timeout);
+        };
+        LeanSelector selector = new(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, LeanProtocol.LookupPrimary, TestItem.KeccakA.ValueHash256);
+
+        // The first request is numbered, then its sender stalls before the message leaves; the second is numbered meanwhile.
+        _ = Task.Run(() => node.Transport.RequestObjectsAsync(peer, [selector], CancellationToken.None));
+        await sending.Task.WaitAsync(Timeout);
+        _ = node.Transport.RequestTransactionsAsync(peer, [TestItem.KeccakB.ValueHash256], CancellationToken.None);
+        release.Set();
+        await Until(() => link.Sent<LeanMessage>().Length == 2);
+
+        ulong[] ids = [.. link.Sent<LeanMessage>().Select(static m => m switch
+        {
+            GetObjectsMessage objects => objects.RequestId,
+            GetTransactionsMessage transactions => transactions.RequestId,
+            _ => 0UL
+        })];
+        Assert.That(ids, Is.EqualTo(new ulong[] { 1, 2 }), "the receiver requires consecutive request IDs");
+    }
+
     [TestCase("chain")]
     [TestCase("genesis")]
     [TestCase("profile")]

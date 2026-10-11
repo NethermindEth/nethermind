@@ -231,13 +231,21 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     }
 
     /// <summary>Messages and penalties collected under the lock and emitted after it is released.</summary>
+    /// <remarks>
+    /// Messages join their peer's queue under the lock, in the order their request IDs were assigned, and leave it in that
+    /// order: a thread that numbered a request may still be sending when another numbers the next one.
+    /// </remarks>
     private sealed class Outbox
     {
-        private List<(LeanPeer Peer, LeanMessage Message)>? _messages;
+        private List<LeanPeer>? _recipients;
         private List<(LeanPeer Peer, string Reason)>? _penalties;
         private List<CancellationTokenSource>? _cancellations;
 
-        public void Send(LeanPeer peer, LeanMessage message) => (_messages ??= []).Add((peer, message));
+        public void Send(LeanPeer peer, LeanMessage message)
+        {
+            peer.Outgoing.Enqueue(message);
+            if (!(_recipients ??= []).Contains(peer)) _recipients.Add(peer);
+        }
 
         public void Penalize(LeanPeer peer, string reason) => (_penalties ??= []).Add((peer, reason));
 
@@ -252,11 +260,28 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
                     try { source.Cancel(); }
                     catch (ObjectDisposedException) { }
                 }
-            if (_messages is not null)
-                foreach ((LeanPeer peer, LeanMessage message) in _messages)
-                    if (!peer.Closed) peer.Link.Send(message);
+            if (_recipients is not null)
+                foreach (LeanPeer peer in _recipients) Drain(peer);
             if (_penalties is not null)
                 foreach ((LeanPeer peer, string reason) in _penalties) peer.Link.Penalize(reason);
+        }
+
+        /// <summary>Sends the peer's queued messages unless another thread is already sending them, which then sends these too.</summary>
+        private static void Drain(LeanPeer peer)
+        {
+            while (!peer.Outgoing.IsEmpty && Interlocked.CompareExchange(ref peer.Sending, 1, 0) == 0)
+            {
+                try
+                {
+                    while (peer.Outgoing.TryDequeue(out LeanMessage? message))
+                        if (!peer.Closed) peer.Link.Send(message);
+                }
+                finally
+                {
+                    // Messages queued after the last dequeue are picked up by the loop or by the thread that queued them.
+                    Volatile.Write(ref peer.Sending, 0);
+                }
+            }
         }
     }
 
