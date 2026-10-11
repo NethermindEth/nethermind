@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
@@ -504,5 +505,30 @@ public class LeanBroadcastTests
             package, out _);
         Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.False);
         await Task.CompletedTask;
+    }
+
+    [Test]
+    public async Task First_valid_block_proof_sidecar_is_kept()
+    {
+        using LeanTestNode node = new(manualTime: false);
+        BlockHeader header = LeanTransportTests.ProofHeader(Proof(2000));
+        LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
+        LeanDescriptor first = LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
+        // Rebuilds the same header, so it passes the body checks, but its context names another block number.
+        LeanDescriptor second = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256, header.Number + 1, header.TxRoot!.ValueHash256,
+                header.RecursiveStark!.BlockDepsHash.ValueHash256, skeleton.Hash), body, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.Transport.AcceptBroadcastBody(first, skeleton, body, Stopwatch.GetTimestamp()), Is.Null);
+            Assert.That(node.Transport.AcceptBroadcastBody(second, skeleton, body, Stopwatch.GetTimestamp()), Is.Null);
+        }
+
+        BlockHeader withoutProof = header.Clone();
+        withoutProof.RecursiveStark = null;
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(1));
+        RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), deadline.Token);
+        Assert.That(proof?.StarkProof, Is.EqualTo(header.RecursiveStark.StarkProof), "the later sidecar did not replace the first");
     }
 }
