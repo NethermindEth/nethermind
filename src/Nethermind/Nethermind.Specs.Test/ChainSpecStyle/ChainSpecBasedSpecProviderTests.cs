@@ -1520,6 +1520,12 @@ public class ChainSpecBasedSpecProviderTests
             yield return MakeTestCase("Unordered", 0, 2, [(4, 10), (3, 11)], [Default, Default, 11, 10]);
 
             yield return MakeTestCase("Unordered between named forks", 0, 2, [(4, 10), (1, 11)], [Default, 11, 11, 10]);
+
+            // Several forks scheduled at the same timestamp (devnets launch with every fork at genesis): the
+            // last listed entry wins, as the geth genesis loader does for fork-name keyed schedules.
+            yield return MakeTestCase("Same timestamp collapses to the last entry", 0, 0, [(0, 6), (0, 9), (0, 21)], [21]);
+
+            yield return MakeTestCase("Same later timestamp collapses to the last entry", 0, 0, [(1, 15), (1, 21)], [Default, 21]);
         }
     }
 
