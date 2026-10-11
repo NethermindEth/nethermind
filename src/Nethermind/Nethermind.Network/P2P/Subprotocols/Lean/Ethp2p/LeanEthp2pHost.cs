@@ -26,6 +26,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 /// the local ENR advertises the listening port. Connections share the node's budgets with its RLPx session, and the shared
 /// transport refuses every Status until EIP-8288 activates. Authenticated broadcast runs only with a registered
 /// <see cref="ILeanBroadcastProfile"/>; without one the node uses requested retrieval only.
+/// <para>
+/// Every static peer without a connection keeps a slot of <see cref="INetworkConfig.MaxActivePeers"/>, so free node keys
+/// cannot crowd it out, and inbound connections are limited per subnet (<see cref="MaxInboundPerSubnet"/>).
+/// </para>
 /// </remarks>
 [SupportedOSPlatform("linux")]
 [SupportedOSPlatform("macos")]
@@ -41,6 +45,9 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(15);
     private const int ListenBacklog = 16;
 
+    /// <summary>Inbound connections one IPv4 /24 or IPv6 /64 may hold, or one address when subnet bucketing is off.</summary>
+    internal const int MaxInboundPerSubnet = 4;
+
     private readonly LeanObjectTransport _transport = transport;
     private readonly INetworkConfig _config = config;
     private readonly IProtectedPrivateKey _nodeKey = nodeKey;
@@ -50,6 +57,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     private readonly Lock _lock = new();
     private readonly Dictionary<PublicKey, LeanEthp2pConnection> _connections = [];
     private readonly HashSet<PublicKey> _dialing = [];
+    private readonly HashSet<PublicKey> _staticPeers = [];
     private readonly Dictionary<PublicKey, (DateTimeOffset Next, TimeSpan Backoff)> _backoff = [];
     private readonly List<Task> _running = [];
     private readonly CancellationTokenSource _stop = new();
@@ -74,6 +82,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     {
         if (!IsSupported) throw new PlatformNotSupportedException("QUIC is unavailable (install libmsquic)");
         List<LeanEthp2pRecord> peers = ParseStaticPeers();
+        foreach (LeanEthp2pRecord peer in peers) _staticPeers.Add(peer.NodeKey);
         _certificate = LeanEthp2pIdentity.CreateCertificate(_nodeKey.Unprotect());
         QuicListener listener = await QuicListener.ListenAsync(new QuicListenerOptions
         {
@@ -222,7 +231,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
                 if (Prefer(existing, connection, localKey)) refusal = "duplicate connection";
                 else replaced = existing;
             }
-            else if (_connections.Count >= _config.MaxActivePeers) refusal = "connection limit";
+            else refusal = CheckLimits(connection);
 
             if (refusal is null)
             {
@@ -236,6 +245,47 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
         if (_logger.IsDebug) _logger.Debug($"lean/1 ethp2p {connection} refused: {refusal}");
         await connection.DisposeAsync().ConfigureAwait(false);
         return false;
+    }
+
+    /// <summary>Why a connection from a node not yet connected cannot take a slot, or null.</summary>
+    private string? CheckLimits(LeanEthp2pConnection connection)
+    {
+        bool isStatic = _staticPeers.Contains(connection.RemoteKey);
+        int reserved = 0;
+        if (!isStatic)
+            foreach (PublicKey key in _staticPeers)
+                if (!_connections.ContainsKey(key)) reserved++;
+        if (_connections.Count + reserved >= _config.MaxActivePeers) return "connection limit";
+        if (connection.Outbound || isStatic) return null;
+        List<IPAddress> inbound = [];
+        foreach (LeanEthp2pConnection other in _connections.Values)
+            if (!other.Outbound) inbound.Add(other.RemoteEndPoint.Address);
+        return IsSubnetFull(connection.RemoteEndPoint.Address, inbound, _config.FilterPeersBySameSubnet) ? "inbound subnet limit" : null;
+    }
+
+    /// <summary>Whether <paramref name="address"/> already has <see cref="MaxInboundPerSubnet"/> of the <paramref name="inbound"/> connections.</summary>
+    /// <param name="address">The remote address of a new inbound connection.</param>
+    /// <param name="inbound">The remote addresses of the current inbound connections.</param>
+    /// <param name="bySubnet">Whether public addresses are counted per IPv4 /24 or IPv6 /64 rather than per address.</param>
+    /// <remarks>As in the RLPx peer filter, private and link-local addresses count per address; loopback is not limited.</remarks>
+    internal static bool IsSubnetFull(IPAddress address, IEnumerable<IPAddress> inbound, bool bySubnet)
+    {
+        if (Bucket(address, bySubnet) is not { } bucket) return false;
+        int count = 0;
+        foreach (IPAddress other in inbound)
+            if (Bucket(other, bySubnet) == bucket && ++count >= MaxInboundPerSubnet) return true;
+        return false;
+    }
+
+    private static (IpFamily Family, ulong High, ulong Low)? Bucket(IPAddress address, bool bySubnet)
+    {
+        ParsedIPAddress parsed = ParsedIPAddress.Parse(address);
+        bool loopback = parsed.Family == IpFamily.IPv4 ? parsed.V4 >> 24 == 127 : parsed is { Hi: 0, Lo: 1 };
+        if (loopback) return null;
+        bool exact = !bySubnet || parsed.IsLoopbackOrPrivateOrLinkLocal;
+        return parsed.Family == IpFamily.IPv4
+            ? (IpFamily.IPv4, exact ? parsed.V4 : parsed.V4 & 0xFFFF_FF00u, 0)
+            : (IpFamily.IPv6, parsed.Hi, exact ? parsed.Lo : 0);
     }
 
     /// <summary>Whether to keep <paramref name="existing"/> over <paramref name="candidate"/> from the same node.</summary>

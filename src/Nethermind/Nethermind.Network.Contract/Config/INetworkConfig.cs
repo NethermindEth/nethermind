@@ -169,7 +169,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = $"The UDP port of the ethp2p binding, advertised in the ENR as `leanq`. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "30304", IsPortOption = true)]
     int LeanEthp2pPort { get; set; }
 
-    [ConfigItem(Description = $"A comma-separated list of signed ENRs (`enr:...`) to dial over the ethp2p binding. Each must advertise `leanq`; its `secp256k1` key must match the peer's TLS identity. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "null")]
+    [ConfigItem(Description = $"A comma-separated list of signed ENRs (`enr:...`) to dial over the ethp2p binding. Each must advertise `leanq`; its `secp256k1` key must match the peer's TLS identity. Each keeps a reserved slot within `{nameof(MaxActivePeers)}`, and inbound connections from other peers are limited per subnet as bucketed by `{nameof(FilterPeersBySameSubnet)}`. Used only when `{nameof(LeanBindings)}` includes `Ethp2p`.", DefaultValue = "null")]
     string? LeanEthp2pStaticPeers { get; set; }
 }
 

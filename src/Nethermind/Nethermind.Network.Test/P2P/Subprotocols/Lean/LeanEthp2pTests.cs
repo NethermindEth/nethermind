@@ -397,6 +397,30 @@ public class LeanEthp2pTests
         }
     }
 
+    [TestCase("203.0.113.9", false, true, ExpectedResult = true, TestName = "Public IPv4 /24 shares one bucket")]
+    [TestCase("203.0.113.9", false, false, ExpectedResult = false, TestName = "Public IPv4 counts per address without subnet bucketing")]
+    [TestCase("::ffff:203.0.113.9", false, true, ExpectedResult = true, TestName = "IPv4-mapped IPv6 counts as IPv4")]
+    [TestCase("2001:db8::9", false, true, ExpectedResult = true, TestName = "Public IPv6 /64 shares one bucket")]
+    [TestCase("10.0.0.9", false, true, ExpectedResult = false, TestName = "Private addresses count per address")]
+    [TestCase("10.0.0.1", true, true, ExpectedResult = true, TestName = "Private address at the limit")]
+    [TestCase("127.0.0.1", true, true, ExpectedResult = false, TestName = "Loopback is not limited")]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    public bool Inbound_connections_are_limited_per_subnet(string address, bool sameAddress, bool bySubnet)
+    {
+        IPAddress candidate = IPAddress.Parse(address);
+        byte[] bytes = candidate.IsIPv4MappedToIPv6 ? candidate.MapToIPv4().GetAddressBytes() : candidate.GetAddressBytes();
+        IPAddress[] inbound = [.. Enumerable.Range(1, LeanEthp2pHost.MaxInboundPerSubnet).Select(i =>
+        {
+            byte[] other = [.. bytes];
+            if (!sameAddress) other[^1] = (byte)i;
+            return new IPAddress(other);
+        })];
+        Assert.That(LeanEthp2pHost.IsSubnetFull(candidate, inbound[1..], bySubnet), Is.False, "below the limit");
+        return LeanEthp2pHost.IsSubnetFull(candidate, inbound, bySubnet);
+    }
+
     [Test]
     public void Identity_signatures_are_low_s_der_and_bound_to_their_message()
     {
