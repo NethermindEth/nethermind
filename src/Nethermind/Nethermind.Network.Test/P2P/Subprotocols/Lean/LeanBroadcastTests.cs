@@ -594,4 +594,28 @@ public class LeanBroadcastTests
         RecursiveStark? proof = await node.Transport.TryGetAsync(new Block(withoutProof, new BlockBody()), deadline.Token);
         Assert.That(proof?.StarkProof, Is.EqualTo(header.RecursiveStark.StarkProof), "the later sidecar did not replace the first");
     }
+
+    // EIP-8437 failure scope: a body that does not match the descriptor's commitments fails only its manifest, while a body
+    // that matches them but fails kind validation, here a noncanonical encoding, is invalid exactly as if retrieved.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Committed_broadcast_body_failing_its_encoding_is_invalid_while_a_mismatch_is_manifest_scoped(bool committed)
+    {
+        using LeanTestNode node = new(manualTime: false);
+        BlockHeader header = LeanTransportTests.ProofHeader(Proof(2000));
+        LeanHeaderSkeleton skeleton = LeanHeaderSkeleton.FromHeader(header, new HeaderDecoder());
+        LeanTransportTests.SidecarDescriptor(header, skeleton, out byte[] body);
+        byte[] noncanonical = [.. body, 0x00];
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.BlockProofContext(header.Hash!.ValueHash256, header.Number, header.TxRoot!.ValueHash256,
+                header.RecursiveStark!.BlockDepsHash.ValueHash256, skeleton.Hash), committed ? noncanonical : body, out _);
+
+        string? error = node.Transport.AcceptBroadcastBody(descriptor, skeleton, noncanonical, Stopwatch.GetTimestamp());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, committed ? Does.StartWith("noncanonical body") : Is.Not.Null);
+            Assert.That(node.Transport.IsTombstoned(descriptor.ObjectId), Is.EqualTo(committed));
+        }
+    }
 }

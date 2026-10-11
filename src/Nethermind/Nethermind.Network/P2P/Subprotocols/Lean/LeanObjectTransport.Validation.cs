@@ -213,10 +213,20 @@ public sealed partial class LeanObjectTransport
 
     /// <summary>Checks length, <c>content_hash</c>, the canonical <c>chunk_root</c> and canonical body encoding.</summary>
     private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<LeanBodies.WrapperEntry>? entries)
+        => CheckCommitments(descriptor, body) ?? CheckEncoding(descriptor, body, ref entries);
+
+    /// <summary>Checks that a body is the one the descriptor commits to: its length, <c>content_hash</c> and canonical <c>chunk_root</c>.</summary>
+    private static string? CheckCommitments(LeanDescriptor descriptor, byte[] body)
     {
         if ((ulong)body.Length != descriptor.ByteLength) return "reconstructed length differs from the descriptor";
         if (ValueKeccak.Compute(body) != descriptor.ContentHash) return "content hash mismatch";
         if (new LeanChunkTree(descriptor.Seed, body).ChunkRoot != descriptor.ChunkRoot) return "noncanonical chunk root";
+        return null;
+    }
+
+    /// <summary>Checks the canonical body encoding of the descriptor's kind, including EIP-8288's aggregate proof bound.</summary>
+    private static string? CheckEncoding(LeanDescriptor descriptor, byte[] body, ref List<LeanBodies.WrapperEntry>? entries)
+    {
         try
         {
             if (descriptor.Kind == LeanProtocol.KindWrapper) entries = LeanBodies.ParseWrapper(body);
