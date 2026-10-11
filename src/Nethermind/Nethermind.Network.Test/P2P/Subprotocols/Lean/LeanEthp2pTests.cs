@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using PublicKey = Nethermind.Core.Crypto.PublicKey;
@@ -15,6 +16,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
@@ -24,6 +26,7 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 using static Nethermind.Network.Test.P2P.Subprotocols.Lean.LeanTestObjects;
 
@@ -560,6 +563,46 @@ public class LeanEthp2pTests
             Assert.That(async () => await start, Throws.Nothing);
             Assert.That(logger.LogList, Has.One.Contains(warning));
             Assert.That(new StartLeanEthp2p(null!, config, LimboLogs.Instance).MustInitialize, Is.False);
+        }
+    }
+
+    [Test]
+    [SupportedOSPlatform("linux")]
+    [SupportedOSPlatform("macos")]
+    [SupportedOSPlatform("windows")]
+    public async Task Local_record_sequence_rises_with_every_published_change()
+    {
+        using LeanTestNode node = new();
+        await using LeanEthp2pHost host = new(node.Transport, new NetworkConfig(), new InsecureProtectedPrivateKey(TestItem.PrivateKeyA),
+            LimboLogs.Instance);
+        INodeRecordProvider inner = Substitute.For<INodeRecordProvider>();
+        LeanEthp2pNodeRecordProvider provider = new(inner, host, new Ecdsa(), new InsecureProtectedPrivateKey(TestItem.PrivateKeyA));
+        NodeRecord first = Record(TestItem.PrivateKeyA, null);
+        NodeRecord refreshed = Record(TestItem.PrivateKeyA, null, IPAddress.Parse("10.0.0.1"));
+        refreshed.EnrSequence = first.EnrSequence + 1;
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(refreshed);
+
+        List<NodeRecord> published = [];
+        async Task Publish(NodeRecord current, int? port)
+        {
+            inner.GetCurrentAsync(Arg.Any<CancellationToken>()).Returns(current);
+            host.LocalEndPoint = port is { } p ? new IPEndPoint(IPAddress.Loopback, p) : null;
+            published.Add(await provider.GetCurrentAsync());
+        }
+
+        await Publish(first, null);
+        await Publish(first, 30310);
+        await Publish(first, 30310);
+        await Publish(first, 30311);
+        await Publish(refreshed, 30311);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published.Select(static r => r.EnrSequence), Is.EqualTo(new ulong[] { 5, 6, 6, 7, 8 }),
+                "a port change and an inner record at the extension's sequence each move above it");
+            Assert.That(published[2], Is.SameAs(published[1]), "an unchanged record is not re-signed");
+            Assert.That(published.Skip(1).Select(static r => LeanEthp2pRecord.TryParse(r.ToString(), out LeanEthp2pRecord? parsed, out _)
+                ? parsed.EndPoint.Port : 0), Is.EqualTo(new[] { 30310, 30310, 30311, 30311 }), "each extension is signed and advertises its port");
         }
     }
 }
