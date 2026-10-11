@@ -1153,6 +1153,10 @@ public partial class EngineModuleTests
     /// SYNCING it answers is followed by the block being processed rather than by nothing until the CL re-sends.
     /// That holds also when the tree is not accepting blocks yet and the suggest completes only after the answer.
     /// </summary>
+    /// <remarks>
+    /// Only <paramref name="suggestPending"/> exercises a suggest that outlives the budget; otherwise the suggest
+    /// completes at once and the case covers a block queued as usual under a zero budget.
+    /// </remarks>
     [Test, NonParallelizable]
     public async Task newPayloadV1_out_of_budget_still_processes_the_suggested_block([Values] bool suggestPending)
     {
@@ -1165,7 +1169,9 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
         if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
 
-        Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        // A verdict in hand beats a budget that also ran out, so a block processed before the request awaits its
+        // verdict is answered VALID.
+        Assert.That(response.Data.Status, suggestPending ? Is.EqualTo(PayloadStatus.Syncing) : Is.AnyOf(PayloadStatus.Syncing, PayloadStatus.Valid));
 
         using CancellationTokenSource cts = new(GateTimeout);
         while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))

@@ -63,7 +63,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = ExecutionFlags.ParallelExecution && !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
@@ -90,6 +90,7 @@ public partial class BlockProcessor
 
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
+                token.ThrowIfCancellationRequested();
                 Transaction currentTx = block.Transactions[i];
                 ITransactionProcessorAdapter txProcessor = balManager.GetTxProcessor(i + 1);
                 if (shouldValidate)
@@ -177,7 +178,10 @@ public partial class BlockProcessor
                     ParallelUnbalancedWork.For(
                         0,
                         len + 1,
-                        ParallelUnbalancedWork.DefaultOptions,
+                        // Cancelled, the workers stop pulling iterations and the loop throws once they have joined.
+                        token.CanBeCanceled
+                            ? new ParallelOptions { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = token }
+                            : ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
                             txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner,
                             incrementalValidation, executedGas),

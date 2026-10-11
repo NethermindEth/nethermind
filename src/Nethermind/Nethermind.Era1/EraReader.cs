@@ -126,6 +126,25 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         return hash;
     }
 
+    /// <summary>
+    /// Computes the accumulator root from the block hashes and total difficulties stored in this file.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="VerifyContent"/>, this does not validate blocks or receipts.
+    /// Compare the result with <see cref="ReadAccumulator"/> to detect a stored accumulator that does not match the content.
+    /// </remarks>
+    internal async Task<ValueHash256> CalculateAccumulator(CancellationToken cancellation = default)
+    {
+        using AccumulatorCalculator calculator = new();
+        foreach (ulong blockNumber in EnumerateBlockNumber())
+        {
+            EntryReadResult result = await ReadBlockAndReceipts(blockNumber, true, cancellation);
+            calculator.Add(result.Block.Header.Hash!, result.Block.TotalDifficulty!.Value);
+        }
+
+        return calculator.ComputeRoot();
+    }
+
     public async Task<(Block, TxReceipt[])> GetBlockByNumber(ulong number, CancellationToken cancellation = default)
     {
         if (number < _fileReader.First)
