@@ -352,6 +352,51 @@ public class LeanEthp2pTests
         Assert.That(error, Is.EqualTo("libp2p public key signature is invalid"));
     }
 
+    // AlgorithmIdentifier SEQUENCE { OID } for Ed25519 (1.3.101.112) and ecdsa-with-SHA256 (1.2.840.10045.4.3.2).
+    private const string Ed25519Algorithm = "300506032b6570";
+    private const string EcdsaSha256Algorithm = "300a06082a8648ce3d040302";
+
+    /// <summary>A certificate with the libp2p extension whose signature algorithm names another family than its own key.</summary>
+    /// <remarks>Only the self-signature check reads the outer algorithm, so TLS still completes with the matching private key.</remarks>
+    internal static X509Certificate2 MislabelledCertificate(bool rsaKey)
+    {
+        using X509Certificate2 libp2p = LeanEthp2pIdentity.CreateCertificate(TestItem.PrivateKeyA);
+        using AsymmetricAlgorithm key = rsaKey ? RSA.Create(2048) : ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        X509SignatureGenerator generator = new MislabelledGenerator(key, Bytes.FromHexString(rsaKey ? EcdsaSha256Algorithm : Ed25519Algorithm));
+        CertificateRequest request = new(new X500DistinguishedName("SERIALNUMBER=01"), generator.PublicKey, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(libp2p.Extensions[LeanEthp2pIdentity.ExtensionOid]!);
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        using X509Certificate2 certificate = request.Create(request.SubjectName, generator, now.AddHours(-1), now.AddHours(1), [1]);
+        using X509Certificate2 withKey = key is RSA rsa ? certificate.CopyWithPrivateKey(rsa) : certificate.CopyWithPrivateKey((ECDsa)key);
+        return X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pkcs12), null, X509KeyStorageFlags.Exportable);
+    }
+
+    private sealed class MislabelledGenerator(AsymmetricAlgorithm key, byte[] algorithm) : X509SignatureGenerator
+    {
+        public override byte[] GetSignatureAlgorithmIdentifier(HashAlgorithmName hashAlgorithm) => algorithm;
+
+        public override byte[] SignData(byte[] data, HashAlgorithmName hashAlgorithm) => key is RSA rsa
+            ? rsa.SignData(data, hashAlgorithm, RSASignaturePadding.Pkcs1)
+            : ((ECDsa)key).SignData(data, hashAlgorithm, DSASignatureFormat.Rfc3279DerSequence);
+
+        protected override System.Security.Cryptography.X509Certificates.PublicKey BuildPublicKey() => new(key);
+    }
+
+    [TestCase(false, TestName = "Ed25519 signature algorithm over a P-256 key")]
+    [TestCase(true, TestName = "ECDSA signature algorithm over an RSA key")]
+    public void Signature_algorithm_of_another_key_family_is_rejected_without_throwing(bool rsaKey)
+    {
+        using X509Certificate2 certificate = MislabelledCertificate(rsaKey);
+        bool authenticated = true;
+        string? error = null;
+        Assert.That(() => authenticated = LeanEthp2pIdentity.TryAuthenticate(certificate.RawData, DateTimeOffset.UtcNow, out _, out error), Throws.Nothing);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(authenticated, Is.False);
+            Assert.That(error, Is.EqualTo("certificate self-signature is invalid"));
+        }
+    }
+
     [Test]
     public void Identity_signatures_are_low_s_der_and_bound_to_their_message()
     {

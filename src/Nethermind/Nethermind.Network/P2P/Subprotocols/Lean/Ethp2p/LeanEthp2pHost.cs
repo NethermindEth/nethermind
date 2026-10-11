@@ -159,6 +159,12 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
                 if (_logger.IsDebug) _logger.Debug($"lean/1 ethp2p inbound handshake failed: {exception.Message}");
                 continue;
             }
+            catch (Exception exception) when (exception is not ObjectDisposedException)
+            {
+                // Nothing one remote endpoint triggers may end the accept loop.
+                if (_logger.IsError) _logger.Error("lean/1 ethp2p inbound handshake failed unexpectedly", exception);
+                continue;
+            }
             if (Authenticate(quic.RemoteCertificate) is not { } key)
             {
                 await quic.DisposeAsync().ConfigureAwait(false);
@@ -297,16 +303,27 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     private async Task DialWithBackoffAsync(LeanEthp2pRecord peer, CancellationToken token)
     {
         // Failure to negotiate the binding only delays a bounded retry; RLPx stays available.
-        bool connected = await DialAsync(peer, token).ConfigureAwait(false) is not null;
-        lock (_lock)
+        bool connected = false;
+        try
         {
-            _dialing.Remove(peer.NodeKey);
-            if (connected) _backoff.Remove(peer.NodeKey);
-            else
+            connected = await DialAsync(peer, token).ConfigureAwait(false) is not null;
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"lean/1 ethp2p dial to {peer.EndPoint} failed unexpectedly", exception);
+        }
+        finally
+        {
+            lock (_lock)
             {
-                TimeSpan previous = _backoff.TryGetValue(peer.NodeKey, out (DateTimeOffset, TimeSpan Backoff) entry) ? entry.Backoff : DialInterval / 2;
-                TimeSpan next = previous * 2 > MaxDialBackoff ? MaxDialBackoff : previous * 2;
-                _backoff[peer.NodeKey] = (DateTimeOffset.UtcNow + next, next);
+                _dialing.Remove(peer.NodeKey);
+                if (connected) _backoff.Remove(peer.NodeKey);
+                else
+                {
+                    TimeSpan previous = _backoff.TryGetValue(peer.NodeKey, out (DateTimeOffset, TimeSpan Backoff) entry) ? entry.Backoff : DialInterval / 2;
+                    TimeSpan next = previous * 2 > MaxDialBackoff ? MaxDialBackoff : previous * 2;
+                    _backoff[peer.NodeKey] = (DateTimeOffset.UtcNow + next, next);
+                }
             }
         }
     }
