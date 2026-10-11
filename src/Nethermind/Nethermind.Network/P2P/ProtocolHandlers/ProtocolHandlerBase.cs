@@ -87,11 +87,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRlpException(string messageType, RlpException exception) =>
-            Logger.Trace($"Failed to deserialize message {messageType} on session {Session}, with exception {exception}");
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide}, with exception {exception:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
-            Logger.Trace($"Failed to deserialize message {messageType} on session {Session} due to rlp limits, with exception {exception}");
+            Logger.Trace($"Failed to deserialize message {messageType} on session {Session:hide} due to rlp limits, with exception {exception:hide}");
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
@@ -146,7 +146,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     if (Logger.IsTrace)
                     {
-                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
+                        Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId:hide}");
                     }
 
                     _initCompletionSource.TrySetCanceled();

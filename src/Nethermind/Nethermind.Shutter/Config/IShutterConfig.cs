@@ -17,7 +17,7 @@ public interface IShutterConfig : IConfig
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "The filepath of the validator info json file.",
-        DefaultValue = "null")]
+        DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ValidatorInfoFile { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter sequencer contract.",
@@ -37,7 +37,7 @@ public interface IShutterConfig : IConfig
     string? KeyperSetManagerContractAddress { get; set; }
 
     [ConfigItem(Description = "The p2p addresses of the Shutter Keyper network bootnodes.",
-        DefaultValue = null)]
+        DefaultValue = null, IsSensitiveWhenMasked = true)]
     string[]? BootnodeP2PAddresses { get; set; }
 
     [ConfigItem(Description = "Instance ID of Shutter keyper set.",

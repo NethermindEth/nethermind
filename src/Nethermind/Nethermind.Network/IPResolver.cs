@@ -291,7 +291,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Could not resolve local IP, falling back to loopback: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Could not resolve local IP, falling back to loopback: {e.Message:hide}");
             localIp = IPAddress.Loopback;
         }
 
@@ -328,7 +328,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
             !configuredExternalIp.Equals(configuredFamilyIp) &&
             _logger.IsWarn)
         {
-            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp} disagrees with {familyConfigName} = {configuredFamilyIp}. {familyConfigName} takes precedence when that address family is advertised in the ENR, while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
+            _logger.Warn($"External IP override: {nameof(NetworkConfig.ExternalIp)} = {configuredExternalIp:hide} disagrees with {familyConfigName} = {configuredFamilyIp:hide}. {familyConfigName} takes precedence when that address family is advertised in the ENR, while other consumers use {nameof(NetworkConfig.ExternalIp)}.");
         }
     }
 
@@ -496,23 +496,23 @@ public class IPResolver : IIPResolver, IAsyncDisposable
 
         if (!IPAddress.TryParse(ipOverride, out IPAddress? ipAddress))
         {
-            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} has incorrect format.");
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride:hide} has incorrect format.");
             return null;
         }
 
         IPAddress? normalizedIp = IIPResolver.NethermindIp.NormalizeExternalIp(ipAddress, expectedFamily);
         if (normalizedIp is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} cannot be used as an external IP.");
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride:hide} cannot be used as an external IP.");
             return null;
         }
 
         if (normalizedIp.IsLoopbackOrPrivateOrLinkLocal || normalizedIp.IsMulticast || normalizedIp.IsSpecialUseAddress)
         {
-            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride} is not a routable public address and may be discarded by peers.");
+            if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride:hide} is not a routable public address and may be discarded by peers.");
         }
 
-        if (_logger.IsInfo) _logger.Info($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride}");
+        if (_logger.IsInfo) _logger.Info($"Using the external IP override: {nameof(NetworkConfig)}.{configName} = {ipOverride:hide}");
         return normalizedIp;
     }
 

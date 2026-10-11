@@ -100,7 +100,7 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                     url.RpcEndpoint &= ~RpcEndpoint.Ws;
                     if (url.RpcEndpoint == RpcEndpoint.None)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
+                        if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url:hide}' has web socket endpoint type and web sockets are not enabled; skipping...");
                         continue;
                     }
                 }
@@ -108,13 +108,13 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 if (url.IsModuleEnabled(ModuleType.Engine) && _jsonRpcConfig.EnginePort is not null &&
                     !string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
                 {
-                    if (_logger.IsInfo) _logger.Info($"EngineUrl specified. EnginePort {_jsonRpcConfig.EnginePort} EngineHost {_jsonRpcConfig.EngineHost}. Additional JSON RPC URL '{url}' has engine module enabled. skipping...");
+                    if (_logger.IsInfo) _logger.Info($"EngineUrl specified. EnginePort {_jsonRpcConfig.EnginePort} EngineHost {_jsonRpcConfig.EngineHost:hide}. Additional JSON RPC URL '{url:hide}' has engine module enabled. skipping...");
                     continue;
                 }
 
                 if (ContainsKey(url.Port))
                 {
-                    if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url}' wants port {url.Port}, but port already in use; skipping...");
+                    if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url:hide}' wants port {url.Port}, but port already in use; skipping...");
                 }
                 else
                 {
@@ -123,9 +123,8 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
             }
             catch (FormatException fe)
             {
-                if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL packed value '{additionalRpcUrl}' format error: {fe.Message}; skipping...");
+                if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL packed value has format error: {fe.Message}; skipping...");
             }
         }
     }
 }
-

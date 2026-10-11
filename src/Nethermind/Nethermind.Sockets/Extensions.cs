@@ -48,7 +48,7 @@ public static class Extensions
                     ? clientValues.FirstOrDefault() ?? string.Empty
                     : string.Empty;
 
-                if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
+                if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName:hide}'.");
 
                 using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
                 using ISocketsClient socketsClient = await module.CreateClient(webSocket, clientName, context);
@@ -76,7 +76,7 @@ public static class Extensions
                 if (module is not null && !string.IsNullOrWhiteSpace(id))
                 {
                     module.RemoveClient(id);
-                    if (logger.IsDebug) logger.Info($"Closing WebSockets for client: '{clientName}'.");
+                    if (logger.IsDebug) logger.Info($"Closing WebSockets for client: '{clientName:hide}'.");
                 }
             }
         });

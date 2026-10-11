@@ -17,7 +17,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ExternalIp { get; set; }
 
     /// <summary>
@@ -29,7 +29,7 @@ public interface INetworkConfig : IConfig
     /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
     /// <c>::</c> to advertise both automatically resolved families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
@@ -37,7 +37,7 @@ public interface INetworkConfig : IConfig
     /// through <c>IIPResolver.Resolve</c>. When unset and <see cref="EnableExternalIpResolution"/> is enabled,
     /// the external IPv6 address is resolved automatically.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ExternalIpV6 { get; set; }
 
     /// <summary>
@@ -52,13 +52,13 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family.", DefaultValue = "null")]
+    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? LocalIp { get; set; }
 
-    [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null")]
+    [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? StaticPeers { get; set; }
 
-    [ConfigItem(Description = "The EIP-1459 node list to discover peers from, as `enrtree://<signer public key>@<domain>`. A bare domain is also accepted, but then the list signature is not verified. For the default of `all.<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null")]
+    [ConfigItem(Description = "The EIP-1459 node list to discover peers from, as `enrtree://<signer public key>@<domain>`. A bare domain is also accepted, but then the list signature is not verified. For the default of `all.<chain name>.ethdisco.net`, leave unspecified.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? DiscoveryDns { get; set; }
 
     [ConfigItem(Description = "Whether to use static peers only.", DefaultValue = "false")]
@@ -112,7 +112,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
     uint MaxNettyArenaCount { get; set; }
 
-    [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
+    [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.", IsSensitiveWhenMasked = true)]
     NetworkNode[] Bootnodes { get; set; }
 
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]

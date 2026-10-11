@@ -84,7 +84,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
                 {
                     if (ex.InnerException is SocketException)
                     {
-                        if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {_pushGatewayUrl}", ex);
+                        if (_logger.IsError) _logger.Error($"Cannot reach Pushgateway at {SensitiveLogMasking.SafeUrl(_pushGatewayUrl)}", SensitiveLogMasking.Enabled ? null : ex);
                         return;
                     }
                     _logger.TraceError(ex.Message, ex); // keeping it at Error severity to log exception details

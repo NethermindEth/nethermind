@@ -76,7 +76,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                         byte[]? result = await RecoverFromPeer(peer.SyncPeer, codeHash, token);
                         if (result is not null) return result;
 
-                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer} weak");
+                        if (_logger.IsDebug) _logger.Debug($"Mark peer {peer:hide} weak");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     catch (OperationCanceledException)
@@ -84,7 +84,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                     }
                     catch (Exception ex)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Error recovering code from {peer} {ex}");
+                        if (_logger.IsWarn) _logger.Warn($"Error recovering code from {peer:hide} {ex:hide}");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
                     }
                     return null;
@@ -112,7 +112,7 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
         using IByteArrayList? result = await snapProtocol.GetByteCodes(hashes, token);
         if (result is not { Count: 1 } || ValueKeccak.Compute(result[0]) != codeHash) return null;
 
-        if (_logger.IsTrace) _logger.Trace($"Fetched code {codeHash} from {peer}");
+        if (_logger.IsTrace) _logger.Trace($"Fetched code {codeHash} from {peer:hide}");
 
         return result[0].ToArray();
     }

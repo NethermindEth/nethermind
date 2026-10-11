@@ -55,7 +55,7 @@ public class SurgeGasPriceOracle : GasPriceOracle
 
         if (_logger.IsInfo)
         {
-            _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {surgeConfig.L1EthApiEndpoint}, " +
+            _logger.Info($"[{ClassName}] Initialized with L1 endpoint: {SensitiveLogMasking.SafeUrl(surgeConfig.L1EthApiEndpoint)}, " +
                          $"TaikoInbox: {surgeConfig.TaikoInboxAddress}, L2BlockGasTarget: {surgeConfig.L2BlockGasTarget}, " +
                          $"MinGasPrice: {minGasPrice}");
         }

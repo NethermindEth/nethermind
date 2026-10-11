@@ -144,7 +144,7 @@ namespace Nethermind.Runner.Ethereum
                 // #13203: the first point at which the ports actually accept a request. The engine URL is in the
                 // same set, so this is also when the consensus client can connect. At Debug there was nothing to
                 // distinguish a node still gated behind startup work from one already serving.
-                if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString}");
+                if (_logger.IsInfo) _logger.Info($"JSON-RPC is listening on {urlsString:hide}");
             }
         }
 

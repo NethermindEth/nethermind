@@ -148,10 +148,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
                         SyncPeerAllocation allocation = await Allocate(request, cancellationToken);
                         PeerInfo? allocatedPeer = allocation.Current;
-                        if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
+                        if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer:hide}");
                         if (allocatedPeer is not null)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
+                            if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current:hide}");
 
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
                             try
@@ -188,9 +188,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             if (!Feed.IsMultiFeed)
                             {
-                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer}");
+                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer:hide}");
                                 await task;
-                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer} has been processed");
+                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().NameWithGenerics()} with allocated {allocatedPeer:hide} has been processed");
                             }
                         }
                         else
@@ -227,11 +227,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 catch (ConcurrencyLimitReachedException)
                 {
-                    if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer}");
+                    if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer:hide}");
                 }
                 catch (TimeoutException)
                 {
-                    if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer}");
+                    if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer:hide}");
                 }
                 catch (OperationCanceledException)
                 {

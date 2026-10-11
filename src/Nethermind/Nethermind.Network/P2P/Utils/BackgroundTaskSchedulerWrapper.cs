@@ -105,7 +105,7 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         };
 
         handler.Session.InitiateDisconnect(disconnectReason, e.Message);
-        if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
+        if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session:hide}, {e:hide}");
     }
 
     private readonly struct SyncServeTaskRequest<TReq, TRes>(

@@ -56,6 +56,7 @@ ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
+int maskingConfigLoaded = 0;
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -69,9 +70,9 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
     ILogger criticalLogger = GetCriticalLogger();
 
     if (e.ExceptionObject is Exception ex)
-        criticalLogger.Error($"{unhandledError}.", ex);
+        LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
     else
-        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject}");
+        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject:hide}");
 };
 
 try
@@ -84,13 +85,23 @@ catch (Exception ex)
 
     ex = ex is AggregateException aex ? aex.InnerException : ex;
 
-    criticalLogger.Error($"{unhandledError}.", ex);
+    LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
 
     return ex is IExceptionWithExitCode exc ? exc.ExitCode : ExitCodes.GeneralError;
 }
 finally
 {
     NLogManager.Shutdown();
+}
+
+void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
+{
+    if (Volatile.Read(ref maskingConfigLoaded) == 0 || SensitiveLogMasking.Enabled)
+        criticalLogger.Error(ex is ConfigurationFileNotFoundException
+            ? $"{message} {ex.Message}"
+            : $"{message} Exception: {ex.GetType().Name}");
+    else
+        criticalLogger.Error(message, ex);
 }
 
 async Task<int> ConfigureAsync(string[] args)
@@ -155,8 +166,11 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    IConfigProvider configProvider = CreateConfigProvider(parseResult);
+    (IConfigProvider configProvider, string configFile) = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+    SensitiveLogMasking.Enabled = initConfig.MaskSensitiveData;
+    Volatile.Write(ref maskingConfigLoaded, 1);
+    logger.Info($"Loading configuration from {configFile:hide}");
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
     IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
@@ -205,7 +219,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         {
             nonDefaults.Append("\n  ");
             if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
-            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.ValueForLog(SensitiveLogMasking.Enabled)));
             count++;
         }
 
@@ -222,8 +236,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsDebug)
     {
-        logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
-
         logger.Debug($"Server GC:           {GCSettings.IsServerGC}");
         logger.Debug($"GC latency mode:     {GCSettings.LatencyMode}");
         logger.Debug($"LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}");
@@ -247,7 +259,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     }
     catch (Exception ex)
     {
-        if (logger.IsError) logger.Error(unhandledError, ex);
+        if (logger.IsError) LogCriticalException(logger, unhandledError, ex);
 
         processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
     }
@@ -346,7 +358,7 @@ void ConfigureLogger(ParseResult parseResult)
     }
     catch (Exception ex)
     {
-        logger.Error($"Failed to load logging configuration file.", ex);
+        logger.Error($"Failed to load logging configuration file: {ex.GetType().Name}.");
         return;
     }
 
@@ -365,12 +377,12 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
 
     if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal) && logger.IsInfo)
-        logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+        logger.Info($"Seq logging is enabled on {SensitiveLogMasking.SafeUrl(seqConfig.ServerUrl)} with level of {seqConfig.MinLevel}");
 
     NLogConfigurator.ConfigureSeq(seqConfig, logger);
 }
 
-IConfigProvider CreateConfigProvider(ParseResult parseResult)
+(IConfigProvider ConfigProvider, string ConfigFile) CreateConfigProvider(ParseResult parseResult)
 {
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
@@ -424,11 +436,9 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         // For backward compatibility. To be removed in the future.
         else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
         {
-            string name = Path.GetFileNameWithoutExtension(configFile)!;
-
             configFile = $"{configFile[..^4]}.json";
 
-            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
+            logger.Warn("The .cfg configuration extension is deprecated. Use .json instead.");
         }
     }
 
@@ -436,9 +446,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configFile = Path.GetFullPath(configFile);
 
     if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.", configFile);
-
-    logger.Info($"Loading configuration from {configFile}");
+        throw new ConfigurationFileNotFoundException();
 
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
@@ -448,7 +456,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
-    return configProvider;
+    return (configProvider, configFile);
 }
 
 RootCommand CreateRootCommand()
@@ -515,7 +523,7 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     {
         string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
 
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
+        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath):hide}");
 
         initConfig.BaseDbPath = dbPath;
     }
@@ -541,12 +549,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
         if (logger.IsInfo)
         {
-            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
+            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath):hide}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory):hide}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath):hide}");
 
             if (snapshotConfig.Enabled)
-                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
+                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath):hide}");
         }
 
         initConfig.BaseDbPath = newDbPath;
@@ -651,3 +659,5 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     /// <inheritdoc />
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
+
+file sealed class ConfigurationFileNotFoundException() : FileNotFoundException("Configuration file not found.");

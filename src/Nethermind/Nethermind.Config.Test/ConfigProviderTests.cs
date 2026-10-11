@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -126,6 +127,26 @@ namespace Nethermind.Config.Test
             {
                 Assert.That(nonDefaults[0].CurrentValue, Is.EqualTo(12345));
                 Assert.That(nonDefaults[0].DefaultValue, Is.EqualTo(30303));
+            }
+        }
+
+        [Test]
+        public void Reports_path_as_maskable_and_skips_password_file_paths()
+        {
+            List<NonDefaultConfigValue> nonDefaults = Provider(
+                ("Init.BaseDbPath", "private-db"),
+                ("KeyStore.PasswordFiles", "[\"secret-path\"]"))
+                .GetNonDefaultValues()
+                .ToList();
+
+            NonDefaultConfigValue path = nonDefaults.Single(static x => x.Category == "Init" && x.Name == nameof(IInitConfig.BaseDbPath));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(path.CurrentValue, Is.EqualTo("private-db"));
+                Assert.That(path.IsSensitiveWhenMasked, Is.True);
+                Assert.That(path.ValueForLog(false), Is.EqualTo("private-db"));
+                Assert.That(path.ValueForLog(true), Is.EqualTo("[redacted]"));
+                Assert.That(nonDefaults, Has.None.Matches<NonDefaultConfigValue>(static x => x.Category == "KeyStore" && x.Name == nameof(IKeyStoreConfig.PasswordFiles)));
             }
         }
 

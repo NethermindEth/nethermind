@@ -40,14 +40,14 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
         string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
         if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
         {
-            if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
+            if (logger.IsWarn) logger.Warn("Plugin assemblies folder was not found. Skipping.");
             return;
         }
 
         string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
         if (assemblies.Length > 0)
         {
-            if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {pluginAssembliesDir}");
+            if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} plugin assemblies");
         }
 
         foreach (string assemblyName in assemblies)
@@ -85,7 +85,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception e)
             {
-                logger.Error($"Failed to load plugin {pluginAssembly}", e);
+                logger.Error($"Failed to load plugin {pluginAssembly}: {e.GetType().Name}");
             }
         }
     }
@@ -158,7 +158,7 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed to load plugin {plugin.Name}", ex);
+                if (logger.IsError) logger.Error($"Failed to load plugin {plugin.Name}", SensitiveLogMasking.Enabled ? null : ex);
             }
         }
 

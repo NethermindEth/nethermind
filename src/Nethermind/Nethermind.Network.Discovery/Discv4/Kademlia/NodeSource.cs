@@ -80,7 +80,7 @@ public sealed class NodeSource(
         catch (Exception e)
         {
             // Keep the candidate if local validation fails; discv4 callers have no per-node exception guard.
-            if (_logger.IsTrace) _logger.Trace($"Unable to validate fork ID of discv4 discovered node {node:s}: {e}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to validate fork ID of discv4 discovered node {node.ToString("s"):hide}: {e:hide}");
             return false;
         }
     }
