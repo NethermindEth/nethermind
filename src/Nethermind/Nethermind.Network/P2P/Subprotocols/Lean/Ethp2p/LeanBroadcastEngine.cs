@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
@@ -74,7 +75,8 @@ internal enum LeanBroadcastVerdict
 /// </para>
 /// <para>
 /// Faults: a wrong shard hash or a malformed or unauthorized preamble is the supplying peer's; shards that do not form the
-/// committed codeword, or an invalid object, are the manifest signer's and penalize no relay.
+/// committed codeword, or an invalid object, are the manifest signer's and penalize no relay. A node already holding the
+/// object forwards its shards only if the manifest commits them.
 /// </para>
 /// </remarks>
 internal sealed class LeanBroadcastEngine : IDisposable
@@ -314,7 +316,17 @@ internal sealed class LeanBroadcastEngine : IDisposable
                 expiry < assemblyDeadline ? expiry : assemblyDeadline, origin,
                 admission == LeanBroadcastAdmission.Started ? codedBytes : 0);
             if (admission == LeanBroadcastAdmission.Held && _transport.HeldBody(manifest.Descriptor.ObjectId) is { } body)
-                session.Load(Encode(body), reconstructed: true);
+            {
+                byte[][] shards = Encode(body);
+                if (Commits(manifest, body, shards)) session.Load(shards, reconstructed: true);
+                else
+                {
+                    // The held object is valid, so the manifest misstates it: the signer's fault. None of its shards is forwarded,
+                    // since receivers would penalize this relay for any that miss the manifest's hashes.
+                    if (_logger.IsInfo) _logger.Info($"lean/1 broadcast {session.MessageId[..16]} failed: manifest does not commit the held object");
+                    Fail(session);
+                }
+            }
             _sessions.Add(manifestId, session);
             _byMessageId.Add(session.MessageId, session);
             reason = null;
@@ -329,7 +341,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
         if (_transport.BroadcastScope is not { } scope || _transport.HeldBody(manifest.Descriptor.ObjectId) is not { } body) return false;
         ValueHash256 manifestId = manifest.Id(scope.ChainId, scope.Genesis);
         byte[][] shards = Encode(body);
-        for (int i = 0; i < shards.Length; i++) if (!manifest.IsCommittedShard(i, shards[i])) return false;
+        if (!Commits(manifest, body, shards)) return false;
         if (Admit(manifest, manifestId, signature, authorization, out string? reason) != LeanBroadcastVerdict.Accepted)
         {
             if (_logger.IsDebug) _logger.Debug($"lean/1 broadcast not originated: {reason}");
@@ -579,6 +591,14 @@ internal sealed class LeanBroadcastEngine : IDisposable
             if (stale is not null) foreach ((byte, ulong, ulong) duty in stale) _duties.Remove(duty);
         }
         if (closed is not null) foreach (ILeanBroadcastSession stream in closed) stream.Close();
+    }
+
+    /// <summary>Whether the manifest commits <paramref name="body"/> and its codeword <paramref name="shards"/>.</summary>
+    private static bool Commits(LeanBroadcastManifest manifest, byte[] body, byte[][] shards)
+    {
+        if (!SHA256.HashData(body).AsSpan().SequenceEqual(manifest.BodySha256.Bytes)) return false;
+        for (int i = 0; i < shards.Length; i++) if (!manifest.IsCommittedShard(i, shards[i])) return false;
+        return true;
     }
 
     private static byte[][] Encode(byte[] body)
