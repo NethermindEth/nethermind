@@ -259,10 +259,23 @@ public class PbtTrieNodeLogTests
         PbtNodeGroupEncoder.EncodeToMemory(PbtTestPaths.Locate(node).GroupKey,
             [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], PooledRefCountingMemoryProvider.Instance);
 
-    [Test]
-    public void Every_node_group_column_is_logged_and_the_metadata_column_is_not()
+    [TestCase("a8", 6, "a80006", PbtColumns.TopNodeGroups)]
+    [TestCase("aa80", 9, "a80501", PbtColumns.TopNodeGroups)]
+    [TestCase("a800", 9, "a80001", PbtColumns.TopNodeGroups)]
+    [TestCase("0012345680", 33, "001234540501", PbtColumns.AccountNodeGroups)]
+    [TestCase("010000000000000000000000000000000000000000000000000000000000000000", 264, "0100000000000000000000000000000000000000000000000000000000000000000000", PbtColumns.CodeNodeGroups)]
+    [TestCase("fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff8", 525, "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc00705", PbtColumns.StorageNodeGroups)]
+    public void Every_node_group_column_is_logged_and_the_metadata_column_is_not(string pathHex, int depth, string keyHex, PbtColumns expectedColumn)
     {
-        Write((TopKey, Value1), (AccountKey, Value2), (StorageKey, Value3));
+        byte[] key = Bytes.FromHexString(keyHex);
+        PbtStorageNodePath path = new(Bytes.FromHexString(pathHex), depth);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GroupKey(Bytes.FromHexString(pathHex), depth), Is.EqualTo(key));
+            Assert.That(PbtNodeGroupKey.Decode(key), Is.EqualTo(path));
+            Assert.That(ColumnOf(key), Is.EqualTo(expectedColumn));
+        }
+        Write((TopKey, Value1), (AccountKey, Value2), (StorageKey, Value3), (key, Value3));
         IColumnsWriteBatch<PbtColumns> batch = _db.StartWriteBatch();
         using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(batch))
         {
@@ -276,6 +289,8 @@ public class PbtTrieNodeLogTests
             Assert.That(Read(TopKey), Is.EqualTo(Value1));
             Assert.That(Read(AccountKey), Is.EqualTo(Value2));
             Assert.That(Read(StorageKey), Is.EqualTo(Value3));
+            Assert.That(Read(key), Is.EqualTo(Value3));
+            Assert.That(Raw(key), Is.Null);
             Assert.That(Raw(TopKey), Is.Null);
             Assert.That(Raw(AccountKey), Is.Null);
             Assert.That(Raw(StorageKey), Is.Null);
@@ -289,7 +304,13 @@ public class PbtTrieNodeLogTests
             Assert.That(Raw(TopKey), Is.EqualTo(Value1));
             Assert.That(Raw(AccountKey), Is.EqualTo(Value2));
             Assert.That(Raw(StorageKey), Is.EqualTo(Value3));
+            foreach (PbtColumns column in new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+                Assert.That(_db.GetColumnDb(column).Get(key), Is.EqualTo(column == expectedColumn ? Value3 : null));
         }
+
+        Write((key, null));
+        _log.Drain();
+        Assert.That(Raw(key), Is.Null);
     }
 
     [Test]
