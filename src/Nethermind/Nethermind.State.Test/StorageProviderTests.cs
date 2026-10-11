@@ -2511,6 +2511,23 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
     }
 
+    [Test]
+    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
+            provider.Get(cell, out _);
+            provider.Commit(Frontier.Instance);
+            provider.Get(cell, out _);
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        }
+
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
+    }
+
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
     [TestCase(RoundBoundary.ReadOnlyCommit)]
@@ -2752,6 +2769,7 @@ public class StorageProviderTests(bool useFlat)
         public WorldState StateProvider { get; }
         internal WrittenData WrittenData = null;
         private readonly IContainer _container;
+        private readonly IDisposable _initialScope;
 
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
@@ -2788,14 +2806,24 @@ public class StorageProviderTests(bool useFlat)
             StateProvider = new WorldState(scopeProvider, LogManager);
             if (setInitialState)
             {
-                StateProvider.BeginScope(IWorldState.PreGenesis);
+                _initialScope = StateProvider.BeginScope(IWorldState.PreGenesis);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
             }
         }
 
-        public void Dispose() => _container?.Dispose();
+        public void Dispose()
+        {
+            try
+            {
+                _initialScope?.Dispose();
+            }
+            finally
+            {
+                _container?.Dispose();
+            }
+        }
     }
 
     internal record WrittenData(
