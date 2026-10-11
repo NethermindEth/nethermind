@@ -49,21 +49,21 @@ public class DiscoveryV5TransportTests
     }
 
     [Test]
-    public void DoesNotSendWhenTokenIsAlreadyCanceled()
+    public async Task DoesNotSendWhenTokenIsAlreadyCanceled()
     {
         byte[] data = [1, 2, 3];
         IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
         using CancellationTokenSource cancellationSource = new();
         cancellationSource.Cancel();
 
-        Assert.ThrowsAsync<OperationCanceledException>(
+        await Assert.ThrowsAsync<OperationCanceledException>(
             async () => await _transport.SendAsync(data, to, cancellationSource.Token));
 
         Assert.That(_sent, Is.Empty);
     }
 
     [Test]
-    public void AddressNotAvailableSendFailureIsTraceOnly([Values] bool traceEnabled)
+    public async Task AddressNotAvailableSendFailureIsTraceOnly([Values] bool traceEnabled)
     {
         TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
         DiscoveryV5Transport transport = new(new OneLoggerLogManager(new ILogger(logger)));
@@ -73,7 +73,7 @@ public class DiscoveryV5TransportTests
         transport.BindSocket(socket);
         IPEndPoint destination = new(IPAddress.Parse("2001:db8::1"), 30303);
 
-        Assert.ThrowsAsync<SocketException>(
+        await Assert.ThrowsAsync<SocketException>(
             async () => await transport.SendAsync([1, 2, 3], destination, CancellationToken.None));
 
         if (traceEnabled)

@@ -165,4 +165,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         child.Dispose();
         return push;
     }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SelectInitializeFrameCore(spec);
 }

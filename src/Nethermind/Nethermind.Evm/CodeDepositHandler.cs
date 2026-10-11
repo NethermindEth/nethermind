@@ -3,8 +3,10 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm
 {
@@ -89,5 +91,15 @@ namespace Nethermind.Evm
 
         public static bool CodeIsValid(IReleaseSpec spec, ReadOnlyMemory<byte> code)
             => !spec.IsEip3541Enabled || !code.StartsWith(InvalidStartingCodeByte);
+
+        /// <summary>
+        /// Whether the initcode of <paramref name="createdAccount"/> adopted code through SETCODEFROM (EIP-8298).
+        /// </summary>
+        /// <remarks>
+        /// When it did, creation completion ignores the initcode's return data: it is not validated, installed or
+        /// charged code-deposit gas. Checked only under EIP-8298, the one way a created account gets code early.
+        /// </remarks>
+        internal static bool HasAdoptedCode(IReleaseSpec spec, IWorldState worldState, Address createdAccount)
+            => spec.IsEip8298Enabled && worldState.GetCodeHash(createdAccount) != ValueKeccak.OfAnEmptyString;
     }
 }

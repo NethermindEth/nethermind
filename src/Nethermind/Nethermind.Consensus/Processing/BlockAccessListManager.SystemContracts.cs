@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -56,26 +55,14 @@ public partial class BlockAccessListManager
         preExecution.TxProcessor.Execute(transaction, NullTxTracer.Instance);
     }
 
-    public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec)
+    public void InstallPredeploys(IReleaseSpec spec)
     {
         CheckInitialized();
 
         // Probe the untraced parent state so a no-op block records nothing in the BAL; apply any
         // change through the pre-execution (index 0) traced world state so it is captured there.
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        return PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec, parentSpec);
-    }
-
-    public IReleaseSpec GetParentSpec(BlockHeader header)
-    {
-        if (specProvider is null || headerFinder is null)
-        {
-            throw new InvalidOperationException($"Resolving a parent spec needs an {nameof(ISpecProvider)} and an {nameof(IHeaderFinder)}, but none was provided.");
-        }
-
-        BlockHeader parent = headerFinder.Get(header.ParentHash!, header.Number - 1)
-            ?? throw new InvalidOperationException($"Cannot resolve the parent spec: parent of {header.ToString(BlockHeader.Format.Short)} not found.");
-        return specProvider.GetSpec(parent);
+        PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
     }
 
     public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)

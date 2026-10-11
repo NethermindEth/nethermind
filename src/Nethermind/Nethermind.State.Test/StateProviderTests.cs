@@ -67,6 +67,9 @@ public class StateProviderTests(bool useFlat)
     public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState()
     {
         byte[] code = Bytes.FromHexString("0x60006000");
+        // EIP-8298: AddressE adopts by hash the code AddressF deposits and later replaces, so only F's first change has it.
+        byte[] adoptedCode = Bytes.FromHexString("0x60016001");
+        byte[] replacementCode = Bytes.FromHexString("0x60026002");
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
@@ -90,6 +93,14 @@ public class StateProviderTests(bool useFlat)
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithStorageChanges(1, new StorageChange(1, 0x55))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressE)
+                    .WithCodeChanges(CodeChange.Adopted(2, ValueKeccak.Compute(adoptedCode)))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressF)
+                    .WithCodeChanges(new CodeChange(1, adoptedCode), new CodeChange(3, replacementCode))
                     .TestObject)
             .TestObject;
 
@@ -105,6 +116,11 @@ public class StateProviderTests(bool useFlat)
             state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
             state.Set(new StorageCell(TestItem.AddressC, 5), 7);
             state.Set(new StorageCell(TestItem.AddressD, 1), 0x55);
+            state.CreateAccount(TestItem.AddressF, 0);
+            state.InsertCode(TestItem.AddressF, adoptedCode, Amsterdam.Instance);
+            state.CreateAccount(TestItem.AddressE, 0);
+            state.InsertCode(TestItem.AddressE, adoptedCode, Amsterdam.Instance);
+            state.InsertCode(TestItem.AddressF, replacementCode, Amsterdam.Instance);
         }, readBack: static _ => { });
 
         using Context applied = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -130,6 +146,8 @@ public class StateProviderTests(bool useFlat)
                 Assert.That(newSlot, Is.EqualTo((UInt256)7));
                 state.Get(new StorageCell(TestItem.AddressD, 1), out UInt256 storageOnlySlot);
                 Assert.That(storageOnlySlot, Is.EqualTo((UInt256)0x55));
+                Assert.That(state.GetCode(TestItem.AddressE), Is.SequenceEqualTo(adoptedCode), "adopted code");
+                Assert.That(state.GetCode(TestItem.AddressF), Is.SequenceEqualTo(replacementCode), "replaced code");
             }
         });
 

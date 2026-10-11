@@ -3528,7 +3528,7 @@ public class TraceRpcModuleTests
             System.IO.Pipelines.Pipe pipe = new();
             try
             {
-                Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
+                await Assert.ThrowsAsync<OperationCanceledException>(async () => await streaming.WriteToAsync(pipe.Writer, cts.Token));
             }
             finally
             {
@@ -3555,8 +3555,8 @@ public class TraceRpcModuleTests
     }
 
     [TestCaseSource(nameof(StreamingResourceSafetyCases))]
-    public void Streaming_resource_safety(Func<Task> scenario) =>
-        Assert.DoesNotThrowAsync(() => scenario());
+    public async Task Streaming_resource_safety(Func<Task> scenario) =>
+        await Assert.DoesNotThrowAsync(() => scenario());
 
     private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {
@@ -3763,7 +3763,7 @@ public class TraceRpcModuleTests
         await using AsyncCompletingStream stream = new();
         PipeWriter writer = PipeWriter.Create(stream);
 
-        Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
+        await Assert.DoesNotThrowAsync(async () => await streaming.WriteToAsync(writer, CancellationToken.None));
 
         await writer.CompleteAsync();
     }

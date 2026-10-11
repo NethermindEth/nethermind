@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Evm.State;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Init;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -37,6 +36,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
@@ -104,7 +104,7 @@ public class DebugBridgeTests
 
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
-    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
+    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead, AccessListActivation, AccessListActivationGap, AccessListActivationFloor, AccessListActivationRepeatedRewind }
 
     private static IEnumerable<TestCaseData> HistoricalSyncCases()
     {
@@ -118,6 +118,8 @@ public class DebugBridgeTests
     public async Task Delete_slice_after_rewind_below_advanced_pivot(bool force, HistoricalSync history)
     {
         TestStateBoundary boundary = new();
+        bool activatesAccessLists = history is HistoricalSync.AccessListActivation or HistoricalSync.AccessListActivationGap or HistoricalSync.AccessListActivationFloor or HistoricalSync.AccessListActivationRepeatedRewind;
+        ulong activation = history == HistoricalSync.AccessListActivationRepeatedRewind ? 4UL : 3;
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.HeadNumber.Returns(5UL);
         peer.HeadHash.Returns(TestItem.KeccakC);
@@ -134,18 +136,20 @@ public class DebugBridgeTests
                 HeaderStateDistance = 1,
                 AncientBodiesBarrier = history == HistoricalSync.BodyFloor ? 3UL : history == HistoricalSync.BodyAboveHead ? 2UL : 1,
                 AncientReceiptsBarrier = history == HistoricalSync.ReceiptFloor ? 3UL : 1,
-                AncientBlockAccessListsBarrier = history == HistoricalSync.AccessListFloor ? 3UL : 1
+                AncientBlockAccessListsBarrier = history is HistoricalSync.AccessListFloor or HistoricalSync.AccessListActivationFloor ? 3UL : 1
             }, new FlatDbConfig { Enabled = false }))
             .AddSingleton<ISyncPeerPool>(peerPool)
             .AddSingleton<IStateBoundary>(boundary)
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+            .AddSingleton<ISpecProvider>(activatesAccessLists
+                ? new TestSpecProvider(Osaka.Instance) { ForkOnBlockNumber = activation, NextForkSpec = Amsterdam.Instance }
+                : new TestSpecProvider(Amsterdam.Instance))
             .Build();
         container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree tree = container.Resolve<IBlockTree>();
         Block[] blocks = new Block[5];
         for (int i = 0; i < blocks.Length; i++)
         {
-            blocks[i] = (i == 0 ? Build.A.Block.Genesis : Build.A.Block.WithParent(blocks[i - 1])).WithBlockAccessListHash(TestItem.KeccakA).TestObject;
+            blocks[i] = (i == 0 ? Build.A.Block.Genesis : Build.A.Block.WithParent(blocks[i - 1])).WithBlockAccessListHash(activatesAccessLists && (ulong)i < activation ? null : TestItem.KeccakA).TestObject;
             AddToMainChain(tree, blocks[i]);
         }
         Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(3));
@@ -156,7 +160,14 @@ public class DebugBridgeTests
         ISyncPointers pointers = container.Resolve<ISyncPointers>();
         pointers.LowestInsertedBodyNumber = history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2UL : history == HistoricalSync.BodyFloor ? 3UL : 1;
         pointers.LowestInsertedReceiptBlockNumber = history is HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive ? 2UL : history == HistoricalSync.ReceiptFloor ? 3UL : 1;
-        pointers.LowestInsertedBlockAccessListBlockNumber = history == HistoricalSync.AccessLists ? 2UL : history == HistoricalSync.AccessListFloor ? 3UL : 1;
+        ulong lowestAccessList = history switch
+        {
+            HistoricalSync.AccessLists or HistoricalSync.AccessListActivation => 2,
+            HistoricalSync.AccessListFloor or HistoricalSync.AccessListActivationFloor or HistoricalSync.AccessListActivationRepeatedRewind => 3,
+            HistoricalSync.AccessListActivationGap => 4,
+            _ => 1
+        };
+        pointers.LowestInsertedBlockAccessListBlockNumber = lowestAccessList;
         ((ActivatedSyncFeed<BodiesSyncBatch?>)container.Resolve<ISyncFeed<BodiesSyncBatch?>>()).InitializeFeed();
         ((ActivatedSyncFeed<ReceiptsSyncBatch?>)container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>()).InitializeFeed();
         ((ActivatedSyncFeed<BlockAccessListsSyncBatch?>)container.Resolve<ISyncFeed<BlockAccessListsSyncBatch?>>()).InitializeFeed();
@@ -166,7 +177,7 @@ public class DebugBridgeTests
             Assert.That(progress.IsFastBlocksHeadersFinished(), Is.EqualTo(history != HistoricalSync.Headers));
             Assert.That(progress.IsFastBlocksBodiesFinished(), Is.EqualTo(history != HistoricalSync.Bodies));
             Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.EqualTo(history is not (HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive)));
-            Assert.That(progress.IsFastBlockAccessListsFinished(), Is.EqualTo(history != HistoricalSync.AccessLists));
+            Assert.That(progress.IsFastBlockAccessListsFinished(), Is.EqualTo(history is not (HistoricalSync.AccessLists or HistoricalSync.AccessListActivationGap)));
         }
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
@@ -176,15 +187,15 @@ public class DebugBridgeTests
             HistoricalSync.Headers => SyncMode.FastHeaders,
             HistoricalSync.Bodies => SyncMode.FastBodies,
             HistoricalSync.Receipts => SyncMode.FastReceipts,
-            HistoricalSync.AccessLists => SyncMode.FastBlockAccessLists,
+            HistoricalSync.AccessLists or HistoricalSync.AccessListActivationGap => SyncMode.FastBlockAccessLists,
             _ => SyncMode.None
         };
         if (backfill != SyncMode.None)
             Assert.That(selector.Current.HasFlag(SyncMode.Full | backfill), Is.True, $"full sync must coexist with backfill, got {selector.Current}");
-        ulong retainedHead = history is HistoricalSync.BodyAboveHead or HistoricalSync.CompleteDeepRewind ? 1UL : 2;
+        ulong retainedHead = history is HistoricalSync.BodyAboveHead or HistoricalSync.CompleteDeepRewind or HistoricalSync.AccessListActivation ? 1UL : 2;
         if (history != HistoricalSync.CompleteWithoutRewind)
         {
-            bool canRewind = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.DeleteProgressFloor;
+            bool canRewind = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.DeleteProgressFloor or HistoricalSync.AccessListActivation or HistoricalSync.AccessListActivationRepeatedRewind;
             Assert.That(debug.debug_setHead(new BlockParameter(retainedHead)).Data, Is.EqualTo(canRewind));
             if (!canRewind)
             {
@@ -200,8 +211,8 @@ public class DebugBridgeTests
         }
         ulong expectedPivot = history switch
         {
-            HistoricalSync.Complete or HistoricalSync.DeleteProgressFloor => 2,
-            HistoricalSync.CompleteDeepRewind => 1,
+            HistoricalSync.Complete or HistoricalSync.DeleteProgressFloor or HistoricalSync.AccessListActivationRepeatedRewind => 2,
+            HistoricalSync.CompleteDeepRewind or HistoricalSync.AccessListActivation => 1,
             _ => 4
         };
         Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(expectedPivot));
@@ -210,14 +221,14 @@ public class DebugBridgeTests
         byte[]? headerProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
         byte[]? bodyProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
         byte[]? accessListProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
-        bool accepted = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.CompleteWithoutRewind;
+        bool accepted = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.CompleteWithoutRewind or HistoricalSync.AccessListActivation or HistoricalSync.AccessListActivationRepeatedRewind;
         if (accepted)
         {
             selector.Update();
             if (history != HistoricalSync.CompleteWithoutRewind)
                 Assert.That(selector.Current.HasFlag(SyncMode.Full), Is.True, $"rewind must remain in full sync before cleanup, got {selector.Current}");
         }
-        ResultWrapper<int> result = debug.debug_deleteChainSlice(history == HistoricalSync.DeleteProgressFloor ? 1 : history == HistoricalSync.CompleteDeepRewind ? 2 : 3, force);
+        ResultWrapper<int> result = debug.debug_deleteChainSlice(history == HistoricalSync.DeleteProgressFloor ? 1 : history is HistoricalSync.CompleteDeepRewind or HistoricalSync.AccessListActivation ? 2 : 3, force);
 
         using (Assert.EnterMultipleScope())
         {
@@ -228,7 +239,7 @@ public class DebugBridgeTests
                 Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
                 string expectedError = history switch
                 {
-                    HistoricalSync.Headers or HistoricalSync.Bodies or HistoricalSync.Receipts or HistoricalSync.AccessLists =>
+                    HistoricalSync.Headers or HistoricalSync.Bodies or HistoricalSync.Receipts or HistoricalSync.AccessLists or HistoricalSync.AccessListActivationGap =>
                         "Ancient backfill is running below the sync pivot; choose a startNumber above it.",
                     HistoricalSync.ReceiptsInactive =>
                         "Historical sync is unfinished; wait for it to complete or choose a startNumber above the sync pivot.",
@@ -245,16 +256,29 @@ public class DebugBridgeTests
             Assert.That(tree.LowestInsertedHeader!.Hash, Is.EqualTo(blocks[history == HistoricalSync.Headers ? 2 : 1].Hash));
             Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2 : history == HistoricalSync.BodyFloor ? 3 : 1));
             Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(history is HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive ? 2 : history == HistoricalSync.ReceiptFloor ? 3 : 1));
-            Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(history == HistoricalSync.AccessLists ? 2 : history == HistoricalSync.AccessListFloor ? 3 : 1));
+            ulong expectedAccessList = accepted && activatesAccessLists ? retainedHead : lowestAccessList;
+            Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(expectedAccessList));
             Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (retainedHead, blocks[retainedHead].Hash!) : (expectedPivot, blocks[expectedPivot].Hash!)));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber), Is.EqualTo(bodyProgress));
-            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accessListProgress));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accepted && activatesAccessLists ? Rlp.Encode(expectedAccessList).Bytes : accessListProgress));
         }
         if (accepted)
         {
             selector.Update();
             Assert.That(selector.Current.HasFlag(SyncMode.Full), Is.True, $"recovery must allow synchronization to resume, got {selector.Current}");
+        }
+        if (history == HistoricalSync.AccessListActivationRepeatedRewind)
+        {
+            Assert.That(debug.debug_setHead(new BlockParameter(1)).Data, Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[1].Hash));
+                Assert.That(tree.SyncPivot, Is.EqualTo((1UL, blocks[1].Hash!)));
+                Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(2));
+                Assert.That(tree.FindLevel(3), Is.Null);
+            }
+            retainedHead = 1;
         }
         Block replacement = Build.A.Block.WithParent(blocks[retainedHead]).WithExtraData([0xAB]).TestObject;
         AddToMainChain(tree, replacement);

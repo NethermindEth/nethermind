@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using NUnit.Framework;
@@ -169,7 +170,7 @@ public class EngineApiProxyTests
         // _proxyContainer.State — Testcontainers caches that property and won't observe
         // the Running→Exited transition for a process that dies shortly after start.
         ContainerBuilder builder = (await Utils.BuildEngineApiProxyContainerAsync(new[] { "-p", "9551" }))
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Execution Client endpoint is required"));
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Execution Client endpoint is required", o => o.WithMode(WaitStrategyMode.OneShot)));
         _proxyContainer = builder.Build();
         await _proxyContainer.StartAsync();
 

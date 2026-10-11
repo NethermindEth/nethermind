@@ -30,18 +30,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly IReleaseSpec Spec = spec;
 #endif
         // All targets have these managed signatures; the table captures no VM or transaction state.
-        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> InitializeFrame =
-#if ZK_EVM
-            // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
-            SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
-#endif
-            (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
-            {
-                (true, true) => &InitializeFrameCore<OnFlag, OnFlag>,
-                (true, false) => &InitializeFrameCore<OnFlag, OffFlag>,
-                (false, true) => &InitializeFrameCore<OffFlag, OnFlag>,
-                (false, false) => &InitializeFrameCore<OffFlag, OffFlag>,
-            };
+        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> InitializeFrame = SelectInitializeFrame(spec);
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
             spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
         public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
@@ -55,6 +44,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
             spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
     }
+
+    /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec);
+
+    /// <summary>The frame entry both builds select from, by the EIP-158 and EIP-8360 flags.</summary>
+    private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrameCore(IReleaseSpec spec) =>
+        (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
+        {
+            (true, true) => &InitializeFrameCore<OnFlag, OnFlag>,
+            (true, false) => &InitializeFrameCore<OnFlag, OffFlag>,
+            (false, true) => &InitializeFrameCore<OffFlag, OnFlag>,
+            (false, false) => &InitializeFrameCore<OffFlag, OffFlag>,
+        };
 
     /// <returns><see langword="false"/> when the frame cannot pay its EIP-8360 balance-change charges.</returns>
     private static bool InitializeFrameCore<Eip158, Eip8360>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
