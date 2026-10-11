@@ -639,6 +639,44 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Transient_code_is_readable_until_the_transaction_ends_and_is_not_persisted([Values] bool endsWithCommit, [Values] bool alsoDeployedPersistently)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x02, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertTransientCode(TestItem.AddressB, codeHash, code, spec);
+        if (alsoDeployedPersistently)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+
+        // The transaction's finalization removes the account before it ends.
+        provider.DeleteAccount(TestItem.AddressB);
+        if (endsWithCommit) provider.Commit(spec, commitRoots: false);
+        else provider.ResetTransient();
+        provider.Commit(spec);
+
+        if (alsoDeployedPersistently)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+    }
+
+    [Test]
     public void Code_committed_before_a_restore_is_still_persisted()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);

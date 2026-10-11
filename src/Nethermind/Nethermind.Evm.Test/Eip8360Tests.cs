@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Blockchain;
@@ -637,6 +638,64 @@ public class Eip8360Tests : VirtualMachineTestsBase
         return tcreated;
     }
 
+    [Test]
+    public void Code_is_readable_within_the_transaction_but_never_reaches_the_code_db([Values] bool buildUp)
+    {
+        byte[] runtime = PaddedRuntime(42);
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        InstallCode(Factory, Prepare.EvmCode
+            .Data(TCreateAndStore(init, UInt256.Zero))
+            .Data(CallAndStoreWord(tcreated, UInt256.Zero, slot: 1))
+            .PushData(tcreated).Op(Instruction.EXTCODESIZE).PushData(2).Op(Instruction.SSTORE)
+            .STOP()
+            .Done, 100);
+
+        RunBlock(buildUp, Factory);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)));
+            Assert.That(FactorySlot(1), Is.EqualTo((UInt256)42), "the code runs within the transaction");
+            Assert.That(FactorySlot(2), Is.EqualTo((UInt256)runtime.Length), "EXTCODESIZE sees the code");
+            Assert.That(PersistedCode(runtime), Is.Null, "TCREATE code pays no deposit, so it must not be persisted");
+            AssertFinalized(tcreated, UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Code_shared_with_a_persistent_deployment_reaches_the_code_db([Values] bool tcreateFirst, [Values] bool sameTransaction, [Values] bool buildUp)
+    {
+        byte[] runtime = PaddedRuntime(43);
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] tcreate = TCreateAndStore(init, UInt256.Zero);
+        byte[] create = Prepare.EvmCode.Create(init, 0).PushData(1).Op(Instruction.SSTORE).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        Address created;
+        if (sameTransaction)
+        {
+            created = ContractAddress.From(Factory, 1);
+            InstallCode(Factory, Prepare.EvmCode.Data(tcreateFirst ? tcreate : create).Data(tcreateFirst ? create : tcreate).STOP().Done);
+            RunBlock(buildUp, Factory);
+        }
+        else
+        {
+            created = ContractAddress.From(Library, 1);
+            InstallCode(Factory, Prepare.EvmCode.Data(tcreate).STOP().Done);
+            InstallCode(Library, Prepare.EvmCode.Data(create).STOP().Done);
+            RunBlock(buildUp, tcreateFirst ? [Factory, Library] : [Library, Factory]);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(FactorySlot(0), Is.EqualTo(ToWord(tcreated)), "the TCREATE succeeded");
+            Assert.That(Storage(sameTransaction ? Factory : Library, 1), Is.EqualTo(ToWord(created)), "the CREATE succeeded");
+            Assert.That(PersistedCode(runtime), Is.SequenceEqualTo(runtime), "the persistent account needs the code");
+            Assert.That(TestState.GetCode(created), Is.SequenceEqualTo(runtime));
+            AssertFinalized(tcreated, UInt256.Zero);
+        }
+    }
+
     private byte CallWithGasLimit(ulong gasLimit, in BlockExecutionContext context)
     {
         Transaction tx = Build.A.Transaction.WithTo(Factory).WithGasLimit(gasLimit).WithNonce(TestState.GetNonce(Sender))
@@ -644,6 +703,43 @@ public class Eip8360Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.CallAndRestore(tx, context, tracer);
         return tracer.StatusCode;
+    }
+
+    /// <summary>Returns a word, followed by a kilobyte of unreachable padding so the code is not trivially small.</summary>
+    private static byte[] PaddedRuntime(int word)
+    {
+        byte[] head = ReturnWord(Prepare.EvmCode.PushData(word));
+        byte[] runtime = new byte[head.Length + 1024];
+        head.CopyTo(runtime, 0);
+        runtime.AsSpan(head.Length).Fill((byte)Instruction.JUMPDEST);
+        return runtime;
+    }
+
+    private byte[]? PersistedCode(byte[] code) => DbProvider.CodeDb.Get(ValueKeccak.Compute(code).ToByteArray());
+
+    /// <summary>Runs a transaction to each target as one block, committed per transaction or built up, then commits the block.</summary>
+    private void RunBlock(bool buildUp, params Address[] targets)
+    {
+        ulong nonce = TestState.GetNonce(Sender);
+        Transaction[] txs = new Transaction[targets.Length];
+        for (int i = 0; i < targets.Length; i++)
+        {
+            txs[i] = Build.A.Transaction.WithTo(targets[i]).WithGasLimit(GasLimit).WithNonce(nonce + (ulong)i)
+                .SignedAndResolved(_ecdsa, SenderKey).TestObject;
+        }
+
+        Block block = Build.A.Block.WithNumber(BlockNumber).WithTimestamp(Timestamp).WithGasLimit((ulong)targets.Length * GasLimit)
+            .WithTransactions(txs).TestObject;
+        BlockExecutionContext context = new(block.Header, Spec);
+        foreach (Transaction tx in txs)
+        {
+            TestAllTracerWithOutput tracer = CreateTracer();
+            if (buildUp) _processor.BuildUp(tx, in context, tracer);
+            else _processor.Execute(tx, in context, tracer);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        }
+
+        TestState.Commit(Spec);
     }
 
     private static Address TCreateAddress(Address deployer, byte[] init) => ContractAddress.FromTransientCreate(deployer, Salt, init);

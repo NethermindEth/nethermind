@@ -241,6 +241,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec) { }
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }

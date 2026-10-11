@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -36,6 +37,10 @@ public class WitnessGeneratingWorldState(
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
     private readonly List<ValueHash256> _deployOrder = [];
     private readonly List<(Snapshot Snapshot, int DeployCountSoFar)> _deployFrames = [];
+    // EIP-8360 TCREATE code, excluded until the transaction ends: like the verifier's state, it is not journaled,
+    // and is dropped on Commit, ResetTransient and Reset, after which a read of the same code needs the witness.
+    private readonly HashSet<ValueHash256> _transientDeployed =
+        new(GenericEqualityComparer.GetOptimized<ValueHash256>());
 
     /// <summary>Clears the per-call witness accumulators so this instance can be reused across pooled rents.</summary>
     public void Reset()
@@ -45,6 +50,7 @@ public class WitnessGeneratingWorldState(
         _inBlockDeployed.Clear();
         _deployOrder.Clear();
         _deployFrames.Clear();
+        _transientDeployed.Clear();
     }
 
     public Witness GetWitness(BlockHeader parentHeader)
@@ -286,6 +292,31 @@ public class WitnessGeneratingWorldState(
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        RecordEmptySlots(address);
+        _transientDeployed.Add(codeHash);
+        base.InsertTransientCode(address, in codeHash, code, spec);
+    }
+
+    public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
+    {
+        base.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+        _transientDeployed.Clear();
+    }
+
+    public override void ResetTransient()
+    {
+        base.ResetTransient();
+        _transientDeployed.Clear();
+    }
+
+    public override void Reset(bool resetBlockChanges = true)
+    {
+        base.Reset(resetBlockChanges);
+        _transientDeployed.Clear();
+    }
+
     public override Snapshot TakeSnapshot(bool newTransactionStart = false)
     {
         // A new transaction commits the previous one's deploys (no longer revertable), so drop its frames.
@@ -383,7 +414,7 @@ public class WitnessGeneratingWorldState(
 
     private void RecordBytecode(in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
-        if (code.Length == 0 || _inBlockDeployed.Contains(codeHash)) return;
+        if (code.Length == 0 || _inBlockDeployed.Contains(codeHash) || _transientDeployed.Contains(codeHash)) return;
         // The witness serialises exact arrays, so only code in a larger buffer is copied, once per contract.
         ref byte[]? recorded = ref CollectionsMarshal.GetValueRefOrAddDefault(_bytecodes, codeHash, out bool exists);
         if (!exists) recorded = code.AsArray();

@@ -167,6 +167,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
+    /// <summary>
+    /// Sets the code of an EIP-8360 <c>TCREATE</c> account, which is readable by its hash until the transaction ends
+    /// and is never written to the code database.
+    /// </summary>
+    /// <remarks>
+    /// The code is dropped on the next <see cref="Commit(IReleaseSpec, IWorldStateTracer, bool, bool)"/>,
+    /// <see cref="ResetTransient"/> or <see cref="Reset"/>, by which time the transaction has finalized the account.
+    /// A persistent deployment of the same code still stages it for the code database through <see cref="InsertCode"/>.
+    /// </remarks>
+    void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec);
+
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
     /// <summary>Credits the account balance, creating the account if it does not physically exist.</summary>

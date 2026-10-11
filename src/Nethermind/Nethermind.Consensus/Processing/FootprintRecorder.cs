@@ -633,6 +633,13 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
+    /// <remarks>A replayed code effect goes through <see cref="InsertCode"/>, which would stage the code for the code database.</remarks>
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        if (_active) _opaque = true;
+        base.InsertTransientCode(address, in codeHash, code, spec);
+    }
+
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         if (_active) AccountEffect(EffectKind.AddToBalance, address).Value = balanceChange;
