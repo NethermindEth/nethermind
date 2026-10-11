@@ -1,6 +1,6 @@
 # Stateless Nethermind on SP1
 
-See the [shared guest guide](../Nethermind.Stateless.Guest.Shared/README.md) for
+See the [shared guest guide](../Nethermind.Stateless.Guest/README.md) for
 build and standard-block execution commands, expected output, shared-memory
 requirements, and GPU proving limitations.
 
