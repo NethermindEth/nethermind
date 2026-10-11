@@ -522,7 +522,8 @@ public class LeanBroadcastTests
             node.Tick(wait / 2);
             node.Transport.OnBroadcastProgress(descriptor);
         }
-        Assert.That(ticks * (wait / 2), Is.LessThanOrEqualTo(3 * wait));
+        Assert.That(ticks * (wait / 2), Is.GreaterThanOrEqualTo(3 * wait).And.LessThanOrEqualTo(3 * wait + wait / 2),
+            "retrieval waits while shards arrive, but no longer than three round trips after the manifest");
     }
 
     [Test]
