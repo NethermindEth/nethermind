@@ -71,7 +71,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes an untraced, non-cancelable JUMP while carrying the landed JUMPDEST count in the
+    /// Executes an untraced JUMP while carrying the landed JUMPDEST count in the
     /// dispatch frame. The <typeparamref name="TUseVmCounter"/> specialization keeps the hot
     /// host path independent of the VM when the counter is flushed by the caller.
     /// </summary>
