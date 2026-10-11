@@ -13,6 +13,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -238,6 +239,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => true;
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
@@ -294,7 +298,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         ReadOnlyAccountChanges accountChanges = ResolveContext(address);
 
         return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
-            ? codeChange.Code
+            ? codeChange.IsAdopted ? GetAdoptedCode(codeChange.CodeHash) : codeChange.Code
             : _parentReader is WorldState worldState
                 ? ReadParentAccount(worldState, address) is { } account ? _parentReader!.GetCode(account.CodeHash.ValueHash256) : Array.Empty<byte>()
                 : _parentReader!.GetCode(address);
@@ -347,7 +351,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
         {
             codeHash = codeChange.CodeHash;
-            hasPriorChange |= codeChange.Code.Length != 0;
+            hasPriorChange |= codeChange.IsAdopted || codeChange.Code.Length != 0;
         }
 
         if (!exists && !hasPriorChange)
@@ -510,6 +514,29 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return accountChanges;
     }
 
+    /// <remarks>
+    /// EIP-8298: adopted bytecode is declared at a lower block access index or is in the pre-block state.
+    /// A hash found in neither is a malformed BAL, so it must surface as <see cref="InvalidBlockLevelAccessListException"/>
+    /// for the parallel path to retry sequentially, not as the code database's <see cref="InvalidOperationException"/>.
+    /// </remarks>
+    private ReadOnlyMemory<byte> GetAdoptedCode(in ValueHash256 codeHash)
+    {
+        if (TryGetDeclaredCode(in codeHash, out byte[]? code)) return code;
+
+        IWorldState parentReader = GetParentReader();
+        ReadOnlyMemory<byte> parentCode;
+        try
+        {
+            parentCode = parentReader.GetCode(in codeHash);
+        }
+        catch (InvalidOperationException)
+        {
+            parentCode = default;
+        }
+
+        return parentCode.IsNull() ? ThrowMissingAdoptedCode(in codeHash) : parentCode;
+    }
+
     private bool TryGetDeclaredCode(in ValueHash256 codeHash, [NotNullWhen(true)] out byte[]? code)
     {
         code = null;
@@ -535,6 +562,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingAccount(Address address)
         => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private ReadOnlyMemory<byte> ThrowMissingAdoptedCode(in ValueHash256 codeHash)
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Adopted code {codeHash} at index {_blockAccessIndex} is neither declared at a lower index nor in the parent state.");
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
