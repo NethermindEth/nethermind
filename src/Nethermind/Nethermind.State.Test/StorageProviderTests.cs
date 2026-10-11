@@ -2402,12 +2402,16 @@ public class StorageProviderTests(bool useFlat)
         Assert.That(secondRoundTracer.Reads, Is.Empty);
     }
 
-    [Test]
-    public void GetOriginal_WriteAfterManyReads_PreservesOriginalValue([Values(2, 2048)] int slotCount)
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    [TestCase(2048, false)]
+    [TestCase(2048, true)]
+    public void GetOriginal_WriteAfterManyReads_PreservesOriginalValue(int slotCount, bool lastReadSlot)
     {
         using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell first = new(ctx.Address1, 1);
+        StorageCell first = new(ctx.Address1, lastReadSlot ? (UInt256)slotCount : UInt256.One);
         provider.Set(first, (UInt256)17);
         provider.Commit(Frontier.Instance);
 

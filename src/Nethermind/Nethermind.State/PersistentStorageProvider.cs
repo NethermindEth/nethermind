@@ -261,6 +261,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LoadCapturedOriginal(in StorageCell storageCell)
     {
+#if !ZK_EVM
+        if (!_originalsIndexed && _lastStorageAddress == storageCell.Address && _lastStorage is { } storage
+            && storage.TryGetLastCapturedOriginal(in storageCell.Index, out UInt256 captured))
+        {
+            _lastCapturedCell = storageCell;
+            _lastCapturedOriginal = captured;
+            return;
+        }
+#endif
         EnsureOriginalsIndexed();
         if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
@@ -768,15 +777,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 #else
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
-        _lastCapturedCell = cell;
         if (!_originalsIndexed)
         {
             (_pendingOriginalValues ??= new(PendingOriginalsPool, PooledDictionaryCapacity))
                 .Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
-            _lastCapturedOriginal = value;
             return;
         }
 
+        _lastCapturedCell = cell;
         _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
     }
 
@@ -1564,6 +1572,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
             value = valueChange.After;
         }
+
+#if !ZK_EVM
+        public bool TryGetLastCapturedOriginal(in UInt256 index, out UInt256 value)
+        {
+            if (_lastReadRound == Provider._originalsRound && _lastReadIndex.Equals(in index))
+            {
+                value = _lastReadValue;
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
+#endif
 
         public void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
