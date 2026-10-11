@@ -1240,17 +1240,23 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// Stopping a speculative session must also clear another parent's entries when the incoming spec disables warming.
+    /// An idle session may finish asynchronously, but it must be cancelled and run no further pass over the cleared caches.
+    /// </summary>
     [Test]
-    public async Task PreWarmCaches_ForAnotherParent_ClearsTheCachesUnderAStoppedSessionThatWarmsNothingFurther()
+    public async Task PreWarmCaches_ForAnotherParent_StopsTheSessionAndClearsOtherHeadEntries([Values] bool specDisablesPreWarming)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
-        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
         BlockHeader head = BuildParentHeader();
         BlockHeader parent = BuildOtherStateHeader(head);
         using CancellationTokenSource cancellation = new();
+        CancellationToken speculativeToken = default;
         int passes = 0;
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
         {
+            speculativeToken = token;
             Interlocked.Increment(ref passes);
             return null;
         }, idlePassDelayMs: 60_000, cancellation.Token);
@@ -1260,14 +1266,17 @@ public class BlockCachePreWarmerTests
         caches.StateCache.Set(in sentinel, new Account(123));
 
         // The block builds on another state, so the caches are cleared while the stopped session may not have ended yet.
-        await RunPreWarmCaches(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance);
+        IReleaseSpec spec = specDisablesPreWarming ? Amsterdam.Instance : Osaka.Instance;
+        await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, spec);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(speculativeToken.IsCancellationRequested, Is.True, "the session is cancelled before execution can use the caches");
+            Assert.That(preWarmer.SpeculativePassActive, Is.False, "no speculative pass may overlap execution");
             Assert.That(caches.StateCache.TryGetValue(in sentinel, out _), Is.False, "the caches held another state and are cleared");
-            Assert.That(session.Wait(DiscoveryTimeout), Is.True, "the stopped session ends on its own");
-            Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "and runs no further pass over the cleared caches");
         }
+        await session.WaitAsync(DiscoveryTimeout);
+        Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the stopped session runs no further pass over the cleared caches");
     }
 
     [Test]
@@ -1412,42 +1421,6 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preWarmer.SpeculativeMarkerPublished, Is.False,
             "the tiny-block handoff marker must only be honored once");
-    }
-
-    /// <summary>
-    /// A session's spec comes from a synthetic next-block header, so it can be started for a spec that enables warming
-    /// and then met by a block whose spec disables it — a fork boundary. Joining is not enough there: the session's
-    /// entries describe the head it warmed, so a block on a different parent must not read them.
-    /// </summary>
-    [Test]
-    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsAndClearsOtherHeadEntries()
-    {
-        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
-        using (preWarmer)
-        {
-            BlockHeader head = BuildParentHeader();
-            using CancellationTokenSource cancellation = new();
-            // Osaka has no block-level access lists, so warming is enabled and the session starts.
-            Task session = preWarmer.StartSpeculativePreWarm(
-                head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
-            Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
-
-            AddressAsKey sentinel = TestItem.AddressD;
-            preBlockCaches.StateCache.Set(in sentinel, new Account(123));
-
-            // A side branch: this block's parent is not the head the session warmed.
-            BlockHeader sideParent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakB).TestObject;
-            // Amsterdam enables access lists, which disables warming for this configuration.
-            StartPrewarming(preWarmer, BuildChildBlock(sideParent), sideParent, Amsterdam.Instance).GetAwaiter().GetResult();
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
-                Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
-                    "entries warmed against another head must not survive into execution");
-            }
-        }
     }
 
     [Test]
