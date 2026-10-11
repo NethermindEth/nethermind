@@ -13,7 +13,6 @@ using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -21,17 +20,19 @@ using PublicKey = Nethermind.Core.Crypto.PublicKey;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 
-/// <summary>Listens for and dials ethp2p QUIC connections carrying <c>lean/1</c>, at most one per authenticated node key.</summary>
+/// <summary>Listens for and dials ethp2p QUIC connections of the EIP-8437 profile, at most one per authenticated node key.</summary>
 /// <remarks>
 /// Peers are bootstrapped from signed ENRs advertising <c>leanq</c> (<see cref="INetworkConfig.LeanEthp2pStaticPeers"/>);
-/// the local ENR advertises the listening port. Connections share the node's <c>lean/1</c> budgets with its RLPx session,
-/// and the shared transport refuses every Status until EIP-8288 activates.
+/// the local ENR advertises the listening port. Connections share the node's budgets with its RLPx session, and the shared
+/// transport refuses every Status until EIP-8288 activates. Authenticated broadcast runs only with a registered
+/// <see cref="ILeanBroadcastProfile"/>; without one the node uses requested retrieval only.
 /// </remarks>
 [SupportedOSPlatform("linux")]
 [SupportedOSPlatform("macos")]
 [SupportedOSPlatform("windows")]
 public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig config,
-    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey, ILogManager logManager) : IAsyncDisposable
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey, ILogManager logManager, ILeanBroadcastProfile? broadcastProfile = null)
+    : IAsyncDisposable
 {
     private static readonly TimeSpan DialInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaxDialBackoff = TimeSpan.FromMinutes(5);
@@ -45,6 +46,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     private readonly IProtectedPrivateKey _nodeKey = nodeKey;
     private readonly ILogManager _logManager = logManager;
     private readonly ILogger _logger = logManager.GetClassLogger<LeanEthp2pHost>();
+    private readonly LeanBroadcastEngine? _engine = broadcastProfile is null ? null : new LeanBroadcastEngine(transport, broadcastProfile, logManager);
     private readonly Lock _lock = new();
     private readonly Dictionary<PublicKey, LeanEthp2pConnection> _connections = [];
     private readonly HashSet<PublicKey> _dialing = [];
@@ -63,6 +65,8 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     public IPEndPoint? LocalEndPoint { get; private set; }
 
     internal int ConnectionCount { get { lock (_lock) return _connections.Count; } }
+
+    internal LeanBroadcastEngine? Broadcast => _engine;
 
     /// <summary>Binds the listener and starts dialing the configured static peers.</summary>
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -83,7 +87,8 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
         }, cancellationToken).ConfigureAwait(false);
         _listener = listener;
         LocalEndPoint = listener.LocalEndPoint;
-        if (_logger.IsInfo) _logger.Info($"lean/1 ethp2p binding listening on udp/{LocalEndPoint.Port} with {peers.Count} static peers");
+        if (_logger.IsInfo) _logger.Info($"lean/1 ethp2p binding listening on udp/{LocalEndPoint.Port} with {peers.Count} static peers, " +
+            $"{(_engine is null ? "retrieval only" : "retrieval and broadcast")}");
         _loops = Task.WhenAll(AcceptAsync(listener), DialStaticAsync(peers));
     }
 
@@ -127,9 +132,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
         options.InitialReceiveWindowSizes = new QuicReceiveWindowSizes
         {
             Connection = LeanEthp2pProtocol.ConnectionReceiveWindow,
-            UnidirectionalStream = LeanEthp2pProtocol.StreamReceiveWindow,
-            LocallyInitiatedBidirectionalStream = 0,
-            RemotelyInitiatedBidirectionalStream = 0
+            UnidirectionalStream = LeanEthp2pProtocol.StreamReceiveWindow
         };
         return options;
     }
@@ -164,7 +167,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
                 await quic.DisposeAsync().ConfigureAwait(false);
                 continue;
             }
-            await Register(new LeanEthp2pConnection(quic, key, outbound: false, _transport, _logManager)).ConfigureAwait(false);
+            await Register(new LeanEthp2pConnection(quic, key, outbound: false, _transport, _engine, _logManager)).ConfigureAwait(false);
         }
     }
 
@@ -181,6 +184,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
             ClientAuthenticationOptions = new SslClientAuthenticationOptions
             {
                 ApplicationProtocols = [LeanEthp2pProtocol.ApplicationProtocol],
+                TargetHost = LeanEthp2pProtocol.ServerName,
                 ClientCertificates = [_certificate],
                 EnabledSslProtocols = SslProtocols.Tls13,
                 RemoteCertificateValidationCallback = (_, certificate, _, _) => Authenticate(certificate) is { } key && key.Equals(expected)
@@ -196,7 +200,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
             if (_logger.IsDebug) _logger.Debug($"lean/1 ethp2p dial to {record.EndPoint} failed: {exception.Message}");
             return null;
         }
-        LeanEthp2pConnection connection = new(quic, expected, outbound: true, _transport, _logManager);
+        LeanEthp2pConnection connection = new(quic, expected, outbound: true, _transport, _engine, _logManager);
         return await Register(connection).ConfigureAwait(false) ? connection : null;
     }
 
@@ -324,6 +328,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
         if (_listener is not null) await _listener.DisposeAsync().ConfigureAwait(false);
         if (_loops is not null) await _loops.ConfigureAwait(false);
         await Task.WhenAll(running).ConfigureAwait(false);
+        _engine?.Dispose();
         _certificate?.Dispose();
         _stop.Dispose();
     }

@@ -66,8 +66,9 @@ internal static class LeanEthp2pIdentity
         request.CertificateExtensions.Add(new X509Extension(ExtensionOid, extension.Encode(), critical: false));
         DateTimeOffset now = DateTimeOffset.UtcNow;
         using X509Certificate2 certificate = request.CreateSelfSigned(now.AddHours(-1), now.AddYears(100));
-        // Reloaded from PKCS#12 so that TLS backends which need a persisted, exportable key can use it.
-        return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pkcs12), null);
+        // Reloaded from PKCS#12 so that TLS backends which need a persisted, exportable key can use it; msquic on macOS
+        // re-exports the key as PKCS#12.
+        return X509CertificateLoader.LoadPkcs12(certificate.Export(X509ContentType.Pkcs12), null, X509KeyStorageFlags.Exportable);
     }
 
     /// <summary>Authenticates a peer certificate and returns its secp256k1 node key.</summary>
