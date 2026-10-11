@@ -204,7 +204,7 @@ public sealed class FrameTxValidationTracer(
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
-            case Instruction.TCREATE:
+            case Instruction.TCREATE when spec.IsEip8360Enabled:
                 // EIP-8360: never installs code at tx.sender, the one creation the prefix admits.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
