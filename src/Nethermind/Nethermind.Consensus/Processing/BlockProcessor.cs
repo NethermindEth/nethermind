@@ -213,6 +213,7 @@ public partial class BlockProcessor(
         if (spec.IsEip8288Enabled && options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
             token.ThrowIfCancellationRequested();
+            bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
             List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block);
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
@@ -241,8 +242,8 @@ public partial class BlockProcessor(
                         HashSet<FrameDependency> attempted = [.. deps];
                         IncludableTransactions includable = new(block);
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
-                        // Only the unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                        if (producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
+                        // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
+                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
                             ScheduleProductionProof(producing, includable, attempted, deps, depsHash, kept, leanProofStore);
                         throw new LeanProofNotReadyException(limit);
                     }

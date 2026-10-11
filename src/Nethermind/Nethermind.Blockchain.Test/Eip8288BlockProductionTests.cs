@@ -683,6 +683,39 @@ public class Eip8288BlockProductionTests
     }
 
     [Test]
+    public async Task Superseded_payload_does_not_schedule_a_production_proof([Values] bool earlierSlot)
+    {
+        using ManualResetEventSlim proving = new();
+        CountingVerifier verifier = new() { OnProof = proving.Set };
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        BlockHeader grandparent = chain.BlockTree.Head!.Header;
+        Block parent = await ProduceAndImport(chain, 1);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("superseded"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [1]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
+        ulong slot = parent.Timestamp + 12;
+        PayloadAttributes latest = new() { Timestamp = earlierSlot ? slot + 12 : slot };
+        Assert.That(await chain.BlockProducer.BuildBlock(parent.Header, payloadAttributes: latest, flags: IBlockProducer.Flags.EmptyBlock),
+            Is.Not.Null);
+
+        // Either a payload still improving for the previous slot, or the next slot prepared on the proposed block's parent.
+        using CancellationTokenSource deadline = new();
+        Block? superseded = await chain.BlockProducer.BuildBlock(earlierSlot ? parent.Header : grandparent,
+            payloadAttributes: new PayloadAttributes { Timestamp = slot }, cancellationToken: deadline.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(superseded!.Transactions, Is.Empty);
+            Assert.That(proving.Wait(200), Is.False, "a superseded payload schedules nothing");
+        }
+
+        await chain.BlockProducer.BuildBlock(parent.Header, payloadAttributes: latest, cancellationToken: deadline.Token);
+        Assert.That(() => proofs.TryGetRecursiveProof([dependency], out _), Is.True.After(5000, 20), "the latest payload's body is proven");
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Deadline_production_prefers_the_proven_set_that_keeps_the_most_transactions()
     {
         CountingVerifier verifier = new();

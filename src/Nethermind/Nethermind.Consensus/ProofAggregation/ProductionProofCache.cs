@@ -26,6 +26,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     private readonly object _provingLock = new();
     private int _producersWaiting;
     private Task? _scheduled;
+    private (ulong Timestamp, ulong Number) _latestProduction;
     private const int MaxVerified = 256;
     private readonly Dictionary<ValueHash256, LinkedListNode<ValueHash256>> _verified = [];
     private readonly LinkedList<ValueHash256> _verifiedOrder = [];
@@ -174,6 +175,23 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     /// <summary>Whether a scheduled production statement is still being proven.</summary>
     internal bool IsScheduled => Volatile.Read(ref _scheduled) is { IsCompleted: false };
 
+    /// <summary>Records a production pass and reports whether no pass for a later slot or a higher block has started.</summary>
+    /// <remarks>
+    /// Payloads keep improving after the next slot's payload started, and a proposer also prepares the next slot on the
+    /// parent of the block it just proposed. A body built on a superseded parent omits the senders whose transactions its
+    /// successor included, so only the latest payload's bodies are worth proving.
+    /// </remarks>
+    internal bool ObserveProduction(ulong timestamp, ulong number)
+    {
+        lock (_cacheLock)
+        {
+            if (timestamp < _latestProduction.Timestamp
+                || timestamp == _latestProduction.Timestamp && number < _latestProduction.Number) return false;
+            _latestProduction = (timestamp, number);
+            return true;
+        }
+    }
+
     /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
     /// <remarks>
     /// At most one statement runs at a time; a later request is dropped and repeated by the next production pass that
@@ -189,7 +207,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             using (ExecutionContext.SuppressFlow())
                 _scheduled = Task.Factory.StartNew(Run, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
-        if (_logger.IsDebug) _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies");
+        if (_logger.IsDebug)
+            _logger.Debug($"Scheduled EIP-8288 production proof for {deps.Count} dependencies: {input.Deps.Count} direct, " +
+                $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded");
         return true;
 
         void Run()
