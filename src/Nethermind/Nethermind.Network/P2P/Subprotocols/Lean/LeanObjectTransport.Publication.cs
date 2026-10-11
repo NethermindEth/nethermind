@@ -190,14 +190,25 @@ public sealed partial class LeanObjectTransport
             {
                 List<LeanPeer> candidates = [];
                 Task signal;
+                TimeSpan deferral;
                 lock (_gate)
                 {
                     if (BroadcastSidecar(hash.ValueHash256, block, depsHash) is { } broadcast) return broadcast;
                     signal = _hintSignal.Task;
-                    if (_hints.TryGetValue(hash.ValueHash256, out List<LeanPeer>? hinted))
-                        foreach (LeanPeer peer in hinted) if (!peer.Closed && !asked.Contains(peer)) candidates.Add(peer);
-                    foreach (LeanPeer peer in _peers)
-                        if (!asked.Contains(peer) && !candidates.Contains(peer) && peer.Status.SupportsKind(LeanProtocol.KindBlockProof)) candidates.Add(peer);
+                    deferral = BroadcastDeferral(hash.ValueHash256, _clock.GetTimestamp());
+                    if (deferral == TimeSpan.Zero)
+                    {
+                        if (_hints.TryGetValue(hash.ValueHash256, out List<LeanPeer>? hinted))
+                            foreach (LeanPeer peer in hinted) if (!peer.Closed && !asked.Contains(peer)) candidates.Add(peer);
+                        foreach (LeanPeer peer in _peers)
+                            if (!asked.Contains(peer) && !candidates.Contains(peer) && peer.Status.SupportsKind(LeanProtocol.KindBlockProof)) candidates.Add(peer);
+                    }
+                }
+                if (deferral > TimeSpan.Zero)
+                {
+                    // A broadcast of this sidecar is delivering shards: its acceptance signals, and peers are asked once it stalls.
+                    await Task.WhenAny(signal, Task.Delay(deferral, cancellationToken)).ConfigureAwait(false);
+                    continue;
                 }
                 foreach (LeanPeer candidate in candidates)
                 {

@@ -480,6 +480,32 @@ public class LeanBroadcastTests
     }
 
     [Test]
+    public void Retrieval_waits_about_a_round_trip_while_broadcast_shards_arrive()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        byte[] package = InclusionList(3 * LeanProtocol.ChunkBytes, FrameTransaction(7));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
+        Assert.That(node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
+        node.Transport.OnBroadcastProgress(descriptor);
+
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        node.Tick(TimeSpan.FromMilliseconds(40));
+        node.Transport.OnBroadcastProgress(descriptor);
+        node.Tick(TimeSpan.FromMilliseconds(40));
+        GetChunksMessage[] deferred = link.Sent<GetChunksMessage>();
+        // No new shard for longer than the deferral bound: the object is retrieved within its unchanged deadlines.
+        node.Tick(TimeSpan.FromSeconds(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.Empty, "chunks are not requested while shards keep arriving");
+            Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
+        }
+    }
+
+    [Test]
     public async Task Wrong_shard_is_the_suppliers_fault_and_valid_shards_still_complete_the_object()
     {
         using BroadcastNode origin = new(), receiver = new(), other = new();

@@ -146,6 +146,8 @@ public sealed partial class LeanObjectTransport
                 if ((assembly.Waiters.Count > 0) != waited || assembly.Dropped || assembly.Queued || assembly.IsComplete
                     || assembly.Sources.Count == 0) continue;
                 if (!waited && _incompleteBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) return;
+                // Shards of an accepted manifest are still arriving: requesting its chunks would transfer the object twice.
+                if (BroadcastDeferral(BroadcastKey(assembly.Descriptor), now) > TimeSpan.Zero) continue;
                 ScheduleAssembly(assembly, outbox, now);
             }
         }
@@ -240,6 +242,7 @@ public sealed partial class LeanObjectTransport
         // A valid first response for a requested index advances the request, even when another peer already supplied the
         // chunk; only a newly verified missing chunk advances the assembly.
         long now = _clock.GetTimestamp();
+        if (!request.Progressed) SampleRoundTrip(now - request.Created);
         request.LastProgress = now;
         request.Progressed = true;
         peer.Stalls = 0;
@@ -451,6 +454,7 @@ public sealed partial class LeanObjectTransport
             now = _clock.GetTimestamp();
             ExpireRequests(now, outbox);
             ExpireAssemblies(now, outbox);
+            PruneBroadcastProgress(now);
             // TryComplete can remove an assembly that nobody waits for, so iterate a snapshot.
             foreach (LeanAssembly assembly in (LeanAssembly[])[.. _assemblies.Values])
                 if (assembly.IsComplete && !assembly.Queued && !assembly.Dropped) TryComplete(assembly, outbox);

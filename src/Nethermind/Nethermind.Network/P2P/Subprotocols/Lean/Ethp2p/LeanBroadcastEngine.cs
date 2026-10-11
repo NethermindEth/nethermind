@@ -339,6 +339,8 @@ internal sealed class LeanBroadcastEngine : IDisposable
             }
             _sessions.Add(manifestId, session);
             _byMessageId.Add(session.MessageId, session);
+            // Retrieval of the object waits while this session delivers shards.
+            if (admission == LeanBroadcastAdmission.Started && !origin) _transport.OnBroadcastProgress(manifest.Descriptor);
             reason = null;
             return session;
         }
@@ -460,6 +462,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
             // A shard received twice earns no progress or forwarding allowance.
             if (session.Failed || session.Reconstructed || session.Decoding || !session.TryAdd(index, shard)) return LeanBroadcastVerdict.Accepted;
             Interlocked.Increment(ref _shardsAccepted);
+            _transport.OnBroadcastProgress(session.Manifest.Descriptor);
             if (session.Count == LeanReedSolomon.DataShards)
             {
                 session.Decoding = true;
@@ -520,6 +523,8 @@ internal sealed class LeanBroadcastEngine : IDisposable
     private void Fail(Session session)
     {
         session.Failed = true;
+        // Retrieval need not wait for a session that will deliver no more shards.
+        _transport.OnBroadcastEnded(session.Manifest.Descriptor);
         session.Release();
         if (session.CodedBytes > 0) _transport.ReleaseBroadcast(session.CodedBytes);
         session.CodedBytes = 0;

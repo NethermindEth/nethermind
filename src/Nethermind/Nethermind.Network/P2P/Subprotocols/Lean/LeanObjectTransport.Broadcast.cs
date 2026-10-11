@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -30,8 +31,21 @@ internal enum LeanBroadcastAdmission
 public sealed partial class LeanObjectTransport
 {
     private const int MaxBroadcastSidecars = 16;
+    private const int MaxBroadcastProgress = 256;
+
+    /// <summary>Bounds of the wait for broadcast shards, about one round trip, before retrieving an object they cover.</summary>
+    private static readonly TimeSpan MinBroadcastDeferral = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan MaxBroadcastDeferral = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DefaultRoundTrip = TimeSpan.FromMilliseconds(200);
+
     private readonly Dictionary<ValueHash256, (LeanDescriptor Descriptor, byte[] Proof)> _broadcastSidecars = [];
     private readonly Queue<ValueHash256> _broadcastSidecarOrder = [];
+
+    /// <summary>When each object with an accepted manifest last made broadcast progress, keyed by <see cref="BroadcastKey"/>.</summary>
+    private readonly Dictionary<ValueHash256, long> _broadcastProgress = [];
+
+    /// <summary>Smoothed time to the first chunk of a chunk request, in timestamp ticks; zero until measured.</summary>
+    private long _roundTrip;
 
     /// <summary>The chain ID and genesis hash that scope manifest IDs and channels, or null while the genesis is unknown.</summary>
     internal (UInt256 ChainId, ValueHash256 Genesis)? BroadcastScope => CreateStatus() is { } status ? (status.ChainId, status.GenesisHash) : null;
@@ -66,6 +80,67 @@ public sealed partial class LeanObjectTransport
             _incompleteBytes += codedBytes;
             return LeanBroadcastAdmission.Started;
         }
+    }
+
+    /// <summary>Records an accepted manifest or a new checked shard of its object.</summary>
+    /// <remarks>EIP-8437: while new checked shards arrive, chunk requests for the object wait; retrieval resumes once none has
+    /// arrived for about one round trip. Deferral changes no assembly or request deadline.</remarks>
+    internal void OnBroadcastProgress(LeanDescriptor descriptor)
+    {
+        lock (_gate)
+        {
+            long now = _clock.GetTimestamp();
+            if (_broadcastProgress.Count >= MaxBroadcastProgress) PruneBroadcastProgress(now);
+            if (_broadcastProgress.Count < MaxBroadcastProgress) _broadcastProgress[BroadcastKey(descriptor)] = now;
+        }
+    }
+
+    /// <summary>Ends the deferral of an object's retrieval once its broadcast session failed or expired.</summary>
+    /// <remarks>Called under the engine's lock, so nothing is sent here: the next tick schedules the object's requests.</remarks>
+    internal void OnBroadcastEnded(LeanDescriptor descriptor)
+    {
+        lock (_gate) _broadcastProgress.Remove(BroadcastKey(descriptor));
+    }
+
+    /// <summary>Kind 2 is keyed by block hash, which is what a sidecar lookup knows; other kinds by object ID.</summary>
+    private static ValueHash256 BroadcastKey(LeanDescriptor descriptor) =>
+        descriptor.Kind == LeanProtocol.KindBlockProof ? descriptor.BlockHash : descriptor.ObjectId;
+
+    /// <summary>How much longer retrieval waits for the broadcast covering <paramref name="key"/>; zero when none is progressing.</summary>
+    private TimeSpan BroadcastDeferral(in ValueHash256 key, long now)
+    {
+        if (_broadcastProgress.Count == 0 || !_broadcastProgress.TryGetValue(key, out long last)) return TimeSpan.Zero;
+        TimeSpan remaining = BroadcastWait - _clock.GetElapsedTime(last, now);
+        return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+    }
+
+    /// <summary>The smoothed round trip within <see cref="MinBroadcastDeferral"/> and <see cref="MaxBroadcastDeferral"/>.</summary>
+    private TimeSpan BroadcastWait
+    {
+        get
+        {
+            if (_roundTrip == 0) return DefaultRoundTrip;
+            TimeSpan roundTrip = TimeSpan.FromSeconds((double)_roundTrip / _clock.TimestampFrequency);
+            return roundTrip < MinBroadcastDeferral ? MinBroadcastDeferral : roundTrip > MaxBroadcastDeferral ? MaxBroadcastDeferral : roundTrip;
+        }
+    }
+
+    /// <summary>Drops progress entries that no longer defer retrieval.</summary>
+    private void PruneBroadcastProgress(long now)
+    {
+        if (_broadcastProgress.Count == 0) return;
+        TimeSpan wait = BroadcastWait;
+        List<ValueHash256>? stale = null;
+        foreach ((ValueHash256 key, long last) in _broadcastProgress)
+            if (_clock.GetElapsedTime(last, now) >= wait) (stale ??= []).Add(key);
+        if (stale is not null) foreach (ValueHash256 key in stale) _broadcastProgress.Remove(key);
+    }
+
+    /// <summary>Folds the time to a chunk request's first chunk into the smoothed round trip.</summary>
+    private void SampleRoundTrip(long elapsed)
+    {
+        if (elapsed <= 0) return;
+        _roundTrip = _roundTrip == 0 ? elapsed : _roundTrip + (elapsed - _roundTrip) / 8;
     }
 
     internal void ReleaseBroadcast(long codedBytes)
