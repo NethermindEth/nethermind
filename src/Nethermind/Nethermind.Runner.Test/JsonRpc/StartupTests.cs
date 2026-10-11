@@ -29,6 +29,7 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Exceptions;
@@ -62,7 +63,8 @@ public class StartupTests
         IRpcAuthentication? rpcAuthentication = null,
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
-        IJsonRpcLocalStats? jsonRpcLocalStats = null)
+        IJsonRpcLocalStats? jsonRpcLocalStats = null,
+        ILogManager? processorLogManager = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
@@ -73,7 +75,7 @@ public class StartupTests
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
         JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
-        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), processorLogManager ?? LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
     }
@@ -847,6 +849,27 @@ public class StartupTests
         Assert.That(isJson, Is.EqualTo(expected));
     }
 
+    [TestCase(null, "")]
+    [TestCase("198.51.100.1", " (X-Forwarded-For: 198.51.100.1)")]
+    public async Task Http_request_debug_log_includes_remote_address(string? forwardedFor, string expectedForwardedSuffix)
+    {
+        TestLogger logger = new();
+        byte[] request = Encoding.UTF8.GetBytes(CreateJsonRpcRequest());
+
+        await ProcessJsonRpcRequestWithStatus(
+            new MemoryStream(request),
+            request.Length,
+            startup: CreateStartup(processorLogManager: new OneLoggerLogManager(new(logger))),
+            configureContext: ctx =>
+            {
+                ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+                if (forwardedFor is not null) ctx.Request.Headers["X-Forwarded-For"] = forwardedFor;
+            });
+
+        Assert.That(logger.LogList, Has.Member($"JSON RPC request {GetBlobsV1Method} from 203.0.113.7{expectedForwardedSuffix}"),
+            string.Join(" | ", logger.LogList));
+    }
+
     private static async Task<string> ProcessJsonRpcRequest(
         string request,
         bool setContentLength = true,
@@ -875,7 +898,8 @@ public class StartupTests
         long? contentLength,
         long? maxRequestBodySize = null,
         Startup? startup = null,
-        bool isAuthenticated = false)
+        bool isAuthenticated = false,
+        Action<DefaultHttpContext>? configureContext = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -889,6 +913,7 @@ public class StartupTests
         if (contentLength is not null) ctx.Request.ContentLength = contentLength;
 
         ctx.Request.Headers.Authorization = "Bearer test";
+        configureContext?.Invoke(ctx);
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
