@@ -188,6 +188,20 @@ public class ChainSpecHardforkLabelTests
     }
 
     [Test]
+    public void Prague_label_resolves_the_deposit_contract_like_the_explicit_field()
+    {
+        ChainSpec explicitSpec = Load("\"eip6110TransitionTimestamp\": \"0x100\"");
+        ChainSpec labelSpec = Load("\"prague\": \"0x100\"");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(labelSpec.Parameters.Eip6110TransitionTimestamp, Is.EqualTo(0x100));
+            Assert.That(explicitSpec.Parameters.DepositContractAddress, Is.EqualTo(Eip6110Constants.MainnetDepositContractAddress));
+            Assert.That(labelSpec.Parameters.DepositContractAddress, Is.EqualTo(Eip6110Constants.MainnetDepositContractAddress));
+        }
+    }
+
+    [Test]
     public void Per_eip_only_chainspec_is_unaffected()
     {
         ChainSpec spec = Load("\"eip4844TransitionTimestamp\": \"0x55\", \"eip4788TransitionTimestamp\": \"0x55\"");
