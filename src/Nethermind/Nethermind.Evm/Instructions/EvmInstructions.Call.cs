@@ -288,7 +288,7 @@ public static partial class EvmInstructions
             return inlineResult;
         }
 
-        return CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(vm, ref stack, ref gas, in dataOffset, dataLength, outputOffset, outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
+        return CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(vm, ref stack, ref gas, in dataOffset, in dataLength, in outputOffset, in outputLength, codeInfo, target, caller, codeSource, env, in callValue, gasLimitUl, chargesNewAccount);
 
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
@@ -334,9 +334,9 @@ public static partial class EvmInstructions
         ref EvmStack stack,
         ref TGasPolicy gas,
         in UInt256 dataOffset,
-        UInt256 dataLength,
-        UInt256 outputOffset,
-        UInt256 outputLength,
+        in UInt256 dataLength,
+        in UInt256 outputOffset,
+        in UInt256 outputLength,
         CodeInfo codeInfo,
         Address target,
         Address caller,
@@ -368,12 +368,7 @@ public static partial class EvmInstructions
             value: in callValue,
             inputData: in callData);
 
-        // Normalize output offset if output length is zero.
-        if (outputLength.IsZero)
-        {
-            // Output offset is inconsequential when output length is 0.
-            outputOffset = default;
-        }
+        long outputDestination = outputLength.IsZero ? 0 : outputOffset.ToLong();
 
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
 
@@ -385,7 +380,7 @@ public static partial class EvmInstructions
             return vm.InlinePrecompileCall<TTracingInst>(
                 callEnv,
                 childGas,
-                outputOffset.ToLong(),
+                outputDestination,
                 outputLength.ToLong(),
                 TOpCall.ExecutionType,
                 TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
@@ -399,7 +394,7 @@ public static partial class EvmInstructions
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
             vm.FrameCache,
             gas: childGas,
-            outputDestination: outputOffset.ToLong(),
+            outputDestination: outputDestination,
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
             isStatic: TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
