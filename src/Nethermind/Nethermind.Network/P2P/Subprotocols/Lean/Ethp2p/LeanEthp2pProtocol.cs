@@ -55,12 +55,15 @@ public static class LeanEthp2pProtocol
     /// <summary>Inbound unidirectional streams per connection: both control streams, one per live response, and broadcast.</summary>
     public const int MaxInboundStreams = 2 + LeanProtocol.MaxRequestsPerPeer + MaxBroadcastStreams;
 
-    /// <summary>Per-stream receive window, at least one maximal frame; QUIC requires a power of two.</summary>
-    public const int StreamReceiveWindow = 256 * 1024;
+    /// <summary>Per-stream receive window: EIP-8437's recommended 4 MiB, which holds a full GetChunks response, so one round
+    /// trip does not limit a response's throughput; QUIC requires a power of two.</summary>
+    public const int StreamReceiveWindow = 4 * 1024 * 1024;
 
-    /// <summary>Connection receive window, at least every inbound stream's full window, so neither control stream is ever
-    /// starved by the others; QUIC requires a power of two.</summary>
-    public const int ConnectionReceiveWindow = 32 * 1024 * 1024;
+    /// <summary>Connection receive window, above EIP-8437's recommended 32 MiB: room for the full windows of both control
+    /// streams and every live response stream plus a maximal frame on every broadcast stream, so the control streams are
+    /// never starved by the others; QUIC requires a power of two.</summary>
+    /// <remarks>Bytes are buffered only while the application lags its reads; this bounds them, it is not an allocation.</remarks>
+    public const int ConnectionReceiveWindow = 64 * 1024 * 1024;
 
     /// <summary>Encodes <c>U8(message_id) || U32(payload_length) || payload</c>.</summary>
     public static byte[] Frame(int messageId, ReadOnlySpan<byte> payload, bool responsePrefix = false, ulong requestId = 0)
