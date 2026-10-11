@@ -8,10 +8,12 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public interface ITrieWarmer
 {
+    /// <param name="isDelete">The slot is being set to zero; see <see cref="IStorageWarmer.WarmUpStorageTrie"/>.</param>
     public bool PushSlotJob(
         IStorageWarmer storageTree,
         in UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool isDelete);
 
     /// <summary>
     /// Like <see cref="PushSlotJob"/>, but safe to call from multiple producer threads.
@@ -21,7 +23,8 @@ public interface ITrieWarmer
     public bool PushSlotJobMpmc(
         IStorageWarmer storageTree,
         in UInt256 index,
-        int sequenceId);
+        int sequenceId,
+        bool isDelete);
 
     public bool PushAddressJob(
         IAddressWarmer scope,
@@ -44,6 +47,12 @@ public interface ITrieWarmer
 
     public interface IStorageWarmer
     {
-        bool WarmUpStorageTrie(UInt256 index, int sequenceId);
+        /// <param name="index">The slot whose trie path is warmed.</param>
+        /// <param name="sequenceId">The hint sequence the job was queued under; a stale one is skipped.</param>
+        /// <param name="isDelete">
+        /// The slot is being set to zero, so its leaf will be removed. Removing a leaf can collapse its branch
+        /// into the one child left, which the path alone does not load.
+        /// </param>
+        bool WarmUpStorageTrie(UInt256 index, int sequenceId, bool isDelete);
     }
 }
