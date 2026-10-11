@@ -47,15 +47,24 @@ LABEL org.opencontainers.image.title="Nethermind" \
   org.opencontainers.image.created="$BUILD_TIMESTAMP"
 
 # System.Net.Quic needs libmsquic for the optional EIP-8437 ethp2p binding (Network.LeanBindings=Ethp2p).
-# Ubuntu does not package it, so it comes from Microsoft's signed repository.
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends ca-certificates curl && \
-  curl -fsSL https://packages.microsoft.com/keys/microsoft.asc -o /etc/apt/keyrings/microsoft.asc && \
-  echo "deb [signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/ubuntu/26.04/prod resolute main" \
+# Ubuntu does not package it, so it comes from Microsoft's signed repository. Repositories created after
+# April 2025, such as Ubuntu 26.04's, are signed with microsoft-2025.asc; its fingerprint is pinned as
+# published at https://learn.microsoft.com/linux/packages, and any other key fails the build.
+RUN expected=AA86F75E427A19DD33346403EE4D7792F748182B && \
+  apt-get update && \
+  apt-get install -y --no-install-recommends ca-certificates curl gpg && \
+  curl -fsSL https://packages.microsoft.com/keys/microsoft-2025.asc -o /etc/apt/keyrings/microsoft-2025.asc && \
+  export GNUPGHOME="$(mktemp -d)" && \
+  fingerprint=$(gpg --show-keys --with-colons /etc/apt/keyrings/microsoft-2025.asc | awk -F: '$1 == "fpr" { print $10 }') && \
+  rm -rf "$GNUPGHOME" && \
+  if [ "$fingerprint" != "$expected" ]; then \
+    echo "microsoft-2025.asc has fingerprint '$fingerprint', expected $expected" >&2; exit 1; \
+  fi && \
+  echo "deb [signed-by=/etc/apt/keyrings/microsoft-2025.asc] https://packages.microsoft.com/ubuntu/26.04/prod resolute main" \
     > /etc/apt/sources.list.d/microsoft-prod.list && \
   apt-get update && \
   apt-get install -y --no-install-recommends libmsquic && \
-  apt-get purge -y --auto-remove curl && \
+  apt-get purge -y --auto-remove curl gpg && \
   rm -rf /var/lib/apt/lists/*
 
 WORKDIR /nethermind
