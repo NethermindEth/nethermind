@@ -559,6 +559,11 @@ public class BlockProcessingBenchmark
                 .WithGasLimit(30_000_000)
                 .TestObject;
             stateHeaderProvider.Parent = _parentHeader;
+
+            // Every scenario block shares _header, and BranchProcessor opens a block's scope at the state of the
+            // header its ParentHash resolves to.
+            _header.ParentHash = _parentHeader.Hash;
+            _header.Hash = _header.CalculateHash();
         }
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();
