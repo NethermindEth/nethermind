@@ -20,7 +20,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 {
     public const string PrestateTracer = "prestateTracer";
 
-    public UInt256 InstructionMask => _isEip5920Enabled ? CaptureMask | (UInt256.One << (int)Instruction.PAY) : CaptureMask;
+    public UInt256 InstructionMask { get; }
 
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
@@ -37,6 +37,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly bool _diffMode;
     // Before EIP-5920, 0xfc is an undefined opcode and its operand is no account.
     private readonly bool _isEip5920Enabled;
+    private readonly bool _isEip8298Enabled;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -49,7 +50,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         IReleaseSpec? releaseSpec = null)
         : base(options)
     {
-        _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
@@ -58,6 +58,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
+        _isEip5920Enabled = releaseSpec?.IsEip5920Enabled == true;
+        _isEip8298Enabled = releaseSpec?.IsEip8298Enabled == true;
+        UInt256 instructionMask = CaptureMask;
+        if (_isEip5920Enabled) instructionMask |= UInt256.One << (int)Instruction.PAY;
+        if (_isEip8298Enabled) instructionMask |= UInt256.One << (int)Instruction.SETCODEFROM;
+        InstructionMask = instructionMask;
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -164,7 +170,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _executingAccount = env.ExecutingAccount;
 
         IsTracingMemory = _op == Instruction.CREATE2;
-        IsTracingStack = RequiresStack(_op) || (_op == Instruction.PAY && _isEip5920Enabled);
+        IsTracingStack = RequiresStack(_op)
+            || (_op == Instruction.PAY && _isEip5920Enabled)
+            || (_op == Instruction.SETCODEFROM && _isEip8298Enabled);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -205,6 +213,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     LookupAccount(address);
                     if (_diffMode && _op == Instruction.SELFDESTRUCT)
                         _deletedAccounts.Add(address);
+                }
+                break;
+            // EIP-8298: SETCODEFROM reads the source account's code.
+            case Instruction.SETCODEFROM when _isEip8298Enabled:
+                if (stackLen >= 1)
+                {
+                    LookupAccount(stack.PeekAddress(0));
                 }
                 break;
             case Instruction.DELEGATECALL:

@@ -237,6 +237,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip3298Enabled { get; set; }
 
     public bool IsEip7805Enabled { get; set; }
+    public bool IsEip8298Enabled { get; set; }
 
     private ReleaseSpec? _systemSpec;
 
