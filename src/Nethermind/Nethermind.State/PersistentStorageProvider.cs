@@ -261,9 +261,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LoadCapturedOriginal(in StorageCell storageCell)
     {
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
 
@@ -373,9 +371,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceOriginalValues(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         foreach ((StorageCell cell, UInt256 originalValue) in _originalValues)
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
@@ -398,9 +394,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         bool hasStorageClears = _storageClearJournal.Count != 0;
 
         // Heads come mostly grouped by contract, so the root set is probed once per run of one.
@@ -768,6 +762,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _lastCapturedOriginal = slot;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureOriginalsIndexed() { }
+
 #else
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
@@ -895,9 +892,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 if (tracer.IsTracingStorage)
                 {
-#if !ZK_EVM
                     EnsureOriginalsIndexed();
-#endif
                     foreach (StorageCell cell in _originalValues.Keys)
                     {
                         tracer.ReportStorageRead(cell);
@@ -922,9 +917,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void ResetContractState(Address address)
     {
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _toUpdateRoots.TryAdd(address, true);
         PerContractState state = GetOrCreateStorage(address);
@@ -940,9 +933,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return;
         }
 
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         List<KeyValuePair<StorageCell, UInt256>>? originalValues = null;
         // Every storage read/write registers the contract before adding originals or journal entries.
         if (contractState is not null)
@@ -1011,9 +1002,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     protected override void RestoreStorageClear(int journalIndex)
     {
-#if !ZK_EVM
         EnsureOriginalsIndexed();
-#endif
         int lastIndex = _storageClearJournal.Count - 1;
         if ((uint)journalIndex >= (uint)_storageClearJournal.Count || journalIndex != lastIndex)
         {
