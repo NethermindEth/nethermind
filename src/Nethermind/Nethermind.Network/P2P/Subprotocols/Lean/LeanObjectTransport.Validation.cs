@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -45,6 +46,12 @@ public sealed partial class LeanObjectTransport
             offset += chunk.Length;
             if (assembly.ChargedTo[index] is { } contributor && !assembly.Contributors.Contains(contributor)) assembly.Contributors.Add(contributor);
         }
+        Enqueue(assembly, body, outbox);
+    }
+
+    /// <summary>Hands a complete body, whose copy is already reserved, to processing and stops retrieving its chunks.</summary>
+    private void Enqueue(LeanAssembly assembly, byte[] body, Outbox outbox)
+    {
         ReleaseChunks(assembly);
         assembly.Body = body;
         assembly.Queued = true;
@@ -179,6 +186,9 @@ public sealed partial class LeanObjectTransport
             case Verdict.Valid:
                 Interlocked.Increment(ref _stats.Validated);
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.Validated);
+                if (assembly.BroadcastStarted is { } broadcastStarted)
+                    LeanMetrics.Transferred(descriptor.Kind, broadcast: true, Stopwatch.GetElapsedTime(broadcastStarted));
+                else LeanMetrics.Transferred(descriptor.Kind, broadcast: false, _clock.GetElapsedTime(assembly.Created));
                 if (_logger.IsDebug) _logger.Debug($"lean/1 validated {descriptor} from {assembly.Contributors.Count} peer(s)");
                 break;
             case Verdict.Invalid:

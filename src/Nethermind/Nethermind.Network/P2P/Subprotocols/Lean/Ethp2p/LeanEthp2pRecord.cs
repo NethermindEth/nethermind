@@ -11,20 +11,15 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 
 /// <summary>The EIP-778 entry <c>leanq = [1, udp_port]</c> advertising the ethp2p binding.</summary>
-public sealed class LeanqEntry(int port) : EnrContentEntry<int>(port)
+/// <remarks>The value is held as its RLP encoding, the form a parsed record exposes for keys it does not know.</remarks>
+public sealed class LeanqEntry(int port)
+    : EnrContentEntry<byte[]>(Serialization.Rlp.Rlp.Encode(new[] { Serialization.Rlp.Rlp.Encode(LeanEthp2pProtocol.EnrVersion), Serialization.Rlp.Rlp.Encode(port) }).Bytes)
 {
     public override string Key => LeanEthp2pProtocol.EnrKey;
 
-    private int ContentLength => Rlp.LengthOf(LeanEthp2pProtocol.EnrVersion) + Rlp.LengthOf(Value);
+    protected override int GetRlpLengthOfValue() => Value.Length;
 
-    protected override int GetRlpLengthOfValue() => Rlp.LengthOfSequence(ContentLength);
-
-    protected override void EncodeValue<TWriter>(ref TWriter writer)
-    {
-        writer.StartSequence(ContentLength);
-        writer.Encode(LeanEthp2pProtocol.EnrVersion);
-        writer.Encode(Value);
-    }
+    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Write(Value);
 }
 
 /// <summary>A peer's ethp2p endpoint and node key, taken from its signed node record.</summary>

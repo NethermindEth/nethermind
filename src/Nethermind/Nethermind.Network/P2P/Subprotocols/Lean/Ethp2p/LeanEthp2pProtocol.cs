@@ -14,31 +14,53 @@ public static class LeanEthp2pProtocol
     public const string Alpn = "ethp2p_lean_1";
     public static readonly SslApplicationProtocol ApplicationProtocol = new(Alpn);
 
+    /// <summary>The TLS server name a dialer sends; peers authenticate by certificate, never by name.</summary>
+    /// <remarks>Without one .NET sends the peer's IP literal, which TLS forbids as a server name and msquic fails.</remarks>
+    public const string ServerName = "ethp2p";
+
     /// <summary>The EIP-778 key advertising <c>[version, udp_port]</c>.</summary>
     public const string EnrKey = "leanq";
     public const ulong EnrVersion = 1;
 
-    public const byte ControlStream = 0x00;
-    public const byte ResponseStream = 0x01;
+    /// <summary>Broadcast framework stream selectors, single bytes as in the framework's reference implementation.</summary>
+    public const byte BcastStream = 0x01;
+    public const byte SessStream = 0x02;
+    public const byte ChunkStream = 0x03;
+
+    /// <summary>Retrieval stream selectors of this profile.</summary>
+    public const byte ControlStream = 0x10;
+    public const byte ResponseStream = 0x11;
     public const int ResponsePrefixBytes = 1 + sizeof(ulong);
     public const int FrameHeaderBytes = 1 + sizeof(uint);
 
     /// <summary>Application error for <c>STOP_SENDING</c> and <c>RESET_STREAM</c> of a request's response stream.</summary>
     public const long RequestCancelledError = 0x01;
 
+    /// <summary>The framework's completion signal: <c>RESET_STREAM</c> of the reconstructing node's outbound SESS stream.</summary>
+    public const long ReconstructedError = 0x01;
+
+    /// <summary>Refusal of a framework stream: not subscribed, not yet ready, duplicate or over budget. Not a fault.</summary>
+    public const long RefusedError = 0x00;
+
     /// <summary>Connection close without fault: shutdown, incompatible Status or a duplicate connection.</summary>
     /// <remarks>EIP-8437 defines no connection error codes; these are local choices.</remarks>
     public const long NoError = 0x00;
     public const long ProtocolViolationError = 0x02;
 
-    /// <summary>Inbound unidirectional streams per connection: the control stream and one per live response.</summary>
-    public const int MaxInboundStreams = 1 + LeanProtocol.MaxRequestsPerPeer;
+    /// <summary>Inbound SESS and CHUNK streams allowed at once: one SESS stream per live session and some CHUNK streams.</summary>
+    /// <remarks>QUIC has one unidirectional stream limit, so SESS streams, which live as long as their session, must not use up
+    /// the allowance that CHUNK and retrieval response streams need.</remarks>
+    public const int MaxBroadcastStreams = LeanBroadcastEngine.MaxSessions + 16;
 
-    /// <summary>Per-stream receive window: two maximal frames, so a stream never stalls mid-frame on flow control.</summary>
-    public const int StreamReceiveWindow = 2 * (FrameHeaderBytes + LeanProtocol.MaxMessageBytes);
+    /// <summary>Inbound unidirectional streams per connection: both control streams, one per live response, and broadcast.</summary>
+    public const int MaxInboundStreams = 2 + LeanProtocol.MaxRequestsPerPeer + MaxBroadcastStreams;
 
-    /// <summary>Connection receive window: every inbound stream's full window, reserving capacity for the control stream.</summary>
-    public const int ConnectionReceiveWindow = MaxInboundStreams * StreamReceiveWindow;
+    /// <summary>Per-stream receive window, at least one maximal frame; QUIC requires a power of two.</summary>
+    public const int StreamReceiveWindow = 256 * 1024;
+
+    /// <summary>Connection receive window, at least every inbound stream's full window, so neither control stream is ever
+    /// starved by the others; QUIC requires a power of two.</summary>
+    public const int ConnectionReceiveWindow = 32 * 1024 * 1024;
 
     /// <summary>Encodes <c>U8(message_id) || U32(payload_length) || payload</c>.</summary>
     public static byte[] Frame(int messageId, ReadOnlySpan<byte> payload, bool responsePrefix = false, ulong requestId = 0)

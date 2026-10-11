@@ -32,10 +32,11 @@ public class Lean1ProtocolHandlerTests
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
     /// <summary>One direction of a connection: messages are encoded, queued and handled in order by the remote handler.</summary>
-    private sealed class Wire : IAsyncDisposable
+    internal sealed class Wire : IAsyncDisposable
     {
         private readonly Channel<(int Type, byte[] Data)> _queue = Channel.CreateUnbounded<(int, byte[])>();
         private readonly Task _reader;
+        private long _bytes;
 
         public Wire(Func<Lean1ProtocolHandler?> remote) => _reader = Task.Run(async () =>
         {
@@ -48,7 +49,15 @@ public class Lean1ProtocolHandlerTests
             }
         });
 
-        public void Post(LeanMessage message) => _queue.Writer.TryWrite((message.PacketType, Encode(message)));
+        /// <summary>Encoded message-data bytes posted, before RLPx compression and framing.</summary>
+        public long Bytes => Interlocked.Read(ref _bytes);
+
+        public void Post(LeanMessage message)
+        {
+            byte[] data = Encode(message);
+            Interlocked.Add(ref _bytes, 1 + data.Length);
+            _queue.Writer.TryWrite((message.PacketType, data));
+        }
 
         public async ValueTask DisposeAsync()
         {
@@ -72,7 +81,7 @@ public class Lean1ProtocolHandlerTests
         _ => throw new ArgumentException(message.GetType().Name)
     };
 
-    private sealed class Side(LeanTestNode node, ISession session, Lean1ProtocolHandler handler, ConcurrentQueue<string> disconnects)
+    internal sealed class Side(LeanTestNode node, ISession session, Lean1ProtocolHandler handler, ConcurrentQueue<string> disconnects)
     {
         public LeanTestNode Node { get; } = node;
         public ISession Session { get; } = session;
@@ -112,7 +121,7 @@ public class Lean1ProtocolHandlerTests
         session.When(s => s.DeliverMessage(Arg.Any<T>())).Do(call => post?.Invoke(call.Arg<T>()));
 
     /// <summary>Two nodes connected by ordered in-process wires, with both handshakes completed.</summary>
-    private sealed class Connection : IAsyncDisposable
+    internal sealed class Connection : IAsyncDisposable
     {
         private readonly Wire _toA;
         private readonly Wire _toB;
@@ -127,6 +136,7 @@ public class Lean1ProtocolHandlerTests
 
         public Side A { get; }
         public Side B { get; }
+        public long Bytes => _toA.Bytes + _toB.Bytes;
 
         public async Task Open()
         {

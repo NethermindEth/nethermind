@@ -318,6 +318,9 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton
     public bool MetadataReleased { get; set; }
     public byte[]? Body { get; set; }
 
+    /// <summary>The <see cref="System.Diagnostics.Stopwatch"/> timestamp of the accepted broadcast session that supplied the body.</summary>
+    public long? BroadcastStarted { get; set; }
+
     public bool IsComplete => Received == Chunks.Length;
 
     public long ChargeOf(int index) => Descriptor.ChunkLength(index) + Descriptor.Depth * 32L + LeanLimits.ChunkBookkeepingBytes;

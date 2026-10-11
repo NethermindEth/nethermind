@@ -15,25 +15,26 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 
-/// <summary>One authenticated QUIC connection carrying <c>lean/1</c> under the EIP-8437 ethp2p binding.</summary>
+/// <summary>One authenticated QUIC connection under the EIP-8437 ethp2p application profile: requested retrieval and broadcast.</summary>
 /// <remarks>
 /// <para>
-/// Each endpoint opens one unidirectional control stream (<c>0x00</c>, Status first) for AnnounceObjects, GetObjects,
-/// GetChunks, Cancel and GetTransactions, so requests keep their consecutive IDs and order. Every response travels on its
-/// own unidirectional stream (<c>0x01 || U64(request_id)</c>) finished by FIN after its terminal message, so response streams
-/// advance independently. The shared <see cref="LeanObjectTransport"/> keeps object commitments, validation, credit and
-/// deadlines; this class only maps its messages onto streams.
+/// One dispatcher routes the stream selectors <c>0x01</c> BCAST, <c>0x02</c> SESS and <c>0x03</c> CHUNK of the broadcast
+/// framework and <c>0x10</c>, <c>0x11</c> of retrieval. Each endpoint opens one retrieval control stream (<c>0x10</c>, Status
+/// first) for AnnounceObjects, GetObjects, GetChunks, Cancel and GetTransactions, so requests keep their consecutive IDs and
+/// order. Every response travels on its own stream (<c>0x11 || U64(request_id)</c>) finished by FIN after its terminal
+/// message, so response streams advance independently. The shared <see cref="LeanObjectTransport"/> keeps object commitments,
+/// validation, credit and deadlines; this class only maps its messages onto streams.
 /// </para>
 /// <para>
 /// Bounds: the connection grants <see cref="LeanEthp2pProtocol.MaxInboundStreams"/> inbound streams and receive windows
-/// that reserve room for the control stream; partial prefixes and control frames expire after
+/// that reserve room for both control streams; partial prefixes, envelopes and control frames expire after
 /// <see cref="LeanProtocol.MaxRequestIdle"/>, and identified response streams follow their request's deadlines.
 /// </para>
 /// </remarks>
 [SupportedOSPlatform("linux")]
 [SupportedOSPlatform("macos")]
 [SupportedOSPlatform("windows")]
-internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler, IAsyncDisposable
+internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler, IAsyncDisposable
 {
     /// <summary>Responses waiting for or holding a stream; beyond it a response is dropped and its request expires.</summary>
     internal const int MaxOutgoingResponses = 2 * LeanProtocol.MaxRequestsPerPeer;
@@ -62,10 +63,11 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
     private int _closeStarted;
     private int _activeStreams;
 
-    public LeanEthp2pConnection(QuicConnection quic, PublicKey remoteKey, bool outbound, LeanObjectTransport transport, ILogManager logManager,
-        TimeProvider? timeProvider = null)
+    public LeanEthp2pConnection(QuicConnection quic, PublicKey remoteKey, bool outbound, LeanObjectTransport transport, LeanBroadcastEngine? engine,
+        ILogManager logManager, TimeProvider? timeProvider = null)
     {
         _quic = quic;
+        _engine = engine;
         RemoteKey = remoteKey;
         Outbound = outbound;
         _transport = transport;
@@ -102,9 +104,10 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
         else
         {
             Task writer = WriteControlAsync(status);
+            Task bcast = WriteBcastAsync();
             Task acceptor = AcceptStreamsAsync();
             Task sweeper = SweepAsync();
-            await Task.WhenAll(writer, acceptor, sweeper).ConfigureAwait(false);
+            await Task.WhenAll(writer, bcast, acceptor, sweeper).ConfigureAwait(false);
         }
         await _closed.Task.ConfigureAwait(false);
     }
@@ -115,7 +118,9 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
         if (Interlocked.Exchange(ref _closeStarted, 1) != 0) return;
         if (_logger.IsDebug) _logger.Debug($"{Description} closing: {reason}");
         if (Volatile.Read(ref _peer) is { } peer) _transport.Remove(peer);
+        _engine?.RemovePeer(this);
         _control.Writer.TryComplete();
+        _bcast.Writer.TryComplete();
         _closing.Cancel();
         _ = CloseQuicAsync(errorCode);
     }
@@ -181,9 +186,11 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
             await using QuicStream stream = await _quic.OpenOutboundStreamAsync(QuicStreamType.Unidirectional, token).ConfigureAwait(false);
             byte[] statusFrame = LeanEthp2pProtocol.Frame(LeanMessageCode.Status, LeanEthp2pProtocol.Encode(status));
             await stream.WriteAsync((byte[])[LeanEthp2pProtocol.ControlStream, .. statusFrame], token).ConfigureAwait(false);
+            LeanMetrics.Ethp2pBytes(outbound: true, LeanEthp2pProtocol.ControlStream, 1 + statusFrame.Length);
             await foreach (byte[] frame in _control.Reader.ReadAllAsync(token).ConfigureAwait(false))
             {
                 await stream.WriteAsync(frame, token).ConfigureAwait(false);
+                LeanMetrics.Ethp2pBytes(outbound: true, LeanEthp2pProtocol.ControlStream, frame.Length);
                 Interlocked.Add(ref _controlBacklog, -frame.Length);
             }
         }
@@ -234,7 +241,19 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
                     Finish(reader);
                     break;
                 }
-                reader.Feed(buffer.AsSpan(0, read));
+                LeanMetrics.Ethp2pBytes(outbound: false, reader.Type ?? buffer[0], read);
+                try
+                {
+                    reader.Feed(buffer.AsSpan(0, read));
+                }
+                catch (LeanEthp2pOtherStreamException other)
+                {
+                    // Framework streams keep their own deadlines, from this stream's acceptance onwards.
+                    lock (_lock) _incoming.Remove(incoming);
+                    await ReadFrameworkStreamAsync(incoming.Stream, other.Selector, buffer.AsSpan(1, read - 1).ToArray(), incoming.Accepted)
+                        .ConfigureAwait(false);
+                    break;
+                }
                 if (!Track(incoming)) break;
                 if (reader.IsDiscarding)
                 {
@@ -370,7 +389,11 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
         }
         Volatile.Write(ref _peer, peer);
         if (_closing.IsCancellationRequested) _transport.Remove(peer);
-        else if (_logger.IsDebug) _logger.Debug($"lean/1 established over {Description}");
+        else
+        {
+            if (_logger.IsDebug) _logger.Debug($"lean/1 established over {Description}");
+            TryBecomeReady();
+        }
     }
 
     async ValueTask<bool> ILeanLink.SendChunkAsync(ChunkMessage message, CancellationToken cancellationToken)
@@ -439,6 +462,7 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
             response.Stream ??= await _quic.OpenOutboundStreamAsync(QuicStreamType.Unidirectional, deadline.Token).ConfigureAwait(false);
             byte[] frame = LeanEthp2pProtocol.Frame(messageId, payload, !response.Opened, response.RequestId);
             await response.Stream.WriteAsync(frame, finish, deadline.Token).ConfigureAwait(false);
+            LeanMetrics.Ethp2pBytes(outbound: true, LeanEthp2pProtocol.ResponseStream, frame.Length);
             response.Opened = true;
             response.LastActivity = _clock.GetTimestamp();
             if (finish) await Retire(response, abort: false).ConfigureAwait(false);
@@ -482,9 +506,9 @@ internal sealed class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStreamHandler
     internal void Sweep()
     {
         long now = _clock.GetTimestamp();
-        if (!_statusReceived && _clock.GetElapsedTime(_established, now) >= LeanProtocol.MaxRequestIdle)
+        if ((!_statusReceived || !_handshakeReceived) && _clock.GetElapsedTime(_established, now) >= LeanProtocol.MaxRequestIdle)
         {
-            Close(LeanEthp2pProtocol.NoError, "no Status within MAX_REQUEST_IDLE_SECONDS");
+            Close(LeanEthp2pProtocol.NoError, "no Status and BCAST handshake within MAX_REQUEST_IDLE_SECONDS");
             return;
         }
         LeanPeer? peer = Volatile.Read(ref _peer);
