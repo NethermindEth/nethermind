@@ -301,6 +301,7 @@ public class LeanBroadcastTests
 
         public string Description { get; }
         public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
+        public bool IsClosed { get; set; }
         public BroadcastNode Remote { get; }
         public LinkPeer Reverse { get; set; } = null!;
         public ConcurrentQueue<string> Penalties { get; } = new();
@@ -519,6 +520,21 @@ public class LeanBroadcastTests
             Assert.That(new[] { originToHolder, holderToOrigin, holderToReceiver, receiverToHolder }.SelectMany(p => p.Penalties), Is.Empty,
                 "a manifest fault penalizes no relay");
         }
+    }
+
+    [Test]
+    public async Task Closed_peer_is_not_added_to_the_engine()
+    {
+        using BroadcastNode origin = new(), receiver = new();
+        LinkPeer toReceiver = new("closed", receiver) { IsClosed = true };
+        toReceiver.Reverse = new LinkPeer("origin", origin) { Reverse = toReceiver };
+        origin.Engine.AddPeer(toReceiver);
+        (LeanBroadcastManifest manifest, _) = await Package(origin, 8);
+
+        Assert.That(origin.Engine.Originate(manifest, TestBroadcastProfile.Sign(manifest), []), Is.True);
+
+        await Task.Delay(300);
+        Assert.That(receiver.Engine.SessionCount, Is.Zero, "no session was opened toward the closed peer");
     }
 
     [Test]

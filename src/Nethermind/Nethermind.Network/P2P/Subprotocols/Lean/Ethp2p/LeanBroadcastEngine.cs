@@ -22,6 +22,9 @@ internal interface ILeanBroadcastPeer
     /// <summary>The peer's advertised receive ceiling, which a sender must respect.</summary>
     ulong MaxObjectBytes { get; }
 
+    /// <summary>Whether the connection started closing; it is set before the peer is removed from the engine.</summary>
+    bool IsClosed { get; }
+
     /// <summary>Whether the peer subscribed to <paramref name="channel"/> through BCAST.</summary>
     bool IsSubscribed(string channel);
 
@@ -135,9 +138,10 @@ internal sealed class LeanBroadcastEngine : IDisposable
     private bool IsLocalChannel(string channel) => Array.IndexOf((string[])Channels, channel) >= 0;
 
     /// <summary>Registers a peer whose handshake and Status were both accepted.</summary>
+    /// <remarks>A closed peer is not added: its removal may already have run.</remarks>
     public void AddPeer(ILeanBroadcastPeer peer)
     {
-        lock (_gate) if (!_disposed) _peers.Add(peer);
+        lock (_gate) if (!_disposed && !peer.IsClosed) _peers.Add(peer);
     }
 
     public void RemovePeer(ILeanBroadcastPeer peer)
