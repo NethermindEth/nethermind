@@ -7,7 +7,7 @@
 # a list that disagrees with the one the guest was compiled against does not
 # fail to load - it computes the right operation on the wrong field. Transcribed
 # from accel-rs init.rs in NethermindEth/bflat-openvm, as shipped in
-# Nethermind.OpenVM.Runtime 1.0.0-preview.1, which Directory.Packages.props
+# Nethermind.OpenVM.Runtime 1.0.0-preview.2, which Directory.Packages.props
 # pins exactly for this reason. Re-check this file against init.rs whenever that
 # pin moves; nothing enforces the coupling automatically.
 [app_vm_config.rv64i]
