@@ -294,6 +294,12 @@ public sealed class BlobArenaManager : IDisposable
         _mutableFiles.Add(file.BlobArenaId);
     }
 
+    internal void PreserveFilesOnFailure()
+    {
+        using Lock.Scope scope = _lock.EnterScope();
+        foreach (BlobArenaFile? file in _files) file?.PersistOnShutdown();
+    }
+
     public void Dispose()
     {
         using Lock.Scope scope = _lock.EnterScope();

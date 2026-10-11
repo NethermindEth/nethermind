@@ -506,6 +506,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8347: Binary trie state migration.
+        /// </summary>
+        public bool IsEip8347Enabled { get; }
+
+        /// <summary>
         /// EIP-8253: Bump nonce of zero-nonce storage accounts.
         /// </summary>
         /// <remarks>

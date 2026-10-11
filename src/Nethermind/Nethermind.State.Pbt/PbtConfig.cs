@@ -1,0 +1,155 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Extensions;
+using Nethermind.Pbt;
+
+namespace Nethermind.State.Pbt;
+
+public class PbtConfig : IPbtConfig
+{
+    public bool Enabled { get; set; }
+    public long? MigrationAnchor { get; set; }
+    public string? MigrationSnapshotPath { get; set; }
+    public string? MigrationPreimagesPath { get; set; }
+    public bool MigrationGenesisBootstrap { get; set; }
+    public string? MigrationExportPath { get; set; }
+    public int ExportStepDistance { get; set; }
+    public int ExportConcurrency { get; set; }
+    public int ExportSortBufferBytes { get; set; } = (int)256UL.MiB;
+    public bool ExportPreimages { get; set; } = true;
+    public long MigrationVerifyBucketBytes { get; set; } = 4L.GiB;
+    public int ImportConcurrency { get; set; } = 1;
+    public bool FakeMatchingStateRoot { get; set; }
+    public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
+    public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
+    public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;
+    public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
+    public int CompactSize { get; set; } = 32;
+    public long CompactionOffset { get; set; } = -1;
+    public int MinReorgDepth { get; set; } = 128;
+    public int MaxReorgDepth { get; set; } = 256;
+    public bool EnableLongFinality { get; set; } = true;
+    public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
+    public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;
+    public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
+    public int MaxInFlightCompactJob { get; set; } = 32;
+    public bool InlineCompaction { get; set; } = false;
+    public bool RegenerateCompactionOffset { get; set; } = false;
+    public long ArenaFileSizeBytes { get; set; } = 1L.GiB;
+    public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1L.GiB;
+    public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 4L.GiB;
+    public bool PersistedSnapshotPunchHoleOnReclaim { get; set; } = true;
+    public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1048576;
+    public bool ValidatePersistedSnapshot { get; set; } = false;
+    public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public double InMemorySnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public bool ImportFromPreimageFlat { get; set; }
+    public int FoldConcurrency { get; set; }
+    public int FoldMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultMinOperationsPerWorker;
+    public long FoldLargeSubtreeBytes { get; set; } = FoldFanOut.DefaultLargeSubtreeBytes;
+    public int FoldLargeSubtreeMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker;
+    public int ImportWindowSize { get; set; }
+    public bool ScanTree { get; set; }
+    public int ScanTreeConcurrency { get; set; }
+
+    public bool CarryForwardCache { get; set; } = true;
+    public bool NativeNodeGroupMemory { get; set; } = true;
+    public bool TrieNodeLogEnabled { get; set; } = false;
+    public long TrieNodeLogAccountBytes { get; set; } = 500.MiB;
+    public long TrieNodeLogStorageBytes { get; set; } = 500.MiB;
+    public int TrieNodeLogAccountShardCount { get; set; } = 2;
+    public int TrieNodeLogStorageShardCount { get; set; } = 2;
+    public int TrieNodeLogMergeLag { get; set; } = 1;
+    public bool TrieNodeLogDrainOnShutdown { get; set; } = false;
+    public int TrieNodeLogMaxConcurrentMerges { get; set; } = 2;
+    public int TrieNodeLogMergeBacklogMargin { get; set; } = 2;
+    public int TrieNodeLogSecondLevelMergeLag { get; set; } = 1;
+
+    public string RocksDbOptions { get; set; } =
+
+        "min_write_buffer_number_to_merge=2;" +
+        "block_based_table_factory.block_restart_interval=4;" +
+        "block_based_table_factory.data_block_index_type=kDataBlockBinaryAndHash;" +
+        "block_based_table_factory.data_block_hash_table_util_ratio=0.7;" +
+        "block_based_table_factory.block_size=16000;" +
+        "block_based_table_factory.filter_policy=ribbonfilter:10:3;" +
+        "max_write_batch_group_size_bytes=4000000;" +
+        "block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;" +
+        "block_based_table_factory.prepopulate_block_cache=kFlushOnly;" +
+        "block_based_table_factory.whole_key_filtering=true;" +
+        "level_compaction_dynamic_level_bytes=false;" +
+
+        // Binary-search indexes trade memory for point-lookup latency.
+        "block_based_table_factory.partition_filters=false;" +
+        "block_based_table_factory.index_type=kBinarySearch;" +
+
+        "ttl=0;" +
+        "periodic_compaction_seconds=0;" +
+        "compression=kLZ4Compression;" +
+
+        "target_file_size_multiplier=2;" +
+
+        // Persistence flushes the WAL explicitly.
+        "manual_wal_flush=true;" +
+
+        "uncache_aggressiveness=1000;" +
+
+        "write_buffer_size=1000000;" +
+        "";
+
+    public string MetadataRocksDbOptions { get; set; } = "max_bytes_for_level_base=1000000;";
+
+    // Missing accounts, storage words and code records need last-level filters too.
+    private const string PbtCommonRecordOptions =
+        "optimize_filters_for_hits=false;" +
+        "target_file_size_base=64000000;" +
+        "";
+
+    // Mirrors the flat Account column: small, slim-encoded records where compression and locality buy little,
+    // so small blocks, small files and a small write buffer keep compaction and duplicate versions down.
+    public string AccountsRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
+        "compression=kNoCompression;" +
+        "target_file_size_multiplier=3;" +
+        "target_file_size_base=32000000;" +
+        "max_bytes_for_level_multiplier=15;" +
+        "max_bytes_for_level_base=128000000;" +
+        "block_based_table_factory.block_size=4096;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    // Code is written only on deployment, so this column is read-heavy.
+    public string CodesRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
+        "max_bytes_for_level_base=64000000;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=2;" +
+        "";
+
+    // Bulk-written by an anchor import: 32-byte hash values do not compress, and the shared 1 MB write buffer stalls the writers.
+    public string CodeLeavesRocksDbOptions { get; set; } =
+        "compression=kNoCompression;" +
+        "target_file_size_base=64000000;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    // Mirrors the flat Storage column: 8 KB blocks are faster IO-wise than 4 KB at a modest index-memory cost.
+    public string StoragesRocksDbOptions { get; set; } =
+        PbtCommonRecordOptions +
+        "block_based_table_factory.block_size=8000;" +
+        "write_buffer_size=32000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
+    public string NodeGroupsRocksDbOptions { get; set; } =
+        "level_compaction_dynamic_level_bytes=true;" +
+        "block_based_table_factory.block_restart_interval=8;" +
+        "block_based_table_factory.block_size=16000;" +
+        "max_bytes_for_level_base=350000000;" +
+        "write_buffer_size=64000000;" +
+        "max_write_buffer_number=8;" +
+        "";
+}

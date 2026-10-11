@@ -1027,6 +1027,33 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>Only a scope with authoritative storage roots may suppress reads for missing slots.</summary>
+    [Test]
+    public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = new(new WritesInterceptor(ctx.StateProvider.ScopeProvider, new WrittenData(new(), new(), new()), storageRootsAreAuthoritative: false), LogManager);
+
+        Hash256 stateRoot;
+        using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+            provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            stateRoot = provider.StateRoot;
+        }
+
+        using (IDisposable _ = provider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject))
+        {
+            provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 firstSlot);
+            provider.Get(new StorageCell(ctx.Address1, 2), out UInt256 secondSlot);
+            Assert.That(firstSlot, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+            Assert.That(secondSlot, Is.EqualTo(new UInt256(_values[2], isBigEndian: true)));
+        }
+    }
+
     [Test]
     public void Storage_root_collect_recomputes_all_changed_contracts_amid_warm_reads()
     {
@@ -2669,7 +2696,7 @@ public class StorageProviderTests(bool useFlat)
                     new ConcurrentDictionary<StorageCell, byte[]>(),
                     new ConcurrentDictionary<Address, bool>()
                 );
-                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData);
+                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData, storageRootsAreAuthoritative: true);
             }
 
             StateProvider = new WorldState(scopeProvider, LogManager);
@@ -2698,7 +2725,7 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
+    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData, bool storageRootsAreAuthoritative) : IWorldStateScopeProvider
     {
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
@@ -2713,21 +2740,23 @@ public class StorageProviderTests(bool useFlat)
                 return false;
             }
 
-            scope = new ScopeDecorator(baseScope, writtenData);
+            scope = new ScopeDecorator(baseScope, writtenData, storageRootsAreAuthoritative);
             return true;
         }
 
         public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
         {
-            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData, storageRootsAreAuthoritative);
             return true;
         }
 
-        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
+        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData, bool storageRootsAreAuthoritative) : IWorldStateScopeProvider.IScope
         {
             public void Dispose() => baseScope.Dispose();
 
             public Hash256 RootHash => baseScope.RootHash;
+
+            public bool StorageRootsAreAuthoritative => storageRootsAreAuthoritative;
 
             public void UpdateRootHash() => baseScope.UpdateRootHash();
 

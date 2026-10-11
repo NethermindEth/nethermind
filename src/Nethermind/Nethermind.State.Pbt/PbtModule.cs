@@ -1,0 +1,76 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Autofac;
+using Nethermind.Api.Steps;
+using Nethermind.Core;
+using Nethermind.Core.Buffers;
+using Nethermind.Db;
+using Nethermind.Init.Modules;
+using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Migration;
+using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.ScopeProvider;
+using Nethermind.State.Pbt.Steps;
+using Nethermind.Synchronization.ParallelSync;
+
+namespace Nethermind.State.Pbt;
+
+/// <summary>
+/// Wires the PBT backend and substitutes it for the backend picked by
+/// <c>WorldStateDbDeciderModule</c>: plugin modules load after the core modules, so these
+/// last-wins registrations override every decider-selected service, and neither the Patricia nor
+/// the flat state graph is ever constructed.
+/// </summary>
+public class PbtModule(IPbtConfig config) : Module
+{
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            .AddPbtCore(config)
+
+            .Bind<IWorldStateManager, PbtWorldStateManager>()
+            .AddSingleton<PbtStateBoundary>()
+            .Bind<IStateBoundary, PbtStateBoundary>()
+            .Bind<IFullStateFinder, PbtStateBoundary>()
+            .AddSingleton<IMigrationTelemetry>(NullMigrationTelemetry.Instance);
+
+        if (config.CarryForwardCache)
+            builder.AddDecorator<IPbtPersistence, PbtCarryForwardCachingPersistence>();
+
+        if (config.FakeMatchingStateRoot)
+            builder.AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>();
+        else
+            builder.AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance);
+
+        // Registered unconditionally so `nethermind import-pbt`, `nethermind import-pbt-snapshot` and `nethermind scan-pbt` can always find them.
+        // Carrying [StepCommand] keeps them out of a normal node start; they run only when selected below or by name.
+        builder
+            // PBT does not load the flat database module.
+            .AddColumnDatabase<FlatDbColumns>(DbNames.Flat)
+            // Import requires a PreimageFlat source; persistence validates the recorded layout.
+            .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
+                (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
+            .AddSingleton<PbtRebuilder>()
+            .AddStep(typeof(ImportPbtFromPreimageFlat))
+            .AddStep(typeof(ImportPbtSnapshot))
+            .AddSingleton<PbtScanner>()
+            .AddStep(typeof(ScanPbtTree));
+
+        if (config.ImportFromPreimageFlat)
+            builder.SelectStepTarget(typeof(ImportPbtFromPreimageFlat));
+
+        if (config.ScanTree)
+            builder.SelectStepTarget(typeof(ScanPbtTree));
+
+        builder.OnBuild(ctx =>
+        {
+            if (ctx.Resolve<ChainSpec>().Parameters.Eip8347TransitionTimestamp is not null) return;
+            ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<PbtModule>();
+            if (logger.IsInfo) logger.Info("No binaryTrieTime in the chain specification; assuming the EIP-8297 binary tree state from genesis.");
+        });
+    }
+}
