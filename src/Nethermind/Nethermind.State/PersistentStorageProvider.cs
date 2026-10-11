@@ -77,8 +77,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
-        _pendingOriginalValues?.Dispose();
-        _pendingOriginalValues = null;
+        ClearPendingOriginals();
         _originalsIndexed = false;
         if (_parkedOriginalValues is not null)
         {
@@ -750,11 +749,24 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 CaptureIndexedOriginalValue(entry.Key, entry.Value);
             }
 
-            pending.Dispose();
-            _pendingOriginalValues = null;
+            ClearPendingOriginals();
         }
 
         _originalsIndexed = true;
+    }
+
+    private void ClearPendingOriginals()
+    {
+        if (_pendingOriginalValues is not { } pending) return;
+        if (pending.Capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+        {
+            pending.Dispose();
+            _pendingOriginalValues = null;
+        }
+        else
+        {
+            pending.Clear();
+        }
     }
 
     private UInt256 CaptureIndexedOriginalValue(in StorageCell cell, in UInt256 value)
