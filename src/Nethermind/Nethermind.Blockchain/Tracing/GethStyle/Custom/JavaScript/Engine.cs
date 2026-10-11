@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using System.Threading;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Extensions;
@@ -22,9 +23,13 @@ public class Engine : IDisposable
     private readonly TracerRuntime _runtime;
     private readonly bool _ownsRuntime;
 
+    private ScriptObject? _nullThrowInvoker;
+    private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;
+    private int _externalInterruptRequested;
+    private JavaScriptInputException? _inputError;
 
     [ThreadStatic] private static Engine? _currentEngine;
 
@@ -160,6 +165,7 @@ public class Engine : IDisposable
     /// </summary>
     public void Interrupt()
     {
+        Interlocked.Exchange(ref _externalInterruptRequested, 1);
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
@@ -191,7 +197,14 @@ public class Engine : IDisposable
         Interlocked.CompareExchange(ref _currentEngine, null, this);
         try
         {
-            V8Engine.Dispose();
+            try
+            {
+                _nullThrowInvoker?.Dispose();
+            }
+            finally
+            {
+                V8Engine.Dispose();
+            }
         }
         finally
         {
@@ -216,4 +229,82 @@ public class Engine : IDisposable
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
     public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+
+    // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
+    internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""
+        (function () {
+            'use strict';
+            const apply = Reflect.apply;
+            return function (receiver, callback, markNull, first, second, hasSecond) {
+                try {
+                    return apply(callback, receiver, hasSecond ? [first, second] : [first]);
+                } catch (error) {
+                    if (error === null) markNull();
+                    throw error;
+                }
+            };
+        })()
+        """);
+
+    internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond, out bool observedNullThrow)
+    {
+        observedNullThrow = false;
+        NullThrowObserver observer = Interlocked.Exchange(ref _availableNullThrowObserver, null) ?? new();
+        try
+        {
+            return _nullThrowInvoker!.Invoke(false, receiver, callback, observer.MarkNull, first, second, hasSecond);
+        }
+        catch
+        {
+            // Publish before rethrow: the caller's exception filter runs before this frame's finally blocks.
+            observedNullThrow = observer.CaughtNull;
+            throw;
+        }
+        finally
+        {
+            observer.CaughtNull = false;
+            Interlocked.CompareExchange(ref _availableNullThrowObserver, observer, null);
+        }
+    }
+
+    /// <remarks>
+    /// Callers must return without accessing the invalid input; V8 may deliver the interruption at a later safepoint.
+    /// </remarks>
+    internal JavaScriptInputException AbortInput(string message)
+    {
+        _inputError ??= new JavaScriptInputException(message);
+        V8Engine.Interrupt();
+        return _inputError;
+    }
+
+    internal void ThrowIfInputFailed()
+    {
+        ThrowIfInterrupted();
+        if (_inputError is { } error) throw error;
+    }
+
+    internal void ThrowIfInterrupted()
+    {
+        if (Volatile.Read(ref _externalInterruptRequested) != 0)
+            throw new ScriptInterruptedException("Script execution interrupted");
+    }
+
+    internal bool TryGetInputError(Exception exception, out string? message, bool observedNullThrow = false)
+    {
+        message = null;
+        // V8 uses the same interruption exception for input aborts and external requests; external requests take precedence.
+        if (_inputError is null || Volatile.Read(ref _externalInterruptRequested) != 0
+            || (!JavaScriptTraceFailure.IsInputFailure(exception, _inputError)
+                && !JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))) return false;
+        message = _inputError.Message;
+        return true;
+    }
+
+    private sealed class NullThrowObserver
+    {
+        public bool CaughtNull;
+        public Action MarkNull { get; }
+
+        public NullThrowObserver() => MarkNull = () => CaughtNull = true;
+    }
 }
