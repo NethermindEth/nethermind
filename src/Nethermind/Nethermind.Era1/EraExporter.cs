@@ -138,10 +138,10 @@ public class EraExporter(
 
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
-            fileNames[(int)epochIdx] = Path.GetFileName(filePath);
             string rename = Path.Combine(
                 destinationPath,
                 EraPathUtils.Filename(_networkName, epoch, new Hash256(accumulator)));
+            fileNames[(int)epochIdx] = Path.GetFileName(rename);
             // Retry to handle transient file locks on Windows (e.g. antivirus scanning).
             for (int attempt = 0; ; attempt++)
             {
