@@ -113,6 +113,12 @@ namespace Nethermind.State
             DebugGuardInScope();
             _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
+
+        public UInt256 GetOriginalBalance(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetOriginalBalance(address);
+        }
         public void Get(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
@@ -228,6 +234,18 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+        }
+
+        public void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        {
+            DebugGuardInScope();
+            _stateProvider.InsertTransientCode(address, codeHash, code, spec);
+        }
+
+        public void DiscardTransientCode()
+        {
+            DebugGuardInScope();
+            _stateProvider.ResetTransientCode();
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
@@ -460,7 +478,7 @@ namespace Nethermind.State
             int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
             Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
-            int stateSnapshot = _stateProvider.TakeSnapshot();
+            int stateSnapshot = _stateProvider.TakeSnapshot(newTransactionStart);
             return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }
 

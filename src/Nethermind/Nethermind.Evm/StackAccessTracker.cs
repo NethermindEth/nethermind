@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -56,6 +57,37 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly void ToBeDestroyed(Address address) => _trackingState.DestroyList.Add(address);
 
     public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
+
+    /// <summary>
+    /// EIP-8360 <c>TCREATE</c> accounts of the current transaction, with the balance each had at the start of the transaction,
+    /// or <see langword="null"/> while no <c>TCREATE</c> has run.
+    /// </summary>
+    /// <remarks>
+    /// Not journaled, so call-frame snapshots carry no cost for it: a reverted creation keeps its entry, and
+    /// <see cref="IsTransientCreate"/> tells it apart through the nonce the world-state rollback reset.
+    /// </remarks>
+    public readonly Dictionary<AddressAsKey, UInt256>? TransientCreates => _trackingState.TransientCreates;
+
+    /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had at the start of the transaction.</summary>
+    public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance) =>
+        (_trackingState.TransientCreates ??= new(AddressAsKey.EqualityComparer))[address] = originalBalance;
+
+    /// <summary>Returns whether <paramref name="address"/> is a live EIP-8360 <c>TCREATE</c> account.</summary>
+    /// <remarks>
+    /// EIP-8360 gives the account nonce 1 when its initcode starts and requires nonce 0 before (EIP-684), so a
+    /// recorded account whose nonce is 0 had its creation reverted.
+    /// </remarks>
+    /// <param name="worldState">The state the creation was made in.</param>
+    /// <param name="address">The account to check.</param>
+    /// <param name="originalBalance">The balance the account had at the start of the transaction, the EIP-8360 original balance.</param>
+    public readonly bool IsTransientCreate(IWorldState worldState, Address address, out UInt256 originalBalance)
+    {
+        if (_trackingState.TransientCreates?.TryGetValue(address, out originalBalance) == true && worldState.GetNonce(address) != 0)
+            return true;
+
+        originalBalance = default;
+        return false;
+    }
 
     public void TakeSnapshot()
     {
@@ -110,6 +142,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public Dictionary<AddressAsKey, UInt256>? TransientCreates;
 
         private StorageCell _lastWarmCell;
         private bool _hasLastWarmCell;
@@ -160,6 +193,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
+            TransientCreates = null;
         }
     }
 }
