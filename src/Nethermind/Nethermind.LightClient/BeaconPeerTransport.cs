@@ -12,6 +12,8 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -24,7 +26,6 @@ namespace Nethermind.LightClient;
 internal sealed class BeaconPeerTransport : IAsyncDisposable
 {
     private static readonly TimeSpan PeerRequestTimeout = TimeSpan.FromSeconds(5);
-    private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
     private readonly IPResolver _ipResolver;
     private readonly BeaconP2P _p2p;
     private readonly BeaconDiscovery _discovery;
@@ -37,7 +38,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     internal int PeerCount => _peers.PeerCount;
     internal Task GossipCompletion => _gossip.Completion;
 
-    internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, int p2pPort = 9050, int discoveryPort = 9050,
+    internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, IColumnsDb<BeaconChainDbColumns> db,
+        INetworkStorage? peerStorage = null, int p2pPort = 9050, int discoveryPort = 9050,
         TimeProvider? time = null, int quicPort = 9051)
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
@@ -54,19 +56,42 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             TargetPeerCount = 8,
             MaxPeerCount = 12,
         };
-        BeaconChainStore store = new(_db, spec);
+        BeaconChainStore store = new(db, spec);
         ITimestamper clock = Timestamper.Default;
         BeaconChainStatusHolder status = new(spec, clock);
         _ipResolver = new IPResolver(new NetworkConfig(), logManager);
         _p2p = new BeaconP2P(config, spec, store, status, new LocalMetadataSource(),
             new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager, configureGossip: _gossip.Configure);
-        _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager);
+        _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager, peerStorage);
         _peers = new BeaconPeerManager(_p2p, config, status, logManager, _discovery, clock);
+    }
+
+    /// <summary>Opens durable beacon identity and ENR sequence storage owned by the caller.</summary>
+    internal static ColumnsDb<BeaconChainDbColumns> OpenPeerDb(string dataDirectory, BeaconChainSpec spec, ILogManager logs)
+    {
+        string path = Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network");
+        DbConfig config = new()
+        {
+            WriteAheadLogSync = true,
+            MaxOpenFiles = 64,
+            AdditionalRocksDbOptions = "write_buffer_size=262144;max_write_buffer_number=2;block_based_table_factory.block_cache=262144;target_file_size_base=262144;max_bytes_for_level_base=1048576;",
+        };
+        ColumnsDb<BeaconChainDbColumns> db = new(path,
+            new DbSettings("lightClientBeacon", path) { PersistRepairMarkerUntilAcknowledged = true, SkipMetricsTracking = true },
+            config, new RocksDbConfigFactory(config, new PruningConfig(), new HardwareInfo(), logs, validateConfig: false),
+            logs, Enum.GetValues<BeaconChainDbColumns>());
+        if (db.WasRepairedOnOpen)
+        {
+            db.Dispose();
+            throw new InvalidDataException("Beacon networking storage was repaired; restore it before reusing its identity and ENR sequence.");
+        }
+        return db;
     }
 
     internal async Task StartAsync(CancellationToken cancellationToken)
     {
         await _p2p.StartAsync(cancellationToken);
+        if (_logger.IsInfo) _logger.Info($"Beacon P2P identity: {_p2p.LocalPeerId}");
         await _discovery.Start(cancellationToken);
         _peerLoop = Task.WhenAll(_peers.Run(_stop.Token),
             _peers.DialDiscoveredPeersAsync(_discovery.DiscoverPeers(_stop.Token), _stop.Token));
@@ -172,7 +197,6 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         await _gossip.DisposeAsync();
         await _p2p.DisposeAsync();
         await _ipResolver.DisposeAsync();
-        _db.Dispose();
         _stop.Dispose();
     }
 }

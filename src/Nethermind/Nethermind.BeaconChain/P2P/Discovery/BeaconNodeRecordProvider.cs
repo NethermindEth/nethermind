@@ -96,9 +96,10 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
                 return false;
             }
 
+            NodeRecord updated = Build(forkId, normalizedNextDigest, checked(_current.EnrSequence + 1));
             _forkId = forkId;
             _nextForkDigest = normalizedNextDigest;
-            _current = Build(forkId, normalizedNextDigest, _current.EnrSequence + 1);
+            _current = updated;
             return true;
         }
     }

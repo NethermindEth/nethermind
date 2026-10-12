@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.LightClient;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
+using Nethermind.Network;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog.Config;
 using NLog.Targets;
@@ -87,7 +91,9 @@ builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBody
 await using WebApplication app = builder.Build();
 ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LightClient");
 using SemaphoreSlim consensusGate = new(1, 1);
-await using BeaconPeerTransport beacon = new(spec, logManager, time: clock);
+using ColumnsDb<BeaconChainDbColumns> beaconDb = BeaconPeerTransport.OpenPeerDb(dataDirectory, spec, logManager);
+using IFullDb beaconPeersDb = BoundedEnrStorage.OpenDb(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "discovery"), logManager, beacon: true);
+await using BeaconPeerTransport beacon = new(spec, logManager, beaconDb, new BoundedEnrStorage(new NetworkStorage(beaconPeersDb, logManager)), time: clock);
 await beacon.StartAsync(app.Lifetime.ApplicationStopping);
 logger.LogInformation("Beacon P2P started; searching for light-client peers");
 using CancellationTokenSource bootstrapTimeout = CancellationTokenSource.CreateLinkedTokenSource(app.Lifetime.ApplicationStopping);

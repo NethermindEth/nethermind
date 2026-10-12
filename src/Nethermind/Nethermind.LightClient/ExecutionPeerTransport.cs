@@ -113,34 +113,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (dataDirectory is not null)
         {
             string directory = Path.Combine(dataDirectory, "el", network, "discovery");
-            builder.Register(context => CreateDiscoveryDb(directory, context.Resolve<ILogManager>()))
+            builder.Register(context => BoundedEnrStorage.OpenDb(directory, context.Resolve<ILogManager>()))
                 .Keyed<IFullDb>(DbNames.DiscoveryV5Nodes).SingleInstance();
             builder.Register(context => new BoundedEnrStorage(new NetworkStorage(
                 context.ResolveKeyed<IFullDb>(DbNames.DiscoveryV5Nodes), context.Resolve<ILogManager>())))
                 .Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes).SingleInstance();
         }
         _services = builder.Build();
-    }
-
-    private static IFullDb CreateDiscoveryDb(string directory, ILogManager logs)
-    {
-        Nethermind.Logging.ILogger logger = logs.GetClassLogger<ExecutionPeerTransport>();
-        string path = Path.Combine(directory, SimpleFilePublicKeyDb.DbFileName);
-        try
-        {
-            if (File.Exists(path) && new FileInfo(path).Length > 2 * 1024 * 1024)
-            {
-                string backup = path + ".invalid-" + Guid.NewGuid().ToString("N");
-                File.Move(path, backup);
-                if (logger.IsWarn) logger.Warn($"Execution discovery cache exceeded its size limit; preserved at {backup} and starting with fresh discovery.");
-            }
-            return new SimpleFilePublicKeyDb(DbNames.DiscoveryV5Nodes, directory, logs);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or FormatException)
-        {
-            if (logger.IsWarn) logger.Warn($"Execution discovery cache is unavailable; continuing with bootnodes and DNS: {exception.Message}");
-            return new MemDb(DbNames.DiscoveryV5Nodes);
-        }
     }
 
     internal async Task StartAsync()

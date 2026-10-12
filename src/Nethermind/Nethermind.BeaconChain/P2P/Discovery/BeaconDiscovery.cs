@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -15,6 +16,7 @@ using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -49,7 +51,8 @@ public sealed class BeaconDiscovery(
     BeaconChainStore store,
     IIPResolver ipResolver,
     ITimestamper timestamper,
-    ILogManager logManager) : IAsyncDisposable
+    ILogManager logManager,
+    INetworkStorage? peerStorage = null) : IAsyncDisposable
 {
     /// <summary>Same metadata key as the libp2p host so both stacks share one secp256k1 identity.</summary>
     internal const string IdentityMetadataKey = "p2pIdentityKey";
@@ -65,6 +68,7 @@ public sealed class BeaconDiscovery(
     private static readonly TimeSpan CustodianSearchLogInterval = TimeSpan.FromMinutes(1);
 
     private const int CandidateCapacity = 256;
+    private const int SavedPeerCapacity = 512;
 
     /// <summary>Dial outcomes by address, shared with the peer manager, so an address whose dials failed is offered again only after its backoff.</summary>
     internal PeerDialHistory DialHistory { get; } = new(timestamper);
@@ -79,6 +83,8 @@ public sealed class BeaconDiscovery(
     private EnrForkId? _currentForkId;
 
     private BeaconNodeRecordProvider? _localEnr;
+    private CryptoRandom? _cryptoRandom;
+    private PrivateKey? _nodeKey;
     private IContainer? _discv5Services;
     private IKademliaAdapter? _adapter;
     private IKademlia<PublicKey, Node>? _kademlia;
@@ -90,6 +96,8 @@ public sealed class BeaconDiscovery(
     private CancellationTokenSource? _runCts;
     private Task _runTask = Task.CompletedTask;
     private bool _stopped;
+    private Node[] _cachedNodes = [];
+    internal int CachedPeerCount => _cachedNodes.Length;
 
     private ulong[] _wantedColumns = [];
     private TaskCompletionSource _custodiansRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -315,7 +323,7 @@ public sealed class BeaconDiscovery(
         }
 
         // EIP-778: persist before publication so a restart cannot reuse a sequence peers may already hold.
-        PersistEnrSequence(LocalNodeRecord.EnrSequence + 1);
+        PersistEnrSequence(checked(LocalNodeRecord.EnrSequence + 1));
         if (!_localEnr.Update(forkId, nextForkDigest))
         {
             return false;
@@ -361,11 +369,24 @@ public sealed class BeaconDiscovery(
 
     public async ValueTask DisposeAsync()
     {
-        await Stop();
-        _runCts?.Dispose();
-        if (_discv5Services is not null)
+        try
         {
-            await _discv5Services.DisposeAsync();
+            await Stop();
+        }
+        finally
+        {
+            _runCts?.Dispose();
+            try
+            {
+                if (_discv5Services is not null) await _discv5Services.DisposeAsync();
+            }
+            finally
+            {
+                _nodeKey?.Dispose();
+                _nodeKey = null;
+                _cryptoRandom?.Dispose();
+                _cryptoRandom = null;
+            }
         }
     }
 
@@ -421,7 +442,7 @@ public sealed class BeaconDiscovery(
             bool found = useQuic
                 ? record.TryGetQuicEndpoint(family, out IPEndPoint? address)
                 : record.TryGetTcpEndpoint(family, out address);
-            if (!found || address is null) return;
+            if (!found || address is null || !IsUsableAddress(address.Address)) return;
             string ipProtocol = family == AddressFamily.InterNetwork ? "ip4" : "ip6";
             string transport = useQuic ? $"udp/{address.Port}/quic-v1" : $"tcp/{address.Port}";
             addresses.Add($"/{ipProtocol}/{address.Address}/{transport}/p2p/{peerId}");
@@ -576,6 +597,8 @@ public sealed class BeaconDiscovery(
     private async Task RunDiscovery(CancellationToken token)
     {
         Task adapterTask = _adapter!.RunAsync(token);
+        Task cachedPeerTask = ProbeCachedPeersAsync(token);
+        Task persistenceTask = PersistPeersPeriodicallyAsync(token);
         try
         {
             await _kademlia!.Run(token);
@@ -589,9 +612,135 @@ public sealed class BeaconDiscovery(
         }
         finally
         {
-            await adapterTask;
+            try
+            {
+                await _runCts!.CancelAsync();
+            }
+            finally
+            {
+                try
+                {
+                    await Task.WhenAll(adapterTask, cachedPeerTask, persistenceTask);
+                }
+                finally
+                {
+                    PersistPeers();
+                }
+            }
         }
     }
+
+    private async Task ProbeCachedPeersAsync(CancellationToken token)
+    {
+        if (_cachedNodes.Length == 0) return;
+        try
+        {
+            await Parallel.ForEachAsync(_cachedNodes, new ParallelOptions { CancellationToken = token, MaxDegreeOfParallelism = 8 },
+                async (node, peerToken) =>
+                {
+                    try { await _adapter!.Ping(node, peerToken); }
+                    catch (OperationCanceledException) when (peerToken.IsCancellationRequested) { }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Cached beacon peer {node:s} did not answer discovery Ping: {PeerManager.DescribeFailure(e)}");
+                    }
+                });
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    private async Task PersistPeersPeriodicallyAsync(CancellationToken token)
+    {
+        if (peerStorage is null) return;
+        using PeriodicTimer timer = new(TableSweepInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(token)) PersistPeers();
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+    }
+
+    internal void PersistPeers()
+    {
+        if (peerStorage is null || _kademlia is null) return;
+        try
+        {
+            Dictionary<PublicKey, NetworkNode> records = [];
+            (byte[] current, byte[]? next, _) = AcceptedForkDigests();
+            foreach (Node node in _kademlia.IterateNodes()) Add(node.Enr);
+            foreach (Node cached in _cachedNodes) Add(cached.Enr);
+
+            peerStorage.StartBatch();
+            foreach (NetworkNode previous in peerStorage.GetPersistedNodes())
+                if (!records.ContainsKey(previous.NodeId)) peerStorage.RemoveNode(previous.NodeId);
+            peerStorage.UpdateNodes(records.Values);
+            peerStorage.Commit();
+
+            void Add(NodeRecord? record)
+            {
+                if (records.Count >= SavedPeerCapacity || record is null) return;
+                try
+                {
+                    if (!TryCreateCandidate(record, current, next, out _, quicEnabled: config.QuicPort > 0) ||
+                        !TryCreateCachedNode(record, out _)) return;
+                    NetworkNode saved = new(record.ToString());
+                    records.TryAdd(saved.NodeId, saved);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping beacon peer record during snapshot: {PeerManager.DescribeFailure(e)}");
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Could not persist beacon peer cache: {PeerManager.DescribeFailure(e)}");
+        }
+    }
+
+    private void LoadCachedPeers(PublicKey ownKey)
+    {
+        if (peerStorage is null) return;
+        try
+        {
+            List<Node> nodes = [];
+            HashSet<PublicKey> seen = [];
+            (byte[] current, byte[]? next, _) = AcceptedForkDigests();
+            int scanned = 0;
+            foreach (NetworkNode saved in peerStorage.GetPersistedNodes())
+            {
+                if (++scanned > SavedPeerCapacity) break;
+                try
+                {
+                    if (!saved.IsEnr || saved.NodeId == ownKey || seen.Contains(saved.NodeId)) continue;
+                    NodeRecord record = NodeRecord.FromEnrString(saved.Enr!.ToString());
+                    if (!TryCreateCandidate(record, current, next, out _, quicEnabled: config.QuicPort > 0) ||
+                        !TryCreateCachedNode(record, out Node? node)) continue;
+                    seen.Add(saved.NodeId);
+                    nodes.Add(node);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipping saved beacon peer: {PeerManager.DescribeFailure(e)}");
+                }
+            }
+            _cachedNodes = [.. nodes];
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Beacon peer cache unavailable; using network bootnodes: {PeerManager.DescribeFailure(e)}");
+        }
+    }
+
+    private static bool TryCreateCachedNode(NodeRecord record, [NotNullWhen(true)] out Node? node)
+    {
+        if (Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetwork, out node) && IsUsableAddress(node.DiscoveryAddress.Address)) return true;
+        return Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetworkV6, out node) && IsUsableAddress(node.DiscoveryAddress.Address);
+    }
+
+    private static bool IsUsableAddress(IPAddress address) =>
+        !address.Equals(IPAddress.Any) && !address.Equals(IPAddress.IPv6Any) &&
+        !address.Equals(IPAddress.Broadcast) && !address.IsMulticast;
 
     /// <summary>Builds the local ENR and the private discv5 service graph, both of which need the resolved external IP.</summary>
     /// <remarks>Internal so a test can resolve the graph without binding a socket or reaching bootnodes.</remarks>
@@ -599,30 +748,45 @@ public sealed class BeaconDiscovery(
     internal NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress? externalIp)
     {
         CryptoRandom cryptoRandom = new();
-        PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
-        LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
-        ulong epoch = CurrentEpoch;
-        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch),
-            NextEnrSequence(), config.QuicPort);
-        Node currentNode = new(nodeKey.PublicKey, (externalIp ?? IPAddress.None).ToString(), config.P2PPort, config.Discv5Port, true);
+        PrivateKey? nodeKey = null;
+        BeaconNodeRecordProvider localEnr;
+        IContainer discv5Services;
+        try
+        {
+            nodeKey = LoadOrCreateIdentity(cryptoRandom);
+            LoadCachedPeers(nodeKey.PublicKey);
+            LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+            ulong epoch = CurrentEpoch;
+            localEnr = new BeaconNodeRecordProvider(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch),
+                NextEnrSequence(), config.QuicPort);
+            Node currentNode = new(nodeKey.PublicKey, (externalIp ?? IPAddress.None).ToString(), config.P2PPort, config.Discv5Port, true);
 
-        IContainer discv5Services = new ContainerBuilder()
-            .AddModule(new Discv5KademliaModule(currentNode, CreateBootNodes()))
-            .AddSingleton<ILogManager>(logManager)
-            .AddSingleton<IDiscoveryConfig>(new DiscoveryConfig())
-            .AddSingleton<ITimestamper>(timestamper)
-            .AddSingleton<ICryptoRandom>(cryptoRandom, takeOwnership: true)
-            .AddSingleton<IEcdsa>(new Ecdsa())
-            .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new NodeKeyWrapper(nodeKey))
-            .AddSingleton<INodeRecordProvider>(localEnr)
-            .AddSingleton<IDiscv5RecordFilter>(AcceptAllDiscv5RecordFilter.Instance)
-            .AddSingleton<IForkInfo>(PermissiveForkInfo.Instance)
-            // The same resolver the local ENR was built from, so the adapter advertises that one address.
-            .AddSingleton(ipResolver)
-            .AddSingleton(new NetworkListenerState(new NetworkConfig(), ipResolver, logManager))
-            .Build();
+            discv5Services = new ContainerBuilder()
+                .AddModule(new Discv5KademliaModule(currentNode, CreateBootNodes()))
+                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton<IDiscoveryConfig>(new DiscoveryConfig())
+                .AddSingleton<ITimestamper>(timestamper)
+                .AddSingleton<ICryptoRandom>(cryptoRandom)
+                .AddSingleton<IEcdsa>(new Ecdsa())
+                .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new NodeKeyWrapper(nodeKey))
+                .AddSingleton<INodeRecordProvider>(localEnr)
+                .AddSingleton<IDiscv5RecordFilter>(AcceptAllDiscv5RecordFilter.Instance)
+                .AddSingleton<IForkInfo>(PermissiveForkInfo.Instance)
+                // The same resolver the local ENR was built from, so the adapter advertises that one address.
+                .AddSingleton(ipResolver)
+                .AddSingleton(new NetworkListenerState(new NetworkConfig(), ipResolver, logManager))
+                .Build();
+        }
+        catch
+        {
+            nodeKey?.Dispose();
+            cryptoRandom.Dispose();
+            throw;
+        }
 
         _localEnr = localEnr;
+        _cryptoRandom = cryptoRandom;
+        _nodeKey = nodeKey;
         _discv5Services = discv5Services;
         _adapter = discv5Services.Resolve<IKademliaAdapter>();
         _kademlia = discv5Services.Resolve<IKademlia<PublicKey, Node>>();
@@ -683,7 +847,9 @@ public sealed class BeaconDiscovery(
     /// <remarks>EIP-778: a node increases the sequence whenever its record changes; a peer holding a higher one ignores a lower one.</remarks>
     private ulong NextEnrSequence()
     {
-        ulong sequence = (store.GetMetadata(EnrSequenceMetadataKey) is { Length: sizeof(ulong) } stored ? BinaryPrimitives.ReadUInt64BigEndian(stored) : 0) + 1;
+        byte[]? stored = store.GetMetadata(EnrSequenceMetadataKey);
+        if (stored is not null && stored.Length != sizeof(ulong)) throw new InvalidDataException("Saved beacon ENR sequence has an invalid length.");
+        ulong sequence = checked((stored is null ? 0 : BinaryPrimitives.ReadUInt64BigEndian(stored)) + 1);
         PersistEnrSequence(sequence);
         return sequence;
     }

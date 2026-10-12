@@ -56,7 +56,7 @@ lower bound of the supported forks' [weak-subjectivity periods](https://ethereum
 It does not compute the full state-dependent validator churn term. A saved
 original checkpoint may be older when replay proves recent authenticated
 progress; a stale replay requires an explicitly chosen recent checkpoint.
-`--data-dir` selects the verified consensus journal directory (default:
+`--data-dir` selects the consensus journal and networking storage directory (default:
 `src/Nethermind/artifacts/lightclient`). Restart with the same network and
 checkpoint to replay saved updates; a new checkpoint starts a separate journal.
 The journal files are verified again on replay and never replace the chosen
@@ -73,6 +73,25 @@ generations. Its signature and branches are reverified on restart without
 changing the replayed heads or participation thresholds. Interrupted or corrupt
 candidate persistence disables that recovery candidate while preserving the
 authenticated replay state.
+
+Native beacon networking keeps its private P2P identity and monotonically
+increasing signed ENR sequence in `<data-dir>/cl/<chain-id>/network`, using
+Nethermind's RocksDB storage with synchronous WAL writes before advertisement.
+Restart with the same data directory to retain the public PeerID; this identity
+is separate from wallet keys and is isolated per network. A repaired database
+stops startup rather than silently reusing an identity with an older sequence.
+Recovery must preserve the last published ENR sequence. If that cannot be
+established, remove the whole networking directory to create a new identity.
+
+Signed beacon peer ENRs are cached separately in
+`<data-dir>/cl/<chain-id>/discovery`, with at most 512 records and a 2 MiB file
+limit. The client snapshots discovery every 30 seconds and at shutdown. On
+restart it rechecks signatures, fork compatibility and usable endpoints, then
+probes saved peers alongside configured bootnodes; only responsive records enter
+normal dialing. The live authenticated handshake is still required: this cache
+grants no trust to a peer. An unavailable
+or invalid cache falls back to fresh discovery. Peer bans, connection state and
+execution proof caches are not persisted.
 
 The host listens for beacon libp2p on TCP 9050, beacon discv5 on UDP 9050,
 beacon QUIC v1 on UDP 9051, and execution P2P on TCP/UDP 30307. QUIC uses
