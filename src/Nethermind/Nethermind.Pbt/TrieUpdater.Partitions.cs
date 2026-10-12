@@ -67,13 +67,13 @@ public static partial class TrieUpdater
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        if (!GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.TryLoad(store, rootPath, currentRoot,
-                out GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader))
+        if (store.GetNodeGroup(rootPath, currentRoot) is not { } rootGroup)
         {
             if (currentRoot != default) throw new InvalidDataException("A referenced PBT node group is missing.");
-            AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0);
+            AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader = new(rootGroup, rootPath.BitDepth);
         using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
             return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
     }

@@ -21,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -41,7 +43,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public MemDb CodeDb { get; } = new();
     public PbtConfig Config { get; }
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
-    public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig());
+    public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
     public IPbtResourcePool ResourcePool { get; }
     public IRefCountingMemoryProvider NodeGroupMemory { get; }
     public IPbtPersistence Persistence { get; }
@@ -61,14 +63,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
         ProcessExitSource processExitSource = new(_cts.Token);
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
-        Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence) : _cachedReaderPersistence;
+        Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
         ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
-        PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+        PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
+            NullPbtRetainedSnapshotLoader.Instance, NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None);
         _trieNodeCache = new PbtTrieNodeCache(Config);
-        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache);
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache, NullPbtRetainedSnapshotLoader.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }

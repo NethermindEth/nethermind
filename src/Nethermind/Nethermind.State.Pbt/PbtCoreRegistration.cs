@@ -72,7 +72,7 @@ public static class PbtCoreRegistration
         if (!config.EnableLongFinality)
             return builder
                 .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, _ => NullSnapshotCatalog.Instance)
-                .AddSingleton<PbtRetainedStorageLifetime>(_ => new())
+                .AddSingleton<PbtRetainedStorageLifetime>(_ => new(null, null))
                 .AddSingleton<IPbtRetainedSnapshotLoader>(NullPbtRetainedSnapshotLoader.Instance)
                 .AddSingleton<IPbtRetainedSnapshotCompactor>(NullPbtRetainedSnapshotCompactor.Instance);
 

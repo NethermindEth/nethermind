@@ -78,7 +78,7 @@ public class MigrationRestartE2ETests
         {
             Assert.That(migrating.Tree.Head!.Hash, Is.EqualTo(migrating.Blocks["a3"].Hash));
             Assert.That(migrating.Telemetry.GetShadowRoot(migrating.Anchor.Hash!), Is.EqualTo(migrating.PbtRoot("anchor")));
-            Assert.That(() => migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a3"].Header)), Is.True.After(30_000, 100), migrating.Scheduler.Error);
+            Assert.That(() => migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a3"].Header)), Is.True.After(30_000, 100), migrating.HeadFollower.Error);
             Assert.That(migrating.Telemetry.GetShadowRoot(migrating.Blocks["a3"].Hash!), Is.EqualTo(migrating.PbtRoot("a3")));
             Assert.That(migrating.Reader.HasStateForBlock(migrating.Blocks["a3"].Header), Is.True);
         }
@@ -90,7 +90,7 @@ public class MigrationRestartE2ETests
         await RunFlatOnly("a1", "a2");
         // A follower that never runs keeps PBT at the anchor, behind the flat head.
         await using MigrationLifecycleHarness migrating = await OpenLifecycle(_directory, portable: true,
-            builder => builder.AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false), () => null, () => null)), migration: true);
+            builder => builder.AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false))), migration: true);
         migrating.ProcessBranch(["a3"], expectPbt: false);
         using (Assert.EnterMultipleScope())
         {

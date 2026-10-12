@@ -37,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Snapshot;
@@ -273,7 +274,7 @@ public class PbtRocksDbPersistenceTests
         using MemDb metadata = new();
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
         PbtResourcePool pool = new(config);
-        PbtSnapshotRepository repository = new(new MetricsConfig());
+        PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config, LimboLogs.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
@@ -297,7 +298,8 @@ public class PbtRocksDbPersistenceTests
             {
                 PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
                 PbtPersistenceManager persistenceManager = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
-                    repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+                    repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, NullPbtRetainedSnapshotLoader.Instance,
+                    NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None);
                 for (ulong number = 0; number <= 5; number++)
                 {
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);

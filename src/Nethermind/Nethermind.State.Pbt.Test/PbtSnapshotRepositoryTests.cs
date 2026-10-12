@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using NUnit.Framework;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.Test;
@@ -26,7 +27,7 @@ public class PbtSnapshotRepositoryTests
     private PbtSnapshotRepository _repository = null!;
 
     [SetUp]
-    public void SetUp() => _repository = new(new MetricsConfig());
+    public void SetUp() => _repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
 
     [TearDown]
     public void TearDown() => _repository.Dispose();
@@ -471,7 +472,7 @@ public class PbtSnapshotRepositoryTests
     public void Shared_retained_bloom_preserves_history_and_excludes_forks_and_crossing_edges()
     {
         using PbtRetainedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
         PbtRetainedSnapshot first = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
         PbtRetainedSnapshot second = BloomSnapshot(store, State(1), State(2), SnapshotTier.PersistedBase, 2);
         PbtRetainedSnapshot third = BloomSnapshot(store, State(2), State(3), SnapshotTier.PersistedBase, 3);
@@ -524,7 +525,7 @@ public class PbtSnapshotRepositoryTests
     public void Shared_retained_bloom_does_not_inflate_capacity_for_repeated_multi_tier_keys([Values(4, 32)] int blocks)
     {
         using PbtRetainedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
         for (int block = 1; block <= blocks; block++)
         {
             using PbtRetainedSnapshot snapshot = BloomSnapshot(store, State(block - 1), State(block), SnapshotTier.PersistedBase, 1);

@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
@@ -64,7 +65,7 @@ public class PbtMetricsTests
     [Test]
     public void Operational_memory_accounting_includes_both_tiers_without_detailed_metrics([Values] bool detailed)
     {
-        using PbtSnapshotRepository repository = new(new MetricsConfig { EnableDetailedMetric = detailed });
+        using PbtSnapshotRepository repository = new(new MetricsConfig { EnableDetailedMetric = detailed }, NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[1024]);
@@ -166,12 +167,9 @@ public class PbtMetricsTests
             else (partition == "code" ? content.CodeNodeGroups : content.AccountNodeGroups)[groupKey] = deleted ? null : payload;
             if (!deleted) content.Codes[codeHash] = code;
         }
-        PbtSnapshotPooledList snapshots = new(2);
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
-        snapshots.Add(new PbtSnapshot(StateId.PreGenesis, new StateId(0, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
         using PbtSnapshotContent emptyContent = new();
-        snapshots.Add(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, emptyContent, pool, PbtResourcePool.Usage.MainBlockProcessing));
-        using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics, slotFilterBitsPerKey: 0);
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.ReadChain(pool, content, emptyContent), reader, detailedMetrics, slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);

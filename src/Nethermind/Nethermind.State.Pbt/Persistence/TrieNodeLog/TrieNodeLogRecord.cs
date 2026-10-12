@@ -37,8 +37,6 @@ public readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int Va
 
     public bool IsCommit => Type == Commit;
 
-    public static TrieNodeLogRecord CommitRecord(ulong version) => new(Commit, 0, 0, version, ~version);
-
     public void Write(Span<byte> destination)
     {
         destination[0] = Type;
