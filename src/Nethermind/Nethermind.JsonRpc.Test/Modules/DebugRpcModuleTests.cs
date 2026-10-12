@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -1002,22 +1003,28 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private sealed class MuxDisposalTracer(GethTraceOptions options, Action disposed)
+    private sealed class MuxDisposalTracer(GethTraceOptions options, Action disposed, bool failResult = false)
         : Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTxTracer(options)
     {
+        public override GethLikeTxTrace BuildResult() => failResult
+            ? throw new InvalidDataException("mux child result failure")
+            : base.BuildResult();
+
         public override void Dispose() => disposed();
     }
 
     [Test]
     [NonParallelizable]
-    public async Task Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
+    public async Task Debug_traceCall_mux_releases_children_when_a_child_fails([Values] bool resultFailure)
     {
         using Context ctx = await Context.Create();
-        const string first = "{step:function(){},fault:function(){},result:function(){return {};}}";
-        const string failing = "{step:function(){},fault:function(){},result:function(){throw Error('mux child result failure');}}";
-        System.Reflection.FieldInfo liveEngines = typeof(Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Engine)
-            .GetField("_liveEngines", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
-        int before = (int)liveEngines.GetValue(null)!;
+        int disposed = 0;
+        string first = "mux_disposal_first_" + Guid.NewGuid().ToString("N");
+        string failing = "mux_disposal_failing_" + Guid.NewGuid().ToString("N");
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(first,
+            (options, _, _, _) => new MuxDisposalTracer(options, () => disposed++));
+        Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.GethLikeNativeTracerFactory.RegisterTracer(failing,
+            (options, _, _, _) => new MuxDisposalTracer(options, () => disposed++, failResult: true));
         Dictionary<string, object> children = new()
         {
             [first] = new { },
@@ -1030,7 +1037,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["error"], Is.Not.Null);
-            Assert.That((int)liveEngines.GetValue(null)!, Is.EqualTo(before));
+            Assert.That(disposed, Is.EqualTo(resultFailure ? 2 : 1));
         }
     }
 
@@ -1523,7 +1530,7 @@ public partial class DebugRpcModuleTests
         };
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             new { from = sender, to = touch == "transaction" ? address : contract, gas = "0x186a0", value = "0x0" }, "latest",
-            new { tracer = "prestateTracer", tracerConfig = new { diffMode }, stateOverrides = overrides });
+            new { tracer = "prestateTracer", tracerConfig = new { diffMode, includeEmpty = !diffMode }, stateOverrides = overrides });
 
         JObject result = JObject.Parse(response);
         Assert.That(result["error"], Is.Null, response);

@@ -332,7 +332,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         FastPathComplete:
             pc++;
             opCodeCount++;
-            int traceStackHead = TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) ? (int)stack.Head : 0;
+            int traceStackHead = DispatchFlags.ConstTracing && state.Vm.IsTracingActions ? (int)stack.Head : 0;
             EvmExceptionType exceptionType;
             if (!TTracingInst.IsActive
                 && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
@@ -381,7 +381,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if (!CheckedStackFits<TOpcode>(in stack))
                     {
                         EvmExceptionType stackFailure = CheckedStackFailure<TOpcode>(in stack);
-                        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) && stackFailure == EvmExceptionType.StackUnderflow)
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
                             state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, stackFailure);
                     }
@@ -397,7 +397,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = checkedResult.Exception;
                     if (exceptionType != EvmExceptionType.None)
                     {
-                        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) && exceptionType == EvmExceptionType.StackUnderflow)
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && exceptionType == EvmExceptionType.StackUnderflow)
                             state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitOpcode(ref state, carriesExecutionGas, gas, pc, opCodeCount, exceptionType);
                     }
@@ -421,7 +421,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     gas = GetExecutionGas(ref state.Gas);
             }
 
-            if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) &&
+            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
                 !TOpcode.HasCheckedBody && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
                 state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
 
