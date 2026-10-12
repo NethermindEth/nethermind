@@ -164,10 +164,12 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <summary>Takes each transaction hash from its encoding instead of decoding the transaction.</summary>
-        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.IRecoveryContext
+        private sealed class LogRecoveryContext(ReceiptRecoveryBlock block) : IReceiptsRecovery.ISelectiveLogRecoveryContext
         {
             private ReceiptRecoveryBlock _block = block;
             private int _transactionIndex;
+            private int _lastTransactionIndex = -1;
+            private Hash256? _lastTransactionHash;
 
             public void RecoverReceiptData(TxReceipt receipt)
             {
@@ -183,6 +185,31 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.BlockHash = _block.Hash!.ToStructRef();
                 receipt.BlockNumber = _block.Number;
                 receipt.Index = _transactionIndex++;
+            }
+
+            public void RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex)
+            {
+                if (transactionIndex != _lastTransactionIndex)
+                {
+                    if (transactionIndex < _transactionIndex)
+                    {
+                        throw new InvalidOperationException("Log receipt recovery cannot move backwards.");
+                    }
+
+                    while (_transactionIndex < transactionIndex)
+                    {
+                        _block.SkipNextTransaction();
+                        _transactionIndex++;
+                    }
+
+                    _lastTransactionHash = NextTransactionHash();
+                    _lastTransactionIndex = _transactionIndex++;
+                }
+
+                receipt.TxHash = _lastTransactionHash!.ToStructRef();
+                receipt.BlockHash = _block.Hash!.ToStructRef();
+                receipt.BlockNumber = _block.Number;
+                receipt.Index = transactionIndex;
             }
 
             private Hash256 NextTransactionHash()
