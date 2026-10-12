@@ -488,7 +488,7 @@ public class Startup : IStartup
             using JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
             {
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
-                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"] is { Count: > 0 } forwardedFor ? forwardedFor.ToString() : null
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
             };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 

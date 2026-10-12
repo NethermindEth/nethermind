@@ -10,6 +10,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Modules;
@@ -56,7 +57,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         long? maxBatchResponseBodySize = null,
         int concurrency = 1,
         IPAddress? remoteAddress = null,
-        string? forwardedFor = null)
+        StringValues forwardedFor = default)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;

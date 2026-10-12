@@ -4,6 +4,7 @@
 using System;
 using System.Net;
 using System.Threading;
+using Microsoft.Extensions.Primitives;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
@@ -32,9 +33,12 @@ namespace Nethermind.JsonRpc
         /// <summary>Address of the remote caller, or <see langword="null"/> when the transport has none (IPC).</summary>
         public IPAddress? RemoteAddress { get; init; }
 
-        /// <summary>Raw <c>X-Forwarded-For</c> header of the request, or <see langword="null"/> when absent.</summary>
-        /// <remarks>Set by the client or any proxy on the way, so it is only fit for logging, never for trust decisions.</remarks>
-        public string? ForwardedFor { get; init; }
+        /// <summary>Raw <c>X-Forwarded-For</c> header values of the request, empty when absent.</summary>
+        /// <remarks>
+        /// Set by the client or any proxy on the way, so it is only fit for logging, never for trust decisions.
+        /// Kept as <see cref="StringValues"/> so capturing it never builds a string; it is joined only when a debug line is formatted.
+        /// </remarks>
+        public StringValues ForwardedFor { get; init; }
 
         public void Dispose()
         {

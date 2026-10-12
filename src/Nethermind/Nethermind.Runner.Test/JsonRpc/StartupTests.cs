@@ -26,6 +26,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Primitives;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
@@ -850,8 +851,9 @@ public class StartupTests
     }
 
     [TestCase(null, "")]
-    [TestCase("198.51.100.1", " (X-Forwarded-For: 198.51.100.1)")]
-    public async Task Http_request_debug_log_includes_remote_address(string? forwardedFor, string expectedForwardedSuffix)
+    [TestCase(new[] { "198.51.100.1" }, " (X-Forwarded-For: 198.51.100.1)")]
+    [TestCase(new[] { "198.51.100.1", "192.0.2.4" }, " (X-Forwarded-For: 198.51.100.1,192.0.2.4)", TestName = "Repeated X-Forwarded-For header lines are all logged")]
+    public async Task Http_request_debug_log_includes_remote_address(string[]? forwardedFor, string expectedForwardedSuffix)
     {
         TestLogger logger = new();
         byte[] request = Encoding.UTF8.GetBytes(CreateJsonRpcRequest());
@@ -863,7 +865,7 @@ public class StartupTests
             configureContext: ctx =>
             {
                 ctx.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
-                if (forwardedFor is not null) ctx.Request.Headers["X-Forwarded-For"] = forwardedFor;
+                if (forwardedFor is not null) ctx.Request.Headers["X-Forwarded-For"] = new StringValues(forwardedFor);
             });
 
         Assert.That(logger.LogList, Has.Member($"JSON RPC request {GetBlobsV1Method} from 203.0.113.7{expectedForwardedSuffix}"),
