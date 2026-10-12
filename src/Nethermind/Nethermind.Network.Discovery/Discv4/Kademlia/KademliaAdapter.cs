@@ -221,6 +221,9 @@ public class KademliaAdapter(
             RateLimiter limiter = isResponse ? _responseRateLimiter : _outboundRateLimiter;
             // A response sent after the requester's timeout is wasted, and queueing it would let an inbound flood
             // push every later response further out. Drop it instead and let the backlog drain.
+            // The requester's timeout is unknown (geth waits 500 ms for any reply), so PingTimeout is a deliberately
+            // loose upper bound shared by all response types. The check is not atomic with WaitAsync, so concurrent
+            // senders can overshoot it slightly, and the second Neighbors batch of a FindNode reply may be dropped.
             if (isResponse && limiter.Backlog > _pingTimeout)
             {
                 if (Logger.IsTrace) Logger.Trace($"Dropping {msg.MsgType} response, outbound backlog {limiter.Backlog}");
