@@ -1040,6 +1040,11 @@ public class DebugRpcModule(
     /// Resolves the header for <paramref name="blockHash"/>, without checking state availability.
     /// </summary>
     /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    /// <remarks>
+    /// Lookup order must match the replay: intermediate roots use <paramref name="searchBadBlocks"/> to fall back
+    /// to the bad-block store after the block tree. Bad-block file tracing uses <paramref name="badBlocksOnly"/>
+    /// to bypass the block tree, taking precedence over <paramref name="searchBadBlocks"/>.
+    /// </remarks>
     private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error, bool searchBadBlocks = false, bool badBlocksOnly = false)
     {
         BlockHeader? header = badBlocksOnly ? null : blockFinder.FindHeader(blockHash);
