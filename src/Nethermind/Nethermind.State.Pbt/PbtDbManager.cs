@@ -68,7 +68,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache)
         : this(repository, persistenceManager, persistence, resourcePool, compactor, processExitSource, logManager,
-            metricsConfig, trieNodeCache, NullPbtRetainedSnapshotLoader.Instance)
+            metricsConfig, trieNodeCache, NullPbtPersistedSnapshotLoader.Instance)
     { }
 
     public PbtDbManager(
@@ -81,9 +81,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ILogManager logManager,
         IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache,
-        IPbtRetainedSnapshotLoader retainedLoader)
+        IPbtPersistedSnapshotLoader persistedLoader)
     {
-        retainedLoader.Load();
+        persistedLoader.Load();
         _trieNodeCache = trieNodeCache;
         _repository = repository;
         _persistenceManager = persistenceManager;

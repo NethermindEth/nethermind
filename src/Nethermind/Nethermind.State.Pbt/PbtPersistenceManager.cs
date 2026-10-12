@@ -25,8 +25,8 @@ namespace Nethermind.State.Pbt;
 /// <summary>Coordinates base persistence and durable snapshot conversion.</summary>
 public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
     IPbtPersistence persistence, PbtSnapshotRepository repository, ICompactionSchedule schedule,
-    IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtRetainedSnapshotLoader loader,
-    IPbtRetainedSnapshotCompactor compactor, CancellationToken shutdown) : IDisposable
+    IStatePersistenceBarrier persistenceBarrier, ILogManager logManager, IPbtPersistedSnapshotLoader loader,
+    IPbtPersistedSnapshotCompactor compactor, CancellationToken shutdown) : IDisposable
 {
     private readonly IPbtConfig _config = config;
     private readonly IStateHeaderProvider _finalized = finalizedStateProvider;
@@ -34,8 +34,8 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
     private readonly PbtSnapshotRepository _repository = repository;
     private readonly ICompactionSchedule _schedule = schedule;
     private readonly IStatePersistenceBarrier _barrier = persistenceBarrier;
-    private readonly IPbtRetainedSnapshotLoader _loader = loader;
-    private readonly IPbtRetainedSnapshotCompactor _compactor = compactor;
+    private readonly IPbtPersistedSnapshotLoader _loader = loader;
+    private readonly IPbtPersistedSnapshotCompactor _compactor = compactor;
     private readonly CancellationToken _shutdown = shutdown;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtPersistenceManager>();
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
@@ -48,7 +48,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         IPbtPersistence persistence, PbtSnapshotRepository repository, [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
         IStatePersistenceBarrier persistenceBarrier, ILogManager logManager)
         : this(config, finalizedStateProvider, persistence, repository, schedule, persistenceBarrier, logManager,
-            NullPbtRetainedSnapshotLoader.Instance, NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None)
+            NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None)
     { }
 
     public IPbtConfig Configuration => _config;
@@ -119,7 +119,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         if (_config.MaxInMemorySnapshotBytes > 0 && depth > (ulong)_config.MinReorgDepth
             && (ulong)_repository.InMemorySnapshotBytes > _config.MaxInMemorySnapshotBytes)
         {
-            // Do not skip a retained candidate to find a memory candidate: it is the next edge to the base.
+            // Do not skip a persisted candidate to find a memory candidate: it is the next edge to the base.
             PbtSnapshotLease? candidate = FindCandidate(ForcedSeed(latest), persisted);
             if (candidate is not null)
             {
@@ -156,7 +156,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 }
                 else break;
             }
-            _repository.RemoveFinalizedRetainedForks(GetCurrentPersistedStateId(), _finalized);
+            _repository.RemoveFinalizedPersistedForks(GetCurrentPersistedStateId(), _finalized);
             return changed;
         }
         finally { _persistenceLock.Release(); }
@@ -238,13 +238,13 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
                 foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) batch.SetNodeGroup(groupKey, payload);
                 foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) batch.SetNodeGroup(groupKey, payload);
             }
-            else candidate.Retained!.ApplyTo(batch, cancellationToken);
+            else candidate.Persisted!.ApplyTo(batch, cancellationToken);
             batch.Commit();
         }
         Volatile.Write(ref _currentPersistedState, new StrongBox<StateId>(candidate.To));
         _repository.RemoveSiblingAndDescendents(candidate.To);
         _repository.RemoveStatesUntil(candidate.To.BlockNumber);
-        _repository.RemoveRetainedStatesBefore(candidate.To.BlockNumber);
+        _repository.RemovePersistedStatesBefore(candidate.To.BlockNumber);
     }
 
     public bool DropStateNotReachableFrom(in StateId head)

@@ -22,25 +22,25 @@ internal static class PbtSnapshotTestExtensions
         return lease?.Memory is { } snapshot && snapshot.TryLease() ? snapshot : null;
     }
 
-    /// <summary>Whether the repository indexes this exact retained instance.</summary>
-    internal static bool ContainsRetainedSource(this PbtSnapshotRepository repository, PbtRetainedSnapshot snapshot)
+    /// <summary>Whether the repository indexes this exact persisted instance.</summary>
+    internal static bool ContainsPersistedSource(this PbtSnapshotRepository repository, PbtPersistedSnapshot snapshot)
     {
-        if (!repository.TryLeaseRetainedCatalogKey(snapshot.To, snapshot.Depth, out PbtRetainedSnapshot? current)) return false;
+        if (!repository.TryLeasePersistedCatalogKey(snapshot.To, snapshot.Depth, out PbtPersistedSnapshot? current)) return false;
         using (current) return ReferenceEquals(current, snapshot);
     }
 
-    internal static bool TryLeaseRetained(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier, out PbtRetainedSnapshot? snapshot)
+    internal static bool TryLeasePersisted(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier, out PbtPersistedSnapshot? snapshot)
     {
-        if (repository.TryLeaseRetainedCatalogKey(to, depth, out snapshot) && snapshot!.Tier == tier) return true;
+        if (repository.TryLeasePersistedCatalogKey(to, depth, out snapshot) && snapshot!.Tier == tier) return true;
         snapshot?.Dispose();
         snapshot = null;
         return false;
     }
 
-    /// <summary>Whether a retained snapshot of <paramref name="tier"/> spans <paramref name="depth"/> blocks up to <paramref name="to"/>.</summary>
-    internal static bool HasRetained(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier)
+    /// <summary>Whether a persisted snapshot of <paramref name="tier"/> spans <paramref name="depth"/> blocks up to <paramref name="to"/>.</summary>
+    internal static bool HasPersisted(this PbtSnapshotRepository repository, in StateId to, long depth, SnapshotTier tier)
     {
-        if (!repository.TryLeaseRetained(to, depth, tier, out PbtRetainedSnapshot? snapshot)) return false;
+        if (!repository.TryLeasePersisted(to, depth, tier, out PbtPersistedSnapshot? snapshot)) return false;
         snapshot!.Dispose();
         return true;
     }

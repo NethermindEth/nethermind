@@ -131,41 +131,41 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Retained_availability_requires_base_and_admission_borrows_ownership(
+    public void Persisted_availability_requires_base_and_admission_borrows_ownership(
         [Values(SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.PersistedLargeCompacted)] SnapshotTier tier)
     {
-        using PbtRetainedTestStore store = new();
-        using PbtRetainedSnapshot retained = Retained(store, State(0), State(1), tier);
-        Assert.That(_repository.TryAddRetained(retained), Is.True);
-        Assert.That(_repository.TryAddRetained(retained), Is.False);
+        using PbtPersistedTestStore store = new();
+        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), tier);
+        Assert.That(_repository.TryAddPersisted(persisted), Is.True);
+        Assert.That(_repository.TryAddPersisted(persisted), Is.False);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_repository.HasState(State(1)), Is.EqualTo(tier == SnapshotTier.PersistedBase));
-            Assert.That(_repository.ContainsRetainedSource(retained), Is.True);
-            Assert.That(_repository.RetainedCount, Is.EqualTo(1));
+            Assert.That(_repository.ContainsPersistedSource(persisted), Is.True);
+            Assert.That(_repository.PersistedCount, Is.EqualTo(1));
         }
         _repository.Dispose();
-        Assert.That(retained.TryLease(), Is.True);
-        retained.Dispose();
+        Assert.That(persisted.TryLease(), Is.True);
+        persisted.Dispose();
     }
 
     [Test]
     public void Read_priority_matches_flat([Values(SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized,
         SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase)] SnapshotTier expected)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         SnapshotTier[] priority = [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized,
             SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
         int first = Array.IndexOf(priority, expected);
         for (int i = first; i < priority.Length; i++)
         {
             SnapshotTier tier = priority[i];
-            // Different depths avoid a catalog-key collision while all retained edges overshoot the floor.
+            // Different depths avoid a catalog-key collision while all persisted edges overshoot the floor.
             StateId from = State(8 - i);
             if (tier.IsPersisted())
             {
-                using PbtRetainedSnapshot retained = Retained(store, from, State(10), tier);
-                Assert.That(_repository.TryAddRetained(retained), Is.True);
+                using PbtPersistedSnapshot persisted = Persisted(store, from, State(10), tier);
+                Assert.That(_repository.TryAddPersisted(persisted), Is.True);
             }
             else Add(State(9), State(10), tier == SnapshotTier.InMemoryCompacted);
         }
@@ -176,27 +176,27 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Retained_floor_overshoot_is_allowed_but_memory_overshoot_is_not([Values] bool retained)
+    public void Persisted_floor_overshoot_is_allowed_but_memory_overshoot_is_not([Values] bool persisted)
     {
-        using PbtRetainedTestStore store = new();
-        if (retained)
+        using PbtPersistedTestStore store = new();
+        if (persisted)
         {
-            using PbtRetainedSnapshot edge = Retained(store, State(0), State(4), SnapshotTier.PersistedCompactSized);
-            _repository.TryAddRetained(edge);
+            using PbtPersistedSnapshot edge = Persisted(store, State(0), State(4), SnapshotTier.PersistedCompactSized);
+            _repository.TryAddPersisted(edge);
         }
         else Add(State(0), State(4), compacted: true);
         using PbtSnapshotChain? chain = _repository.TryLeaseReadChain(State(4), State(2));
-        Assert.That(chain is not null, Is.EqualTo(retained));
+        Assert.That(chain is not null, Is.EqualTo(persisted));
         _repository.Dispose();
     }
 
     [Test]
-    public void Retained_transition_never_returns_to_memory()
+    public void Persisted_transition_never_returns_to_memory()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         Add(State(0), State(1));
-        using PbtRetainedSnapshot edge = Retained(store, State(1), State(2), SnapshotTier.PersistedBase);
-        _repository.TryAddRetained(edge);
+        using PbtPersistedSnapshot edge = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase);
+        _repository.TryAddPersisted(edge);
         using PbtSnapshotChain? chain = _repository.TryLeaseReadChain(State(2), State(0));
         Assert.That(chain, Is.Null);
         _repository.Dispose();
@@ -205,11 +205,11 @@ public class PbtSnapshotRepositoryTests
     [Test]
     public void Persistence_rejects_wide_and_nonfinalized_edges_without_shadowing_narrow_candidate()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         Add(State(0), State(1));
         Add(State(1), State(2));
-        using PbtRetainedSnapshot edge = Retained(store, State(0), State(2), SnapshotTier.PersistedLargeCompacted);
-        _repository.TryAddRetained(edge);
+        using PbtPersistedSnapshot edge = Persisted(store, State(0), State(2), SnapshotTier.PersistedLargeCompacted);
+        _repository.TryAddPersisted(edge);
         using PbtSnapshotLease? candidate = _repository.FindCandidateToPersist(State(2), State(0), 1, state => state == State(1));
         Assert.That(candidate!.To, Is.EqualTo(State(1)));
         using PbtSnapshotLease? rejected = _repository.FindCandidateToPersist(State(2), State(0), 32, static _ => false);
@@ -230,14 +230,14 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Retained_compaction_is_best_effort_and_sentinel_aware()
+    public void Persisted_compaction_is_best_effort_and_sentinel_aware()
     {
-        using PbtRetainedTestStore store = new();
-        using PbtRetainedSnapshot first = Retained(store, StateId.PreGenesis, State(0), SnapshotTier.PersistedBase);
-        using PbtRetainedSnapshot second = Retained(store, State(0), State(1), SnapshotTier.PersistedBase);
-        _repository.TryAddRetained(first); _repository.TryAddRetained(second);
-        using PbtSnapshotChain? full = _repository.TryLeaseRetainedChain(State(1), ulong.MaxValue);
-        using PbtSnapshotChain? partial = _repository.TryLeaseRetainedChain(State(1), 0);
+        using PbtPersistedTestStore store = new();
+        using PbtPersistedSnapshot first = Persisted(store, StateId.PreGenesis, State(0), SnapshotTier.PersistedBase);
+        using PbtPersistedSnapshot second = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+        _repository.TryAddPersisted(first); _repository.TryAddPersisted(second);
+        using PbtSnapshotChain? full = _repository.TryLeasePersistedChain(State(1), ulong.MaxValue);
+        using PbtSnapshotChain? partial = _repository.TryLeasePersistedChain(State(1), 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(full!.Layers.Count, Is.EqualTo(2));
@@ -246,7 +246,7 @@ public class PbtSnapshotRepositoryTests
             Assert.That(_repository.GetLastSnapshotId(), Is.EqualTo(State(1)));
             Assert.That(_repository.HasState(State(0)), Is.True);
             Assert.That(_repository.HasState(State(1)), Is.True);
-            Assert.That(_repository.RetainedCount, Is.EqualTo(2));
+            Assert.That(_repository.PersistedCount, Is.EqualTo(2));
         }
         _repository.Dispose();
     }
@@ -275,60 +275,60 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Retained_deletion_failure_keeps_index_and_reader_ownership()
+    public void Persisted_deletion_failure_keeps_index_and_reader_ownership()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         FailingCatalog catalog = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtRetainedPublicationGate());
-        using PbtRetainedSnapshot retained = Retained(store, State(0), State(1), SnapshotTier.PersistedBase);
-        repository.TryAddRetained(retained);
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
+        using PbtPersistedSnapshot persisted = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+        repository.TryAddPersisted(persisted);
         using PbtSnapshotChain? held = repository.TryLeaseReadChain(State(1), State(0));
-        Assert.Throws<IOException>(() => repository.RemoveRetainedStatesBefore(2));
+        Assert.Throws<IOException>(() => repository.RemovePersistedStatesBefore(2));
         Assert.That(repository.HasState(State(1)), Is.True);
         catalog.Fail = false;
-        repository.RemoveRetainedStatesBefore(2);
+        repository.RemovePersistedStatesBefore(2);
         Assert.That(repository.HasState(State(1)), Is.False);
-        Assert.That(held!.Layers[0].Retained!.TryLease(), Is.True);
-        held.Layers[0].Retained!.Dispose();
+        Assert.That(held!.Layers[0].Persisted!.TryLease(), Is.True);
+        held.Layers[0].Persisted!.Dispose();
     }
 
     [Test]
-    public void Retained_sibling_descendants_are_pruned_but_canonical_forks_survive()
+    public void Persisted_sibling_descendants_are_pruned_but_canonical_forks_survive()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         StateId orphan = new(1, TestItem.KeccakA.ValueHash256);
         StateId orphanChild = new(2, TestItem.KeccakA.ValueHash256);
         StateId fork = new(2, TestItem.KeccakB.ValueHash256);
         foreach ((StateId from, StateId to) in new[] { (State(0), State(1)), (State(0), orphan), (State(1), State(2)), (State(1), fork), (orphan, orphanChild) })
         {
-            using PbtRetainedSnapshot snapshot = Retained(store, from, to, SnapshotTier.PersistedBase);
-            _repository.TryAddRetained(snapshot);
+            using PbtPersistedSnapshot snapshot = Persisted(store, from, to, SnapshotTier.PersistedBase);
+            _repository.TryAddPersisted(snapshot);
         }
         _repository.RemoveSiblingAndDescendents(State(1));
-        _repository.RemoveRetainedStatesBefore(2);
+        _repository.RemovePersistedStatesBefore(2);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_repository.HasState(orphanChild), Is.False);
             Assert.That(_repository.HasState(State(2)), Is.True);
             Assert.That(_repository.HasState(fork), Is.True);
-            Assert.That(_repository.RetainedCount, Is.EqualTo(2));
+            Assert.That(_repository.PersistedCount, Is.EqualTo(2));
         }
         _repository.Dispose();
     }
 
     [Test]
-    public void Descendant_pruning_enforces_the_retained_transition([Values] bool retainedFirst)
+    public void Descendant_pruning_enforces_the_persisted_transition([Values] bool persistedFirst)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         StateId sibling = new(0, TestItem.KeccakA.ValueHash256);
         Add(StateId.PreGenesis, State(0));
         Add(StateId.PreGenesis, sibling);
         for (int block = 1; block <= 2; block++)
         {
-            if ((block == 1) == retainedFirst)
+            if ((block == 1) == persistedFirst)
             {
-                using PbtRetainedSnapshot snapshot = Retained(store, State(block - 1), State(block), SnapshotTier.PersistedBase);
-                _repository.TryAddRetained(snapshot);
+                using PbtPersistedSnapshot snapshot = Persisted(store, State(block - 1), State(block), SnapshotTier.PersistedBase);
+                _repository.TryAddPersisted(snapshot);
             }
             else Add(State(block - 1), State(block));
         }
@@ -336,8 +336,8 @@ public class PbtSnapshotRepositoryTests
         using PbtSnapshotChain? chain = _repository.TryLeaseReadChain(State(2), State(0));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_repository.HasState(State(2)), Is.EqualTo(retainedFirst));
-            Assert.That(chain is not null, Is.EqualTo(retainedFirst));
+            Assert.That(_repository.HasState(State(2)), Is.EqualTo(persistedFirst));
+            Assert.That(chain is not null, Is.EqualTo(persistedFirst));
         }
         _repository.Dispose();
     }
@@ -345,19 +345,19 @@ public class PbtSnapshotRepositoryTests
     [Test]
     public void Rewind_prunes_every_tier_and_preserves_held_chains([Values] SnapshotTier tier)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         StateId abandoned = new(2, TestItem.KeccakB.ValueHash256);
         Add(State(0), State(1));
         Add(State(1), State(2));
         Add(State(1), abandoned);
         if (tier.IsPersisted())
         {
-            using PbtRetainedSnapshot parent = Retained(store, State(0), State(1), SnapshotTier.PersistedBase);
-            _repository.TryAddRetained(parent);
-            using PbtRetainedSnapshot canonical = Retained(store, State(1), State(2), tier);
-            using PbtRetainedSnapshot orphan = Retained(store, State(1), abandoned, tier);
-            _repository.TryAddRetained(canonical);
-            _repository.TryAddRetained(orphan);
+            using PbtPersistedSnapshot parent = Persisted(store, State(0), State(1), SnapshotTier.PersistedBase);
+            _repository.TryAddPersisted(parent);
+            using PbtPersistedSnapshot canonical = Persisted(store, State(1), State(2), tier);
+            using PbtPersistedSnapshot orphan = Persisted(store, State(1), abandoned, tier);
+            _repository.TryAddPersisted(canonical);
+            _repository.TryAddPersisted(orphan);
         }
         else if (tier == SnapshotTier.InMemoryCompacted)
         {
@@ -374,15 +374,15 @@ public class PbtSnapshotRepositoryTests
             Assert.That(_repository.HasState(State(2)), Is.False);
             Assert.That(_repository.HasState(abandoned), Is.False);
             Assert.That(_repository.CompactedCount, Is.Zero);
-            Assert.That(_repository.RetainedCount, Is.EqualTo(tier.IsPersisted() ? 1 : 0));
+            Assert.That(_repository.PersistedCount, Is.EqualTo(tier.IsPersisted() ? 1 : 0));
             Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(State(1)));
             Assert.That(held!.Layers[^1].To, Is.EqualTo(abandoned));
         }
         foreach (PbtSnapshotLease lease in held!.Layers)
         {
-            if (lease.Retained is { } retained)
+            if (lease.Persisted is { } persisted)
             {
-                Assert.That(retained.TryGetAccount(TestItem.KeccakA.ValueHash256, out _), Is.False);
+                Assert.That(persisted.TryGetAccount(TestItem.KeccakA.ValueHash256, out _), Is.False);
             }
             else Assert.That(lease.Memory!.Content.Accounts, Is.Empty);
         }
@@ -423,7 +423,7 @@ public class PbtSnapshotRepositoryTests
     [Test]
     public async Task Rewind_preserves_memory_admitted_after_candidate_capture()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using System.Threading.ManualResetEventSlim deleting = new();
         using System.Threading.ManualResetEventSlim resume = new();
         CallbackCatalog catalog = new(() =>
@@ -431,9 +431,9 @@ public class PbtSnapshotRepositoryTests
             deleting.Set();
             Assert.That(resume.Wait(TimeSpan.FromSeconds(10)), Is.True);
         });
-        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtRetainedPublicationGate());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
         repository.TryAdd(Snapshot(State(0), State(1)));
-        using (PbtRetainedSnapshot orphan = Retained(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddRetained(orphan);
+        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddPersisted(orphan);
         Task<bool> rewind = Task.Run(() => repository.TryRemoveUnreachableFrom(State(1), State(0), out _));
         try
         {
@@ -451,14 +451,14 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Rewind_failed_catalog_delete_does_not_publish_reset_or_release_retained_state()
+    public void Rewind_failed_catalog_delete_does_not_publish_reset_or_release_persisted_state()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         FailingCatalog catalog = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtRetainedPublicationGate());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), catalog, new PbtPersistedPublicationGate());
         repository.TryAdd(Snapshot(State(0), State(1)));
         repository.TryAdd(Snapshot(State(1), State(3)));
-        using (PbtRetainedSnapshot orphan = Retained(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddRetained(orphan);
+        using (PbtPersistedSnapshot orphan = Persisted(store, State(1), State(2), SnapshotTier.PersistedBase)) repository.TryAddPersisted(orphan);
         Assert.Throws<IOException>(() => repository.TryRemoveUnreachableFrom(State(1), State(0), out _));
         Assert.That(repository.GetLastCommittedStateId(), Is.EqualTo(State(3)));
         Assert.That(repository.HasState(State(2)), Is.True);
@@ -468,47 +468,47 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Shared_retained_bloom_preserves_history_and_excludes_forks_and_crossing_edges()
+    public void Shared_persisted_bloom_preserves_history_and_excludes_forks_and_crossing_edges()
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig());
-        PbtRetainedSnapshot first = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
-        PbtRetainedSnapshot second = BloomSnapshot(store, State(1), State(2), SnapshotTier.PersistedBase, 2);
-        PbtRetainedSnapshot third = BloomSnapshot(store, State(2), State(3), SnapshotTier.PersistedBase, 3);
-        using PbtRetainedSnapshot fork = BloomSnapshot(store, State(1), new StateId(2, TestItem.KeccakB.ValueHash256), SnapshotTier.PersistedBase, 4);
-        using PbtRetainedSnapshot crossing = BloomSnapshot(store, StateId.PreGenesis, State(2), SnapshotTier.PersistedSmallCompacted, 5);
-        using PbtRetainedSnapshot wrongParent = BloomSnapshot(store, new StateId(1, TestItem.KeccakB.ValueHash256), State(3), SnapshotTier.PersistedSmallCompacted, 6);
-        repository.TryAddRetained(first);
-        repository.TryAddRetained(second);
-        repository.TryAddRetained(third);
-        repository.TryAddRetained(fork);
-        repository.TryAddRetained(crossing);
-        repository.TryAddRetained(wrongParent);
+        PbtPersistedSnapshot first = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
+        PbtPersistedSnapshot second = BloomSnapshot(store, State(1), State(2), SnapshotTier.PersistedBase, 2);
+        PbtPersistedSnapshot third = BloomSnapshot(store, State(2), State(3), SnapshotTier.PersistedBase, 3);
+        using PbtPersistedSnapshot fork = BloomSnapshot(store, State(1), new StateId(2, TestItem.KeccakB.ValueHash256), SnapshotTier.PersistedBase, 4);
+        using PbtPersistedSnapshot crossing = BloomSnapshot(store, StateId.PreGenesis, State(2), SnapshotTier.PersistedSmallCompacted, 5);
+        using PbtPersistedSnapshot wrongParent = BloomSnapshot(store, new StateId(1, TestItem.KeccakB.ValueHash256), State(3), SnapshotTier.PersistedSmallCompacted, 6);
+        repository.TryAddPersisted(first);
+        repository.TryAddPersisted(second);
+        repository.TryAddPersisted(third);
+        repository.TryAddPersisted(fork);
+        repository.TryAddPersisted(crossing);
+        repository.TryAddPersisted(wrongParent);
         RefCountedBloomFilter shared = new(new BloomFilter(32, 14));
         try
         {
             repository.ShareBloomAcrossRange(State(0), State(3), shared);
             for (int block = 1; block <= 3; block++)
             {
-                Assert.That(repository.TryLeaseRetained(State(block), 1, SnapshotTier.PersistedBase, out PbtRetainedSnapshot? snapshot), Is.True);
+                Assert.That(repository.TryLeasePersisted(State(block), 1, SnapshotTier.PersistedBase, out PbtPersistedSnapshot? snapshot), Is.True);
                 using (snapshot)
                 {
                     Assert.That(snapshot!.BloomRef, Is.SameAs(shared));
                     byte[] hash = new byte[32]; hash[^1] = (byte)block;
-                    Assert.That(shared.Filter.MightContain(PbtRetainedKey.BloomHash(PbtRetainedKey.CodeEntity(new ValueHash256(hash)))), Is.True);
+                    Assert.That(shared.Filter.MightContain(PbtPersistedKey.BloomHash(PbtPersistedKey.CodeEntity(new ValueHash256(hash)))), Is.True);
                     Assert.That(snapshot.TryGetCode(new ValueHash256(hash), out _), Is.True);
                 }
             }
-            Assert.That(repository.ContainsRetainedSource(fork), Is.True);
-            Assert.That(repository.ContainsRetainedSource(crossing), Is.True);
-            Assert.That(repository.ContainsRetainedSource(wrongParent), Is.True);
-            Assert.That(repository.ContainsRetainedSource(first), Is.False);
-            Assert.That(repository.ContainsRetainedStorageSource(first), Is.True);
-            repository.RemoveRetainedStatesBefore(2);
-            Assert.That(repository.ContainsRetainedStorageSource(first), Is.False);
-            using PbtRetainedSnapshot reconverted = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
-            repository.TryAddRetained(reconverted);
-            Assert.That(repository.ContainsRetainedStorageSource(first), Is.False, "a different physical conversion is not the leased source");
+            Assert.That(repository.ContainsPersistedSource(fork), Is.True);
+            Assert.That(repository.ContainsPersistedSource(crossing), Is.True);
+            Assert.That(repository.ContainsPersistedSource(wrongParent), Is.True);
+            Assert.That(repository.ContainsPersistedSource(first), Is.False);
+            Assert.That(repository.ContainsPersistedStorageSource(first), Is.True);
+            repository.RemovePersistedStatesBefore(2);
+            Assert.That(repository.ContainsPersistedStorageSource(first), Is.False);
+            using PbtPersistedSnapshot reconverted = BloomSnapshot(store, State(0), State(1), SnapshotTier.PersistedBase, 1);
+            repository.TryAddPersisted(reconverted);
+            Assert.That(repository.ContainsPersistedStorageSource(first), Is.False, "a different physical conversion is not the leased source");
             byte[] firstHash = new byte[32]; firstHash[^1] = 1;
             Assert.That(first.TryGetCode(new ValueHash256(firstHash), out _), Is.True, "held old handle remains readable after rebinding");
             repository.Dispose();
@@ -521,23 +521,23 @@ public class PbtSnapshotRepositoryTests
     }
 
     [Test]
-    public void Shared_retained_bloom_does_not_inflate_capacity_for_repeated_multi_tier_keys([Values(4, 32)] int blocks)
+    public void Shared_persisted_bloom_does_not_inflate_capacity_for_repeated_multi_tier_keys([Values(4, 32)] int blocks)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig());
         for (int block = 1; block <= blocks; block++)
         {
-            using PbtRetainedSnapshot snapshot = BloomSnapshot(store, State(block - 1), State(block), SnapshotTier.PersistedBase, 1);
-            repository.TryAddRetained(snapshot);
+            using PbtPersistedSnapshot snapshot = BloomSnapshot(store, State(block - 1), State(block), SnapshotTier.PersistedBase, 1);
+            repository.TryAddPersisted(snapshot);
             if (block > 1)
             {
-                using PbtRetainedSnapshot compacted = BloomSnapshot(store, State(0), State(block), SnapshotTier.PersistedSmallCompacted, 1);
-                repository.TryAddRetained(compacted);
+                using PbtPersistedSnapshot compacted = BloomSnapshot(store, State(0), State(block), SnapshotTier.PersistedSmallCompacted, 1);
+                repository.TryAddPersisted(compacted);
             }
         }
         using RefCountedBloomFilter shared = new(new BloomFilter(1, 14));
         byte[] hash = new byte[32]; hash[^1] = 1;
-        shared.Filter.Add(PbtRetainedKey.BloomHash(PbtRetainedKey.CodeEntity(new ValueHash256(hash))));
+        shared.Filter.Add(PbtPersistedKey.BloomHash(PbtPersistedKey.CodeEntity(new ValueHash256(hash))));
         repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
         repository.ShareBloomAcrossRange(State(0), State(blocks), shared);
         Assert.That(shared.Filter.Count, Is.EqualTo(1));
@@ -546,13 +546,13 @@ public class PbtSnapshotRepositoryTests
         repository.Dispose();
     }
 
-    private PbtRetainedSnapshot BloomSnapshot(PbtRetainedTestStore store, StateId from, StateId to, SnapshotTier tier, byte key)
+    private PbtPersistedSnapshot BloomSnapshot(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier, byte key)
     {
         PbtSnapshotContent content = new();
         byte[] hash = new byte[32]; hash[^1] = key;
         content.Codes[new ValueHash256(hash)] = new(new byte[65537]);
         using PbtSnapshot memory = new(from, to, default, content, _pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtRetainedSnapshot built = store.Build(memory);
+        using PbtPersistedSnapshot built = store.Build(memory);
         return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, store.Memory, built.BloomRef);
     }
 
@@ -571,10 +571,10 @@ public class PbtSnapshotRepositoryTests
         public IEnumerable<CatalogEntry> Load() => [];
     }
 
-    private PbtRetainedSnapshot Retained(PbtRetainedTestStore store, StateId from, StateId to, SnapshotTier tier)
+    private PbtPersistedSnapshot Persisted(PbtPersistedTestStore store, StateId from, StateId to, SnapshotTier tier)
     {
         using PbtSnapshot memory = Snapshot(from, to);
-        using PbtRetainedSnapshot built = store.Build(memory);
+        using PbtPersistedSnapshot built = store.Build(memory);
         return new(new(from, to, built.Location, tier), built.Reservation, store.Blobs, store.Memory, built.BloomRef);
     }
 

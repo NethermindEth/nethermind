@@ -94,15 +94,15 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
     [Test]
     [NonParallelizable]
-    public void Definite_miss_honors_in_memory_clears_and_reads_retained_layers_below([Values] bool clearInMemory)
+    public void Definite_miss_honors_in_memory_clears_and_reads_persisted_layers_below([Values] bool clearInMemory)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtResourcePool pool = new(new PbtConfig());
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), default, LayerWriting(TestItem.AddressA, 1000, 7), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtRetainedSnapshot retained = store.Build(source);
-        repository.TryAddRetained(retained);
+        using PbtPersistedSnapshot persisted = store.Build(source);
+        repository.TryAddPersisted(persisted);
         PbtSnapshotContent clearing = LayerWriting(TestItem.AddressB, 1000, 1);
         if (clearInMemory) clearing.ClearStorage(addressHash);
         repository.TryAdd(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, clearing, pool, PbtResourcePool.Usage.MainBlockProcessing));

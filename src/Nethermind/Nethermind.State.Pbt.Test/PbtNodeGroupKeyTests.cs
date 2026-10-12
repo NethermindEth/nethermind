@@ -20,21 +20,21 @@ public class PbtNodeGroupKeyTests
     [TestCase("fc", 6, 0x32)]
     [TestCase("ff00", 9, 0x32)]
     [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 525, 0x32)]
-    public void Retained_keys_preserve_root_depth_and_partition(string pathHex, int depth, byte family)
+    public void Persisted_keys_preserve_root_depth_and_partition(string pathHex, int depth, byte family)
     {
         PbtStorageNodePath path = new(Bytes.FromHexString(pathHex), depth);
-        byte[] key = PbtRetainedKey.Group(path);
+        byte[] key = PbtPersistedKey.Group(path);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(key[0], Is.EqualTo(family));
-            Assert.That(PbtRetainedKey.DecodeGroup(key), Is.EqualTo(path));
+            Assert.That(PbtPersistedKey.DecodeGroup(key), Is.EqualTo(path));
             Assert.That(key.Length, Is.LessThanOrEqualTo(255));
         }
     }
 
     [Test]
-    public void Retained_keys_reject_invalid_group_depth_partition_and_padding([Values("3000060100", "31000000", "3000050000", "300114000000000000000000000000000000000000000000000000000000000000000000000000", "3000000000")] string key) =>
-        Assert.Throws<InvalidDataException>(() => PbtRetainedKey.ValidateDescriptor(Bytes.FromHexString(key)));
+    public void Persisted_keys_reject_invalid_group_depth_partition_and_padding([Values("3000060100", "31000000", "3000050000", "300114000000000000000000000000000000000000000000000000000000000000000000000000", "3000000000")] string key) =>
+        Assert.Throws<InvalidDataException>(() => PbtPersistedKey.ValidateDescriptor(Bytes.FromHexString(key)));
 
     [TestCase("e0", 3, "e003")]
     [TestCase("fc", 6, "fc06")]

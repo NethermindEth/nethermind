@@ -17,9 +17,9 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-public readonly record struct PbtRetainedMetadata(StateId From, StateId To, ValueHash256 TreeRoot);
+public readonly record struct PbtPersistedMetadata(StateId From, StateId To, ValueHash256 TreeRoot);
 
-public static class PbtRetainedSnapshotBuilder
+public static class PbtPersistedSnapshotBuilder
 {
     private readonly record struct Entry(byte[] Key, object? Value);
 
@@ -31,7 +31,7 @@ public static class PbtRetainedSnapshotBuilder
         // Each inline record has at most 255 value bytes and 72 key bytes. Account for block/restart
         // overhead and ownership/chunk records conservatively rather than under-mapping the arena.
         long bytes = snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
-        return checked(16384 + entries * 512 + (bytes / PbtRetainedFormat.ChunkSize + entries) * 512);
+        return checked(16384 + entries * 512 + (bytes / PbtPersistedFormat.ChunkSize + entries) * 512);
     }
 
     public static long EstimateBlobSize(PbtSnapshot snapshot)
@@ -49,27 +49,26 @@ public static class PbtRetainedSnapshotBuilder
     {
         List<Entry> entries = [];
         PbtSnapshotContent c = snapshot.Content;
-        foreach ((ValueHash256 key, PbtAccount? value) in c.Accounts) entries.Add(new(PbtRetainedKey.AddressEntity(key, PbtRetainedKey.Account), value));
-        foreach ((HashedKey<PbtPath> key, PackedSlotRun value) in c.HeaderStorages) entries.Add(new(PbtRetainedKey.Run(key.Key), value));
-        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtRetainedKey.Run(key.Key), value));
-        foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtRetainedKey.CodeEntity(key), value));
-        foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtRetainedKey.AddressEntity(key, PbtRetainedKey.Clear), value));
-        foreach ((PbtNodePath key, RefCountingMemory? value) in c.AccountNodeGroups) entries.Add(new(PbtRetainedKey.Group(key), value));
-        foreach ((PbtNodePath key, RefCountingMemory? value) in c.CodeNodeGroups) entries.Add(new(PbtRetainedKey.Group(key), value));
-        foreach ((PbtStorageNodePath key, RefCountingMemory? value) in c.StorageNodeGroups) entries.Add(new(PbtRetainedKey.Group(key), value));
+        foreach ((ValueHash256 key, PbtAccount? value) in c.Accounts) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Account), value));
+        foreach ((HashedKey<PbtPath> key, PackedSlotRun value) in c.HeaderStorages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
+        foreach ((HashedKey<PbtStoragePath> key, PackedSlotRun value) in c.Storages) entries.Add(new(PbtPersistedKey.Run(key.Key), value));
+        foreach ((ValueHash256 key, CodeInfo value) in c.Codes) entries.Add(new(PbtPersistedKey.CodeEntity(key), value));
+        foreach ((ValueHash256 key, bool value) in c.SelfDestructedStorageAddresses) entries.Add(new(PbtPersistedKey.AddressEntity(key, PbtPersistedKey.Clear), value));
+        foreach ((PbtNodePath key, RefCountingMemory? value) in c.AccountNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        foreach ((PbtNodePath key, RefCountingMemory? value) in c.CodeNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
+        foreach ((PbtStorageNodePath key, RefCountingMemory? value) in c.StorageNodeGroups) entries.Add(new(PbtPersistedKey.Group(key), value));
         entries.Sort(static (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
-        SortedSet<ushort> owners = [];
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
-            PbtRetainedFormat.WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
+            table.Add(PbtPersistedKey.Owner(blobs.BlobArenaId), [1]);
             foreach (Entry entry in entries)
             {
-                bloom.AddUnsynchronized(PbtRetainedKey.BloomHash(entry.Key));
+                bloom.AddUnsynchronized(PbtPersistedKey.BloomHash(entry.Key));
                 byte[]? payload = Encode(entry.Value);
-                WriteEntity(ref table, entry.Key, payload, blobs, owners);
+                WriteEntity(ref table, entry.Key, payload, blobs);
             }
-            foreach (ushort id in owners) table.Add(PbtRetainedKey.Owner(id), [1]);
+            PbtPersistedFormat.WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
             table.Build();
         }
         finally { table.Dispose(); }
@@ -92,46 +91,45 @@ public static class PbtRetainedSnapshotBuilder
                 return runBytes;
             case CodeInfo code: return code.CodeSpan.ToArray();
             case RefCountingMemory group: return group.GetSpan().ToArray();
-            default: throw new InvalidOperationException("Unsupported retained PBT payload.");
+            default: throw new InvalidOperationException("Unsupported persisted PBT payload.");
         }
     }
 
     private static void WriteEntity<TWriter>(ref SortedTableBuilder<TWriter> table, ReadOnlySpan<byte> key,
-        byte[]? payload, BlobArenaWriter blobs, SortedSet<ushort> owners) where TWriter : IByteBufferWriter
+        byte[]? payload, BlobArenaWriter blobs) where TWriter : IByteBufferWriter
     {
-        PbtRetainedKey.ValidateDescriptor(key);
+        PbtPersistedKey.ValidateDescriptor(key);
         if (payload is null)
         {
-            table.Add(key, [PbtRetainedFormat.NullMarker]);
+            table.Add(key, [PbtPersistedFormat.NullMarker]);
             return;
         }
-        if (payload.Length <= PbtRetainedFormat.InlineLimit)
+        if (payload.Length <= PbtPersistedFormat.InlineLimit)
         {
-            Span<byte> value = stackalloc byte[PbtRetainedFormat.InlineLimit + 1];
-            value[0] = PbtRetainedFormat.InlineMarker;
+            Span<byte> value = stackalloc byte[PbtPersistedFormat.InlineLimit + 1];
+            value[0] = PbtPersistedFormat.InlineMarker;
             payload.CopyTo(value[1..]);
             table.Add(key, value[..(payload.Length + 1)]);
             return;
         }
-        uint count = PbtRetainedFormat.ChunkCount(payload.LongLength);
-        Span<byte> descriptor = stackalloc byte[PbtRetainedFormat.ChunkedDescriptorLength];
-        PbtRetainedFormat.WriteChunkedDescriptor(descriptor, payload.Length, count);
+        uint count = PbtPersistedFormat.ChunkCount(payload.LongLength);
+        Span<byte> descriptor = stackalloc byte[PbtPersistedFormat.ChunkedDescriptorLength];
+        PbtPersistedFormat.WriteChunkedDescriptor(descriptor, payload.Length, count);
         table.Add(key, descriptor);
         Span<byte> nodeRefBytes = stackalloc byte[NodeRef.Size];
         for (uint i = 0; i < count; i++)
         {
-            int start = checked((int)(i * PbtRetainedFormat.ChunkSize));
-            ReadOnlySpan<byte> chunk = payload.AsSpan(start, Math.Min(PbtRetainedFormat.ChunkSize, payload.Length - start));
+            int start = checked((int)(i * PbtPersistedFormat.ChunkSize));
+            ReadOnlySpan<byte> chunk = payload.AsSpan(start, Math.Min(PbtPersistedFormat.ChunkSize, payload.Length - start));
             NodeRef reference = blobs.WriteRlp(EncodeChunk(chunk));
-            owners.Add(reference.BlobArenaId);
             NodeRef.Write(nodeRefBytes, reference);
-            table.Add(PbtRetainedKey.Chunk(key, i), nodeRefBytes);
+            table.Add(PbtPersistedKey.Chunk(key, i), nodeRefBytes);
         }
     }
 
     private static byte[] EncodeChunk(ReadOnlySpan<byte> payload)
     {
-        if (payload.Length is <= 0 or > PbtRetainedFormat.ChunkSize) throw new InvalidDataException("Invalid retained PBT chunk length.");
+        if (payload.Length is <= 0 or > PbtPersistedFormat.ChunkSize) throw new InvalidDataException("Invalid persisted PBT chunk length.");
         return Rlp.Encode(payload).Bytes;
     }
 }

@@ -29,22 +29,22 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtSnapshotBundleTests
 {
     [Test]
-    public void Mixed_retained_and_memory_bundle_survives_pruning_and_honors_clears([Values] bool clear, [Values] bool rewrite)
+    public void Mixed_persisted_and_memory_bundle_survives_pruning_and_honors_clears([Values] bool clear, [Values] bool rewrite)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtResourcePool pool = new(new PbtConfig());
         ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtSnapshotContent retainedContent = new();
-        retainedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
-        retainedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
+        PbtSnapshotContent persistedContent = new();
+        persistedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
+        persistedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
         PbtPath key = Eip8297KeyDerivation.HeaderStorageKey(address, 5);
-        retainedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), (UInt256)7));
+        persistedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), (UInt256)7));
         PbtNodePath root = new([], 0);
-        retainedContent.SetNodeGroup(root, null);
-        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256, retainedContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtRetainedSnapshot retained = store.Build(source);
-        repository.TryAddRetained(retained);
+        persistedContent.SetNodeGroup(root, null);
+        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256, persistedContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtPersistedSnapshot persisted = store.Build(source);
+        repository.TryAddPersisted(persisted);
         PbtSnapshotContent memoryContent = new();
         if (clear) memoryContent.ClearStorage(address);
         if (rewrite) memoryContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), (UInt256)9));
@@ -56,7 +56,7 @@ public class PbtSnapshotBundleTests
         using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false, slotFilterBitsPerKey: 0);
         Assert.That(bundle.TryLease(), Is.True);
         repository.RemoveMemoryState(new StateId(1, default));
-        repository.RemoveRetainedStatesBefore(1);
+        repository.RemovePersistedStatesBefore(1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
@@ -64,7 +64,7 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetCode(TestItem.KeccakA.ValueHash256)!.CodeSpan.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(bundle.GetSlot(TestItem.AddressA, 5), Is.EqualTo((UInt256)(rewrite ? 9 : clear ? 0 : 7)));
             Assert.That(bundle.GetNodeGroup(root.ToPath<PbtStorageNodePath>()), Is.Null);
-            Assert.That(reader.GroupReadCount, Is.Zero, "retained tombstone stops fallback");
+            Assert.That(reader.GroupReadCount, Is.Zero, "persisted tombstone stops fallback");
             Assert.That(repository.HasState(memory.To), Is.False);
         }
         PackedSlotRun run = bundle.RentRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), address);
@@ -152,7 +152,7 @@ public class PbtSnapshotBundleTests
         TrackingMemoryProvider memoryProvider = new();
         for (int round = 0; round < 2; round++)
         {
-            RefCountingMemory?[] retained = new RefCountingMemory?[groupCount];
+            RefCountingMemory?[] persisted = new RefCountingMemory?[groupCount];
             byte[][] originalEncodings = new byte[groupCount][];
             long[] expectedNodeBytes = new long[groupCount];
             try
@@ -171,8 +171,8 @@ public class PbtSnapshotBundleTests
                         content.SetNodeGroup(groupPath, payload);
                         content.SetNodeGroup(groupPath, payload);
                     }
-                    Assert.That(content.TryGetNodeGroup(storagePath, out retained[index]), Is.True);
-                    Assert.That(retained[index], Is.Not.Null);
+                    Assert.That(content.TryGetNodeGroup(storagePath, out persisted[index]), Is.True);
+                    Assert.That(persisted[index], Is.Not.Null);
 
                     byte[] replacement = PbtNodeGroupEncoder.Encode(groupPath, [new PbtNodeRecord(PbtTestPaths.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))], default);
                     using (RefCountingMemory? payload = tombstone ? null : Memory(replacement, memoryProvider))
@@ -186,7 +186,7 @@ public class PbtSnapshotBundleTests
                     {
                         Assert.That(found, Is.True);
                         Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : replacement));
-                        Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(original));
+                        Assert.That(persisted[index]!.GetSpan().ToArray(), Is.EqualTo(original));
                     }
                     expectedNodeBytes[index] = storagePath.ToPathArray().Length + (tombstone ? 0 : replacement.Length);
                 }
@@ -208,12 +208,12 @@ public class PbtSnapshotBundleTests
                     Assert.That(content.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
                     Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount));
                     for (int index = 0; index < groupCount; index++)
-                        Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(originalEncodings[index]));
+                        Assert.That(persisted[index]!.GetSpan().ToArray(), Is.EqualTo(originalEncodings[index]));
                 }
             }
             finally
             {
-                foreach (RefCountingMemory? payload in retained) ((IDisposable?)payload)?.Dispose();
+                foreach (RefCountingMemory? payload in persisted) ((IDisposable?)payload)?.Dispose();
             }
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
@@ -518,7 +518,7 @@ public class PbtSnapshotBundleTests
         using PbtTrieNodeCache cache = new(new PbtConfig());
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         cache.Add(default, inserted, source);
-        long retainedSize = TrieCacheMemory() - initialMemory;
+        long persistedSize = TrieCacheMemory() - initialMemory;
         Assert.That(cache.TryGet(default, requested, out RefCountingMemory? first), Is.True);
         using (first)
         {
@@ -531,7 +531,7 @@ public class PbtSnapshotBundleTests
                 Assert.That(inserted.GetHashCode(), Is.EqualTo(requested.GetHashCode()));
                 Assert.That(second, Is.SameAs(first), "equivalent fill must retain the existing cache entry");
                 Assert.That(second!.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
-                Assert.That(TrieCacheMemory() - initialMemory, Is.EqualTo(retainedSize));
+                Assert.That(TrieCacheMemory() - initialMemory, Is.EqualTo(persistedSize));
                 Assert.That(cache.TryGet(new ValueHash256(Value(1)), requested, out _), Is.False);
             }
         }
@@ -588,22 +588,22 @@ public class PbtSnapshotBundleTests
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         Assert.That(cache.TryGet(default, path, out _), Is.False);
         cache.Add(default, path, source);
-        Assert.That(cache.TryGet(default, path, out RefCountingMemory? retained), Is.True);
-        using (retained)
+        Assert.That(cache.TryGet(default, path, out RefCountingMemory? persisted), Is.True);
+        using (persisted)
         {
             Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False);
-            long retainedSize = Metrics.PbtTrieCacheMemory[partition] - initialMemory[Array.IndexOf(CachePartitions, partition)];
-            Assert.That(retainedSize, Is.GreaterThan(0));
-            AssertMetrics(retainedSize, 1, 1, 2);
+            long persistedSize = Metrics.PbtTrieCacheMemory[partition] - initialMemory[Array.IndexOf(CachePartitions, partition)];
+            Assert.That(persistedSize, Is.GreaterThan(0));
+            AssertMetrics(persistedSize, 1, 1, 2);
             cache.Clear();
             AssertMetrics(0, 0, 1, 2);
             cache.Add(default, path, source);
-            AssertMetrics(retainedSize, 1, 1, 2);
+            AssertMetrics(persistedSize, 1, 1, 2);
             cache.Dispose();
             cache.Add(default, path, source);
             Assert.That(cache.TryGet(default, path, out _), Is.False);
             AssertMetrics(0, 0, 1, 3);
-            Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
+            Assert.That(persisted!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
         }
 
         void AssertMetrics(long memory, long entries, long hits, long misses)
@@ -688,8 +688,8 @@ public class PbtSnapshotBundleTests
         ValueHash256 replacementRoot = new(Value(1));
         cache.Add(replacementRoot, path, source);
         Assert.That(cache.TryGet(default, path, out _), Is.False);
-        Assert.That(cache.TryGet(replacementRoot, path, out RefCountingMemory? retained), Is.True);
-        using (retained)
+        Assert.That(cache.TryGet(replacementRoot, path, out RefCountingMemory? persisted), Is.True);
+        using (persisted)
         {
             using RefCountingMemory larger = Memory(new byte[1600]);
             cache.Add(new ValueHash256(Value(2)), path, larger);
@@ -702,7 +702,7 @@ public class PbtSnapshotBundleTests
             }
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
+                Assert.That(persisted!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
                 for (int index = 0; index < CachePartitions.Length; index++)
                 {
                     string label = CachePartitions[index];
@@ -860,26 +860,26 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Snapshot_group_resolution_honors_retained_and_newer_memory_entries([Values] bool tombstone, [Values] bool newerMemory)
+    public void Snapshot_group_resolution_honors_persisted_and_newer_memory_entries([Values] bool tombstone, [Values] bool newerMemory)
     {
-        using PbtRetainedTestStore store = new();
+        using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtResourcePool pool = new(new PbtConfig());
         PbtStorageNodePath path = new([], 0);
-        byte[] retainedEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
+        byte[] persistedEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
         byte[] memoryEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(2))], default);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256,
-            Content(path, !newerMemory && tombstone ? null : retainedEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtRetainedSnapshot retained = store.Build(source);
-        repository.TryAddRetained(retained);
-        StateId head = retained.To;
+            Content(path, !newerMemory && tombstone ? null : persistedEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtPersistedSnapshot persisted = store.Build(source);
+        repository.TryAddPersisted(persisted);
+        StateId head = persisted.To;
         if (newerMemory)
         {
             head = new StateId(1, default);
-            repository.TryAdd(new PbtSnapshot(retained.To, head, TestItem.KeccakB.ValueHash256,
+            repository.TryAdd(new PbtSnapshot(persisted.To, head, TestItem.KeccakB.ValueHash256,
                 Content(path, tombstone ? null : memoryEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing));
         }
-        Reader reader = new(default, null) { GroupPayload = retainedEncoding };
+        Reader reader = new(default, null) { GroupPayload = persistedEncoding };
         PbtSnapshotChain chain = repository.TryLeaseReadChain(head, StateId.PreGenesis)!;
         using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false, slotFilterBitsPerKey: 0);
         bool found = bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? payload);
@@ -888,7 +888,7 @@ public class PbtSnapshotBundleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(found, Is.True);
-                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : newerMemory ? memoryEncoding : retainedEncoding));
+                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : newerMemory ? memoryEncoding : persistedEncoding));
                 Assert.That(reader.GroupReadCount, Is.Zero);
             }
         }

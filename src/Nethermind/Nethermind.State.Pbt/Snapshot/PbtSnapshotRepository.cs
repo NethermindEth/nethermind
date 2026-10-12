@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// fork siblings, and assembles backward chains for bundle construction.
 /// </summary>
 /// <remarks>
-/// Memory base and compacted layers coexist with four retained tiers. Compacted edges are traversal
+/// Memory base and compacted layers coexist with four persisted tiers. Compacted edges are traversal
 /// shortcuts, not substitutes for independently available base snapshots.
 /// </remarks>
 public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
@@ -30,17 +30,17 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     private readonly Dictionary<StateId, PbtSnapshot> _snapshots = [];
     private readonly Dictionary<StateId, PbtSnapshot> _compactedSnapshots = [];
     private StateId? _lastCommittedStateId;
-    private readonly PbtRetainedIndex _retained = new(Comparer<StateId>.Create(CompareStates));
+    private readonly PbtPersistedIndex _persisted = new(Comparer<StateId>.Create(CompareStates));
     private readonly ISnapshotCatalog _catalog = NullSnapshotCatalog.Instance;
-    private readonly PbtRetainedPublicationGate _publicationGate = new();
+    private readonly PbtPersistedPublicationGate _publicationGate = new();
     private long _memoryBytes;
     private bool _disposed;
 
-    public PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtRetainedPublicationGate publicationGate)
+    public PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtPersistedPublicationGate publicationGate)
         : this(metricsConfig) => (_catalog, _publicationGate) = (catalog, publicationGate);
 
     public long InMemorySnapshotBytes { get { lock (_lock) return _memoryBytes; } }
-    public int RetainedCount { get { lock (_lock) return _retained.Count; } }
+    public int PersistedCount { get { lock (_lock) return _persisted.Count; } }
     private static long Bytes(PbtSnapshot snapshot) => snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
 
 
@@ -104,34 +104,34 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     {
         List<StateId> abandoned = [];
         List<PbtSnapshot> memoryCandidates = [];
-        List<(StateId To, long Depth, SnapshotTier Tier)> retained = [];
+        List<(StateId To, long Depth, SnapshotTier Tier)> persisted = [];
         lock (_publicationGate.Sync)
         {
             lock (_lock)
             {
                 HashSet<StateId> states = [.. _snapshots.Keys, .. _compactedSnapshots.Keys];
-                foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots) states.Add(snapshot.To);
+                foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots) states.Add(snapshot.To);
                 bool hasSibling = false;
                 foreach (StateId state in states) hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
                 if (!hasSibling) return;
                 List<StateId> ordered = [.. states];
                 ordered.Sort(CompareStates);
                 HashSet<StateId> reachable = [canonicalState];
-                // A retained descendant cannot rely on memory below it; backward reads cannot return to memory.
-                HashSet<StateId> retainedReachable = [canonicalState];
+                // A persisted descendant cannot rely on memory below it; backward reads cannot return to memory.
+                HashSet<StateId> persistedReachable = [canonicalState];
                 foreach (StateId state in ordered)
                 {
                     if (Height(state) <= Height(canonicalState)) continue;
                     bool connected = _snapshots.TryGetValue(state, out PbtSnapshot? memory) && reachable.Contains(memory.From)
                         || _compactedSnapshots.TryGetValue(state, out memory) && reachable.Contains(memory.From);
-                    bool retainedConnected = false;
-                    foreach (SnapshotTier tier in RetainedPriority)
+                    bool persistedConnected = false;
+                    foreach (SnapshotTier tier in PersistedPriority)
                     {
-                        if (!_retained.TryGetEdges(state, tier, out SortedDictionary<long, PbtRetainedSnapshot>? edges)) continue;
-                        foreach (PbtRetainedSnapshot snapshot in edges.Values) retainedConnected |= retainedReachable.Contains(snapshot.From);
+                        if (!_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges)) continue;
+                        foreach (PbtPersistedSnapshot snapshot in edges.Values) persistedConnected |= persistedReachable.Contains(snapshot.From);
                     }
-                    if (retainedConnected) retainedReachable.Add(state);
-                    if (connected || retainedConnected) reachable.Add(state);
+                    if (persistedConnected) persistedReachable.Add(state);
+                    if (connected || persistedConnected) reachable.Add(state);
                     else abandoned.Add(state);
                 }
                 foreach (StateId state in abandoned)
@@ -140,17 +140,17 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
                     if (_compactedSnapshots.TryGetValue(state, out snapshot)) memoryCandidates.Add(snapshot);
                 }
                 HashSet<StateId> abandonedSet = [.. abandoned];
-                foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots)
-                    if (abandonedSet.Contains(snapshot.To)) retained.Add((snapshot.To, snapshot.Depth, snapshot.Tier));
+                foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots)
+                    if (abandonedSet.Contains(snapshot.To)) persisted.Add((snapshot.To, snapshot.Depth, snapshot.Tier));
             }
             foreach (PbtSnapshot snapshot in memoryCandidates) RemoveMemorySource(snapshot);
-            foreach ((StateId to, long depth, SnapshotTier tier) in retained) RemoveRetainedExact(to, depth, tier);
+            foreach ((StateId to, long depth, SnapshotTier tier) in persisted) RemovePersistedExact(to, depth, tier);
         }
     }
 
     public bool HasState(in StateId stateId)
     {
-        lock (_lock) return _snapshots.ContainsKey(stateId) || HasRetainedBase(stateId);
+        lock (_lock) return _snapshots.ContainsKey(stateId) || HasPersistedBase(stateId);
     }
 
     /// <summary>
@@ -245,26 +245,26 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         return chain is not null;
     }
 
-    private ArrayPoolList<StateId> GetRetainedStatesInRange(ulong first, ulong last)
+    private ArrayPoolList<StateId> GetPersistedStatesInRange(ulong first, ulong last)
     {
         ArrayPoolList<StateId> states = new(16);
         lock (_lock)
-            foreach (StateId state in _retained.StatesBetween(new(first, default), new(last, ValueKeccak.MaxValue)))
+            foreach (StateId state in _persisted.StatesBetween(new(first, default), new(last, ValueKeccak.MaxValue)))
                 states.Add(state);
         return states;
     }
 
-    private void RemoveRetainedState(in StateId state)
+    private void RemovePersistedState(in StateId state)
     {
         List<(long Depth, SnapshotTier Tier)> entries = [];
         lock (_lock)
-            foreach (SnapshotTier tier in RetainedPriority)
-                if (_retained.TryGetEdges(state, tier, out SortedDictionary<long, PbtRetainedSnapshot>? edges))
+            foreach (SnapshotTier tier in PersistedPriority)
+                if (_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges))
                     foreach (long depth in edges.Keys) entries.Add((depth, tier));
-        foreach ((long depth, SnapshotTier tier) in entries) RemoveRetainedExact(state, depth, tier);
+        foreach ((long depth, SnapshotTier tier) in entries) RemovePersistedExact(state, depth, tier);
     }
 
-    public void RemoveFinalizedRetainedForks(in StateId persisted, IStateHeaderProvider provider)
+    public void RemoveFinalizedPersistedForks(in StateId persisted, IStateHeaderProvider provider)
     {
         lock (_publicationGate.Sync)
         {
@@ -278,7 +278,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
             while (first <= finalized)
             {
                 ulong last = finalized - first >= batchSize - 1 ? first + batchSize - 1 : finalized;
-                using ArrayPoolList<StateId> states = GetRetainedStatesInRange(first, last);
+                using ArrayPoolList<StateId> states = GetPersistedStatesInRange(first, last);
                 foreach (StateId state in states)
                 {
                     if (state == persisted) continue;
@@ -293,7 +293,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
                     }
                     if (GetLastCommittedStateId() != committed) return;
                     if (CanReachState(head, state)) continue;
-                    RemoveRetainedState(state);
+                    RemovePersistedState(state);
                 }
                 if (last == finalized) break;
                 first = last + 1;
@@ -303,17 +303,17 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
 
     private static readonly SnapshotTier[] ReadPriority = [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
     private static readonly SnapshotTier[] PersistPriority = [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.InMemoryCompacted, SnapshotTier.PersistedSmallCompacted, SnapshotTier.InMemoryBase, SnapshotTier.PersistedBase];
-    private static readonly SnapshotTier[] RetainedPriority = [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
+    private static readonly SnapshotTier[] PersistedPriority = [SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedBase];
     private static readonly SnapshotTier[] MemoryPriority = [SnapshotTier.InMemoryCompacted, SnapshotTier.InMemoryBase];
     private enum Step { Skip, Traverse, Win, Stop }
 
-    public bool TryAddRetained(PbtRetainedSnapshot snapshot)
+    public bool TryAddPersisted(PbtPersistedSnapshot snapshot)
     {
         lock (_publicationGate.Sync)
             lock (_lock)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
-                return _retained.TryAdd(snapshot);
+                return _persisted.TryAdd(snapshot);
             }
     }
 
@@ -335,17 +335,17 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         }
     }
 
-    public bool TryLeaseRetainedCatalogKey(in StateId to, long depth, out PbtRetainedSnapshot? snapshot)
+    public bool TryLeasePersistedCatalogKey(in StateId to, long depth, out PbtPersistedSnapshot? snapshot)
     {
         lock (_lock)
         {
-            if (_retained.TryGet(to, depth, out snapshot) && snapshot.TryLease()) return true;
+            if (_persisted.TryGet(to, depth, out snapshot) && snapshot.TryLease()) return true;
             snapshot = null;
             return false;
         }
     }
 
-    private bool HasRetainedBase(in StateId state) => _retained.HasEdges(state, SnapshotTier.PersistedBase);
+    private bool HasPersistedBase(in StateId state) => _persisted.HasEdges(state, SnapshotTier.PersistedBase);
 
     public PbtSnapshotChain? TryLeaseReadChain(in StateId target, in StateId readerFloor)
     {
@@ -356,10 +356,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
             : edge.From == floor ? Step.Stop : edge.From.BlockNumber == floor.BlockNumber ? Step.Skip : Step.Traverse);
     }
 
-    public PbtSnapshotChain? TryLeaseRetainedChain(in StateId target, ulong minimumBlockNumber)
+    public PbtSnapshotChain? TryLeasePersistedChain(in StateId target, ulong minimumBlockNumber)
     {
         long best = long.MaxValue;
-        return Walk(target, RetainedPriority, edge =>
+        return Walk(target, PersistedPriority, edge =>
         {
             if (Height(edge.From) < (long)minimumBlockNumber) return Step.Skip;
             if (edge.From.BlockNumber == minimumBlockNumber) return Step.Stop;
@@ -381,17 +381,17 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     private PbtSnapshotChain? Walk(in StateId start, SnapshotTier[] priority, Func<PbtSnapshotLease, Step> decide)
     {
         List<(PbtSnapshotLease Edge, int Parent)> visited = [];
-        Queue<(StateId State, bool Retained, int Parent)> queue = new();
+        Queue<(StateId State, bool Persisted, int Parent)> queue = new();
         HashSet<StateId> seen = [start];
         queue.Enqueue((start, false, -1));
         int winner = -1;
         try
         {
-            while (queue.TryDequeue(out (StateId State, bool Retained, int Parent) node))
+            while (queue.TryDequeue(out (StateId State, bool Persisted, int Parent) node))
             {
                 foreach (SnapshotTier tier in priority)
                 {
-                    if (node.Retained && !tier.IsPersisted()) continue;
+                    if (node.Persisted && !tier.IsPersisted()) continue;
                     PbtSnapshotLease? edge = LeaseEdge(node.State, tier);
                     if (edge is null) continue;
                     Step step;
@@ -419,9 +419,9 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
                 Dictionary<StateId, PbtSnapshot> source = tier == SnapshotTier.InMemoryBase ? _snapshots : _compactedSnapshots;
                 return source.TryGetValue(state, out PbtSnapshot? snapshot) && snapshot.TryLease() ? new(snapshot, tier) : null;
             }
-            if (!_retained.TryGetEdges(state, tier, out SortedDictionary<long, PbtRetainedSnapshot>? edges)) return null;
-            PbtRetainedSnapshot? widest = null;
-            foreach (PbtRetainedSnapshot snapshot in edges.Values) widest = snapshot;
+            if (!_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges)) return null;
+            PbtPersistedSnapshot? widest = null;
+            foreach (PbtPersistedSnapshot snapshot in edges.Values) widest = snapshot;
             return widest is not null && widest.TryLease() ? new(widest) : null;
         }
     }
@@ -437,27 +437,27 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         catch { foreach (PbtSnapshotLease layer in layers) layer.Dispose(); throw; }
     }
 
-    private bool RemoveRetainedExact(in StateId to, long depth, SnapshotTier tier)
+    private bool RemovePersistedExact(in StateId to, long depth, SnapshotTier tier)
     {
-        PbtRetainedSnapshot? removed;
+        PbtPersistedSnapshot? removed;
         lock (_publicationGate.Sync)
         {
             lock (_lock)
-                if (!_retained.TryGet(to, depth, out removed) || removed.Tier != tier) return false;
+                if (!_persisted.TryGet(to, depth, out removed) || removed.Tier != tier) return false;
             _catalog.Remove(to, depth);
-            lock (_lock) _retained.Remove(to, depth, out _);
+            lock (_lock) _persisted.Remove(to, depth, out _);
         }
         removed.Dispose();
         return true;
     }
 
-    public void RemoveRetainedStatesBefore(ulong blockNumber)
+    public void RemovePersistedStatesBefore(ulong blockNumber)
     {
         List<(StateId To, long Depth, SnapshotTier Tier)> states = [];
         lock (_lock)
-            foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots)
+            foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots)
                 if (Height(snapshot.To) < (long)blockNumber) states.Add((snapshot.To, snapshot.Depth, snapshot.Tier));
-        foreach ((StateId to, long depth, SnapshotTier tier) in states) RemoveRetainedExact(to, depth, tier);
+        foreach ((StateId to, long depth, SnapshotTier tier) in states) RemovePersistedExact(to, depth, tier);
     }
 
     public bool RemoveMemorySource(PbtSnapshot snapshot)
@@ -503,7 +503,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
             StateId? winner = null;
             foreach (StateId state in _snapshots.Keys) Consider(state);
             foreach (StateId state in _compactedSnapshots.Keys) Consider(state);
-            foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots) Consider(snapshot.To);
+            foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots) Consider(snapshot.To);
             return winner;
             void Consider(StateId state)
             {
@@ -514,31 +514,31 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
 
     public bool IsOnDisk(in StateId state, in StateId baseState)
     {
-        lock (_lock) return state == baseState || HasRetainedBase(state);
+        lock (_lock) return state == baseState || HasPersistedBase(state);
     }
 
     public void MarkPersistedTierForShutdown()
     {
-        lock (_lock) foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots) snapshot.PersistOnShutdown();
+        lock (_lock) foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots) snapshot.PersistOnShutdown();
     }
 
     public void Dispose()
     {
         List<PbtSnapshot> memory;
-        List<PbtRetainedSnapshot> retained;
+        List<PbtPersistedSnapshot> persisted;
         lock (_publicationGate.Sync)
             lock (_lock)
             {
                 if (_disposed) return;
                 _disposed = true;
                 memory = [.. _snapshots.Values, .. _compactedSnapshots.Values];
-                retained = _retained.Clear();
+                persisted = _persisted.Clear();
                 Metrics.AddPbtBaseSnapshotCount(-_snapshots.Count);
                 if (_recordDetailedMetrics) foreach (PbtSnapshot snapshot in _snapshots.Values) Metrics.AddPbtBaseSnapshotMemory(snapshot.PayloadSize, -1);
                 _snapshots.Clear(); _compactedSnapshots.Clear(); _memoryBytes = 0;
             }
         foreach (PbtSnapshot snapshot in memory) snapshot.Dispose();
-        foreach (PbtRetainedSnapshot snapshot in retained) snapshot.Dispose();
+        foreach (PbtPersistedSnapshot snapshot in persisted) snapshot.Dispose();
     }
 
     public bool TryRemoveUnreachableFrom(in StateId head, in StateId persisted, out int removedCount)
@@ -547,15 +547,15 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         lock (_publicationGate.Sync)
         {
             List<PbtSnapshot> memoryCandidates = [];
-            List<(StateId To, long Depth, SnapshotTier Tier)> retainedCandidates = [];
+            List<(StateId To, long Depth, SnapshotTier Tier)> persistedCandidates = [];
             HashSet<StateId> reachable;
             lock (_lock)
             {
-                if (head != persisted && !_snapshots.ContainsKey(head) && !HasRetainedBase(head)) return false;
+                if (head != persisted && !_snapshots.ContainsKey(head) && !HasPersistedBase(head)) return false;
                 foreach (PbtSnapshot snapshot in _snapshots.Values) memoryCandidates.Add(snapshot);
                 foreach (PbtSnapshot snapshot in _compactedSnapshots.Values) memoryCandidates.Add(snapshot);
-                foreach (PbtRetainedSnapshot snapshot in _retained.Snapshots)
-                    retainedCandidates.Add((snapshot.To, snapshot.Depth, snapshot.Tier));
+                foreach (PbtPersistedSnapshot snapshot in _persisted.Snapshots)
+                    persistedCandidates.Add((snapshot.To, snapshot.Depth, snapshot.Tier));
                 reachable = CollectRewindAncestry(head);
                 // The durable base is irreversible; pruning its connecting layers would strand this head.
                 if (persisted != StateId.PreGenesis && !reachable.Contains(persisted)) return false;
@@ -564,8 +564,8 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
             HashSet<StateId> removedStates = [];
             foreach (PbtSnapshot snapshot in memoryCandidates)
                 if (!reachable.Contains(snapshot.To) && RemoveMemorySource(snapshot)) removedStates.Add(snapshot.To);
-            foreach ((StateId to, long depth, SnapshotTier tier) in retainedCandidates)
-                if (!reachable.Contains(to) && RemoveRetainedExact(to, depth, tier)) removedStates.Add(to);
+            foreach ((StateId to, long depth, SnapshotTier tier) in persistedCandidates)
+                if (!reachable.Contains(to) && RemovePersistedExact(to, depth, tier)) removedStates.Add(to);
             lock (_lock) _lastCommittedStateId = head;
             removedCount = removedStates.Count;
             return true;
@@ -582,34 +582,34 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
         {
             if (_snapshots.TryGetValue(state, out PbtSnapshot? memory) && reachable.Add(memory.From)) pending.Push(memory.From);
             if (_compactedSnapshots.TryGetValue(state, out memory) && reachable.Add(memory.From)) pending.Push(memory.From);
-            foreach (SnapshotTier tier in RetainedPriority)
-                if (_retained.TryGetEdges(state, tier, out SortedDictionary<long, PbtRetainedSnapshot>? edges))
-                    foreach (PbtRetainedSnapshot snapshot in edges.Values)
+            foreach (SnapshotTier tier in PersistedPriority)
+                if (_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges))
+                    foreach (PbtPersistedSnapshot snapshot in edges.Values)
                         if (reachable.Add(snapshot.From)) pending.Push(snapshot.From);
         }
         return reachable;
     }
 
-    public bool ContainsRetainedStorageSource(PbtRetainedSnapshot snapshot)
+    public bool ContainsPersistedStorageSource(PbtPersistedSnapshot snapshot)
     {
         lock (_lock)
-            return _retained.TryGet(snapshot.To, snapshot.Depth, out PbtRetainedSnapshot? current) && SameIdentity(current, snapshot);
+            return _persisted.TryGet(snapshot.To, snapshot.Depth, out PbtPersistedSnapshot? current) && SameIdentity(current, snapshot);
     }
 
-    private static bool SameIdentity(PbtRetainedSnapshot left, PbtRetainedSnapshot right) =>
+    private static bool SameIdentity(PbtPersistedSnapshot left, PbtPersistedSnapshot right) =>
         left.From == right.From && left.To == right.To && left.TreeRoot == right.TreeRoot
         && left.Tier == right.Tier && left.Location == right.Location;
 
-    public bool ReplaceRetainedSnapshot(PbtRetainedSnapshot expected, PbtRetainedSnapshot replacement)
+    public bool ReplacePersistedSnapshot(PbtPersistedSnapshot expected, PbtPersistedSnapshot replacement)
     {
         lock (_publicationGate.Sync)
         {
             lock (_lock)
             {
-                if (!_retained.Contains(expected)) return false;
+                if (!_persisted.Contains(expected)) return false;
                 if (!SameIdentity(replacement, expected))
-                    throw new InvalidOperationException("Bloom replacement must preserve the retained snapshot's identity and storage.");
-                if (!_retained.TryReplace(expected, replacement)) return false;
+                    throw new InvalidOperationException("Bloom replacement must preserve the persisted snapshot's identity and storage.");
+                if (!_persisted.TryReplace(expected, replacement)) return false;
             }
             expected.Dispose();
             return true;
@@ -620,7 +620,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     {
         lock (_publicationGate.Sync)
         {
-            List<PbtRetainedSnapshot> candidates = [];
+            List<PbtPersistedSnapshot> candidates = [];
             try
             {
                 lock (_lock)
@@ -630,36 +630,36 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
                     StateId current = to;
                     while (Height(current) > Height(from))
                     {
-                        if (!_retained.TryGetEdges(current, SnapshotTier.PersistedBase, out SortedDictionary<long, PbtRetainedSnapshot>? bases)
+                        if (!_persisted.TryGetEdges(current, SnapshotTier.PersistedBase, out SortedDictionary<long, PbtPersistedSnapshot>? bases)
                             || bases.Count == 0) break;
-                        PbtRetainedSnapshot? baseSnapshot = null;
-                        foreach (PbtRetainedSnapshot snapshot in bases.Values) { baseSnapshot = snapshot; break; }
+                        PbtPersistedSnapshot? baseSnapshot = null;
+                        foreach (PbtPersistedSnapshot snapshot in bases.Values) { baseSnapshot = snapshot; break; }
                         states.Add(current);
                         if (!ancestry.Add(baseSnapshot!.From)) break;
                         current = baseSnapshot.From;
                     }
                     foreach (StateId state in states)
-                        foreach (SnapshotTier tier in RetainedPriority)
-                            if (_retained.TryGetEdges(state, tier, out SortedDictionary<long, PbtRetainedSnapshot>? edges))
-                                foreach (PbtRetainedSnapshot snapshot in edges.Values)
+                        foreach (SnapshotTier tier in PersistedPriority)
+                            if (_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges))
+                                foreach (PbtPersistedSnapshot snapshot in edges.Values)
                                     if (!ReferenceEquals(snapshot.BloomRef, sharedBloom) && Height(snapshot.From) >= Height(from)
                                         && ancestry.Contains(snapshot.From) && snapshot.TryLease()) candidates.Add(snapshot);
                 }
 
-                // A clear may remove a descriptor from the widest diff that an earlier retained
+                // A clear may remove a descriptor from the widest diff that an earlier persisted
                 // state still needs. Populate the historical superset before rebinding any reader.
-                foreach (PbtRetainedSnapshot snapshot in candidates)
+                foreach (PbtPersistedSnapshot snapshot in candidates)
                     foreach (ulong key in snapshot.EntityBloomHashes())
                         if (!sharedBloom.Filter.MightContain(key)) sharedBloom.Filter.Add(key);
-                foreach (PbtRetainedSnapshot snapshot in candidates)
+                foreach (PbtPersistedSnapshot snapshot in candidates)
                 {
-                    using PbtRetainedSnapshot replacement = snapshot.WithBloom(sharedBloom);
-                    ReplaceRetainedSnapshot(snapshot, replacement);
+                    using PbtPersistedSnapshot replacement = snapshot.WithBloom(sharedBloom);
+                    ReplacePersistedSnapshot(snapshot, replacement);
                 }
             }
             finally
             {
-                foreach (PbtRetainedSnapshot snapshot in candidates) snapshot.Dispose();
+                foreach (PbtPersistedSnapshot snapshot in candidates) snapshot.Dispose();
             }
         }
     }

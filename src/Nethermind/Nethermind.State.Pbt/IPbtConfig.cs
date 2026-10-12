@@ -103,12 +103,12 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "The depth, in blocks, past which states are force-persisted even without finality, bounding memory use, in blocks.", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
 
-    /// <summary>Keep durable retained snapshots during delayed finality. Defaults to true.</summary>
-    [ConfigItem(Description = "Keep durable retained snapshots during delayed finality.", DefaultValue = "true")]
+    /// <summary>Keep persisted snapshots during delayed finality. Defaults to true.</summary>
+    [ConfigItem(Description = "Keep persisted snapshots during delayed finality.", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 
-    /// <summary>Maximum retained reorg depth in blocks when long finality is enabled. Defaults to 90000.</summary>
-    [ConfigItem(Description = "Maximum retained reorg depth in blocks when long finality is enabled.", DefaultValue = "90000")]
+    /// <summary>Maximum persisted reorg depth in blocks when long finality is enabled. Defaults to 90000.</summary>
+    [ConfigItem(Description = "Maximum persisted reorg depth in blocks when long finality is enabled.", DefaultValue = "90000")]
     ulong LongFinalityMaxReorgDepth { get; set; }
 
     /// <summary>Maximum in-memory base snapshot count before conversion. Defaults to 160.</summary>
@@ -131,32 +131,32 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Regenerate the stored compaction offset on startup.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    /// <summary>Retained arena file size in bytes. Defaults to 1073741824.</summary>
-    [ConfigItem(Description = "Retained arena file size in bytes.", DefaultValue = "1073741824")]
+    /// <summary>Persisted arena file size in bytes. Defaults to 1073741824.</summary>
+    [ConfigItem(Description = "Persisted arena file size in bytes.", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
     /// <summary>Dedicated metadata arena threshold in bytes. Defaults to 1073741824.</summary>
     [ConfigItem(Description = "Dedicated metadata arena threshold in bytes.", DefaultValue = "1073741824")]
     long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; }
 
-    /// <summary>Retained metadata page cache budget in bytes. Defaults to 4294967296.</summary>
-    [ConfigItem(Description = "Retained metadata page cache budget in bytes.", DefaultValue = "4294967296")]
+    /// <summary>Persisted metadata page cache budget in bytes. Defaults to 4294967296.</summary>
+    [ConfigItem(Description = "Persisted metadata page cache budget in bytes.", DefaultValue = "4294967296")]
     long PersistedSnapshotArenaPageCacheBytes { get; set; }
 
-    /// <summary>Reclaim discarded retained metadata ranges with hole punching. Defaults to true.</summary>
-    [ConfigItem(Description = "Reclaim discarded retained metadata ranges with hole punching.", DefaultValue = "true")]
+    /// <summary>Reclaim discarded persisted metadata ranges with hole punching. Defaults to true.</summary>
+    [ConfigItem(Description = "Reclaim discarded persisted metadata ranges with hole punching.", DefaultValue = "true")]
     bool PersistedSnapshotPunchHoleOnReclaim { get; set; }
 
-    /// <summary>Maximum retained compaction window in blocks. Defaults to 1048576.</summary>
-    [ConfigItem(Description = "Maximum retained compaction window in blocks.", DefaultValue = "1048576")]
+    /// <summary>Maximum persisted compaction window in blocks. Defaults to 1048576.</summary>
+    [ConfigItem(Description = "Maximum persisted compaction window in blocks.", DefaultValue = "1048576")]
     ulong PersistedSnapshotMaxCompactSize { get; set; }
 
     /// <summary>Validate converted snapshots against their source. Defaults to false.</summary>
     [ConfigItem(Description = "Validate converted snapshots against their source.", DefaultValue = "false")]
     bool ValidatePersistedSnapshot { get; set; }
 
-    /// <summary>Retained snapshot bloom bits per key; zero disables filtering. Defaults to 14.0.</summary>
-    [ConfigItem(Description = "Retained snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14.0")]
+    /// <summary>Persisted snapshot bloom bits per key; zero disables filtering. Defaults to 14.0.</summary>
+    [ConfigItem(Description = "Persisted snapshot bloom bits per key; zero disables filtering.", DefaultValue = "14.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
 
     /// <summary>Gets or sets the bits per key in the in-memory snapshot slot filter used by read-only execution.</summary>

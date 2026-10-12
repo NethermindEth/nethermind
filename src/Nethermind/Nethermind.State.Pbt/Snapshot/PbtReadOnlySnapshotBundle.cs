@@ -77,14 +77,14 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     private int LayerCount => _chain?.Layers.Count ?? snapshots.Count;
     private PbtSnapshot? MemoryLayer(int index) => _chain is null ? snapshots[index] : _chain.Layers[index].Memory;
-    private PersistedSnapshots.PbtRetainedSnapshot? RetainedLayer(int index) => _chain?.Layers[index].Retained;
+    private PersistedSnapshots.PbtPersistedSnapshot? PersistedLayer(int index) => _chain?.Layers[index].Persisted;
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
-        MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : RetainedLayer(index)!.TryGetAccount(address, out account);
+        MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);
     private bool TryCode(int index, in ValueHash256 hash, out CodeInfo? code) =>
-        MemoryLayer(index) is { } memory ? memory.Content.Codes.TryGetValue(hash, out code) : RetainedLayer(index)!.TryGetCode(hash, out code);
+        MemoryLayer(index) is { } memory ? memory.Content.Codes.TryGetValue(hash, out code) : PersistedLayer(index)!.TryGetCode(hash, out code);
     private bool TryGroup(int index, PbtStorageNodePath path, out RefCountingMemory? payload) =>
-        MemoryLayer(index) is { } memory ? memory.Content.TryGetNodeGroup(path, out payload) : RetainedLayer(index)!.TryGetNodeGroup(path, out payload);
+        MemoryLayer(index) is { } memory ? memory.Content.TryGetNodeGroup(path, out payload) : PersistedLayer(index)!.TryGetNodeGroup(path, out payload);
     private bool TryReadSlot<TKey>(int layer, in HashedKey<TKey> key, in ValueHash256 address, int index, out UInt256 value) where TKey : struct, IPbtKey<TKey>
     {
         if (MemoryLayer(layer) is { } memory)
@@ -94,14 +94,14 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
         else
         {
-            PersistedSnapshots.PbtRetainedSnapshot retained = RetainedLayer(layer)!;
-            if (retained.TryGetSlotRun(key.Key, out PackedSlotRun? run))
+            PersistedSnapshots.PbtPersistedSnapshot persisted = PersistedLayer(layer)!;
+            if (persisted.TryGetSlotRun(key.Key, out PackedSlotRun? run))
             {
                 value = run!.Get(index);
                 SlotRun.Return(run);
                 return true;
             }
-            if (retained.TryGetStorageClear(address, out _)) { value = default; return true; }
+            if (persisted.TryGetStorageClear(address, out _)) { value = default; return true; }
         }
         value = default;
         return false;
@@ -116,9 +116,9 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
         else
         {
-            PersistedSnapshots.PbtRetainedSnapshot retained = RetainedLayer(index)!;
-            if (retained.TryGetSlotRun(key.Key, out run)) return true;
-            if (retained.TryGetStorageClear(address, out _)) { run = SlotRun.Empty; return true; }
+            PersistedSnapshots.PbtPersistedSnapshot persisted = PersistedLayer(index)!;
+            if (persisted.TryGetSlotRun(key.Key, out run)) return true;
+            if (persisted.TryGetStorageClear(address, out _)) { run = SlotRun.Empty; return true; }
         }
         run = null;
         return false;
@@ -235,7 +235,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     /// </summary>
     /// <remarks>
     /// For read-only execution only. The first call builds the filter inline, once per bundle; reads racing that
-    /// build take the plain loop instead of waiting. Retained layers keep their own bloom filters and are still
+    /// build take the plain loop instead of waiting. Persisted layers keep their own bloom filters and are still
     /// probed on a definite miss.
     /// </remarks>
     public PackedSlotRun RentRunFiltered<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>

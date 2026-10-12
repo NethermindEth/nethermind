@@ -18,20 +18,20 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-public sealed class PbtRetainedSnapshotCompactor(
+public sealed class PbtPersistedSnapshotCompactor(
     PbtSnapshotRepository repository,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
     IRefCountingMemoryProvider nodeGroupMemory,
     IPbtConfig config,
     [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
-    IPbtRetainedSnapshotLoader loader,
+    IPbtPersistedSnapshotLoader loader,
     IProcessExitSource processExitSource,
-    ILogManager logManager) : IPbtRetainedSnapshotCompactor
+    ILogManager logManager) : IPbtPersistedSnapshotCompactor
 {
     private const int QueueCapacity = 16;
     private const int BoundaryWorkerCount = 4;
-    private readonly ILogger _logger = logManager.GetClassLogger<PbtRetainedSnapshotCompactor>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtPersistedSnapshotCompactor>();
     private readonly Channel<(ArrayPoolList<StateId> Batch, ulong Floor)> _jobs = Channel.CreateBounded<(ArrayPoolList<StateId>, ulong)>(QueueCapacity);
     private readonly Channel<(StateId State, ulong Floor)> _largeJobs = Channel.CreateBounded<(StateId, ulong)>(QueueCapacity);
     private readonly CancellationToken _shutdown = processExitSource.Token;
@@ -81,7 +81,7 @@ public sealed class PbtRetainedSnapshotCompactor(
                 try { await ProcessBatch(batch, floor); }
                 catch (Exception ex) when (ex is not OperationCanceledException || !_shutdown.IsCancellationRequested)
                 {
-                    _logger.Error("Error compacting retained PBT snapshot batch", ex);
+                    _logger.Error("Error compacting persisted PBT snapshot batch", ex);
                 }
                 finally { batch.Dispose(); }
             }
@@ -132,7 +132,7 @@ public sealed class PbtRetainedSnapshotCompactor(
         try { job(); }
         catch (Exception ex) when (ex is not OperationCanceledException || !_shutdown.IsCancellationRequested)
         {
-            _logger.Error($"Error compacting retained PBT snapshot {state}", ex);
+            _logger.Error($"Error compacting persisted PBT snapshot {state}", ex);
         }
     }
 
@@ -170,14 +170,14 @@ public sealed class PbtRetainedSnapshotCompactor(
     private bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber)
     {
         ulong width = schedule.GetPersistedSnapshotCompactSize(snapshotTo.BlockNumber);
-        if (snapshotTo.BlockNumber == 0 || width <= 1 || repository.RetainedCount < 2) return false;
+        if (snapshotTo.BlockNumber == 0 || width <= 1 || repository.PersistedCount < 2) return false;
         ulong floor = unchecked((ulong)Math.Max(unchecked((long)snapshotTo.BlockNumber) - checked((long)width), unchecked((long)persistedBlockNumber)));
         return CompactRange(snapshotTo, floor, isCompactSized: false);
     }
 
     private bool DoCompactCompactSized(StateId snapshotTo)
     {
-        if (repository.RetainedCount < 2) return false;
+        if (repository.PersistedCount < 2) return false;
         ulong width = schedule.GetCompactSize(snapshotTo.BlockNumber);
         return CompactRange(snapshotTo, unchecked(snapshotTo.BlockNumber - width), isCompactSized: true);
     }
@@ -185,14 +185,14 @@ public sealed class PbtRetainedSnapshotCompactor(
     private bool CompactRange(StateId target, ulong floor, bool isCompactSized)
     {
         _shutdown.ThrowIfCancellationRequested();
-        using PbtSnapshotChain? chain = repository.TryLeaseRetainedChain(target, floor);
+        using PbtSnapshotChain? chain = repository.TryLeasePersistedChain(target, floor);
         if (chain is null || chain.Layers.Count < 2) return false;
-        using ArrayPoolList<PbtRetainedSnapshot> sources = new(chain.Layers.Count);
+        using ArrayPoolList<PbtPersistedSnapshot> sources = new(chain.Layers.Count);
         long estimatedSize = 16384, bloomCapacity = 0;
         HashSet<RefCountedBloomFilter> counted = [];
         foreach (PbtSnapshotLease layer in chain.Layers)
         {
-            PbtRetainedSnapshot snapshot = layer.Retained!;
+            PbtPersistedSnapshot snapshot = layer.Persisted!;
             sources.Add(snapshot);
             estimatedSize = checked(estimatedSize + snapshot.Size);
             if (counted.Add(snapshot.BloomRef)) bloomCapacity = checked(bloomCapacity + snapshot.BloomRef.Filter.Count);
@@ -202,19 +202,19 @@ public sealed class PbtRetainedSnapshotCompactor(
         using RefCountedBloomFilter bloom = new(config.PersistedSnapshotBloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(tier == SnapshotTier.PersistedSmallCompacted ? 1 : bloomCapacity, config.PersistedSnapshotBloomBitsPerKey)
             : BloomFilter.AlwaysTrue());
-        PbtRetainedMetadata metadata = new(sources[0].From, sources[^1].To, sources[^1].TreeRoot);
+        PbtPersistedMetadata metadata = new(sources[0].From, sources[^1].To, sources[^1].TreeRoot);
         ArenaReservation reservation;
         SnapshotLocation location;
         using (ArenaWriter writer = arena.CreateWriter(estimatedSize, small: tier == SnapshotTier.PersistedSmallCompacted))
         {
-            PbtRetainedSnapshotMerger.Merge(sources.AsSpan(), metadata, ref writer.GetWriter(), bloom.Filter, _shutdown);
+            PbtPersistedSnapshotMerger.Merge(sources.AsSpan(), metadata, ref writer.GetWriter(), bloom.Filter, _shutdown);
             (location, reservation) = writer.Complete();
         }
         using (reservation)
         {
             reservation.Fsync();
             _shutdown.ThrowIfCancellationRequested();
-            using PbtRetainedSnapshot output = new(new(metadata.From, metadata.To, location, tier), reservation, blobs, nodeGroupMemory, bloom);
+            using PbtPersistedSnapshot output = new(new(metadata.From, metadata.To, location, tier), reservation, blobs, nodeGroupMemory, bloom);
             _shutdown.ThrowIfCancellationRequested();
             bool registered = loader.RegisterCompacted(output, sources.AsSpan());
             if (registered)
