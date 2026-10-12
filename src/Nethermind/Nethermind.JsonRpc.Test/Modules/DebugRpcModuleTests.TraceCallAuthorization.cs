@@ -84,9 +84,12 @@ public partial class DebugRpcModuleTests
         if (scenario == "badV") parity = 2;
         return new
         {
-            chainId = authorization.ChainId, address = authorization.CodeAddress,
-            nonce = authorization.Nonce, yParity = (ulong)parity,
-            r, s
+            chainId = authorization.ChainId,
+            address = authorization.CodeAddress,
+            nonce = authorization.Nonce,
+            yParity = (ulong)parity,
+            r,
+            s
         };
     }
 }
