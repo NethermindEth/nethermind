@@ -49,6 +49,37 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlockByNumber_native_config_errors_are_execution_input_errors(
+        [Values("callTracer", "prestateTracer", "noopTracer")] string tracer,
+        [Values("17", "[]", "\"bad\"", "{\"onlyTopCall\":17,\"diffMode\":17}")] string configuration,
+        [Values] bool empty)
+    {
+        using Context context = await Context.Create();
+        Block block = empty
+            ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        using JsonDocument config = JsonDocument.Parse(configuration);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer, tracerConfig = config.RootElement });
+        JToken json = JToken.Parse(response);
+
+        if (!empty && tracer != "noopTracer")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+        }
+        else
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(block.Transactions.Length), response);
+        }
+    }
+
     [TestCase("result", 0)]
     [TestCase("result", 1)]
     [TestCase("result", 2)]
