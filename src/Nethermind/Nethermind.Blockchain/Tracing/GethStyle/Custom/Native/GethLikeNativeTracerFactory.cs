@@ -17,8 +17,6 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 
-internal sealed class NativeTracerConfigException(JsonException inner) : JsonException(inner.Message, inner);
-
 public delegate GethLikeNativeTxTracer GethLikeNativeTracerFactoryDelegate(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState);
 
 public static class GethLikeNativeTracerFactory
