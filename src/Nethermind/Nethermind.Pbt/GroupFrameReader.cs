@@ -14,7 +14,7 @@ namespace Nethermind.Pbt;
 /// <remarks>
 /// A frame reader only ever wraps a stored payload: never construct one for a group that does not exist. A group the
 /// boundary node proves absent is folded through <see cref="AbsentGroupFrame{TKey, TPath}"/> instead, and the tree
-/// root's group, the only one whose existence is learned from the store, is probed with <see cref="TryLoad"/>.
+/// root's group, the only one whose existence is learned from the store, is probed with <see cref="IPbtStore.GetNodeGroup"/> first.
 /// </remarks>
 public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposable
     where TKey : unmanaged, IPbtKey<TKey>
@@ -23,11 +23,6 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
     private RefCountingMemory? _lease;
     private readonly int _offsetTable;
     private readonly uint _stored;
-
-    /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
-    /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
-    public GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
-        : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth) { }
 
     /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
     public GroupFrameReader(RefCountingMemory lease, int bitDepth)
@@ -47,19 +42,6 @@ public struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDisposa
             ((IDisposable)lease).Dispose();
             throw;
         }
-    }
-
-    /// <summary>Loads the group stored at <paramref name="path"/>, or reports that the store holds none.</summary>
-    /// <remarks>
-    /// Only the tree root's group may be missing, when the tree is empty. Its absence cannot be derived from
-    /// <paramref name="groupHash"/>, which may be stale or default when unknown, so the store is asked.
-    /// </remarks>
-    public static bool TryLoad(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash,
-        out GroupFrameReader<TKey, TPath> reader)
-    {
-        RefCountingMemory? lease = store.GetNodeGroup(path, groupHash);
-        reader = lease is null ? default : new(lease, path.BitDepth);
-        return lease is not null;
     }
 
     public int BitDepth { get; }

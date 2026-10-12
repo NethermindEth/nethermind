@@ -84,7 +84,8 @@ public class PbtRebuilderTests
         ILogManager logManager,
         int windowSize)
     {
-        PbtRebuilder rebuilder = new(target, new PbtConfig(), logManager);
+        PbtConfig config = new();
+        PbtRebuilder rebuilder = new(target, config, config.FoldConcurrency, logManager);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         for (int offset = 0; offset < leaves.Count; offset += chunkSize)
         {
@@ -167,7 +168,7 @@ public class PbtRebuilderTests
         DrainedChunkReader source = new(channel.Reader);
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
         using CancellationTokenSource cancellation = new();
-        Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, LimboLogs.Instance)
+        Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, Config.FoldConcurrency, LimboLogs.Instance)
             .Rebuild(source, targetState, cancellation.Token, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;

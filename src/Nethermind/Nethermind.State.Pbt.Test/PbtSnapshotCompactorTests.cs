@@ -17,6 +17,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.Common;
@@ -906,5 +907,5 @@ public class PbtSnapshotCompactorTests
         return NewCompactor().Compact(chain);
     }
 
-    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config, Nethermind.Logging.LimboLogs.Instance);
+    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate()), Config, Nethermind.Logging.LimboLogs.Instance);
 }

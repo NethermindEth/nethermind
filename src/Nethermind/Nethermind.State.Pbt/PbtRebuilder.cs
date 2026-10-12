@@ -24,11 +24,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
 
-    public PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, ILogManager logManager)
-        : this(target, config, config.FoldConcurrency, logManager)
-    {
-    }
-
     /// <summary>Folds leaf records into staged tree groups and publishes the completed root.</summary>
     /// <param name="source">Owned leaf chunks.</param>
     /// <param name="targetState">The source state identity to publish on success.</param>

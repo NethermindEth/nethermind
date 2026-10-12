@@ -24,7 +24,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
 /// in-memory layers' slot runs; 0 never builds one.</param>
 public sealed class PbtReadOnlySnapshotBundle(
-    PbtSnapshotPooledList snapshots,
+    PbtSnapshotChain chain,
     IPbtPersistence.IReader reader,
     bool recordDetailedMetrics,
     double slotFilterBitsPerKey) : RefCountingDisposable
@@ -58,26 +58,18 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");
 
     private bool _isDisposed;
-    private readonly PbtSnapshotChain? _chain;
 
     // Negative filter over the run keys and cleared addresses of all in-memory layers, for RentRunFiltered. Built
     // lazily by the first filtered read, so bundles that only serve block processing never pay for it.
     private BloomFilter? _slotFilter;
-    private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, snapshots.Count);
-
-    public PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics, double slotFilterBitsPerKey)
-        : this(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics, slotFilterBitsPerKey)
-    {
-        _chain = chain;
-        _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, chain.Layers.Count(static layer => layer.Memory is not null));
-    }
+    private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, chain.Layers.Count(static layer => layer.Memory is not null));
 
     private static int InitialSlotFilterState(double bitsPerKey, int memoryLayers) =>
         bitsPerKey > 0 && memoryLayers >= MinMemoryLayersForSlotFilter ? SlotFilterNotBuilt : SlotFilterSkipped;
 
-    private int LayerCount => _chain?.Layers.Count ?? snapshots.Count;
-    private PbtSnapshot? MemoryLayer(int index) => _chain is null ? snapshots[index] : _chain.Layers[index].Memory;
-    private PersistedSnapshots.PbtRetainedSnapshot? RetainedLayer(int index) => _chain?.Layers[index].Retained;
+    private int LayerCount => chain.Layers.Count;
+    private PbtSnapshot? MemoryLayer(int index) => chain.Layers[index].Memory;
+    private PersistedSnapshots.PbtRetainedSnapshot? RetainedLayer(int index) => chain.Layers[index].Retained;
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
         MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : RetainedLayer(index)!.TryGetAccount(address, out account);
@@ -130,7 +122,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         get
         {
             GuardDispose();
-            return LayerCount > 0 ? _chain is null ? snapshots[^1].TreeRoot : _chain.Layers[^1].TreeRoot : reader.CurrentRoot;
+            return LayerCount > 0 ? chain.Layers[^1].TreeRoot : reader.CurrentRoot;
         }
     }
 
@@ -347,8 +339,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             // Before the layers, whose keys the filter was built from.
             ReleaseSlotFilter();
-            _chain?.Dispose();
-            snapshots.Dispose();
+            chain.Dispose();
         }
         finally
         {

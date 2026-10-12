@@ -23,7 +23,9 @@ using Nethermind.Pbt;
 using Nethermind.State.Pbt.Snapshot;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -119,16 +121,16 @@ public class PbtScopeProviderBenchmark
     {
         _pbtDb = new SnapshotableMemColumnsDb<PbtColumns>("pbt");
         PbtConfig config = new();
-        PbtSnapshotRepository repository = new(new MetricsConfig());
+        PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtRetainedPublicationGate());
         PbtRocksDbPersistence persistence = new(_pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool resourcePool = new(config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config, LimboLogs.Instance);
         PbtPersistenceManager persistenceManager = new(
             config, UnavailableStateHeaderProvider.Instance, persistence, repository, schedule,
-            NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+            NullStatePersistenceBarrier.Instance, LimboLogs.Instance, NullPbtRetainedSnapshotLoader.Instance, NullPbtRetainedSnapshotCompactor.Instance, CancellationToken.None);
         _pbtManager = new PbtDbManager(
-            repository, persistenceManager, persistence, resourcePool, compactor, new ProcessExitSource(_cts.Token), LimboLogs.Instance, new MetricsConfig(), new BenchNoopTrieNodeCache());
+            repository, persistenceManager, persistence, resourcePool, compactor, new ProcessExitSource(_cts.Token), LimboLogs.Instance, new MetricsConfig(), new BenchNoopTrieNodeCache(), NullPbtRetainedSnapshotLoader.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, UnavailableStateHeaderProvider.Instance, PooledRefCountingMemoryProvider.Instance, isReadOnly: false,
             config, LimboLogs.Instance);

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,7 +39,7 @@ internal static class PbtSnapshotBundleTestExtensions
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtTrieNodeCache cache) => new(
         new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
         pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
@@ -63,7 +64,18 @@ internal static class PbtSnapshotBundleTestExtensions
     {
         PbtSnapshotPooledList chain = new(layersOldestFirst.Length);
         for (int i = 0; i < layersOldestFirst.Length; i++)
-            chain.Add(new PbtSnapshot(i == 0 ? StateId.PreGenesis : new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
+            chain.Add(Layer(pool, layersOldestFirst[i], i));
         return chain;
     }
+
+    public static PbtSnapshotChain ReadChain(IPbtResourcePool pool, params PbtSnapshotContent[] layersOldestFirst)
+    {
+        List<PbtSnapshotLease> layers = new(layersOldestFirst.Length);
+        for (int i = 0; i < layersOldestFirst.Length; i++)
+            layers.Add(new PbtSnapshotLease(Layer(pool, layersOldestFirst[i], i), SnapshotTier.InMemoryBase));
+        return new PbtSnapshotChain(layers);
+    }
+
+    private static PbtSnapshot Layer(IPbtResourcePool pool, PbtSnapshotContent content, int index) =>
+        new(index == 0 ? StateId.PreGenesis : new StateId((ulong)index, default), new StateId((ulong)index + 1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
 }

@@ -22,7 +22,7 @@ namespace Nethermind.State.Pbt.Persistence;
 /// </summary>
 public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 {
-    private const int DefaultMaxEntriesPerKind = 262144;
+    public const int DefaultMaxEntriesPerKind = 262144;
 
     private readonly IPbtPersistence _inner;
     private readonly int _maxEntriesPerKind;
@@ -37,7 +37,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private StateId _basis;
     private long _generation;
 
-    public PbtCarryForwardCachingPersistence(IPbtPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
+    public PbtCarryForwardCachingPersistence(IPbtPersistence inner, int maxEntriesPerKind)
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
