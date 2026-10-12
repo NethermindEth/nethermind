@@ -69,9 +69,12 @@ public class OptimismPostMergeBlockProducer(
     }
 
     /// <summary>
-    /// Every built block, including the improved ones, must carry the Holocene EIP-1559 parameters, as
-    /// <c>OptimismHeaderValidator</c> rejects a post-Holocene header with empty extra data.
+    /// Returns the Holocene EIP-1559 parameters encoded as header extra data, or empty before Holocene.
     /// </summary>
+    /// <remarks>
+    /// Applied to every built block, including improved ones, because <c>OptimismHeaderValidator</c> rejects
+    /// a post-Holocene header with empty extra data.
+    /// </remarks>
     private byte[] HoloceneExtraData(BlockHeader blockHeader, PayloadAttributes? payloadAttributes)
     {
         if (payloadAttributes is not OptimismPayloadAttributes attrs || !_specHelper.IsHolocene(blockHeader))
