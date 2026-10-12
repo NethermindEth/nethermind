@@ -7,6 +7,11 @@ on:
   push:
     branches: [master]
   workflow_call:
+    secrets:
+      DOCKER_HUB_USERNAME:
+        required: false
+      DOCKER_HUB_PASSWORD:
+        required: false
   workflow_dispatch:
 
 concurrency:
@@ -64,6 +69,8 @@ jobs:
   build:
     name: Build ${{ matrix.vm }} guest
     runs-on: ubuntu-latest
+    env:
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -80,6 +87,15 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
+
+      - name: Log in to Docker Hub
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
+        # that don't pass it); those runs pull anonymously as before.
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       # One bflat image compiles all three; the layout, entry point and exit
       # protocol differ per target and come from the guest's Makefile.
@@ -99,6 +115,8 @@ jobs:
     name: ${{ matrix.vm }} ${{ matrix.block.input }}
     needs: [blocks, build]
     runs-on: ubuntu-latest
+    env:
+      HAS_DOCKER_HUB_CREDENTIALS: ${{ secrets.DOCKER_HUB_USERNAME != '' && secrets.DOCKER_HUB_PASSWORD != '' }}
     timeout-minutes: ${{ matrix.minutes }}
     strategy:
       fail-fast: false
@@ -148,6 +166,15 @@ jobs:
       # recipes expect it back.
       - name: Restore the executable bit
         run: chmod +x "src/Nethermind/${{ matrix.project }}/bin/nethermind"
+
+      - name: Log in to Docker Hub
+        # Skipped wherever credentials are unavailable (forks, Dependabot, callers
+        # that don't pass it); those runs pull anonymously as before.
+        if: env.HAS_DOCKER_HUB_CREDENTIALS == 'true'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Run Nethermind guest
         working-directory: src/Nethermind/${{ matrix.project }}

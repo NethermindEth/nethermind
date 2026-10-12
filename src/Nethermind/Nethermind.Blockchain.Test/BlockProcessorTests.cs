@@ -6,7 +6,6 @@ using Module = Autofac.Module;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -1893,10 +1892,7 @@ public partial class BlockProcessorTests
         TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
-        headerFinder.Get(default!, default).ReturnsForAnyArgs(static call => Build.A.BlockHeader.WithNumber(call.ArgAt<ulong?>(1)!.Value).TestObject);
-        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance),
-            specProvider: specProvider, headerFinder: headerFinder);
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -1978,126 +1974,6 @@ public partial class BlockProcessorTests
         stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, spec);
     }
 
-    private static IEnumerable<TestCaseData> PredeployInstallCases()
-    {
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
-            .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
-    }
-
-    [TestCaseSource(nameof(PredeployInstallCases)), MaxTime(Timeout.MaxTestTime)]
-    public void Installs_predeploy_once_and_captures_it_in_bal(IReleaseSpec releaseSpec, Address predeploy, byte[] code, ulong expectedNonce)
-    {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
-        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        InstallExecutionRequestPredeploys(stateProvider, spec);
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        // First post-activation block installs the predeploy.
-        Block block1 = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed1, _) = processor.ProcessOne(block1, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        Assert.That(stateProvider.GetCode(predeploy), Is.SequenceEqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
-
-        GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
-        Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(installChanges!.CodeChanges, Has.Count.EqualTo(code.Length == 0 ? 0 : 1));
-            if (code.Length != 0)
-            {
-                Assert.That(installChanges.CodeChanges[0].Code, Is.EqualTo(code));
-            }
-
-            // An unmandated nonce entry moves the BAL hash, and the block is then rejected before execution.
-            Assert.That(installChanges.NonceChanges, Has.Count.EqualTo(expectedNonce == 0 ? 0 : 1));
-            if (expectedNonce != 0)
-            {
-                Assert.That(installChanges.NonceChanges[0].Value, Is.EqualTo(expectedNonce));
-            }
-        }
-
-        // Second block must be a no-op.
-        Block block2 = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed2, _) = processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-
-        Assert.That(stateProvider.GetCode(predeploy), Is.SequenceEqualTo(code));
-        Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
-        Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
-            "a re-install must not churn state or the BAL once the code is already present");
-    }
-
-    private static IEnumerable<TestCaseData> NonEmptyRecentRootAccounts()
-    {
-        yield return new TestCaseData(Eip8272Constants.RecentRootCode.ToArray(), false).SetArgDisplayNames("canonical code");
-        yield return new TestCaseData(new byte[] { 0x5f, 0x5f, 0xfd }, false).SetArgDisplayNames("foreign code");
-        yield return new TestCaseData(Array.Empty<byte>(), true).SetArgDisplayNames("storage without code");
-    }
-
-    [TestCaseSource(nameof(NonEmptyRecentRootAccounts)), MaxTime(Timeout.MaxTestTime)]
-    public void Rejects_recent_root_activation_block_when_the_predeploy_address_is_not_empty(byte[] code, bool hasStorage)
-    {
-        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance), ((ForkActivation)2, spec));
-        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        InstallExecutionRequestPredeploys(stateProvider, spec);
-        stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, 0, 1);
-        if (code.Length != 0)
-        {
-            stateProvider.InsertCode(Eip8272Constants.RecentRootAddress, code, spec);
-        }
-
-        if (hasStorage)
-        {
-            stateProvider.Set(new StorageCell(Eip8272Constants.RecentRootAddress, 1), 1);
-        }
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        Block block = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
-        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() =>
-            processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None))!;
-
-        Assert.That(exception.Message, Is.EqualTo(Core.Messages.BlockErrorMessages.RecentRootPredeployNotEmpty));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Keeps_recent_root_predeploy_code_and_storage_in_blocks_after_activation()
-    {
-        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance), ((ForkActivation)2, spec));
-        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
-        StorageCell cell = new(Eip8272Constants.RecentRootAddress, 1);
-
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        InstallExecutionRequestPredeploys(stateProvider, spec);
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(0);
-
-        Block activationBlock = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
-        processor.ProcessOne(activationBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-        stateProvider.Set(cell, 1);
-        stateProvider.Commit(spec);
-        stateProvider.CommitTree(2);
-
-        Block nextBlock = Build.A.Block.WithNumber(3).WithAuthor(TestItem.AddressD).TestObject;
-        (Block processed, _) = processor.ProcessOne(nextBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
-        stateProvider.Get(cell, out UInt256 value);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stateProvider.GetCode(Eip8272Constants.RecentRootAddress), Is.SequenceEqualTo(Eip8272Constants.RecentRootCode.ToArray()));
-            Assert.That(value, Is.EqualTo(UInt256.One));
-            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(Eip8272Constants.RecentRootAddress), Is.Null);
-        }
-    }
-
     private static IEnumerable<TestCaseData> DeployedSystemContractCases()
     {
         foreach (bool existingAccount in new[] { false, true })
@@ -2106,6 +1982,8 @@ public partial class BlockProcessorTests
                 .SetName($"Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal({existingAccount})");
             yield return new TestCaseData(Eip8250Prototype.Instance, Eip8250Constants.NonceManagerAddress, existingAccount)
                 .SetName($"Eip8250_activation_leaves_the_nonce_manager_untouched_and_out_of_the_bal({existingAccount})");
+            yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, existingAccount)
+                .SetName($"Eip8272_activation_leaves_the_recent_root_untouched_and_out_of_the_bal({existingAccount})");
         }
     }
 
@@ -2413,6 +2291,25 @@ public partial class BlockProcessorTests
             NullBlockTracer.Instance);
 
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
+    }
+
+    /// <summary>
+    /// Cancellation leaves the real processing stack as cancellation, never as an invalid block: the processing
+    /// timeout relies on it to abandon a block without a verdict.
+    /// </summary>
+    [Test]
+    public async Task BranchProcessor_surfaces_cancellation_rather_than_an_invalid_block()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        Block parent = chain.BlockTree.Head!;
+        Block block = Build.A.Block.WithParent(parent).WithAuthor(TestItem.AddressD).WithTransactions(3, chain.SpecProvider.GetSpec(parent.Header)).TestObject;
+
+        Assert.Catch<OperationCanceledException>(() => chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance,
+            new CancellationToken(true)));
     }
 
     [TestCase(true, 2)]
@@ -3032,6 +2929,25 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void IncrementalValidation_throws_when_cancelled()
+    {
+        GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
+        Block block = BuildParallelValidationBlock(gasConsumed.Length);
+        RecordingTransactionProcessedEventHandler handler = new();
+
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        Assert.Throws<OperationCanceledException>(() => balManager.IncrementalValidation(
+            block,
+            BuildGasResults(gasConsumed),
+            BuildParallelReceiptTracers(block, gasConsumed),
+            handler,
+            new CancellationToken(true)));
+        Assert.That(handler.Events, Is.Empty);
+    }
+
+    [Test]
     public void Failed_parallel_validation_harvests_canonical_receipt_metadata()
     {
         GasConsumed[] gasConsumed =
@@ -3412,6 +3328,51 @@ public partial class BlockProcessorTests
             Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
             Assert.That(transactionProcessor.ExecutedCount, Is.InRange(rejectIndex + 1, txCount / 8));
         });
+    }
+
+    [Test]
+    public void Bal_validation_stops_executing_once_cancelled([Values] bool sequential)
+    {
+        const int txCount = 4096;
+        const int cancelAfter = 8;
+        Block block = BuildParallelValidationBlock(txCount);
+        ProcessingOptions options = sequential ? ProcessingOptions.ForceSequentialBlockAccessList : ProcessingOptions.None;
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, options);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton<IBlockAccessListManager>(balManager)
+            .Build();
+        MainProcessingContext processingContext = (MainProcessingContext)container.Resolve<IMainProcessingContext>();
+        using IDisposable scope = processingContext.WorldState.BeginScope(IWorldState.PreGenesis);
+        IBlockProcessor.IBlockTransactionsExecutor executor = processingContext.LifetimeScope.Resolve<IBlockProcessor.IBlockTransactionsExecutor>();
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, options, receiptsTracer, cancellation.Token));
+        // Workers already inside a transaction finish it.
+        Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(cancelAfter + 2 * Environment.ProcessorCount));
+    }
+
+    [Test]
+    public void Validation_stops_executing_once_cancelled()
+    {
+        const int cancelAfter = 8;
+        Block block = BuildParallelValidationBlock(64);
+        using CancellationTokenSource cancellation = new();
+        CancellingTransactionProcessorAdapter transactionProcessor = new(cancelAfter, cancellation);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        BlockProcessor.BlockValidationTransactionsExecutor executor = new(transactionProcessor, stateProvider);
+
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Catch<OperationCanceledException>(() => executor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, cancellation.Token));
+        Assert.That(transactionProcessor.ExecutedCount, Is.EqualTo(cancelAfter));
     }
 
     [Test]
@@ -4051,10 +4012,6 @@ public partial class BlockProcessorTests
         {
         }
 
-        public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec) => true;
-
-        public IReleaseSpec GetParentSpec(BlockHeader header) => Amsterdam.Instance;
-
         public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
         {
         }
@@ -4126,6 +4083,26 @@ public partial class BlockProcessorTests
             args.TxReceipt.GasUsedTotal,
             args.HeaderGasUsed,
             args.Transaction.Nonce));
+    }
+
+    /// <summary>Counts executed transactions and cancels once <c>cancelAfter</c> of them have run.</summary>
+    private sealed class CancellingTransactionProcessorAdapter(int cancelAfter, CancellationTokenSource cancellation) : ITransactionProcessorAdapter
+    {
+        private int _executedCount;
+
+        public int ExecutedCount => Volatile.Read(ref _executedCount);
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            if (Interlocked.Increment(ref _executedCount) == cancelAfter) cancellation.Cancel();
+            transaction.BlockGasUsed = GasCostOf.Transaction;
+            txTracer.MarkAsSuccess(Address.Zero, GasCostOf.Transaction, [], []);
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
     }
 
     /// <summary>Counts executed transactions, holding everything after <c>decisiveIndex</c> until
