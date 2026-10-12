@@ -514,6 +514,14 @@ for entry in "${schedule[@]}"; do
   fi
   LABELS+=("$label")
 
+  if [[ "$ctype" == "nethermind" && "$JB_BENCHMARK_CONFIG" == "config/benchmark/log-data-filtering.yaml" && "$arm_flags" == *"--LogIndex.Enabled=true"* ]]; then
+    if ! bash "$here/prepare-log-index.sh" "$cname" "$RPC" "$SNAPSHOT_BLOCK" 25390001 25406300 "$OUT_DIR/index-preparation/$label"; then
+      STATE_DIR="$cst" CONTAINER_NAME="$cname" OUT_DIR="$OUT_DIR" LOG_OUT="$cst/node.log" "$here/stop-node.sh" || true
+      echo "::error::${label}: verified log index preparation failed"
+      exit 1
+    fi
+  fi
+
   if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"

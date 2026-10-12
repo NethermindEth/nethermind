@@ -1058,8 +1058,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          baseline_sha=498b6679892f5bbee2847caa39241d896596f910
-          baseline_image=nethermindeth/nethermind:master-498b667
+          baseline_sha=5302886bf889ef9fc2cae976c8f0cba8a0d17d4e
+          baseline_image=nethermindeth/nethermind:master-5302886
           revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
           if [[ "$revision" != "$baseline_sha" ]]; then
             git fetch --depth=1 origin "$baseline_sha"
@@ -1071,6 +1071,7 @@ jobs:
               --build-arg COMMIT_HASH="$baseline_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
           fi
           docker image inspect "$baseline_image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
+          [[ "$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$baseline_sha" ]]
 
       - name: Prepare Docker image
         env:
@@ -1159,6 +1160,25 @@ jobs:
           DOTNET_DUMP: "false"
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
+
+      - name: Prepare covered log indexes for response comparison
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && contains(needs.resolve.outputs.additional_flags, '--LogIndex.Enabled=true')
+        shell: bash
+        env:
+          COMPARISON: ${{ needs.resolve.outputs.comparison }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          REF_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
+          SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
+        run: |
+          set -euo pipefail
+          [[ "$(printf '%s' "$TOOL_CONFIG" | jq -r '.compare_config')" == "config/compare/log-data-filtering.yaml" ]]
+          bash scripts/rpc-bench/prepare-log-index.sh "$CONTAINER_NAME" http://localhost:8545 "$SNAPSHOT_BLOCK" \
+            25390001 25406300 "$OUT_DIR/index-preparation/primary"
+          if [[ "$COMPARISON" == "true" ]]; then
+            [[ "$REF_FLAGS" == *"--LogIndex.Enabled=true"* ]]
+            bash scripts/rpc-bench/prepare-log-index.sh "$REF_CONTAINER_NAME" "http://localhost:$REF_RPC_PORT" "$SNAPSHOT_BLOCK" \
+              25390001 25406300 "$OUT_DIR/index-preparation/reference"
+          fi
 
       - name: Run flood benchmark
         id: run-flood
