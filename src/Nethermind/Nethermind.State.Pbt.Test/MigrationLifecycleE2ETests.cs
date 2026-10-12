@@ -150,7 +150,7 @@ public class MigrationLifecycleE2ETests
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat);
-        await harness.Scheduler.DisposeAsync();
+        await harness.HeadFollower.DisposeAsync();
         IMainProcessingContext processing = harness.Container.Resolve<IMainProcessingContext>();
         Block parent = harness.Anchor;
         if (afterActivation)
