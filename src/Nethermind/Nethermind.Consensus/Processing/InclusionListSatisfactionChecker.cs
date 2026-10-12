@@ -21,8 +21,10 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
         if (suggestedBlock.InclusionListTransactions is null) return true;
 
         // A claim before the end of the payload needs the gas used before its index; recorded on the suggested block
-        // too, so a resend under other claims is judged on the same gas without re-executing.
-        (ulong Execution, ulong State)[]? gasUsedBefore = InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts);
+        // too, so a resend under other claims is judged on the same gas without re-executing. Claims only count once Profile 2 is active.
+        (ulong Execution, ulong State)[]? gasUsedBefore = Eip8369Profile2.IsActive(spec)
+            ? InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts)
+            : null;
         suggestedBlock.GasUsedBeforeTransactions = gasUsedBefore;
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas,
             suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer, gasUsedBefore);
