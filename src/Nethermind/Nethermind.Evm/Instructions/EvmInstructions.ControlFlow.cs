@@ -148,7 +148,7 @@ public static partial class EvmInstructions
     /// eliminating the marker's dispatch. Untaken jumps are unchanged.
     /// </summary>
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
+    [MethodImpl(JumpIfInlining)]
     internal static OpcodeResult InstructionJumpIfAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         => InstructionJumpIf<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
