@@ -37,6 +37,8 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.AutoDump = DumpOptions.None;
 
+        configProvider.GetConfig<IFlatDbConfig>().EnableLongFinality = false;
+
         base.Load(builder);
         builder
             .AddModule(new NethermindModule(spec, configProvider, logManager))
@@ -61,6 +63,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
+                // Matches the inert persisted tier wired above: a replacement IFlatDbConfig defaulting to long finality
+                // would convert in-memory snapshots into the no-op loader and lose that state.
+                flatDbConfig.EnableLongFinality = false;
             })
 
             // Rpc

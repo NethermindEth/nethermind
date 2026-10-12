@@ -21,4 +21,31 @@ public interface ICompactionSchedule
     /// "no further boundary" sentinel.
     /// </summary>
     ulong NextFullCompactionAfter(in StateId from);
+
+    /// <summary>
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is exactly <c>CompactSize</c> — a boundary
+    /// whose only window is the CompactSized one, with no wider (<c>&gt;CompactSize</c>) merge to
+    /// perform. Mutually exclusive with <see cref="IsLargeCompactionBoundary"/>; together they
+    /// cover every persistence boundary.
+    /// </summary>
+    bool IsCompactSizeBoundary(ulong blockNumber);
+
+    /// <summary>
+    /// True when <paramref name="blockNumber"/>'s persisted-snapshot window
+    /// (<see cref="GetPersistedSnapshotCompactSize"/>) is strictly larger than <c>CompactSize</c> —
+    /// a boundary that carries a wider (<c>&gt;CompactSize</c>) merge on top of the CompactSized
+    /// window. Mutually exclusive with <see cref="IsCompactSizeBoundary"/>; together they cover
+    /// every persistence boundary.
+    /// </summary>
+    bool IsLargeCompactionBoundary(ulong blockNumber);
+
+    /// <summary>
+    /// The persisted-snapshot compaction tier for <paramref name="blockNumber"/> — the lowest
+    /// power of 2 that divides <c>blockNumber + Offset</c>, capped at
+    /// <c>PersistedSnapshotMaxCompactSize</c>. Unlike <see cref="GetCompactSize"/> the cap is
+    /// <c>PersistedSnapshotMaxCompactSize</c> rather than <c>CompactSize</c>, so callers can act
+    /// on the wider merge windows (2×, 4×, …) above the persistence boundary.
+    /// </summary>
+    ulong GetPersistedSnapshotCompactSize(ulong blockNumber);
 }

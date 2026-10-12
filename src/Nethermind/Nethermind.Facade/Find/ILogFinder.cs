@@ -13,4 +13,7 @@ namespace Nethermind.Facade.Find
         IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
     }
+
+    /// <summary> Marks an <see cref="ILogFinder"/> intended to serve RPC logs queries. </summary>
+    public interface IRpcLogFinder : ILogFinder;
 }

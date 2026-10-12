@@ -33,8 +33,8 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public List<CodeChange> CodeChanges { get; } = [];
 
-    private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
-    private readonly HashSet<UInt256> _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
+    private readonly Dictionary<UInt256, GeneratedSlotChanges> _storageChanges = new(UInt256Comparer.GetOptimized());
+    private readonly HashSet<UInt256> _storageReads = new(UInt256Comparer.GetOptimized());
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IReadOnlyCollection<GeneratedSlotChanges> StorageChanges => _storageChanges.Values;

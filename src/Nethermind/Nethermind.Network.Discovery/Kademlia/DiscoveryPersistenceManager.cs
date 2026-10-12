@@ -43,18 +43,25 @@ public sealed class DiscoveryPersistenceManager(
     /// Loads persisted nodes from storage and pings them to verify their availability.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
+    /// <param name="nodeFactory">Optional protocol-specific conversion for persisted nodes.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task LoadPersistedNodes(CancellationToken cancellationToken)
+    public async Task LoadPersistedNodes(
+        CancellationToken cancellationToken,
+        Func<NetworkNode, Node?>? nodeFactory = null)
     {
         NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
         foreach (NetworkNode networkNode in nodes)
         {
             if (cancellationToken.IsCancellationRequested) break;
 
-            Node node;
+            Node? node;
             try
             {
-                node = new Node(networkNode);
+                node = nodeFactory is null ? new Node(networkNode) : nodeFactory(networkNode);
+                if (node is null || !node.HasDiscoveryEndpoint)
+                {
+                    continue;
+                }
             }
             catch (Exception e)
             {
@@ -130,6 +137,6 @@ public sealed class DiscoveryPersistenceManager(
             return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
         }
 
-        return new NetworkNode(node.Id, node.Host, node.Port, reputation);
+        return new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort)) { Reputation = reputation };
     }
 }

@@ -16,14 +16,17 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Network;
 using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
@@ -43,7 +46,7 @@ public class OptimismCLP2P : IDisposable
     private readonly IOptimismConfig _config;
     private readonly string _blocksV2TopicId;
     private readonly Channel<ExecutionPayloadV3> _blocksP2PMessageChannel = Channel.CreateBounded<ExecutionPayloadV3>(10); // for safety add capacity
-    private readonly IPAddress _externalIp;
+    private readonly IIPResolver _ipResolver;
     private readonly Random _random = new();
 
     private PubsubRouter? _router;
@@ -60,7 +63,7 @@ public class OptimismCLP2P : IDisposable
         IOptimismConfig config,
         Address sequencerP2PAddress,
         ITimestamper timestamper,
-        IPAddress externalIp,
+        IIPResolver ipResolver,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
@@ -68,7 +71,7 @@ public class OptimismCLP2P : IDisposable
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
-        _externalIp = externalIp;
+        _ipResolver = ipResolver;
 
         _blocksV2TopicId = $"/optimism/{chainId}/2/blocks";
 
@@ -304,8 +307,22 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string hostIp = _config.ClP2PHost ?? _externalIp.ToString();
-        string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
+        IPAddress hostIp;
+        if (_config.ClP2PHost is { } configuredHost)
+        {
+            if (!IPAddress.TryParse(configuredHost, out hostIp!))
+            {
+                throw new InvalidConfigurationException(
+                    $"{nameof(IOptimismConfig)}.{nameof(IOptimismConfig.ClP2PHost)} must be an IPv4 or IPv6 address.",
+                    ExitCodes.GeneralError);
+            }
+        }
+        else
+        {
+            hostIp = (await _ipResolver.Resolve(token)).ExternalIp;
+        }
+
+        string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
         _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;

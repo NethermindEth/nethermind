@@ -16,7 +16,7 @@ namespace Nethermind.State.Proofs;
 /// <typeparam name="T">The type of the elements in the collection used to build the trie.</typeparam>
 public abstract class PatriciaTrie<T> : PatriciaTree
 {
-    protected const int MinItemsForParallelRootHash = 64;
+    protected const int MinItemsForParallelRootHash = IndexedTrieRoot.MinItemsForParallelRootHash;
     /// <param name="list">The collection to build the trie of.</param>
     /// <param name="canBuildProof">
     /// <c>true</c> to maintain an in-memory database for proof computation;

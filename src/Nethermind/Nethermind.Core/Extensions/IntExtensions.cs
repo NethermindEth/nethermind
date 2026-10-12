@@ -29,11 +29,7 @@ public static class IntExtensions
         public byte[] ToBigEndianByteArray()
         {
             byte[] bytes = BitConverter.GetBytes(@this);
-            if (BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
+            Array.Reverse(bytes);
             return bytes;
         }
 

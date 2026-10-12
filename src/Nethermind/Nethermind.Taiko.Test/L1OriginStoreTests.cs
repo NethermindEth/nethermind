@@ -28,6 +28,15 @@ public class L1OriginStoreTests
     }
 
     [Test]
+    public void Null_origin_roundtrips()
+    {
+        Rlp encoded = _decoder.Encode((L1Origin?)null);
+        RlpReader reader = new(encoded.Bytes);
+
+        Assert.That(_decoder.Decode(ref reader), Is.Null);
+    }
+
+    [Test]
     public void Can_write_and_read_l1_origin()
     {
         UInt256 blockId = 123;
@@ -188,6 +197,19 @@ public class L1OriginStoreTests
         Assert.That(retrieved, Is.Not.Null);
         Assert.That(retrieved!.L1BlockHeight, Is.EqualTo(0));
         Assert.That(retrieved.IsPreconfBlock, Is.True);
+    }
+
+    [Test]
+    public void Can_write_and_read_l1_origin_with_null_l2_block_hash()
+    {
+        UInt256 blockId = 456;
+        L1Origin origin = new(blockId, null, 123, Hash256.Zero, null);
+
+        _store.WriteL1Origin(blockId, origin);
+        L1Origin? retrieved = _store.ReadL1Origin(blockId);
+
+        Assert.That(retrieved, Is.Not.Null);
+        Assert.That(retrieved!.L2BlockHash, Is.Null);
     }
 
     [TestCase(0)]

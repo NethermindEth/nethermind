@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
             SetBasicInfo(peer, capabilities);
             SetNetworkInfo(peer);
-            SetProtocols(capabilities);
+            SetProtocols(peer, capabilities);
 
             if (includeDetails)
             {
@@ -74,37 +74,54 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Network = NetworkInfoBuilder.Build(peer, isInbound);
         }
 
-        private void SetProtocols(IReadOnlyList<Capability> capabilities)
+        private void SetProtocols(Peer peer, IReadOnlyList<Capability> capabilities)
         {
             Dictionary<string, object> protocols = [];
 
-            int ethVersion = 0;
-            int snapVersion = 0;
+            ISession? session = peer.InSession ?? peer.OutSession;
+            bool hasEthHandler = TryGetHandlerVersion(session, Protocol.Eth, out int ethVersion);
+            bool hasSnapHandler = TryGetHandlerVersion(session, Protocol.Snap, out int snapVersion);
 
             foreach (Capability capability in capabilities)
             {
-                if (capability.ProtocolCode == Protocol.Eth && ethVersion == 0)
+                if (capability.ProtocolCode == Protocol.Eth && !hasEthHandler)
                 {
-                    ethVersion = capability.Version;
+                    ethVersion = Math.Max(ethVersion, capability.Version);
                 }
-                else if (capability.ProtocolCode == Protocol.Snap && snapVersion == 0)
+                else if (capability.ProtocolCode == Protocol.Snap && !hasSnapHandler)
                 {
-                    snapVersion = capability.Version;
+                    snapVersion = Math.Max(snapVersion, capability.Version);
                 }
-
-                if (ethVersion > 0 && snapVersion > 0) break;
             }
 
             // ETH protocol (always present)
-            protocols[Protocol.Eth] = new { Version = ethVersion };
+            protocols[Protocol.Eth] = new ProtocolVersion(ethVersion);
 
             // SNAP protocol (if supported)
             if (snapVersion > 0)
             {
-                protocols[Protocol.Snap] = new { Version = snapVersion };
+                protocols[Protocol.Snap] = new ProtocolVersion(snapVersion);
             }
 
             Protocols = protocols;
+        }
+
+        /// <summary>The version a peer runs for one protocol.</summary>
+        public sealed class ProtocolVersion(int version)
+        {
+            public int Version { get; } = version;
+        }
+
+        private static bool TryGetHandlerVersion(ISession? session, string protocol, out int version)
+        {
+            if (session?.TryGetProtocolHandler(protocol, out IProtocolHandler? handler) == true)
+            {
+                version = handler.ProtocolVersion;
+                return true;
+            }
+
+            version = 0;
+            return false;
         }
 
         private void SetDetailedFields(Peer peer)

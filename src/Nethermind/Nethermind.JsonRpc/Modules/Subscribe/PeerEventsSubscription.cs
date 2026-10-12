@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IPeerPool? peerPool,
             IRlpxHost? rlpxHost
             )
-            : base(jsonRpcDuplexClient)
+            : base(jsonRpcDuplexClient, MaxQueuedEvents)
         {
             _logger = logManager?.GetClassLogger<PeerEventsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));

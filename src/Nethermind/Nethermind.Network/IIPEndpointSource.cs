@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using DotNetty.Transport.Channels;
 
 namespace Nethermind.Network;
 
@@ -19,4 +20,12 @@ public static class EndpointExtensions
         if (endpoint is IIPEndpointSource source) return source.IPEndpoint;
         throw new InvalidOperationException($"{endpoint} cannot be converted to IPEndpoint.");
     }
+
+    internal static IPEndPoint? TryGetLocalIPEndpoint(this IChannel channel)
+        => channel.LocalAddress switch
+        {
+            IPEndPoint ipEndpoint => ipEndpoint,
+            IIPEndpointSource source => source.IPEndpoint,
+            _ => (channel as IIPEndpointSource)?.IPEndpoint
+        };
 }

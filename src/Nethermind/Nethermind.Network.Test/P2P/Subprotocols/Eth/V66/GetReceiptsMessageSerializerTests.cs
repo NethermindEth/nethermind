@@ -38,7 +38,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using GetReceiptsMessage message = new(-1, ethMessage);
             GetReceiptsMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message);
+            // The request id -1 encodes as eight 0xff bytes behind the 0x88 length prefix.
+            SerializerTester.TestZero(serializer, message,
+                "eb88ffffffffffffffffe1a00000000000000000000000000000000000000000000000000000000000000000");
         }
 
         [TestCaseSource(nameof(InvalidPayloads))]

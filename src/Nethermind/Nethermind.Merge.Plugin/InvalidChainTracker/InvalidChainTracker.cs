@@ -34,16 +34,16 @@ public class InvalidChainTracker(
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = [];
 
-    public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
+    public void SetupBlockchainProcessorInterceptor(IBlockProcessingQueue processingQueue)
     {
-        blockchainProcessor.InvalidBlock += OnBlockchainProcessorInvalidBlock;
+        processingQueue.InvalidBlock += OnBlockchainProcessorInvalidBlock;
         _disposables.Add(() =>
         {
-            blockchainProcessor.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
+            processingQueue.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
         });
     }
 
-    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
     public void SetChildParent(Hash256 child, Hash256 parent)
     {
@@ -61,16 +61,7 @@ public class InvalidChainTracker(
         }
     }
 
-    private Node GetNode(Hash256 hash)
-    {
-        if (!_tree.TryGet(hash, out Node node))
-        {
-            node = new Node();
-            _tree.Set(hash, node);
-        }
-
-        return node;
-    }
+    private Node GetNode(Hash256 hash) => _tree.SetOrGet(hash, 0, static (_, _) => new Node());
 
     private void PropagateLastValidHash(Node node)
     {
@@ -152,14 +143,14 @@ public class InvalidChainTracker(
     public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
-        Node node = GetNode(blockHash);
+        if (!_tree.TryGet(blockHash, out Node node))
+        {
+            return false;
+        }
+
         lock (node)
         {
-            if (node.LastValidHash is not null)
-            {
-                lastValidHash = node.LastValidHash;
-            }
-
+            lastValidHash = node.LastValidHash;
             return node.LastValidHash is not null;
         }
     }

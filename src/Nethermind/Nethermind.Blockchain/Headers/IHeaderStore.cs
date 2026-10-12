@@ -26,4 +26,6 @@ public interface IHeaderStore : IHeaderFinder
     /// Returns an empty list when <paramref name="endBlockHash"/> is not found.
     /// </summary>
     IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(ulong endBlockNumber, Hash256 endBlockHash, int count);
+
+    Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive) => [];
 }

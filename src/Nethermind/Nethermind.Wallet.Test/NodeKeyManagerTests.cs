@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -40,9 +43,8 @@ namespace Nethermind.Wallet.Test
             Assert.That(test.NodeKeyManager.LoadNodeKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_creates_file(string filePath)
+        [Test]
+        public void LoadNodeKey_creates_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
@@ -55,9 +57,8 @@ namespace Nethermind.Wallet.Test
             test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
         }
 
-        [TestCase(null)]
-        [TestCase("testFile")]
-        public void LoadNodeKey_loads_file(string filePath)
+        [Test]
+        public void LoadNodeKey_loads_file([Values(null, "testFile")] string filePath)
         {
             NodeKeyManagerTest test = CreateTest();
             test.KeyStoreConfig.EnodeKeyFile = filePath;
@@ -89,6 +90,19 @@ namespace Nethermind.Wallet.Test
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             Assert.That(test.NodeKeyManager.LoadSignerKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+        }
+
+        [Test]
+        public void LoadSignerKey_throws_when_BlockAuthorAccount_key_cannot_be_loaded([Values] bool keyStoreThrows)
+        {
+            NodeKeyManagerTest test = CreateTest();
+            test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyB.ToString();
+            test.KeyStoreConfig.BlockAuthorAccount = TestItem.AddressA.ToString();
+            test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(_ => keyStoreThrows
+                ? throw new InvalidOperationException("key store unavailable")
+                : ((ProtectedPrivateKey)null, Result.Fail("not found")));
+            Assert.That(() => test.NodeKeyManager.LoadSignerKey(), Throws.TypeOf<InvalidConfigurationException>()
+                .With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
         }
 
         private NodeKeyManagerTest CreateTest()

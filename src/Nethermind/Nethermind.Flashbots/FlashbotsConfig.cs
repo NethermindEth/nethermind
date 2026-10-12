@@ -11,7 +11,7 @@ public class FlashbotsConfig : IFlashbotsConfig
     public bool ExcludeWithdrawals { get; set; } = false;
 
     public bool EnablePreWarmer { get; set; } = true;
-    public bool EnableValidation { get; set; } = false;
+    public bool EnableValidation { get; set; } = true;
 
     public int? FlashbotsModuleConcurrentInstances { get; set; } = null;
 }

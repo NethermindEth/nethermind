@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Network;
@@ -15,7 +14,6 @@ namespace Nethermind.Api
         (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
         IIPResolver IpResolver { get; }
-        IGossipPolicy GossipPolicy { get; set; }
         IProtocolsManager? ProtocolsManager { get; }
 
         [SkipServiceCollection]

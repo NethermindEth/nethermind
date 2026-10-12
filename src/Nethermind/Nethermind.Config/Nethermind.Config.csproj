@@ -13,7 +13,8 @@
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
   </ItemGroup>
-  <ItemGroup>
+  <!-- The zkEVM guest never reads a chainspec; embedding them would add 6.9 MB, a third of the guest image. -->
+  <ItemGroup Condition="'$(EnableZkEvm)' != 'true'">
     <EmbeddedResource Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </EmbeddedResource>

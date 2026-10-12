@@ -180,13 +180,6 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithAura(ulong step, byte[]? signature = null)
-    {
-        TestObjectInternal.AuRaStep = step;
-        TestObjectInternal.AuRaSignature = signature;
-        return this;
-    }
-
     public BlockHeaderBuilder WithWithdrawalsRoot(Hash256? root)
     {
         TestObjectInternal.WithdrawalsRoot = root;

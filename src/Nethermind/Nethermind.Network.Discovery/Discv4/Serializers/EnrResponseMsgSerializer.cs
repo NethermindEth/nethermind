@@ -38,7 +38,7 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
         RlpReader ctx = new(data.AsSpan());
         ctx.ReadSequenceLength();
-        Hash256? requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
+        Hash256 requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 
         int positionForHex = ctx.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
@@ -49,7 +49,7 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
         }
 
         data.SetReaderIndex(data.ReaderIndex + ctx.Position);
-        EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
+        EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak);
         return msg;
     }
 

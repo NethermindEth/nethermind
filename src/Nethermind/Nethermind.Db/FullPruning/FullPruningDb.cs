@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -186,10 +187,10 @@ namespace Nethermind.Db.FullPruning
         /// <inheritdoc />
         public bool CanStartPruning => _pruningContext is null; // we can start pruning only if no pruning is in progress
 
-        public bool TryStartPruning(out IPruningContext context) => TryStartPruning(true, out context);
+        public bool TryStartPruning([NotNullWhen(true)] out IPruningContext? context) => TryStartPruning(true, out context);
 
         /// <inheritdoc />
-        public virtual bool TryStartPruning(bool duplicateReads, out IPruningContext context)
+        public virtual bool TryStartPruning(bool duplicateReads, [NotNullWhen(true)] out IPruningContext? context)
         {
             DbSettings ClonedDbSettings()
             {
@@ -235,8 +236,14 @@ namespace Nethermind.Db.FullPruning
 
         private void FinishPruning()
         {
-            _pruningContext?.CloningDb?.Flush();
-            IDb oldDb = Interlocked.Exchange(ref _currentDb, _pruningContext?.CloningDb);
+            PruningContext? pruningContext = _pruningContext;
+            if (pruningContext is null)
+            {
+                return;
+            }
+
+            pruningContext.CloningDb.Flush();
+            IDb oldDb = Interlocked.Exchange(ref _currentDb, pruningContext.CloningDb);
             ClearOldDb(oldDb);
         }
 

@@ -11,7 +11,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -32,11 +31,8 @@ namespace Nethermind.Api
         [SkipServiceCollection]
         EthereumJsonSerializer EthereumJsonSerializer { get; }
         IFileSystem FileSystem { get; }
-        IKeyStore? KeyStore { get; set; }
         [SkipServiceCollection]
         ILogManager LogManager { get; }
-        [SkipServiceCollection]
-        IProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         [SkipServiceCollection]
         string SealEngineType { get; }

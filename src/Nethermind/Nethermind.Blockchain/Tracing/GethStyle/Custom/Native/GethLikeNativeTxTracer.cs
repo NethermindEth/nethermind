@@ -34,4 +34,10 @@ public abstract class GethLikeNativeTxTracer(GethTraceOptions options) : GethLik
         base.ReportActionError(evmExceptionType);
         Depth--;
     }
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionRevert(gas, output);
+        Depth--;
+    }
 }

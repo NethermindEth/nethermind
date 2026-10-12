@@ -24,6 +24,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
@@ -38,13 +39,15 @@ public class ReorgTests
 #pragma warning restore NUnit1032 // An IDisposable field/property should be Disposed in a TearDown method
     private BlockTree _blockTree = null!;
     private BlockHeader _genesis = null!;
+    private TestStateHeaderProvider _stateHeaderProvider = null!;
 
     [OneTimeSetUp]
     public void Setup()
     {
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         IDbProvider memDbProvider = TestMemDbProvider.Init();
-        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance);
+        TestStateHeaderProvider stateHeaderProvider = _stateHeaderProvider = new();
+        (IWorldState stateProvider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(memDbProvider, LimboLogs.Instance, stateHeaderProvider);
 
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();
 
@@ -67,6 +70,7 @@ public class ReorgTests
 
             _genesis = Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject;
         }
+        stateHeaderProvider.Parent = _genesis;
 
         EthereumEcdsa ecdsa = new(1);
 
@@ -90,7 +94,7 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
@@ -110,21 +114,23 @@ public class ReorgTests
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
-            new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             blockhashProvider,
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,
             branchProcessor,
-            new RecoverSignatures(
+            specProvider,
+            [new RecoverSignatures(
                 ecdsa,
                 specProvider,
-                LimboLogs.Instance),
+                LimboLogs.Instance)],
             stateReader,
             LimboLogs.Instance,
             BlockchainProcessor.Options.Default,
-            Substitute.For<IProcessingStats>());
+            Substitute.For<IProcessingStats>(),
+            new BlockTreeMutationLock());
     }
 
     [OneTimeTearDown]
@@ -142,6 +148,8 @@ public class ReorgTests
         Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
         Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(5L).TestObject;
         Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(6).WithTotalDifficulty(11L).TestObject;
+        // The state system resolves each block's parent by hash, so the branch it processes must be known to it.
+        foreach (Block block in new[] { block0, block1, block2, block3, block1B, block2B }) _stateHeaderProvider.Add(block.Header);
 
         _blockTree.BlockAddedToMain += (_, args) =>
         {

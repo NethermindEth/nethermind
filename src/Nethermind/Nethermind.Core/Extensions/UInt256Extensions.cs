@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -27,6 +30,48 @@ public static class UInt256Extensions
     /// </summary>
     public static EvmWord ToBigEndianWord(this in UInt256 value)
         => Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in value)).ByteSwap();
+
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value.</summary>
+    [SkipLocalsInit]
+    public static byte[] ToMinimalBigEndian(this in UInt256 value)
+    {
+        Unsafe.SkipInit(out EvmWord word);
+        return value.ToMinimalBigEndian(ref word).ToArray();
+    }
+
+    /// <summary>Returns the shortest nonempty big-endian byte representation of the value, backed by <paramref name="buffer"/>.</summary>
+    /// <remarks>The returned span aliases <paramref name="buffer"/> and stays valid only as long as the buffer does.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ReadOnlySpan<byte> ToMinimalBigEndian(this scoped in UInt256 value, ref EvmWord buffer)
+    {
+        buffer = value.ToBigEndianWord();
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref buffer, 1));
+        return Vector128.IsHardwareAccelerated ? bytes.WithoutLeadingZeros() : bytes[(32 - value.MinimalByteLength())..];
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static int MinimalByteLength(this in UInt256 value)
+    {
+        int length = 32;
+        ulong limb = value.u3;
+        if (limb >= 1UL << 56) return length;
+        if (limb == 0)
+        {
+            length = 24;
+            limb = value.u2;
+            if (limb == 0)
+            {
+                length = 16;
+                limb = value.u1;
+                if (limb == 0)
+                {
+                    length = 8;
+                    limb = value.u0;
+                }
+            }
+        }
+        return Math.Max(1, length - Bytes.LeadingZeroBytes(limb));
+    }
 
     public static int CountLeadingZeros(this in UInt256 uInt256)
     {

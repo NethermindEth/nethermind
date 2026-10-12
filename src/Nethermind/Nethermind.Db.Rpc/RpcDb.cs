@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -21,54 +22,50 @@ namespace Nethermind.Db.Rpc
         IDb recordDb)
         : IDb
     {
+        private readonly string _dbName = dbName ?? throw new ArgumentNullException(nameof(dbName));
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
         private readonly ILogger _logger = logManager?.GetClassLogger<RpcDb>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IJsonRpcClient _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
+        private readonly IDb _recordDb = recordDb ?? throw new ArgumentNullException(nameof(recordDb));
 
         public void Dispose()
         {
             _logger.Info($"Disposing RPC DB {Name}");
-            recordDb.Dispose();
+            _recordDb.Dispose();
         }
 
         public string Name => "RpcDb";
 
-        public byte[] this[ReadOnlySpan<byte> key]
+        public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);
             set => Set(key, value);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
-        public byte[] Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, GetThroughRpc(k))).ToArray();
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => ThrowWritesNotSupported();
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => GetThroughRpc(key);
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, GetThroughRpc(k))).ToArray();
         public void Remove(ReadOnlySpan<byte> key) => ThrowWritesNotSupported();
         public bool KeyExists(ReadOnlySpan<byte> key) => GetThroughRpc(key) is not null;
         public void Flush(bool onlyWal = false) { }
         public void Clear() { }
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => recordDb.GetAll();
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => recordDb.GetAllKeys();
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => recordDb.GetAllValues();
-        public IWriteBatch StartWriteBatch()
-        {
-            ThrowWritesNotSupported();
-            // Make compiler happy
-            return null!;
-        }
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
+        public IWriteBatch StartWriteBatch() => throw new InvalidOperationException("RPC DB does not support writes");
 
-        private byte[] GetThroughRpc(ReadOnlySpan<byte> key)
+        private byte[]? GetThroughRpc(ReadOnlySpan<byte> key)
         {
-            string responseJson = _rpcClient.Post("debug_getFromDb", dbName, key.ToHexString()).Result;
-            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson);
+            string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result
+                ?? throw new JsonException("Database RPC returned no response.");
+            JsonRpcSuccessResponse response = _jsonSerializer.Deserialize<JsonRpcSuccessResponse>(responseJson)
+                ?? throw new JsonException("Database RPC response decoded as null.");
 
-            byte[] value = null;
+            byte[]? value = null;
             if (response.Result is not null)
             {
                 value = Bytes.FromHexString((string)response.Result);
-                if (recordDb is not null)
-                {
-                    recordDb[key] = value;
-                }
+                _recordDb[key] = value;
             }
 
             return value;

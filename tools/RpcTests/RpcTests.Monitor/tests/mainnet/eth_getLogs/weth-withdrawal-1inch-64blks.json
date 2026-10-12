@@ -1,0 +1,23 @@
+[
+  {
+    "run": "EveryBlocks(19)",
+    "test": {
+      "description": "WETH withdrawals by 1inch router in 64-blocks range"
+    },
+    "request": {
+      "jsonrpc": "2.0",
+      "method": "eth_getLogs",
+      "params": [{
+        "fromBlock": "{{Hex(Recent.Number - 63)}}",
+        "toBlock": "{{Hex(Recent.Number)}}",
+        "useIndex":"{{Maybe}}",
+        "address": ["0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"],
+        "topics": [
+          "{{Topic.Withdrawal}}",
+          "0x000000000000000000000000111111125421ca6dc452d289314280a0f8842a65"
+        ]
+      }],
+      "id": "{{Request.Number}}"
+    }
+  }
+]

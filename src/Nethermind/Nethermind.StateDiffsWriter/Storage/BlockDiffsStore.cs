@@ -106,7 +106,7 @@ public sealed class BlockDiffsStore(IColumnsDb<BlockDiffsColumns> db)
         }
         Span<byte> value = stackalloc byte[SlotCountValueLength];
         BinaryPrimitives.WriteUInt64BigEndian(value, count);
-        _slotCounts.Set(key, value.ToArray());
+        _slotCounts.PutSpan(key, value);
     }
 
     /// <summary>

@@ -17,8 +17,8 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
-    public override int GetLength(ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(ReadOnlyBlockAccessList? item, RlpBehaviors rlpBehaviors)
+        => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
 
     public int GetLength(GeneratedBlockAccessList item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
@@ -29,21 +29,21 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         // BlockValidator would otherwise recompute the same keccak per block.
         int startPosition = ctx.Position;
 
-        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
+        ReadOnlyAccountChanges[] accountChanges = ctx.DecodeNonNullArray(AccountChangesDecoder.Instance, limit: _accountsLimit);
         ReadOnlySpan<byte> wireRlp = ctx.Data[startPosition..ctx.Position];
 
         Address? lastAddress = null;
         int itemCount = 0;
-        foreach (ReadOnlyAccountChanges a in accountChanges)
+        foreach (ReadOnlyAccountChanges accountChange in accountChanges)
         {
-            Address address = a!.Address;
+            Address address = accountChange.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
                 ThrowAccountChangesOutOfOrder();
             }
             lastAddress = address;
 
-            itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
+            itemCount += 1 + accountChange.StorageChanges.Length + accountChange.StorageReads.Length;
         }
 
         Hash256 wireHash = new(ValueKeccak.Compute(wireRlp));
@@ -102,6 +102,7 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 
     public override void Encode<TWriter>(ref TWriter writer, ReadOnlyBlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        ArgumentNullException.ThrowIfNull(item);
         ReadOnlySpan<ReadOnlyAccountChanges> accounts = item.AccountChanges.AsSpan();
         using ArrayPoolListRef<AccountChangesDecoder.EncodingLengths> accountLengths = new(accounts.Length, accounts.Length);
         PrepareReadOnlyLengths(accounts, accountLengths.AsSpan(), rlpBehaviors, out int contentLength);

@@ -53,7 +53,7 @@ internal sealed class WitnessCall(
 
         // Pass spec so that on pre-Berlin chains type-defaulted transactions are downgraded to Legacy
         // — matches eth_call / trace_call / debug_traceCall.
-        Result<Transaction> txResult = callRequest.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(sourceHeader));
+        Result<Transaction> txResult = callRequest.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(sourceHeader));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);

@@ -140,13 +140,12 @@ namespace Nethermind.Network.P2P
             }
 
             if (_logger.IsTrace) TraceEnablingSnappy();
-            _context.Channel.Pipeline.Get<ZeroPacketSplitter>()?.DisableFraming();
 
             // since groups were used, we are on a different thread
             _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
-            // code in the next line does no longer work as if there is a packet waiting then it will skip the snappy decoder
-            // _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
-            _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new ZeroSnappyEncoder(_logManager));
+            ZeroPacketSplitter splitter = _context.Channel.Pipeline.Get<ZeroPacketSplitter>()
+                ?? throw new InvalidOperationException("Cannot enable Snappy without the outbound ZeroPacketSplitter.");
+            splitter.EnableSnappy(_logManager);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
@@ -381,16 +380,16 @@ namespace Nethermind.Network.P2P
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
-            bool ShouldDisconnectStaticNode() => ethDisconnectReason switch
+            bool ShouldDisconnectPrivilegedNode() => ethDisconnectReason switch
             {
                 EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
                 EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
                 _ => true,
             };
 
-            if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
+            if ((Node?.IsStatic == true || Node?.IsTrusted == true) && !ShouldDisconnectPrivilegedNode())
             {
-                if (_logger.IsTrace) TraceStaticPeerNotDisconnecting(disconnectReason, details);
+                if (_logger.IsTrace) TracePrivilegedPeerNotDisconnecting(disconnectReason, details);
                 return;
             }
 
@@ -412,7 +411,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsDebug) DebugInitiatingDisconnect(disconnectReason, details);
+            if (_logger.IsTrace) TraceInitiatingDisconnect(disconnectReason, details);
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
@@ -435,21 +434,12 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceStaticPeerNotDisconnecting(DisconnectReason reason, string? det)
-                => _logger.Trace($"{this} not disconnecting for static peer on {reason} ({det})");
+            void TracePrivilegedPeerNotDisconnecting(DisconnectReason reason, string? det)
+                => _logger.Trace($"{this} not disconnecting for static/trusted peer on {reason} ({det})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugInitiatingDisconnect(DisconnectReason reason, string? det)
-            {
-                if (reason is DisconnectReason.InvalidNetworkId)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{this} initiating disconnect because {reason}, details: {det}");
-                }
-                else
-                {
-                    _logger.Debug($"{this} initiating disconnect because {reason}, details: {det}");
-                }
-            }
+            void TraceInitiatingDisconnect(DisconnectReason reason, string? det) =>
+                _logger.Trace($"{this} initiating disconnect because {reason}, details: {det}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectingProtocol(IProtocolHandler handler, DisconnectReason reason, string? det)
@@ -863,18 +853,12 @@ namespace Nethermind.Network.P2P
                     Array.Copy(_handlers, rentedHandlers, count);
                 }
 
-                try
+                for (int i = 0; i < count; i++)
                 {
-                    for (int i = 0; i < count; i++)
-                    {
-                        rentedHandlers[i]!(sender, args);
-                    }
+                    rentedHandlers[i]!(sender, args);
                 }
-                finally
-                {
-                    Array.Clear(rentedHandlers, 0, count);
-                    ArrayPool<EventHandler<DisconnectEventArgs>?>.Shared.Return(rentedHandlers);
-                }
+                Array.Clear(rentedHandlers, 0, count);
+                ArrayPool<EventHandler<DisconnectEventArgs>?>.Shared.Return(rentedHandlers);
             }
         }
     }

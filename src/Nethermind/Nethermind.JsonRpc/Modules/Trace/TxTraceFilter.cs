@@ -11,19 +11,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
     public class TxTraceFilter(
         Address[]? fromAddresses,
         Address[]? toAddresses,
-        int after,
-        int? count)
+        ulong after,
+        ulong? count,
+        TraceFilterMode mode)
     {
-        private readonly Address[]? _fromAddresses = fromAddresses;
-        private readonly Address[]? _toAddresses = toAddresses;
-        private int _after = after;
-        private int? _count = count;
+        // An empty list is read as an omitted one, as in eth_getLogs: it does not restrict the match.
+        private readonly Address[]? _fromAddresses = fromAddresses is { Length: > 0 } ? fromAddresses : null;
+        private readonly Address[]? _toAddresses = toAddresses is { Length: > 0 } ? toAddresses : null;
+        private ulong _after = after;
+        private ulong? _count = count;
+        private readonly TraceFilterMode _mode = mode;
+
+        /// <summary>No further trace can be accepted, so the blocks left in the range cannot change the result.</summary>
+        public bool IsExhausted => _count == 0;
 
         public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(IEnumerable<ParityTxTraceFromStore> txTraces)
         {
             foreach (ParityTxTraceFromStore? txTrace in txTraces)
             {
-                if (_count <= 0)
+                if (IsExhausted)
                 {
                     break;
                 }
@@ -38,7 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (tx is not null && !(_count <= 0) && MatchAddresses(tx.From, tx.To))
+            if (tx is not null && !IsExhausted && MatchAddresses(tx.From, tx.GetRecipient()))
             {
                 if (_after > 0)
                 {
@@ -53,7 +59,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return false;
         }
 
-        private bool MatchAddresses(Address? fromAddress, Address? toAddress) =>
-            _fromAddresses?.Contains(fromAddress) != false && _toAddresses?.Contains(toAddress) != false;
+        private bool MatchAddresses(Address? fromAddress, Address? toAddress)
+        {
+            bool? fromMatch = _fromAddresses?.Contains(fromAddress);
+            bool? toMatch = _toAddresses?.Contains(toAddress);
+            return _mode == TraceFilterMode.Union && (fromMatch.HasValue || toMatch.HasValue)
+                ? fromMatch == true || toMatch == true
+                : fromMatch != false && toMatch != false;
+        }
     }
 }

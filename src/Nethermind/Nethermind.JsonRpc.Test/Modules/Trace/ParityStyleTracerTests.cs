@@ -2,23 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
-using NSubstitute;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -28,7 +27,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace;
 public class ParityStyleTracerTests
 {
     private BlockTree? _blockTree;
-    private IPoSSwitcher? _poSSwitcher;
     private ITraceRpcModule _traceRpcModule;
     private IContainer _container;
     private IBlockProcessingQueue _blockProcessingQueue;
@@ -36,7 +34,8 @@ public class ParityStyleTracerTests
     [SetUp]
     public async Task Setup()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        // trace_rawTransaction rejects a transaction type the latest block's fork doesn't enable, so it must enable access lists.
+        ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
 
         _blockTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -47,11 +46,9 @@ public class ParityStyleTracerTests
             .WithAllocation(new Address("0xdea60e4f8ea50d5ed92b0a5b15ae9d24aeba0bee"), 1.Ether)
             .TestObject;
 
-        _poSSwitcher = Substitute.For<IPoSSwitcher>();
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(cp))
             .AddSingleton<ISpecProvider>(specProvider)
-            .AddSingleton<IPoSSwitcher>(_poSSwitcher)
             .AddSingleton<IBlockTree>(_blockTree)
             .Build();
 
@@ -74,30 +71,36 @@ public class ParityStyleTracerTests
     [Test]
     public void Can_trace_raw_parity_style_berlin_tx()
     {
-        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(Bytes.FromHexString("01f85b821e8e8204d7847735940083030d408080853a60005500c080a0f43e70c79190701347517e283ef63753f6143a5225cbb500b14d98eadfb7616ba070893923d8a1fc97499f426524f9e82f8e0322dfac7c3d7e8a9eee515f0bcdc4"), new[] { "trace" });
+        // trace_rawTransaction rejects a transaction for another chain, so it is signed for this one.
+        ulong chainId = _blockTree!.ChainId;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithChainId(chainId)
+            .WithTo(null)
+            .WithCode(Bytes.FromHexString("3a60005500"))
+            .WithGasLimit(200_000)
+            .WithGasPrice(0)
+            .WithValue(0)
+            .SignedAndResolved(new EthereumEcdsa(chainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> result = _traceRpcModule.trace_rawTransaction(
+            TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes, new[] { "trace" });
         Assert.That(result.Data, Is.Not.Null);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Should_return_correct_block_reward(bool isPostMerge)
+    /// <summary>
+    /// The chain pays no block reward (as on Taiko or Optimism, which are always post-merge), so the trace has no reward
+    /// record.
+    /// </summary>
+    [Test]
+    public async Task Should_not_report_a_reward_the_block_does_not_pay()
     {
         Block block = Build.A.Block.WithParent(_blockTree!.Head!).TestObject;
         Assert.That((await _blockTree!.SuggestBlockAsync(block, BlockTreeSuggestOptions.None)), Is.EqualTo(AddBlockResult.Added));
-        _poSSwitcher!.IsPostMerge(Arg.Any<BlockHeader>()).Returns(isPostMerge);
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> rpcResult = _traceRpcModule.trace_block(new BlockParameter(block.Number));
         Assert.That(rpcResult.Result, Is.EqualTo(Result.Success));
-        ParityTxTraceFromStore[] result = rpcResult.Data.ToArray();
-        if (isPostMerge)
-        {
-            Assert.That(result.Length, Is.EqualTo(1));
-            Assert.That(result[0].Action.Author, Is.EqualTo(block.Beneficiary!));
-            Assert.That(result[0].Action.Value, Is.EqualTo(UInt256.Zero));
-        }
-        else
-        {
-            Assert.That(result.Length, Is.EqualTo(0));
-        }
+        Assert.That(rpcResult.Data, Is.Empty);
     }
 }

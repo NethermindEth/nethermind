@@ -84,16 +84,18 @@ public class XdcBlockHeader(
         internal set
         {
             _extraFieldsV2 = value;
-            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.EncodeAsBytes(value)];
         }
     }
 
     public bool IsSelfMined { get; } = isSelfMined;
 
-    public virtual ValueHash256 CalculateHash()
+    internal XdcProcessedRewards? ProcessedRewards { get; set; }
+
+    public virtual ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this);
+        _headerDecoder.Encode(ref writer, this, behaviors);
         return writer.GetHash();
     }
 
@@ -114,6 +116,7 @@ public class XdcBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
+            SlotNumber = SlotNumber + 1,
         };
     }
 
@@ -144,8 +147,6 @@ public class XdcBlockHeader(
         header.Nonce = Nonce;
         header.TxRoot = TxRoot;
         header.TotalDifficulty = TotalDifficulty;
-        header.AuRaStep = AuRaStep;
-        header.AuRaSignature = AuRaSignature;
         header.ReceiptsRoot = ReceiptsRoot;
         header.BaseFeePerGas = BaseFeePerGas;
         header.WithdrawalsRoot = WithdrawalsRoot;
@@ -154,9 +155,11 @@ public class XdcBlockHeader(
         header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         header.ExcessBlobGas = ExcessBlobGas;
         header.BlobGasUsed = BlobGasUsed;
+        header.SlotNumber = SlotNumber;
         header.Validator = Validator;
         header.Validators = Validators;
         header.Penalties = Penalties;
+        header.ProcessedRewards = ProcessedRewards;
     }
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
@@ -177,8 +180,6 @@ public class XdcBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,
@@ -187,6 +188,7 @@ public class XdcBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
+            SlotNumber = src.SlotNumber,
         };
 
         return x;

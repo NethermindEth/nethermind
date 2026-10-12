@@ -24,4 +24,13 @@ public class Base64ConverterTests : ConverterTestBase<byte[]?>
             value,
             static (before, after) => (before is null && after is null) || (before is not null && after is not null && before.SequenceEqual(after)),
             new Base64Converter());
+
+    [TestCase(new byte[0], "\"\"")]
+    [TestCase(new byte[] { 1 }, "\"AQ==\"")]
+    [TestCase(new byte[] { 0, 0, 255 }, "\"AAD/\"")]
+    public void Serializes_as_base64(byte[] value, string expectedJson) => TestConverter(
+            value,
+            expectedJson,
+            new Base64Converter(),
+            static (before, after) => (before is null && after is null) || (before is not null && after is not null && before.SequenceEqual(after)));
 }

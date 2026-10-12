@@ -228,8 +228,8 @@ internal class PenaltyTests
         xdcSpec.MergeSignRange.Returns((ulong)MergeSignRange);
         xdcSpec.IsTipUpgradePenaltyEnabled.Returns(true);
         xdcSpec.LimitPenaltyEpoch.Returns((ulong)limitPenaltyEpoch);
-        xdcSpec.MinimumSigningTx.Returns(2);
-        xdcSpec.MinimumMinerBlockPerEpoch.Returns(1);
+        xdcSpec.MinimumSigningTx.Returns(2UL);
+        xdcSpec.MinimumMinerBlockPerEpoch.Returns(1UL);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);

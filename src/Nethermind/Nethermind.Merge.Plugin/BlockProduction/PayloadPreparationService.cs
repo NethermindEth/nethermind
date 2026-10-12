@@ -135,37 +135,67 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
-        _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
-            (id, currentContext) =>
+    /// <remarks>
+    /// Publishes with an explicit compare-and-swap rather than <c>AddOrUpdate</c>: creating a context starts
+    /// a build and allocates cancellation sources, and <c>AddOrUpdate</c> may run its factories repeatedly
+    /// under contention, leaving all but the last created context referenced by nobody. The candidate here is
+    /// created at most once and re-offered until it is either published or disposed.
+    /// </remarks>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
+    {
+        IBlockImprovementContext? candidate = null;
+        try
+        {
+            while (true)
             {
                 if (cts.IsCancellationRequested)
                 {
-                    // If cancelled, return previous
+                    // If cancelled, keep whatever is stored: a build started here belongs to a round nobody
+                    // will collect from, and publishing it re-adds an id that shutdown or cleanup has removed.
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-                    return currentContext;
-                }
-                if (!currentContext.ImprovementTask.IsCompleted)
-                {
-                    // If there is payload improvement and its not yet finished leave it be
-                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
-                    return currentContext;
+                    return;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
-                if (!cts.IsCancellationRequested)
+                if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? currentContext))
                 {
+                    if (!currentContext.ImprovementTask.IsCompleted)
+                    {
+                        // If there is payload improvement and its not yet finished leave it be
+                        if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
+                        return;
+                    }
+
+                    candidate ??= CreateBlockImprovementContext(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
                     currentContext.Dispose();
-                    return newContext;
+                    // The entry moved on under us: re-read and offer the same candidate again.
+                    if (!_payloadStorage.TryUpdate(payloadId, candidate, currentContext)) continue;
                 }
                 else
                 {
-                    newContext.Dispose();
-                    return currentContext;
+                    candidate ??= CreateBlockImprovementContext(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
+                    if (!_payloadStorage.TryAdd(payloadId, candidate)) continue;
                 }
-            });
 
+                IBlockImprovementContext published = candidate;
+                candidate = null;
+
+                // Only the context this call published may be cancelled here: an entry kept by another
+                // round belongs to that round, whose `cts` is still live.
+                if (cts.IsCancellationRequested)
+                {
+                    published.DisposeAndCancelOngoingImprovements();
+                }
+
+                return;
+            }
+        }
+        finally
+        {
+            // A candidate created but never published is referenced by nobody. Plain `Dispose`, as
+            // cancelling would stop the round shared with whichever context is stored.
+            candidate?.Dispose();
+        }
+    }
 
     private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
@@ -180,7 +210,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             {
                 if (!token.IsCancellationRequested)
                 {
-                    LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
+                    LogProductionResult(b, currentBestBlock, blockImprovementContext.Best.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
@@ -211,8 +241,8 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
             if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
             {
-                Block newBestBlock = blockImprovementContext.CurrentBestBlock ?? currentBestBlock;
-                ImproveBlock(payloadId, parentHeader, payloadAttributes, newBestBlock, startDateTime, blockImprovementContext.BlockFees, cts);
+                BlockProductionSnapshot best = blockImprovementContext.Best;
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, best.CurrentBestBlock ?? currentBestBlock, startDateTime, best.BlockFees, cts);
             }
             else
             {
@@ -321,7 +351,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Best.CurrentBestBlock?.Timestamp}");
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
@@ -387,7 +417,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         {
             try
             {
-                bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
+                bool currentBestBlockIsEmpty = blockContext.Best.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
                     // Inform current improvement that we need results now
@@ -409,16 +439,42 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     }
                 }
 
-                return blockContext;
+                return blockContext.Best;
             }
             finally
             {
                 // Stop any on-going improvements as they won't be used
                 blockContext.DisposeAndCancelOngoingImprovements();
+                RetainRetrievedContext(payloadId, blockContext);
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Keeps the retrieved context as the stored one, disposing a replacement published while it was being retrieved.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ImproveBlock"/> publishes a replacement before it re-reads the round's shared cancellation
+    /// source, so a replacement published before that cancellation is only seen from this side. A context
+    /// belonging to a later round is left alone: all contexts of one round share
+    /// <see cref="IBlockImprovementContext.StartDateTime"/> — it is threaded unchanged through the improvement
+    /// chain — so a differing one owns a cancellation source that is still live. The swap comes before the
+    /// disposal and is retried, so a context is only ever disposed once it has actually been replaced.
+    /// </remarks>
+    private void RetainRetrievedContext(string payloadId, IBlockImprovementContext retrieved)
+    {
+        while (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? stored)
+               && !ReferenceEquals(stored, retrieved)
+               && stored.StartDateTime == retrieved.StartDateTime)
+        {
+            if (_payloadStorage.TryUpdate(payloadId, retrieved, stored))
+            {
+                stored.DisposeAndCancelOngoingImprovements();
+                return;
+            }
+        }
     }
 
     public void Dispose()

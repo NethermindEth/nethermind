@@ -7,7 +7,6 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Optimism.CL.Derivation;
@@ -36,12 +35,14 @@ public class SystemConfigDeriver(
         scalar[0] = 1;
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(24), l1BlockInfo.BlobBaseFeeScalar);
         BinaryPrimitives.WriteUInt32BigEndian(scalar.AsSpan(28), l1BlockInfo.BaseFeeScalar);
+        (byte[] eip1559Params, ulong? minBaseFee) = EIP1559ParametersExtensions.SplitHeaderExtraData(extraData);
         return new SystemConfig()
         {
             BatcherAddress = l1BlockInfo.BatcherAddress,
             GasLimit = gasLimit,
             Scalar = scalar,
-            EIP1559Params = extraData.ToArray()[1..]
+            EIP1559Params = eip1559Params,
+            MinBaseFee = minBaseFee
         };
     }
 
@@ -51,11 +52,9 @@ public class SystemConfigDeriver(
 
         foreach (ReceiptForRpc receipt in receipts)
         {
-            if (receipt.Status != StatusCode.Success) continue;
-
-            foreach (LogEntryForRpc log in receipt.Logs ?? [])
+            foreach (LogEntryForRpc log in CommittedLogs.Of(receipt))
             {
-                if (log.Address == systemConfigProxy && log.Topics.Length > 0 && log.Topics[0] == SystemConfigUpdate.EventABIHash)
+                if (log.Address == systemConfigProxy && log.Topics is { Length: > 0 } topics && topics[0] == SystemConfigUpdate.EventABIHash)
                 {
                     config = UpdateSystemConfigFromLogEvent(config, log);
                 }

@@ -11,6 +11,21 @@ namespace Nethermind.JsonRpc.Modules
     public static class BlockFinderExtensions
     {
         public const string HeaderNotFound = "header not found";
+        internal const string BlockBodyNotFound = "block body not found";
+        public const string BlockRangeInFuture = "requested block range is in the future";
+
+        /// <summary>
+        /// Whether either bound of a range is a block number past the head, which eth_getLogs and trace_filter reject as invalid params.
+        /// </summary>
+        /// <remarks>
+        /// Compares against the local processed head even while syncing, as geth, erigon and reth do: blocks beyond it
+        /// have no state to serve, and a peer-reported head is untrusted.
+        /// </remarks>
+        public static bool IsRangeInFuture(this IBlockFinder blockFinder, BlockParameter? fromBlock, BlockParameter? toBlock)
+        {
+            ulong? headNumber = blockFinder.Head?.Number;
+            return headNumber < fromBlock?.BlockNumber || headNumber < toBlock?.BlockNumber;
+        }
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
@@ -23,7 +38,9 @@ namespace Nethermind.JsonRpc.Modules
                     requestedBlock = headerResult.Object.Number;
                 }
             }
-            return requestedBlock < blockFinder.GetLowestBlock();
+            // The served floor, not the published boundary: during a backfill the two differ, and this check
+            // must agree with what the node advertises as earliest over eth/69.
+            return requestedBlock < blockFinder.LowestServedBlock;
         }
 
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
@@ -55,13 +72,17 @@ namespace Nethermind.JsonRpc.Modules
             blockParameter ??= BlockParameter.Latest;
 
             Block block = blockFinder.FindBlock(blockParameter);
+            bool isCanonicalBodyMissing = false;
             if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
+                // A canonical header without a body is pruned or missing history, not a side-chain block.
                 BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                if (header is not null)
+                if (header is not null && !blockFinder.IsMainChain(header))
                 {
                     return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
+
+                isCanonicalBodyMissing = header is not null;
             }
 
             if (block is null)
@@ -80,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 if (!allowNulls)
                 {
-                    return new SearchResult<Block>(HeaderNotFound, ErrorCodes.ResourceNotFound);
+                    return new SearchResult<Block>(isCanonicalBodyMissing ? BlockBodyNotFound : HeaderNotFound, ErrorCodes.ResourceNotFound);
                 }
             }
 
@@ -96,8 +117,11 @@ namespace Nethermind.JsonRpc.Modules
             {
                 SearchResult<BlockHeader> finalBlockHeader = SearchForHeader(blockFinder, toBlock);
                 if (finalBlockHeader.IsError || finalBlockHeader.Object is null)
+                {
                     yield return new SearchResult<Block>(finalBlockHeader.Error ?? string.Empty, finalBlockHeader.ErrorCode);
-                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object!);
+                    yield break;
+                }
+                bool isFinalBlockOnMainChain = blockFinder.IsMainChain(finalBlockHeader.Object);
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
@@ -106,6 +130,11 @@ namespace Nethermind.JsonRpc.Modules
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
+                // During sync a block past the processed head can be canonical without having been executed or validated.
+                else if (finalBlockHeader.Object.Number > blockFinder.Head!.Number)
+                {
+                    yield return new SearchResult<Block>($"{finalBlockHeader.Object.Hash} block is not processed", ErrorCodes.ResourceUnavailable);
+                }
                 else
                 {
                     yield return startingBlock;
@@ -113,7 +142,7 @@ namespace Nethermind.JsonRpc.Modules
                     ulong finalBlockNumber = finalBlockHeader.Object.Number;
                     if (startingBlockNumber > finalBlockNumber)
                     {
-                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidInput);
+                        yield return new SearchResult<Block>($"From block number: {startingBlockNumber} is greater than to block number {finalBlockNumber}", ErrorCodes.InvalidParams);
                     }
 
                     for (ulong i = startingBlock.Object.Number + 1; i <= finalBlockHeader.Object.Number; ++i)

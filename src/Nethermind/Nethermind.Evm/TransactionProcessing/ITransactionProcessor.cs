@@ -47,15 +47,14 @@ public static class ITransactionProcessorExtensions
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.BuildUp);
 
         /// <summary>
-        /// Call transaction, no validations, commit state.
-        /// Will NOT charge gas from sender account, so stateDiff will miss gas fee.
+        /// Call transaction, commit state.
+        /// A transaction with both fee caps zero skips gas validation and pays no gas fee; any other has its gas validated and charged.
         /// </summary>
         public TransactionResult Trace(Transaction transaction, ITxTracer txTracer)
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
 
         /// <summary>
-        /// Call transaction, no validations, don't commit state.
-        /// Will NOT charge gas from sender account.
+        /// Call transaction with real fee and nonce semantics, no validations, don't commit state.
         /// </summary>
         public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer)
             => transactionProcessor.Process(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);

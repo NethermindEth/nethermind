@@ -7,8 +7,6 @@ using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
-#pragma warning disable NETH003 // File name does not match the contained type
-
 /// <summary>
 /// Folds a world-state scope's <see cref="LocalMetrics"/> accumulator into the global
 /// <see cref="DbMetrics"/> / <see cref="EvmMetrics"/> counters and resets it.
@@ -28,6 +26,10 @@ internal static class LocalMetricsFlush
         if (m.StateSkippedWrites != 0) DbMetrics.IncrementStateSkippedWrites(m.StateSkippedWrites);
         if (m.StorageTreeCache != 0) DbMetrics.AddStorageTreeCache(m.StorageTreeCache);
         if (m.StorageTreeReads != 0) DbMetrics.AddStorageTreeReads(m.StorageTreeReads);
+        if (m.PreBlockAccountHits != 0) DbMetrics.AddPreBlockAccountHits(m.PreBlockAccountHits);
+        if (m.PreBlockAccountMisses != 0) DbMetrics.AddPreBlockAccountMisses(m.PreBlockAccountMisses);
+        if (m.PreBlockStorageHits != 0) DbMetrics.AddPreBlockStorageHits(m.PreBlockStorageHits);
+        if (m.PreBlockStorageMisses != 0) DbMetrics.AddPreBlockStorageMisses(m.PreBlockStorageMisses);
 
         if (m.AccountWrites != 0) EvmMetrics.AddAccountWrites(m.AccountWrites);
         if (m.AccountDeleted != 0) EvmMetrics.AddAccountDeleted(m.AccountDeleted);

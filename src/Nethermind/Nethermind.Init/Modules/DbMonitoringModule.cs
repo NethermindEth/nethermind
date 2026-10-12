@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -45,11 +46,15 @@ public class DbMonitoringModule : Module
 
     public class DbTracker : IDisposable
     {
+        private const int PausedUpdateHoldoffMultiplier = 10;
+
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
         private readonly HashSet<string> _failingDbs = [];
+        private readonly Lock _publishLock = new();
         private readonly int _intervalSec;
+        private readonly bool _publishOnCreation;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
-        private long _lastDbMetricsUpdate = 0;
+        private long _lastDbMetricsUpdate = long.MinValue;
         private volatile bool _stopped;
 
         private ILogger _logger;
@@ -59,6 +64,7 @@ public class DbMonitoringModule : Module
             _intervalSec = metricsConfig.DbMetricIntervalSeconds;
             _logger = logManager.GetClassLogger<DbTracker>();
             _sharedBlockCache = sharedBlockCache;
+            _publishOnCreation = metricsConfig.Enabled && metricsConfig.EnableDbSizeMetrics;
 
             if (metricsConfig.EnableDbSizeMetrics)
             {
@@ -66,11 +72,23 @@ public class DbMonitoringModule : Module
             }
         }
 
-        public void AddDb(string name, IDbMeta dbMeta) => _createdDbs.TryAdd(name, dbMeta);
+        public void AddDb(string name, IDbMeta dbMeta)
+        {
+            if (_createdDbs.TryAdd(name, dbMeta) && _publishOnCreation)
+            {
+                PublishDbMetrics(name, dbMeta);
+            }
+        }
 
         public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta() => _createdDbs;
 
         public bool Paused { get; set; } = false;
+
+        internal long LastDbMetricsUpdate
+        {
+            get => _lastDbMetricsUpdate;
+            set => _lastDbMetricsUpdate = value;
+        }
 
         /// <summary>
         /// Disposed by Autofac when the owning lifetime scope is torn down. Setting
@@ -86,40 +104,29 @@ public class DbMonitoringModule : Module
             if (_stopped) return;
             try
             {
-                if (Paused) return;
-
-                if (Environment.TickCount64 - _lastDbMetricsUpdate < _intervalSec * 1000)
+                if (_lastDbMetricsUpdate != long.MinValue)
                 {
-                    // Update based on configured interval
-                    return;
+                    long sinceLastUpdate = Environment.TickCount64 - _lastDbMetricsUpdate;
+
+                    if (sinceLastUpdate < _intervalSec * 1000L)
+                    {
+                        // Update based on configured interval
+                        return;
+                    }
+
+                    if (Paused && sinceLastUpdate < _intervalSec * 1000L * PausedUpdateHoldoffMultiplier) return;
                 }
 
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
-                    try
-                    {
-                        // Note: At the moment, the metric for a columns db is combined across column.
-                        IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
-                        Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                        Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                        Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
-                        Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
-                        Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
-                        Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
-                        if (_failingDbs.Remove(kv.Key) && _logger.IsInfo)
-                            _logger.Info($"DB metric collection recovered for '{kv.Key}'");
-                    }
-                    catch (Exception e)
-                    {
-                        // Remove stale entries so Prometheus does not report old values indefinitely.
-                        RemoveStaleMetricEntry(kv.Key);
-                        // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
-                        if (_failingDbs.Add(kv.Key) && _logger.IsWarn)
-                            _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e.Message}");
-                    }
+                    PublishDbMetrics(kv.Key, kv.Value);
                 }
 
-                Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
+                long sharedBlockCacheUsage = _sharedBlockCache.Value.GetUsage();
+                lock (_publishLock)
+                {
+                    Db.Metrics.DbBlockCacheSize["Shared"] = sharedBlockCacheUsage;
+                }
 
                 _lastDbMetricsUpdate = Environment.TickCount64;
             }
@@ -131,6 +138,41 @@ public class DbMonitoringModule : Module
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
+            }
+        }
+
+        private void PublishDbMetrics(string name, IDbMeta dbMeta)
+        {
+            IDbMeta.DbMetric dbMetric;
+            try
+            {
+                // Note: At the moment, the metric for a columns db is combined across column.
+                dbMetric = dbMeta.GatherMetric();
+            }
+            catch (Exception e)
+            {
+                lock (_publishLock)
+                {
+                    // Remove stale entries so Prometheus does not report old values indefinitely.
+                    RemoveStaleMetricEntry(name);
+                    // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
+                    if (_failingDbs.Add(name) && _logger.IsWarn)
+                        _logger.Warn($"Failed to gather metrics for DB '{name}': {e.Message}");
+                }
+
+                return;
+            }
+
+            lock (_publishLock)
+            {
+                Db.Metrics.DbSize[name] = dbMetric.Size;
+                Db.Metrics.DbBlockCacheSize[name] = dbMetric.CacheSize;
+                Db.Metrics.DbMemtableSize[name] = dbMetric.MemtableSize;
+                Db.Metrics.DbIndexFilterSize[name] = dbMetric.IndexSize;
+                Db.Metrics.DbReads[name] = dbMetric.TotalReads;
+                Db.Metrics.DbWrites[name] = dbMetric.TotalWrites;
+                if (_failingDbs.Remove(name) && _logger.IsInfo)
+                    _logger.Info($"DB metric collection recovered for '{name}'");
             }
         }
 

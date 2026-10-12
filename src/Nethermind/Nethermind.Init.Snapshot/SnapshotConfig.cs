@@ -16,4 +16,8 @@ public class SnapshotConfig : ISnapshotConfig
     public string SnapshotFileName { get; set; } = "snapshot.zip";
 
     public int StripComponents { get; set; } = 1;
+
+    public bool Streaming { get; set; }
+
+    public int StreamingConnections { get; set; } = 4;
 }

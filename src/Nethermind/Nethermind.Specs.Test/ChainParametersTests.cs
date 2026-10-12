@@ -36,8 +36,7 @@ public class ChainParametersTests
             "MaxCodeSizeTransitionTimestamp",
             "Eip4844FeeCollectorTransitionTimestamp",
             "Eip6110TransitionTimestamp",
-            "Eip7928TransitionTimestamp", // todo: remove when added to chainspec
-            "Eip7843TransitionTimestamp"
+            "Eip8272TransitionTimestamp",
         ];
 
         const ulong testValue = 1ul;

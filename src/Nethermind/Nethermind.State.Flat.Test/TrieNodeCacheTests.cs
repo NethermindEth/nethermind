@@ -229,18 +229,19 @@ public class TrieNodeCacheTests
     {
         Hash256 address1 = new("0x1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 address2 = new("0x2000000000000000000000000000000000000000000000000000000000000000");
-        TreePath path = TreePath.FromHexString("abcd");
+        TreePath path1 = TreePath.FromHexString("1000");
+        TreePath path2 = TreePath.FromHexString("2000");
         Hash256 hash1 = Keccak.Compute([1]);
         Hash256 hash2 = Keccak.Compute([2]);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path, new TrieNode(NodeType.Leaf, hash1));
-        transientResource.Nodes.Set(address2, in path, new TrieNode(NodeType.Leaf, hash2));
+        transientResource.Nodes.Set(address1, in path1, new TrieNode(NodeType.Leaf, hash1));
+        transientResource.Nodes.Set(address2, in path2, new TrieNode(NodeType.Leaf, hash2));
 
         _cache.Add(transientResource);
 
-        Assert.That(_cache.TryGet(address1, in path, hash1, out _), Is.True);
-        Assert.That(_cache.TryGet(address2, in path, hash2, out _), Is.True);
+        Assert.That(_cache.TryGet(address1, in path1, hash1, out _), Is.True);
+        Assert.That(_cache.TryGet(address2, in path2, hash2, out _), Is.True);
     }
 
     [Test]
@@ -429,6 +430,39 @@ public class ChildCacheTests
         Assert.That(_cache.Count, Is.EqualTo(0));
         bool found = _cache.TryGet(null, in path, hash, out _);
         Assert.That(found, Is.False);
+    }
+
+    [Test]
+    public void Reset_AfterGetOrAddOnly_ClearsCache()
+    {
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+        _cache.GetOrAdd(null, in path, new TrieNode(NodeType.Leaf, hash));
+        Assert.That(_cache.Count, Is.EqualTo(1), "precondition: GetOrAdd into an empty bucket is counted");
+
+        _cache.Reset();
+
+        Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a node added only through GetOrAdd must not survive Reset");
+    }
+
+    [Test]
+    public void Reset_WhenUnused_LeavesAnEmptyUsableCache()
+    {
+        int capacity = _cache.Capacity;
+        TreePath path = TreePath.FromHexString("abcd");
+        Hash256 hash = Keccak.Compute([1, 2, 3]);
+
+        _cache.Reset();
+        _cache.Set(null, in path, new TrieNode(NodeType.Leaf, hash));
+        _cache.Reset();
+        _cache.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.Capacity, Is.EqualTo(capacity), "resetting an unused cache must not resize it");
+            Assert.That(_cache.Count, Is.EqualTo(0), "the cache is empty after Reset");
+            Assert.That(_cache.TryGet(null, in path, hash, out _), Is.False, "a reset after a reset must not resurrect a node");
+        }
     }
 
     [Test]

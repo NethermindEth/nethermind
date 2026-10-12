@@ -29,7 +29,8 @@ public class BlockDiffRecordDecoderTests
     private static BlockDiffRecord Decode(byte[] bytes)
     {
         RlpReader ctx = new(bytes);
-        return BlockDiffRecordDecoder.Instance.Decode(ref ctx);
+        return BlockDiffRecordDecoder.Instance.Decode(ref ctx)
+            ?? throw new AssertionException("Encoded BlockDiffRecord decoded to null.");
     }
 
     [Test]

@@ -34,6 +34,7 @@ namespace Nethermind.Core.Test.Builders
         private Hash256? _stateRoot;
         private Func<Block, Hash256>? _stateRootGen;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         private bool _onlyHeaders;
         private bool _noHead = false;
@@ -75,7 +76,9 @@ namespace Nethermind.Core.Test.Builders
                         ChainLevelInfoRepository,
                         _specProvider,
                         SyncConfig,
-                        LimboLogs.Instance);
+                        StateBoundary,
+                        _logManager,
+                        new BlockTreeMutationLock());
                 }
 
                 return _blockTree;
@@ -90,6 +93,8 @@ namespace Nethermind.Core.Test.Builders
         }
 
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
+
+        public TestStateBoundary StateBoundary { get; set; } = new();
 
         public IDb BlocksDb { get; set; } = new TestMemDb();
         public IDb BadBlocksDb { get; set; } = new TestMemDb();
@@ -373,7 +378,6 @@ namespace Nethermind.Core.Test.Builders
             {
                 currentBlock.Header.StateRoot = _stateRootGen(currentBlock);
             }
-            currentBlock.Header.AuRaStep = (ulong)blockIndex;
 
             return currentBlock;
         }
@@ -460,7 +464,21 @@ namespace Nethermind.Core.Test.Builders
             HeaderStore = otherBuilder.HeaderStore;
             BlockInfoDb = otherBuilder.BlockInfoDb;
             MetadataDb = otherBuilder.MetadataDb;
+            StateBoundary = otherBuilder.StateBoundary;
 
+            return this;
+        }
+
+        public BlockTreeBuilder WithBestPersistedState(ulong? bestPersistedState)
+        {
+            StateBoundary.BestPersistedState = bestPersistedState;
+            return this;
+        }
+
+        public BlockTreeBuilder WithLogManager(ILogManager logManager)
+        {
+            ArgumentNullException.ThrowIfNull(logManager);
+            _logManager = logManager;
             return this;
         }
 

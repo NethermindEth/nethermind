@@ -36,6 +36,7 @@ public class JsonConfigProviderTests
 
     [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
     [TestCase(false, typeof(BlocksConfig), nameof(BlocksConfig.RandomizedBlocks))]
+    [TestCase(ProducedBlockDumpOptions.None, typeof(BlocksConfig), nameof(BlocksConfig.DumpProducedBlocks))]
     [TestCase("chainspec/foundation.json", typeof(InitConfig), nameof(InitConfig.ChainSpecPath))]
     [TestCase(DumpOptions.Default, typeof(InitConfig), nameof(InitConfig.AutoDump))]
     public void Test_getDefaultValue<T>(T expected, Type type, string propName)
@@ -67,7 +68,13 @@ public class JsonConfigProviderTests
 
         new[] { ModuleType.Eth, ModuleType.Debug }.ForEach(CheckIfEnabled);
 
-        Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(networkConfig.Concurrency, Is.EqualTo(4));
+            Assert.That(networkConfig.Bootnodes, Has.Length.EqualTo(2));
+            Assert.That(networkConfig.Bootnodes[0].ToString(), Does.StartWith("enode://"));
+            Assert.That(networkConfig.Bootnodes[1].ToString(), Does.StartWith("enode://"));
+        }
     }
 
     [Test]

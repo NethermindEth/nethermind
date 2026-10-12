@@ -24,8 +24,8 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
-        Encode(ref writer, msg.SourceAddress, sourceAddressLength);
-        Encode(ref writer, msg.DestinationAddress, destinationAddressLength);
+        Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
+        Encode(ref writer, msg.DestinationAddress, msg.DestinationTcpPort, destinationAddressLength);
         writer.Encode(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
@@ -45,38 +45,51 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     {
         (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
         RlpReader ctx = new(Data.AsSpan());
-        ctx.ReadSequenceLength();
-        int version = ctx.DecodeInt();
+        int messageLength = ctx.ReadSequenceLength();
+        if (messageLength > ctx.Length - ctx.Position)
+        {
+            throw new RlpException("Ping list exceeds packet data.");
+        }
+
+        int messageEnd = ctx.Position + messageLength;
+        ReadOnlySpan<byte> versionBytes = ctx.DecodeByteArraySpan();
+        int version = 0;
+        if (versionBytes.Length < sizeof(int) ||
+            (versionBytes.Length == sizeof(int) && versionBytes[0] < 0x80))
+        {
+            foreach (byte value in versionBytes)
+            {
+                version = (version << 8) | value;
+            }
+        }
 
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
         int sourceUdpPort = ctx.DecodeInt();
-        ctx.DecodeInt(); // TCP port
+        int sourceTcpPort = ctx.DecodeInt();
 
         IPEndPoint source = GetAddress(sourceAddress, sourceUdpPort, allowZeroPort: true);
         ctx.ReadSequenceLength();
         ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         int destinationUdpPort = ctx.DecodeInt();
-        ctx.DecodeInt(); // TCP port
+        int destinationTcpPort = ctx.DecodeInt();
         IPEndPoint destination = GetAddress(destinationAddress, destinationUdpPort, allowZeroPort: true);
 
         long expireTime = ctx.DecodeLong();
-        PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc) { Version = version };
+        PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc, sourceTcpPort, destinationTcpPort) { Version = version };
 
-        if (version == 4)
+        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
         {
-            if (ctx.Position < ctx.Length)
-            {
-                ulong enrSequence = ctx.DecodeULong();
-                msg.EnrSequence = enrSequence;
-            }
-        }
-        else
-        {
-            // what do we do when receive version 5?
+            msg.EnrSequence = ctx.DecodeULong();
         }
 
+        while (ctx.Position < messageEnd)
+        {
+            ctx.SkipItem();
+        }
+
+        ctx.Check(messageEnd);
         Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         return msg;
     }
@@ -91,8 +104,8 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
 
     private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
     {
-        int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress);
-        int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress);
+        int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress, msg.SourceTcpPort);
+        int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress, msg.DestinationTcpPort);
 
         int contentLength = Rlp.LengthOf(msg.Version)
                        + Rlp.LengthOfSequence(sourceAddressLength)

@@ -18,6 +18,40 @@ namespace Nethermind.Core.Test;
 [TestFixture]
 public class BlockHeaderTests
 {
+    /// <summary>
+    /// Guards the hand-maintained roster in <see cref="BlockHeader.CloneForProcessing"/>: every settable
+    /// member must be carried into the clone except execution outputs the processor recomputes.
+    /// </summary>
+    [Test]
+    public void CloneForProcessing_carries_every_consensus_input()
+    {
+        BlockHeader src = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5]);
+        BlockHeaderMembers.FillWithDistinctValues(src);
+
+        BlockHeader clone = src.CloneForProcessing();
+
+        BlockHeaderMembers.AssertCarriesAllMembers(src, clone,
+            nameof(BlockHeader.StateRoot), nameof(BlockHeader.GasUsed), nameof(BlockHeader.GasUsedPerDimension), nameof(BlockHeader.Bloom));
+    }
+
+    /// <summary>A header cloned and re-costed for a call must not keep dimensions that contradict its gas.</summary>
+    [Test]
+    public void Assigning_gas_used_drops_the_per_dimension_totals()
+    {
+        BlockHeader header = new(
+            Keccak.Compute("parent"), Keccak.Compute("uncles"), Address.Zero, 1, 2, 3, 4, [5])
+        {
+            GasUsed = 513_317,
+            GasUsedPerDimension = (513_317, 97_920)
+        };
+
+        BlockHeader clone = header.Clone();
+        clone.GasUsed = 0;
+
+        Assert.That(clone.GasUsedPerDimension, Is.Null);
+    }
+
     [Test]
     public void Hash_as_expected()
     {
@@ -111,8 +145,6 @@ public class BlockHeaderTests
             Nonce = 1,
             Hash = TestItem.KeccakB,
             TotalDifficulty = UInt256.One,
-            AuRaSignature = [1],
-            AuRaStep = 1,
             BaseFeePerGas = 2,
             WithdrawalsRoot = TestItem.KeccakB,
             BlockAccessListHash = TestItem.KeccakB,
@@ -142,8 +174,16 @@ public class BlockHeaderTests
             Assert.That(child.BlobGasUsed, Is.Null);
             Assert.That(child.ExcessBlobGas, Is.Null);
             Assert.That(child.ParentBeaconBlockRoot, Is.Null);
-            Assert.That(child.SlotNumber, Is.Null);
+            Assert.That(child.SlotNumber, Is.EqualTo(parent.SlotNumber + 1));
         });
+    }
+
+    [Test]
+    public void CreateSimulatedChild_should_leave_slot_number_unset_for_a_parent_without_one()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithSlotNumber(null).TestObject;
+
+        Assert.That(parent.CreateSimulatedChild(112).SlotNumber, Is.Null);
     }
 
     [Test]

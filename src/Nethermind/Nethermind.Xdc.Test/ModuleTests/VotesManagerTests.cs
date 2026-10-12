@@ -96,6 +96,8 @@ public class VotesManagerTests
             await voteManager.HandleVote(v);
 
         quorumCertificateManager.Received(expectedCalls).CommitCertificate(Arg.Any<QuorumCertificate>());
+        if (expectedCalls > 0)
+            Assert.That(voteManager.GetReceivedVotes(), Is.Not.Empty);
     }
 
     [Test]
@@ -343,6 +345,17 @@ public class VotesManagerTests
         blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
 
         qcm.Received(1).CommitCertificate(Arg.Any<QuorumCertificate>());
+    }
+
+    [Test]
+    public void OnNewBlock_HeaderOnlySuggestion_DoesNotThrow()
+    {
+        // IBlockTree.SuggestHeader raises NewSuggestedBlock with a null block, so dereferencing it threw
+        // a NullReferenceException back out through BlockTree.Suggest, failing the suggestion itself.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        _ = new VoteManagerBuilder { BlockTree = blockTree }.Build();
+
+        Assert.DoesNotThrow(() => blockTree.NewSuggestedBlock += Raise.EventWith(new BlockEventArgs(null!)));
     }
 
     [Test]

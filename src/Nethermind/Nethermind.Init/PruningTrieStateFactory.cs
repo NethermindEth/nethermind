@@ -6,9 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Utils;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -27,16 +25,17 @@ namespace Nethermind.Init;
 
 public class PruningTrieStateFactory(
     ISyncConfig syncConfig,
-    IPruningConfig pruningConfig,
     IDbProvider dbProvider,
     IBlockTree blockTree,
     MainPruningTrieStoreFactory mainPruningTrieStoreFactory,
     INodeStorage mainNodeStorage,
-    IProcessExitSource processExit,
     IDisposableStack disposeStack,
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
+    Lazy<ICodeRecovery> codeRecovery,
+    StateBoundaryStore boundaryStore,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
 )
@@ -61,10 +60,13 @@ public class PruningTrieStateFactory(
                 codeDb,
                 mainNodeStorage,
                 pathRecovery,
+                codeRecovery,
+                stateHeaderProvider,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
                 codeDb,
+                stateHeaderProvider,
                 logManager,
                 codeDbIsPersistent: true);
 
@@ -72,8 +74,9 @@ public class PruningTrieStateFactory(
             scopeProvider,
             trieStore,
             dbProvider,
+            boundaryStore,
+            stateHeaderProvider,
             logManager,
-            pruningConfig,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
 
         disposeStack.Push(mainWorldTrieStore);
@@ -84,16 +87,10 @@ public class PruningTrieStateFactory(
             disposeStack.Push(fullPruner);
         }
 
-        VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
         compositePruningTrigger.Add(pruningTrigger);
         disposeStack.Push(compositePruningTrigger);
-        PruningTrieStateAdminRpcModule adminRpcModule = new(
-            pruningTrigger,
-            blockTree,
-            stateManager.GlobalStateReader,
-            verifyTrieStarter!
-        );
+        PruningTrieStateAdminRpcModule adminRpcModule = new(pruningTrigger);
 
         return (stateManager, adminRpcModule);
     }
@@ -108,11 +105,12 @@ public class MainPruningTrieStoreFactory
         IPruningConfig pruningConfig,
         IDbProvider dbProvider,
         INodeStorageFactory nodeStorageFactory,
-        IFinalizedStateProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
+        IStatePersistenceBarrier persistenceBarrier,
         ILogManager logManager
     )
     {
@@ -159,10 +157,12 @@ public class MainPruningTrieStoreFactory
 
         if (stateDb is IFullPruningDb fullPruningDb)
         {
-            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
+            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy, pruningConfig.PruningBoundary);
         }
 
-        INodeStorage mainNodeStorage = nodeStorageFactory.WrapKeyValueStore(stateDb);
+        // Interpose the barrier on the node storage flush so a block's deferred block-data is made durable
+        // before its state, keeping the durability invariant without changing TrieStore.
+        INodeStorage mainNodeStorage = new BarrierNodeStorage(nodeStorageFactory.WrapKeyValueStore(stateDb), persistenceBarrier);
 
         if (pruningConfig.SimulateLongFinalizationDepth != 0UL)
         {
@@ -205,10 +205,10 @@ public class MainPruningTrieStoreFactory
     public IPruningTrieStore PruningTrieStore { get; }
 
     private class DelayedFinalizedStateProvider(
-        IFinalizedStateProvider finalizedStateProvider,
+        IStateHeaderProvider finalizedStateProvider,
         IBlockTree blockTree,
         ulong pruningConfigSimulateLongFinalizationDepth
-    ) : IFinalizedStateProvider
+    ) : IStateHeaderProvider
     {
         private ulong? _lastFinalizedBlockNumber = null;
 
@@ -230,6 +230,8 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => finalizedStateProvider.GetFinalizedHeader(blockNumber);
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => finalizedStateProvider.FindParentHeader(target);
     }
 }

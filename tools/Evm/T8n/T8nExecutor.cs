@@ -34,6 +34,7 @@ public static class T8nExecutor
         KzgPolynomialCommitments.InitializeAsync().Wait();
 
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
@@ -64,7 +65,11 @@ public static class T8nExecutor
         compositeBlockTracer.Add(storageTxTracer);
         if (test.IsTraceEnabled)
         {
-            compositeBlockTracer.Add(new GethLikeBlockFileTracer(block, test.GethTraceOptions, new RealFileSystem()));
+            compositeBlockTracer.Add(new GethLikeBlockFileTracer(
+                block,
+                test.GethTraceOptions,
+                new RealFileSystem(),
+                test.Spec));
         }
 
         BlockReceiptsTracer blockReceiptsTracer = new();

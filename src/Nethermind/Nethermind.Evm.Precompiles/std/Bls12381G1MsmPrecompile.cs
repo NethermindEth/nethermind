@@ -3,11 +3,11 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using G1 = Nethermind.Crypto.Bls.P1;
+using G1Affine = Nethermind.Crypto.Bls.P1Affine;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -54,10 +54,8 @@ public partial class Bls12381G1MsmPrecompile
 
     private Result<byte[]> Msm(ReadOnlyMemory<byte> inputData, int nItems)
     {
-        // Scratch buffers rented without zero-init (ArrayPoolSpan does not clear on rent): MultiMult
-        // only reads the first npoints*G1.Sz longs and npoints*32 scalar bytes, and every one of those
-        // slots is fully written by TryDecodeG1ToBuffer before MultiMult runs, so a clear is wasted.
-        using ArrayPoolSpan<long> rawPoints = new(nItems * G1.Sz);
+        // rented without zero-init: every slot MultiMultAffine reads is written during decode below
+        using ArrayPoolSpan<long> rawPoints = new(nItems * G1Affine.Sz);
         using ArrayPoolSpan<byte> rawScalars = new(nItems * 32);
         using ArrayPoolList<int> pointDestinations = new(nItems);
 
@@ -79,39 +77,23 @@ public partial class Bls12381G1MsmPrecompile
             return Eip2537.G1Infinity;
         }
 
-        Result result = Result.Success;
-
+        Memory<long> rawPointsMemory = rawPoints.AsMemory();
+        Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
         // decode points to rawPoints buffer
         // n.b. subgroup checks carried out as part of decoding
-#pragma warning disable CS0162 // Unreachable code detected
-        if (Eip2537.DisableConcurrency)
-        {
-            for (int i = 0; i < pointDestinations.Count && result; i++)
-            {
-                result = Eip2537.TryDecodeG1ToBuffer(inputData, rawPoints.AsMemory(), rawScalars.AsMemory(), pointDestinations[i], i);
-            }
-        }
-        else
-        {
-            Memory<long> rawPointsMemory = rawPoints.AsMemory();
-            Memory<byte> rawScalarsMemory = rawScalars.AsMemory();
-            Parallel.For(0, pointDestinations.Count, (index, state) =>
-            {
-                Result local = Eip2537.TryDecodeG1ToBuffer(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations[index], index);
-                if (!local)
-                {
-                    result = local;
-                    state.Break();
-                }
-            });
-        }
-#pragma warning restore CS0162 // Unreachable code detected
+        Result result = Eip2537.DecodeAll(pointDestinations.Count, new G1Decoder(inputData, rawPointsMemory, rawScalarsMemory, pointDestinations));
 
         if (!result)
             return result.Error!;
 
         // compute res = rawPoints_0 * rawScalars_0 + rawPoints_1 * rawScalars_1 + ...
-        G1 res = new G1(stackalloc long[G1.Sz]).MultiMult(rawPoints, rawScalars, npoints);
+        G1 res = new G1(stackalloc long[G1.Sz]).MultiMultAffine(rawPoints, rawScalars, npoints);
         return res.EncodeRaw();
+    }
+
+    private readonly struct G1Decoder(ReadOnlyMemory<byte> inputData, Memory<long> pointBuffer, Memory<byte> scalarBuffer, ArrayPoolList<int> destinations)
+        : Eip2537.IItemDecoder
+    {
+        public Result Decode(int index) => Eip2537.TryDecodeG1ToBuffer(inputData, pointBuffer, scalarBuffer, destinations[index], index);
     }
 }

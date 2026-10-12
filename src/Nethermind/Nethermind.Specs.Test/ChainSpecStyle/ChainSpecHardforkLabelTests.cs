@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -150,10 +151,8 @@ public class ChainSpecHardforkLabelTests
     }
 
     // NamedForks is initialized with StringComparer.OrdinalIgnoreCase — these all resolve to the same label.
-    [TestCase("\"cancun\": \"0x100\"")]
-    [TestCase("\"Cancun\": \"0x100\"")]
-    [TestCase("\"CANCUN\": \"0x100\"")]
-    public void Label_key_match_is_case_insensitive(string paramsJson)
+    [Test]
+    public void Label_key_match_is_case_insensitive([Values("\"cancun\": \"0x100\"", "\"Cancun\": \"0x100\"", "\"CANCUN\": \"0x100\"")] string paramsJson)
     {
         ChainSpec spec = Load(paramsJson);
 
@@ -178,12 +177,13 @@ public class ChainSpecHardforkLabelTests
     public void Post_merge_labels_at_genesis_populate_header_roots()
     {
         ChainSpec spec = Load("\"shanghai\": \"0x0\", \"cancun\": \"0x0\", \"prague\": \"0x0\"");
+        Block genesis = spec.Genesis ?? throw new AssertionException("Genesis was not loaded.");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spec.Genesis.Header.WithdrawalsRoot, Is.Not.Null);
-            Assert.That(spec.Genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
-            Assert.That(spec.Genesis.Header.RequestsHash, Is.Not.Null);
+            Assert.That(genesis.Header.WithdrawalsRoot, Is.Not.Null);
+            Assert.That(genesis.Header.ParentBeaconBlockRoot, Is.Not.Null);
+            Assert.That(genesis.Header.RequestsHash, Is.Not.Null);
         }
     }
 

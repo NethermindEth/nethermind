@@ -18,10 +18,6 @@ public class TestBlockProcessingModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
-            // NOTE: The ordering of block preprocessors is not guaranteed
-            .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
-            .AddSingleton<CompositeBlockPreprocessorStep>()
-            .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
 
@@ -31,7 +27,7 @@ public class TestBlockProcessingModule : Module
 
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
             .AddSingleton<IBlockProducerFactory, AutoBlockProducerFactory<TestBlockProducer>>()
-            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer())
+            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer()!)
 
             // Something else entirely. Just some wrapper over things.
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()

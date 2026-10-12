@@ -4,9 +4,9 @@
 namespace Nethermind.State;
 
 /// <summary>
-/// Read-only view of the persisted state window. Implemented by <see cref="IWorldStateManager"/>;
-/// each backend reports the floor from its own state-tracking layer (trie: a co-located metadata
-/// store; flat: the persistence manager).
+/// Read-only view of the persisted state window. Registered per-backend (trie: a co-located
+/// metadata store; flat: the persistence manager) rather than off <see cref="IWorldStateManager"/>,
+/// so it can be injected into components built before the manager (e.g. the block tree).
 /// </summary>
 public interface IStateBoundary
 {
@@ -23,6 +23,12 @@ public interface IStateBoundary
     /// is reported via <see cref="OldestStateBlock"/> instead.
     /// </summary>
     ulong? RetentionWindowBlocks { get; }
+
+    /// <summary>
+    /// Highest block whose state is durably persisted; null when unknown (fresh node or still
+    /// syncing). The ceiling counterpart to the <see cref="OldestStateBlock"/> floor.
+    /// </summary>
+    ulong? BestPersistedState { get; }
 }
 
 /// <summary>
@@ -38,4 +44,16 @@ public interface IStateBoundary
 public interface IStateBoundaryWriter
 {
     ulong? OldestStateBlock { set; }
+}
+
+/// <summary>Empty boundary for construction sites with no state backend (e.g. simulated block trees).</summary>
+public sealed class NullStateBoundary : IStateBoundary
+{
+    public static readonly NullStateBoundary Instance = new();
+
+    private NullStateBoundary() { }
+
+    public ulong? OldestStateBlock => null;
+    public ulong? RetentionWindowBlocks => null;
+    public ulong? BestPersistedState => null;
 }

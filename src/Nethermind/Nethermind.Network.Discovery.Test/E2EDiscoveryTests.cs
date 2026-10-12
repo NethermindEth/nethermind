@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,7 +31,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private static readonly TimeSpan PeerDiscoveryTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan PeerDiscoveryPollInterval = TimeSpan.FromMilliseconds(100);
 
-    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
+    private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null, bool bootnodeTcpPortZero = false)
     {
         ConfigProvider configProvider = new();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -39,51 +40,63 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         if (bootEnode is not null)
         {
-            spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
+            spec.Bootnodes = bootnodeTcpPortZero
+                ? [new(new Enode(bootEnode.PublicKey, bootEnode.HostIp, port: 0, discoveryPort: bootEnode.Port))]
+                : [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
         }
 
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
         int port = AssignDiscoveryPort();
-        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
+        networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
         discoveryConfig.UseDefaultDiscv5Bootnodes = false;
+        // The default 30 s bootstrap cadence leaves a node whose first bootnode exchange was lost isolated for most of the discovery window.
+        ((DiscoveryConfig)discoveryConfig).DiscoveryInterval = 2000;
 
         IForkInfo forkInfo = Substitute.For<IForkInfo>();
         forkInfo.GetForkId(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(new ForkId(0, 0));
+        forkInfo.IsForkIdCompatible(new ForkId(0, 0)).Returns(true);
 
         ContainerBuilder builder = new();
         builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        builder.RegisterInstance(Substitute.For<IPeerManager>()).As<IPeerManager>();
         builder.RegisterInstance(forkInfo).As<IForkInfo>();
         return builder.Build();
     }
 
     int _discoveryPort = 0;
     private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
-    int _discoveryIp = 1;
-    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
+    int _ip = 1;
+    private int AssignIp() => Interlocked.Increment(ref _ip);
 
     [Test]
     [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
-    public async Task TestDiscovery()
+    public async Task TestDiscovery([Values] bool bootnodeTcpPortZero)
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         await using IContainer boot = CreateNode(TestItem.PrivateKeys[0]);
         IEnode bootEnode = boot.Resolve<IEnode>();
-        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode);
-        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode);
-        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode);
-        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode);
+        await using IContainer node1 = CreateNode(TestItem.PrivateKeys[1], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node2 = CreateNode(TestItem.PrivateKeys[2], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node3 = CreateNode(TestItem.PrivateKeys[3], bootEnode, bootnodeTcpPortZero);
+        await using IContainer node4 = CreateNode(TestItem.PrivateKeys[4], bootEnode, bootnodeTcpPortZero);
 
         IContainer[] nodes = [boot, node1, node2, node3, node4];
 
         HashSet<PublicKey> nodeKeys = GetNodeKeys(nodes);
+
+        ConcurrentDictionary<PublicKey, byte>[] discoveredPeers = new ConcurrentDictionary<PublicKey, byte>[nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            discoveredPeers[i] = TrackDiscoveredPeers(nodes[i].Resolve<IPeerPool>());
+        }
 
         foreach (IContainer node in nodes)
         {
@@ -93,7 +106,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         Task[] waitTasks = new Task[nodes.Length];
         for (int i = 0; i < nodes.Length; i++)
         {
-            waitTasks[i] = AssertPeerPoolContainsExpectedNodes(nodes[i], nodeKeys, cancellationTokenSource.Token);
+            waitTasks[i] = AssertDiscoveredExpectedNodes(nodes[i], discoveredPeers[i], nodeKeys, cancellationTokenSource.Token);
         }
 
         await Task.WhenAll(waitTasks);
@@ -110,9 +123,20 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         return nodeKeys;
     }
 
-    private static async Task AssertPeerPoolContainsExpectedNodes(IContainer node, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Records every peer the pool admits rather than reading its current contents: without a session, a peer
+    /// is dropped from the pool whenever discovery evicts it after a missed ping, and discv4 does not
+    /// republish a recently published node, so a slow runner can permanently lose an already discovered peer.
+    /// </remarks>
+    private static ConcurrentDictionary<PublicKey, byte> TrackDiscoveredPeers(IPeerPool pool)
     {
-        IPeerPool pool = node.Resolve<IPeerPool>();
+        ConcurrentDictionary<PublicKey, byte> discovered = new();
+        pool.PeerAdded += (_, e) => discovered.TryAdd(e.Peer.Node.Id, 0);
+        return discovered;
+    }
+
+    private static async Task AssertDiscoveredExpectedNodes(IContainer node, ConcurrentDictionary<PublicKey, byte> discovered, HashSet<PublicKey> nodeKeys, CancellationToken cancellationToken)
+    {
         PublicKey localKey = node.Resolve<IEnode>().PublicKey;
         HashSet<PublicKey> expectedKeys = [.. nodeKeys];
         expectedKeys.Remove(localKey);
@@ -123,8 +147,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 
         while (!linkedToken.IsCancellationRequested)
         {
-            HashSet<PublicKey> actualKeys = GetPeerKeys(pool);
-            if (actualKeys.SetEquals(expectedKeys))
+            if (expectedKeys.SetEquals(GetDiscoveredKeys(discovered)))
             {
                 return;
             }
@@ -139,15 +162,15 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             }
         }
 
-        Assert.That(GetPeerKeys(pool), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
+        Assert.That(GetDiscoveredKeys(discovered), Is.EquivalentTo(expectedKeys), $"Node {localKey} did not discover all peers before {PeerDiscoveryTimeout}.");
     }
 
-    private static HashSet<PublicKey> GetPeerKeys(IPeerPool pool)
+    private static HashSet<PublicKey> GetDiscoveredKeys(ConcurrentDictionary<PublicKey, byte> discovered)
     {
         HashSet<PublicKey> peerKeys = [];
-        foreach (KeyValuePair<PublicKeyAsKey, Peer> peer in pool.Peers)
+        foreach (KeyValuePair<PublicKey, byte> entry in discovered)
         {
-            peerKeys.Add(peer.Value.Node.Id);
+            peerKeys.Add(entry.Key);
         }
 
         return peerKeys;

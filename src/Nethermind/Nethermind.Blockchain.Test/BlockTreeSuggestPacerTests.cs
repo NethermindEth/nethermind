@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -34,7 +35,46 @@ public class BlockTreeSuggestPacerTests
     }
 
     [Test]
-    public void WillOnlyUnblockOnceHeadReachHighEnough()
+    public async Task WillNotMissHeadUpdateBeforeStartingBatch()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        Block initialHead = Build.A.Block.WithNumber(0).TestObject;
+        Block advancedHead = Build.A.Block.WithNumber(6).TestObject;
+        int headRead = 0;
+        blockTree.Head.Returns(_ =>
+        {
+            if (Interlocked.Increment(ref headRead) == 1)
+            {
+                blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(advancedHead));
+                return initialHead;
+            }
+
+            return advancedHead;
+        });
+
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
+        using CancellationTokenSource cts = new();
+        Task pausedTask = pacer.WaitForPausedAsync(cts.Token);
+        try
+        {
+            Task queueTask = pacer.WaitForQueue(11, default);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queueTask.IsCompleted, Is.True);
+                Assert.That(pausedTask.IsCompleted, Is.False);
+            }
+        }
+        finally
+        {
+            cts.Cancel();
+        }
+
+        Assert.That(async () => await pausedTask, Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
+    public async Task WillOnlyUnblockOnceHeadReachHighEnough()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
@@ -50,8 +90,7 @@ public class BlockTreeSuggestPacerTests
         Assert.That(waitTask.IsCompleted, Is.False);
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
-        // Allow the async continuation (RunContinuationsAsynchronously on the TCS) to be scheduled,
-        // but assert it completes promptly — the test still fails if the unblock didn't happen.
-        Assert.That(waitTask.Wait(TimeSpan.FromMilliseconds(500)), Is.True);
+        // The unblock continuation runs on the thread pool (RunContinuationsAsynchronously), which a loaded runner can delay.
+        await waitTask.WaitAsync(TimeSpan.FromSeconds(10));
     }
 }

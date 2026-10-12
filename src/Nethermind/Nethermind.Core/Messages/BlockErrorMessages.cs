@@ -17,6 +17,9 @@ public static class BlockErrorMessages
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
+    public static string InvalidLogsBloomLength(bool eip7668Enabled) =>
+        $"InvalidLogsBloom: Logs bloom in header does not match. Expected a {(eip7668Enabled ? "zero-length" : "256-byte")} bloom";
+
     public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 
@@ -143,6 +146,18 @@ public static class BlockErrorMessages
 
     public const string ConsolidationsContractFailed =
         "ConsolidationsFailed: Contract execution failed.";
+
+    public const string BuilderDepositsContractEmpty =
+        "BuilderDepositsEmpty: Contract is not deployed.";
+
+    public const string BuilderDepositsContractFailed =
+        "BuilderDepositsFailed: Contract execution failed.";
+
+    public const string BuilderExitsContractEmpty =
+        "BuilderExitsEmpty: Contract is not deployed.";
+
+    public const string BuilderExitsContractFailed =
+        "BuilderExitsFailed: Contract execution failed.";
 
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";

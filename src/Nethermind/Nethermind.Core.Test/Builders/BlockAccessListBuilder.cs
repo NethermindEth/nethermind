@@ -29,7 +29,9 @@ namespace Nethermind.Core.Test.Builders
                 Eip2935Changes(parentHash),
                 Eip4788Changes(timestamp),
                 Eip7002Changes,
-                Eip7251Changes);
+                Eip7251Changes,
+                Eip8282BuilderDepositChanges,
+                Eip8282BuilderExitChanges);
 
         private static ReadOnlyAccountChanges Eip2935Changes(Hash256 parentHash)
         {
@@ -59,6 +61,16 @@ namespace Nethermind.Core.Test.Builders
 
         private static readonly ReadOnlyAccountChanges Eip7251Changes = Build.An.AccountChanges
             .WithAddress(Eip7251Constants.ConsolidationRequestPredeployAddress)
+            .WithStorageReads(0, 1, 2, 3)
+            .TestObject;
+
+        private static readonly ReadOnlyAccountChanges Eip8282BuilderDepositChanges = Build.An.AccountChanges
+            .WithAddress(Eip8282Constants.BuilderDepositRequestPredeployAddress)
+            .WithStorageReads(0, 1, 2, 3)
+            .TestObject;
+
+        private static readonly ReadOnlyAccountChanges Eip8282BuilderExitChanges = Build.An.AccountChanges
+            .WithAddress(Eip8282Constants.BuilderExitRequestPredeployAddress)
             .WithStorageReads(0, 1, 2, 3)
             .TestObject;
 

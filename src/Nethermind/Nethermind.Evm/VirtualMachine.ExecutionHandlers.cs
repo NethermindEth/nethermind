@@ -1,0 +1,92 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
+
+namespace Nethermind.Evm;
+
+public unsafe partial class VirtualMachine<TGasPolicy>
+{
+    private ExecutionHandlers? _executionHandlers;
+
+    [MethodImpl(ExecutionHandlersInlining)]
+    private ExecutionHandlers GetExecutionHandlers()
+    {
+        Debug.Assert(_executionHandlers is not null, "PrepareOpcodes resolves frame handlers before execution.");
+#if DEBUG
+        Debug.Assert(ReferenceEquals(_executionHandlers.Spec, Spec), "Frame handlers must belong to the current block spec.");
+#endif
+        return _executionHandlers!;
+    }
+
+    /// <summary>Frame operations selected once for the same spec as the opcode tables.</summary>
+    private sealed class ExecutionHandlers(IReleaseSpec spec)
+    {
+#if DEBUG
+        public readonly IReleaseSpec Spec = spec;
+#endif
+        // All targets have these managed signatures; the table captures no VM or transaction state.
+        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> InitializeFrame = SelectInitializeFrame(spec);
+        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> TransferLog =
+            spec.IsEip7708Enabled ? &AddTransferLogCore<OnFlag> : &AddTransferLogCore<OffFlag>;
+        public readonly delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, CallResult> RunPrecompile =
+            (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
+            {
+                (true, true) => &RunPrecompileCore<OnFlag, OnFlag>,
+                (true, false) => &RunPrecompileCore<OnFlag, OffFlag>,
+                (false, true) => &RunPrecompileCore<OffFlag, OnFlag>,
+                (false, false) => &RunPrecompileCore<OffFlag, OffFlag>,
+            };
+        public readonly delegate*<VirtualMachine<TGasPolicy>, ref TGasPolicy, long, bool, void> CreditStateGasRefund =
+            spec.IsEip8037Enabled ? &CreditStateGasRefundCore<OnFlag> : &CreditStateGasRefundCore<OffFlag>;
+    }
+
+    /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec);
+
+    /// <summary>The frame entry both builds select from, by the EIP-158 and EIP-8360 flags.</summary>
+    private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrameCore(IReleaseSpec spec) =>
+        (SpecFlags.Eip158(spec), SpecFlags.Eip8360(spec)) switch
+        {
+            (true, true) => &InitializeFrameCore<OnFlag, OnFlag>,
+            (true, false) => &InitializeFrameCore<OnFlag, OffFlag>,
+            (false, true) => &InitializeFrameCore<OffFlag, OnFlag>,
+            (false, false) => &InitializeFrameCore<OffFlag, OffFlag>,
+        };
+
+    /// <returns><see langword="false"/> when the frame cannot pay its EIP-8360 balance-change charges.</returns>
+    private static bool InitializeFrameCore<Eip158, Eip8360>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+        where Eip158 : struct, IFlag
+        where Eip8360 : struct, IFlag
+    {
+        if (Eip8360.IsActive && !vm.TryEnterTransientCreateFrame(state))
+            return false;
+
+        ExecutionEnvironment env = state.Env;
+        vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
+        // EIP-8360 gives a TCREATE account nonce 1 whatever EIP-161 says; IsTransientCreate relies on it.
+        if ((Eip158.IsActive || (Eip8360.IsActive && state.ExecutionType == ExecutionType.TCREATE)) && state.ExecutionType.IsAnyCreate())
+            vm._worldState.IncrementNonce(env.ExecutingAccount);
+        return true;
+    }
+
+    private static void AddTransferLogCore<Eip7708>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+        where Eip7708 : struct, IFlag
+    {
+        if (Eip7708.IsActive && state.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
+            vm.AddTransferLog<Eip7708>(state.From, state.To, in state.Env.Value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static CallResult RunPrecompileCore<Eip158, Eip8360>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+        where Eip158 : struct, IFlag
+        where Eip8360 : struct, IFlag => vm.RunPrecompile<Eip158, Eip8360>(state);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CreditStateGasRefundCore<Eip8037>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, long amount, bool trackSpillRefund)
+        where Eip8037 : struct, IFlag => vm.CreditStateGasRefund<Eip8037>(ref gas, amount, trackSpillRefund);
+}

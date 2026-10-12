@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Specs;
 using NUnit.Framework;
 using Nethermind.Int256;
@@ -49,10 +50,17 @@ public class Eip4844Tests : VirtualMachineTestsBase
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 
-    protected override TestAllTracerWithOutput CreateTracer()
+    [Test]
+    public void Test_blobhash_null_hash_throws()
     {
-        TestAllTracerWithOutput tracer = base.CreateTracer();
-        tracer.IsTracingAccess = false;
-        return tracer;
+        byte[] code = Prepare.EvmCode
+            .PushData(UInt256.Zero)
+            .BLOBHASH()
+            .Done;
+
+        Assert.That(
+            () => Execute(Activation, 50000, code, blobVersionedHashes: [null!]),
+            Throws.TypeOf<InvalidOperationException>()
+                .With.Message.EqualTo("Blob versioned hashes must not contain null elements."));
     }
 }

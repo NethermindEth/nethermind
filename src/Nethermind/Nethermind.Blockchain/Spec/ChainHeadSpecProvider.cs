@@ -42,24 +42,24 @@ namespace Nethermind.Blockchain.Spec
         public IReleaseSpec GetCurrentHeadSpec()
         {
             BlockHeader? header = _blockFinder.FindBestSuggestedHeader();
-            ulong headerNumber = header?.Number ?? 0;
+            ForkActivation activation = header is null
+                ? (ForkActivation)0
+                : new ForkActivation(header.Number, header.Timestamp);
 
-            // Reference-type record keeps the (number, spec) publication atomic.
+            // Reference-type record keeps the (activation, spec) publication atomic.
             // Don't change to a record struct — 16-byte writes are not atomic.
             CachedSpec? snapshot = Volatile.Read(ref _cache);
-            if (snapshot is not null && snapshot.Number == headerNumber)
+            if (snapshot is not null && snapshot.Activation == activation)
             {
                 return snapshot.Spec;
             }
 
-            IReleaseSpec spec = header is not null
-                ? _specProvider.GetSpec(header)
-                : _specProvider.GetSpec((ForkActivation)headerNumber);
+            IReleaseSpec spec = _specProvider.GetSpec(activation);
 
-            Volatile.Write(ref _cache, new CachedSpec(headerNumber, spec));
+            Volatile.Write(ref _cache, new CachedSpec(activation, spec));
             return spec;
         }
 
-        private sealed record CachedSpec(ulong Number, IReleaseSpec Spec);
+        private sealed record CachedSpec(ForkActivation Activation, IReleaseSpec Spec);
     }
 }

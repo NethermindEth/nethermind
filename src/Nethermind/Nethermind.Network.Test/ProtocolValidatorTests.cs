@@ -49,7 +49,6 @@ public class ProtocolValidatorTests
             Substitute.For<INodeStatsManager>(),
             Substitute.For<IBlockTree>(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<IPeerManager>(),
             new NetworkConfig()
             {
                 ClientIdMatcher = pattern
@@ -59,7 +58,7 @@ public class ProtocolValidatorTests
 
         ISession session = CreateSession();
         IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
-        protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
+        protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
         {
             ClientId = clientId,
             P2PVersion = 5
@@ -67,30 +66,4 @@ public class ProtocolValidatorTests
         AssertDisconnect(session, shouldDisconnect, DisconnectReason.ClientFiltered);
     }
 
-    [TestCase(11, 10, true)]
-    [TestCase(10, 10, false)]
-    [TestCase(9, 10, false)]
-    public void On_max_active_peer_limit(int activePeerCount, int maxActivePeer, bool shouldDisconnect)
-    {
-        IPeerManager peerManager = Substitute.For<IPeerManager>();
-        peerManager.MaxActivePeers.Returns(maxActivePeer);
-        peerManager.ActivePeersCount.Returns(activePeerCount);
-
-        ProtocolValidator protocolValidator = new(
-            Substitute.For<INodeStatsManager>(),
-            Substitute.For<IBlockTree>(),
-            Substitute.For<IForkInfo>(),
-            peerManager,
-            new NetworkConfig(),
-            LimboLogs.Instance
-        );
-
-        ISession session = CreateSession();
-        IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
-        protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
-        {
-            P2PVersion = 5
-        });
-        AssertDisconnect(session, shouldDisconnect, DisconnectReason.TooManyPeers);
-    }
 }

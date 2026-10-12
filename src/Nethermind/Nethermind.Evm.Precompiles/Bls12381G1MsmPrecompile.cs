@@ -20,7 +20,7 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
 
     public static Address Address { get; } = Address.FromNumber(0x0c);
 
-    public static string Name => "BLS12_G1MSM";
+    public string Name => "BLS12_G1MSM";
 
     public ulong BaseGasCost(IReleaseSpec _) => 0UL;
 

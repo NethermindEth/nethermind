@@ -10,7 +10,9 @@ public enum ExecutionRequestType : byte
 {
     Deposit = 0,
     WithdrawalRequest = 1,
-    ConsolidationRequest = 2
+    ConsolidationRequest = 2,
+    BuilderDepositRequest = 3, // EIP-8282
+    BuilderExitRequest = 4 // EIP-8282
 }
 
 public class ExecutionRequest

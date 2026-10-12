@@ -33,22 +33,18 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
         private readonly ITrustedNodesManager _trustedNodesManager;
+        private readonly TimeProvider _timeProvider;
 
         public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
-        private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
         public IEnumerable<Peer> NonStaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => !p.Node.IsStatic);
-        public IEnumerable<Peer> StaticPeers => _staticPeers.Select(static kvp => kvp.Value);
+        public IEnumerable<Peer> StaticPeers => Peers.Select(static kvp => kvp.Value).Where(static p => p.Node.IsStatic);
 
         public int PeerCount => Peers.Count;
         public int ActivePeerCount => ActivePeers.Count;
-        public int StaticPeerCount => _staticPeers.Count;
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-
-        readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
-        readonly Func<PublicKeyAsKey, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -57,7 +53,18 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             ILogManager logManager,
             ITrustedNodesManager trustedNodesManager)
+            : this(nodeSource, nodeStatsManager, peerStorage, networkConfig, logManager, trustedNodesManager, TimeProvider.System)
+        {
+        }
 
+        internal PeerPool(
+            INodeSource nodeSource,
+            INodeStatsManager nodeStatsManager,
+            INetworkStorage peerStorage,
+            INetworkConfig networkConfig,
+            ILogManager logManager,
+            ITrustedNodesManager trustedNodesManager,
+            TimeProvider timeProvider)
         {
             _nodeSource = nodeSource ?? throw new ArgumentNullException(nameof(nodeSource));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
@@ -66,10 +73,7 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
             _logger = logManager?.GetClassLogger<PeerPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
-
-            // Early explicit closure
-            _createNewNodePeer = CreateNew;
-            _createNewNetworkNodePeer = CreateNew;
+            _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
             _nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
         }
@@ -90,7 +94,6 @@ namespace Nethermind.Network
                 {
                     removed = peer.InSession is null && peer.OutSession is null && !peer.IsAwaitingConnection
                               && Peers.TryRemove(e.Node.Id, out _);
-                    if (removed) _staticPeers.TryRemove(e.Node.Id, out _);
                 }
                 if (removed) PeerRemoved?.Invoke(this, new PeerEventArgs(peer));
                 return;
@@ -99,38 +102,92 @@ namespace Nethermind.Network
             TryRemove(e.Node.Id, out _);
         }
 
-        public Peer GetOrAdd(Node node) => Peers.GetOrAdd(node.Id, valueFactory: _createNewNodePeer, (node, _staticPeers));
-
-        public Peer GetOrAdd(NetworkNode node) => Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
-
-        private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
+        public Peer GetOrAdd(Node node)
         {
-            if (arg.Node.IsBootnode || arg.Node.IsStatic)
+            if (Peers.TryGetValue(node.Id, out Peer? existing))
             {
-                if (_logger.IsDebug) DebugAddingCandidatePeer(arg.Node);
-            }
-            Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
-            if (arg.Node.IsStatic)
-            {
-                arg.Statics.TryAdd(arg.Node.Id, peer);
+                MergeNodeState(node, existing.Node);
+                return existing;
             }
 
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            // ConcurrentDictionary may run the factory on a losing thread; only the thread whose value is
+            // actually inserted (reference-equal) fires PeerAdded.
+            Peer created = new(node, _stats.GetOrAdd(node));
+            Peer peer = Peers.GetOrAdd(node.Id, created);
+            if (ReferenceEquals(peer, created))
+            {
+                if ((node.IsBootnode || node.IsStatic) && _logger.IsTrace) TraceAddingCandidatePeer(node);
+                PeerAdded?.Invoke(this, new PeerEventArgs(peer));
+            }
+            else
+            {
+                MergeNodeState(node, peer.Node);
+            }
+
             return peer;
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugAddingCandidatePeer(Node node)
-                => _logger.Debug($"Adding a {(node.IsBootnode ? "bootnode" : "stored")} candidate peer {node:s}");
+            void TraceAddingCandidatePeer(Node n)
+                => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
         }
 
-        private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
+        private void MergeNodeState(Node incoming, Node pooled)
         {
-            Node node = new(arg.Node) { IsTrusted = _trustedNodesManager.IsTrusted(arg.Node.Enode) };
+            PromoteFlags(incoming, pooled);
+            incoming.MergeEnrStateFrom(pooled);
+        }
 
-            Peer peer = new(node, _stats.GetOrAdd(node));
+        // A node id can reach the pool through several sources (the persisted peers db, discovery, the
+        // static/trusted config) and the first arrival wins the dictionary slot. Elevated flags from a later
+        // arrival must land on the pooled instance, otherwise a static peer that is also in the persisted
+        // peers db loses its static status for the whole session and is never redialed as one.
+        private void PromoteFlags(Node incoming, Node pooled)
+        {
+            if (incoming.IsStatic && !pooled.IsStatic)
+            {
+                pooled.IsStatic = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "static");
+            }
 
-            PeerAdded?.Invoke(this, new PeerEventArgs(peer));
-            return peer;
+            if (incoming.IsTrusted && !pooled.IsTrusted)
+            {
+                pooled.IsTrusted = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "trusted");
+            }
+
+            if (incoming.IsBootnode && !pooled.IsBootnode)
+            {
+                pooled.IsBootnode = true;
+                if (_logger.IsDebug) DebugPromoted(pooled, "bootnode");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DebugPromoted(Node node, string role)
+            => _logger.Debug($"Promoting already pooled peer {node:s} to {role}");
+
+        public Peer GetOrAdd(NetworkNode networkNode)
+        {
+            bool isTrusted = networkNode.IsEnode && _trustedNodesManager.IsTrusted(networkNode.Enode);
+            if (Peers.TryGetValue(networkNode.NodeId, out Peer? existing) &&
+                (networkNode.IsEnode ||
+                 (existing.Node.Enr is { } current && existing.Node.IsVerifiedEnr(current) &&
+                  current.EnrSequence >= networkNode.Enr!.EnrSequence)))
+            {
+                if (isTrusted && !existing.Node.IsTrusted)
+                {
+                    existing.Node.IsTrusted = true;
+                    if (_logger.IsDebug) DebugPromoted(existing.Node, "trusted");
+                }
+
+                return existing;
+            }
+
+            Node node = new(networkNode)
+            {
+                IsTrusted = isTrusted
+            };
+            return GetOrAdd(node);
         }
 
         public bool TryGet(PublicKey id, out Peer peer) => Peers.TryGetValue(id, out peer);
@@ -140,7 +197,6 @@ namespace Nethermind.Network
             if (!Peers.TryRemove(id, out peer))
                 return false;
 
-            _staticPeers.TryRemove(id, out _);
             lock (peer.SessionLock)
             {
                 peer.InSession?.MarkDisconnected(DisconnectReason.PeerRemoved, DisconnectType.Local, "admin_removePeer");
@@ -160,14 +216,8 @@ namespace Nethermind.Network
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
                 {
                     // (what with the other session?)
-
-                    _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-
-                    if (previousPeer is not null)
-                    {
-                        previousPeer.InSession = null;
-                        previousPeer.OutSession = null;
-                    }
+                    previousPeer.InSession = null;
+                    previousPeer.OutSession = null;
                 }
                 else
                 {
@@ -298,10 +348,17 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                while (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers)
+                // Static and trusted nodes bypass throttling so they are always registered (static to stay
+                // dialable, trusted so inbound connections are recognized and counted even at capacity).
+                bool throttlingLogged = false;
+                while (!node.IsStatic && !node.IsTrusted && (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers))
                 {
-                    if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
-                    await Task.Delay(1000, token);
+                    if (!throttlingLogged)
+                    {
+                        if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
+                        throttlingLogged = true;
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, token);
                 }
 
                 GetOrAdd(node);

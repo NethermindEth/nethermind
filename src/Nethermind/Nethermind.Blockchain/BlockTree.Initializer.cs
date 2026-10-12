@@ -22,6 +22,39 @@ public partial class BlockTree
         LoadBestKnown();
         LoadBeaconBestKnown();
         LoadForkChoiceInfo();
+        FixLowestInsertedBeaconHeader();
+    }
+
+    private void FixLowestInsertedBeaconHeader()
+    {
+        BlockHeader? lowest = _lowestInsertedBeaconHeader;
+        if (lowest is null)
+        {
+            return;
+        }
+
+        // An unclean shutdown between a beacon header write and its pointer update can leave
+        // LowestInsertedBeaconHeader parked above headers the backfill had already inserted.
+        // Walk down through the contiguous beacon segment and stop at the merge junction — the
+        // first already-synced non-beacon block. Anchoring on IsKnownBlock keeps the walk bounded
+        // to the beacon segment even when the suggested pointers are missing or stale.
+        BlockHeader current = lowest;
+        while (current.ParentHash is not null)
+        {
+            BlockHeader? parent = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent?.Hash is null || IsKnownBlock(parent.Number, parent.Hash))
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        if (!ReferenceEquals(current, lowest))
+        {
+            if (Logger.IsInfo) Logger.Info($"Lowest inserted beacon header moved from {lowest.Number} down to {current.Number} through already inserted beacon headers");
+            LowestInsertedBeaconHeader = current;
+        }
     }
 
     public static ulong? BinarySearchBlockNumber(ulong left, ulong right, Func<ulong, bool, bool> isBlockFound,
@@ -76,12 +109,24 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ulong blockNumber = BestPersistedState ?? BestSuggestedHeader.Number;
+            ulong? persistedNumber = _stateBoundary.BestPersistedState;
+            ulong blockNumber = persistedNumber ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
-            if (canonicalBlock is not null && canonicalBlock.WasProcessed)
+            if (canonicalBlock?.WasProcessed == true && FindBlock(canonicalBlock.BlockHash, BlockTreeLookupOptions.None) is not null)
             {
                 SetHeadBlock(canonicalBlock.BlockHash!);
+            }
+            else if (canonicalBlock is { WasProcessed: false } && persistedNumber is null)
+            {
+                if (HasBlock(blockNumber, canonicalBlock.BlockHash))
+                {
+                    SetHeadBlock(canonicalBlock.BlockHash);
+                }
+                else if (Logger.IsInfo)
+                {
+                    Logger.Info("Skipping head rollback for 'header < body' recovery - persisted ceiling is unavailable and the surviving suggested candidate was not processed.");
+                }
             }
             else
             {
@@ -101,61 +146,12 @@ public partial class BlockTree
         return level is not null && level.HasNonBeaconBlocks;
     }
 
-    private bool HeaderExists(ulong blockNumber, bool findBeacon = false)
-    {
-        ChainLevelInfo level = LoadLevel(blockNumber);
-        if (level is null)
-        {
-            return false;
-        }
+    private bool HeaderExists(ulong blockNumber, bool findBeacon = false) =>
+        FindHeaderAtLevel(blockNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon) is not null;
 
-        foreach (BlockInfo blockInfo in level.BlockInfos)
-        {
-            BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (header is not null)
-            {
-                if (findBeacon && blockInfo.IsBeaconHeader)
-                {
-                    return true;
-                }
+    private bool BodyExists(ulong blockNumber, bool findBeacon = false) =>
+        FindBlockAtLevel(blockNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon) is not null;
 
-                if (!findBeacon && !blockInfo.IsBeaconHeader)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private bool BodyExists(ulong blockNumber, bool findBeacon = false)
-    {
-        ChainLevelInfo level = LoadLevel(blockNumber);
-        if (level is null)
-        {
-            return false;
-        }
-
-        foreach (BlockInfo blockInfo in level.BlockInfos)
-        {
-            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-            if (block is not null)
-            {
-                if (findBeacon && blockInfo.IsBeaconBody)
-                {
-                    return true;
-                }
-
-                if (!findBeacon && !blockInfo.IsBeaconBody)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
     private void LoadForkChoiceInfo()
     {
         Logger.Info("Loading fork choice info");
@@ -224,11 +220,92 @@ public partial class BlockTree
         }
 
         BestKnownNumber = bestKnownNumberFound;
-        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
-        BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
-        BestSuggestedBody = bestSuggestedBodyHeader is null
-            ? null
-            : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
+        // The canonical FindHeader(number)/FindBlock(number) miss post-merge levels with no
+        // main-chain block — where suggested-but-unprocessed blocks live after a restart.
+        BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None)
+            ?? FindHeaderAtLevel(bestSuggestedHeaderNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon: false);
+        BestSuggestedBody = FindBlock(bestSuggestedBodyNumber, BlockTreeLookupOptions.None)
+            ?? FindBlockAtLevel(bestSuggestedBodyNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon: false);
+    }
+
+    private BlockHeader? FindHeaderAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
+    {
+        ChainLevelInfo? level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        BlockHeader? found = null;
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (findBeacon ? !blockInfo.IsBeaconHeader : blockInfo.IsBeaconInfo)
+            {
+                continue;
+            }
+
+            BlockHeader? header = FindHeader(blockInfo.BlockHash, options, blockNumber: blockNumber);
+            if (header is null)
+            {
+                continue;
+            }
+
+            if (findBeacon)
+            {
+                // mirrors ChainLevelInfo.BeaconMainChainBlock
+                if (blockInfo.IsBeaconMainChain)
+                {
+                    return header;
+                }
+                found ??= header;
+            }
+            else
+            {
+                // last entry: at equal height the latest suggestion wins
+                found = header;
+            }
+        }
+
+        return found;
+    }
+
+    private Block? FindBlockAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
+    {
+        ChainLevelInfo? level = LoadLevel(blockNumber);
+        if (level is null)
+        {
+            return null;
+        }
+
+        Block? found = null;
+        foreach (BlockInfo blockInfo in level.BlockInfos)
+        {
+            if (findBeacon ? !blockInfo.IsBeaconBody : blockInfo.IsBeaconInfo)
+            {
+                continue;
+            }
+
+            Block? block = FindBlock(blockInfo.BlockHash, options, blockNumber: blockNumber);
+            if (block is null)
+            {
+                continue;
+            }
+
+            if (findBeacon)
+            {
+                if (blockInfo.IsBeaconMainChain)
+                {
+                    return block;
+                }
+                found ??= block;
+            }
+            else
+            {
+                found = block;
+            }
+        }
+
+        return found;
     }
 
 
@@ -268,17 +345,17 @@ public partial class BlockTree
         }
 
         BestKnownBeaconNumber = bestKnownNumberFound;
-        BestSuggestedBeaconHeader = FindHeader(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        BlockHeader? bestBeaconBodyHeader = FindHeader(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        BestSuggestedBeaconBody = bestBeaconBodyHeader is null
-            ? null
-            : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        // beacon entries first — the canonical lookup can resolve a non-beacon sibling
+        BestSuggestedBeaconHeader = FindHeaderAtLevel(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded, findBeacon: true)
+            ?? FindHeader(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        BestSuggestedBeaconBody = FindBlockAtLevel(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded, findBeacon: true)
+            ?? FindBlock(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
     }
 
     private Hash256? DecodeMetadataKeccak(int key)
     {
         byte[]? rlp = _metadataDb.Get(key);
-        return rlp is null ? null : new RlpReader(rlp).DecodeKeccak();
+        return rlp is null ? null : new RlpReader(rlp).DecodeKeccakOrNull();
     }
 
     private ulong? DecodeMetadataULong(int key)
@@ -311,9 +388,7 @@ public partial class BlockTree
     private void LoadStartBlock()
     {
         Block? startBlock = null;
-        byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-        BestPersistedState = persistedNumberData is null ? null : new RlpReader(persistedNumberData).DecodeULong();
-        ulong? persistedNumber = BestPersistedState;
+        ulong? persistedNumber = _stateBoundary.BestPersistedState;
         if (persistedNumber is not null)
         {
             startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -339,6 +414,9 @@ public partial class BlockTree
 
             SetHeadBlock(startBlock.Hash);
         }
+
+        // The removed BestPersistedState setter recomputed the sync pivot as a side effect during load; keep it.
+        TryUpdateSyncPivot();
     }
 
     private void SetHeadBlock(Hash256 headHash)
@@ -367,7 +445,7 @@ public partial class BlockTree
 
         RlpReader pivotReader = new(pivotFromDb!);
         ulong updatedPivotBlockNumber = pivotReader.DecodeULong();
-        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak()!;
+        Hash256 updatedPivotBlockHash = pivotReader.DecodeKeccak();
 
         if (updatedPivotBlockHash.IsZero)
         {

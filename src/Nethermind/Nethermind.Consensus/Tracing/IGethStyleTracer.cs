@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -22,6 +23,9 @@ public interface IGethStyleTracer
     /// </summary>
     GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(ulong blockNumber, Transaction transaction, GethTraceOptions options, CancellationToken cancellationToken);
+
+    /// <remarks>Retained for out-of-tree plugins; in-tree only the matching deprecated debug-bridge overload forwards to it.</remarks>
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     GethLikeTxTrace? Trace(ulong blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);

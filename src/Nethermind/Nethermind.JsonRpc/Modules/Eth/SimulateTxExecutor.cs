@@ -54,7 +54,9 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
                         IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
+                        Result<Transaction> txResult = call.Validation
+                            ? callTransactionModel.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
+                            : callTransactionModel.ToTransaction(validateUserInput: false, gasCap: _rpcConfig.GasCap, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -136,8 +138,7 @@ public class SimulateTxExecutor<TTrace>(
                 if (givenNumber <= lastBlockNumber)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.BlockNumberNotIncreasing, ErrorCodes.InvalidInputBlocksOutOfOrder);
 
-                // if the no. of filler blocks are greater than maximum simulate blocks cap
-                if (givenNumber - lastBlockNumber > (ulong)_blocksLimit)
+                if (givenNumber - header.Number > (ulong)_blocksLimit)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"too many blocks", ErrorCodes.ClientLimitExceededError);
 
                 for (ulong fillBlockNumber = lastBlockNumber + 1; fillBlockNumber < givenNumber; fillBlockNumber++)
@@ -188,12 +189,18 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-
-        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), data, stateOverride, timeout.Token);
+        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
+        try
+        {
+            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+                : Execute(header.Clone(), data, stateOverride, timeout.Token);
+        }
+        finally
+        {
+            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
+        }
     }
 
     protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -245,23 +252,7 @@ public class SimulateTxExecutor<TTrace>(
     {
         if (txResult.Error != TransactionResult.ErrorType.None)
         {
-            return txResult.Error switch
-            {
-                TransactionResult.ErrorType.BlockGasLimitExceeded => ErrorCodes.BlockGasLimitReached,
-                TransactionResult.ErrorType.GasLimitBelowIntrinsicGas => ErrorCodes.IntrinsicGas,
-                TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
-                    or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
-                TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
-                    or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
-                TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
-                TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
-                _ => ErrorCodes.InternalError
-            };
+            return TransactionErrorCodes.Get(txResult.Error) ?? ErrorCodes.InternalError;
         }
 
         return MapEvmExceptionType(txResult.EvmExceptionType);

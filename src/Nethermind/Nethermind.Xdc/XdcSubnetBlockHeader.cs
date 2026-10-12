@@ -38,10 +38,10 @@ public class XdcSubnetBlockHeader(
         set { _nextValidatorsAddress = value; }
     }
 
-    public override ValueHash256 CalculateHash()
+    public override ValueHash256 CalculateHash(RlpBehaviors behaviors = RlpBehaviors.None)
     {
         KeccakRlpWriter writer = new();
-        _headerDecoder.Encode(ref writer, this);
+        _headerDecoder.Encode(ref writer, this, behaviors);
         return writer.GetHash();
     }
 
@@ -62,6 +62,7 @@ public class XdcSubnetBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
+            SlotNumber = SlotNumber + 1,
         };
     }
 
@@ -83,8 +84,6 @@ public class XdcSubnetBlockHeader(
             Nonce = src.Nonce,
             TxRoot = src.TxRoot,
             TotalDifficulty = src.TotalDifficulty,
-            AuRaStep = src.AuRaStep,
-            AuRaSignature = src.AuRaSignature,
             ReceiptsRoot = src.ReceiptsRoot,
             BaseFeePerGas = src.BaseFeePerGas,
             WithdrawalsRoot = src.WithdrawalsRoot,
@@ -93,6 +92,7 @@ public class XdcSubnetBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
+            SlotNumber = src.SlotNumber,
         };
 
         if (src is XdcBlockHeader xdc)

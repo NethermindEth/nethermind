@@ -7,6 +7,6 @@ namespace Nethermind.Consensus.Ethash;
 
 public class NethDevChainSpecEngineParameters : IChainSpecEngineParameters
 {
-    public string? EngineName => NethDevPlugin.NethDev;
-    public string? SealEngineType => NethDevPlugin.NethDev;
+    public string EngineName => NethDevPlugin.NethDev;
+    public string SealEngineType => NethDevPlugin.NethDev;
 }

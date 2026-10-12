@@ -83,10 +83,11 @@ public static class DisconnectReasonExtension
         DisconnectReason.SessionAlreadyExist or DisconnectReason.ReplacingSessionWithOppositeDirection or DisconnectReason.OppositeDirectionCleanup or DisconnectReason.DuplicatedConnection or DisconnectReason.SessionIdAlreadyExists => EthDisconnectReason.AlreadyConnected,
         DisconnectReason.ConnectionClosed or DisconnectReason.OutgoingConnectionFailed => EthDisconnectReason.TcpSubSystemError,
         DisconnectReason.IncompatibleP2PVersion => EthDisconnectReason.IncompatibleP2PVersion,
-        DisconnectReason.InvalidGenesis or DisconnectReason.MissingForkId or DisconnectReason.InvalidForkId => EthDisconnectReason.BreachOfProtocol,
+        // Chain-identity mismatches are protocol breaches so that even static nodes are disconnected from a wrong network.
+        DisconnectReason.InvalidNetworkId or DisconnectReason.InvalidGenesis or DisconnectReason.MissingForkId or DisconnectReason.InvalidForkId => EthDisconnectReason.BreachOfProtocol,
         DisconnectReason.ClientFiltered => EthDisconnectReason.DisconnectRequested,
         DisconnectReason.ProtocolInitTimeout => EthDisconnectReason.ReceiveMessageTimeout,
-        DisconnectReason.InvalidNetworkId or DisconnectReason.SnapServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
+        DisconnectReason.SnapServerNotImplemented or DisconnectReason.TxFlooding or DisconnectReason.NoCapabilityMatched => EthDisconnectReason.UselessPeer,
         DisconnectReason.DropWorstPeer => EthDisconnectReason.TooManyPeers,
         DisconnectReason.PeerRemoved or DisconnectReason.PeerRefreshFailed => EthDisconnectReason.DisconnectRequested,
         DisconnectReason.ForwardSyncFailed => EthDisconnectReason.DisconnectRequested,

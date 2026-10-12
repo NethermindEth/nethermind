@@ -53,7 +53,7 @@ public class OptimismPostMergeBlockProducer(
         BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
         if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
         {
-            blockToProduce.Transactions = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
+            blockToProduce.Transactions = _payloadAttrsTxSource.GetTransactions(parent, blockToProduce.Header, attrs.GasLimit, attrs);
         }
         return blockToProduce;
     }

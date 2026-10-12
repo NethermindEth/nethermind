@@ -18,6 +18,11 @@ public interface IForkInfo
     /// <returns></returns>
     ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head);
 
+    /// <summary>
+    /// Checks whether a discovered peer fork ID belongs to the local fork schedule without local head state.
+    /// </summary>
+    bool IsForkIdCompatible(ForkId peerId);
+
     ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head);
 }
 

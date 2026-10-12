@@ -98,14 +98,14 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
         );
     }
 
-    private async Task<TNode[]?> FindNeighbours(TKey key, TKadKey keyHash, TNode nextNode, CancellationToken token)
+    private Task<TNode[]?> FindNeighbours(TKey key, TKadKey keyHash, TNode nextNode, CancellationToken token)
     {
         if (SameAsSelf(nextNode))
         {
-            return _routingTable.GetKNearestNeighbour(keyHash);
+            return Task.FromResult<TNode[]?>(_routingTable.GetKNearestNeighbour(keyHash));
         }
 
-        return await _kademliaMessageSender.FindNeighbours(nextNode, key, token);
+        return _kademliaMessageSender.FindNeighbours(nextNode, key, token);
     }
 
     public async Task Run(CancellationToken token)

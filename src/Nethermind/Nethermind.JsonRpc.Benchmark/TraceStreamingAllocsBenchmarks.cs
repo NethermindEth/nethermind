@@ -113,7 +113,7 @@ public class TraceStreamingAllocsBenchmarks
             {
                 tracer.StartOperation(op, Instruction.SSTORE, (ulong)(1_000_000 - op), _envByDepth[depth]);
                 tracer.ReportStackPush(value);
-                tracer.ReportStorageChange(value, value);
+                tracer.ReportOperationStorageChange(value, value);
                 tracer.ReportOperationRemainingGas((ulong)(900_000 - op));
             }
         }

@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Precompiles
     public interface IPrecompile
     {
         static virtual Address Address => Address.Zero;
-        static virtual string Name => string.Empty;
+        string Name => GetType().Name;
         bool SupportsCaching => true;
 
         /// <summary>

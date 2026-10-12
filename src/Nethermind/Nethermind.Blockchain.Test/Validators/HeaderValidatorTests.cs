@@ -10,6 +10,8 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -167,6 +169,133 @@ public class HeaderValidatorTests
         }
     }
 
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(3ul, true, null)]
+    [TestCase(null, false, BlockErrorMessages.MissingSlotNumber)]
+    public void When_orphaned_amsterdam_header_slot_presence_matches_fork(ulong? slotNumber, bool expectedResult, string? expectedError)
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _block = Build.A.Block
+            .WithNumber(6)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+        _block.Header.SlotNumber = slotNumber;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_pre_fork_header_has_slot_number()
+    {
+        // Same presence rule as RequestsHash and BlockAccessListHash: a field from a
+        // fork that is not active must be rejected even without a parent to compare to.
+        _block.Header.SlotNumber = 7;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom, [Values(0ul, 1ul)] ulong number)
+    {
+        bool expectedResult = eip7668 == zeroLengthBloom;
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
+            new OneLoggerLogManager(new(_testLogger)));
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(number)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(0)
+            .WithBloom(zeroLengthBloom ? Bloom.ZeroLength : Bloom.Empty)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedResult ? null : BlockErrorMessages.InvalidLogsBloomLength(eip7668)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> OrphanedBlobGasFieldCases()
+    {
+        const ulong lastPreCancun = MainnetSpecProvider.CancunBlockTimestamp - 1;
+        const ulong firstCancun = MainnetSpecProvider.CancunBlockTimestamp;
+        const ulong firstPrague = MainnetSpecProvider.PragueBlockTimestamp;
+        Hash256 requestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+
+        yield return new TestCaseData(firstCancun, 0ul, null, null, BlockErrorMessages.MissingExcessBlobGas)
+            .SetName("Cancun_null_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(firstCancun, null, 0ul, null, BlockErrorMessages.MissingBlobGasUsed)
+            .SetName("Cancun_null_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, null, 0ul, null, BlockErrorMessages.NotAllowedExcessBlobGas)
+            .SetName("Pre_Cancun_excess_blob_gas_is_rejected");
+        yield return new TestCaseData(lastPreCancun, 0ul, null, null, BlockErrorMessages.NotAllowedBlobGasUsed)
+            .SetName("Pre_Cancun_blob_gas_used_is_rejected");
+        yield return new TestCaseData(lastPreCancun, null, null, requestsHash, BlockErrorMessages.RequestsNotEnabled)
+            .SetName("Pre_Prague_requests_hash_is_rejected");
+        yield return new TestCaseData(firstCancun, 0ul, 0ul, null, null)
+            .SetName("First_Cancun_header_is_accepted");
+        yield return new TestCaseData(lastPreCancun, null, null, null, null)
+            .SetName("Last_pre_Cancun_header_is_accepted");
+        // Values no parent could produce: the ExcessBlobGas comparison must still be skipped when orphaned.
+        yield return new TestCaseData(firstCancun, 131072ul, 393216ul, null, null)
+            .SetName("Cancun_header_with_arbitrary_blob_gas_values_is_accepted");
+        yield return new TestCaseData(firstPrague, 0ul, 0ul, requestsHash, null)
+            .SetName("Prague_header_is_accepted");
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(OrphanedBlobGasFieldCases))]
+    public void When_orphaned_header_blob_gas_presence_matches_fork(
+        ulong timestamp, ulong? blobGasUsed, ulong? excessBlobGas, Hash256? requestsHash, string? expectedError)
+    {
+        _validator = new HeaderValidator(_blockTree, Always.Valid, MainnetSpecProvider.Instance,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(MainnetSpecProvider.ParisBlockNumber + 1)
+            .WithTimestamp(timestamp)
+            .WithBlobGasUsed(blobGasUsed)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithRequestsHash(requestsHash)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
     private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
         yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
@@ -228,8 +357,11 @@ public class HeaderValidatorTests
         Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_long_max_value()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0x7FFFFFFFFFFFFFFFUL, true, TestName = "When_gas_limit_at_protocol_cap")]
+    [TestCase(0x8000000000000000UL, false, TestName = "When_gas_limit_just_above_protocol_cap")]
+    [TestCase(ulong.MaxValue, false, TestName = "When_gas_limit_is_ulong_max")]
+    public void When_gas_limit_around_protocol_cap(ulong gasLimit, bool expectedResult)
     {
         _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _parentBlock = Build.A.Block.WithDifficulty(1)
@@ -239,14 +371,18 @@ public class HeaderValidatorTests
         _block = Build.A.Block.WithParent(_parentBlock)
             .WithDifficulty(131072)
             .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
-            .WithGasLimit(long.MaxValue)
+            .WithGasLimit(gasLimit)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
-        Assert.That(result, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, expectedResult ? Is.Null : Is.EqualTo(BlockErrorMessages.InvalidGasLimit));
+        }
     }
 
 
@@ -301,6 +437,17 @@ public class HeaderValidatorTests
         sut.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidHeaderHash"));
+    }
+
+    [Test]
+    public void Validate_WhenHashValidationSkipped_MismatchedHashIsAccepted()
+    {
+        // Always.Valid rather than the fixture's ethash seal validator, which rejects the zeroed hash on its own.
+        HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _block.Header.Hash = Keccak.Zero;
+
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
     }
 
     [Test]

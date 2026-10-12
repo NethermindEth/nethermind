@@ -16,7 +16,7 @@ namespace Nethermind.Crypto
 
         private static byte[] BuildDataToHash()
         {
-            byte[] counterData = BitConverter.IsLittleEndian ? Bytes.Reverse(BitConverter.GetBytes(1)) : BitConverter.GetBytes(1);
+            byte[] counterData = Bytes.Reverse(BitConverter.GetBytes(1));
             byte[] dataToHash = new byte[36];
             counterData.AsSpan().CopyTo(dataToHash.AsSpan(0, 4));
             return dataToHash;
@@ -29,9 +29,12 @@ namespace Nethermind.Crypto
         /// <returns>Returns the key derived from the provided base key and hash algorithm.</returns>
         public static byte[] Derive(byte[] key)
         {
-            byte[] dataToHash = _dataToHash.Value;
+            byte[] dataToHash = _dataToHash.Value
+                ?? throw new InvalidOperationException("KDF input buffer was not initialized.");
             key.AsSpan().CopyTo(dataToHash.AsSpan(4, 32));
-            return _sha256.Value.ComputeHash(dataToHash);
+            SHA256 sha256 = _sha256.Value
+                ?? throw new InvalidOperationException("SHA256 instance was not initialized.");
+            return sha256.ComputeHash(dataToHash);
         }
     }
 }

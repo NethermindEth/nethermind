@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -23,16 +25,16 @@ namespace Nethermind.EthStats.Test;
 
 public class EthStatsIntegrationTests
 {
-    [TestCase(3UL, 1UL, 1UL, 3UL, TestName = "TryNormalizeHistoryRange_swaps_min_and_max")]
-    [TestCase(0UL, 100UL, 37UL, 100UL, TestName = "TryNormalizeHistoryRange_limits_oversized_range")]
-    [TestCase(ulong.MaxValue - 63, ulong.MaxValue, ulong.MaxValue - 63, ulong.MaxValue, TestName = "TryNormalizeHistoryRange_handles_max_ulong_without_overflow")]
-    public void TryNormalizeHistoryRange_handles_edges(
+    [TestCase(3UL, 1UL, 1UL, 3UL, TestName = "NormalizeHistoryRange_swaps_min_and_max")]
+    [TestCase(0UL, 100UL, 37UL, 100UL, TestName = "NormalizeHistoryRange_limits_oversized_range")]
+    [TestCase(ulong.MaxValue - 63, ulong.MaxValue, ulong.MaxValue - 63, ulong.MaxValue, TestName = "NormalizeHistoryRange_handles_max_ulong_without_overflow")]
+    public void NormalizeHistoryRange_handles_edges(
         ulong requestMin,
         ulong requestMax,
         ulong expectedMin,
         ulong expectedMax)
     {
-        EthStatsIntegration.TryNormalizeHistoryRange(
+        EthStatsIntegration.NormalizeHistoryRange(
             new EthStatsHistoryRequest(requestMin, requestMax),
             out ulong min,
             out ulong max);
@@ -66,7 +68,45 @@ public class EthStatsIntegrationTests
             null);
     }
 
-    private static EthStatsIntegration CreateIntegration(IMessageSender sender, IBlockTree blockTree)
+    [Test]
+    public async Task Repeated_disconnects_while_offline_are_logged_at_info_once()
+    {
+        const string disconnectedMessage = "ETH Stats disconnected";
+        Subject<DisconnectionInfo> disconnections = new();
+        Subject<ReconnectionInfo> reconnections = new();
+        IWebsocketClient websocketClient = Substitute.For<IWebsocketClient>();
+        websocketClient.DisconnectionHappened.Returns(disconnections);
+        websocketClient.ReconnectionHappened.Returns(reconnections);
+        websocketClient.MessageReceived.Returns(Observable.Never<ResponseMessage>());
+        IEthStatsClient ethStatsClient = Substitute.For<IEthStatsClient>();
+        ethStatsClient.InitAsync().Returns(websocketClient);
+        IMessageSender sender = Substitute.For<IMessageSender>();
+        sender.SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<HelloMessage>(), Arg.Any<string>()).Returns(Task.CompletedTask);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.IsDebug.Returns(true);
+        using EthStatsIntegration integration = CreateIntegration(sender, Substitute.For<IBlockTree>(), ethStatsClient, new OneLoggerLogManager(new ILogger(logger)));
+        await integration.InitAsync();
+
+        for (int i = 0; i < 5; i++)
+        {
+            disconnections.OnNext(DisconnectionInfo.Create(DisconnectionType.Error, null, null));
+        }
+
+        logger.Received(1).Info(Arg.Is<string>(text => text.StartsWith(disconnectedMessage)));
+        logger.Received(4).Debug(Arg.Is<string>(text => text.StartsWith(disconnectedMessage)));
+
+        reconnections.OnNext(ReconnectionInfo.Create(ReconnectionType.Initial));
+        disconnections.OnNext(DisconnectionInfo.Create(DisconnectionType.Error, null, null));
+
+        logger.Received(2).Info(Arg.Is<string>(text => text.StartsWith(disconnectedMessage)));
+    }
+
+    private static EthStatsIntegration CreateIntegration(
+        IMessageSender sender,
+        IBlockTree blockTree,
+        IEthStatsClient ethStatsClient = null,
+        ILogManager logManager = null)
         => new(
             "test-node",
             "test-client",
@@ -78,7 +118,7 @@ public class EthStatsIntegrationTests
             "contact",
             true,
             "secret",
-            Substitute.For<IEthStatsClient>(),
+            ethStatsClient ?? Substitute.For<IEthStatsClient>(),
             sender,
             Substitute.For<ITxPool>(),
             blockTree,
@@ -87,7 +127,7 @@ public class EthStatsIntegrationTests
             Substitute.For<IEthSyncingInfo>(),
             false,
             TimeSpan.FromSeconds(1),
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
 
     private static bool HasHistoryBlocks(HistoryMessage message, ulong firstBlockNumber, ulong secondBlockNumber)
     {

@@ -1,0 +1,192 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.State.Proofs;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Xdc.Contracts;
+using Autofac.Features.AttributeFilters;
+
+namespace Nethermind.Xdc.RPC;
+
+internal sealed class XdcExtendedEthModule(
+    IBlockFinder blockFinder,
+    [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
+    ISpecProvider specProvider,
+    IMasternodeVotingContract masternodeVotingContract,
+    IRewardsStore rewardsStore,
+    IStateReader stateReader,
+    IEthSyncingInfo ethSyncingInfo) : IXdcExtendedEthRpcModule
+{
+    private static readonly IRlpDecoder<TxReceipt> ReceiptEncoder = Rlp.GetDecoder<TxReceipt>();
+
+    public Task<ResultWrapper<Address>> eth_getOwnerByCoinbase(Address coinbase, BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return Task.FromResult(ResultWrapper<Address>.Fail(searchResult));
+        }
+
+        Address owner = masternodeVotingContract.GetCandidateOwner(searchResult.Object, coinbase);
+        return Task.FromResult(ResultWrapper<Address>.Success(owner));
+    }
+
+    public Task<ResultWrapper<XdcEpochRewards>> eth_getRewardByHash(
+        Hash256 blockHash)
+    {
+        BlockHeader? header = blockFinder.FindHeader(blockHash);
+        if (header is null)
+        {
+            return Task.FromResult(ResultWrapper<XdcEpochRewards>.Success(new XdcEpochRewards()));
+        }
+
+        if (!rewardsStore.TryGetEpochRewards(header.Hash ?? blockHash, out XdcEpochRewards? rewards)
+            || rewards is null)
+        {
+            rewards = new XdcEpochRewards();
+        }
+
+        return Task.FromResult(ResultWrapper<XdcEpochRewards>.Success(rewards));
+    }
+
+    public Task<ResultWrapper<XdcTransactionAndReceiptProof?>> eth_getTransactionAndReceiptProof(Hash256 transactionHash)
+    {
+        Hash256? blockHash = receiptFinder.FindBlockHash(transactionHash);
+        if (blockHash is null)
+        {
+            return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(null));
+        }
+
+        Block? block = blockFinder.FindBlock(blockHash);
+        if (block is null)
+        {
+            return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(null));
+        }
+
+        Transaction[] transactions = block.Transactions;
+        int index = -1;
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            if (transactions[i].Hash == transactionHash)
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(null));
+        }
+
+        TxReceipt[] receipts = receiptFinder.Get(block);
+        if (index >= receipts.Length)
+        {
+            return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(null));
+        }
+
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        byte[][] txProof = TxTrie.CalculateProof(transactions, index);
+        byte[][] receiptProof = ReceiptTrie.CalculateReceiptProofs(spec, receipts, index, ReceiptEncoder);
+        (string[] txProofKeys, string[] txProofValues) = FromProofNodes(txProof);
+        (string[] receiptProofKeys, string[] receiptProofValues) = FromProofNodes(receiptProof);
+
+        XdcTransactionAndReceiptProof proof = new()
+        {
+            BlockHash = block.Hash ?? throw new InvalidOperationException($"Block returned by FindBlock has a null hash for block hash lookup {blockHash}"),
+            TxRoot = block.Header.TxRoot ?? throw new InvalidOperationException($"Block {blockHash} has a null tx root"),
+            ReceiptRoot = block.Header.ReceiptsRoot ?? throw new InvalidOperationException($"Block {blockHash} has a null receipts root"),
+            Key = Bytes.ToHexString(Rlp.Encode(index).Bytes, withZeroX: true),
+            TxProofKeys = txProofKeys,
+            TxProofValues = txProofValues,
+            ReceiptProofKeys = receiptProofKeys,
+            ReceiptProofValues = receiptProofValues,
+        };
+
+        return Task.FromResult(ResultWrapper<XdcTransactionAndReceiptProof?>.Success(proof));
+    }
+
+    public Task<ResultWrapper<XdcAccountInfo>> eth_getAccountInfo(Address accountAddress, BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            // Marked temporary while the headers are still coming in, so a caller racing sync does not
+            // have the expected miss logged as a warning.
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                searchResult,
+                searchResult.ErrorCode == ErrorCodes.ResourceNotFound
+                && ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet()));
+        }
+
+        BlockHeader header = searchResult.Object!;
+        if (!stateReader.HasStateForBlock(header))
+        {
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                $"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable,
+                ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
+        }
+
+        if (!stateReader.TryGetAccount(header, accountAddress, out AccountStruct account))
+        {
+            return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(XdcAccountInfo.Absent(accountAddress)));
+        }
+
+        long codeSize = 0;
+        // An account without code needs no lookup, which covers every externally owned account.
+        if (account.HasCode)
+        {
+            byte[]? code = stateReader.GetCode(account.CodeHash);
+            if (code is null)
+            {
+                // The account claims code the code store cannot produce; reporting zero here would be
+                // indistinguishable from an externally owned account. A node still fetching state can have
+                // the account before its code lands, so that window is an expected miss like the two above.
+                return Task.FromResult(ResultWrapper<XdcAccountInfo>.Fail(
+                    $"Code {account.CodeHash} of account {accountAddress} is not available",
+                    ErrorCodes.ResourceUnavailable,
+                    ethSyncingInfo.SyncMode.HaveNotSyncedStateYet()));
+            }
+
+            codeSize = code.Length;
+        }
+
+        return Task.FromResult(ResultWrapper<XdcAccountInfo>.Success(new XdcAccountInfo
+        {
+            Address = accountAddress,
+            Balance = account.Balance,
+            Nonce = account.Nonce,
+            CodeHash = new Hash256(account.CodeHash),
+            CodeSize = codeSize,
+            StorageHash = new Hash256(account.StorageRoot),
+        }));
+    }
+
+    private static (string[] Keys, string[] Values) FromProofNodes(byte[][] proofNodes)
+    {
+        string[] nodeHashes = new string[proofNodes.Length];
+        string[] values = new string[proofNodes.Length];
+        for (int i = 0; i < proofNodes.Length; i++)
+        {
+            byte[] rlp = proofNodes[i];
+            nodeHashes[i] = Keccak.Compute(rlp).ToString();
+            values[i] = Bytes.ToHexString(rlp, withZeroX: true);
+        }
+
+        return (nodeHashes, values);
+    }
+}

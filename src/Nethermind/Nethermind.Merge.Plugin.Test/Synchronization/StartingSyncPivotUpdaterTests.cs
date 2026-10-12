@@ -9,7 +9,9 @@ using NSubstitute;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -54,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             // for unsafe pivot updater
             Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(35)!.BlockInfos[0].BlockHash;
-            fakePeer.GetBlockHeaders(35, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
+            fakePeer.GetBlockHeaders(35, 1, 0, default).ReturnsForAnyArgs(_ => FindNonNullHeaders(_externalPeerBlockTree!, pivotHash, 1, 0, default));
 
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
@@ -87,10 +89,27 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private UnsafeStartingSyncPivotUpdater CreateUnsafeUpdater() =>
             new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
 
+        // Real BeaconSync over an empty block cache: the only finalized hash source is the block tree.
+        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync()
+        {
+            IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+            poSSwitcher.TransitionFinished.Returns(true);
+            BeaconSync beaconSync = new(
+                Substitute.For<IBeaconPivot>(),
+                _blockTree!,
+                _syncConfig!,
+                _blockCacheService!,
+                poSSwitcher,
+                LimboLogs.Instance);
+
+            return new StartingSyncPivotUpdater(
+                _blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, beaconSync, LimboLogs.Instance);
+        }
+
         [Test]
         public async Task TrySetFreshPivot_saves_FinalizedHash_in_db()
         {
-            Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
+            Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
             ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
 
@@ -103,6 +122,57 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
 
             Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
             Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_falls_back_to_FinalizedHash_persisted_in_block_tree_when_no_FCU_received()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "pivot should be updated from the persisted finalized hash without any FCU");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_keeps_waiting_when_persisted_FinalizedHash_is_zero()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = ISyncConfig.InfiniteAttempts;
+            _blockTree!.ForkChoiceUpdated(Keccak.Zero, Keccak.Zero);
+
+            using CancellationTokenSource cts = new();
+            Task task = CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(cts.Token);
+            await Task.WhenAny(task, Task.Delay(200));
+            cts.Cancel();
+            try { await task; } catch (OperationCanceledException) { }
+
+            Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
+                "a zero finalized hash means no data, so no pivot should be set");
+            Assert.That(_syncConfig!.MaxAttemptsToUpdatePivot, Is.EqualTo(ISyncConfig.InfiniteAttempts),
+                "attempts remain, so the updater must keep waiting instead of falling back to the static pivot");
+        }
+
+        [Test]
+        public async Task TrySetFreshPivot_ignores_zero_cached_FinalizedHash_and_falls_back_to_block_tree()
+        {
+            Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
+            ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
+            _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
+            _blockCacheService!.FinalizedHash = Keccak.Zero;
+
+            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+
+            byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
+            Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");
+            RlpReader ctx = new(storedData!);
+            Assert.That(ctx.DecodeULong(), Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(ctx.DecodeKeccak(), Is.EqualTo(persistedFinalizedHash));
         }
 
         [TestCase(2, 0, TestName = "Finite_attempts_fall_back_to_static_pivot_after_exhaustion")]
@@ -127,7 +197,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public async Task TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
-            Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash;
+            Hash256 expectedHeadBlockHash = _externalPeerBlockTree!.HeadHash!;
             ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 expectedPivotBlockHash = _externalPeerBlockTree!.FindLevel(expectedPivotBlockNumber)!.BlockInfos[0].BlockHash;
             _beaconSyncStrategy!.GetHeadBlockHash().Returns(expectedHeadBlockHash);
@@ -149,14 +219,26 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             ulong requestedPivotNumber = _externalPeerBlockTree!.Head!.Number - 64;
             Hash256 wrongNumberHash = _externalPeerBlockTree!.FindLevel(requestedPivotNumber + 5)!.BlockInfos[0].BlockHash;
             _syncPeer!.GetBlockHeaders(requestedPivotNumber, 1, 0, default)
-                .ReturnsForAnyArgs(_ => _externalPeerBlockTree!.FindHeaders(wrongNumberHash, 1, 0, default));
+                .ReturnsForAnyArgs(_ => FindNonNullHeaders(_externalPeerBlockTree!, wrongNumberHash, 1, 0, default));
 
-            _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash);
+            _beaconSyncStrategy!.GetHeadBlockHash().Returns(_externalPeerBlockTree!.HeadHash!);
 
             await CreateUnsafeUpdater().EnsureSyncPivot(default);
 
             Assert.That(_metadataDb!.Get(MetadataDbKeys.UpdatedPivotData), Is.Null,
                 "a peer header at a number other than the requested one must not set the pivot");
+        }
+
+        private static IOwnedReadOnlyList<BlockHeader> FindNonNullHeaders(IBlockTree blockTree, Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        {
+            using IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+            ArrayPoolList<BlockHeader> result = new(headers.Count);
+            for (int i = 0; i < headers.Count; i++)
+            {
+                result.Add(headers[i]);
+            }
+
+            return result;
         }
     }
 }

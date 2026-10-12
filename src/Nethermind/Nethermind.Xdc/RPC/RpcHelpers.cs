@@ -15,10 +15,63 @@ namespace Nethermind.Xdc.RPC;
 
 internal static class RpcHelpers
 {
-    public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot, XdcBlockHeader header) => new()
+    public static AccountEpochReward BuildAccountEpochReward(
+        this XdcEpochRewards epochRewardData,
+        Address account,
+        ulong epochBlockNumber)
     {
-        Number = header.Number,
-        Hash = header.Hash,
+        string accountKey = account.ToString();
+
+        if (TryReadSignerEpochReward(
+                epochRewardData.Signers,
+                epochRewardData.Rewards,
+                account,
+                accountKey,
+                epochBlockNumber,
+                XdcConstants.RpcAccountStatusMasternode,
+                out AccountEpochReward masternodeReward))
+        {
+            return masternodeReward;
+        }
+
+        if (TryReadSignerEpochReward(
+                epochRewardData.SignersProtector,
+                epochRewardData.RewardsProtector,
+                account,
+                accountKey,
+                epochBlockNumber,
+                XdcConstants.RpcAccountStatusProtector,
+                out AccountEpochReward protectorReward))
+        {
+            return protectorReward;
+        }
+
+        if (TryReadSignerEpochReward(
+                epochRewardData.SignersObserver,
+                epochRewardData.RewardsObserver,
+                account,
+                accountKey,
+                epochBlockNumber,
+                XdcConstants.RpcAccountStatusObserver,
+                out AccountEpochReward observerReward))
+        {
+            return observerReward;
+        }
+
+        return new AccountEpochReward
+        {
+            EpochBlockNum = epochBlockNumber,
+            Address = account,
+            AccountStatus = "",
+            AccountReward = null,
+            DelegatedReward = [],
+        };
+    }
+
+    public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot) => new()
+    {
+        Number = (ulong)snapshot.BlockNumber,
+        Hash = snapshot.HeaderHash,
         Signers = snapshot.NextEpochCandidates.ToHashSet(),
     };
 
@@ -50,13 +103,8 @@ internal static class RpcHelpers
             XdcBlockHeader parentHeader = parentHeaderBase as XdcBlockHeader
                 ?? throw new InvalidOperationException($"Parent header is not XdcBlockHeader");
 
-            if (parentHeader.ExtraConsensusData == null || nextHeader.ExtraConsensusData == null)
-            {
-                throw new InvalidOperationException("ExtraConsensusData is null");
-            }
-
-            ulong parentRound = parentHeader.ExtraConsensusData.BlockRound;
-            ulong currRound = nextHeader.ExtraConsensusData.BlockRound;
+            ulong parentRound = GetRoundNumber(parentHeader, spec);
+            ulong currRound = GetRoundNumber(nextHeader, spec);
 
             // This indicates that an increment in the round number is missing during the block production process.
             if (parentRound + 1 != currRound)
@@ -91,5 +139,58 @@ internal static class RpcHelpers
         };
 
         return missedRoundsMetadata;
+    }
+
+    /// <remarks>
+    /// Mirrors <c>XDPoS_v2.GetRoundNumber</c>: blocks up to and including the V2 switch block count as round 0,
+    /// since they carry no V2 extra data - e.g. the genesis of a subnet, which is V2 from its first block.
+    /// </remarks>
+    private static ulong GetRoundNumber(XdcBlockHeader header, IXdcReleaseSpec spec) =>
+        header.Number <= spec.SwitchBlock
+            ? 0
+            : header.ExtraConsensusData?.BlockRound ?? throw new InvalidOperationException("ExtraConsensusData is null");
+
+    private static bool TryReadSignerEpochReward(
+        Dictionary<string, XdcRewardLog> signers,
+        Dictionary<string, Dictionary<string, string>> rewards,
+        Address account,
+        string accountKey,
+        ulong epochBlockNumber,
+        string accountStatus,
+        out AccountEpochReward epochReward)
+    {
+        if (!signers.TryGetValue(accountKey, out XdcRewardLog? signerData))
+        {
+            epochReward = null!;
+            return false;
+        }
+
+        UInt256? accountReward = null;
+        if (UInt256.TryParse(signerData.Reward, out UInt256 reward))
+        {
+            accountReward = reward;
+        }
+
+        Dictionary<string, UInt256> delegatedReward = [];
+        if (rewards.TryGetValue(accountKey, out Dictionary<string, string>? holders))
+        {
+            foreach ((string holder, string amountStr) in holders)
+            {
+                if (UInt256.TryParse(amountStr, out UInt256 amount))
+                {
+                    delegatedReward[holder] = amount;
+                }
+            }
+        }
+
+        epochReward = new AccountEpochReward
+        {
+            EpochBlockNum = epochBlockNumber,
+            Address = account,
+            AccountStatus = accountStatus,
+            AccountReward = accountReward,
+            DelegatedReward = delegatedReward,
+        };
+        return true;
     }
 }

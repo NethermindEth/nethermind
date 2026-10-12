@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using Nethermind.Core;
 
@@ -28,6 +29,7 @@ namespace Nethermind.Crypto
         }
 
 #pragma warning disable CA1416
+        [MemberNotNull(nameof(_entropy), nameof(_encryptedData))]
         private void Protect(byte[] data)
         {
             _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);

@@ -10,12 +10,16 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.State;
 
 /// <summary>
-/// Persists the oldest-state-block floor for the trie backend, co-located with the trie nodes
-/// in the state DB so wiping the state directory drops the floor automatically. Flat does not
-/// use this store — its <see cref="IStateBoundary.OldestStateBlock"/> reads through the
-/// persistence manager directly.
+/// Trie backend's <see cref="IStateBoundary"/>. The oldest-state-block floor is co-located with
+/// the trie nodes in the state DB (so wiping the state directory drops it); the best-persisted-state
+/// ceiling stays in the BlockInfos DB where the block tree has always kept it. Flat does not use
+/// this store — its boundary reads through the persistence manager directly.
 /// </summary>
-public sealed class StateBoundaryStore(IKeyValueStore kv, ILogManager? logManager = null)
+public sealed class StateBoundaryStore(
+    IKeyValueStore stateDb,
+    IKeyValueStore blockInfosDb,
+    ulong? retentionWindowBlocks,
+    ILogManager? logManager = null) : IStateBoundary, IStateBoundaryWriter
 {
     /// <summary>
     /// 32-byte keccak slot key, collision-free against the trie DB's hash-keyed (32 bytes of
@@ -23,38 +27,70 @@ public sealed class StateBoundaryStore(IKeyValueStore kv, ILogManager? logManage
     /// </summary>
     internal static readonly byte[] OldestStateBlockKey = Keccak.Compute("OldestStateBlock").BytesToArray();
 
+    /// <summary>The BlockInfos DB key the block tree has always used for the best-persisted-state block.</summary>
+    internal static readonly byte[] BestPersistedStateKey = new byte[16];
+
     private readonly ILogger _logger = logManager?.GetClassLogger<StateBoundaryStore>() ?? default;
     private readonly Lock _lock = new();
-    private ulong? _value = DecodeOldestStateBlock(kv[OldestStateBlockKey]);
+    private ulong? _oldestStateBlock = DecodeBlockNumber(stateDb[OldestStateBlockKey]);
+    private ulong? _bestPersistedState = DecodeBlockNumber(blockInfosDb[BestPersistedStateKey]);
+
+    public ulong? RetentionWindowBlocks => retentionWindowBlocks;
 
     public ulong? OldestStateBlock
     {
         get
         {
-            lock (_lock) return _value;
+            lock (_lock) return _oldestStateBlock;
         }
         set
         {
             lock (_lock)
             {
-                if (_value == value) return;
+                if (_oldestStateBlock == value) return;
                 // Reject backward non-null writes; null reset is permitted for recovery.
-                if (value.HasValue && _value.HasValue && value.Value < _value.Value)
+                if (value.HasValue && _oldestStateBlock.HasValue && value.Value < _oldestStateBlock.Value)
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"Rejected backward OldestStateBlock write {value.Value} (current floor {_value.Value}); kept current.");
+                        _logger.Warn($"Rejected backward OldestStateBlock write {value.Value} (current floor {_oldestStateBlock.Value}); kept current.");
                     return;
                 }
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
-                    kv[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
+                    stateDb[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
                 else
-                    kv.Remove(OldestStateBlockKey);
-                _value = value;
+                    stateDb.Remove(OldestStateBlockKey);
+                _oldestStateBlock = value;
             }
         }
     }
 
-    private static ulong? DecodeOldestStateBlock(byte[]? rlp) =>
+    /// <summary>
+    /// Highest block whose state is durably persisted. Last-write-wins — unlike the
+    /// <see cref="OldestStateBlock"/> floor, boundaries legitimately move backward after deep
+    /// rewinds, so no monotonic guard.
+    /// </summary>
+    public ulong? BestPersistedState
+    {
+        get
+        {
+            lock (_lock) return _bestPersistedState;
+        }
+        set
+        {
+            lock (_lock)
+            {
+                if (_bestPersistedState == value) return;
+                // Persist before caching so a thrown kv write doesn't desync memory from disk.
+                if (value.HasValue)
+                    blockInfosDb[BestPersistedStateKey] = Rlp.Encode(value.Value).Bytes;
+                else
+                    blockInfosDb.Remove(BestPersistedStateKey);
+                _bestPersistedState = value;
+            }
+        }
+    }
+
+    private static ulong? DecodeBlockNumber(byte[]? rlp) =>
         rlp is null ? null : new RlpReader(rlp).DecodeULong();
 }

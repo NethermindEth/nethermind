@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -121,8 +122,11 @@ public class ForkInfoTests
     [TestCase(1735374ul, 1_760_428_360ul, "0xe2ae4999", 1_761_017_184ul, "Future Osaka timestamp")]
     [TestCase(1735373ul, 1_761_017_184ul, "0x56078a1e", 1_761_607_008ul, "First BPO1 timestamp")]
     [TestCase(1735374ul, 1_761_018_184ul, "0x56078a1e", 1_761_607_008ul, "Future BPO1 timestamp")]
-    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", 0ul, "First BPO2 timestamp")]
-    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", 0ul, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp - 1, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Last timestamp before Amsterdam")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp, "0x6c1d9423", 0ul, "First Amsterdam timestamp")]
+    [TestCase(1735374ul, SepoliaSpecProvider.AmsterdamTimestamp + 1000, "0x6c1d9423", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description) => Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
 
     [TestCase(0ul, 0ul, "0xf64909b1", 1604400ul, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
@@ -170,8 +174,10 @@ public class ForkInfoTests
     [TestCase(6_000_000ul, HoodiSpecProvider.BPO1Timestamp - 1, "0xe7e0e7ff", HoodiSpecProvider.BPO1Timestamp, "Future Osaka timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO1Timestamp, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "First BPO1 timestamp")]
     [TestCase(7_000_000ul, HoodiSpecProvider.BPO2Timestamp - 1, "0x3893353e", HoodiSpecProvider.BPO2Timestamp, "Future BPO1 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", 0ul, "First BPO2 timestamp")]
-    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp + 100000, "0x23aa1351", 0ul, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.BPO2Timestamp, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp - 1, "0x23aa1351", HoodiSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp, "0x3d068b59", 0ul, "First Amsterdam timestamp")]
+    [TestCase(8_000_000ul, HoodiSpecProvider.AmsterdamTimestamp + 100000, "0x3d068b59", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_hoodi(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -333,6 +339,56 @@ public class ForkInfoTests
         Assert.That(forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header), Is.EqualTo(result));
     }
 
+    [TestCase("0xfc64ec04", 1_150_000ul, true, "Frontier with correct Homestead next")]
+    [TestCase("0xfc64ec04", 0ul, true, "Frontier, remote does not know the next fork yet")]
+    [TestCase("0xfc64ec04", 42ul, false, "Frontier with mismatched next")]
+    [TestCase("0x9f3d2254", 1_746_612_311ul, true, "Cancun with correct Prague next")]
+    [TestCase("0x12345678", 0ul, false, "Unknown fork hash")]
+    [TestCase("0x12345678", 1_150_000ul, false, "Unknown fork hash with known next")]
+    public void Test_fork_id_compatibility_mainnet(string hash, ulong next, bool expected, string description) =>
+        Assert.That(
+            CreateMainnetForkInfo().IsForkIdCompatible(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next)),
+            Is.EqualTo(expected),
+            description);
+
+    [Test]
+    public void Test_last_known_fork_id_compatibility_mainnet([Values(0ul, 9_999_999_999ul)] ulong next)
+    {
+        ForkInfo forkInfo = CreateMainnetForkInfo();
+        Fork lastFork = forkInfo.GetForkActivationsSummary(null).Last!.Value;
+
+        Assert.That(forkInfo.IsForkIdCompatible(new ForkId(lastFork.Id.ForkHash, next)), Is.True);
+    }
+
+    [Test]
+    public void Node_record_without_eth_entry_is_fork_compatible()
+    {
+        ForkInfo forkInfo = CreateMainnetForkInfo();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkInfo.IsNodeRecordForkCompatible(null), Is.True);
+            Assert.That(forkInfo.IsNodeRecordForkCompatible(new NodeRecord()), Is.True);
+        }
+    }
+
+    [TestCase("0xfc64ec04", 1_150_000ul, true)]
+    [TestCase("0xfc64ec04", 42ul, false)]
+    [TestCase("0x12345678", 0ul, false)]
+    public void Node_record_eth_entry_is_validated_against_fork_schedule(string hash, ulong next, bool expected)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new EthEntry(Bytes.FromHexString(hash), next));
+
+        Assert.That(CreateMainnetForkInfo().IsNodeRecordForkCompatible(record), Is.EqualTo(expected));
+    }
+
+    private static ForkInfo CreateMainnetForkInfo()
+    {
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
+        return new ForkInfo(MainnetSpecProvider.Instance, syncServer);
+    }
 
     [TestCase(2ul, 3ul, 2ul, 3ul)]
     [TestCase(2ul, null, 2ul, 2ul)]

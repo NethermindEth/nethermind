@@ -68,7 +68,7 @@ public class BalRecorderE2ETests
                 ReadOnlyBlockAccessList? reread = store.Get(number);
                 Assert.That(reread, Is.Not.Null);
                 using ArrayPoolSpan<byte> reencoded = BalDecoder.EncodeToArrayPoolSpan(reread!);
-                Assert.That(((ReadOnlySpan<byte>)reencoded).ToArray(), Is.EqualTo(expected));
+                Assert.That((ReadOnlySpan<byte>)reencoded, Is.SequenceEqualTo(expected));
             }
         }
         finally
@@ -100,10 +100,10 @@ public class BalRecorderE2ETests
         ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
             .LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
-        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
+        spec.Genesis!.Header.BaseFeePerGas = 10.Wei;
         spec.Genesis.Header.GasLimit = 1_000_000_000;
         spec.Genesis.Header.Difficulty = 10000;
-        spec.Allocations[TestItem.PrivateKeyA.Address] = new ChainSpecAllocation(300.Ether);
+        spec.Allocations![TestItem.PrivateKeyA.Address] = new ChainSpecAllocation(300.Ether);
         spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
             Code = Eip7002TestConstants.Code,
@@ -132,7 +132,7 @@ public class BalRecorderE2ETests
         return new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, $"bal-e2e-{Guid.NewGuid():N}"))
-            .AddModule(new TestMergeModule(configProvider))
+            .AddModule(new TestMergeModule())
             .AddModule(new BalRecorderModule())
             .AddSingleton(timestamper)
             .AddSingleton<BlockBuilder>()

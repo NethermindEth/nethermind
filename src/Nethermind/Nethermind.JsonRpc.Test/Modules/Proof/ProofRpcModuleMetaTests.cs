@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -16,7 +15,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -59,7 +57,7 @@ public class ProofRpcModuleMetaTests
             worldState.CreateAccount(TestItem.AddressC, 300_000);
             for (int i = 0; i < StorageSlotCount; i++)
             {
-                worldState.Set(new StorageCell(TestItem.AddressB, (UInt256)i), [(byte)(i + 1)]);
+                worldState.Set(new StorageCell(TestItem.AddressB, (UInt256)i), (UInt256)(byte)(i + 1));
             }
             worldState.Commit(London.Instance);
             worldState.CommitTree(0);
@@ -76,7 +74,6 @@ public class ProofRpcModuleMetaTests
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))
             .AddSingleton<ISpecProvider>(_specProvider)
-            .AddSingleton<IBlockPreprocessorStep>(new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId), _specProvider, LimboLogs.Instance)))
             .AddSingleton<IBlockTree>(_blockTree)
             .AddSingleton<IDbProvider>(_dbProvider)
             .AddSingleton<IHeaderFinder>(blockTreeBuilder.HeaderStore)

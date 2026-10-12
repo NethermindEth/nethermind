@@ -92,7 +92,7 @@ namespace Nethermind.Init
             // On 16C/32T machine, this reduces memory usage by about 7GB.
             // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
             // lowers. 4k significantly increase cpu system time.
-            bool success = MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64UL.KiB);
+            bool success = _mallocHelper.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64UL.KiB);
             if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 

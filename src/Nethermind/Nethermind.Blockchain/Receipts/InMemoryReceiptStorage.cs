@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,9 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
         private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
+
+        // A receipt does not reliably carry its height - Insert and EnsureCanonical never set it.
+        private readonly ConcurrentDictionary<Hash256AsKey, ulong> _blockNumbers = new();
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs>? NewCanonicalReceipts;
@@ -70,6 +74,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[] txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             _receipts[block.Hash] = txReceipts;
+            _blockNumbers[block.Hash] = block.Number;
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
@@ -79,6 +84,8 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
+
+        public TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => Get(blockHash, recover: false);
 
         public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
@@ -97,9 +104,43 @@ namespace Nethermind.Blockchain.Receipts
         public void RemoveReceipts(Block block)
         {
             _receipts.TryRemove(block.Hash, out _);
+            _blockNumbers.TryRemove(block.Hash, out _);
             foreach (Transaction tx in block.Transactions)
             {
                 _transactions.TryRemove(tx.Hash, out _);
+            }
+        }
+
+        /// <summary>Takes the transaction index with it, for the same reason as <see cref="RemoveReceiptsRange"/>. The
+        /// number is not needed here: this store is keyed by hash alone.</summary>
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+            _blockNumbers.TryRemove(blockHash, out _);
+            if (_receipts.TryRemove(blockHash, out TxReceipt[]? removed))
+            {
+                foreach (TxReceipt receipt in removed)
+                {
+                    _transactions.TryRemove(receipt.TxHash, out _);
+                }
+            }
+        }
+
+        /// <summary>Takes the transaction index with it: unlike the persistent store, nothing sweeps behind this one.
+        /// </summary>
+        public void RemoveReceiptsRange(ulong fromInclusive, ulong toExclusive)
+        {
+            foreach (KeyValuePair<Hash256AsKey, ulong> entry in _blockNumbers)
+            {
+                if (entry.Value < fromInclusive || entry.Value >= toExclusive) continue;
+
+                _blockNumbers.TryRemove(entry.Key, out _);
+                if (_receipts.TryRemove(entry.Key, out TxReceipt[]? removed))
+                {
+                    foreach (TxReceipt receipt in removed)
+                    {
+                        _transactions.TryRemove(receipt.TxHash, out _);
+                    }
+                }
             }
         }
 

@@ -14,13 +14,4 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         ResultWrapper<TResult> Handle(TRequest request);
     }
-
-    /// <summary>
-    /// Handles a parameterless JSON RPC request.
-    /// </summary>
-    /// <typeparam name="TResult">Request result type</typeparam>
-    public interface IHandler<TResult>
-    {
-        ResultWrapper<TResult> Handle();
-    }
 }

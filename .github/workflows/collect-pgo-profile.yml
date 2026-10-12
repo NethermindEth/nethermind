@@ -356,7 +356,7 @@ jobs:
         with:
           name: nethermind-pgo-profile
           path: ${{ steps.convert.outputs.mibc_file }}
-          retention-days: 90
+          retention-days: 14
 
       - name: Upload trimmed .jit.gz artifact
         if: always() && steps.convert.outputs.jit_gz != ''
@@ -364,7 +364,7 @@ jobs:
         with:
           name: nethermind-pgo-jit
           path: ${{ steps.convert.outputs.jit_gz }}
-          retention-days: 90
+          retention-days: 14
 
       - name: Upload raw PGO data
         if: always()

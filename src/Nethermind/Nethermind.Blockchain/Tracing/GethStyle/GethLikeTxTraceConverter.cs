@@ -5,6 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Collections.Pooled;
+using Nethermind.Core;
+using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
@@ -38,7 +42,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
                 ForcedNumberConversion.Value = NumberConversion.Raw;
                 try
                 {
-                    trace.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
+                    trace.Gas = TypeInfoJsonSerializer.Deserialize<ulong>(ref reader, options);
                 }
                 finally
                 {
@@ -51,21 +55,21 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             if (reader.ValueTextEquals("failed"u8))
             {
                 reader.Read();
-                trace.Failed = JsonSerializer.Deserialize<bool>(ref reader, options);
+                trace.Failed = TypeInfoJsonSerializer.Deserialize<bool>(ref reader, options);
                 continue;
             }
 
             if (reader.ValueTextEquals("returnValue"u8))
             {
                 reader.Read();
-                trace.ReturnValue = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                trace.ReturnValue = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
                 continue;
             }
 
             if (reader.ValueTextEquals("structLogs"u8))
             {
                 reader.Read();
-                trace.Entries = JsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options);
+                trace.Entries = TypeInfoJsonSerializer.Deserialize<List<GethTxTraceEntry>>(ref reader, options);
                 continue;
             }
 
@@ -89,7 +93,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
 
         if (value.CustomTracerResult is not null)
         {
-            JsonSerializer.Serialize(writer, value.CustomTracerResult, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.CustomTracerResult, options);
             return;
         }
 
@@ -100,7 +104,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         try
         {
             writer.WritePropertyName("gas"u8);
-            JsonSerializer.Serialize(writer, value.Gas, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Gas, options);
         }
         finally
         {
@@ -108,14 +112,100 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         }
 
         writer.WritePropertyName("failed"u8);
-        JsonSerializer.Serialize(writer, value.Failed, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Failed, options);
 
         writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(writer, value.ReturnValue, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.ReturnValue, options);
 
         writer.WritePropertyName("structLogs"u8);
-        JsonSerializer.Serialize(writer, value.Entries, options);
+        WriteEntriesWithStorageForwardPass(writer, value.Entries);
 
+        writer.WriteEndObject();
+    }
+
+    private static void WriteEntriesWithStorageForwardPass(
+        Utf8JsonWriter writer,
+        List<GethTxTraceEntry> entries)
+    {
+        using PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> runningByAddress = new(4);
+        writer.WriteStartArray();
+        try
+        {
+            foreach (GethTxTraceEntry entry in entries)
+            {
+                PooledDictionary<UInt256, UInt256>? map = null;
+                if (entry.StorageDelta is { } delta)
+                {
+                    if (!runningByAddress.TryGetValue(delta.Address, out map))
+                    {
+                        map = new PooledDictionary<UInt256, UInt256>(8);
+                        runningByAddress[delta.Address] = map;
+                    }
+                    map[delta.Key] = delta.Value;
+                }
+                WriteEntry(writer, entry, map);
+            }
+        }
+        finally
+        {
+            foreach (PooledDictionary<UInt256, UInt256> inner in runningByAddress.Values)
+                inner.Dispose();
+        }
+        writer.WriteEndArray();
+    }
+
+    /// <summary>Estimates opcode JSON size from lengths and counts without inspecting field contents.</summary>
+    /// <remarks>Fixed fields fit within 256 bytes. Opcode and error strings allow six bytes per escaped UTF-16 code unit;
+    /// return data is unescaped hex.</remarks>
+    internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData?.Length ?? 0)
+        + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
+        + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
+
+    internal static void WriteEntry(
+        Utf8JsonWriter writer,
+        GethTxTraceEntry entry,
+        IDictionary<UInt256, UInt256>? storage)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("pc"u8, entry.ProgramCounter);
+        writer.WriteString("op"u8, entry.Opcode);
+        writer.WriteNumber("gas"u8, entry.Gas);
+        writer.WriteNumber("gasCost"u8, entry.GasCost);
+        writer.WriteNumber("depth"u8, entry.Depth);
+        if (entry.Error is not null) writer.WriteString("error"u8, entry.Error);
+        if (entry.Refund is { } refund) writer.WriteNumber("refund"u8, refund);
+
+        if (entry.Stack is { } stack)
+        {
+            writer.WriteStartArray("stack"u8);
+            ReadOnlySpan<byte> stackSpan = stack.Span;
+            for (int i = 0; i < stackSpan.Length; i += EvmStack.WordSize)
+                HexWriter.WriteUInt256HexRawValue(writer,
+                    new UInt256(stackSpan.Slice(i, EvmStack.WordSize), isBigEndian: true));
+            writer.WriteEndArray();
+        }
+
+        if (entry.Memory is { IsEmpty: false } memory)
+        {
+            writer.WriteStartArray("memory"u8);
+            ReadOnlySpan<byte> memSpan = memory.Span;
+            for (int i = 0; i < memSpan.Length; i += EvmPooledMemory.WordSize)
+                HexWriter.WriteFixed32HexRawValue(writer,
+                    memSpan.Slice(i, EvmPooledMemory.WordSize), addHexPrefix: true);
+            writer.WriteEndArray();
+        }
+
+        IDictionary<UInt256, UInt256>? effectiveStorage = storage ?? entry.Storage;
+        if (effectiveStorage is not null)
+        {
+            writer.WriteStartObject("storage"u8);
+            foreach (KeyValuePair<UInt256, UInt256> kv in effectiveStorage)
+                HexWriter.WriteUInt256StorageSlot(writer, kv.Key, kv.Value);
+            writer.WriteEndObject();
+        }
+
+        if (entry.ReturnData is not null) writer.WriteString("returnData"u8, entry.ReturnData);
         writer.WriteEndObject();
     }
 }

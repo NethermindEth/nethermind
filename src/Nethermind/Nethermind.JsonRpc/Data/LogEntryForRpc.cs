@@ -8,24 +8,6 @@ namespace Nethermind.JsonRpc.Data
 {
     public class LogEntryForRpc
     {
-        public LogEntryForRpc()
-        {
-        }
-
-        public LogEntryForRpc(TxReceipt receipt, LogEntry logEntry, ulong blockTimestamp, int index)
-        {
-            Removed = false;
-            LogIndex = index;
-            TransactionIndex = receipt.Index;
-            TransactionHash = receipt.TxHash;
-            BlockHash = receipt.BlockHash;
-            BlockTimestamp = blockTimestamp;
-            BlockNumber = receipt.BlockNumber;
-            Address = logEntry.Address;
-            Data = logEntry.Data;
-            Topics = logEntry.Topics;
-        }
-
         public bool? Removed { get; set; }
         public long? LogIndex { get; set; }
         public long? TransactionIndex { get; set; }

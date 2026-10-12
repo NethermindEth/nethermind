@@ -13,7 +13,7 @@ namespace Nethermind.Init.Steps
     {
         public Task Execute(CancellationToken _)
         {
-            mainProcessingContext.BlockchainProcessor.Start();
+            mainProcessingContext.BlockProcessingQueue.Start();
             return Task.CompletedTask;
         }
     }

@@ -4,8 +4,10 @@
 #nullable enable
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -120,6 +122,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Summary.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -127,7 +131,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Summary.Child child = _stableChildren.GetOrAdd(labels, static (l, s) => s.WithLabels(l.Labels), summary);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     summary.WithLabels(labels.Labels).Observe(value);
                 }
@@ -140,6 +149,8 @@ namespace Nethermind.Monitoring.Metrics
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
+            private readonly ConcurrentDictionary<IMetricLabels, Histogram.Child> _stableChildren = new(ReferenceEqualityComparer.Instance);
+
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -147,7 +158,12 @@ namespace Nethermind.Monitoring.Metrics
 
             public void Observe(double value, IMetricLabels? labels = null)
             {
-                if (labels is not null)
+                if (labels is IStableMetricLabels)
+                {
+                    Histogram.Child child = _stableChildren.GetOrAdd(labels, static (l, h) => h.WithLabels(l.Labels), histogram);
+                    child.Observe(value);
+                }
+                else if (labels is not null)
                 {
                     histogram.WithLabels(labels.Labels).Observe(value);
                 }
@@ -202,7 +218,7 @@ namespace Nethermind.Monitoring.Metrics
                 : meter.CreateObservableGauge(name, observer, description: description);
         }
 
-        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
+        private static string GetStaticMemberInfo([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type givenInformer, string givenName)
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
@@ -211,7 +227,7 @@ namespace Nethermind.Monitoring.Metrics
             return value.ToString()!;
         }
 
-        public void RegisterMetrics(Type type)
+        public void RegisterMetrics([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {

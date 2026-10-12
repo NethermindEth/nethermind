@@ -22,6 +22,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -33,9 +34,8 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
-    [TestCase("null_hash")]
-    [TestCase("default_either")]
-    public void LogDiagnosticTrace_does_not_throw_for_edge_cases(string variant)
+    [Test]
+    public void LogDiagnosticTrace_does_not_throw_for_edge_cases([Values("null_hash", "default_either")] string variant)
     {
         ILogger logger = LimboLogs.Instance.GetClassLogger<BlockchainProcessorTests>();
         Either<Hash256, IList<Block>> input = variant == "null_hash"
@@ -46,7 +46,7 @@ public class BlockchainProcessorTests
             BlockTraceDumper.LogDiagnosticTrace(NullBlockTracer.Instance, input, logger));
     }
 
-    private class ProcessingTestContext
+    private class ProcessingTestContext : IAsyncDisposable
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
 
@@ -58,9 +58,17 @@ public class BlockchainProcessorTests
 
             internal readonly HashSet<Hash256> Processed = [];
 
+            // The instance actually handed to the branch processor, so tests can assert that transient
+            // non-RLP data survived recovery-queue resolution.
+            internal readonly ConcurrentDictionary<Hash256, Block> ProcessedBlockByHash = new();
+
             private readonly ConcurrentHashSet<Hash256> _allowedToFail = [];
 
             private readonly HashSet<Hash256> _rootProcessed = [];
+
+            // Blocks that raise BlockExecuted as soon as they reach the processor and then wait for Allow, which
+            // stands for the commit still ahead of a block that has had its verdict.
+            private readonly ConcurrentHashSet<Hash256> _executeBeforeAllowed = [];
 
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
@@ -76,6 +84,15 @@ public class BlockchainProcessorTests
                 lock (_gate)
                 {
                     _allowed.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
+            }
+
+            public void ExecuteBeforeAllowed(Hash256 hash)
+            {
+                lock (_gate)
+                {
+                    _executeBeforeAllowed.Add(hash);
                     Monitor.PulseAll(_gate);
                 }
             }
@@ -99,52 +116,82 @@ public class BlockchainProcessorTests
                 }
 
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
+                foreach (Block suggested in suggestedBlocks) ProcessedBlockByHash[suggested.Hash!] = suggested;
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
-                while (true)
+                int nextAnnounced = 0;
+                BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                int processedBlocksCount = 0;
+                Exception? processingException = null;
+
+                try
                 {
-                    lock (_gate)
+                    while (true)
                     {
-                        bool notYet = false;
-                        for (int i = nextBlock; i < suggestedBlocks.Count; i++)
+                        lock (_gate)
                         {
-                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                            Block suggestedBlock = suggestedBlocks[i];
-                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                            Hash256 hash = suggestedBlock.Hash!;
-                            if (!_allowed.Contains(hash))
+                            bool done = true;
+                            for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                             {
-                                if (_allowedToFail.TryRemove(hash))
+                                Block suggestedBlock = suggestedBlocks[i];
+                                // Once per block, as the real processor raises it, however often a held block is rechecked.
+                                if (i == nextAnnounced)
                                 {
-                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                                    nextAnnounced++;
+                                    token.ThrowIfCancellationRequested();
+                                }
+                                Hash256 hash = suggestedBlock.Hash!;
+                                if (_executeBeforeAllowed.TryRemove(hash)) BlockExecuted?.Invoke(this, new BlockExecutedEventArgs(suggestedBlock));
+                                if (!_allowed.Contains(hash))
+                                {
+                                    if (_allowedToFail.TryRemove(hash))
+                                    {
+                                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                        throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                    }
+
+                                    done = false;
+                                    break;
                                 }
 
-                                notYet = true;
-                                break;
+                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                processedBlocksCount = i + 1;
+                                nextBlock = i + 1;
                             }
 
-                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
-                            nextBlock = i + 1;
-                        }
+                            if (done)
+                            {
+                                _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
+                                return suggestedBlocks.ToArray();
+                            }
 
-                        if (notYet)
-                        {
                             Monitor.Wait(_gate, MockRecheckInterval);
-                        }
-                        else
-                        {
-                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                            return suggestedBlocks.ToArray();
+                            token.ThrowIfCancellationRequested();
                         }
                     }
+                }
+                catch (Exception ex)
+                {
+                    processingException = ex;
+                    throw;
+                }
+                finally
+                {
+                    BranchProcessingCompleted?.Invoke(
+                        this,
+                        new BranchProcessingCompletedEventArgs(suggestedBlocks, processedBlocksCount, processingException));
                 }
             }
 
             public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
+            public event EventHandler<BranchProcessingCompletedEventArgs>? BranchProcessingCompleted;
+
             public event EventHandler<BlockEventArgs>? BlockProcessing;
+
+            public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         }
@@ -162,6 +209,15 @@ public class BlockchainProcessorTests
                 lock (_gate)
                 {
                     _allowed[hash] = new object();
+                    Monitor.PulseAll(_gate);
+                }
+            }
+
+            public void AllowToFail(Hash256 hash)
+            {
+                lock (_gate)
+                {
+                    _allowedToFail[hash] = new object();
                     Monitor.PulseAll(_gate);
                 }
             }
@@ -214,7 +270,7 @@ public class BlockchainProcessorTests
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
-        public ProcessingTestContext(bool startProcessor)
+        public ProcessingTestContext(bool startProcessor, int blockProcessingTimeoutMs = 0, TimeProvider? timeProvider = null)
         {
             _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
@@ -224,7 +280,8 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance,
+                new BlockchainProcessor.Options { BlockProcessingTimeoutMs = blockProcessingTimeoutMs, TimeProvider = timeProvider ?? TimeProvider.System }, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -244,6 +301,13 @@ public class BlockchainProcessorTests
                 _processor.Start();
         }
 
+        public async ValueTask DisposeAsync()
+        {
+            await _processor.DisposeAsync();
+            _resetEvent.Dispose();
+            _queueEmptyResetEvent.Dispose();
+        }
+
         public ProcessingTestContext IsProcessingBlocks(bool expectedIsProcessingBlocks, ulong maxInterval)
         {
             bool actual = _processor.IsProcessingBlocks(maxInterval);
@@ -254,6 +318,16 @@ public class BlockchainProcessorTests
         public ProcessingTestContext AndRecoveryQueueLimitHasBeenReached()
         {
             _processor.SoftMaxRecoveryQueueSizeInTx = 0;
+            return this;
+        }
+
+        public ProcessingTestContext InclusionListPreservedFor(Block block)
+        {
+            Assert.That(_branchProcessor.ProcessedBlockByHash.TryGetValue(block.Hash!, out Block? processed), Is.True,
+                $"Block {block.ToString(Block.Format.Short)} was not processed");
+            Assert.That(processed!.InclusionListTransactions, Is.Not.Null,
+                "Inclusion list was dropped before validation (recovery-queue re-resolve stripped it)");
+            Assert.That(processed.InclusionListTransactions!, Has.Length.EqualTo(block.InclusionListTransactions!.Length));
             return this;
         }
 
@@ -423,6 +497,82 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        /// <summary>Queues <paramref name="second"/> so its branch processes <paramref name="first"/> too.</summary>
+        public ProcessingTestContext QueuedAsBranch(Block first, Block second) =>
+            Suggested(first, BlockTreeSuggestOptions.None).Suggested(second).Recovered(first).Recovered(second);
+
+        public ProcessingTestContext IsInTree(Block block)
+        {
+            Assert.That(_blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None), Is.Not.Null, $"{block.ToString(Block.Format.Short)} should still be in the tree");
+            return this;
+        }
+
+        public Task WaitUntilRemoved(Block block) => _processor.WaitUntilRemovedAsync(block.Hash!).AsTask();
+
+        public ProcessingTestContext OnBlockProcessing(Action<Block> action)
+        {
+            _branchProcessor.BlockProcessing += (_, args) => action(args.Block);
+            return this;
+        }
+
+        /// <summary>Runs <paramref name="action"/> on every state lookup, as the branch builder makes walking back through unprocessed ancestors.</summary>
+        public ProcessingTestContext OnStateLookup(Action<BlockHeader> action)
+        {
+            _stateReader.When(x => x.HasStateForBlock(Arg.Any<BlockHeader>())).Do(call => action(call.Arg<BlockHeader>()));
+            return this;
+        }
+
+        public ProcessingTestContext OnBlockProcessed(Action<Block> action)
+        {
+            _branchProcessor.BlockProcessed += (_, args) => action(args.Block);
+            return this;
+        }
+
+        public Task WaitUntilExecutedCopyRemoved(Block block) => _processor.WaitUntilExecutedCopyRemovedAsync(block.Hash!).AsTask();
+
+        /// <summary>Lets the queued block have its verdict and holds it there, before its commit, until it is processed.</summary>
+        public ProcessingTestContext HeldAfterVerdict(Block block)
+        {
+            using ManualResetEventSlim executed = new(false);
+            void OnExecuted(object? sender, BlockHashEventArgs args)
+            {
+                if (args.BlockHash == block.Hash) executed.Set();
+            }
+
+            _processor.BlockExecuted += OnExecuted;
+            try
+            {
+                _branchProcessor.ExecuteBeforeAllowed(block.Hash!);
+                Assert.That(executed.Wait(ProcessingWait), Is.True, $"{block.ToString(Block.Format.Short)} never had its verdict");
+            }
+            finally
+            {
+                _processor.BlockExecuted -= OnExecuted;
+            }
+
+            return this;
+        }
+
+        /// <summary>Queues another copy of a block that is already in the queue, as sync can.</summary>
+        public ProcessingTestContext EnqueuedAgain(Block copy)
+        {
+            Task enqueue = Task.Run(async () => await _processor.Enqueue(copy, ProcessingOptions.None));
+            Assert.That(enqueue.Wait(ProcessingWait), Is.True, $"{copy.ToString(Block.Format.Short)} was not queued");
+            return this;
+        }
+
+        public ProcessingTestContext RecoveryFails(Block block)
+        {
+            _recoveryStep.AllowToFail(block.Hash!);
+            return this;
+        }
+
+        public ProcessingTestContext OnBlockRemoved(EventHandler<BlockRemovedEventArgs> handler)
+        {
+            _processor.BlockRemoved += handler;
+            return this;
+        }
+
         public ProcessingTestContext CountIs(int expectedCount)
         {
             Assert.That(() => _processor.Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
@@ -552,6 +702,52 @@ public class BlockchainProcessorTests
         public static ProcessingTestContext ProcessorIsNotStarted => new(false);
     }
 
+    private sealed class BlockDeadlineTimeProvider : TimeProvider
+    {
+        private long _elapsedTicks;
+        private DeadlineTimer? _timer;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Assert.That(period, Is.EqualTo(global::System.Threading.Timeout.InfiniteTimeSpan));
+            _timer = new DeadlineTimer(this, callback, state);
+            _timer.Change(dueTime, period);
+            return _timer;
+        }
+
+        public void Advance(TimeSpan elapsed)
+        {
+            _elapsedTicks += elapsed.Ticks;
+            _timer?.FireIfDue();
+        }
+
+        private sealed class DeadlineTimer(BlockDeadlineTimeProvider time, TimerCallback callback, object? state) : ITimer
+        {
+            private long _dueTicks = long.MaxValue;
+
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                _dueTicks = dueTime == global::System.Threading.Timeout.InfiniteTimeSpan ? long.MaxValue : time._elapsedTicks + dueTime.Ticks;
+                return true;
+            }
+
+            public void FireIfDue()
+            {
+                if (time._elapsedTicks < _dueTicks) return;
+                _dueTicks = long.MaxValue;
+                callback(state);
+            }
+
+            public void Dispose() => _dueTicks = long.MaxValue;
+
+            public ValueTask DisposeAsync()
+            {
+                Dispose();
+                return ValueTask.CompletedTask;
+            }
+        }
+    }
+
     // Instance fields — not static — so that parallel test instances do not share
     // mutable Block objects (RecoverData mutates Header.Author).
     private readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
@@ -578,6 +774,288 @@ public class BlockchainProcessorTests
         _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
         _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
         _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    }
+
+    /// <summary>
+    /// A waiter follows the block from enqueue to removal: pending while it is queued or processing, released when
+    /// the queue lets it go, and never held for a block the queue has not seen.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_follows_the_block_through_the_queue()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks.FullyProcessed(_block0).BecomesGenesis().Suggested(_block1D2);
+
+        Task waiting = context.WaitUntilRemoved(_block1D2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.IsCompleted, Is.False, "the block is queued, so the wait is pending");
+            Assert.That(context.WaitUntilRemoved(_blockB2D4).IsCompleted, Is.True, "a block the queue never saw holds nobody");
+        }
+        bool pendingWhenRemovalPublished = false;
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash) pendingWhenRemovalPublished = !waiting.IsCompleted;
+        });
+
+        context.Recovered(_block1D2).Processed(_block1D2).BecomesNewHead();
+
+        await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pendingWhenRemovalPublished, Is.True, "the removal is published before the waiters are released");
+            Assert.That(context.WaitUntilRemoved(_block1D2).IsCompleted, Is.True, "once removed, the block holds nobody either");
+        }
+    }
+
+    /// <summary>
+    /// Several blocks are queued at once; a waiter for a later one is released by that block's own removal, not by
+    /// the removal of the block ahead of it.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_is_released_by_the_blocks_own_removal_not_the_one_ahead()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Suggested(_block2D4)
+            .Recovered(_block1D2)
+            .Recovered(_block2D4);
+
+        Task first = context.WaitUntilRemoved(_block1D2);
+        Task second = context.WaitUntilRemoved(_block2D4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompleted, Is.False, "the first block is queued, so its wait is pending");
+            Assert.That(second.IsCompleted, Is.False, "the second block is queued, so its wait is pending");
+        }
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(second.IsCompleted, Is.False, "the block behind is still queued; its waiters stay");
+
+        context.Processed(_block2D4).BecomesNewHead();
+        await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// With a second copy of a block queued behind the one that had its verdict, the executed-copy wait is released
+    /// when that copy commits, while the wait for every copy holds until the second one is gone too.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_executed_copy_removed_does_not_wait_for_another_copy_behind_it()
+    {
+        Block secondCopy = UnrecoveredCopy(_block1D2);
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Recovered(_block1D2)
+            .HeldAfterVerdict(_block1D2)
+            .EnqueuedAgain(secondCopy);
+
+        Task executedCopy = context.WaitUntilExecutedCopyRemoved(_block1D2);
+        Task everyCopy = context.WaitUntilRemoved(_block1D2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executedCopy.IsCompleted, Is.False, "the copy with its verdict is still committing");
+            Assert.That(everyCopy.IsCompleted, Is.False, "both copies are in the queue");
+        }
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(everyCopy.IsCompleted, Is.False, "the second copy is still waiting for its recovery");
+
+        context.Recovered(secondCopy);
+        await everyCopy.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// A second copy that fails before it reaches the processor is removed by the recovery loop while the first copy
+    /// is still committing; that removal is not the committing copy's, so its waiters stay until the commit.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_executed_copy_removed_is_not_released_by_another_copy_failing_recovery()
+    {
+        Block secondCopy = UnrecoveredCopy(_block1D2);
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .CountIs(0)
+            .Suggested(_block1D2)
+            .Recovered(_block1D2)
+            .HeldAfterVerdict(_block1D2);
+
+        Task executedCopy = context.WaitUntilExecutedCopyRemoved(_block1D2);
+        TaskCompletionSource secondCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash && args.ProcessingResult == ProcessingResult.Exception) secondCopyRemoved.TrySetResult();
+        });
+
+        context.RecoveryFails(secondCopy).EnqueuedAgain(secondCopy);
+        await secondCopyRemoved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(executedCopy.IsCompleted, Is.False, "the committing copy is still committing");
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    // Same hash, but a header of its own without the author recovery sets, so the recovery step sees it afresh.
+    private static Block UnrecoveredCopy(Block block)
+    {
+        BlockHeader header = block.Header.Clone();
+        header.Author = null;
+        return new Block(header, block.Body);
+    }
+
+    // A subscriber that throws must not make the loop report the removal a second time: a second report takes a copy
+    // off whatever entry the hash names by then, which with another copy queued is a live one, and releases its
+    // waiters while it is still queued.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Wait_until_removed_survives_a_throwing_removal_subscriber()
+    {
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(_block1D2)
+            .Suggested(_block2D4)
+            .Recovered(_block1D2)
+            .Recovered(_block2D4);
+
+        Task first = context.WaitUntilRemoved(_block1D2);
+        Task second = context.WaitUntilRemoved(_block2D4);
+        context.OnBlockRemoved((_, _) => throw new InvalidOperationException("subscriber"));
+
+        context.Processed(_block1D2).BecomesNewHead();
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(second.IsCompleted, Is.False, "the block behind is still queued; the throw must not release it");
+
+        context.Processed(_block2D4).BecomesNewHead();
+        await second.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    /// <summary>
+    /// A block still processing when its time runs out leaves the queue without a verdict: it is not deleted as
+    /// invalid, the loop keeps going, and queued again it gets twice the time, so a block that is just slow is reached.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Block_over_the_processing_timeout_is_abandoned_without_a_verdict()
+    {
+        const int timeoutMs = 1_000;
+        BlockDeadlineTimeProvider time = new();
+        await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessing(_ => time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 2)));
+        ProcessingResult? result = null;
+        context.OnBlockRemoved((_, args) =>
+        {
+            if (args.BlockHash == _block1D2.Hash) result ??= args.ProcessingResult;
+        });
+
+        Task removed = context.Suggested(_block1D2).Recovered(_block1D2).WaitUntilRemoved(_block1D2);
+        await removed.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result, Is.EqualTo(ProcessingResult.Exception));
+        context.IsInTree(_block1D2);
+        Task retry = Task.Run(() => context.EnqueuedAgain(_block1D2));
+        context.Processed(_block1D2).BecomesNewHead();
+        await retry;
+    }
+
+    /// <summary>
+    /// The limit is per block: a branch whose blocks each finish in time is processed even when the branch as a whole
+    /// takes longer than the limit.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Processing_timeout_applies_to_each_block_of_a_branch()
+    {
+        const int timeoutMs = 2_000;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
+        BlockDeadlineTimeProvider time = new();
+        await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessing(_ => time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 5)))
+            .QueuedAsBranch(block1, block2);
+
+        context.Processed(block1);
+        context.Processed(block2).BecomesNewHead();
+    }
+
+    /// <summary>
+    /// Loading and preparing a branch is not charged to its first block: a branch whose preparation alone takes longer
+    /// than one block's limit is processed when each of its blocks fits.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Processing_timeout_does_not_charge_branch_preparation_to_the_first_block()
+    {
+        const int timeoutMs = 1_000;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
+        BlockDeadlineTimeProvider time = new();
+        bool blockStarted = false;
+        await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnStateLookup(_ =>
+            {
+                if (!blockStarted) time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 5));
+            })
+            .OnBlockProcessing(_ => blockStarted = true)
+            .QueuedAsBranch(block1, block2);
+
+        context.Processed(block1);
+        context.Processed(block2).BecomesNewHead();
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Processing_timeout_during_commit_backs_off_the_completed_block()
+    {
+        const int timeoutMs = 1_000;
+        (Block block1, Block block2) = BuildTwoBlockBranch();
+        BlockDeadlineTimeProvider time = new();
+        await using ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs, time)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessed(block =>
+            {
+                if (block.Hash == block1.Hash) time.Advance(TimeSpan.FromMilliseconds(timeoutMs * 3 / 2));
+            })
+            .QueuedAsBranch(block1, block2);
+
+        Task removed = context.WaitUntilRemoved(block2);
+        context.Processed(block1);
+        await removed.WaitAsync(TimeSpan.FromSeconds(10));
+        context.IsInTree(block1).IsInTree(block2);
+
+        Task retry = Task.Run(() => context.EnqueuedAgain(block2));
+        context.Processed(block2).BecomesNewHead();
+        await retry;
+    }
+
+    /// <summary>
+    /// Shutdown cancels the block in progress through the same deadline token, but it is not a timeout: nothing is
+    /// reported for the block.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Shutdown_mid_block_is_not_reported_as_a_processing_timeout()
+    {
+        using ManualResetEventSlim processing = new(false);
+        ProcessingTestContext context = new ProcessingTestContext(true, 1_000, new BlockDeadlineTimeProvider())
+            .FullyProcessed(_block0).BecomesGenesis()
+            .OnBlockProcessing(block =>
+            {
+                if (block.Hash == _block1D2.Hash) processing.Set();
+            });
+        bool reported = false;
+        context.OnBlockRemoved((_, args) => reported |= args.BlockHash == _block1D2.Hash);
+
+        context.Suggested(_block1D2).Recovered(_block1D2);
+        Assert.That(processing.Wait(TimeSpan.FromSeconds(10)), Is.True, "the block never started processing");
+        await context.DisposeAsync();
+
+        Assert.That(reported, Is.False);
+    }
+
+    /// <summary>Two blocks with distinct state roots, so the branch builder finds no state for the first and processes both.</summary>
+    private (Block First, Block Second) BuildTwoBlockBranch()
+    {
+        Block first = Build.A.Block.WithNumber(1).WithParent(_block0).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block second = Build.A.Block.WithNumber(2).WithParent(first).WithDifficulty(2).WithStateRoot(TestItem.KeccakB).TestObject;
+        return (first, second);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -759,6 +1237,21 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
+
+    // A hash-only BlockRef re-resolved from the DB would lose the non-RLP inclusion list before validation.
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Inclusion_list_survives_recovery_queue_backlog()
+    {
+        Transaction ilTx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block ilBlock = Build.A.Block.WithNumber(1).WithNonce(111).WithParent(_block0).WithDifficulty(2)
+            .WithInclusionListTransactions([ilTx]).TestObject;
+
+        When.ProcessingBlocks
+            .AndRecoveryQueueLimitHasBeenReached()
+            .FullyProcessed(_block0).BecomesGenesis()
+            .FullyProcessed(ilBlock).BecomesNewHead()
+            .InclusionListPreservedFor(ilBlock);
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]

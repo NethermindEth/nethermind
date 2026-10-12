@@ -9,6 +9,7 @@ using Nethermind.Tools.Kute.JsonRpcSubmitter;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using Nethermind.Tools.Kute.MessageProvider;
+using Nethermind.Tools.Kute.Replay;
 using Nethermind.Tools.Kute.Metrics;
 using Nethermind.Tools.Kute.ResponseTracer;
 using Nethermind.Tools.Kute.SecretProvider;
@@ -38,6 +39,7 @@ public static class Program
             Config.PrometheusPushGatewayUser,
             Config.PrometheusPushGatewayPassword,
             Config.Labels,
+            ReplayCommand.Create(),
         ];
         rootCommand.SetAction(async (parseResult, cancellationToken) =>
         {

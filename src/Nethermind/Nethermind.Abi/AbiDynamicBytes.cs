@@ -27,9 +27,23 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
+            using DecodeBudgetScope decodeBudget = EnterDecodeBudget(data.Length);
             (UInt256 length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
-            int paddingSize = packed ? (int)length : GetPaddingSize((int)length);
-            return (data.Slice(currentPosition, (int)length), currentPosition + paddingSize);
+            int remainingDataLength = data.Length - currentPosition;
+            if (length > (UInt256)remainingDataLength)
+            {
+                throw new AbiException($"Insufficient data to decode ABI {Name} of length {length} at position {currentPosition}");
+            }
+
+            int valueLength = (int)length;
+            int encodedLength = packed ? valueLength : GetPaddingSize(valueLength);
+            if (encodedLength > remainingDataLength)
+            {
+                throw new AbiException($"Insufficient data to decode padded ABI {Name} of length {length} at position {currentPosition}");
+            }
+
+            ConsumeDecodeBudget((uint)valueLength, this);
+            return (data.Slice(currentPosition, valueLength), currentPosition + encodedLength);
         }
 
         public override byte[] Encode(object? arg, bool packed)
@@ -56,7 +70,7 @@ namespace Nethermind.Abi
         private static int GetPaddingSize(int length)
         {
             int remainder = length % PaddingSize;
-            int paddingSize = length + (remainder == 0 ? 0 : (PaddingSize - remainder));
+            int paddingSize = checked(length + (remainder == 0 ? 0 : (PaddingSize - remainder)));
             return paddingSize;
         }
     }

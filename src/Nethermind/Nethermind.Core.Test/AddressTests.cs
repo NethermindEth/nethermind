@@ -61,6 +61,20 @@ public class AddressTests
     }
 
     [Test]
+    public void Equals_span_works()
+    {
+        Address address = new(Keccak.Compute("a"));
+        Address other = new(Keccak.Compute("b"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(address.Equals(address.Bytes), Is.True);
+            Assert.That(address.Equals(other.Bytes), Is.False);
+            Assert.That(address.Equals(address.Bytes[..19]), Is.False);
+            Assert.That(address.Equals(ReadOnlySpan<byte>.Empty), Is.False);
+        }
+    }
+
+    [Test]
     public void Equals_works()
     {
         Address addressA = new(Keccak.Compute("a"));
@@ -72,7 +86,7 @@ public class AddressTests
             // ReSharper disable once EqualExpressionComparison
             Assert.That(addressA.Equals(addressA), Is.True);
             Assert.That(addressA.Equals(addressB), Is.False);
-            Assert.That(addressA.Equals(null), Is.False);
+            Assert.That(addressA.Equals((Address?)null), Is.False);
         }
     }
 
@@ -242,6 +256,51 @@ public class AddressTests
             ValueHash256 expectedHash = new(expectedHashBytes);
 
             Assert.That(address.ToHash(), Is.EqualTo(expectedHash));
+        }
+    }
+
+    [Test]
+    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes()
+    {
+        Random random = new(42);
+        byte[] bytes = new byte[Address.Size];
+        for (int i = 0; i < 256; i++)
+        {
+            random.NextBytes(bytes);
+            Address address = new(bytes);
+            int expected = new ValueAddress(bytes).GetHashCode();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(address.GetHashCode(), Is.EqualTo(expected));
+                Assert.That(new AddressAsKey(address).GetHashCode(), Is.EqualTo(expected));
+                Assert.That(unchecked((int)new AddressAsKey(address).GetHashCode64()), Is.EqualTo(expected));
+            }
+        }
+    }
+
+    [Test]
+    public void ValueAddress_copies_the_bytes_of_an_unaligned_slice([Values(0, 1, 3)] int offset)
+    {
+        byte[] buffer = new byte[offset + Address.Size];
+        for (int i = 0; i < buffer.Length; i++) buffer[i] = (byte)(i + 1);
+        ReadOnlySpan<byte> source = buffer.AsSpan(offset, Address.Size);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new ValueAddress(source).AsSpan, Is.SequenceEqualTo(source));
+            Assert.That(new Address(source).Bytes, Is.SequenceEqualTo(source));
+        }
+    }
+
+    [Test]
+    public void Span_constructors_reject_other_lengths([Values(0, 19, 21, 32)] int length)
+    {
+        byte[] bytes = new byte[length];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => new ValueAddress(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
+            Assert.That(() => new Address(bytes), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("bytes"));
         }
     }
 

@@ -16,6 +16,8 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public const ulong OsakaTimestamp = 0x69011118;
     public const ulong BPO1Timestamp = 0x690b9118;
     public const ulong BPO2Timestamp = 0x69149118;
+    public const ulong AmsterdamTimestamp = 0x6adf9118;
+    public const ulong BeaconChainGenesisTimestampConst = 0x67d81118;
 
     private static IReleaseSpec? _prague;
 
@@ -31,6 +33,7 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
         [OsakaTimestamp] = Osaka.Instance,
         [BPO1Timestamp] = BPO1.Instance,
         [BPO2Timestamp] = BPO2.Instance,
+        [AmsterdamTimestamp] = Amsterdam.Instance,
     })
     { }
 
@@ -42,7 +45,7 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
 
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Hoodi;
-    public override ulong? BeaconChainGenesisTimestamp => GenesisTimestamp;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
 
     public static readonly HoodiSpecProvider Instance = new();
 }

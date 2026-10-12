@@ -1,0 +1,177 @@
+{
+  "name": "Sepolia Testnet (Amsterdam)",
+  "dataDir": "sepolia",
+  "engine": {
+    "Ethash": {
+      "params": {
+        "minimumDifficulty": "0x20000",
+        "difficultyBoundDivisor": "0x800",
+        "difficultyBombDisabled": "true",
+        "durationLimit": "0xd",
+        "difficultyBombDelays": {
+          "0": "0x7FFFFFFFFFFFFFFF"
+        },
+        "blockReward": {
+          "0x0": "0x1bc16d674ec80000"
+        },
+        "homesteadTransition": "0x0",
+        "eip100bTransition": "0x0"
+      }
+    }
+  },
+  "params": {
+    "gasLimitBoundDivisor": "0x400",
+    "accountStartNonce": "0x0",
+    "maximumExtraDataSize": "0x20",
+    "minGasLimit": "0x1388",
+    "networkId": "0xaa36a7",
+    "forkBlock": "0x0",
+    "maxCodeSize": "0x6000",
+    "maxCodeSizeTransition": "0x0",
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip155Transition": "0x0",
+    "eip140Transition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip152Transition": "0x0",
+    "eip1108Transition": "0x0",
+    "eip1344Transition": "0x0",
+    "eip1884Transition": "0x0",
+    "eip2028Transition": "0x0",
+    "eip2200Transition": "0x0",
+    "eip2565Transition": "0x0",
+    "eip2929Transition": "0x0",
+    "eip2930Transition": "0x0",
+    "eip1559Transition": "0x0",
+    "eip3198Transition": "0x0",
+    "eip3529Transition": "0x0",
+    "eip3541Transition": "0x0",
+    "terminalTotalDifficulty": "3C6568F12E8000",
+    "beaconChainGenesisTimestamp": "0x62b07d60",
+    "eip4895TransitionTimestamp": "0x63fd7d60",
+    "eip3855TransitionTimestamp": "0x63fd7d60",
+    "eip3651TransitionTimestamp": "0x63fd7d60",
+    "eip3860TransitionTimestamp": "0x63fd7d60",
+    "eip1153TransitionTimestamp": "0x65b97d60",
+    "eip4788TransitionTimestamp": "0x65b97d60",
+    "eip4844TransitionTimestamp": "0x65b97d60",
+    "eip5656TransitionTimestamp": "0x65b97d60",
+    "eip6780TransitionTimestamp": "0x65b97d60",
+    "eip2537TransitionTimestamp": "0x67c7fd60",
+    "eip2935TransitionTimestamp": "0x67c7fd60",
+    "eip7002TransitionTimestamp": "0x67c7fd60",
+    "eip7251TransitionTimestamp": "0x67c7fd60",
+    "eip7623TransitionTimestamp": "0x67c7fd60",
+    "eip7702TransitionTimestamp": "0x67c7fd60",
+    "eip7594TransitionTimestamp": "0x68edfd60",
+    "eip7823TransitionTimestamp": "0x68edfd60",
+    "eip7825TransitionTimestamp": "0x68edfd60",
+    "eip7883TransitionTimestamp": "0x68edfd60",
+    "eip7918TransitionTimestamp": "0x68edfd60",
+    "eip7934TransitionTimestamp": "0x68edfd60",
+    "eip7939TransitionTimestamp": "0x68edfd60",
+    "eip7951TransitionTimestamp": "0x68edfd60",
+    "eip7708TransitionTimestamp": "0x68edfd60",
+    "eip7778TransitionTimestamp": "0x68edfd60",
+    "eip7843TransitionTimestamp": "0x68edfd60",
+    "eip7928TransitionTimestamp": "0x68edfd60",
+    "eip7954TransitionTimestamp": "0x68edfd60",
+    "eip8024TransitionTimestamp": "0x68edfd60",
+    "eip8037TransitionTimestamp": "0x68edfd60",
+    "eip4788ContractAddress": "0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02",
+    "eip2935ContractAddress": "0x0000F90827F1C53a10cb7A02335B175320002935",
+    "eip7002ContractAddress": "0x00000961Ef480Eb55e80D19ad83579A64c007002",
+    "eip7251ContractAddress": "0x0000BBdDc7CE488642fb579F8B00f3a590007251",
+    "blobSchedule": [
+      {
+        "name": "prague",
+        "timestamp": "0x67c7fd60",
+        "target": 6,
+        "max": 9,
+        "baseFeeUpdateFraction": "0x4c6964"
+      },
+      {
+        "name": "bpo1",
+        "timestamp": "0x68f6fd60",
+        "target": 10,
+        "max": 15,
+        "baseFeeUpdateFraction": "0x7f5a51"
+      },
+      {
+        "name": "bpo2",
+        "timestamp": "0x68fffd60",
+        "target": 14,
+        "max": 21,
+        "baseFeeUpdateFraction": "0xb24b3f"
+      }
+    ]
+  },
+  "genesis": {
+    "seal": {
+      "ethereum": {
+        "nonce": "0x000000000000000",
+        "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    },
+    "difficulty": "0x20000",
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x6159af19",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x5365706f6c69612c20417468656e732c204174746963612c2047726565636521",
+    "gasLimit": "0x1c9c380"
+  },
+  "nodes": [],
+  "accounts": {
+    "0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02": {
+      "balance": "0",
+      "nonce": "1",
+      "code": "0x3373fffffffffffffffffffffffffffffffffffffffe14604d57602036146024575f5ffd5b5f35801560495762001fff810690815414603c575f5ffd5b62001fff01545f5260205ff35b5f5ffd5b62001fff42064281555f359062001fff015500"
+    },
+    "0x0000F90827F1C53a10cb7A02335B175320002935": {
+      "balance": "0",
+      "nonce": "1",
+      "code": "0x3373fffffffffffffffffffffffffffffffffffffffe14604657602036036042575f35600143038111604257611fff81430311604257611fff9006545f5260205ff35b5f5ffd5b5f35611fff60014303065500"
+    },
+    "0x00000961Ef480Eb55e80D19ad83579A64c007002": {
+      "balance": "0",
+      "nonce": "1",
+      "code": "0x3373fffffffffffffffffffffffffffffffffffffffe1460cb5760115f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff146101f457600182026001905f5b5f82111560685781019083028483029004916001019190604d565b909390049250505036603814608857366101f457346101f4575f5260205ff35b34106101f457600154600101600155600354806003026004013381556001015f35815560010160203590553360601b5f5260385f601437604c5fa0600101600355005b6003546002548082038060101160df575060105b5f5b8181146101835782810160030260040181604c02815460601b8152601401816001015481526020019060020154807fffffffffffffffffffffffffffffffff00000000000000000000000000000000168252906010019060401c908160381c81600701538160301c81600601538160281c81600501538160201c81600401538160181c81600301538160101c81600201538160081c81600101535360010160e1565b910180921461019557906002556101a0565b90505f6002555f6003555b5f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff14156101cd57505f5b6001546002828201116101e25750505f6101e8565b01600290035b5f555f600155604c025ff35b5f5ffd",
+      "storage": {
+        "0x0000000000000000000000000000000000000000000000000000000000000000": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "0x0000BBdDc7CE488642fb579F8B00f3a590007251": {
+      "balance": "0",
+      "nonce": "1",
+      "code": "0x3373fffffffffffffffffffffffffffffffffffffffe1460d35760115f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff1461019a57600182026001905f5b5f82111560685781019083028483029004916001019190604d565b9093900492505050366060146088573661019a573461019a575f5260205ff35b341061019a57600154600101600155600354806004026004013381556001015f358155600101602035815560010160403590553360601b5f5260605f60143760745fa0600101600355005b6003546002548082038060021160e7575060025b5f5b8181146101295782810160040260040181607402815460601b815260140181600101548152602001816002015481526020019060030154905260010160e9565b910180921461013b5790600255610146565b90505f6002555f6003555b5f54807fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff141561017357505f5b6001546001828201116101885750505f61018e565b01600190035b5f555f6001556074025ff35b5f5ffd",
+      "storage": {
+        "0x0000000000000000000000000000000000000000000000000000000000000000": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "0xa2A6d93439144FFE4D27c9E088dCD8b783946263": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xBc11295936Aa79d594139de1B2e12629414F3BDB": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0x7cF5b79bfe291A67AB02b393E456cCc4c266F753": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xaaec86394441f915bce3e6ab399977e9906f3b69": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xF47CaE1CF79ca6758Bfc787dbD21E6bdBe7112B8": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xd7eDDB78ED295B3C9629240E8924fb8D8874ddD8": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0x8b7F0977Bb4f0fBE7076FA22bC24acA043583F5e": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xe2e2659028143784d557bcec6ff3a0721048880a": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xd9a5179f091d85051d3c982785efd1455cec8699": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0xbeef32ca5b9a198d27B4e02F4c70439fE60356Cf": { "balance": "0xD3C21BCECCEDA1000000" },
+    "0x0000006916a87b82333f4245046623b23794c65c": { "balance": "0x84595161401484A000000" },
+    "0xb21c33de1fab3fa15499c62b59fe0cc3250020d1": { "balance": "0x52B7D2DCC80CD2E4000000" },
+    "0x10F5d45854e038071485AC9e402308cF80D2d2fE": { "balance": "0x52B7D2DCC80CD2E4000000" },
+    "0xd7d76c58b3a519e9fA6Cc4D22dC017259BC49F1E": { "balance": "0x52B7D2DCC80CD2E4000000" },
+    "0x799D329e5f583419167cD722962485926E338F4a": { "balance": "0xDE0B6B3A7640000" },
+    "0x9d8A62f656a8d1615C1294fd71e9CFb3E4855A4F": { "balance": "0xD3C21BCECCEDA1000000" }
+  }
+}

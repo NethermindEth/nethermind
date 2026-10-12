@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Reflection;
+using System.Text;
 using Nethermind.Config;
 using Spectre.Console;
 
@@ -16,10 +17,9 @@ internal static class ConfigGenerator
 
         string startMark = "<!--[start autogen]-->";
         string endMark = "<!--[end autogen]-->";
-        IEnumerable<string> excluded = Enumerable.Empty<string>();
-        IOrderedEnumerable<Type> types = Directory
-            .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
-            .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
+        IEnumerable<string> excluded = [];
+        IOrderedEnumerable<Type> types = NethermindAssemblies
+            .GetExportedTypes()
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
@@ -101,7 +101,7 @@ internal static class ConfigGenerator
             if (configAttr?.HiddenFromDocs ?? true)
                 continue;
 
-            string description = configAttr!.Description.Replace("\n", "\n  ").TrimEnd(' ');
+            string description = EscapeForMdx(configAttr!.Description).Replace("\n", "\n  ").TrimEnd(' ');
             string cliAlias = string.IsNullOrWhiteSpace(configAttr.CliOptionAlias)
                 ? $"{moduleName}-{prop.Name}"
                 : configAttr.CliOptionAlias;
@@ -143,8 +143,6 @@ internal static class ConfigGenerator
             file.WriteLine();
             file.WriteLine();
         }
-
-        file.WriteLine();
     }
 
     private static bool WriteAllowedValues(StreamWriter file, Type type)
@@ -162,7 +160,6 @@ internal static class ConfigGenerator
 
 
                   Allowed values:
-
                 """);
 
             FieldInfo[] fields = type.GetFields(BindingFlags.Static | BindingFlags.Public);
@@ -170,9 +167,9 @@ internal static class ConfigGenerator
             foreach (FieldInfo field in fields)
             {
                 DescriptionAttribute? attr = field.GetCustomAttribute<DescriptionAttribute>();
-                string? description = string.IsNullOrEmpty(attr?.Description) ? null : $": {attr.Description}";
+                string? description = string.IsNullOrEmpty(attr?.Description) ? null : $": {EscapeForMdx(attr.Description)}";
 
-                file.WriteLine($"    - `{field.Name}`{description}");
+                file.WriteLine($"  - `{field.Name}`{description}");
             }
 
             file.WriteLine();
@@ -183,19 +180,48 @@ internal static class ConfigGenerator
         return false;
     }
 
+    /// <summary>
+    /// Escapes <c>&lt;</c> and <c>{</c>, which MDX parses as JSX in plain text, skipping backtick code spans
+    /// where a backslash would render verbatim.
+    /// </summary>
+    private static string EscapeForMdx(string text)
+    {
+        if (text.AsSpan().IndexOfAny('<', '{') < 0)
+            return text;
+
+        StringBuilder sb = new(text.Length + 8);
+        bool inCodeSpan = false;
+
+        foreach (char c in text)
+        {
+            if (c == '`')
+                inCodeSpan = !inCodeSpan;
+            else if (!inCodeSpan && c is '<' or '{')
+                sb.Append('\\');
+
+            sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
+
     private static void WriteDefaultValue(StreamWriter file, ConfigItemAttribute attr, bool indentAsNewLine)
     {
         if (string.IsNullOrEmpty(attr.DefaultValue))
             return;
 
         if (attr.DefaultValue.Contains('\n'))
+        {
             file.WriteLine($"""
 
                   Defaults to:
 
-                  {attr.DefaultValue.Replace("\n", "\n  ")}
+                  {EscapeForMdx(attr.DefaultValue).Replace("\n", "\n  ")}
                 """);
+        }
         else
+        {
             file.Write($"{(indentAsNewLine ? "  " : " ")}Defaults to `{attr.DefaultValue}`.");
+        }
     }
 }

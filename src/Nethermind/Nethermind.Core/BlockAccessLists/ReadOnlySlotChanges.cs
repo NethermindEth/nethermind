@@ -14,7 +14,8 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquatable<ReadOnlySlotChanges>
 {
-    public UInt256 Key { get; } = key;
+    [JsonInclude]
+    public readonly UInt256 Key = key;
 
     [JsonConverter(typeof(StorageChangesByIndexConverter))]
     public StorageChange[] Changes { get; } = changes;

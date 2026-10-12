@@ -4,8 +4,10 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -16,12 +18,12 @@ namespace Nethermind.Specs.ChainSpecStyle
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
         /// <summary>
         /// Not used in Nethermind
         /// </summary>
-        public string DataDir { get; set; }
+        public string? DataDir { get; set; }
 
         public ulong NetworkId { get; set; }
 
@@ -30,15 +32,15 @@ namespace Nethermind.Specs.ChainSpecStyle
         public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
-        public Block Genesis { get; set; }
+        public Block? Genesis { get; set; }
 
-        public string SealEngineType { get; set; }
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
 
-        public ChainParameters Parameters { get; set; }
+        public ChainParameters Parameters { get; set; } = new();
 
-        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; }
+        public IChainSpecParametersProvider EngineChainSpecParametersProvider { get; set; } = UninitializedChainSpecParametersProvider.Instance;
 
-        public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
+        public Dictionary<Address, ChainSpecAllocation>? Allocations { get; set; }
 
         public long? FixedDifficulty { get; set; }
 
@@ -82,5 +84,24 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? OsakaTimestamp { get; set; }
         public ulong? AmsterdamTimestamp { get; set; }
+
+        /// <summary>
+        /// Raw engine-specific genesis seal sections (<c>genesis.seal.*</c>) other than the standard
+        /// <c>ethereum</c> one, keyed by engine name. Applied to <see cref="Genesis"/> by the owning
+        /// consensus plugin — core doesn't act on it.
+        /// </summary>
+        public Dictionary<string, JsonElement>? CustomSeal { get; set; }
+
+        private sealed class UninitializedChainSpecParametersProvider : IChainSpecParametersProvider
+        {
+            public static UninitializedChainSpecParametersProvider Instance { get; } = new();
+
+            public string SealEngineType => Nethermind.Core.SealEngineType.None;
+
+            public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters => [];
+
+            public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters =>
+                throw new InvalidOperationException("Engine chain-spec parameters have not been loaded.");
+        }
     }
 }

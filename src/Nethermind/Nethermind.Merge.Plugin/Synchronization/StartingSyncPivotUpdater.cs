@@ -104,7 +104,18 @@ public class StartingSyncPivotUpdater(
 
         if (potentialPivotData is null)
         {
-            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+            if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0)
+            {
+                Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+                if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
+                {
+                    _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
+                }
+                else
+                {
+                    _logger.Info($"Known finalized block hash {finalizedBlockHash}, but cannot resolve its block number yet ({_syncPeerPool.InitializedPeersCount} peers available) [{_maxAttempts - _attemptsLeft}s]");
+                }
+            }
             return false;
         }
 
@@ -164,12 +175,8 @@ public class StartingSyncPivotUpdater(
     }
 
     protected async Task<ulong?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
-        (await TryGetFromPeers(hash, cancellationToken, static async (peer, hash256, token) =>
-        {
-            BlockHeader? header = await peer.GetHeadBlockHeader(hash256, token);
-            // Only accept a header that is actually the requested block; a peer must not substitute another.
-            return header is not null && header.Hash == hash256 ? header : null;
-        }, type))?.Number;
+        (await TryGetFromPeers(hash, cancellationToken,
+            static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
 
     protected async Task<BlockHeader?> TryGetFromPeers<T>(T id, CancellationToken cancellationToken,
         Func<ISyncPeer, T, CancellationToken, Task<BlockHeader?>> getHeader, string? type = Pivot)

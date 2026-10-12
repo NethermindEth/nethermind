@@ -25,10 +25,24 @@ public class BloomConverterTests : ConverterTestBase<Bloom>
         Assert.That(() => JsonSerializer.Deserialize<Bloom>(json, options), Throws.InstanceOf<FormatException>());
     }
 
+    [Test]
+    public void Serializes_as_full_width_prefixed_hex() => TestConverter(
+        Bloom.Empty,
+        $"\"0x{new string('0', 512)}\"",
+        converter,
+        static (a, b) => a is null ? b is null : a.Equals(b));
+
+    [Test]
+    public void ZeroLength_roundtrips_as_empty_hex() => TestConverter(
+        Bloom.ZeroLength,
+        "\"0x\"",
+        converter,
+        static (a, b) => ReferenceEquals(a, b));
+
+    // The empty-bloom roundtrip lives in Serializes_as_full_width_prefixed_hex.
     static IEnumerable<TestCaseData> BloomTestCases =
     [
         new TestCaseData(null).SetName("null"),
-        new TestCaseData(Bloom.Empty).SetName("empty"),
         new TestCaseData(new Bloom(Enumerable.Range(0, 255).Select(static i => (byte)i).ToArray())).SetName("range_0_to_254"),
     ];
 }

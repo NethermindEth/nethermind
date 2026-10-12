@@ -7,9 +7,12 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<BlobTransactionForRpc>
 {
     public new static TxType TxType => TxType.Blob;
@@ -36,17 +39,18 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     public BlobTransactionForRpc() { }
 
     public BlobTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
 
-        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-        {
-            Blobs = wrapper.Blobs;
-            Commitments = wrapper.Commitments;
-            Proofs = wrapper.Proofs;
-        }
+        ShardBlobNetworkWrapper? wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+        Blobs = wrapper?.Blobs;
+        Commitments = wrapper?.Commitments;
+        Proofs = wrapper?.Proofs;
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -90,8 +94,65 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         return tx;
     }
 
+    public override Result FillDefaults(in TxFillContext context)
+    {
+        Result baseResult = base.FillDefaults(context);
+        if (!baseResult) return baseResult;
+
+        if (MaxFeePerBlobGas is null)
+        {
+            // Fail rather than default to 0x0, which is below the EIP-4844 minimum blob base fee of 1.
+            if (context.BlobBaseFee is null) return Result.Fail("unable to calculate the current blob base fee");
+            MaxFeePerBlobGas = context.BlobBaseFee.Value * 2;
+        }
+
+        return DeriveSidecar(context.Spec);
+    }
+
+    private Result DeriveSidecar(IReleaseSpec spec)
+    {
+        if (Blobs is not { Length: > 0 }) return Result.Success;
+        if (Commitments is not null && Proofs is not null && BlobVersionedHashes is { Length: > 0 }) return Result.Success;
+
+        // Bound the blob count before the expensive KZG work.
+        ValidationResult blobCountValidation = BlobFieldsTxValidator.ValidateBlobGasLimits(Blobs.Length, spec);
+        if (!blobCountValidation) return Result.Fail(blobCountValidation.Error!);
+
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(spec.BlobProofVersion);
+        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(Blobs);
+        proofsManager.ComputeProofsAndCommitments(wrapper);
+
+        if (BlobVersionedHashes is { Length: > 0 })
+        {
+            if (!proofsManager.ValidateHashes(wrapper, BlobVersionedHashes))
+                return Result.Fail("blob versioned hashes do not match the supplied blobs");
+        }
+        else
+        {
+            BlobVersionedHashes = proofsManager.ComputeHashes(wrapper);
+        }
+
+        Commitments = wrapper.Commitments;
+        Proofs = wrapper.Proofs;
+        return Result.Success;
+    }
+
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
+
+    /// <summary>
+    /// Returns a copy of <paramref name="call"/> without its blob fee cap when that cap is zero, so it converts as omitted;
+    /// otherwise returns <paramref name="call"/> unchanged.
+    /// </summary>
+    public static TransactionForRpc WithZeroBlobFeeCapOmitted(TransactionForRpc call)
+    {
+        if (call is not BlobTransactionForRpc { MaxFeePerBlobGas.IsZero: true } blobCall)
+            return call;
+
+        BlobTransactionForRpc copy = (BlobTransactionForRpc)blobCall.MemberwiseClone();
+        copy.MaxFeePerBlobGas = null;
+        return copy;
+    }
 
     /// <summary>
     /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>

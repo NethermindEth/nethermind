@@ -42,13 +42,15 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         chain.Api.AdvanceSlot(20);
 
         // no events loaded initially
-        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree!.Head!.Header, 0, payloadAttributes).ToList();
+        BlockHeader parent = chain.BlockTree!.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(0));
 
         // after timeout they should be loaded
         using CancellationTokenSource cts = new();
         await chain.Api.TxSource.WaitForTransactions(BuildingSlot, cts.Token);
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(20));
 
         // late block arrives, then next block should contain loaded transactions
@@ -76,7 +78,8 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         ExecutionPayload lastPayload = executionPayloads[^1];
 
         // no events loaded initially
-        List<Transaction> txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        List<Transaction> txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(0));
 
         chain.Api.AdvanceSlot(20);
@@ -84,7 +87,8 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
         lastPayload = payloads[0];
 
-        txs = chain.Api.TxSource.GetTransactions(chain.BlockTree.Head!.Header, 0, payloadAttributes).ToList();
+        parent = chain.BlockTree.Head!.Header;
+        txs = chain.Api.TxSource.GetTransactions(parent, parent.CreateSimulatedChild(payloadAttributes.Timestamp), 0, payloadAttributes).ToList();
         Assert.That(txs.Count, Is.EqualTo(20));
 
         payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
@@ -101,7 +105,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
         long time = 1;
         Timestamper timestamper = new(time);
 
-        Metrics.ShutterKeysMissed = 0;
+        ulong missedBefore = Metrics.ShutterKeysMissed;
 
         using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, timestamper).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
@@ -117,7 +121,7 @@ public class ShutterIntegrationTests : BaseEngineModuleTests
 
         // ImproveBlock tasks run in the background and may not have completed yet
         // when GetPayload returns (it only waits 50ms), so poll until all increments land.
-        Assert.That(() => Metrics.ShutterKeysMissed, Is.EqualTo((ulong)5).After(5000, 50));
+        Assert.That(() => Metrics.ShutterKeysMissed - missedBefore, Is.EqualTo((ulong)5).After(5000, 50));
     }
 
 }

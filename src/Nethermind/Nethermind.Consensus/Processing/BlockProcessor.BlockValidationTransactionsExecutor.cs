@@ -33,9 +33,9 @@ public partial class BlockProcessor
         // PerTxTimingCollector's <remarks> for the full threading contract.
         private bool _enableTxTimingMetrics;
 
-        public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-        public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+        public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             Metrics.ResetBlockStats();
             SetupTxTimingMetrics(block);
@@ -44,6 +44,7 @@ public partial class BlockProcessor
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
+                token.ThrowIfCancellationRequested();
                 Transaction currentTx = block.Transactions[i];
 
                 ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
@@ -114,7 +115,7 @@ public partial class BlockProcessor
         internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
         /// <summary>
-        /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>
+        /// Receives each transaction processed on the main chain, raised as <see cref="IMainProcessingContext.TransactionProcessed"/>.
         /// </summary>
         public interface ITransactionProcessedEventHandler
         {

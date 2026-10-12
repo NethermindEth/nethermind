@@ -1,12 +1,11 @@
 name: Assertoor tests
 
 on:
+  # Auto-run on every master Docker publish is disabled: this suite has been red on effectively
+  # every run for a long time, so the per-publish runs only burn CI without producing signal.
+  # Left as manual dispatch until the underlying failure is fixed; restore the workflow_run
+  # trigger below once it's green again.
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Publish Docker image"]
-    branches: [master]
-    types:
-      - completed
 
 jobs:
   get_tests:

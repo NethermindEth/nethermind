@@ -572,7 +572,8 @@ public class StrictHexByteArrayConverter : JsonConverter<byte[]>
     {
         try
         {
-            return ByteArrayConverter.ConvertData(ref reader, strictHexFormat: true);
+            // "" is empty data, not a missing value: JSON null never reaches a reference-type converter.
+            return ByteArrayConverter.ConvertData(ref reader, strictHexFormat: true) ?? [];
         }
         catch (FormatException e)
         {

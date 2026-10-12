@@ -5,7 +5,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -13,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -34,6 +37,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
+        private readonly IPeerManager _peerManager;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
@@ -51,6 +55,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
+            IPeerManager peerManager,
             [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
             IProtocolHandlerFactory[] factories,
             IP2PCapabilityResolver[] capabilityResolvers,
@@ -61,6 +66,7 @@ namespace Nethermind.Network
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -89,9 +95,9 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
-            if (_logger.IsDebug && session.BestStateReached == SessionState.Initialized)
+            if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
-                _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
+                TraceSessionDisconnected(session, e);
             }
 
             if (session.Node is not null
@@ -118,6 +124,10 @@ namespace Nethermind.Network
                 _txPool.RemovePeer(session.Node.Id);
             }
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceSessionDisconnected(ISession session, DisconnectEventArgs e) =>
+            _logger.Trace($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
 
         private void SessionInitialized(object sender, EventArgs e)
         {
@@ -202,7 +212,7 @@ namespace Nethermind.Network
         {
             if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
 
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 PeerInfo? peer = _syncPool.GetPeer(session.Node);
@@ -257,7 +267,11 @@ namespace Nethermind.Network
 
             AddNodeToDiscovery(session, args);
 
-            _protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
+            if (isValid)
+            {
+                _peerManager.OnP2PProtocolInitialized(session);
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
         }
@@ -274,7 +288,7 @@ namespace Nethermind.Network
                 ProtocolVersion = args.ProtocolVersion,
                 TotalDifficulty = (BigInteger)args.TotalDifficulty
             });
-            bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
+            bool isValid = _protocolValidator.ValidateOrDisconnect(handler.ProtocolCode, session, args);
             if (isValid)
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
@@ -302,12 +316,28 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                 //Add/Update peer to the storage and to sync manager
-                _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
+                _peerStorage.UpdateNode(CreatePersistedNode(session.Node));
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
             }
+        }
+
+        private NetworkNode CreatePersistedNode(Node node)
+        {
+            long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
+            NodeRecord? record = node.Enr;
+            // A reloaded ENR is dialed at its default TCP endpoint, so it is kept only when that is the address that
+            // worked. Ports are not compared because the Hello message overwrites the node's port.
+            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence &&
+                record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) &&
+                tcpEndpoint.Address.Equals(node.Address.Address))
+            {
+                return new NetworkNode(record.ToString()) { Reputation = reputation };
+            }
+
+            return new NetworkNode(node.Id, node.Host, node.Port, reputation);
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)
