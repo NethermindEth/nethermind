@@ -1002,6 +1002,46 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_RowsResolvedInsideTheWalk_MatchTheFlatEncoders()
+    {
+        (HistoryWriter windowedWriter, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        Account account = new(7, 4242, TestItem.KeccakA, TestItem.KeccakB);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        CommitBlock(0, 1,
+            accountChanges: [(AddrA, account), (AddrB, null)],
+            storageChanges: [(AddrA, Slot1, slot), (AddrA, Slot2, null)]);
+        CommitBlock(1, 2,
+            accountChanges: [(AddrA, new Account(8, 1)), (AddrB, new Account(1, 1))],
+            storageChanges: [(AddrA, Slot1, Slot(0x02)), (AddrA, Slot2, Slot(0x03))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        HistoryStoreV3 storageHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        Span<byte> buffer = stackalloc byte[256];
+
+        int accountWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out ulong accountRow);
+        byte[] accountBytes = buffer[..accountWritten].ToArray();
+        int deletedWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrB), buffer, out ulong deletedRow);
+        int slotWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot1), buffer, out ulong slotRow);
+        byte[] slotBytes = buffer[..slotWritten].ToArray();
+        int zeroedWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot2), buffer, out ulong zeroedRow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountRow, Is.EqualTo(2UL));
+            Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
+            Assert.That(deletedRow, Is.EqualTo(2UL));
+            Assert.That(deletedWritten, Is.Zero);
+            Assert.That(slotRow, Is.EqualTo(2UL));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
+            Assert.That(zeroedRow, Is.EqualTo(2UL));
+            Assert.That(zeroedWritten, Is.Zero);
+        }
+    }
+
+    [Test]
     public void V3Read_AtOrBelowWatermark_ResolvesCorrectly_BeforeAndAfterThePersistCatchesUp()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
@@ -1221,6 +1261,49 @@ public class HistoryWriterTests
         Assert.That(() => windowedReader.TryGetStorage(0, AddrA, 999999, out _),
             Throws.InstanceOf<InvalidOperationException>(),
             "a slot the over-cap destruct wrote no row for must fail closed rather than silently report absent");
+    }
+
+    [Test]
+    public void V3_ScopeCachedNoPoison_ThenOverCapDestructCaptured_ReadFailsClosed()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        StorageClearsScopeCache scopeCache = new();
+        Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _, scopeCache), Is.True);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
+        }
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (StateUnavailableException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _, scopeCache),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "the scope cached \"no poison above block 0\" before the destruct was captured; trusting it reads a slot that held 0x01 as unset");
     }
 
     [Test]

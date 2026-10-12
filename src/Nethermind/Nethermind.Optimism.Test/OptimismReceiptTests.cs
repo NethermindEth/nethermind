@@ -18,7 +18,7 @@ public class OptimismReceiptTests
 {
     [SetUp]
     public void SetUp() =>
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
 
     [Test]
     public void ContainsOperatorFeeParameters_PreIsthmus_IsNull()

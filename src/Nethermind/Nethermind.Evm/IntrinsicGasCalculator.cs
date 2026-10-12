@@ -142,10 +142,22 @@ public static class IntrinsicGasCalculator
         return contentBytes;
     }
 
+    /// <summary>
+    /// Counts the block access list bytes a transaction's authorizations can contribute, per EIP-8279.
+    /// </summary>
+    /// <remarks>
+    /// Priced up front at the worst case (authority address, delegation designator and nonce) so that applying the
+    /// authorizations, which runs outside the EVM's out-of-gas handling, never meters at runtime.
+    /// </remarks>
+    internal static ulong CalculateAuthorizationBalBytes(Transaction transaction, IReleaseSpec spec) =>
+        spec.IsEip8279Enabled && transaction.AuthorizationList is { Length: int authorizationsCount }
+            ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
+            : 0;
+
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
         spec switch
         {
-            { IsEip8131Enabled: true } => floorBase + CalculateContentBytes(transaction) * Eip8131Constants.FloorGasPerByte,
+            { IsEip8131Enabled: true } => floorBase + (CalculateContentBytes(transaction) + CalculateAuthorizationBalBytes(transaction, spec)) * Eip8131Constants.FloorGasPerByte,
             { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
             { IsEip7623Enabled: true } => floorBase + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
             _ => 0

@@ -34,7 +34,7 @@ public partial class Bls12381PairingCheckPrecompile
 
             try // Is this really needed on zkVM?
             {
-                return RunInternal(inputData.Span, decoded, pairCount);
+                return RunInternal(inputData.Span, decoded.AsSpan(0, decodedLen), pairCount);
             }
             finally
             {

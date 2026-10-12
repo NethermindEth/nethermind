@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -22,6 +23,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -633,5 +635,42 @@ public class DiscoveryV5AppTests
         bool result = DiscoveryV5App.ShouldUseDefaultDiscv5Bootnodes(IPAddress.Parse(externalIp), discoveryConfig);
 
         Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Initialized_channel_connects_discv5_transport_to_socket()
+    {
+        ILifetimeScope? discv5Scope = null;
+        await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
+            IPAddress.Parse("8.8.8.8"),
+            builder => builder.RegisterBuildCallback(scope => discv5Scope = scope));
+        IDatagramSocket socket = Substitute.For<IDatagramSocket>();
+        byte[] data = [1, 2, 3];
+        IPEndPoint remote = IPEndPoint.Parse("127.0.0.1:30303");
+        using CancellationTokenSource cancellationSource = new(10_000);
+
+        discoveryApp.InitializeChannel(socket, static datagram => datagram.Dispose());
+        DiscoveryV5Transport transport = discv5Scope!.Resolve<DiscoveryV5Transport>();
+        await transport.SendAsync(data, remote, CancellationToken.None);
+        await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = transport
+            .ReadMessagesAsync(cancellationSource.Token)
+            .GetAsyncEnumerator(cancellationSource.Token);
+        discoveryApp.Receive(PooledUdpReceiveResult.Copy(data, remote));
+
+        _ = socket.Received(1).SendToAsync(
+            Arg.Is<ReadOnlyMemory<byte>>(datagram => datagram.ToArray().SequenceEqual(data)),
+            remote,
+            Arg.Any<CancellationToken>());
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        PooledUdpReceiveResult received = enumerator.Current;
+        try
+        {
+            Assert.That(received.Buffer, Is.SequenceEqualTo(data));
+            Assert.That(received.RemoteEndPoint, Is.EqualTo(remote));
+        }
+        finally
+        {
+            received.Dispose();
+        }
     }
 }

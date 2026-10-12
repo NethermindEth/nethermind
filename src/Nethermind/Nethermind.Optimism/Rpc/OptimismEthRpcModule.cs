@@ -130,8 +130,14 @@ public class OptimismEthRpcModule(
         return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return feeError;
+
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
