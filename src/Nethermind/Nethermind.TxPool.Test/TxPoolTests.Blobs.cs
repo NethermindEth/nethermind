@@ -1712,6 +1712,132 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs), Is.False);
         }
 
+        private const ulong IncludedBlobInclusionBlock = 358;
+
+        private Transaction SubmitBlobTxToNewPool(BlobsSupportMode blobsSupport, IReleaseSpec spec)
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { Size = 128, BlobsSupport = blobsSupport },
+                new TestSpecProvider(spec),
+                txStorage: new BlobTxStorage());
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction tx = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: spec);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            return tx;
+        }
+
+        private async Task IncludeInBlockAndAddEmptyBlocks(Transaction tx, ulong emptyBlocksAfterInclusion)
+        {
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(IncludedBlobInclusionBlock).WithTransactions(tx).TestObject);
+            for (ulong i = 1; i <= emptyBlocksAfterInclusion; i++)
+            {
+                await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(IncludedBlobInclusionBlock + i).TestObject);
+            }
+        }
+
+        [TestCase(BlobsSupportMode.InMemory, 0UL)]
+        [TestCase(BlobsSupportMode.Storage, 0UL)]
+        [TestCase(BlobsSupportMode.StorageWithReorgs, 0UL)]
+        [TestCase(BlobsSupportMode.InMemory, RecentlyIncludedBlobs.RetainedBlocks - 1)]
+        [TestCase(BlobsSupportMode.Storage, RecentlyIncludedBlobs.RetainedBlocks - 1)]
+        [TestCase(BlobsSupportMode.StorageWithReorgs, RecentlyIncludedBlobs.RetainedBlocks - 1)]
+        [TestCase(BlobsSupportMode.StorageWithReorgs, RecentlyIncludedBlobs.RetainedBlocks)]
+        public async Task should_serve_cell_proofs_of_included_blob_tx_for_four_blocks(BlobsSupportMode blobsSupport, ulong blocksAfterInclusion)
+        {
+            bool expectedServed = blocksAfterInclusion < RecentlyIncludedBlobs.RetainedBlocks;
+            Transaction tx = SubmitBlobTxToNewPool(blobsSupport, Osaka.Instance);
+            await IncludeInBlockAndAddEmptyBlocks(tx, blocksAfterInclusion);
+
+            byte[] includedHash = tx.BlobVersionedHashes[0];
+            byte[] unknownHash = new byte[32];
+            unknownHash[0] = 0x01;
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+
+            byte[][] blobs = new byte[2][];
+            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            int found = _txPool.TryGetBlobsAndProofsV1([includedHash, unknownHash], blobs, proofs);
+            bool served = _txPool.TryGetBlobAndProofV1(includedHash, out byte[] blob, out byte[][] cellProofs);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0), "precondition: the tx left the blob pool");
+                Assert.That(found, Is.EqualTo(expectedServed ? 1 : 0), "found by the batch lookup");
+                Assert.That(blobs[1], Is.Null, "unknown hash");
+                Assert.That(blobs[0] is not null, Is.EqualTo(expectedServed), "batch lookup");
+                Assert.That(served, Is.EqualTo(expectedServed), "single lookup");
+            }
+
+            if (expectedServed)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(blobs[0], Is.EqualTo(wrapper.Blobs[0]));
+                    Assert.That(proofs[0], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(0, Ckzg.CellsPerExtBlob)));
+                    Assert.That(blob, Is.EqualTo(wrapper.Blobs[0]));
+                    Assert.That(cellProofs, Is.EqualTo(wrapper.Proofs));
+                }
+            }
+        }
+
+        [TestCase(0UL, true)]
+        [TestCase(3UL, true)]
+        [TestCase(4UL, false)]
+        public async Task should_serve_blob_proof_of_included_blob_tx_for_four_blocks(ulong blocksAfterInclusion, bool expectedServed)
+        {
+            Transaction tx = SubmitBlobTxToNewPool(BlobsSupportMode.StorageWithReorgs, Cancun.Instance);
+            await IncludeInBlockAndAddEmptyBlocks(tx, blocksAfterInclusion);
+
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+            bool served = _txPool.TryGetBlobAndProofV0(tx.BlobVersionedHashes[0], out byte[] blob, out byte[] proof);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(0), "precondition: the tx left the blob pool");
+                Assert.That(served, Is.EqualTo(expectedServed));
+                if (expectedServed)
+                {
+                    Assert.That(blob, Is.EqualTo(wrapper.Blobs[0]));
+                    Assert.That(proof, Is.EqualTo(wrapper.Proofs[0]));
+                }
+            }
+        }
+
+        [Test]
+        public async Task should_serve_blobs_of_included_tx_while_it_is_being_removed_from_the_pool(
+            [Values(BlobsSupportMode.InMemory, BlobsSupportMode.Storage, BlobsSupportMode.StorageWithReorgs)] BlobsSupportMode blobsSupport)
+        {
+            Transaction tx = SubmitBlobTxToNewPool(blobsSupport, Osaka.Instance);
+            int foundDuringRemoval = -1;
+            _txPool.RemovedPending += (_, args) =>
+            {
+                if (args.Transaction.Hash == tx.Hash)
+                {
+                    foundDuringRemoval = _txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte[]>[1]);
+                }
+            };
+
+            await IncludeInBlockAndAddEmptyBlocks(tx, 0);
+
+            Assert.That(foundDuringRemoval, Is.EqualTo(1), "the blob must be served from the moment the tx leaves the pool");
+        }
+
+        [Test]
+        public async Task should_not_serve_blobs_of_included_tx_to_peer_cell_lookups()
+        {
+            Transaction tx = SubmitBlobTxToNewPool(BlobsSupportMode.StorageWithReorgs, Osaka.Instance);
+            await IncludeInBlockAndAddEmptyBlocks(tx, 0);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte[]>[1]), Is.EqualTo(1), "precondition: the Engine lookup serves it");
+                Assert.That(_txPool.TryGetBlobCells(tx.Hash!, BlobCellMask.FromIndices([3]), out _, out _), Is.False);
+                Assert.That(_txPool.TryGetPendingBlobCellMask(tx.Hash!, out _), Is.False);
+                Assert.That(_txPool.TryGetPendingBlobCellMetadata(tx.Hash!, out _, out _, out _), Is.False);
+            }
+        }
+
         [Test]
         public async Task should_bring_back_reorganized_blob_txs()
         {

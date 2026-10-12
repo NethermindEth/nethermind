@@ -72,6 +72,7 @@ namespace Nethermind.TxPool
         private readonly string? _specChangeValidationFingerprint;
         private readonly ISpecChangeValidationStorage? _specChangeValidationStorage;
         private readonly bool _blobReorgsSupportEnabled;
+        private readonly RecentlyIncludedBlobs _recentlyIncludedBlobs = new();
         private bool _specChangeMarkerUnpublished;
         private readonly DelegationCache _pendingDelegations;
         private readonly PayerExposureCache _payerExposure = new();
@@ -549,16 +550,23 @@ namespace Nethermind.TxPool
         public bool TryGetBlobAndProofV0(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[]? proof)
-            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
+            => _blobTransactions.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof)
+               || _recentlyIncludedBlobs.TryGetBlobAndProofV0(blobVersionedHash, out blob, out proof);
 
         public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
             [NotNullWhen(true)] out byte[][]? cellProofs)
-            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
+            => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs)
+               || _recentlyIncludedBlobs.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
-            => _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+        {
+            int found = _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+            return found == requestedBlobVersionedHashes.Length
+                ? found
+                : found + _recentlyIncludedBlobs.TryFillBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
+        }
 
         public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
             => _blobTransactions.TryGetAvailableCellMask(hash, out availableMask);
@@ -1177,6 +1185,7 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
+            _recentlyIncludedBlobs.StartBlock(block.Number);
             using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
@@ -1206,15 +1215,16 @@ namespace Nethermind.TxPool
                     blobTxs++;
                     blobs += (long)blockTx.GetBlobCount();
 
-                    if (_blobReorgsSupportEnabled)
+                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
                     {
-                        if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
+                        _recentlyIncludedBlobs.Add(fullBlobTx);
+                        if (_blobReorgsSupportEnabled)
                         {
                             if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
                             blobTxsToSave.Add(fullBlobTx);
                         }
-                        else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                     }
+                    else if (_blobReorgsSupportEnabled && _logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                 }
 
                 bool isKnown = IsKnown(txHash);
