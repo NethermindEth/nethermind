@@ -412,7 +412,7 @@ public class GethStyleTracer(
 
     private static bool WantsLogIndex(GethTraceOptions options) =>
         options.Tracer == NativeCallTracer.CallTracer
-        && TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions)?.WithLog == true;
+        && NativeCallTracerConfig.FromJson(options.TracerConfig, EthereumJsonSerializer.JsonOptions).WithLog;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {
