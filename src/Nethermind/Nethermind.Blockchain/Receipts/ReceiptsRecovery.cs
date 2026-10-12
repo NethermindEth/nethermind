@@ -186,7 +186,7 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.Index = _transactionIndex++;
             }
 
-            public void RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex)
+            public Hash256 RecoverReceiptData(ref TxReceiptStructRef receipt, int transactionIndex)
             {
                 if (transactionIndex != _lastTransactionIndex)
                 {
@@ -210,10 +210,10 @@ namespace Nethermind.Blockchain.Receipts
                     _lastTransactionIndex = _transactionIndex++;
                 }
 
-                receipt.TxHash = _lastTransactionHash!.ToStructRef();
                 receipt.BlockHash = _block.Hash!.ToStructRef();
                 receipt.BlockNumber = _block.Number;
                 receipt.Index = transactionIndex;
+                return _lastTransactionHash!;
             }
 
             private Hash256 NextTransactionHash()

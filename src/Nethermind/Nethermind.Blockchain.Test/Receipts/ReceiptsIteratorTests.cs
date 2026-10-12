@@ -191,11 +191,18 @@ public class ReceiptsIteratorTests
                     continue;
                 }
 
-                iterator.RecoverLogFieldsIfNeeded(ref receipt);
+                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
+                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? repeatedTransactionHash);
+                if (useLogContext)
+                {
+                    Assert.That(receipt.TxHash.Bytes.Length, Is.Zero, "direct recovery must not construct a hash span");
+                }
                 iterator.RecoverLogFieldsIfNeeded(ref receipt);
 
                 using (Assert.EnterMultipleScope())
                 {
+                    Assert.That(recoveredTransactionHash, Is.EqualTo(useLogContext ? expectedHashes[i] : null), "only selective recovery supplies a direct hash");
+                    Assert.That(repeatedTransactionHash, Is.SameAs(recoveredTransactionHash), "repeated recovery reuses the hash object");
                     Assert.That(receipt.TxHash.ToCommitment(), Is.EqualTo(expectedHashes[i]), $"receipt {i} must carry its transaction's hash");
                     Assert.That(receipt.BlockHash.ToCommitment(), Is.EqualTo(block.Hash), $"receipt {i} must carry the block hash");
                     Assert.That(receipt.BlockNumber, Is.EqualTo(block.Number), $"receipt {i} must carry the block number");
