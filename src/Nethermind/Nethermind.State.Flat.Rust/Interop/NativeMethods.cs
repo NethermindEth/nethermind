@@ -9,6 +9,11 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat.Rust.Interop;
 
 /// <summary>Exports of <c>libnethermind_flatdb</c>, built from <c>native/</c> (see native/crates/flatdb-ffi/src/lib.rs).</summary>
+/// <remarks>
+/// Handles C# owns are passed as their <see cref="SafeHandle"/>, so a call keeps them alive; reads copy into caller
+/// buffers and report the length, -1 for an absent value, or <see cref="FdbStatus.BufferTooSmall"/> with the length
+/// needed.
+/// </remarks>
 internal static unsafe partial class NativeMethods
 {
     private const string LibraryName = "nethermind_flatdb";
@@ -17,6 +22,9 @@ internal static unsafe partial class NativeMethods
 
     /// <summary>Whether the native library loads and speaks the ABI of this adapter.</summary>
     public static bool IsAvailable => _unavailableReason.Value is null;
+
+    /// <summary>Why the native library cannot be used, or null when it can.</summary>
+    public static string? UnavailableReason => _unavailableReason.Value;
 
     /// <exception cref="InvalidOperationException">The native library is missing or speaks another ABI.</exception>
     public static void EnsureAvailable()
@@ -62,17 +70,68 @@ internal static unsafe partial class NativeMethods
     public static partial FdbStatus fdb_rocks_api_symbol(uint index, byte** name, nuint* nameLength);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_store_create(FdbStoreCfg* cfg, FdbKvDesc* kv, nint* store);
+    public static partial FdbStatus fdb_store_create(FdbStoreCfg* cfg, FdbKvDesc* kv, nint* store, FdbStoreInfo* info);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_store_destroy(nint store);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_store_take_read_count(nint store, ulong* count);
+    public static partial FdbStatus fdb_store_take_stats(RustFlatStore store, FdbStats* stats);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_debug_put(nint store, uint column, byte* key, nuint keyLength, byte* value, nuint valueLength);
+    public static partial FdbStatus fdb_store_flush(RustFlatStore store);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_debug_get(nint store, uint column, byte* key, nuint keyLength, byte* buffer, nuint capacity, long* valueLength);
+    public static partial FdbStatus fdb_store_clear(RustFlatStore store);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_open(RustFlatStore store, uint flags, byte detailedMetrics, nint* reader, FfiStateId* currentState);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_release(nint reader);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_is_preimage_mode(ReaderHandle reader, byte* preimage);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_get_account(ReaderHandle reader, byte* address, FfiAccount* account, byte* found);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_get_slot(ReaderHandle reader, byte* address, ulong* slot, ulong* value, byte* found);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_load_state_rlp(ReaderHandle reader, byte* path, byte pathLength, uint readFlags, byte* buffer, nuint capacity, long* length);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_load_storage_rlp(ReaderHandle reader, byte* addressHash, byte* path, byte pathLength, uint readFlags, byte* buffer, nuint capacity, long* length);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_get_account_raw(ReaderHandle reader, byte* addressHash, byte* buffer, nuint capacity, long* length);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_get_storage_raw(ReaderHandle reader, byte* addressHash, byte* slotHash, ulong* value, byte* found);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_account_iter(ReaderHandle reader, byte* startKey, byte* endKey, nint* iterator);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reader_storage_iter(ReaderHandle reader, byte* accountKey, byte* startSlotKey, byte* endSlotKey, nint* iterator);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_iter_next(IteratorHandle iterator, byte* key, byte** value, nuint* valueLength, byte* hasEntry);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_iter_release(nint iterator);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_batch_open(RustFlatStore store, FfiStateId* from, FfiStateId* to, uint writeFlags, nint* batch, FfiStateId* currentState);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_batch_apply(BatchHandle batch, byte* ops, nuint length);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_batch_commit(BatchHandle batch);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_batch_release(nint batch);
 }

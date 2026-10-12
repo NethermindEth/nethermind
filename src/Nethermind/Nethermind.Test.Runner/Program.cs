@@ -80,6 +80,10 @@ internal class Program
         public static Option<bool> TrieDb { get; } =
             new("--triedb") { Description = "Run with the patricia-trie state layout." };
 
+        public static Option<string> FlatBackend { get; } =
+            new Option<string>("--flat-backend") { Description = "Run flat state on this implementation: csharp, rustpersistence or rust." }
+                .AcceptOnlyFromAmong("csharp", "rustpersistence", "rust");
+
         public static Option<bool?> ParallelExecution { get; } =
             new("--parallelExecution") { Description = "Force BAL parallel execution on or off; when omitted, the client config default is used. [Only for Blockchain/Engine Test]" };
 
@@ -115,6 +119,7 @@ internal class Program
             Options.Workers,
             Options.Chunk,
             Options.TrieDb,
+            Options.FlatBackend,
             Options.ParallelExecution,
             Options.BatchRead,
             Options.ForkAlias,
@@ -168,6 +173,11 @@ internal class Program
         if (parseResult.GetValue(Options.TrieDb))
         {
             Environment.SetEnvironmentVariable("TEST_USE_TRIE", "1");
+        }
+
+        if (parseResult.GetValue(Options.FlatBackend) is { } flatBackend)
+        {
+            Environment.SetEnvironmentVariable(TestStateBackend.FlatBackendEnvironmentVariable, flatBackend);
         }
 
         // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).

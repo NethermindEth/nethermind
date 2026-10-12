@@ -4,43 +4,72 @@
 using System.Runtime.InteropServices;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Logging;
+using Nethermind.RocksDbBindings;
 using Nethermind.State.Flat.Rust.Interop;
+using FlatMetrics = Nethermind.State.Flat.Metrics;
 
 namespace Nethermind.State.Flat.Rust;
 
-/// <summary>The native flat DB store, running on the database of the flat columns.</summary>
+/// <summary>The native flat DB store: the persistence stack of the native library, on the database of the flat columns.</summary>
 /// <remarks>
 /// Over a RocksDB <see cref="ColumnsDb{T}"/> the store drives the very instance C# opened, through the
 /// <see cref="RocksApiTable"/>, and holds a native lease on it until the handle is released, so disposing the database
-/// waits for the store rather than closing under it. The native side refuses to be destroyed while a reader, iterator
-/// or batch of it is open, and the lease is then kept. Other databases need the managed key-value backend, which the
-/// native library does not implement yet.
+/// waits for the store rather than closing under it. Any other database is reached through the
+/// <see cref="ManagedKvBridge"/>. Every reader, iterator and batch handle holds a reference on the store, so the native
+/// store, which refuses to be destroyed while one is open, is destroyed once the last of them is released.
 /// </remarks>
 internal sealed unsafe class RustFlatStore : SafeHandle
 {
     private static readonly int ColumnCount = Enum.GetValues<FlatDbColumns>().Length;
 
-    private readonly ColumnsDb<FlatDbColumns>? _leasedDb;
+    private readonly ColumnsDb<FlatDbColumns>? _rocksDb;
+    private readonly ManagedKvBridge? _bridge;
+    private readonly bool _carryForward;
 
-    private RustFlatStore(nint store, ColumnsDb<FlatDbColumns>? leasedDb) : base(0, ownsHandle: true)
+    private RustFlatStore(nint store, in FdbStoreInfo info, ColumnsDb<FlatDbColumns>? rocksDb, ManagedKvBridge? bridge, bool carryForward)
+        : base(0, ownsHandle: true)
     {
         SetHandle(store);
-        _leasedDb = leasedDb;
+        _rocksDb = rocksDb;
+        _bridge = bridge;
+        _carryForward = carryForward;
+        RlpWrapSlots = info.RlpWrapSlots != 0;
+        IsPreimage = info.Preimage != 0;
     }
 
     public override bool IsInvalid => handle == 0;
 
+    /// <summary>Whether slot values are RLP-wrapped rather than in the deprecated raw encoding.</summary>
+    public bool RlpWrapSlots { get; }
+
+    /// <summary>Whether the layout keys flat state by address and slot rather than their hashes.</summary>
+    public bool IsPreimage { get; }
+
+    /// <summary>The managed backend, when the database is not RocksDB.</summary>
+    internal ManagedKvBridge? Bridge => _bridge;
+
+    /// <summary>Creates the store the configuration describes over <paramref name="db"/>.</summary>
     /// <exception cref="InvalidOperationException">The native library is missing or incompatible.</exception>
-    /// <exception cref="NotSupportedException"><paramref name="db"/> is not a RocksDB database.</exception>
-    public static RustFlatStore Create(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config)
+    public static RustFlatStore Create(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
         NativeMethods.EnsureAvailable();
-        return db is ColumnsDb<FlatDbColumns> rocksDb
-            ? CreateOnRocksDb(rocksDb, config)
-            : throw new NotSupportedException($"The Rust flat DB backend needs a RocksDB flat database, not {db.GetType().Name}, until it gains its managed key-value backend.");
+        FdbStoreCfg cfg = new()
+        {
+            AbiVersion = FfiAbi.Version,
+            Layout = (uint)config.Layout,
+            WriteBufferFloor = config.PersistenceWriteBufferFloor,
+            CarryForward = config.EnableCarryForwardCache ? (byte)1 : (byte)0,
+        };
+
+        if (db is ColumnsDb<FlatDbColumns> rocksDb) return CreateOnRocksDb(rocksDb, cfg);
+
+        ILogger logger = logManager.GetClassLogger<RustFlatStore>();
+        if (logger.IsWarn) logger.Warn($"FlatDb.Backend={config.Backend} runs on {db.GetType().Name}, which is not RocksDB, through callbacks into C#: results are not valid for benchmarks.");
+        return CreateOnManagedKv(db, cfg);
     }
 
-    private static RustFlatStore CreateOnRocksDb(ColumnsDb<FlatDbColumns> db, IFlatDbConfig config)
+    private static RustFlatStore CreateOnRocksDb(ColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg)
     {
         RocksApiTable api = RocksApiTable.Shared;
         db.AcquireNativeLease();
@@ -52,7 +81,6 @@ internal sealed unsafe class RustFlatStore : SafeHandle
                 columnFamilies[i] = ((ColumnDb)db.GetColumnDb((FlatDbColumns)i))._columnFamily.Handle;
             }
 
-            FdbStoreCfg cfg = new() { AbiVersion = FfiAbi.Version, Layout = (uint)config.Layout };
             FdbKvDesc kv = new()
             {
                 Kind = FdbKvKind.Rocks,
@@ -67,8 +95,9 @@ internal sealed unsafe class RustFlatStore : SafeHandle
             };
 
             nint store;
-            StatusMap.ThrowIfFailed(NativeMethods.fdb_store_create(&cfg, &kv, &store));
-            return new RustFlatStore(store, db);
+            FdbStoreInfo info;
+            ThrowIfFailed(NativeMethods.fdb_store_create(&cfg, &kv, &store, &info), db);
+            return new RustFlatStore(store, info, db, null, cfg.CarryForward != 0);
         }
         catch
         {
@@ -77,79 +106,101 @@ internal sealed unsafe class RustFlatStore : SafeHandle
         }
     }
 
+    private static RustFlatStore CreateOnManagedKv(IColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg)
+    {
+        ManagedKvBridge bridge = new(db);
+        try
+        {
+            ManagedKvVTable vtable = bridge.VTable;
+            FdbKvDesc kv = new() { Kind = FdbKvKind.Managed, Managed = &vtable };
+
+            nint store;
+            FdbStoreInfo info;
+            ThrowIfFailed(NativeMethods.fdb_store_create(&cfg, &kv, &store, &info), null);
+            return new RustFlatStore(store, info, null, bridge, cfg.CarryForward != 0);
+        }
+        catch
+        {
+            bridge.Dispose();
+            throw;
+        }
+    }
+
     protected override bool ReleaseHandle()
     {
         if (NativeMethods.fdb_store_destroy(handle) != FdbStatus.Ok) return false;
 
-        _leasedDb?.ReleaseNativeLease();
+        _rocksDb?.ReleaseNativeLease();
+        _bridge?.Dispose();
         return true;
     }
 
-    /// <summary>Adds the reads the native store made since the last call to the <c>TotalReads</c> metric of the database.</summary>
-    internal void PublishReadMetrics()
+    /// <summary>Throws what the C# persistence would for a failed call on the store.</summary>
+    public void ThrowIfFailed(FdbStatus status) => ThrowIfFailed(status, _rocksDb);
+
+    /// <remarks>
+    /// A RocksDB failure becomes the <see cref="RocksDbException"/> the bindings throw, after
+    /// <see cref="DbOnTheRocks.HandleFatalDbError"/> had its say, as every <see cref="DbOnTheRocks"/> call does.
+    /// </remarks>
+    private static void ThrowIfFailed(FdbStatus status, DbOnTheRocks? rocksDb)
     {
-        bool added = false;
-        try
+        if (status == FdbStatus.Ok) return;
+        if (status == FdbStatus.RocksDb && rocksDb is not null)
         {
-            DangerousAddRef(ref added);
-            ulong count;
-            StatusMap.ThrowIfFailed(NativeMethods.fdb_store_take_read_count(handle, &count));
-            _leasedDb?.UpdateReadMetrics((int)Math.Min(count, int.MaxValue));
+            RocksDbException exception = new(StatusMap.LastError());
+            rocksDb.HandleFatalDbError(exception);
+            throw exception;
         }
-        finally
-        {
-            if (added) DangerousRelease();
-        }
+
+        StatusMap.Throw(status);
     }
 
-    /// <summary>Writes <paramref name="value"/> through the native store, in a batch of its own.</summary>
-    internal void DebugPut(FlatDbColumns column, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    /// <summary>Takes a reference on the store for a handle about to be created; the handle releases it.</summary>
+    /// <exception cref="ObjectDisposedException">The store is disposed.</exception>
+    public void AddChildReference()
     {
         bool added = false;
-        try
-        {
-            DangerousAddRef(ref added);
-            fixed (byte* keyPtr = key, valuePtr = value)
-            {
-                StatusMap.ThrowIfFailed(NativeMethods.fdb_debug_put(handle, (uint)column, keyPtr, (nuint)key.Length, valuePtr, (nuint)value.Length));
-            }
-        }
-        finally
-        {
-            if (added) DangerousRelease();
-        }
+        DangerousAddRef(ref added);
     }
 
-    /// <summary>Reads the latest value of <paramref name="key"/> through the native store.</summary>
-    internal byte[]? DebugGet(FlatDbColumns column, ReadOnlySpan<byte> key)
+    /// <summary>Gives back a reference <see cref="AddChildReference"/> took for a handle that was never created.</summary>
+    public void ReleaseChildReference() => DangerousRelease();
+
+    /// <summary>
+    /// Adds the metrics the store gathered since the last call to their C# counterparts: the reads to the
+    /// <c>TotalReads</c> metric of the database, and the carry-forward counters and gauges to
+    /// <see cref="FlatMetrics"/>.
+    /// </summary>
+    public void PublishMetrics()
     {
-        bool added = false;
+        if (IsClosed) return;
+
+        FdbStats stats;
         try
         {
-            DangerousAddRef(ref added);
-            byte[] buffer = new byte[256];
-            while (true)
-            {
-                long length;
-                FdbStatus status;
-                fixed (byte* keyPtr = key, bufferPtr = buffer)
-                {
-                    status = NativeMethods.fdb_debug_get(handle, (uint)column, keyPtr, (nuint)key.Length, bufferPtr, (nuint)buffer.Length, &length);
-                }
-
-                if (status == FdbStatus.BufferTooSmall)
-                {
-                    buffer = new byte[length];
-                    continue;
-                }
-
-                StatusMap.ThrowIfFailed(status);
-                return length < 0 ? null : buffer.AsSpan(0, (int)length).ToArray();
-            }
+            ThrowIfFailed(NativeMethods.fdb_store_take_stats(this, &stats));
         }
-        finally
+        catch (ObjectDisposedException)
         {
-            if (added) DangerousRelease();
+            return;
+        }
+
+        if (stats.Reads != 0) _rocksDb?.UpdateReadMetrics((int)Math.Min(stats.Reads, int.MaxValue));
+        if (!_carryForward) return;
+
+        Repeat(stats.CarryForwardAccountHits, FlatMetrics.IncrementCarryForwardAccountHits);
+        Repeat(stats.CarryForwardAccountMisses, FlatMetrics.IncrementCarryForwardAccountMisses);
+        Repeat(stats.CarryForwardSlotHits, FlatMetrics.IncrementCarryForwardSlotHits);
+        Repeat(stats.CarryForwardSlotMisses, FlatMetrics.IncrementCarryForwardSlotMisses);
+        Repeat(stats.CarryForwardAccountWipes, FlatMetrics.IncrementCarryForwardAccountWipes);
+        Repeat(stats.CarryForwardSlotEvictions, FlatMetrics.IncrementCarryForwardSlotEvictions);
+        FlatMetrics.PublishCarryForwardAccountCount(stats.CarryForwardAccountCount);
+        FlatMetrics.PublishCarryForwardSlotCount(stats.CarryForwardSlotCount);
+
+        // The C# counters only increment.
+        static void Repeat(long count, Action increment)
+        {
+            for (long i = 0; i < count; i++) increment();
         }
     }
 }

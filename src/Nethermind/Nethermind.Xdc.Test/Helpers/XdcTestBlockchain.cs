@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -116,7 +117,9 @@ public class XdcTestBlockchain : TestBlockchain
         JsonSerializer = new EthereumJsonSerializer();
 
         IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = UseFlatDb;
+        TestStateBackend.ApplyFlatBackend(flatDbConfig);
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         configurer?.Invoke(builder);

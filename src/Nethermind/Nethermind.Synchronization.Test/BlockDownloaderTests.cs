@@ -1041,7 +1041,9 @@ public partial class BlockDownloaderTests
     private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = TestStateBackend.UseFlatDb;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = TestStateBackend.UseFlatDb;
+        TestStateBackend.ApplyFlatBackend(flatDbConfig);
 
         Block genesis = Build.A.Block.Genesis.TestObject;
         ContainerBuilder b = new ContainerBuilder()

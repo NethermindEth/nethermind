@@ -5,9 +5,10 @@
 //! the hot path is statically dispatched to one backend:
 //! - [`rocks::RocksKv`]: the RocksDB instance opened by C#, driven through [`rocks_api::RocksApi`];
 //! - [`mem::MemKv`]: an in-memory multi-version store for tests;
-//! - [`managed::ManagedKv`]: callbacks into a C# `IColumnsDb` for non-RocksDB databases (not implemented yet).
+//! - [`managed::ManagedKv`]: callbacks into a C# `IColumnsDb` for non-RocksDB databases.
 
 mod batch;
+mod collected;
 mod error;
 pub mod managed;
 pub mod mem;
@@ -15,6 +16,7 @@ pub mod rocks;
 pub mod rocks_api;
 
 pub use batch::WriteBatch;
+pub use collected::CollectedIter;
 pub use error::{KvError, KvResult};
 
 /// A column of the flat DB, numbered as `Nethermind.State.Flat.FlatDbColumns`.
@@ -88,8 +90,13 @@ impl ReadFlags {
     pub const NONE: Self = Self(0);
     /// The read is unlikely to benefit from caching, so it does not fill the block cache.
     pub const HINT_CACHE_MISS: Self = Self(1);
-    /// The read is followed by reads of the next keys, so iterators read ahead.
+    /// The read is followed by reads of the next keys, so iterators read ahead, and a reader opened for sequential
+    /// reads serves a point read from a pooled iterator (see `RocksDbReader.Get`).
     pub const HINT_READ_AHEAD: Self = Self(2);
+    /// With [`ReadFlags::HINT_READ_AHEAD`], selects a second pool of read-ahead iterators.
+    pub const HINT_READ_AHEAD_2: Self = Self(4);
+    /// With [`ReadFlags::HINT_READ_AHEAD`], selects a third pool of read-ahead iterators.
+    pub const HINT_READ_AHEAD_3: Self = Self(8);
 
     /// Flags from their `ReadFlags` bit pattern. Unknown bits are kept and ignored.
     pub const fn from_bits(bits: u32) -> Self {
@@ -144,8 +151,10 @@ pub trait KvStore: Send + Sync + 'static {
     /// Calls `read` with the latest value of `key` without copying it, or returns `None` when it is absent.
     fn get_with<R>(&self, column: Column, key: &[u8], read: impl FnOnce(&[u8]) -> R) -> KvResult<Option<R>>;
 
-    /// Opens a reader over a consistent snapshot of every column.
-    fn reader(&self) -> KvResult<Self::Reader>;
+    /// Opens a reader over a consistent snapshot of every column, as `IColumnsDb.CreateSnapshot(sequentialReadAhead)`
+    /// does. A reader for sequential reads serves [`ReadFlags::HINT_READ_AHEAD`] point reads from read-ahead
+    /// iterators where the backend has them.
+    fn reader(&self, sequential_read_ahead: bool) -> KvResult<Self::Reader>;
 
     /// Starts a backend batch; most callers want [`KvStore::write_batch`].
     fn raw_batch(&self) -> KvResult<Self::RawBatch>;
@@ -166,6 +175,12 @@ pub trait KvStore: Send + Sync + 'static {
 
     /// Reads a backend property of `column`, or `None` when the backend does not know it.
     fn property(&self, column: Column, name: &str) -> KvResult<Option<String>>;
+
+    /// Takes the number of reads into a caller buffer made since the last call: the reads `DbOnTheRocks` counts in
+    /// its `TotalReads` metric (`GetCStyleWithColumnFamily`). A backend whose reads C# counts itself reports none.
+    fn take_read_count(&self) -> u64 {
+        0
+    }
 }
 
 /// Reads at the snapshot taken when the reader was opened.

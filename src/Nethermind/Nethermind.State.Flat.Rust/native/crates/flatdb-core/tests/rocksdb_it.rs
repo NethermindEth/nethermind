@@ -1,155 +1,15 @@
 //! The RocksDB backend against the `librocksdb.so` of the `Nethermind.RocksDbBindings` NuGet package, opened through
-//! its C API the way the C# side opens the flat DB. Skipped when the library is not in the NuGet cache; set
-//! `ROCKSDB_LIB` to test another copy.
+//! its C API the way the C# side opens the flat DB (see [`common::rocks`]). Skipped when the library is not in the
+//! NuGet cache; set `ROCKSDB_LIB` to test another copy.
 #![cfg(feature = "rocksdb-it")]
 
-use std::ffi::{CStr, CString, c_char, c_int, c_void};
-use std::path::PathBuf;
-use std::ptr;
+mod common;
 
-use flatdb_core::kv::rocks::{RocksDesc, RocksKv};
-use flatdb_core::kv::rocks_api::RocksApi;
+use common::rocks::TestDb;
+use flatdb_core::kv::rocks::RocksKv;
 use flatdb_core::kv::{
     Column, GetInto, IterOptions, KvError, KvIterator, KvReader, KvStore, ReadFlags, WriteBatch, WriteFlags,
 };
-use libloading::Library;
-
-const NUGET_LIBRARY: &str =
-    ".nuget/packages/nethermind.rocksdbbindings/11.8.1-preview.140/runtimes/linux-x64/native/librocksdb.so";
-
-/// Column family names in `FlatDbColumns` order.
-const COLUMN_NAMES: [&CStr; Column::COUNT] = [
-    c"Metadata",
-    c"Account",
-    c"Storage",
-    c"StateNodes",
-    c"StateTopNodes",
-    c"StorageNodes",
-    c"FallbackNodes",
-];
-
-type OptionsCreate = unsafe extern "C" fn() -> *mut c_void;
-type OptionsSetFlag = unsafe extern "C" fn(*mut c_void, u8);
-type OptionsDestroy = unsafe extern "C" fn(*mut c_void);
-type OpenColumnFamilies = unsafe extern "C" fn(
-    *const c_void,
-    *const c_char,
-    c_int,
-    *const *const c_char,
-    *const *const c_void,
-    *mut *mut c_void,
-    *mut *mut c_char,
-) -> *mut c_void;
-type Close = unsafe extern "C" fn(*mut c_void);
-type HandleDestroy = unsafe extern "C" fn(*mut c_void);
-
-fn library_path() -> Option<PathBuf> {
-    let path = match std::env::var_os("ROCKSDB_LIB") {
-        Some(path) => PathBuf::from(path),
-        None => PathBuf::from(std::env::var_os("HOME")?).join(NUGET_LIBRARY),
-    };
-    path.exists().then_some(path)
-}
-
-/// A database with the default column family and the seven flat-DB columns, closed on drop.
-struct TestDb {
-    library: Library,
-    _dir: tempfile::TempDir,
-    options: *mut c_void,
-    db: *mut c_void,
-    /// The default column family first, then the flat-DB columns.
-    handles: Vec<*mut c_void>,
-}
-
-impl TestDb {
-    fn open() -> Option<Self> {
-        let Some(path) = library_path() else {
-            eprintln!("skipped: librocksdb.so not found, restore the NuGet packages or set ROCKSDB_LIB");
-            return None;
-        };
-
-        // SAFETY: librocksdb has no load-time side effects beyond static initialization.
-        let library = unsafe { Library::new(&path) }.expect("librocksdb loads");
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = CString::new(dir.path().to_str().unwrap()).unwrap();
-        let mut names: Vec<*const c_char> = vec![c"default".as_ptr()];
-        names.extend(COLUMN_NAMES.iter().map(|name| name.as_ptr()));
-
-        // SAFETY: the C API is called as rocksdb/c.h declares it, and every buffer outlives the call using it.
-        unsafe {
-            let options = symbol::<OptionsCreate>(&library, "rocksdb_options_create")();
-            symbol::<OptionsSetFlag>(&library, "rocksdb_options_set_create_if_missing")(options, 1);
-            symbol::<OptionsSetFlag>(&library, "rocksdb_options_set_create_missing_column_families")(options, 1);
-
-            let column_options: Vec<*const c_void> = vec![options.cast_const(); names.len()];
-            let mut handles = vec![ptr::null_mut(); names.len()];
-            let mut error = ptr::null_mut();
-            let db = symbol::<OpenColumnFamilies>(&library, "rocksdb_open_column_families")(
-                options,
-                db_path.as_ptr(),
-                names.len() as c_int,
-                names.as_ptr(),
-                column_options.as_ptr(),
-                handles.as_mut_ptr(),
-                &mut error,
-            );
-            assert!(error.is_null(), "open failed: {:?}", CStr::from_ptr(error));
-
-            Some(Self {
-                library,
-                _dir: dir,
-                options,
-                db,
-                handles,
-            })
-        }
-    }
-
-    fn api(&self) -> RocksApi {
-        // SAFETY: every symbol resolves to the RocksDB function it names.
-        unsafe {
-            RocksApi::from_resolver(|name| {
-                self.library
-                    .get::<unsafe extern "C" fn()>(name.as_bytes())
-                    .map_or(ptr::null(), |function| *function as *const c_void)
-            })
-        }
-    }
-
-    fn kv(&self, wal_sync: bool) -> RocksKv {
-        let desc = RocksDesc {
-            db: self.db,
-            column_families: self.handles[1..].try_into().unwrap(),
-            verify_checksums: true,
-            wal_sync,
-            readahead_size: 256 * 1024,
-            prefix_extractor_length: 0,
-        };
-        // SAFETY: the handles stay open until `self` is dropped, after every store the test creates.
-        unsafe { RocksKv::new(&self.api(), desc) }.expect("the RocksApi table is complete")
-    }
-}
-
-impl Drop for TestDb {
-    fn drop(&mut self) {
-        // SAFETY: every store over the database was dropped before it.
-        unsafe {
-            let destroy = symbol::<HandleDestroy>(&self.library, "rocksdb_column_family_handle_destroy");
-            for handle in &self.handles {
-                destroy(*handle);
-            }
-            symbol::<Close>(&self.library, "rocksdb_close")(self.db);
-            symbol::<OptionsDestroy>(&self.library, "rocksdb_options_destroy")(self.options);
-        }
-    }
-}
-
-/// # Safety
-/// `T` must be the type of the function `name` names.
-unsafe fn symbol<T: Copy>(library: &Library, name: &str) -> T {
-    // SAFETY: the caller vouches for the type.
-    *unsafe { library.get::<T>(name.as_bytes()) }.unwrap_or_else(|error| panic!("{name}: {error}"))
-}
 
 fn get(kv: &RocksKv, column: Column, key: &[u8]) -> Option<Vec<u8>> {
     kv.get_with(column, key, <[u8]>::to_vec).unwrap()
@@ -206,7 +66,7 @@ fn reads_writes_and_snapshots_go_through_the_c_api() {
     );
     assert_eq!(get(&kv, Column::Storage, b"long"), Some(vec![7; 100]));
 
-    let before = kv.reader().unwrap();
+    let before = kv.reader(false).unwrap();
     commit(&kv, |batch| {
         batch.put(Column::Account, b"key", b"new", WriteFlags::NONE).unwrap();
         batch.delete(Column::Storage, b"key", WriteFlags::NONE).unwrap();
@@ -249,7 +109,7 @@ fn iterators_honour_bounds_and_range_deletes() {
             .unwrap();
     });
 
-    let reader = kv.reader().unwrap();
+    let reader = kv.reader(false).unwrap();
     let bounded = IterOptions {
         lower_bound: Some(b"b"),
         upper_bound: Some(b"d"),
@@ -276,7 +136,7 @@ fn iterators_honour_bounds_and_range_deletes() {
 
     commit(&kv, |batch| batch.delete_range(Column::StateNodes, b"b", b"d"));
     assert_eq!(
-        keys(&kv.reader().unwrap(), Column::StateNodes, IterOptions::default()),
+        keys(&kv.reader(false).unwrap(), Column::StateNodes, IterOptions::default()),
         [b"a".to_vec(), b"d".to_vec()]
     );
     assert_eq!(
@@ -335,4 +195,114 @@ fn rocksdb_errors_are_mapped_and_freed() {
         "{error:?}"
     );
     assert_eq!(get(&kv, Column::Account, b"k"), None);
+}
+
+/// 8-byte keys of `StateNodes`, every third one written, as a trie walk reads them.
+fn node_key(i: u32) -> [u8; 8] {
+    let mut key = [0u8; 8];
+    key[4..].copy_from_slice(&(i * 3).to_be_bytes());
+    key
+}
+
+/// Port of the `ReadFlags.HintReadAhead` path of `RocksDbReader.Get` on a `FullScan` snapshot: point reads served by
+/// stepping a pooled iterator forward agree with plain reads, for present and absent keys, in order and out of order,
+/// across pools, and never see writes made after the snapshot.
+#[test]
+fn read_ahead_reads_agree_with_plain_reads_at_the_snapshot() {
+    let Some(db) = TestDb::open() else { return };
+    let kv = db.kv(false);
+    commit(&kv, |batch| {
+        for i in 0..200 {
+            batch
+                .put(Column::StateNodes, &node_key(i), &i.to_be_bytes(), WriteFlags::NONE)
+                .unwrap();
+        }
+    });
+
+    let scan = kv.reader(true).unwrap();
+    let plain = kv.reader(false).unwrap();
+    commit(&kv, |batch| {
+        batch
+            .put(Column::StateNodes, &node_key(1), b"late", WriteFlags::NONE)
+            .unwrap();
+        batch
+            .put(Column::StateNodes, &[0, 0, 0, 0, 0, 0, 0, 4], b"late", WriteFlags::NONE)
+            .unwrap();
+    });
+
+    // Forward over every key and the gaps between them, then backwards, then far jumps, in all three pools.
+    let mut keys: Vec<[u8; 8]> = (0..600u32)
+        .map(|i| {
+            let mut key = [0u8; 8];
+            key[4..].copy_from_slice(&i.to_be_bytes());
+            key
+        })
+        .collect();
+    keys.extend(keys.clone().into_iter().rev());
+    keys.extend([node_key(5), node_key(150), node_key(7), node_key(199), node_key(0)]);
+    for flags in [
+        ReadFlags::HINT_READ_AHEAD,
+        ReadFlags::HINT_READ_AHEAD | ReadFlags::HINT_READ_AHEAD_2,
+        ReadFlags::HINT_READ_AHEAD | ReadFlags::HINT_READ_AHEAD_3 | ReadFlags::HINT_CACHE_MISS,
+    ] {
+        for key in &keys {
+            let read_ahead = scan.get_with(Column::StateNodes, key, flags, <[u8]>::to_vec).unwrap();
+            let expected = plain
+                .get_with(Column::StateNodes, key, ReadFlags::NONE, <[u8]>::to_vec)
+                .unwrap();
+            assert_eq!(read_ahead, expected, "{key:?} {flags:?}");
+        }
+    }
+
+    // Other threads get iterators of their own.
+    std::thread::scope(|scope| {
+        for _ in 0..4 {
+            scope.spawn(|| {
+                for i in 0..200 {
+                    let value = scan
+                        .get_with(
+                            Column::StateNodes,
+                            &node_key(i),
+                            ReadFlags::HINT_READ_AHEAD,
+                            <[u8]>::to_vec,
+                        )
+                        .unwrap();
+                    assert_eq!(value, Some(i.to_be_bytes().to_vec()));
+                }
+            });
+        }
+    });
+    assert_eq!(
+        kv.reader(true)
+            .unwrap()
+            .get_with(
+                Column::StateNodes,
+                &node_key(1),
+                ReadFlags::HINT_READ_AHEAD,
+                <[u8]>::to_vec
+            )
+            .unwrap(),
+        Some(b"late".to_vec()),
+        "a new snapshot sees the later write"
+    );
+}
+
+/// A store without a read-ahead size opts out of read-ahead iterators, as `ReadAheadSize = 0` does in C#.
+#[test]
+fn read_ahead_reads_without_a_read_ahead_size_fall_back_to_plain_reads() {
+    let Some(db) = TestDb::open() else { return };
+    let kv = db.kv_with_readahead(false, 0);
+    commit(&kv, |batch| {
+        batch
+            .put(Column::StateNodes, &node_key(1), b"v", WriteFlags::NONE)
+            .unwrap()
+    });
+
+    let reader = kv.reader(true).unwrap();
+    for key in [node_key(1), node_key(2), node_key(1)] {
+        let value = reader
+            .get_with(Column::StateNodes, &key, ReadFlags::HINT_READ_AHEAD, <[u8]>::to_vec)
+            .unwrap();
+        assert_eq!(value, (key == node_key(1)).then(|| b"v".to_vec()));
+    }
 }

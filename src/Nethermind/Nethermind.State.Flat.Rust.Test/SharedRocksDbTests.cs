@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
-using Nethermind.Db.Rocks;
-using Nethermind.Db.Rocks.Config;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Rust.Test;
@@ -20,55 +20,41 @@ namespace Nethermind.State.Flat.Rust.Test;
 [Parallelizable(ParallelScope.All)]
 public class SharedRocksDbTests
 {
+    private static readonly FlatLayout[] Layouts = GoldenVectorGenerator.Layouts;
+    private static readonly Address Address = new("0xaaaaaaaa00000000000000000000000000000001");
+    private static readonly TreePath ShortPath = TreePath.FromHexString("12");
+    private static readonly TreePath LongPath = TreePath.FromHexString("123456789abcdef0123");
+
     [Test]
-    public void Rust_and_csharp_read_each_others_writes([Values] FlatDbColumns column)
+    public async Task Rust_and_csharp_read_each_others_writes([ValueSource(nameof(Layouts))] FlatLayout layout)
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        using TrackingColumnsDb db = Open(path);
-        using RustFlatStore store = RustFlatStore.Create(db, new FlatDbConfig());
+        using IColumnsDb<FlatDbColumns> db = FlatTestDbs.OpenRocksDb(path.Path);
+        StateId rustState = new(1, Keccak.Compute("1"));
+        StateId csharpState = new(2, Keccak.Compute("2"));
 
-        byte[] rustKey = Bytes.FromHexString("0x01aa");
-        byte[] rustValue = Bytes.FromHexString("0xc0ffee");
-        byte[] csharpKey = Bytes.FromHexString("0x02bb");
-        // Longer than the first read buffer, so the read retries with a larger one.
-        byte[] csharpValue = Enumerable.Range(0, 300).Select(static i => (byte)i).ToArray();
-        FlatDbColumns otherColumn = column == FlatDbColumns.Metadata ? FlatDbColumns.Account : FlatDbColumns.Metadata;
+        using RustPersistence rust = new(db, new FlatDbConfig { Layout = layout }, LimboLogs.Instance);
+        Write(rust, StateId.PreGenesis, rustState, 1, Bytes.FromHexString("0xc101"));
 
-        store.DebugPut(column, rustKey, rustValue);
-        db.GetColumnDb(column).Set(csharpKey, csharpValue);
-
-        using (Assert.EnterMultipleScope())
+        IPersistence csharp = FlatTestDbs.CreateCSharpStack(db, layout, carryForward: true);
+        try
         {
-            Assert.That(db.GetColumnDb(column).Get(rustKey), Is.EqualTo(rustValue));
-            Assert.That(store.DebugGet(column, csharpKey), Is.EqualTo(csharpValue));
-            Assert.That(store.DebugGet(column, Bytes.FromHexString("0x03cc")), Is.Null);
-            Assert.That(db.GetColumnDb(otherColumn).Get(rustKey), Is.Null);
+            using (IPersistence.IPersistenceReader reader = csharp.CreateReader())
+            {
+                AssertReads(reader, rustState, 1, Bytes.FromHexString("0xc101"));
+            }
+
+            Write(csharp, rustState, csharpState, 2, Bytes.FromHexString("0xc102"));
         }
-    }
-
-    [Test]
-    public void Native_reads_count_in_the_db_metrics_once_published()
-    {
-        RustNativeLibrary.Require();
-        using TempPath path = TempPath.GetTempDirectory();
-        using TrackingColumnsDb db = Open(path);
-        using RustFlatStore store = RustFlatStore.Create(db, new FlatDbConfig());
-        long before = db.GatherMetric().TotalReads;
-
-        store.DebugGet(FlatDbColumns.Account, Bytes.FromHexString("0x01"));
-        store.DebugGet(FlatDbColumns.Storage, Bytes.FromHexString("0x02"));
-        long unpublished = db.GatherMetric().TotalReads;
-        store.PublishReadMetrics();
-        long published = db.GatherMetric().TotalReads;
-        store.PublishReadMetrics();
-
-        using (Assert.EnterMultipleScope())
+        finally
         {
-            Assert.That(unpublished, Is.EqualTo(before));
-            Assert.That(published - before, Is.EqualTo(2));
-            Assert.That(db.GatherMetric().TotalReads, Is.EqualTo(published), "reads are published once");
+            await ((IAsyncDisposable)csharp).DisposeAsync();
         }
+
+        // Its caches know nothing of the C# write, so the read bypasses them.
+        using IPersistence.IPersistenceReader rustReader = rust.CreateReader(ReaderFlags.Sync);
+        AssertReads(rustReader, csharpState, 2, Bytes.FromHexString("0xc102"));
     }
 
     [Test]
@@ -76,9 +62,9 @@ public class SharedRocksDbTests
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        TrackingColumnsDb db = Open(path, storeOutlivesDrainTimeout ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(10));
-        RustFlatStore store = RustFlatStore.Create(db, new FlatDbConfig());
-        store.DebugPut(FlatDbColumns.Account, Bytes.FromHexString("0x01"), Bytes.FromHexString("0x02"));
+        FlatTestDbs.TrackingColumnsDb db = new(path.Path, storeOutlivesDrainTimeout ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(10));
+        RustPersistence persistence = new(db, new FlatDbConfig(), LimboLogs.Instance);
+        Write(persistence, StateId.PreGenesis, new StateId(1, Keccak.Compute("1")), 1, Bytes.FromHexString("0xc0"));
 
         Task disposing = Task.Run(db.Dispose);
         if (storeOutlivesDrainTimeout)
@@ -91,7 +77,7 @@ public class SharedRocksDbTests
             Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the database closed under the store");
         }
 
-        store.Dispose();
+        persistence.Dispose();
 
         // Finishing well within the 10 s drain timeout proves the store released its lease.
         Assert.That(disposing.Wait(TimeSpan.FromSeconds(5)), "dispose never finished after the store was released");
@@ -102,35 +88,28 @@ public class SharedRocksDbTests
         }
     }
 
-    [Test]
-    public void Store_needs_a_rocksdb_database()
+    private static void Write(IPersistence persistence, StateId from, StateId to, ulong value, byte[] rlp)
     {
-        RustNativeLibrary.Require();
-        Assert.That(() => RustFlatStore.Create(new MemColumnsDb<FlatDbColumns>(), new FlatDbConfig()), Throws.InstanceOf<NotSupportedException>());
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(from, to);
+        batch.SetAccount(Address, new Account(value, value));
+        batch.SetStorage(Address, 1, value);
+        batch.SetStateTrieNode(ShortPath, rlp);
+        batch.SetStateTrieNode(LongPath, rlp);
+        batch.SetStorageTrieNode(Keccak.Compute(Address.Bytes), LongPath, rlp);
     }
 
-    private static TrackingColumnsDb Open(TempPath path, TimeSpan? pinnedSliceDrainTimeout = null)
+    private static void AssertReads(IPersistence.IPersistenceReader reader, StateId state, ulong value, byte[] rlp)
     {
-        DbConfig dbConfig = new();
-        RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-        return new TrackingColumnsDb(path.Path, new DbSettings(nameof(DbNames.Flat), DbNames.Flat), dbConfig, configFactory)
+        UInt256 slot = default;
+        using (Assert.EnterMultipleScope())
         {
-            PinnedSliceDrainTimeout = pinnedSliceDrainTimeout ?? TimeSpan.FromSeconds(10)
-        };
-    }
-
-    /// <summary>Counts native closes, to tell a close deferred to the last lease release from one done by dispose.</summary>
-    private sealed class TrackingColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory configFactory)
-        : ColumnsDb<FlatDbColumns>(basePath, settings, dbConfig, configFactory, LimboLogs.Instance, [])
-    {
-        private int _nativeCloses;
-
-        public int NativeCloses => Volatile.Read(ref _nativeCloses);
-
-        protected override void ReleaseUnmanagedResources()
-        {
-            Interlocked.Increment(ref _nativeCloses);
-            base.ReleaseUnmanagedResources();
+            Assert.That(reader.CurrentState, Is.EqualTo(state));
+            Assert.That(reader.GetAccount(Address)?.Balance, Is.EqualTo((UInt256)value));
+            Assert.That(reader.TryGetSlot(Address, 1, ref slot), Is.True);
+            Assert.That(slot, Is.EqualTo((UInt256)value));
+            Assert.That(reader.TryLoadStateRlp(ShortPath, ReadFlags.None), Is.EqualTo(rlp));
+            Assert.That(reader.TryLoadStateRlp(LongPath, ReadFlags.None), Is.EqualTo(rlp));
+            Assert.That(reader.TryLoadStorageRlp(Keccak.Compute(Address.Bytes), LongPath, ReadFlags.None), Is.EqualTo(rlp));
         }
     }
 }

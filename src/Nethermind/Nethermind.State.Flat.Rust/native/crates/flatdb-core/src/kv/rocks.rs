@@ -3,12 +3,21 @@
 //! Port of the option handling and read/write paths of `Nethermind.Db.Rocks` (`DbOnTheRocks.cs`, `ColumnsDb.cs`,
 //! `ColumnDb.cs`, `RocksDbReader.cs`), calling the same native entry points as the C# bindings:
 //! - reads into a caller buffer use `rocksdb_get_into_buffer_cf`, as `IReadOnlyKeyValueStore.Get(key, Span)` does;
-//! - zero-copy reads use `rocksdb_get_pinned_cf`, as the `byte[] Get` path does.
+//! - zero-copy reads use `rocksdb_get_pinned_cf`, as the `byte[] Get` path does;
+//! - [`ReadFlags::HINT_READ_AHEAD`] point reads on a sequential-read snapshot go through pooled read-ahead iterators,
+//!   as `RocksDbReader.Get` does with `DbOnTheRocks.GetWithIterator`.
 
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
+use std::thread::{self, ThreadId};
+use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use super::rocks_api::{
     RawColumnFamily, RawDb, RawFlushOptions, RawIterator, RawPinnableSlice, RawReadOptions, RawSnapshot, RawWriteBatch,
@@ -54,6 +63,8 @@ struct Inner {
     read_options: *mut RawReadOptions,
     read_options_no_fill: *mut RawReadOptions,
     flush_options: *mut RawFlushOptions,
+    /// Reads into a caller buffer since [`KvStore::take_read_count`] last took them.
+    reads: AtomicU64,
 }
 
 // SAFETY: a RocksDB database and its column family handles are thread-safe. The option objects are fully set up in
@@ -109,6 +120,7 @@ impl RocksKv {
                 read_options: create_read_options(&api, desc.verify_checksums, ptr::null(), true),
                 read_options_no_fill: create_read_options(&api, desc.verify_checksums, ptr::null(), false),
                 flush_options,
+                reads: AtomicU64::new(0),
             }
         };
 
@@ -184,6 +196,7 @@ impl Inner {
         key: &[u8],
         buffer: &mut [u8],
     ) -> KvResult<GetInto> {
+        self.reads.fetch_add(1, AtomicOrdering::Relaxed);
         let mut value_len = 0usize;
         let mut found = 0u8;
         let mut error = ptr::null_mut();
@@ -308,7 +321,9 @@ impl KvStore for RocksKv {
         self.inner.get_pinned(self.inner.read_options, column, key, read)
     }
 
-    fn reader(&self) -> KvResult<RocksReader> {
+    /// Port of `ColumnsDb.CreateSnapshot(sequentialReadAhead)`: read-ahead iterators only when the database has a
+    /// read-ahead size, as `ReadAheadSize = 0` opts out of them.
+    fn reader(&self, sequential_read_ahead: bool) -> KvResult<RocksReader> {
         let inner = &self.inner;
         // SAFETY: the database is live; the snapshot is released by `SnapshotState::drop`, after the options bound
         // to it.
@@ -319,6 +334,7 @@ impl KvStore for RocksKv {
                 snapshot,
                 read_options: create_read_options(&inner.api, inner.verify_checksums, snapshot, true),
                 read_options_no_fill: create_read_options(&inner.api, inner.verify_checksums, snapshot, false),
+                read_ahead: (sequential_read_ahead && inner.readahead_size > 0).then(ReadAheadPool::default),
             }
         };
 
@@ -343,7 +359,7 @@ impl KvStore for RocksKv {
 
     /// Flushes as `ColumnsDb.Flush()` does: the write-ahead log and the default column together, then each column on
     /// its own. A failed step does not stop the later ones, as C# only logs it, unless the error is fatal, after
-    /// which C# exits. Returns the first error.
+    /// which C# exits. Returns the first error, which the persistence only logs unless it is fatal.
     fn flush(&self) -> KvResult<()> {
         let mut first_error = None;
         let default_flushed = self.flush_wal(true).and_then(|()| self.inner.flush_memtable(None));
@@ -397,14 +413,20 @@ impl KvStore for RocksKv {
         unsafe { (self.inner.api.free)(value.cast()) };
         Ok(Some(property))
     }
+
+    fn take_read_count(&self) -> u64 {
+        self.inner.reads.swap(0, AtomicOrdering::Relaxed)
+    }
 }
 
-/// A database snapshot with the two read options `ColumnsDb.ColumnDbSnapshot` shares across its column readers.
+/// A database snapshot with the two read options `ColumnsDb.ColumnDbSnapshot` shares across its column readers, and
+/// for a sequential-read snapshot the read-ahead iterators of its columns.
 struct SnapshotState {
     inner: Arc<Inner>,
     snapshot: *const RawSnapshot,
     read_options: *mut RawReadOptions,
     read_options_no_fill: *mut RawReadOptions,
+    read_ahead: Option<ReadAheadPool>,
 }
 
 // SAFETY: a snapshot and read options are immutable once set up and may be used from any thread.
@@ -425,12 +447,318 @@ impl SnapshotState {
 impl Drop for SnapshotState {
     fn drop(&mut self) {
         let api = &self.inner.api;
-        // SAFETY: every iterator holds this state alive, so nothing uses the options or the snapshot any more.
+        // SAFETY: every iterator holds this state alive, so nothing uses the options or the snapshot any more. The
+        // pooled iterators go first, as `ColumnDbSnapshot.Dispose` tears the iterator managers down first.
         unsafe {
+            if let Some(pool) = self.read_ahead.take() {
+                pool.destroy(api);
+            }
             (api.readoptions_destroy)(self.read_options);
             (api.readoptions_destroy)(self.read_options_no_fill);
             (api.release_snapshot)(self.inner.db, self.snapshot);
         }
+    }
+}
+
+/// The read-ahead iterators of a sequential-read snapshot: port of the `DbOnTheRocks.IteratorManager` that
+/// `ColumnsDb.ColumnDbSnapshot` gives each column, with `SequentialKeys` set.
+///
+/// Each thread keeps one iterator per column and pool, so a scan moves its iterator forward instead of seeking.
+/// The iterators read the snapshot with read-ahead; they are not tailing, as tailing iterators would see writes made
+/// after the snapshot. C# drops every idle iterator every ten seconds so none pins memory for long; here an iterator
+/// older than that is replaced when it is next rented, and the rest go with the snapshot.
+#[derive(Default)]
+struct ReadAheadPool {
+    state: Mutex<PoolState>,
+}
+
+/// Port of `IteratorManager.IteratorUsageLimit`.
+const ITERATOR_USAGE_LIMIT: u32 = 1_000_000;
+
+/// How long a pooled iterator is reused, the period of the `IteratorManager` timer.
+const ITERATOR_MAX_AGE: Duration = Duration::from_secs(10);
+
+#[derive(Default)]
+struct PoolState {
+    /// Snapshot-bound read options with read-ahead, created on the first read-ahead read
+    /// (`ColumnDbSnapshot.GetOrCreateReadAheadReadOptions`); null until then.
+    read_options: Option<OptionsPtr>,
+    holders: HashMap<PoolKey, Holder>,
+}
+
+/// The thread, the column and the pool (`HintReadAhead`, `HintReadAhead2` or `HintReadAhead3`) of an iterator.
+type PoolKey = (ThreadId, Column, u8);
+
+#[derive(Default)]
+struct Holder {
+    iterator: Option<PooledIterator>,
+    usage: u32,
+}
+
+struct OptionsPtr(*mut RawReadOptions);
+
+struct PooledIterator {
+    iterator: *mut RawIterator,
+    created: Instant,
+}
+
+// SAFETY: the read options are immutable once set up, and an iterator is used by one thread at a time: the one that
+// rented it out of the pool.
+unsafe impl Send for OptionsPtr {}
+// SAFETY: as above.
+unsafe impl Send for PooledIterator {}
+
+impl ReadAheadPool {
+    /// Destroys every pooled iterator and then the read options they read through.
+    ///
+    /// # Safety
+    /// No iterator of the pool may be rented out.
+    unsafe fn destroy(self, api: &RocksFns) {
+        let state = self.state.into_inner();
+        for holder in state.holders.into_values() {
+            if let Some(pooled) = holder.iterator {
+                // SAFETY: the iterator is live and destroyed exactly once.
+                unsafe { (api.iter_destroy)(pooled.iterator) };
+            }
+        }
+        if let Some(options) = state.read_options {
+            // SAFETY: no iterator reads through the options any more.
+            unsafe { (api.readoptions_destroy)(options.0) };
+        }
+    }
+}
+
+/// Outcome of [`SnapshotState::get_with_iterator`].
+enum ReadAhead<R, F> {
+    /// The read is answered.
+    Done(Option<R>),
+    /// The iterator could not answer; the caller reads normally.
+    Fallback(F),
+}
+
+/// Outcome of [`try_close_read_ahead`].
+#[derive(Debug, PartialEq, Eq)]
+enum CloseReadAhead {
+    /// The iterator is positioned on the key.
+    Found,
+    /// The iterator moved past where the key would be, so the key is absent.
+    Absent,
+    /// The key is not close ahead of the iterator.
+    Miss,
+}
+
+/// The cursor operations of [`try_close_read_ahead`], so it is testable without RocksDB.
+trait Cursor {
+    fn valid(&self) -> bool;
+    fn next(&mut self);
+    fn key(&self) -> &[u8];
+}
+
+/// Port of `DbOnTheRocks.TryCloseReadAhead`: moving an iterator forward is ten to twenty times faster than a seek,
+/// so when the key is a few entries ahead of where the iterator stopped, it is reached with `next`.
+fn try_close_read_ahead(cursor: &mut impl Cursor, key: &[u8], sequential_keys: bool) -> CloseReadAhead {
+    // Probably hash db. Can't really do this with hashdb.
+    if !sequential_keys && key.len() <= 32 {
+        return CloseReadAhead::Miss;
+    }
+
+    cursor.next();
+    if !cursor.valid() {
+        return CloseReadAhead::Miss;
+    }
+
+    let current = cursor.key();
+    let mut order = current.cmp(key);
+    match order {
+        Ordering::Equal => return CloseReadAhead::Found,
+        Ordering::Greater => return CloseReadAhead::Miss,
+        Ordering::Less => {}
+    }
+
+    // Too far behind to catch up with a few steps; short keys rely on the bounded probe alone.
+    if current.len() >= 8 && key.len() >= 8 {
+        let current = u64::from_be_bytes(current[..8].try_into().expect("8 bytes"));
+        let requested = u64::from_be_bytes(key[..8].try_into().expect("8 bytes"));
+        if requested.wrapping_sub(current) > 1_000_000_000 {
+            return CloseReadAhead::Miss;
+        }
+    }
+
+    for _ in 0..5 {
+        if order != Ordering::Less {
+            break;
+        }
+        cursor.next();
+        if !cursor.valid() {
+            return CloseReadAhead::Miss;
+        }
+        order = cursor.key().cmp(key);
+    }
+
+    match order {
+        Ordering::Equal => CloseReadAhead::Found,
+        // We've skipped it somehow
+        Ordering::Greater => CloseReadAhead::Absent,
+        Ordering::Less => CloseReadAhead::Miss,
+    }
+}
+
+/// A rented read-ahead iterator, given back to its pool on drop.
+struct Rented<'a> {
+    state: &'a SnapshotState,
+    pool: &'a ReadAheadPool,
+    key: PoolKey,
+    pooled: Option<PooledIterator>,
+}
+
+impl Rented<'_> {
+    fn iterator(&self) -> *mut RawIterator {
+        self.pooled.as_ref().expect("rented").iterator
+    }
+}
+
+impl Cursor for Rented<'_> {
+    fn valid(&self) -> bool {
+        // SAFETY: the rented iterator is live and used by this thread only.
+        unsafe { (self.state.inner.api.iter_valid)(self.iterator()) != 0 }
+    }
+
+    fn next(&mut self) {
+        // SAFETY: as above; `next` is only called on a valid iterator.
+        unsafe { (self.state.inner.api.iter_next)(self.iterator()) };
+    }
+
+    fn key(&self) -> &[u8] {
+        // SAFETY: as above; the key is only read from a valid iterator, and stays put until it moves.
+        unsafe { iterator_slice(self.state.inner.api.iter_key, self.iterator()) }
+    }
+}
+
+impl Drop for Rented<'_> {
+    /// Port of `IteratorManager.Return`.
+    fn drop(&mut self) {
+        let Some(pooled) = self.pooled.take() else { return };
+        let api = &self.state.inner.api;
+        let mut state = self.pool.state.lock();
+        let holder = state.holders.entry(self.key).or_default();
+        // We don't keep using the same iterator for too long.
+        if holder.usage > ITERATOR_USAGE_LIMIT {
+            // SAFETY: the iterator is live and no longer used.
+            unsafe { (api.iter_destroy)(pooled.iterator) };
+            holder.usage = 0;
+            return;
+        }
+
+        holder.usage += 1;
+        if let Some(old) = holder.iterator.replace(pooled) {
+            // SAFETY: the replaced iterator is live and no longer used.
+            unsafe { (api.iter_destroy)(old.iterator) };
+        }
+    }
+}
+
+/// The key or value of a valid iterator, which stays unchanged until the iterator moves.
+///
+/// # Safety
+/// `iterator` must be live and valid, and the slice must not outlive its next move.
+unsafe fn iterator_slice<'a>(
+    read: unsafe extern "C" fn(*const RawIterator, *mut usize) -> *const c_char,
+    iterator: *mut RawIterator,
+) -> &'a [u8] {
+    let mut len = 0usize;
+    // SAFETY: the caller guarantees a live, valid iterator.
+    unsafe {
+        let data = read(iterator, &mut len);
+        if len == 0 {
+            &[]
+        } else {
+            slice::from_raw_parts(data.cast::<u8>(), len)
+        }
+    }
+}
+
+impl SnapshotState {
+    /// Port of `IteratorManager.Rent`: the calling thread's iterator of `column` and `group`, or a fresh one.
+    fn rent<'a>(&'a self, pool: &'a ReadAheadPool, column: Column, group: u8) -> Rented<'a> {
+        let api = &self.inner.api;
+        let key = (thread::current().id(), column, group);
+        let mut state = pool.state.lock();
+        if state.read_options.is_none() {
+            // SAFETY: the options are bound to this snapshot, which outlives the pool.
+            let options = unsafe {
+                let options = create_read_options(api, self.inner.verify_checksums, self.snapshot, true);
+                (api.readoptions_set_readahead_size)(options, self.inner.readahead_size as usize);
+                options
+            };
+            state.read_options = Some(OptionsPtr(options));
+        }
+        let read_options = state.read_options.as_ref().expect("created above").0;
+
+        let held = state.holders.entry(key).or_default().iterator.take();
+        let pooled = match held {
+            Some(pooled) if pooled.created.elapsed() < ITERATOR_MAX_AGE => pooled,
+            stale => {
+                if let Some(stale) = stale {
+                    // SAFETY: the iterator is live and no longer used.
+                    unsafe { (api.iter_destroy)(stale.iterator) };
+                }
+                PooledIterator {
+                    // SAFETY: the options and the column family are live; the pool destroys the iterator.
+                    iterator: unsafe {
+                        (api.create_iterator_cf)(self.inner.db, read_options, self.inner.column_family(column))
+                    },
+                    created: Instant::now(),
+                }
+            }
+        };
+
+        Rented {
+            state: self,
+            pool,
+            key,
+            pooled: Some(pooled),
+        }
+    }
+
+    /// Port of `DbOnTheRocks.GetWithIterator`: answers a point read from the calling thread's read-ahead iterator,
+    /// stepping it forward when the key is close ahead and seeking it otherwise.
+    fn get_with_iterator<R, F: FnOnce(&[u8]) -> R>(
+        &self,
+        pool: &ReadAheadPool,
+        column: Column,
+        key: &[u8],
+        flags: ReadFlags,
+        read: F,
+    ) -> ReadAhead<R, F> {
+        let group = if flags.contains(ReadFlags::HINT_READ_AHEAD_2) {
+            1
+        } else if flags.contains(ReadFlags::HINT_READ_AHEAD_3) {
+            2
+        } else {
+            0
+        };
+        let mut rented = self.rent(pool, column, group);
+        let api = &self.inner.api;
+
+        if rented.valid() {
+            match try_close_read_ahead(&mut rented, key, true) {
+                // SAFETY: the iterator is valid and does not move while the value is read.
+                CloseReadAhead::Found => {
+                    return ReadAhead::Done(Some(read(unsafe { iterator_slice(api.iter_value, rented.iterator()) })));
+                }
+                CloseReadAhead::Absent => return ReadAhead::Done(None),
+                CloseReadAhead::Miss => {}
+            }
+        }
+
+        // SAFETY: the rented iterator is live and the key is valid for its length.
+        unsafe { (api.iter_seek)(rented.iterator(), key.as_ptr().cast(), key.len()) };
+        if rented.valid() && rented.key() == key {
+            // SAFETY: the iterator is valid and does not move while the value is read.
+            return ReadAhead::Done(Some(read(unsafe { iterator_slice(api.iter_value, rented.iterator()) })));
+        }
+
+        ReadAhead::Fallback(read)
     }
 }
 
@@ -448,6 +776,8 @@ impl KvReader for RocksReader {
             .get_into(self.state.read_options(flags), column, key, buffer)
     }
 
+    /// Port of `RocksDbReader.Get`: a [`ReadFlags::HINT_READ_AHEAD`] read on a sequential-read snapshot tries the
+    /// read-ahead iterators first.
     fn get_with<R>(
         &self,
         column: Column,
@@ -455,6 +785,16 @@ impl KvReader for RocksReader {
         flags: ReadFlags,
         read: impl FnOnce(&[u8]) -> R,
     ) -> KvResult<Option<R>> {
+        let read = match &self.state.read_ahead {
+            Some(pool) if flags.contains(ReadFlags::HINT_READ_AHEAD) => {
+                match self.state.get_with_iterator(pool, column, key, flags, read) {
+                    ReadAhead::Done(result) => return Ok(result),
+                    ReadAhead::Fallback(read) => read,
+                }
+            }
+            _ => read,
+        };
+
         self.state
             .inner
             .get_pinned(self.state.read_options(flags), column, key, read)
@@ -697,8 +1037,71 @@ impl Drop for RocksBatch {
 
 #[cfg(test)]
 mod tests {
-    use super::{KvError, record_flush_step};
+    use super::{CloseReadAhead, Cursor, KvError, record_flush_step, try_close_read_ahead};
     use rstest::rstest;
+
+    /// A cursor over sorted keys, positioned on `position`.
+    struct VecCursor {
+        keys: Vec<Vec<u8>>,
+        position: usize,
+    }
+
+    impl Cursor for VecCursor {
+        fn valid(&self) -> bool {
+            self.position < self.keys.len()
+        }
+
+        fn next(&mut self) {
+            self.position += 1;
+        }
+
+        fn key(&self) -> &[u8] {
+            &self.keys[self.position]
+        }
+    }
+
+    /// The cursor starts on the first of `key_count` keys whose last byte steps by 0x10 from 0x10; all keys are 8
+    /// bytes, so the distance check passes.
+    #[rstest]
+    #[case::next_key(15, 0x20, true, CloseReadAhead::Found, 1)]
+    #[case::five_steps_ahead(15, 0x70, true, CloseReadAhead::Found, 6)]
+    #[case::six_steps_ahead(15, 0x80, true, CloseReadAhead::Miss, 6)]
+    #[case::between_keys(15, 0x25, true, CloseReadAhead::Absent, 2)]
+    #[case::behind(15, 0x05, true, CloseReadAhead::Miss, 1)]
+    #[case::past_the_end(4, 0xF5, true, CloseReadAhead::Miss, 4)]
+    #[case::short_hash_keys_skip(15, 0x20, false, CloseReadAhead::Miss, 0)]
+    fn close_read_ahead_steps_forward_a_bounded_distance(
+        #[case] key_count: u8,
+        #[case] last_byte: u8,
+        #[case] sequential_keys: bool,
+        #[case] expected: CloseReadAhead,
+        #[case] position: usize,
+    ) {
+        let key = |last: u8| vec![0, 0, 0, 0, 0, 0, 0, last];
+        let mut cursor = VecCursor {
+            keys: (1..=key_count).map(|i| key(i * 0x10)).collect(),
+            position: 0,
+        };
+
+        assert_eq!(
+            try_close_read_ahead(&mut cursor, &key(last_byte), sequential_keys),
+            expected
+        );
+        assert_eq!(cursor.position, position);
+    }
+
+    #[test]
+    fn close_read_ahead_gives_up_on_a_distant_key() {
+        let mut cursor = VecCursor {
+            keys: vec![vec![0; 8], vec![0, 0, 0, 0, 0, 0, 0, 1], vec![0xFF; 8]],
+            position: 0,
+        };
+        assert_eq!(
+            try_close_read_ahead(&mut cursor, &[0x40, 0, 0, 0, 0, 0, 0, 0], true),
+            CloseReadAhead::Miss
+        );
+        assert_eq!(cursor.position, 1, "only the first step is taken");
+    }
 
     #[rstest]
     #[case(&[None, None, None], None, 3)]

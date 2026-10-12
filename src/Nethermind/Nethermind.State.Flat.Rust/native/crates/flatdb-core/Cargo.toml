@@ -1,6 +1,6 @@
 [package]
 name = "flatdb-core"
-description = "FlatDB core logic: key-value store abstraction and backends."
+description = "FlatDB core logic: key-value store abstraction, backends and the persistence layer."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,11 +14,14 @@ rocksdb-it = []
 [dependencies]
 thiserror.workspace = true
 parking_lot.workspace = true
+sha3.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 libloading.workspace = true
 rstest.workspace = true
 tempfile.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

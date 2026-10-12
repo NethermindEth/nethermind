@@ -20,6 +20,9 @@ pub enum KvError {
     /// A caller-supplied argument or descriptor is invalid.
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
+    /// A callback of the managed backend reported a failure.
+    #[error("the managed key-value store failed {operation} with status {status}")]
+    Callback { operation: &'static str, status: i32 },
 }
 
 impl KvError {

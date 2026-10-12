@@ -10,6 +10,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
@@ -52,11 +53,13 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     {
         foreach (FlatLayout layout in Enum.GetValues<FlatLayout>())
         {
-            yield return new TestConfiguration(new FlatDbConfig()
+            FlatDbConfig config = new()
             {
                 Enabled = true,
                 Layout = layout
-            }, layout.ToString());
+            };
+            TestStateBackend.ApplyFlatBackend(config);
+            yield return new TestConfiguration(config, layout.ToString());
         }
     }
 

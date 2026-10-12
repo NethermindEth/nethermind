@@ -69,6 +69,85 @@ impl<B: KvRawBatch> WriteBatch<B> {
             return Ok(());
         }
 
-        self.raw.write(flags)
+        // `FlushOnTooManyWrites` swaps in a fresh batch before writing, so a write-out that fails drops its operations
+        // rather than leaving them for the next write-out or the commit.
+        let written = self.raw.write(flags);
+        if written.is_err() {
+            self.raw.clear();
+        }
+        written
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WriteBatch;
+    use crate::kv::mem::{MemBatch, MemKv, MemWrite};
+    use crate::kv::{Column, KvError, KvRawBatch, KvResult, KvStore, WriteFlags};
+
+    /// A [`MemBatch`] whose first write fails, as RocksDB fails a write with a non-fatal status.
+    struct FirstWriteFails {
+        inner: MemBatch,
+        failed: bool,
+    }
+
+    impl KvRawBatch for FirstWriteFails {
+        fn put(&mut self, column: Column, key: &[u8], value: &[u8]) {
+            self.inner.put(column, key, value);
+        }
+
+        fn delete(&mut self, column: Column, key: &[u8]) {
+            self.inner.delete(column, key);
+        }
+
+        fn delete_range(&mut self, column: Column, start: &[u8], end: &[u8]) {
+            self.inner.delete_range(column, start, end);
+        }
+
+        fn count(&self) -> usize {
+            self.inner.count()
+        }
+
+        fn clear(&mut self) {
+            self.inner.clear();
+        }
+
+        fn write(&mut self, flags: WriteFlags) -> KvResult<()> {
+            if !std::mem::replace(&mut self.failed, true) {
+                return Err(KvError::rocks("Busy: injected".to_owned()));
+            }
+            self.inner.write(flags)
+        }
+    }
+
+    #[test]
+    fn a_failed_no_wal_write_out_drops_its_operations_as_csharp_does() {
+        let kv = MemKv::new();
+        let raw = FirstWriteFails {
+            inner: kv.raw_batch().unwrap(),
+            failed: false,
+        };
+        let mut batch = WriteBatch::new(raw);
+        for i in 1..WriteBatch::<MemBatch>::MAX_WRITES_ON_NO_WAL {
+            batch
+                .put(Column::Storage, &i.to_be_bytes(), &[1], WriteFlags::DISABLE_WAL)
+                .unwrap();
+        }
+
+        let failure = batch.put(Column::Storage, &[0xff], &[1], WriteFlags::DISABLE_WAL);
+        let pending_after_failure = batch.pending();
+        batch.put(Column::Metadata, &[0], &[2], WriteFlags::NONE).unwrap();
+        batch.commit().unwrap();
+
+        assert_eq!(failure, Err(KvError::rocks("Busy: injected".to_owned())));
+        assert_eq!(pending_after_failure, 0);
+        assert_eq!(
+            kv.writes(),
+            [MemWrite {
+                flags: WriteFlags::NONE,
+                operations: 1
+            }],
+            "only the write after the failed write-out is committed"
+        );
     }
 }

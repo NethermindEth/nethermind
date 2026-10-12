@@ -315,6 +315,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
                     flatDbConfig.Enabled = true;
                     flatDbConfig.VerifyWithTrie = true;
+                    TestStateBackend.ApplyFlatBackend(flatDbConfig);
                     break;
                 }
         }

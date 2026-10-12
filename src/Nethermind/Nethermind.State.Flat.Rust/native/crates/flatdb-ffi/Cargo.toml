@@ -11,6 +11,10 @@ publish.workspace = true
 name = "nethermind_flatdb"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# The debug exports and the in-memory backend, for tests driving the library from outside; never in a production build.
+test-api = []
+
 [dependencies]
 flatdb-core.workspace = true
 

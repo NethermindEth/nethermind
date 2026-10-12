@@ -73,7 +73,9 @@ public static class TestWorldStateFactory
     private static IContainer BuildFlatContainer(IStateHeaderProvider stateHeaderProvider)
     {
         ConfigProvider configProvider = new();
-        configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = true;
+        TestStateBackend.ApplyFlatBackend(flatDbConfig);
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(stateHeaderProvider)

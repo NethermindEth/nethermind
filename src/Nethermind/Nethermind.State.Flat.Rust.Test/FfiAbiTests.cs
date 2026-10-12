@@ -25,8 +25,16 @@ public class FfiAbiTests
             [FfiStruct.KvDesc] = sizeof(FdbKvDesc),
             [FfiStruct.RocksApi] = RocksApiTable.SizeOf((int)NativeMethods.fdb_rocks_api_symbol_count()),
             [FfiStruct.ManagedKvVTable] = sizeof(ManagedKvVTable),
+            [FfiStruct.StoreInfo] = sizeof(FdbStoreInfo),
+            [FfiStruct.Stats] = sizeof(FdbStats),
+            [FfiStruct.StateId] = sizeof(FfiStateId),
+            [FfiStruct.Account] = sizeof(FfiAccount),
         };
-        uint[] expectedOffsets = [.. FieldOffsets<FdbStoreCfg>(), .. FieldOffsets<FdbKvDesc>(), .. FieldOffsets<ManagedKvVTable>()];
+        uint[] expectedOffsets =
+        [
+            .. FieldOffsets<FdbStoreCfg>(), .. FieldOffsets<FdbKvDesc>(), .. FieldOffsets<ManagedKvVTable>(), .. FieldOffsets<FdbStoreInfo>(),
+            .. FieldOffsets<FdbStats>(), .. FieldOffsets<FfiStateId>(), .. FieldOffsets<FfiAccount>(),
+        ];
         uint* sizes = stackalloc uint[16];
         uint count = NativeMethods.fdb_struct_sizes(sizes, 16);
         uint* offsets = stackalloc uint[64];

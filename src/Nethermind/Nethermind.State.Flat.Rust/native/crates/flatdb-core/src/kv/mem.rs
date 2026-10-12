@@ -6,15 +6,21 @@
 use std::collections::BTreeMap;
 use std::ops::Bound;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::RwLock;
 
-use super::{Column, GetInto, IterOptions, KvIterator, KvRawBatch, KvReader, KvResult, KvStore, ReadFlags, WriteFlags};
+use super::{
+    CollectedIter, Column, GetInto, IterOptions, KvRawBatch, KvReader, KvResult, KvStore, ReadFlags, WriteFlags,
+};
 
 /// The in-memory store. Cloning shares the data.
 #[derive(Clone, Default)]
 pub struct MemKv {
     state: Arc<RwLock<State>>,
+    /// Reads into a caller buffer since [`KvStore::take_read_count`] last took them, counted as the RocksDB backend
+    /// counts them.
+    reads: Arc<AtomicU64>,
 }
 
 /// One committed raw batch, recorded so tests can check how writes reached the store.
@@ -30,6 +36,8 @@ struct State {
     columns: [BTreeMap<Box<[u8]>, Vec<Version>>; Column::COUNT],
     writes: Vec<MemWrite>,
     flushes: usize,
+    wal_flushes: usize,
+    write_buffer_sizes: Vec<(Column, u64)>,
 }
 
 struct Version {
@@ -69,6 +77,16 @@ impl MemKv {
         self.state.read().flushes
     }
 
+    /// Number of [`KvStore::flush_wal`] calls so far.
+    pub fn wal_flushes(&self) -> usize {
+        self.state.read().wal_flushes
+    }
+
+    /// Every [`KvStore::set_write_buffer`] call so far, oldest first.
+    pub fn write_buffer_sizes(&self) -> Vec<(Column, u64)> {
+        self.state.read().write_buffer_sizes.clone()
+    }
+
     /// Whether another clone, reader, iterator or batch still uses the data.
     pub fn is_shared(&self) -> bool {
         Arc::strong_count(&self.state) > 1
@@ -90,6 +108,7 @@ impl MemKv {
 }
 
 fn get_into(kv: &MemKv, sequence: Option<u64>, column: Column, key: &[u8], buffer: &mut [u8]) -> GetInto {
+    kv.reads.fetch_add(1, Ordering::Relaxed);
     kv.read_at(sequence, column, key, |value| match buffer.get_mut(..value.len()) {
         Some(target) => {
             target.copy_from_slice(value);
@@ -112,7 +131,7 @@ impl KvStore for MemKv {
         Ok(self.read_at(None, column, key, read))
     }
 
-    fn reader(&self) -> KvResult<MemReader> {
+    fn reader(&self, _sequential_read_ahead: bool) -> KvResult<MemReader> {
         Ok(MemReader {
             kv: self.clone(),
             sequence: self.state.read().sequence,
@@ -127,6 +146,7 @@ impl KvStore for MemKv {
     }
 
     fn flush_wal(&self, _sync: bool) -> KvResult<()> {
+        self.state.write().wal_flushes += 1;
         Ok(())
     }
 
@@ -135,7 +155,8 @@ impl KvStore for MemKv {
         Ok(())
     }
 
-    fn set_write_buffer(&self, _column: Column, _size_bytes: u64) -> KvResult<()> {
+    fn set_write_buffer(&self, column: Column, size_bytes: u64) -> KvResult<()> {
+        self.state.write().write_buffer_sizes.push((column, size_bytes));
         Ok(())
     }
 
@@ -152,6 +173,10 @@ impl KvStore for MemKv {
             }
             _ => None,
         })
+    }
+
+    fn take_read_count(&self) -> u64 {
+        self.reads.swap(0, Ordering::Relaxed)
     }
 }
 
@@ -192,74 +217,12 @@ impl KvReader for MemReader {
             }
         };
 
-        Ok(MemIter {
-            entries,
-            position: None,
-        })
+        Ok(CollectedIter::new(entries))
     }
 }
-
-type Entry = (Box<[u8]>, Arc<[u8]>);
 
 /// An iterator over the entries a [`MemReader`] sees, collected when it was opened.
-pub struct MemIter {
-    entries: Vec<Entry>,
-    position: Option<usize>,
-}
-
-impl MemIter {
-    fn entry(&self) -> &Entry {
-        &self.entries[self.position.expect("the iterator is not positioned on an entry")]
-    }
-}
-
-impl KvIterator for MemIter {
-    fn seek(&mut self, key: &[u8]) {
-        let index = self.entries.partition_point(|(entry, _)| &**entry < key);
-        self.position = (index < self.entries.len()).then_some(index);
-    }
-
-    fn seek_for_prev(&mut self, key: &[u8]) {
-        let index = self.entries.partition_point(|(entry, _)| &**entry <= key);
-        self.position = index.checked_sub(1);
-    }
-
-    fn seek_to_first(&mut self) {
-        self.position = (!self.entries.is_empty()).then_some(0);
-    }
-
-    fn seek_to_last(&mut self) {
-        self.position = self.entries.len().checked_sub(1);
-    }
-
-    fn valid(&self) -> bool {
-        self.position.is_some()
-    }
-
-    fn next(&mut self) {
-        let next = self.position.expect("the iterator is not positioned on an entry") + 1;
-        self.position = (next < self.entries.len()).then_some(next);
-    }
-
-    fn prev(&mut self) {
-        self.position = self
-            .position
-            .expect("the iterator is not positioned on an entry")
-            .checked_sub(1);
-    }
-
-    fn key(&self) -> &[u8] {
-        &self.entry().0
-    }
-
-    fn value(&self) -> &[u8] {
-        &self.entry().1
-    }
-
-    fn status(&self) -> KvResult<()> {
-        Ok(())
-    }
-}
+pub type MemIter = CollectedIter<Arc<[u8]>>;
 
 enum Operation {
     Put(Column, Box<[u8]>, Arc<[u8]>),
@@ -397,13 +360,13 @@ mod tests {
     fn readers_see_their_snapshot_and_deletes_hide_values() {
         let kv = MemKv::new();
         put_all(&kv, &[(Column::Account, b"a", b"1"), (Column::Account, b"b", b"1")]);
-        let before = kv.reader().unwrap();
+        let before = kv.reader(false).unwrap();
 
         let mut batch = kv.write_batch().unwrap();
         batch.put(Column::Account, b"a", b"2", WriteFlags::NONE).unwrap();
         batch.delete(Column::Account, b"b", WriteFlags::NONE).unwrap();
         batch.commit().unwrap();
-        let after = kv.reader().unwrap();
+        let after = kv.reader(false).unwrap();
 
         let read = |reader: &super::MemReader, key: &[u8]| {
             reader
@@ -439,7 +402,7 @@ mod tests {
                 (Column::Account, b"bb", b"other column"),
             ],
         );
-        let reader = kv.reader().unwrap();
+        let reader = kv.reader(false).unwrap();
         let options = IterOptions {
             lower_bound,
             upper_bound,
@@ -465,7 +428,7 @@ mod tests {
             &kv,
             &[(Column::StateNodes, b"\x10", b"x"), (Column::StateNodes, b"\x30", b"y")],
         );
-        let reader = kv.reader().unwrap();
+        let reader = kv.reader(false).unwrap();
         let mut iter = reader.iter(Column::StateNodes, IterOptions::default()).unwrap();
 
         iter.seek(b"\x20");

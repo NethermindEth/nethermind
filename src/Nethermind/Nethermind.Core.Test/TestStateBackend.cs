@@ -20,6 +20,7 @@ namespace Nethermind.Core.Test;
 public static class TestStateBackend
 {
     public const string UseTrieEnvironmentVariable = "TEST_USE_TRIE";
+    public const string FlatBackendEnvironmentVariable = "TEST_FLAT_BACKEND";
 
     /// <summary>
     /// Whether fixtures that do not pin a backend run under flat.
@@ -29,6 +30,34 @@ public static class TestStateBackend
     /// <c>--triedb</c> option before it collects fixtures.
     /// </remarks>
     public static bool UseFlatDb => Environment.GetEnvironmentVariable(UseTrieEnvironmentVariable) != "1";
+
+    /// <summary>
+    /// The flat-state implementation fixtures that do not pin a backend run under: <c>TEST_FLAT_BACKEND</c>, one of
+    /// <c>csharp</c>, <c>rustpersistence</c> and <c>rust</c>, or null when it is unset.
+    /// </summary>
+    /// <remarks>Read on each access, as <see cref="UseFlatDb"/> is.</remarks>
+    public static FlatDbBackend? FlatBackend =>
+        Environment.GetEnvironmentVariable(FlatBackendEnvironmentVariable) is { Length: > 0 } backend
+            ? Enum.Parse<FlatDbBackend>(backend, ignoreCase: true)
+            : null;
+
+    /// <summary>
+    /// Applies <see cref="FlatBackend"/>, when set, to <paramref name="config"/>, wherever <see cref="UseFlatDb"/> is applied.
+    /// </summary>
+    /// <remarks>
+    /// The Rust backends refuse the persisted-snapshot tier, so it is turned off for them, and the compaction offset
+    /// is pinned so both implementations compact at the same blocks.
+    /// </remarks>
+    public static void ApplyFlatBackend(IFlatDbConfig config)
+    {
+        if (FlatBackend is not { } backend) return;
+
+        config.Backend = backend;
+        if (backend == FlatDbBackend.CSharp) return;
+
+        config.EnableLongFinality = false;
+        config.CompactionOffset = 0;
+    }
 
     /// <summary>
     /// Whether <paramref name="configs"/> already pins the state backend, in which case the suite-wide
@@ -54,7 +83,9 @@ public static class TestStateBackend
     {
         if (!PinsBackend(explicitConfigs))
         {
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Enabled = UseFlatDb;
+            ApplyFlatBackend(flatDbConfig);
         }
 
         return configProvider;
