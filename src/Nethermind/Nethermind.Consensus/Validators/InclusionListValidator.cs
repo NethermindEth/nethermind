@@ -111,6 +111,8 @@ public static class InclusionListValidator
                 (toReplay ??= []).Add((il[i], index));
                 continue;
             }
+            // EIP-7805: once Profile 2 is active, a blob transaction is in neither profile, so its omission is excused.
+            if (il[i].SupportsBlobs && Eip8369Profile2.IsActive(spec)) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
         return toReplay is null || !AnyUnjustified(block, toReplay, spec, in profile2);

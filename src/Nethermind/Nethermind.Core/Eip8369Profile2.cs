@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Core;
 
@@ -41,6 +42,11 @@ public enum Profile2Exclusion : byte
 /// </remarks>
 public static class Eip8369Profile2
 {
+    /// <summary>Whether EIP-7805's Profile 2 is active: it needs EIP-8141, EIP-8250 and EIP-8272 beside inclusion lists.</summary>
+    /// <remarks>Once it is, an omitted transaction outside both profiles, a blob transaction among them, is excused.</remarks>
+    public static bool IsActive(IReleaseSpec spec) =>
+        spec.InclusionListsEnabled && spec.IsEip8141Enabled && spec.IsEip8250Enabled && spec.IsEip8272Enabled;
+
     /// <summary>Classifies <paramref name="transaction"/> against the EIP-8369 Profile 2 candidate conditions.</summary>
     /// <remarks>
     /// Condition 1, static EIP-8141 validity, is the caller's: every caller already runs a well-formedness

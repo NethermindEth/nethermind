@@ -56,7 +56,7 @@ public class InclusionListValidatorTests
             yield return Case("Same-nonce replacement advances nonce", [_validTx], true, blockTxs: [BuildTx(value: UInt256.One, to: TestItem.AddressC)], senderNonce: 1);
             // EIP-1559 fee check uses MaxFeePerGas (cap), not the tip: cap above baseFee → appendable.
             yield return Case("EIP-1559 low tip but sufficient fee cap", [Build1559Tx()], false, baseFee: 5.GWei);
-            // The blob carve-out applies to building an IL, not to judging one.
+            // Before Profile 2 is active, the blob carve-out applies to building an IL, not to judging one.
             yield return Case("Blob tx", [BuildBlobTx()], false);
             // Blob gas is paid up front, so a blob fee beyond the balance makes the tx unappendable.
             yield return Case("Blob tx cannot afford blob fee", [BuildBlobTx(maxFeePerBlobGas: 100_000.GWei)], true);
@@ -73,6 +73,24 @@ public class InclusionListValidatorTests
             // The spec disallows duplicates, but adversarial input must not cause false rejection.
             yield return Case("Duplicate IL entries with tx included", [_validTx, _validTx], true, blockTxs: [_validTx], senderNonce: 1);
         }
+    }
+
+    /// <summary>EIP-7805: once Profile 2 is active a blob transaction is in neither profile, so its omission is
+    /// excused; before, the original end-of-payload rule judges it.</summary>
+    [TestCase(false, false, TestName = "Omitted blob tx is judged before Profile 2 is active")]
+    [TestCase(true, true, TestName = "Omitted blob tx is excused once Profile 2 is active")]
+    public void Blob_tx_omission_is_excused_once_profile_2_is_active(bool profile2Active, bool satisfied)
+    {
+        IReleaseSpec spec = profile2Active ? Eip8369Prototype.Instance : Bogota.Instance;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithGasUsed(1_000_000)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithInclusionListTransactions([BuildBlobTx()])
+            .TestObject;
+
+        Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(satisfied));
     }
 
     [TestCaseSource(nameof(SatisfactionCases))]
