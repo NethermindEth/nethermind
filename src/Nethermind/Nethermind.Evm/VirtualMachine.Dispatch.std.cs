@@ -332,7 +332,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             opCodeCount++;
             EvmExceptionType exceptionType;
-            if (!TTracingInst.IsActive && !TCancelable.IsActive
+            if (!TTracingInst.IsActive
                 && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
             {
                 if (carriesExecutionGas)
@@ -346,7 +346,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     exceptionType = ExecuteUntracedPush2<TOpcode>(ref stack, ref state.Gas, ref state, ref pc, ref opCodeCount);
                 }
             }
-            else if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(JumpOpcode<OffFlag>))
+            else if (!TTracingInst.IsActive && typeof(TOpcode) == typeof(JumpOpcode<OffFlag>))
             {
                 if (carriesExecutionGas)
                 {

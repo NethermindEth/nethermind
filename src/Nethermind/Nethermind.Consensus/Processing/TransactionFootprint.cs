@@ -177,7 +177,8 @@ internal enum EffectKind : byte
     CreateAccount,
     CreateAccountIfNotExists,
     DeleteAccount,
-    InsertCode
+    InsertCode,
+    AdoptCode
 }
 
 /// <remarks>
@@ -251,10 +252,16 @@ internal struct StateEffect
             case EffectKind.InsertCode:
                 InsertCode(state, spec);
                 break;
+            case EffectKind.AdoptCode:
+                AdoptCode(state, spec);
+                break;
         }
     }
 
     // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, CodeHash, Code, spec);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void AdoptCode(IWorldState state, IReleaseSpec spec) => state.AdoptCode(Address, CodeHash, Code, spec);
 }

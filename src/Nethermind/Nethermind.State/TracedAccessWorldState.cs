@@ -159,6 +159,12 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return base.InsertCode(address, codeHash, code, spec, isGenesis);
     }
 
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        _generatingBlockAccessList?.AddAdoptedCodeChange(address, GetCodeInternal(address), code, in codeHash);
+        return base.AdoptCode(address, in codeHash, code, spec);
+    }
+
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         if (_generatingBlockAccessList is null)
