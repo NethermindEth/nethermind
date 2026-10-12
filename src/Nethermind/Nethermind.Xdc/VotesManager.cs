@@ -395,7 +395,7 @@ internal class VotesManager : IVotesManager, IDisposable
                 return;
             }
 
-            // Peers supply the certificates: a signature that recovers nothing is invalid, not a crash.
+            // Recovery fails for off-curve r (e.g. r = 0) that still passes the low-s check.
             Address? signer = _ethereumEcdsa.RecoverAddress(s, messageHash);
             ref int signCount = ref signer is null ? ref Unsafe.NullRef<int>() : ref CollectionsMarshal.GetValueRefOrNullRef(signedBy, signer);
 
