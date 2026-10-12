@@ -891,6 +891,11 @@ public partial class BlockDownloaderTests
 
         Assert.That(await ctx.HandleOneRequest(peerInfo), Is.EqualTo(SyncResponseHandlingResult.OK));
         ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+
+        // The bodies that were sent were matched to their headers, so only the omitted body is asked for again.
+        using BlocksRequest? followUp = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+        Assert.That(followUp, Is.Not.Null);
+        Assert.That(followUp!.BodiesRequests.Select(static b => b.Number), Is.EqualTo(new[] { 1UL }));
     }
 
     [Test]
