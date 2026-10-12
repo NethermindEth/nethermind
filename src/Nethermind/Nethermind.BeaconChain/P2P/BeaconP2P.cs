@@ -7,9 +7,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
+using System.Net.Quic;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Multiformats.Address.Net;
+using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -35,7 +37,7 @@ using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>Hosts beacon libp2p TCP/noise/yamux, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
+/// <summary>Hosts beacon libp2p TCP/Noise/yamux, optional QUIC, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
 /// <remarks>Persisted secp256k1 identity survives restarts and supplies the discv5 ENR key. Uses eth2 StrictNoSign, Eth2MessageId,
 /// D=8/D_low=6/D_high=12/D_lazy=6, 700 ms heartbeat and two-epoch seen TTL (p2p-interface.md).</remarks>
 public sealed class BeaconP2P : IAsyncDisposable
@@ -124,8 +126,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new DataColumnSidecarsByRootProtocol(spec, dataColumnSidecarPool) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new ExecutionPayloadEnvelopesByRangeProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new ExecutionPayloadEnvelopesByRootProtocol(spec, executionPayloadEnvelopePool) { RequestViolationSink = ReportRequestViolation })
-            .AddLibp2p(builder => builder
-                .WithPubsub()
+            .AddLibp2p(builder =>
+            {
+                if (config.QuicPort > 0) builder.WithQuic();
+                return builder.WithPubsub()
                 .AddProtocol<StatusProtocolV1>()
                 .AddProtocol<StatusProtocolV2>()
                 .AddProtocol<GoodbyeProtocol>()
@@ -141,7 +145,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddProtocol<DataColumnSidecarsByRootProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
-                .AddProtocol<IdentifyAgentVersionProbe>(isExposed: false))
+                .AddProtocol<IdentifyAgentVersionProbe>(isExposed: false);
+            })
             .AddSingleton<IdentifyProtocol>()
             .AddSingleton<IdentifyAgentVersionProbe>()
             // The library's peer class is internal; this one does the same identify handshake and also
@@ -283,20 +288,33 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <param name="token">Must stay uncancelled for the host lifetime: the pubsub heartbeat and reconnect loops are bound to it.</param>
     public async Task StartAsync(CancellationToken token)
     {
+        if (_config.QuicPort > 0 && !(QuicListener.IsSupported && QuicConnection.IsSupported))
+            throw new PlatformNotSupportedException("Beacon QUIC requires an available MsQuic runtime; install it or set QuicPort to 0 for TCP-only operation.");
         _startCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
         {
             _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
             _localPeer.OnConnected += OnSessionConnected;
             _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
-            await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], _startCts.Token);
+            Multiaddress[] addresses = _config.QuicPort > 0
+                ? [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}", $"/ip4/0.0.0.0/udp/{_config.QuicPort}/quic-v1"]
+                : [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"];
+            await _localPeer.StartListenAsync(addresses, _startCts.Token);
             token.ThrowIfCancellationRequested();
-            IPEndPoint? listenEndpoint = _localPeer.ListenAddresses.Count == 1 ? _localPeer.ListenAddresses[0].ToEndPoint() : null;
+            IPEndPoint? listenEndpoint = null;
+            IPEndPoint? quicEndpoint = null;
+            foreach (Multiaddress address in _localPeer.ListenAddresses)
+            {
+                if (address.Has<TCP>()) listenEndpoint = address.ToEndPoint();
+                else if (address.Has<QUICv1>()) quicEndpoint = address.ToEndPoint();
+            }
             // The library swallows a failed bind and reports no listen address instead.
             if (listenEndpoint is null || listenEndpoint.Port == 0)
             {
                 throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
             }
+            if (_config.QuicPort > 0 && quicEndpoint?.Port != _config.QuicPort)
+                throw new InvalidOperationException($"Beacon chain P2P failed to bind QUIC UDP port {_config.QuicPort}; check whether the port is already in use");
 
             _router = _serviceProvider.GetRequiredService<PubsubRouter>();
             if (_messageValidator is not null)
@@ -312,6 +330,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             _configureGossip?.Invoke(_router, _serviceProvider.GetRequiredService<PubsubSettings>());
             await _router.StartAsync(_localPeer, _startCts.Token);
             if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
+            if (quicEndpoint is not null && _logger.IsInfo) _logger.Info($"Beacon chain QUIC listening on UDP port {quicEndpoint.Port}");
         }
         catch
         {

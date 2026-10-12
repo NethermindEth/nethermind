@@ -164,6 +164,140 @@ public class BeaconDiscoveryTests
         Assert.That(candidate.Addresses[^1], Does.StartWith("/ip6/2001:4860:4860::8888/tcp/9002/"));
     }
 
+    [TestCase("8.8.8.8", EnrContentKey.Quic)]
+    [TestCase("2001:4860:4860::8888", EnrContentKey.Quic6)]
+    public void The_local_enr_advertises_quic_on_a_distinct_port_when_enabled(string address, string key)
+    {
+        IPAddress ip = IPAddress.Parse(address);
+        NodeRecord record = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(
+            TestItem.PrivateKeyA, ip, 9000, 9001, TestForkId, 4, quicPort: 9002).Current.ToString());
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(record.GetValue<int>(key), Is.EqualTo(9002));
+        Assert.That(record.TryGetQuicEndpoint(ip.AddressFamily, out IPEndPoint? endpoint), Is.True);
+        Assert.That(endpoint, Is.EqualTo(new IPEndPoint(ip, 9002)));
+        Assert.That(record.DiscoveryPort, Is.EqualTo(9001));
+        Assert.That(record.TcpPort, Is.EqualTo(9000));
+    }
+
+    [Test]
+    public void The_default_local_enr_does_not_advertise_quic()
+    {
+        NodeRecord record = new BeaconNodeRecordProvider(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4).Current;
+        Assert.That(record.HasEntry(EnrContentKey.Quic), Is.False);
+    }
+
+    [Test]
+    public void The_local_enr_rejects_an_invalid_quic_port([Values(-1, 65536)] int port)
+        => Assert.That(() => new BeaconNodeRecordProvider(TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, quicPort: port),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void A_dual_stack_candidate_prefers_quic_and_keeps_tcp_fallbacks()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new Quic6Entry(9003));
+        record.SetEntry(new TcpEntry(9000));
+        record.SetEntry(new Tcp6Entry(9004));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+        string peerId = candidate!.PeerId;
+        Assert.That(candidate.Addresses, Is.EqualTo(new[]
+        {
+            $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{peerId}",
+            $"/ip6/2001:4860:4860::8888/udp/9003/quic-v1/p2p/{peerId}",
+            $"/ip4/8.8.8.8/tcp/9000/p2p/{peerId}",
+            $"/ip6/2001:4860:4860::8888/tcp/9004/p2p/{peerId}",
+        }));
+    }
+
+    [Test]
+    public void A_quic_only_candidate_requires_local_quic_support([Values] bool quicEnabled, [Values] bool tcp)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new QuicEntry(9002));
+        if (tcp) record.SetEntry(new TcpEntry(9000));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        bool result = BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: quicEnabled);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(quicEnabled || tcp));
+        if (result) Assert.That(candidate!.Multiaddress, Does.Contain(quicEnabled ? "/quic-v1/" : "/tcp/"));
+    }
+
+    [Test]
+    public async Task A_failed_quic_dial_falls_back_to_the_advertised_tcp_address()
+    {
+        NodeRecord record = NodeRecord.FromEnrString(new BeaconNodeRecordProvider(
+            TestItem.PrivateKeyA, PublicIp, 9000, 9001, TestForkId, 4, quicPort: 9002).Current.ToString());
+        Assert.That(BeaconDiscovery.TryCreateCandidate(record, CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { QuicPort = 9002 }, BeaconChainSpec.Mainnet,
+            new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(PublicIp),
+            Timestamper.Default, LimboLogs.Instance);
+        discovery.DialHistory.Record(candidate!.Addresses[0], connected: false);
+
+        Assert.That(discovery.SelectDialableAddress(candidate)?.Multiaddress, Is.EqualTo(candidate.Addresses[1]));
+    }
+
+    [Test]
+    public void A_quic_port_must_be_in_range([Values(0, 65536)] int port)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new QuicEntry(port));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out _, quicEnabled: true), Is.False);
+    }
+
+    [Test]
+    public void An_ipv4_quic_port_is_not_used_with_an_ipv6_only_address()
+    {
+        NodeRecord record = new();
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out _, quicEnabled: true), Is.False);
+    }
+
+    [Test]
+    public void An_invalid_ipv6_quic_port_does_not_fall_back_to_the_ipv4_quic_port([Values(0, 65536)] int port)
+    {
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(PublicIp));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860:4860::8888")));
+        record.SetEntry(new QuicEntry(9002));
+        record.SetEntry(new Quic6Entry(port));
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new Eth2Entry(TestForkId.Encode()));
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+
+        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), CurrentDigest, null,
+            out BeaconPeerCandidate? candidate, quicEnabled: true), Is.True);
+        Assert.That(candidate!.Addresses, Is.EqualTo(new[] { $"/ip4/8.8.8.8/udp/9002/quic-v1/p2p/{candidate.PeerId}" }));
+    }
+
     [Test]
     public void Next_fork_mismatch_changes_preference_without_rejecting_a_current_peer([Values] bool matching)
     {

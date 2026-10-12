@@ -10,6 +10,12 @@ sources with the desktop managed ABI. Browser bindings skip the desktop
 dynamic-library resolvers. Consensus, trie verification and EVM execution use the
 existing C# implementations.
 
+The browser fetches untrusted records and proofs from HTTP relays and verifies
+them locally. The native relay can connect to beacon peers over QUIC v1 or TCP;
+this does not give the browser direct P2P sockets. Browser libp2p would require
+a separate [WebTransport](https://github.com/libp2p/specs/blob/master/webtransport/README.md)
+endpoint and compatible peers, plus a bridge for execution RLPx/SNAP.
+
 ## Build and run
 
 Install the repository's .NET SDK and its `wasm-tools` workload. PowerShell 7

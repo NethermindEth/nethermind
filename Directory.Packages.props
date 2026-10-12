@@ -71,6 +71,7 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Ping" Version="1.0.3" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Pubsub" Version="1.0.3" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.3" />
+    <PackageVersion Include="Nethermind.Libp2p.Protocols.Quic" Version="1.0.3" />
     <PackageVersion Include="Nethermind.Libp2p.Protocols.Yamux" Version="1.0.3" />
     <PackageVersion Include="Nethermind.MclBindings" Version="2.0.0" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.11.0" />

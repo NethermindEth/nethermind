@@ -74,8 +74,13 @@ changing the replayed heads or participation thresholds. Interrupted or corrupt
 candidate persistence disables that recovery candidate while preserving the
 authenticated replay state.
 
-The host listens for beacon P2P on TCP/UDP 9050 and execution P2P on TCP/UDP
-30307. Outbound connections to public beacon and execution peers must be
+The host listens for beacon libp2p on TCP 9050, beacon discv5 on UDP 9050,
+beacon QUIC v1 on UDP 9051, and execution P2P on TCP/UDP 30307. QUIC uses
+mutually authenticated TLS 1.3 and its own stream multiplexing. Signed beacon
+ENRs advertise the separate QUIC port; discovered QUIC addresses are tried
+before TCP, with TCP fallback when QUIC cannot connect. All libp2p components
+use version 1.0.3, including its recent TLS, channel, cancellation and yamux fixes.
+Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
@@ -83,6 +88,15 @@ Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
 retry, refresh and address-validation behavior. The resolved public address is
 used in discovery records; IP detection does not open or forward router/firewall
 ports. Failure to resolve an address leaves outbound discovery and dialing available.
+
+QUIC requires the platform's [MsQuic runtime](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview#platform-dependencies).
+Windows 11/Server 2022 or later includes it with .NET. Linux requires
+`libmsquic` 2.2 or later; for example, `sudo apt-get install libmsquic` after
+configuring the appropriate package repository. macOS support is partial and
+requires installing `libmsquic` and configuring its library search path.
+If the runtime does not support QUIC, the light client logs a warning and uses
+TCP without advertising QUIC. The embedded full consensus plugin keeps QUIC
+disabled by default; set `BeaconChain.QuicPort` to a distinct UDP port to enable it.
 
 Example request:
 
@@ -324,9 +338,15 @@ Build the browser host as described there, then add
 `http://127.0.0.1:8545/browser/` and enter an independently trusted recent
 checkpoint. The native host supplies bounded raw P2P records and proof data;
 the browser verifies them locally. Browser sockets cannot directly use the
-existing beacon TCP and execution TCP/UDP transports, so this host uses
+existing beacon TCP/QUIC and execution TCP/UDP transports, so this host uses
 untrusted proof relays with verification on the device. A relay can censor
 data; it cannot supply an accepted forged signature, header or state proof.
+Native QUIC improves the relay's beacon connection. Direct browser P2P would
+also require a browser-capable libp2p transport such as
+[WebTransport](https://github.com/libp2p/specs/blob/master/webtransport/README.md),
+its HTTP/3 endpoint, certificate authentication and compatible peers; a normal
+libp2p QUIC listener does not provide that transport. Execution RLPx/SNAP would
+still need a bridge or a separate browser-capable protocol.
 
 Browser requests are restricted to the server's origin by default. Use
 `--browser-origin https://your-wallet.example` to permit one additional exact

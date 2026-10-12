@@ -152,6 +152,10 @@ public class NodeRecord
     public bool TryGetTcpEndpoint(AddressFamily addressFamily, [MaybeNullWhen(false)] out IPEndPoint endpoint)
         => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, addressFamily, out endpoint);
 
+    /// <summary>Tries to get a libp2p QUIC endpoint for an address family.</summary>
+    public bool TryGetQuicEndpoint(AddressFamily addressFamily, [MaybeNullWhen(false)] out IPEndPoint endpoint)
+        => TryGetEndpoint(EnrContentKey.Quic, EnrContentKey.Quic6, addressFamily, out endpoint, allowIpv4PortFallback: false);
+
     private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
         if (TryGetEndpoint(ipv4PortKey, ipv6PortKey, AddressFamily.InterNetwork, out endpoint))
@@ -166,7 +170,8 @@ public class NodeRecord
         string ipv4PortKey,
         string ipv6PortKey,
         AddressFamily addressFamily,
-        [MaybeNullWhen(false)] out IPEndPoint endpoint)
+        [MaybeNullWhen(false)] out IPEndPoint endpoint,
+        bool allowIpv4PortFallback = true)
     {
         string? addressKey = addressFamily switch
         {
@@ -193,7 +198,7 @@ public class NodeRecord
 
         bool hasPort = addressFamily == AddressFamily.InterNetwork
             ? TryGetPort(ipv4PortKey, out int port)
-            : TryGetPort(ipv6PortKey, out port) || TryGetPort(ipv4PortKey, out port);
+            : TryGetPort(ipv6PortKey, out port) || allowIpv4PortFallback && TryGetPort(ipv4PortKey, out port);
 
         if (hasPort)
         {

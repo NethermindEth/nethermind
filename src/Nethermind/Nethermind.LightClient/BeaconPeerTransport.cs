@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Net.Quic;
 using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
@@ -37,14 +38,18 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     internal Task GossipCompletion => _gossip.Completion;
 
     internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, int p2pPort = 9050, int discoveryPort = 9050,
-        TimeProvider? time = null)
+        TimeProvider? time = null, int quicPort = 9051)
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
         _gossip = new(spec, logManager, time);
+        bool quicSupported = QuicListener.IsSupported && QuicConnection.IsSupported;
+        if (!quicSupported && quicPort > 0 && _logger.IsWarn)
+            _logger.Warn("QUIC is unavailable on this platform; beacon P2P will use TCP. Install the platform's MsQuic runtime to enable QUIC.");
         BeaconChainConfig config = new()
         {
             P2PPort = p2pPort,
             Discv5Port = discoveryPort,
+            QuicPort = quicSupported ? quicPort : 0,
             MinPeerCount = 2,
             TargetPeerCount = 8,
             MaxPeerCount = 12,

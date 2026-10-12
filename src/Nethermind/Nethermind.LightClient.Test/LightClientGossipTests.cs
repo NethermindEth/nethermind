@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
+using System.Net.Quic;
+using System.Net.Sockets;
 using Google.Protobuf;
 using Multiformats.Address.Net;
 using Nethermind.BeaconChain;
@@ -24,15 +27,19 @@ public class LightClientGossipTests
 {
     [Test]
     [CancelAfter(120_000)]
-    public async Task Signed_finality_gossip_crosses_a_real_libp2p_connection_and_authenticates(CancellationToken token)
+    public async Task Signed_finality_gossip_crosses_a_real_libp2p_connection_and_authenticates([Values] bool quic, CancellationToken token)
     {
+        if (quic && OperatingSystem.IsWindows() && Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
+            Assert.That(QuicListener.IsSupported && QuicConnection.IsSupported, Is.True, "Windows CI must exercise QUIC with the bundled MsQuic runtime.");
+        if (quic && (!QuicListener.IsSupported || !QuicConnection.IsSupported)) Assert.Ignore("MsQuic is unavailable on this runner.");
         ManualClock clock = new();
         clock.SetSlot(10, 6);
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         LightClientStore store = new(ConsensusTests.Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 10);
         await using LightClientGossip gossip = new(ConsensusTests.Spec, LimboLogs.Instance, clock);
-        await using BeaconP2P sender = CreateHost();
-        await using BeaconP2P receiver = CreateHost(gossip);
+        int senderQuicPort = quic ? FreeUdpPort() : 0;
+        await using BeaconP2P sender = CreateHost(quicPort: senderQuicPort);
+        await using BeaconP2P receiver = CreateHost(gossip, quic ? FreeUdpPort() : 0);
         await sender.StartAsync(token);
         await receiver.StartAsync(token);
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -43,10 +50,11 @@ public class LightClientGossipTests
             received.TrySetResult();
             return Task.FromResult(store.FinalizedHeader.Beacon!.Slot > before);
         }, static (_, _) => Task.FromResult(false), token);
-        PeerManager manager = new(sender, new BeaconChainConfig { P2PPort = 0 },
+        PeerManager manager = new(sender, new BeaconChainConfig { P2PPort = 0, QuicPort = senderQuicPort },
             new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), LimboLogs.Instance);
-        int port = receiver.ListenAddresses.Single().ToEndPoint().Port;
-        Assert.That(await manager.TryAddPeerAsync($"/ip4/127.0.0.1/tcp/{port}/p2p/{receiver.LocalPeerId}", token), Is.True);
+        int port = receiver.ListenAddresses.Single(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal)).ToEndPoint().Port;
+        string transport = quic ? $"udp/{port}/quic-v1" : $"tcp/{port}";
+        Assert.That(await manager.TryAddPeerAsync($"/ip4/127.0.0.1/{transport}/p2p/{receiver.LocalPeerId}", token), Is.True);
 
         for (ulong slot = 4; !received.Task.IsCompleted; slot++)
         {
@@ -62,11 +70,18 @@ public class LightClientGossipTests
         Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(2));
     }
 
-    private static BeaconP2P CreateHost(LightClientGossip? gossip = null) => new(new BeaconChainConfig { P2PPort = 0 },
+    private static BeaconP2P CreateHost(LightClientGossip? gossip = null, int quicPort = 0) => new(new BeaconChainConfig { P2PPort = 0, QuicPort = quicPort },
         ConsensusTests.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), ConsensusTests.Spec),
         new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), new LocalMetadataSource(),
         new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
         configureGossip: gossip is null ? null : gossip.Configure);
+
+    private static int FreeUdpPort()
+    {
+        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)socket.LocalEndPoint!).Port;
+    }
 
     [Test]
     public async Task Finality_then_matching_optimistic_are_authenticated_and_forwarded_once()

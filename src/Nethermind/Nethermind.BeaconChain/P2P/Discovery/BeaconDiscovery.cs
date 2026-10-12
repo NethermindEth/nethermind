@@ -369,7 +369,7 @@ public sealed class BeaconDiscovery(
         }
     }
 
-    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null)
+    internal static bool TryCreateCandidate(NodeRecord record, byte[] currentForkDigest, byte[]? nextForkDigest, [NotNullWhen(true)] out BeaconPeerCandidate? candidate, EnrForkId? localForkId = null, bool quicEnabled = false)
     {
         candidate = null;
         if (!TryGetForkId(record, out EnrForkId? forkId))
@@ -384,20 +384,21 @@ public sealed class BeaconDiscovery(
         }
 
         CompressedPublicKey? publicKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-        if (!record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) || publicKey is null)
+        if (publicKey is null)
         {
             return false;
         }
 
         string peerId = DerivePeerId(publicKey);
-        string ipProtocol = tcpEndpoint.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip4";
-        List<string> addresses = [$"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}"];
-        if (tcpEndpoint.AddressFamily == AddressFamily.InterNetwork && record.TryGetTcpEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? ipv6))
+        List<string> addresses = [];
+        if (quicEnabled)
         {
-            addresses.Add($"/ip6/{ipv6.Address}/tcp/{ipv6.Port}/p2p/{peerId}");
+            AddAddresses(useQuic: true);
         }
+        AddAddresses(useQuic: false);
+        if (addresses.Count == 0) return false;
 
-        candidate = new BeaconPeerCandidate($"/{ipProtocol}/{tcpEndpoint.Address}/tcp/{tcpEndpoint.Port}/p2p/{peerId}", peerId, forkId.ForkDigest, record.EnrSequence, record.ToString())
+        candidate = new BeaconPeerCandidate(addresses[0], peerId, forkId.ForkDigest, record.EnrSequence, record.ToString())
         {
             Custody = PeerColumnCustody.ForRecord(record) ?? PeerColumnCustody.None,
             Addresses = addresses,
@@ -408,6 +409,23 @@ public sealed class BeaconDiscovery(
                     Bytes.AreEqual(forkId.NextForkVersion, localForkId.NextForkVersion) ? 1 : 0),
         };
         return true;
+
+        void AddAddresses(bool useQuic)
+        {
+            AddAddress(AddressFamily.InterNetwork, useQuic);
+            AddAddress(AddressFamily.InterNetworkV6, useQuic);
+        }
+
+        void AddAddress(AddressFamily family, bool useQuic)
+        {
+            bool found = useQuic
+                ? record.TryGetQuicEndpoint(family, out IPEndPoint? address)
+                : record.TryGetTcpEndpoint(family, out address);
+            if (!found || address is null) return;
+            string ipProtocol = family == AddressFamily.InterNetwork ? "ip4" : "ip6";
+            string transport = useQuic ? $"udp/{address.Port}/quic-v1" : $"tcp/{address.Port}";
+            addresses.Add($"/{ipProtocol}/{address.Address}/{transport}/p2p/{peerId}");
+        }
     }
 
     /// <summary>Derives the libp2p peer id from a compressed secp256k1 public key.</summary>
@@ -507,7 +525,7 @@ public sealed class BeaconDiscovery(
         try
         {
             (byte[] currentDigest, byte[]? nextDigest, EnrForkId localForkId) = AcceptedForkDigests();
-            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId) ? SelectDialableAddress(candidate) : null;
+            return TryCreateCandidate(record, currentDigest, nextDigest, out BeaconPeerCandidate? candidate, localForkId, config.QuicPort > 0) ? SelectDialableAddress(candidate) : null;
         }
         catch (Exception e)
         {
@@ -585,7 +603,7 @@ public sealed class BeaconDiscovery(
         LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
         ulong epoch = CurrentEpoch;
         BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, epoch), LocalCustody.CustodyGroupCount, EnrForkId.NextForkDigest(spec, epoch),
-            NextEnrSequence());
+            NextEnrSequence(), config.QuicPort);
         Node currentNode = new(nodeKey.PublicKey, (externalIp ?? IPAddress.None).ToString(), config.P2PPort, config.Discv5Port, true);
 
         IContainer discv5Services = new ContainerBuilder()
