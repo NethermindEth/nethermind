@@ -4418,7 +4418,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void registry_should_forget_rejected_hash_and_resubmit_full_blob_tx_the_pool_does_not_hold()
+    public void registry_should_forget_invalid_blob_proofs_verdict_before_submitting_full_blob_tx()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -4428,15 +4428,19 @@ public class Eth72ProtocolHandlerTests
 
         using SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
-        _transactionPool.SubmitTx(tx, TxHandlingOptions.None).Returns(AcceptTxResult.AlreadyKnown, AcceptTxResult.Accepted);
-        _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction?>()).Returns(false);
+        _transactionPool.ForgetInvalidBlobProofs(tx.Hash!).Returns(true);
+        _transactionPool.SubmitTx(tx, TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
 
         registry.AddPeer(peer);
         AcceptTxResult? result = registry.RecordTransaction(peer, tx);
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-        _transactionPool.Received(1).ForgetRejectedBlobTransaction(tx.Hash!);
-        _transactionPool.Received(2).SubmitTx(tx, TxHandlingOptions.None);
+        Received.InOrder(() =>
+        {
+            _transactionPool.ForgetInvalidBlobProofs(tx.Hash!);
+            _transactionPool.SubmitTx(tx, TxHandlingOptions.None);
+        });
+        _transactionPool.Received(1).SubmitTx(tx, TxHandlingOptions.None);
     }
 
     [Test]

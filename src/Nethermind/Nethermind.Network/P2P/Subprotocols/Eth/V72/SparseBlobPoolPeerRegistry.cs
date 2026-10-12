@@ -967,14 +967,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
         {
-            AcceptTxResult fullResult = SubmitTransaction(peer, transaction);
-            if (fullResult == AcceptTxResult.AlreadyKnown && !_txPool.TryGetPendingBlobTransaction(hash, out _))
-            {
-                // Same healing as the sparse path: the hash was rejected with another sidecar; judge this copy.
-                _txPool.ForgetRejectedBlobTransaction(hash);
-                fullResult = SubmitTransaction(peer, transaction);
-            }
-            return fullResult;
+            // A copy rejected earlier for its sidecar must not shadow this one: the hash does not cover the sidecar.
+            _txPool.ForgetInvalidBlobProofs(hash);
+            return SubmitTransaction(peer, transaction);
         }
 
         if (!IsActivePeer(peer))
