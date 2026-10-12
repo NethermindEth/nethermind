@@ -51,7 +51,8 @@ public class ReviewBlockTreeTests
         try
         {
             execute = step.Execute(CancellationToken.None);
-            context.Drain();
+            // The step resumes after the fixer's ContinueWith, which completes on the thread pool, so wait for it to subscribe.
+            context.WaitAndDrain(TimeSpan.FromSeconds(5));
             Assert.That(execute.IsCompleted, Is.False);
 
             // BlockchainProcessor raises ProcessingQueueEmpty after every dequeued block and every batch, so the
@@ -73,6 +74,12 @@ public class ReviewBlockTreeTests
         private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
 
         public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public void WaitAndDrain(TimeSpan timeout)
+        {
+            Assert.That(SpinWait.SpinUntil(() => !_queue.IsEmpty, timeout), Is.True, "no continuation was posted");
+            Drain();
+        }
 
         public void Drain()
         {
