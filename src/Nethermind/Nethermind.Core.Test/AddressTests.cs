@@ -260,7 +260,7 @@ public class AddressTests
     }
 
     [Test]
-    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes()
+    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes([Values] bool mutateSource)
     {
         Random random = new(42);
         byte[] bytes = new byte[Address.Size];
@@ -269,6 +269,8 @@ public class AddressTests
             random.NextBytes(bytes);
             Address address = new(bytes);
             int expected = new ValueAddress(bytes).GetHashCode();
+            Assert.That(address.GetHashCode(), Is.EqualTo(expected));
+            if (mutateSource) Array.Fill(bytes, byte.MaxValue);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(address.GetHashCode(), Is.EqualTo(expected));

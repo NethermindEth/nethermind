@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -10,8 +11,20 @@ namespace Nethermind.Core;
 
 public sealed partial class Address
 {
+    private int _hashCode;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal partial int GetHashCodeNonVirtual() => unchecked((int)GetHashCode64());
+    internal partial int GetHashCodeNonVirtual()
+    {
+        int hashCode = Volatile.Read(ref _hashCode);
+        if (hashCode == 0)
+        {
+            hashCode = unchecked((int)GetHashCode64());
+            Volatile.Write(ref _hashCode, hashCode);
+        }
+
+        return hashCode;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal partial long GetHashCode64(in UInt256 index) => SpanExtensions.FastHash64ForAddressAndSlot(
