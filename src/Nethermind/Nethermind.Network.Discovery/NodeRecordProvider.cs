@@ -5,11 +5,13 @@ using System.Net;
 using System.Net.Sockets;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
+using Nethermind.State.SnapServer;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -23,7 +25,9 @@ public sealed class NodeRecordProvider(
     IForkInfo forkInfo,
     ITimestamper timestamper,
     ILogManager logManager,
-    NetworkListenerState listenerState
+    NetworkListenerState listenerState,
+    ISyncConfig syncConfig,
+    ISnapServer snapServer
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -168,7 +172,10 @@ public sealed class NodeRecordProvider(
             rlpxAddress is not null ? networkConfig.P2PPort : null,
             discoveryAddress is not null ? networkConfig.DiscoveryPort : null,
             advertiseV6 ? ip.ExternalIpV6 : null,
-            currentForkId);
+            currentForkId,
+            // Stricter than the Hello capability, which a syncing node also offers: the entry means
+            // the node serves snap, and a server that cannot serve (hash db layout) disconnects requests.
+            syncConfig.SnapServingEnabled == true && snapServer.CanServe);
     }
 
     private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
@@ -220,6 +227,7 @@ public sealed class NodeRecordProvider(
             if (state.UdpPort is { } udpPort) selfNodeRecord.SetEntry(new Udp6Entry(udpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
+        if (state.ServesSnap) selfNodeRecord.SetEntry(SnapEntry.Instance);
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);
         if (!_enrSigner.Verify(selfNodeRecord))
@@ -243,5 +251,6 @@ public sealed class NodeRecordProvider(
         int? TcpPort,
         int? UdpPort,
         IPAddress? ExternalIpV6,
-        NetworkForkId ForkId);
+        NetworkForkId ForkId,
+        bool ServesSnap);
 }
