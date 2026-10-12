@@ -103,18 +103,24 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
     }
 
     /// <summary>
-    /// Timeout source whose Dispose (called by the handler under its lock) fires the timeout on another thread
-    /// and returns only once the handler's timeout callback is executing, i.e. blocked on that same lock.
+    /// Timeout source whose Dispose (called by the handler under its lock without the fix) fires the timeout on
+    /// another thread and returns only once the handler's timeout callback is blocked on that lock, or has finished.
     /// </summary>
     private sealed class CancelOnDisposeCts : CancellationTokenSource
     {
         private readonly ManualResetEventSlim _callbackStarted = new();
+        private Thread? _cancelThread;
         private bool _armed;
 
         public void ArmAfterWaitRegistered()
         {
-            // Registered after the handler's callback, so it runs first (LIFO) and marks the handler callback as next.
-            Token.Register(() => _callbackStarted.Set());
+            // Registered after the handler's callback, so it runs first (LIFO) on the cancel thread and the
+            // handler's callback runs next on that same thread.
+            Token.Register(() =>
+            {
+                _cancelThread = Thread.CurrentThread;
+                _callbackStarted.Set();
+            });
             _armed = true;
         }
 
@@ -123,10 +129,20 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
             if (_armed)
             {
                 _armed = false;
-                Task.Run(Cancel);
+                Task cancel = Task.Run(Cancel);
                 _callbackStarted.Wait();
-                Thread.Sleep(200);
+                // Without the fix the handler's callback blocks on the lock held by this thread; with the fix it
+                // finds its entry already removed and the cancel completes.
+                SpinWait.SpinUntil(
+                    () => cancel.IsCompleted || (_cancelThread!.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(10));
             }
+
+            if (disposing)
+            {
+                _callbackStarted.Dispose();
+            }
+
             base.Dispose(disposing);
         }
     }

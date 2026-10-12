@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Consensus.Producers;
@@ -128,12 +127,23 @@ public class ShutterTxSource(
 
     public void Dispose()
     {
-        List<CancellationTokenRegistration> registrations;
+        List<CancellationTokenRegistration> registrations = [];
         lock (_syncObject)
         {
-            registrations = _keyWaitTasks.Values.SelectMany(static x => x.Values.Select(static waitTask => waitTask.Item2)).ToList();
+            foreach (Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)> slotWaitTasks in _keyWaitTasks.Values)
+            {
+                foreach ((TaskCompletionSource _, CancellationTokenRegistration ctr) in slotWaitTasks.Values)
+                {
+                    registrations.Add(ctr);
+                }
+            }
+
             _keyWaitTasks.Clear();
         }
-        registrations.ForEach(static ctr => ctr.Dispose());
+
+        foreach (CancellationTokenRegistration ctr in registrations)
+        {
+            ctr.Dispose();
+        }
     }
 }

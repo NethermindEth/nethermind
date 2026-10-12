@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Shutter.Contracts;
@@ -125,13 +124,21 @@ public class ShutterBlockHandler : IShutterBlockHandler
     public void Dispose()
     {
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
-        List<BlockWaitTask> waitTasks;
+        List<BlockWaitTask> waitTasks = [];
         lock (_syncObject)
         {
-            waitTasks = _blockWaitTasks.Values.SelectMany(static x => x.Values).ToList();
+            foreach (Dictionary<ulong, BlockWaitTask> slotWaitTasks in _blockWaitTasks.Values)
+            {
+                waitTasks.AddRange(slotWaitTasks.Values);
+            }
+
             _blockWaitTasks.Clear();
         }
-        waitTasks.ForEach(static waitTask => waitTask.Dispose());
+
+        foreach (BlockWaitTask waitTask in waitTasks)
+        {
+            waitTask.Dispose();
+        }
     }
 
     // Registrations are disposed outside _syncObject: CancellationTokenRegistration.Dispose blocks until an
