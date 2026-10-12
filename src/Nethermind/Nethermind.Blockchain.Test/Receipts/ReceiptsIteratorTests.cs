@@ -129,7 +129,7 @@ public class ReceiptsIteratorTests
 
     [Test]
     public void RecoverLogFieldsIfNeeded_PreservesTransactionIdentityWithDeferredRecovery(
-        [Values] bool fromEncoded, [Values] bool selective, [Values(0, 1)] int firstMatch, [Values(1, 2)] int matchInterval)
+        [Values] bool fromEncoded, [Values] bool useLogContext, [Values(0, 1)] int firstMatch, [Values(1, 2)] int matchInterval)
     {
         Transaction[] transactions =
         [
@@ -153,7 +153,7 @@ public class ReceiptsIteratorTests
         BlockDecoder blockDecoder = new();
         byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
         CountingMemoryManager? blockMemory = fromEncoded ? new(encodedBlock) : null;
-        if (!fromEncoded && selective)
+        if (!fromEncoded && useLogContext)
         {
             foreach (Transaction transaction in transactions) transaction.Hash = null;
         }
@@ -167,7 +167,7 @@ public class ReceiptsIteratorTests
             ReceiptRecoveryBlock recoveryBlock = fromEncoded
                 ? blockDecoder.DecodeToReceiptRecoveryBlock(blockMemory, blockMemory!.Memory, RlpBehaviors.None)!.Value
                 : new ReceiptRecoveryBlock(block);
-            return selective
+            return useLogContext
                 ? recovery.CreateLogRecoveryContext(recoveryBlock)
                 : recovery.CreateRecoveryContext(recoveryBlock);
         }
@@ -180,7 +180,7 @@ public class ReceiptsIteratorTests
                 bool matches = i >= firstMatch && (i - firstMatch) % matchInterval == 0;
                 if (!matches)
                 {
-                    if (selective || i < firstMatch)
+                    if (useLogContext || i < firstMatch)
                     {
                         Assert.That(receipt.TxHash.Bytes.Length, Is.Zero, $"receipt {i} must not be recovered without a match");
                     }
@@ -200,12 +200,12 @@ public class ReceiptsIteratorTests
             }
 
             Assert.That(iterator.TryGetNext(out _), Is.False);
-            if (!fromEncoded)
+            if (!fromEncoded && useLogContext)
             {
                 for (int i = 0; i < transactions.Length; i++)
                 {
                     bool matches = i >= firstMatch && (i - firstMatch) % matchInterval == 0;
-                    Assert.That(transactions[i].IsHashCalculated, Is.EqualTo(!selective || matches), $"transaction {i}");
+                    Assert.That(transactions[i].IsHashCalculated, Is.EqualTo(matches), $"transaction {i}");
                 }
             }
         }
@@ -215,6 +215,26 @@ public class ReceiptsIteratorTests
         }
 
         if (fromEncoded) Assert.That(blockMemory!.DisposeCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void LogRecoveryRejectsReceiptPastLastTransaction([Values] bool fromEncoded, [Values(1, 2)] int transactionIndex)
+    {
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.Signed().TestObject).TestObject;
+        BlockDecoder blockDecoder = new();
+        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        ReceiptRecoveryBlock recoveryBlock = fromEncoded
+            ? blockDecoder.DecodeToReceiptRecoveryBlock(null, encodedBlock, RlpBehaviors.None)!.Value
+            : new ReceiptRecoveryBlock(block);
+        ReceiptsRecovery recovery = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), MainnetSpecProvider.Instance, false);
+        using IReceiptsRecovery.ISelectiveLogRecoveryContext context =
+            (IReceiptsRecovery.ISelectiveLogRecoveryContext)recovery.CreateLogRecoveryContext(recoveryBlock);
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            TxReceiptStructRef receipt = default;
+            context.RecoverReceiptData(ref receipt, transactionIndex);
+        });
     }
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
@@ -240,5 +260,4 @@ public class ReceiptsIteratorTests
         public override void Unpin() { }
         protected override void Dispose(bool disposing) => DisposeCount++;
     }
-
 }

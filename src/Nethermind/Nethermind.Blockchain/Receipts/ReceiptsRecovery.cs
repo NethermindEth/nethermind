@@ -195,13 +195,18 @@ namespace Nethermind.Blockchain.Receipts
                         throw new InvalidOperationException("Log receipt recovery cannot move backwards.");
                     }
 
+                    if (transactionIndex >= _block.TransactionCount)
+                    {
+                        throw new InvalidOperationException("Trying to recover more receipt that transaction");
+                    }
+
                     while (_transactionIndex < transactionIndex)
                     {
                         _block.SkipNextTransaction();
                         _transactionIndex++;
                     }
 
-                    _lastTransactionHash = NextTransactionHash();
+                    _lastTransactionHash = _block.GetNextTransactionHash();
                     _lastTransactionIndex = _transactionIndex++;
                 }
 
