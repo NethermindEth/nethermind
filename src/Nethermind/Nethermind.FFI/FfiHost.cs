@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -39,16 +40,28 @@ public static class FfiHost
     private static volatile bool _stopping;
     private static ProcessExitSource? _exitSource;
     private static Task<int>? _run;
+    private static PosixSignalRegistration[]? _signalRegistrations;
 
     /// <summary>Starts the node in the background.</summary>
     /// <param name="config">A config name from the <c>configs</c> directory (e.g. <c>mainnet</c>) or a path to a config file.</param>
     /// <param name="overrides">Config values keyed by <c>Category.Name</c>, taking precedence over the environment and the config file.</param>
+    /// <remarks>
+    /// The runtime terminates the process on SIGINT, SIGQUIT and SIGTERM unless a managed handler cancels the signal, so
+    /// they are cancelled here to leave them to the host. The runtime does not pass these signals on to a handler that was
+    /// installed before its own.
+    /// </remarks>
     public static void Start(string config, Dictionary<string, string> overrides)
     {
         ProcessExitSource exitSource = new(CancellationToken.None);
         if (Interlocked.CompareExchange(ref _exitSource, exitSource, null) is not null)
             throw new InvalidOperationException("The node can only be started once per process.");
 
+        _signalRegistrations =
+        [
+            PosixSignalRegistration.Create(PosixSignal.SIGINT, CancelSignal),
+            PosixSignalRegistration.Create(PosixSignal.SIGQUIT, CancelSignal),
+            PosixSignalRegistration.Create(PosixSignal.SIGTERM, CancelSignal),
+        ];
         exitSource.Token.Register(MarkStopping);
         _run = Task.Run(() => RunAsync(config, overrides, exitSource));
     }
@@ -159,4 +172,6 @@ public static class FfiHost
         _stopping = true;
         Signalled.TrySetResult();
     }
+
+    private static void CancelSignal(PosixSignalContext context) => context.Cancel = true;
 }

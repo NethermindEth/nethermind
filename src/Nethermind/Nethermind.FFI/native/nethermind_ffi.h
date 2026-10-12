@@ -10,8 +10,10 @@
  *
  * Known limitations:
  *  - Block validation uses the L1 Ethereum validator; chains with their own (Optimism, Taiko, Xdc) are not supported.
- *  - The node may terminate the whole process (Environment.Exit on fatal database errors). Signal handling is left
- *    to the host; call nm_stop to shut down.
+ *  - The node may terminate the whole process (Environment.Exit on fatal database errors).
+ *  - Signal handling is left to the host; call nm_stop to shut down. nm_start makes the .NET runtime ignore SIGINT,
+ *    SIGQUIT and SIGTERM, which it would otherwise terminate the process on. The runtime does not pass these on to a
+ *    handler installed before nm_start, so install the host's handlers after it.
  *  - Linux and macOS only.
  */
 
