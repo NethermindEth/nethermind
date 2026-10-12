@@ -359,6 +359,37 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
     }
 
+    // A body is counted once however often execution returns to its first instruction: a loop jumping back to
+    // offset 0, or the body re-entered through a self-call, must not rehash a large body per iteration.
+    [TestCase(false, TestName = "A loop back to offset 0 hashes a large body at most once")]
+    [TestCase(true, TestName = "A body re-entered through self-calls hashes at most once")]
+    public void Simulate_ReplayCodeLimits_HashEachBodyOnce(bool selfCall)
+    {
+        // JUMPDEST [STATICCALL(self)] PUSH0 JUMP, padded to 48 KiB; it loops until the frame runs out of gas.
+        Prepare code = Prepare.EvmCode.Op(Instruction.JUMPDEST);
+        if (selfCall) code = code.StaticCall(Sender, 5_000).Op(Instruction.POP);
+        byte[] loop = code.Op(Instruction.PUSH0).Op(Instruction.JUMP).Done;
+        byte[] body = new byte[48 * 1024];
+        loop.CopyTo(body, 0);
+        DeployContract(Sender, body, 1.Ether);
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec,
+            maxCodeBodies: Eip8369Constants.MaxReplayCodeBodies, maxCodeBytes: Eip8369Constants.MaxReplayCodeBytes);
+
+        try
+        {
+            Run(FrameTx(nonce: 0, SelfVerifyFrame()), tracer);
+        }
+        catch (OperationCanceledException) when (tracer.Violated)
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.False, tracer.ViolationReason);
+            Assert.That(tracer.CodeHashComputations, Is.LessThanOrEqualTo(1));
+        }
+    }
+
     [Test]
     public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
     {

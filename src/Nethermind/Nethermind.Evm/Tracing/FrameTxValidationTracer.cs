@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 
@@ -163,10 +164,17 @@ public sealed class FrameTxValidationTracer(
         if (Violated) return;
 
         _codeReadPending = false;
-        if (pc == 0 && _codeBodies is not null)
+        // Execution starts in a body at its first instruction. Only a change of executing code can be such a
+        // start, so a loop jumping back to offset 0 costs one reference comparison, never a rehash.
+        if (_codeBodies is not null && !ReferenceEquals(env.CodeInfo, _executingCode))
         {
-            LoadCode(env.CodeInfo.CodeSpan);
-            if (Violated) return;
+            _executingCode = env.CodeInfo;
+            if (pc == 0 && _enteredCode!.Add(env.CodeInfo))
+            {
+                ReadOnlySpan<byte> code = env.CodeInfo.CodeSpan;
+                if (!code.IsEmpty) LoadCode(env.CodeInfo.CodeHash != default ? env.CodeInfo.CodeHash : HashCode(code), code.Length);
+                if (Violated) return;
+            }
         }
 
         _inRecentRootCode = _recentRootKeys is not null && env.CallDepth == 0 && env.ExecutingAccount == Eip8272Constants.RecentRootAddress;
@@ -277,7 +285,7 @@ public sealed class FrameTxValidationTracer(
             if (_codeReadPending)
             {
                 ValueHash256 codeHash = state.GetCodeHash(target);
-                if (codeHash != Keccak.OfAnEmptyString.ValueHash256) LoadCode(state.GetCode(in codeHash).Span);
+                if (codeHash != Keccak.OfAnEmptyString.ValueHash256 && !_codeBodies!.Contains(codeHash)) LoadCode(codeHash, state.GetCode(in codeHash).Length);
                 if (Violated) return;
             }
 
@@ -307,14 +315,28 @@ public sealed class FrameTxValidationTracer(
 
     /// <summary>Distinct code bodies loaded so far, by hash, or <c>null</c> when neither bound applies.</summary>
     private readonly HashSet<ValueHash256>? _codeBodies = maxCodeBodies > 0 || maxCodeBytes > 0 ? [] : null;
+
+    /// <summary>The code instances already counted, by reference: <see cref="CodeInfo"/> overrides equality.</summary>
+    private readonly HashSet<CodeInfo>? _enteredCode = maxCodeBodies > 0 || maxCodeBytes > 0 ? new(ReferenceEqualityComparer.Instance) : null;
+
+    private CodeInfo? _executingCode;
     private long _codeBytes;
     private bool _codeReadPending;
 
-    /// <summary>EIP-7805: counts a code body the prefix loads against <c>MAX_REPLAY_CODE_BODIES</c> and <c>MAX_REPLAY_CODE_BYTES</c>.</summary>
-    private void LoadCode(ReadOnlySpan<byte> code)
+    /// <summary>Bodies hashed because their code carried no stamped hash, which only initcode should need.</summary>
+    internal int CodeHashComputations { get; private set; }
+
+    private ValueHash256 HashCode(ReadOnlySpan<byte> code)
     {
-        if (code.IsEmpty || !_codeBodies!.Add(ValueKeccak.Compute(code))) return;
-        _codeBytes += code.Length;
+        CodeHashComputations++;
+        return ValueKeccak.Compute(code);
+    }
+
+    /// <summary>EIP-7805: counts a code body the prefix loads against <c>MAX_REPLAY_CODE_BODIES</c> and <c>MAX_REPLAY_CODE_BYTES</c>.</summary>
+    private void LoadCode(in ValueHash256 codeHash, int length)
+    {
+        if (!_codeBodies!.Add(codeHash)) return;
+        _codeBytes += length;
         if (maxCodeBodies > 0 && _codeBodies.Count > maxCodeBodies) Violate("validation code body count exceeded");
         else if (maxCodeBytes > 0 && _codeBytes > maxCodeBytes) Violate("validation code byte limit exceeded");
     }
