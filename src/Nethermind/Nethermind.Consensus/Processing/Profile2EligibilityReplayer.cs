@@ -133,7 +133,8 @@ public sealed class Profile2EligibilityReplayer(
         Address payer = FrameTxValidation.GetPrefixPaymaster(transaction) ?? sender;
         FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, state, spec,
             maxVerifyGas: blocksConfig.FocilProfile2MaxVerifyGas is 0 ? ulong.MaxValue : blocksConfig.FocilProfile2MaxVerifyGas,
-            payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount, createInDeployFrame: true);
+            payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount, createInDeployFrame: true,
+            maxCodeBodies: Eip8369Constants.MaxReplayCodeBodies, maxCodeBytes: Eip8369Constants.MaxReplayCodeBytes);
         try
         {
             // Prefix-only simulation restores its own snapshot, so the reconstructed state serves the next candidate.

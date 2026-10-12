@@ -325,6 +325,40 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    // EIP-7805: the sender's code is one body and each helper it calls another; EXTCODESIZE loads its target too.
+    [TestCase(3, 0L, false, false, TestName = "Code bodies at the replay limit are allowed")]
+    [TestCase(2, 0L, false, true, TestName = "One code body over the replay limit is refused")]
+    [TestCase(0, 0L, true, true, TestName = "EXTCODESIZE loads its target as a code body")]
+    [TestCase(0, -1L, false, true, TestName = "One byte over the replay code byte limit is refused")]
+    [TestCase(0, 0L, false, false, TestName = "Code bytes at the replay limit are allowed")]
+    public void Simulate_ReplayCodeLimits_BoundBodiesAndBytes(int maxBodies, long byteSlack, bool extCodeSize, bool violates)
+    {
+        byte[] helperB = [(byte)Instruction.PUSH1, 1, (byte)Instruction.STOP];
+        byte[] helperC = [(byte)Instruction.PUSH1, 2, (byte)Instruction.STOP];
+        DeployContract(TestItem.AddressB, helperB);
+        DeployContract(TestItem.AddressC, helperC);
+        Prepare code = Prepare.EvmCode.StaticCall(TestItem.AddressB, 50_000).Op(Instruction.POP);
+        code = extCodeSize
+            ? code.PushData(TestItem.AddressC).Op(Instruction.EXTCODESIZE).Op(Instruction.POP)
+            : code.StaticCall(TestItem.AddressC, 50_000).Op(Instruction.POP);
+        byte[] senderCode = code.PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+        DeployContract(Sender, senderCode, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+        long maxBytes = maxBodies == 0 ? senderCode.Length + helperB.Length + helperC.Length + byteSlack : 0;
+        FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec,
+            maxCodeBodies: maxBodies == 0 && extCodeSize ? 2 : maxBodies, maxCodeBytes: maxBytes);
+
+        try
+        {
+            Run(tx, tracer);
+        }
+        catch (OperationCanceledException) when (tracer.Violated)
+        {
+        }
+
+        Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+    }
+
     [Test]
     public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
     {

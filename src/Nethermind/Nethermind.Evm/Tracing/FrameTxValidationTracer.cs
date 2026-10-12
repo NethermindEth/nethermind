@@ -26,6 +26,10 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
 /// <param name="createInDeployFrame">Whether the deploy frame may install code at tx.sender with <c>CREATE</c> as well as
 /// <c>CREATE2</c>, as EIP-8141 and EIP-7805's Profile 2 deployment bookkeeping permit; the public mempool refuses it.</param>
+/// <param name="maxCodeBodies">EIP-7805 <c>MAX_REPLAY_CODE_BODIES</c>: the distinct code bodies the prefix may load, or
+/// <c>0</c> for no bound. A body is loaded when execution starts in it, after delegation is followed, or when
+/// <c>EXTCODESIZE</c> or <c>EXTCODECOPY</c> reads it; empty code loads nothing.</param>
+/// <param name="maxCodeBytes">EIP-7805 <c>MAX_REPLAY_CODE_BYTES</c>: their combined size, or <c>0</c> for no bound.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
@@ -44,7 +48,9 @@ public sealed class FrameTxValidationTracer(
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
     Address? payer = null,
     UInt256 storageSlotBound = default,
-    bool createInDeployFrame = false)
+    bool createInDeployFrame = false,
+    int maxCodeBodies = 0,
+    long maxCodeBytes = 0)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -156,6 +162,13 @@ public sealed class FrameTxValidationTracer(
         SettleCreate();
         if (Violated) return;
 
+        _codeReadPending = false;
+        if (pc == 0 && _codeBodies is not null)
+        {
+            LoadCode(env.CodeInfo.CodeSpan);
+            if (Violated) return;
+        }
+
         _inRecentRootCode = _recentRootKeys is not null && env.CallDepth == 0 && env.ExecutingAccount == Eip8272Constants.RecentRootAddress;
 
         switch (opcode)
@@ -191,8 +204,11 @@ public sealed class FrameTxValidationTracer(
                 _targetStackIndex = 1; // [gas, address, ...]
                 break;
             case Instruction.EXTCODESIZE:
-            case Instruction.EXTCODEHASH:
             case Instruction.EXTCODECOPY:
+                _targetStackIndex = 0; // [address, ...]
+                _codeReadPending = _codeBodies is not null;
+                break;
+            case Instruction.EXTCODEHASH:
                 _targetStackIndex = 0; // [address, ...]
                 break;
             case Instruction.GASPRICE:
@@ -258,6 +274,13 @@ public sealed class FrameTxValidationTracer(
             if (stack.Count <= index) return;
 
             Address target = stack.PeekAddress(index);
+            if (_codeReadPending)
+            {
+                ValueHash256 codeHash = state.GetCodeHash(target);
+                if (codeHash != Keccak.OfAnEmptyString.ValueHash256) LoadCode(state.GetCode(in codeHash).Span);
+                if (Violated) return;
+            }
+
             if (IsForbiddenCallTarget(target))
             {
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
@@ -280,6 +303,20 @@ public sealed class FrameTxValidationTracer(
                 ? "endowed CREATE2 in validation prefix"
                 : "value-carrying CALL in validation prefix");
         }
+    }
+
+    /// <summary>Distinct code bodies loaded so far, by hash, or <c>null</c> when neither bound applies.</summary>
+    private readonly HashSet<ValueHash256>? _codeBodies = maxCodeBodies > 0 || maxCodeBytes > 0 ? [] : null;
+    private long _codeBytes;
+    private bool _codeReadPending;
+
+    /// <summary>EIP-7805: counts a code body the prefix loads against <c>MAX_REPLAY_CODE_BODIES</c> and <c>MAX_REPLAY_CODE_BYTES</c>.</summary>
+    private void LoadCode(ReadOnlySpan<byte> code)
+    {
+        if (code.IsEmpty || !_codeBodies!.Add(ValueKeccak.Compute(code))) return;
+        _codeBytes += code.Length;
+        if (maxCodeBodies > 0 && _codeBodies.Count > maxCodeBodies) Violate("validation code body count exceeded");
+        else if (maxCodeBytes > 0 && _codeBytes > maxCodeBytes) Violate("validation code byte limit exceeded");
     }
 
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)

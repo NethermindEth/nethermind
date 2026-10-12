@@ -26,6 +26,12 @@ public static class Eip8369Constants
     /// validation prefix may read.</summary>
     public const ulong AaVopsSlotCount = 4;
 
+    /// <summary><c>MAX_REPLAY_CODE_BODIES</c>: the distinct code bodies one Profile 2 replay may load.</summary>
+    public const int MaxReplayCodeBodies = 16;
+
+    /// <summary><c>MAX_REPLAY_CODE_BYTES</c>: the combined size of the distinct code bodies one Profile 2 replay may load.</summary>
+    public const long MaxReplayCodeBytes = 1L << 17;
+
     /// <summary><c>MAX_INCLUSION_LIST_CLAIMS</c>: the builder claims one payload may carry.</summary>
     public const int MaxInclusionListClaims = 1 << 12;
 }
