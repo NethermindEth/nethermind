@@ -254,13 +254,15 @@ public class DebugRpcModule(
     /// The body is looked up only so a missing one fails before the stream opens. The trace goes by hash, as the
     /// <see cref="Block"/> overload never takes the indexed parallel path.
     /// </remarks>
-    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options)
+    private ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> StreamBlockTrace(BlockHeader header, GethTraceOptions? options, BlockParameter? selector = null)
     {
         if (CheckTraceBaseState<IReadOnlyCollection<GethLikeTxTrace>>(header) is { } baseStateError) return baseStateError;
 
         if (blockFinder.FindBlock(header.Hash!, header.Number) is null)
         {
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {header.Hash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
+                selector?.Type == BlockParameterType.BlockNumber ? $"block #{selector.BlockNumber} not found" : $"Block body not found for {selector?.ToString() ?? header.Hash!.ToString()}",
+                ErrorCodes.ResourceNotFound);
         }
 
         GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -486,7 +488,7 @@ public class DebugRpcModule(
 
         if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
-        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options);
+        if (CanStreamBlockTrace(options)) return StreamBlockTrace(header, options, blockNumber);
 
         using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
         CancellationToken cancellationToken = timeout.Token;
@@ -501,6 +503,10 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        catch (ArgumentNullException exception) when (exception.ParamName == "block" && blockNumber.Type == BlockParameterType.BlockNumber)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
         }
         catch (ArgumentNullException)
         {
