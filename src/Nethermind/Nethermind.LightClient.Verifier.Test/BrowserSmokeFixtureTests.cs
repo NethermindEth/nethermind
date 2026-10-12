@@ -3,7 +3,6 @@
 
 #nullable enable
 
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;

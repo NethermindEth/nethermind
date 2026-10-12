@@ -187,3 +187,20 @@ dotnet_diagnostic.IDE0130.severity = none
 # usings are required in Merge.Plugin (ImplicitUsings disabled), so suppress the false positive.
 [src/Nethermind/Nethermind.Merge.Plugin/Data/{ExecutionPayload,ExecutionPayloadV4,IExecutionPayloadParams}.cs]
 dotnet_diagnostic.IDE0005.severity = none
+
+# IDE0005: The portable light-client projects link these sources with ImplicitUsings enabled.
+# Their explicit imports remain required by the original projects.
+[src/Nethermind/Nethermind.Blockchain/{EthereumPrecompileProvider,Tracing/ExecutionFailureText,Tracing/GasEstimator*,Blocks/BlockhashStore,Blocks/IBlockhashStore}.cs]
+dotnet_diagnostic.IDE0005.severity = none
+
+[src/Nethermind/Nethermind.Facade/Eth/{RpcTransaction/*,BlockForRpc,BlockNonceConverter,BlockTransactions}.cs]
+dotnet_diagnostic.IDE0005.severity = none
+
+[src/Nethermind/Nethermind.JsonRpc/Data/{ReceiptForRpc,ReceiptLogsForRpc,FrameReceiptForRpc,LogsForRpcConverter}.cs]
+dotnet_diagnostic.IDE0005.severity = none
+
+[src/Nethermind/Nethermind.Consensus/Validators/TxValidator.cs]
+dotnet_diagnostic.IDE0005.severity = none
+
+[src/Nethermind/Nethermind.BeaconChain/Types/LightClientWireCodec.cs]
+dotnet_diagnostic.IDE0005.severity = none

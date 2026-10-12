@@ -4,7 +4,6 @@
 using Google.Protobuf;
 using Multiformats.Address.Net;
 using Nethermind.BeaconChain;
-using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
