@@ -32,6 +32,8 @@ public class ReviewBlockTreeTests
         queue.IsEmpty.Returns(false);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Accept(Arg.Any<IBlockTreeVisitor>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        bool subscribed = false;
+        queue.When(q => q.ProcessingQueueEmpty += Arg.Any<EventHandler>()).Do(_ => subscribed = true);
 
         ReviewBlockTree step = new(
             Substitute.For<IWorldStateManager>(),
@@ -51,22 +53,23 @@ public class ReviewBlockTreeTests
         try
         {
             execute = step.Execute(CancellationToken.None);
-            // The step resumes after the fixer's ContinueWith, which completes on the thread pool, so wait for it to subscribe.
-            context.WaitAndDrain(TimeSpan.FromSeconds(5));
+            // The step resumes after the fixer's ContinueWith, which completes on the thread pool, so drain until it subscribes.
+            Assert.That(() => { context.Drain(); return subscribed; }, Is.True.After(5000, 10));
             Assert.That(execute.IsCompleted, Is.False);
 
             // BlockchainProcessor raises ProcessingQueueEmpty after every dequeued block and every batch, so the
             // second raise can arrive before the step's continuation has unsubscribed; it must not throw into the loop.
             queue.ProcessingQueueEmpty += Raise.Event<EventHandler>(queue, EventArgs.Empty);
             Assert.DoesNotThrow(() => queue.ProcessingQueueEmpty += Raise.Event<EventHandler>(queue, EventArgs.Empty));
-            context.Drain();
+            // The TCS runs continuations asynchronously, so the step's resumption is posted to the context later.
+            Assert.That(() => { context.Drain(); return execute.IsCompleted; }, Is.True.After(5000, 10));
         }
         finally
         {
             SynchronizationContext.SetSynchronizationContext(previous);
         }
 
-        await execute.WaitAsync(TimeSpan.FromSeconds(5));
+        await execute;
     }
 
     private sealed class QueuedSynchronizationContext : SynchronizationContext
@@ -74,12 +77,6 @@ public class ReviewBlockTreeTests
         private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
 
         public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
-
-        public void WaitAndDrain(TimeSpan timeout)
-        {
-            Assert.That(SpinWait.SpinUntil(() => !_queue.IsEmpty, timeout), Is.True, "no continuation was posted");
-            Drain();
-        }
 
         public void Drain()
         {
