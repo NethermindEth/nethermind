@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
 using Nethermind.Specs;
