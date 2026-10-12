@@ -4232,7 +4232,6 @@ namespace Nethermind.TxPool.Test
             // by transaction type, not a disabled filter.
             Transaction legacyTx = Build.A.Transaction
                 .WithGasLimit(TxGasLimit)
-                .WithGasPrice(2.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             AcceptTxResult legacyResult = _txPool.SubmitTx(legacyTx, TxHandlingOptions.PersistentBroadcast);
 
