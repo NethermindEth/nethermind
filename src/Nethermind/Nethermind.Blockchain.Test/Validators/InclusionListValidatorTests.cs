@@ -395,6 +395,15 @@ public class InclusionListValidatorTests
             Transaction[] signedFiller = filler[..3];
             Transaction signed = Candidate(4, 250_000, signatures: 1);
             Transaction afterSigned = Candidate(5, 250_000);
+            // EIP-7805 step 1: entries failing the noncryptographic candidate conditions are skipped without a debit,
+            // so four of them at 260,000 leave the whole budget to the honest candidate. A wrong chain ID is a replay
+            // check, not one of those conditions, so it debits as a candidate does.
+            yield return Case("Entries outside Profile 2 do not debit the budget",
+                [[.. Enumerable.Range(1, 4).Select(i => Ordered(BuildFrameTx([Verify(260_000)]), (byte)i)), honest]], honest, false);
+            yield return Case("Statically invalid entries do not debit the budget",
+                [[.. Enumerable.Range(1, 4).Select(i => Ordered(BuildFrameTx([SelfVerify(260_000, UInt256.One)]), (byte)i)), honest]], honest, false);
+            yield return Case("Entries with another chain ID debit the budget",
+                [[.. Enumerable.Range(1, 4).Select(i => Ordered(WithChainId(Candidate((byte)i, 260_000), 999), (byte)i)), honest]], honest, true);
             yield return Case("Invalid signatures keep only the signature debit", [[.. signedFiller, signed, afterSigned]], afterSigned, false, badSignature: signed);
             yield return Case("Valid signatures debit the whole cost", [[.. signedFiller, signed, afterSigned]], afterSigned, true);
         }
@@ -573,6 +582,21 @@ public class InclusionListValidatorTests
         tx.FrameSignatures = new TxFrameSignature[signatures];
         for (int i = 0; i < signatures; i++)
             tx.FrameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, ReadOnlyMemory<byte>.Empty, new byte[65]);
+        return tx;
+    }
+
+    /// <summary>Gives <paramref name="tx"/> a hash whose leading byte is <paramref name="order"/>.</summary>
+    private static Transaction Ordered(Transaction tx, byte order)
+    {
+        byte[] hash = Keccak.Compute($"ordered-{order}-{tx.Frames![0].ExecutionGasLimit}-{tx.Frames[0].Mode}-{tx.Frames[0].Value}").BytesToArray();
+        hash[0] = order;
+        tx.Hash = new Hash256(hash);
+        return tx;
+    }
+
+    private static Transaction WithChainId(Transaction tx, ulong chainId)
+    {
+        tx.ChainId = chainId;
         return tx;
     }
 

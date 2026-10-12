@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Decoders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -53,7 +54,8 @@ public class InclusionListTxSource(
         Func<Transaction, bool> signaturesValid = profile2Replayer is not null
             ? tx => profile2Replayer.AreSignaturesValid(tx, spec)
             : tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, spec);
-        HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx, signaturesValid);
+        HashSet<Hash256AsKey> admitted = Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(decoded.InListOrder, masks), maxVerifyGasPerTx, signaturesValid,
+            tx => InclusionListValidator.Profile2StaticChecks.IsWellFormed(tx, spec));
         IReadOnlySet<Hash256AsKey>? candidates = admitted.Count > 0 ? admitted : null;
         decoded.Profile2Candidates = (maxVerifyGasPerTx, candidates);
         return candidates;

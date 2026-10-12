@@ -21,6 +21,16 @@ public static class InclusionListValidator
 {
     private const int StackAllocEntries = 256;
 
+    /// <summary>EIP-7805 <c>is_profile_2_candidate</c> condition 1: a frame transaction's noncryptographic static
+    /// checks, as <see cref="TxValidator"/> registers them for frame transactions less the chain ID, which the
+    /// replay checks instead, so a wrong chain ID still costs its list's budget.</summary>
+    public static ITxValidator Profile2StaticChecks { get; } = new CompositeTxValidator(
+        new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
+        NonceCapTxValidator.Instance,
+        GasFieldsTxValidator.Instance,
+        FrameTxFieldsTxValidator.Instance,
+        FrameTxNonceKeysTxValidator.Instance);
+
     public static bool IsSatisfied(Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx, IProfile2EligibilityReplayer? replayer = null)
         => IsSatisfied(block, block.InclusionListTransactions, state, spec, txValidator, maxVerifyGasPerTx, block.InclusionListMembership, block.InclusionListClaims, replayer);
 
@@ -132,7 +142,8 @@ public static class InclusionListValidator
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out _) || !FrameTxValidation.TryCalculateMaxCost(tx, spec, out _)) return false;
 
         admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il, ilMembership), profile2.MaxVerifyGasPerTx,
-            profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null);
+            profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null,
+            entry => Profile2StaticChecks.IsWellFormed(entry, spec));
         return admitted.Contains(tx.Hash);
     }
 

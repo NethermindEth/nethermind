@@ -74,43 +74,57 @@ public static class Eip8369Profile2
     /// <remarks>The prefix's <c>limits.state</c> does not count toward the VERIFY budget.</remarks>
     public static ulong VerifyBudgetCost(Transaction transaction) => FrameTxValidation.ValidationWorkGas(transaction);
 
-    /// <summary>EIP-8369 § Includers: the Profile 2 entries the per-IL VERIFY budget fill admits.</summary>
+    /// <summary>EIP-7805 § VERIFY budget: the Profile 2 entries the per-IL VERIFY budget fill admits.</summary>
     /// <remarks>
-    /// Each list starts from <see cref="Eip8369Constants.MaxVerifyGasPerIl"/> and debits its occurrences in
-    /// order, before deduplication. An occurrence costlier than the per-transaction cap or the remaining budget
-    /// is ignored; otherwise the signature cost is debited, and the prefix cost too once the signatures verify.
-    /// An entry is admitted when any occurrence is, so one list exhausting its own budget cannot excuse another's.
+    /// Each list starts from <see cref="Eip8369Constants.MaxVerifyGasPerIl"/> and takes its entries in order. An
+    /// entry that is no Profile 2 candidate, statically invalid or costlier than the remaining budget is skipped
+    /// without a debit; otherwise the signature cost is debited, and the prefix cost too once the signatures verify.
+    /// An entry is admitted when any list admits it, so one list exhausting its own budget cannot excuse another's.
     /// Taking each member's occurrences rather than a wire layout keeps the fill independent of how the engine
     /// API conveys membership. An entry carried by several members is verified once, however many lists carry it.
     /// </remarks>
     /// <param name="inclusionLists">Each committee member's occurrences, in the order the fill processes them.</param>
     /// <param name="maxVerifyGasPerTx"><c>MAX_VERIFY_GAS_PER_TX</c>; <c>0</c> lifts the cap.</param>
     /// <param name="signaturesValid">Verifies an occurrence's protocol signatures; <c>null</c> takes them as valid.</param>
+    /// <param name="staticallyValid">The active fork's noncryptographic static checks; <c>null</c> takes them as passed.</param>
     public static HashSet<Hash256AsKey> AdmitByVerifyBudget(
-        IEnumerable<IEnumerable<Transaction>> inclusionLists, ulong maxVerifyGasPerTx, Func<Transaction, bool>? signaturesValid)
+        IEnumerable<IEnumerable<Transaction>> inclusionLists, ulong maxVerifyGasPerTx, Func<Transaction, bool>? signaturesValid,
+        Func<Transaction, bool>? staticallyValid = null)
     {
         HashSet<Hash256AsKey> admitted = [];
         Dictionary<Hash256AsKey, bool>? verified = null;
+        Dictionary<Hash256AsKey, bool>? valid = null;
         foreach (IEnumerable<Transaction> inclusionList in inclusionLists)
         {
             ulong remaining = Eip8369Constants.MaxVerifyGasPerIl;
             foreach (Transaction tx in inclusionList)
             {
-                if (!tx.SupportsFrames || tx.CarriesBlobs || tx.Hash is null) continue;
+                if (!tx.SupportsFrames || tx.Hash is null) continue;
+                // Step 1: the noncryptographic candidate conditions, failures skipped without a debit.
+                if (Classify(tx, maxVerifyGasPerTx) != Profile2Exclusion.None || !IsStaticallyValid(tx, tx.Hash, staticallyValid, ref valid)) continue;
 
                 ulong cost = VerifyBudgetCost(tx);
-                if ((maxVerifyGasPerTx != 0 && cost > maxVerifyGasPerTx) || cost > remaining) continue;
+                if (cost > remaining) continue;
 
                 ulong signatureCost = FrameTxValidation.SignatureVerificationWorkGas(tx);
                 remaining -= signatureCost;
+                // A failed signature keeps its debit but is not admitted.
                 if (signaturesValid is not null && !AreSignaturesValid(tx, tx.Hash, signaturesValid, ref verified)) continue;
 
                 remaining -= cost - signatureCost;
-                // EIP-8369 § Includers: "A failed candidate keeps the budget debit but is not admitted."
-                if (Classify(tx, maxVerifyGasPerTx) == Profile2Exclusion.None) admitted.Add(tx.Hash);
+                admitted.Add(tx.Hash);
             }
         }
         return admitted;
+    }
+
+    private static bool IsStaticallyValid(Transaction tx, Hash256 hash, Func<Transaction, bool>? staticallyValid, ref Dictionary<Hash256AsKey, bool>? valid)
+    {
+        if (staticallyValid is null) return true;
+        valid ??= [];
+        ref bool result = ref CollectionsMarshal.GetValueRefOrAddDefault(valid, hash, out bool exists);
+        if (!exists) result = staticallyValid(tx);
+        return result;
     }
 
     private static bool AreSignaturesValid(Transaction tx, Hash256 hash, Func<Transaction, bool> signaturesValid, ref Dictionary<Hash256AsKey, bool>? verified)
