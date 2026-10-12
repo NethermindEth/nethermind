@@ -1046,6 +1046,49 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
     }
 
+    // EIP-7805's Profile 2 deployment bookkeeping includes the creator's nonce, so its replay admits plain CREATE
+    // in the deploy frame, still only to install code at tx.sender, and still nowhere else.
+    [TestCase(true, false, TestName = "Profile 2 replay admits a deploy frame installing tx.sender with CREATE")]
+    [TestCase(false, true, TestName = "Profile 2 replay refuses CREATE outside the deploy frame")]
+    public void Simulate_CreateInDeployFrame_IsAllowedWhenEnabled(bool fromDeployFrame, bool violates)
+    {
+        byte[] initCode = Prepare.EvmCode.ForInitOf(ApproveCode(FrameFlags.ApproveExecutionAndPayment)).Done;
+        byte[] create = Prepare.EvmCode.Create(initCode, 0).Done;
+        Address sender;
+        Transaction tx;
+        if (fromDeployFrame)
+        {
+            DeployContract(Factory, create);
+            sender = ContractAddress.From(Factory, 0);
+            FundAccount(sender, 1.Ether);
+            tx = DeployTx(sender);
+        }
+        else
+        {
+            // The sender's own VERIFY code runs the CREATE.
+            sender = TestItem.AddressE;
+            DeployContract(sender, [.. create, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+            tx = FrameTx(nonce: 0, SelfVerifyFrame());
+            tx.SenderAddress = sender;
+        }
+
+        FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, createInDeployFrame: true);
+
+        try
+        {
+            Run(tx, tracer);
+        }
+        catch (OperationCanceledException) when (tracer.Violated)
+        {
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Violated, Is.EqualTo(violates), tracer.ViolationReason);
+            if (violates) Assert.That(tracer.ViolationReason, Does.Contain("banned opcode CREATE"));
+        }
+    }
+
     // The endowment is the same one-bit dependency on the factory's balance that the funded-CALL ban closes:
     // underfunded, the create pushes zero and installs nothing, and anyone can drain the factory.
     [TestCase(0, false, TestName = "an unendowed CREATE2 is allowed")]

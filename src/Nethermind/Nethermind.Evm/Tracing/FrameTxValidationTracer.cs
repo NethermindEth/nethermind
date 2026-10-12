@@ -24,6 +24,8 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="payer">A second account whose storage the prefix may read, or <c>null</c> for
 /// <paramref name="sender"/> only.</param>
 /// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
+/// <param name="createInDeployFrame">Whether the deploy frame may install code at tx.sender with <c>CREATE</c> as well as
+/// <c>CREATE2</c>, as EIP-8141 and EIP-7805's Profile 2 deployment bookkeeping permit; the public mempool refuses it.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
@@ -41,7 +43,8 @@ public sealed class FrameTxValidationTracer(
     Func<bool>? preempt = null,
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
     Address? payer = null,
-    UInt256 storageSlotBound = default)
+    UInt256 storageSlotBound = default,
+    bool createInDeployFrame = false)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -211,15 +214,17 @@ public sealed class FrameTxValidationTracer(
                 // holds at inclusion, which its owner can change with SETCODEFROM.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
-            case Instruction.CREATE:
+            case Instruction.CREATE when !createInDeployFrame || !_inDeployFrame:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
+                // Profile 2 replay judges one fixed state, so it takes the creator's nonce as given.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.TCREATE when spec.IsEip8360Enabled:
                 // EIP-8360: never installs code at tx.sender, the one creation the prefix admits.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
+            case Instruction.CREATE:
             case Instruction.CREATE2:
                 // Allowed only in the deploy frame, and only to install code at tx.sender; the address is
                 // checked when the creation frame opens. Slot 0 is the endowment, banned as a funded CALL is.
