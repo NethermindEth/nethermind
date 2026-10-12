@@ -4,16 +4,13 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Receipts;
 
-public class ReceiptsRootCalculator : IReceiptsRootCalculator
+public partial class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
-    private static readonly IRlpDecoder<TxReceipt> _decoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
-    private static readonly ReceiptMessageDecoder _skipStateDecoder = new(skipStateAndStatus: true);
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {

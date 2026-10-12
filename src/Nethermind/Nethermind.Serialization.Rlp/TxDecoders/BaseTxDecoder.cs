@@ -9,13 +9,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactionFactory = null) : ITxDecoder
+public abstract partial class BaseTxDecoder(TxType txType, Func<Transaction>? transactionFactory = null) : ITxDecoder
 {
     private const int MaxDelayedHashTxnSize = 32768;
     private readonly Func<Transaction> _createTransaction = transactionFactory ?? (static () => new Transaction());
-
-    // 30MB should be good enough for 300MGas block just filled with call data
-    private static readonly RlpLimit _dataRlpLimit = RlpLimit.For<Transaction>((int)30.MiB, nameof(Transaction.Data));
 
     public TxType Type => txType;
 

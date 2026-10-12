@@ -13,10 +13,9 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 /// EIP-8298 extends <c>CodeChange</c> with an optional trailing <c>new_code_hash</c>: <c>[index, new_code]</c> for code
 /// installed by creation or EIP-7702, <c>[index, b"", new_code_hash]</c> for code adopted by <c>SETCODEFROM</c>.
 /// </remarks>
-public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
+public partial class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
 {
     public static readonly CodeChangeDecoder Instance = new();
-    private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
     protected override CodeChange DecodeFields(ref RlpReader ctx)
         => new(ctx.DecodeUInt(), ctx.DecodeByteArray(_codeLimit));

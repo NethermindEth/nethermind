@@ -13,7 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
+public partial class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
 {
     public static readonly AccountChangesDecoder Instance = new();
 
@@ -29,10 +29,6 @@ public class AccountChangesDecoder : RlpDecoder<ReadOnlyAccountChanges>
         int BalanceContentLength,
         int NonceContentLength,
         int CodeContentLength);
-
-    private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
-    private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
-    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     protected override ReadOnlyAccountChanges DecodeInternal(ref RlpReader ctx, RlpBehaviors rlpBehaviors)
     {

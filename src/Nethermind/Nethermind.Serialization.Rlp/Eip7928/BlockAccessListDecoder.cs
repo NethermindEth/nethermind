@@ -11,11 +11,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
+public partial class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
 {
     public static readonly BlockAccessListDecoder Instance = new();
-
-    private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
     public override int GetLength(ReadOnlyBlockAccessList? item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item ?? throw new ArgumentNullException(nameof(item)), rlpBehaviors));
