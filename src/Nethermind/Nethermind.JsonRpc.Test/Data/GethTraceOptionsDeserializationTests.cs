@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
@@ -98,6 +100,71 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
             Assert.That(resolver.RequestedTypes, Does.Contain("WireOptions"));
         }
+    }
+
+    [TestCase("17")]
+    [TestCase("[]")]
+    [TestCase("\"bad\"")]
+    [TestCase("true")]
+    public void ByNumber_options_reject_non_object_roots_with_json_exception(string json) =>
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions()));
+
+    [Test]
+    public void ByNumber_options_preserve_reader_options()
+    {
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        serializerOptions.AllowTrailingCommas = true;
+        serializerOptions.ReadCommentHandling = JsonCommentHandling.Skip;
+        serializerOptions.MaxDepth = 128;
+        string nested = new string('[', 65) + "0," + new string(']', 65);
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(
+            $$"""{"tracerConfig":{"value":{{nested}},/* retained by the raw nested value */},}""", serializerOptions)!;
+
+        Assert.That(options.TracerConfig, Is.Not.Null);
+    }
+
+    [Test]
+    public void ByNumber_null_normalization_uses_custom_property_names()
+    {
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        serializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(
+            "{\"disable_stack\":true,\"disable_stack\":null}", serializerOptions)!;
+
+        Assert.That(options.DisableStack, Is.True);
+    }
+
+    [Test]
+    public void ByNumber_null_normalization_uses_supplied_property_metadata()
+    {
+        IJsonTypeInfoResolver resolver = EthereumJsonSerializer.JsonRpcRequestOptions.TypeInfoResolver!.WithAddedModifier(static typeInfo =>
+        {
+            if (typeInfo.Type != typeof(GethTraceOptionsConverter.WireOptions)) return;
+            typeInfo.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+                if (property.AttributeProvider is PropertyInfo { Name: nameof(GethTraceOptions.Limit) }) property.Name = "budget";
+        });
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions(resolver);
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"budget\":2,\"budget\":null}", serializerOptions)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Limit, Is.EqualTo(2));
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>("{\"limit\":null}", serializerOptions));
+        }
+    }
+
+    [Test]
+    public void ByNumber_null_normalization_respects_case_sensitive_names()
+    {
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        serializerOptions.PropertyNameCaseInsensitive = false;
+        serializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
+
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<GethTraceOptions>("{\"LIMIT\":null}", serializerOptions));
     }
 
     [TestCase(50_000_000L, "5s")]

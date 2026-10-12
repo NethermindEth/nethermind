@@ -49,6 +49,21 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase("17")]
+    [TestCase("[]")]
+    [TestCase("\"bad\"")]
+    [TestCase("true")]
+    public async Task Debug_traceBlockByNumber_rejects_non_object_options(string optionsJson)
+    {
+        using Context context = await Context.Create();
+        using JsonDocument options = JsonDocument.Parse(optionsJson);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number, options.RootElement);
+
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+    }
+
     [Test]
     public async Task Debug_traceBlockByNumber_null_boolean_preserves_trace_output(
         [Values("disableStorage", "disableStack", "enableMemory", "enableReturnData")] string property,
