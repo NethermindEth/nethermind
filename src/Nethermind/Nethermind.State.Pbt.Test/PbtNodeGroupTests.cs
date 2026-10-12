@@ -273,7 +273,7 @@ public class PbtNodeGroupTests
     {
         IRefCountingMemoryProvider provider = PbtNodeGroupMemory.CreateProvider(new PbtConfig { NativeNodeGroupMemory = native });
         using IDisposable? disposable = provider as IDisposable;
-        Assert.That(provider, native ? Is.InstanceOf<SlabRefCountingMemoryProvider>() : Is.SameAs(PooledRefCountingMemoryProvider.Instance));
+        Assert.That(provider, native ? Is.InstanceOf<NativeBucketedMemoryPool>() : Is.SameAs(PooledRefCountingMemoryProvider.Instance));
     }
 
     [Test]
@@ -991,11 +991,11 @@ public class PbtNodeGroupTests
     [TestCase(0, 15, true)]
     [TestCase(3, 14, true)]
     [TestCase(3, 3, true)]
-    public void Streaming_writer_preserves_canonical_bytes_and_transfers_backing_memory(int groupDepth, int count, bool slabProvider)
+    public void Streaming_writer_preserves_canonical_bytes_and_transfers_backing_memory(int groupDepth, int count, bool nativeProvider)
     {
         PbtStorageNodePath groupKey = new(new byte[(groupDepth + 7) / 8], groupDepth);
-        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateSlabProvider();
-        TrackingMemoryProvider provider = new(slabProvider ? slab : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        TrackingMemoryProvider provider = new(nativeProvider ? nativePool : PooledRefCountingMemoryProvider.Instance) { FillByte = 0xFF };
         List<PbtNodeRecord> records = [];
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(groupKey.BitDepth, provider);

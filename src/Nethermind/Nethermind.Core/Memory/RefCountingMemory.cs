@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Threading;
-using Nethermind.Core.Memory.Slab;
 using Nethermind.Core.Utils;
 using RefCountingMemoryMetrics = Nethermind.Core.Memory.Metrics.Metrics;
 
@@ -16,8 +15,8 @@ namespace Nethermind.Core.Memory;
 /// hands out one reference and each <see cref="IDisposable.Dispose"/> releases one; the last release
 /// runs cleanup exactly once. An <see cref="Owning"/> instance returns its buffer to
 /// <see cref="ArrayPool{T}.Shared"/> on that last release, an <see cref="OwningRocksDb"/> instance
-/// disposes its memory manager, an <see cref="OwningNative"/> instance frees its block through its
-/// <see cref="SlabMemoryAllocator"/>, and a <see cref="Wrapping"/> instance leaves its array to the GC.
+/// disposes its memory manager, an <see cref="OwningNative"/> instance returns its block to its
+/// <see cref="NativeBucketedMemoryPool"/>, and a <see cref="Wrapping"/> instance leaves its array to the GC.
 /// </summary>
 /// <remarks>
 /// The lease counter is lock-free via <see cref="RefCountingLease"/>, so leases may be acquired and
@@ -36,8 +35,8 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
 
     private readonly byte[]? _buffer;
     private readonly MemoryManager<byte>? _owner;
-    private readonly SlabMemoryAllocator? _allocator;
-    private readonly SlabAllocation _allocation;
+    private readonly NativeBucketedMemoryPool? _pool;
+    private readonly byte* _block;
     private readonly int _capacity;
     private readonly int _length;
     private readonly BackingKind _backingKind;
@@ -61,11 +60,11 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
         RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(_backingKind, _capacity);
     }
 
-    private RefCountingMemory(SlabMemoryAllocator allocator, in SlabAllocation allocation, int length)
+    private RefCountingMemory(NativeBucketedMemoryPool pool, byte* block, int capacity, int length)
     {
-        _allocator = allocator;
-        _allocation = allocation;
-        _capacity = allocation.Capacity;
+        _pool = pool;
+        _block = block;
+        _capacity = capacity;
         _length = length;
         _backingKind = BackingKind.Native;
         RefCountingMemoryMetrics.ReportRefCountingMemoryAllocation(_backingKind, _capacity);
@@ -92,14 +91,13 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
     }
 
     /// <summary>
-    /// Adopts a block of <paramref name="allocator"/> whose value occupies its first <paramref name="length"/>
-    /// bytes; the last release frees the block.
+    /// Adopts a block of <paramref name="capacity"/> bytes rented from <paramref name="pool"/> whose value
+    /// occupies its first <paramref name="length"/> bytes; the last release returns the block to the pool.
     /// </summary>
-    public static RefCountingMemory OwningNative(SlabMemoryAllocator allocator, in SlabAllocation allocation, int length)
+    internal static RefCountingMemory OwningNative(NativeBucketedMemoryPool pool, byte* block, int capacity, int length)
     {
-        ArgumentNullException.ThrowIfNull(allocator);
-        Debug.Assert((uint)length <= (uint)allocation.Capacity);
-        return new RefCountingMemory(allocator, in allocation, length);
+        Debug.Assert((uint)length <= (uint)capacity);
+        return new RefCountingMemory(pool, block, capacity, length);
     }
 
     /// <summary>Gets the size of the backing buffer, which a pooled buffer may have rented larger than the value.</summary>
@@ -116,11 +114,11 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
     /// <returns><c>true</c> when the caller now holds a lease to release with <see cref="IDisposable.Dispose"/>.</returns>
     public bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
-    // Safety: a native block stays mapped until the last release frees it, and _length never exceeds its capacity.
+    // Safety: a native block stays owned until the last release returns it, and _length never exceeds its capacity.
     public override Span<byte> GetSpan() => _backingKind switch
     {
         BackingKind.RocksDb => _owner!.GetSpan()[.._length],
-        BackingKind.Native => new Span<byte>(_allocation.Pointer, _length),
+        BackingKind.Native => new Span<byte>(_block, _length),
         _ => _buffer.AsSpan(0, _length),
     };
 
@@ -136,7 +134,7 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
         {
             if (_backingKind is BackingKind.Pooled) ArrayPool<byte>.Shared.Return(_buffer!);
             else if (_backingKind is BackingKind.RocksDb) ((IDisposable)_owner!).Dispose();
-            else if (_backingKind is BackingKind.Native) _allocator!.Free(in _allocation);
+            else if (_backingKind is BackingKind.Native) _pool!.Return(_block, _capacity);
         }
         finally
         {

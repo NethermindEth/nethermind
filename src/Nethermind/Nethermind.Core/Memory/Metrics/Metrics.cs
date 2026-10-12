@@ -33,11 +33,11 @@ public static class Metrics
     public static long ActiveRocksDbRefCountingMemoryCapacity => Volatile.Read(ref _activeRocksDbRefCountingMemoryCapacity);
 
     [GaugeMetric]
-    [Description("Number of active slab-allocated native RefCountingMemory instances")]
+    [Description("Number of active native-pooled RefCountingMemory instances")]
     public static long ActiveNativeRefCountingMemoryCount => Volatile.Read(ref _activeNativeRefCountingMemoryCount);
 
     [GaugeMetric]
-    [Description("Total size-class capacity of active slab-allocated native RefCountingMemory instances in bytes")]
+    [Description("Total bucket capacity of active native-pooled RefCountingMemory instances in bytes")]
     public static long ActiveNativeRefCountingMemoryCapacity => Volatile.Read(ref _activeNativeRefCountingMemoryCapacity);
 
     internal static void ReportRefCountingMemoryAllocation(RefCountingMemory.BackingKind backingKind, int capacity) =>

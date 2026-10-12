@@ -191,7 +191,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Cache persisted account and storage-run reads across heads, so a new head does not re-read the serving working set from the database. Only the write-set of each persisted batch is dropped.", DefaultValue = "true", HiddenFromDocs = true)]
     bool CarryForwardCache { get; set; }
 
-    [ConfigItem(Description = "Keep node-group payloads in slab-allocated native memory sized to jemalloc-style classes. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Keep node-group payloads in native memory pooled in jemalloc-style size buckets. Off rents pooled managed arrays in power-of-two buckets instead.", DefaultValue = "true", HiddenFromDocs = true)]
     bool NativeNodeGroupMemory { get; set; }
 
     [ConfigItem(Description = "Write node groups (TopNodeGroups, AccountNodeGroups, CodeNodeGroups and StorageNodeGroups; the root group stays direct) through an append-only trie node log (with an in-memory index) that is merged into RocksDB one generation at a time, so groups rewritten within a generation are written to RocksDB once. Experimental: ScanTree and node-group key enumeration read RocksDB only, so they miss groups still in the log unless it was drained (TrieNodeLogDrainOnShutdown).", DefaultValue = "false")]

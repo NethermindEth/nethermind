@@ -165,11 +165,11 @@ public class PbtWorldStateScopeTests
 
     [Test]
     [NonParallelizable]
-    public async Task Slab_backed_node_groups_are_freed_once_the_scope_and_cache_are_gone()
+    public async Task Native_node_groups_are_freed_once_the_scope_and_cache_are_gone()
     {
         long baselineCount = RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount;
-        using SlabRefCountingMemoryProvider slab = PbtNodeGroupMemory.CreateSlabProvider();
-        await using (PbtTestContext ctx = new(nodeGroupMemory: slab))
+        using NativeBucketedMemoryPool nativePool = PbtNodeGroupMemory.CreateNativePool();
+        await using (PbtTestContext ctx = new(nodeGroupMemory: nativePool))
         {
             using IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null);
             Write(scope, 1);
@@ -178,8 +178,8 @@ public class PbtWorldStateScopeTests
             Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.GreaterThan(baselineCount), "the fold wrote its groups into native memory");
         }
 
-        // Regions freed on fold and persistence threads stay parked in their caches, so only the
-        // instance count proves that every payload was released.
+        // Released blocks stay retained in the pool's buckets, so only the instance count proves that
+        // every payload was released.
         Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(baselineCount));
     }
 
