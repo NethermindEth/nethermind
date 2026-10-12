@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -19,8 +21,8 @@ namespace Nethermind.State.Pbt.Image;
 /// <remarks>
 /// Leaves carry no storage roots and PBT never treats one as authoritative, so accounts are staged as their stem leaves.
 /// Code chunks are keyed by a hash of their code hash, so no bytecode can be reassembled as its chunks stream past: they
-/// are staged as leaves, and <see cref="RebuildCodes"/> later reassembles each bytecode from them, walking the staged
-/// accounts for the code sizes. Requiring the reassembled code to consume every staged chunk is what stops a stream
+/// are staged as leaves, and <see cref="RebuildCodes"/> later reassembles each bytecode using the spooled code hashes
+/// and sizes. Requiring the reassembled code to consume every staged chunk is what stops a stream
 /// carrying code no account names.
 /// </remarks>
 public static class PbtLeafStaging
@@ -29,11 +31,10 @@ public static class PbtLeafStaging
     /// Exhaustion is retryable resource unavailability, not invalid state.</summary>
     private const ulong MaxBufferedCodeBytes = 256 * 1024 * 1024;
     private const string CodePhase = "PBT import code";
-    private const int CodeCacheCapacity = 16_384;
 
     /// <returns>The staged accounts and slots, and the code chunks <see cref="RebuildCodes"/> must consume.</returns>
     public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtLeafIngestion.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
-        CancellationToken cancellationToken)
+        PbtSortedSpool.Writer codes, CancellationToken cancellationToken)
     {
         ulong accounts = 0;
         ulong slots = 0;
@@ -119,8 +120,14 @@ public static class PbtLeafStaging
                 {
                     if (account.HasCode) throw new InvalidDataException("Codeless account has a nonempty code hash.");
                 }
-                else if ((ulong)codeSize + (ulong)PbtKeyDerivation.CodeChunkCount(codeSize) * PbtKeyDerivation.CodeChunkSize > MaxBufferedCodeBytes)
-                    throw new PbtImageResourceLimitException("Code staging requires a larger local buffering budget.");
+                else
+                {
+                    if ((ulong)codeSize + (ulong)PbtKeyDerivation.CodeChunkCount(codeSize) * PbtKeyDerivation.CodeChunkSize > MaxBufferedCodeBytes)
+                        throw new PbtImageResourceLimitException("Code staging requires a larger local buffering budget.");
+                    Span<byte> size = stackalloc byte[sizeof(uint)];
+                    BinaryPrimitives.WriteUInt32LittleEndian(size, (uint)codeSize);
+                    codes.Add(account.CodeHash.Bytes, size);
+                }
             }
             batch.Next().SetAccount(addressHash, account);
             accounts++;
@@ -141,72 +148,104 @@ public static class PbtLeafStaging
         }
     }
 
-    /// <summary>Reassembles the bytecode of every staged contract account from the staged code chunks into the code column.</summary>
-    /// <remarks>
-    /// Writes are committed in batches small enough to track in memory, and each batch reopens the reader, so a code
-    /// hash shared by many accounts is reassembled once whatever the number of distinct codes.
-    /// </remarks>
+    /// <summary>Reassembles the spooled codes from staged chunks into the code column.</summary>
+    /// <param name="codes">Code hashes and little-endian byte lengths, deduplicated by the spool.</param>
     /// <param name="chunkCount">The code chunks staged, all of which some account's code must consume.</param>
-    public static void RebuildCodes(PbtRocksDbPersistence target, long chunkCount, ILogManager logManager, CancellationToken cancellationToken)
+    /// <param name="concurrency">Maximum reconstruction workers; zero uses the processor count.</param>
+    public static void RebuildCodes(PbtRocksDbPersistence target, PbtSortedSpool codes, long chunkCount, int concurrency,
+        ILogManager logManager, CancellationToken cancellationToken)
     {
         long consumed = 0;
         float walked = 0;
         ulong rebuilt = 0;
-        Dictionary<ValueHash256, uint> pending = [];
-        LruCache<ValueHash256, uint> seenCodes = new(CodeCacheCapacity, CodePhase);
+        object writeLock = new();
+        IPbtPersistence.IWriteBatch? batch = null;
+        int writes = 0;
+        ParallelOptions options = new()
+        {
+            MaxDegreeOfParallelism = concurrency > 0 ? concurrency : Environment.ProcessorCount,
+            CancellationToken = cancellationToken
+        };
         using ProgressReporter progress = PbtImageProgress.Start(CodePhase, "code", 0, logManager);
         progress.Logger.SetFormat(p => PbtImageProgress.Format(CodePhase, walked, PbtImageProgress.Counted("code", p)));
-        using IPbtPersistence.IReader staged = target.CreateReader();
-        IPbtPersistence.IReader written = target.CreateReader();
-        IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
         try
         {
-            using IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> accounts = staged.EnumerateAccounts();
-            while (accounts.MoveNext())
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                (ValueHash256 addressHash, PbtAccount account) = accounts.Current;
-                walked = PbtImageProgress.KeyspaceFraction(addressHash);
-                if (account.IsDelegation || account.CodeSize == 0) continue;
-                ValueHash256 codeHash = account.CodeHash;
-                uint size = account.CodeSize;
-                uint? seenSize = seenCodes.TryGet(codeHash, out uint cachedSize) ? cachedSize
-                    : pending.TryGetValue(codeHash, out uint pendingSize) ? pendingSize
-                    : (uint?)written.GetCode(codeHash)?.Code.Length;
-                if (seenSize is { } seen)
+            Parallel.ForEach<(ValueHash256 Hash, uint Size), IPbtPersistence.IReader>(
+                Partitioner.Create(SpooledCodes(), EnumerablePartitionerOptions.NoBuffering), options,
+                target.CreateReader,
+                (entry, loop, reader) =>
                 {
-                    if (seen != size) throw new InvalidDataException("Accounts claim one code hash with different code sizes.");
-                    seenCodes.Set(codeHash, seen);
-                    continue;
-                }
-
-                consumed += Rebuild(staged, codeHash, (int)size, batch, cancellationToken);
-                pending[codeHash] = size;
-                seenCodes.Set(codeHash, size);
-                progress.Update(++rebuilt);
-                if (pending.Count < PbtLeafIngestion.BatchSize) continue;
-                batch.Commit();
-                batch.Dispose();
-                batch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
-                written.Dispose();
-                written = target.CreateReader();
-                pending.Clear();
+                    try
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        (ValueHash256 codeHash, uint size) = entry;
+                        (CodeInfo code, long chunks) = Rebuild(reader, codeHash, (int)size, cancellationToken);
+                        lock (writeLock)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            batch ??= target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
+                            batch.SetCode(codeHash, code);
+                            consumed += chunks;
+                            walked = Math.Max(walked, PbtImageProgress.KeyspaceFraction(codeHash));
+                            progress.Update(++rebuilt);
+                            if (++writes == PbtLeafIngestion.BatchSize) Commit();
+                        }
+                        return reader;
+                    }
+                    catch
+                    {
+                        loop.Stop();
+                        throw;
+                    }
+                },
+                static reader => reader.Dispose());
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (writeLock) Commit();
+        }
+        catch (AggregateException failures)
+        {
+            Exception failure = failures.Flatten().InnerExceptions[0];
+            foreach (Exception cause in failures.Flatten().InnerExceptions)
+            {
+                if (cause is OperationCanceledException) continue;
+                failure = cause;
+                break;
             }
-            batch.Commit();
+            ExceptionDispatchInfo.Capture(failure).Throw();
         }
         finally
         {
-            batch.Dispose();
-            written.Dispose();
+            // Parallel.ForEach joins workers before returning or throwing, including their reader cleanup.
+            batch?.Dispose();
         }
         target.Flush();
         if (consumed != chunkCount) throw new InvalidDataException("Snapshot holds code chunks no account's code accounts for.");
+
+        IEnumerable<(ValueHash256 Hash, uint Size)> SpooledCodes()
+        {
+            using PbtSortedSpool.Cursor cursor = codes.Read();
+            while (cursor.MoveNext())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return (new ValueHash256(cursor.Key), BinaryPrimitives.ReadUInt32LittleEndian(cursor.Value));
+            }
+        }
+
+        void Commit()
+        {
+            if (batch is null) return;
+            batch.Commit();
+            IPbtPersistence.IWriteBatch committed = batch;
+            batch = null;
+            committed.Dispose();
+            writes = 0;
+        }
     }
 
     /// <summary>Reassembles <paramref name="size"/> bytes of code from its stored chunks, absent chunks reading as zeros,
     /// then requires the stored chunks to be exactly the code's canonical ones.</summary>
-    /// <returns>The stored chunks the code consumed.</returns>
-    private static long Rebuild(IPbtPersistence.IReader staged, in ValueHash256 codeHash, int size, IPbtPersistence.IWriteBatch batch, CancellationToken cancellationToken)
+    /// <returns>The reconstructed bytecode and the stored chunks it consumed.</returns>
+    private static (CodeInfo Code, long Chunks) Rebuild(IPbtPersistence.IReader staged, in ValueHash256 codeHash, int size, CancellationToken cancellationToken)
     {
         byte[] code = new byte[size];
         int chunkCount = (int)PbtKeyDerivation.CodeChunkCount(size);
@@ -232,7 +271,6 @@ public static class PbtLeafStaging
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
             if (stored[chunk]) consumed++;
         }
-        batch.SetCode(codeHash, new CodeInfo(code));
-        return consumed;
+        return (new CodeInfo(code), consumed);
     }
 }

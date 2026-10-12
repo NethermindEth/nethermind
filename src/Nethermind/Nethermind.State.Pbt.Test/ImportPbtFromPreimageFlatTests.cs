@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
@@ -39,61 +40,252 @@ public class ImportPbtFromPreimageFlatTests
     private const ulong SourceBlock = 7;
 
     [Test]
-    public void Code_rebuild_reuses_hashes_across_batches_and_cache_eviction(
-        [Values(PbtLeafIngestion.BatchSize, 20_000)] int distinctCodes,
-        [Values] bool mismatchedSize)
+    public void Code_rebuild_drains_spool_without_account_or_code_db_reads(
+        [Values(4, PbtLeafIngestion.BatchSize + 2, 1000)] int distinctCodes, [Values(1, 3)] int concurrency)
     {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(scratch.Path);
         using RecordingColumnsDb db = new();
         PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        byte[] firstCode = [];
-        ValueHash256 firstHash = default;
-        long chunks = 0;
-        using (IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.None))
+        using (PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None))
         {
-            for (int i = 0; i < distinctCodes; i++)
+            int[] codes = Enumerable.Range(0, distinctCodes).Concat(Enumerable.Range(0, distinctCodes))
+                .Concat(Enumerable.Range(0, distinctCodes)).Concat(Enumerable.Range(0, distinctCodes)).ToArray();
+            long chunks = StageCodes(target, spool, codes);
+            using (PbtSortedSpool.Cursor cursor = spool.Read())
             {
-                byte[] code = new byte[5];
-                code[0] = 0x63;
-                BinaryPrimitives.WriteInt32BigEndian(code.AsSpan(1), i);
-                ValueHash256 hash = ValueKeccak.Compute(code);
-                if (i == 0)
+                if (distinctCodes > 4) Assert.That(Directory.GetFileSystemEntries(scratch.Path).Length, Is.GreaterThan(1), "the spool must merge spilled runs");
+                Dictionary<ValueHash256, uint> expected = Enumerable.Range(0, distinctCodes)
+                    .ToDictionary(index => ValueKeccak.Compute(RebuildTestCode(index)), index => (uint)RebuildTestCode(index).Length);
+                while (cursor.MoveNext())
                 {
-                    firstCode = code;
-                    firstHash = hash;
+                    Assert.That(expected.Remove(new ValueHash256(cursor.Key), out uint size), Is.True);
+                    Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(cursor.Value), Is.EqualTo(size));
                 }
-                batch.SetAccount(AccountKey(i), PbtAccount.From(new Account(0, 0).WithChangedCodeHash(new Hash256(hash)), new CodeInfo(code)));
-                foreach ((PbtPath key, ValueHash256 value) in Eip8297KeyDerivation.CodeLeaves(hash, code))
-                {
-                    batch.SetCodeLeaf(key, value);
-                    chunks++;
-                }
+                Assert.That(expected, Is.Empty, "staging must spool every distinct ordinary code hash and its length");
             }
-            ValueHash256 basicData = default;
-            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)firstCode.Length + (mismatchedSize ? 1u : 0u), 0, 0);
-            PbtAccount repeated = new(basicData, firstHash, false);
-            batch.SetAccount(AccountKey(distinctCodes), repeated);
-            batch.SetAccount(AccountKey(distinctCodes + 1), repeated);
-            batch.Commit();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.CodeReads, Is.Zero);
+                Assert.That(db.CodeLeafReads, Is.Zero, "account staging must not reconstruct code");
+            }
+            db.TrackCodeRebuild = true;
+            PbtLeafStaging.RebuildCodes(target, spool, chunks, concurrency, LimboLogs.Instance, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.AccountsVisited, Is.Zero, "reconstruction must not rescan accounts");
+                Assert.That(db.CodeReads, Is.Zero, "the spool already supplies unique hashes and lengths");
+                Assert.That(db.CodeLeafReads, Is.EqualTo(distinctCodes));
+                Assert.That(db.CodeWrites, Is.EqualTo(distinctCodes));
+                Assert.That(db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, distinctCodes / PbtLeafIngestion.BatchSize)
+                    .Concat(distinctCodes % PbtLeafIngestion.BatchSize == 0 ? [] : new[] { distinctCodes % PbtLeafIngestion.BatchSize })));
+            }
+            AssertCodeRebuildReleased(db, target);
+            using IPbtPersistence.IReader reader = target.CreateReader();
+            for (int index = 0; index < distinctCodes; index++)
+                Assert.That(reader.GetCode(ValueKeccak.Compute(RebuildTestCode(index)))!.Code.ToArray(), Is.EqualTo(RebuildTestCode(index)),
+                    "parallel workers must receive copied spool keys and lengths");
         }
+        Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
+    }
 
-        if (mismatchedSize)
+    [Test]
+    public void Code_rebuild_overlaps_reads_but_serializes_write_batches([Values(1, 3)] int concurrency)
+    {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(scratch.Path);
+        using PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None);
+        using RecordingColumnsDb db = new();
+        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        int distinctCodes = PbtLeafIngestion.BatchSize + 2;
+        long chunks = StageCodes(target, spool, Enumerable.Range(0, distinctCodes).ToArray());
+        db.TrackCodeRebuild = true;
+        using CountdownEvent reading = new(concurrency);
+        int entered = 0;
+        db.BeforeCodeRead = column =>
         {
-            Assert.Throws<InvalidDataException>(() => PbtLeafStaging.RebuildCodes(target, chunks, LimboLogs.Instance, CancellationToken.None));
-        }
-        else
+            if (column != PbtColumns.CodeLeaves || Interlocked.Increment(ref entered) > concurrency) return;
+            reading.Signal();
+            if (!reading.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("Code readers did not overlap.");
+        };
+
+        PbtLeafStaging.RebuildCodes(target, spool, chunks, concurrency, LimboLogs.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
         {
-            PbtLeafStaging.RebuildCodes(target, chunks, LimboLogs.Instance, CancellationToken.None);
+            Assert.That(db.MaxActiveCodeLeafReads, Is.EqualTo(concurrency));
+            Assert.That(db.MaxActiveCodeWrites, Is.EqualTo(1));
+            Assert.That(db.MaxActiveCodeBatches, Is.EqualTo(1));
+            Assert.That(db.CodeBatchSizes, Is.EqualTo(new[] { PbtLeafIngestion.BatchSize, 2 }));
+            Assert.That(db.CodeWrites, Is.EqualTo(distinctCodes));
+            Assert.That(db.AccountsVisited, Is.Zero);
+            Assert.That(db.CodeReads, Is.Zero);
         }
-        Assert.That(db.CodeReads, Is.InRange(distinctCodes, distinctCodes + 1), "recent hashes bypass the code DB; evicted hashes are read once and cached again");
+        AssertCodeRebuildReleased(db, target);
+    }
+
+    [Test]
+    public void Code_rebuild_failure_joins_workers_and_releases_resources([Values("spool-cancel", "read-cancel", "invalid-leaf", "orphan-leaf")] string failure)
+    {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(scratch.Path);
+        using RecordingColumnsDb db = new();
+        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        using CancellationTokenSource cancellation = new();
+        using (PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, cancellation.Token))
+        {
+            long chunks = StageCodes(target, spool, [0, 1, 2, 3]);
+            if (failure is "invalid-leaf" or "orphan-leaf")
+            {
+                using IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.None);
+                byte[] code = RebuildTestCode(failure == "invalid-leaf" ? 0 : 99);
+                ValueHash256 hash = ValueKeccak.Compute(code);
+                foreach ((PbtPath key, ValueHash256 value) in Eip8297KeyDerivation.CodeLeaves(hash, code))
+                    batch.SetCodeLeaf(key, failure == "invalid-leaf" ? default : value);
+                batch.Commit();
+                if (failure == "orphan-leaf") chunks++;
+            }
+            db.TrackCodeRebuild = true;
+            if (failure == "spool-cancel") cancellation.Cancel();
+            db.BeforeCodeRead = column => { if (failure == "read-cancel" && column == PbtColumns.CodeLeaves) cancellation.Cancel(); };
+
+            Action rebuild = () => PbtLeafStaging.RebuildCodes(target, spool, chunks, 3, LimboLogs.Instance, cancellation.Token);
+            if (failure.EndsWith("cancel", StringComparison.Ordinal)) Assert.Throws<OperationCanceledException>(rebuild);
+            else Assert.Throws<InvalidDataException>(rebuild);
+
+            AssertCodeRebuildReleased(db, target);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.AccountsVisited, Is.Zero);
+                Assert.That(db.CodeReads, Is.Zero);
+            }
+        }
+        Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
+    }
+
+    [Test]
+    public void Code_staging_excludes_codeless_and_delegation_accounts([Values] bool delegation)
+    {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(scratch.Path);
+        using PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None);
+        using RecordingColumnsDb db = new();
+        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        byte[]? code = delegation ? Bytes.FromHexString("ef01000000000000000000000000000000000000000001") : null;
+        List<RebuildEntry> leaves = [];
+        PbtTestLeaves.AddAccount(leaves, TestItem.AddressA, new Account(1, 0), code);
+        long chunks = StageLeaves(target, spool, leaves);
+        using (PbtSortedSpool.Cursor cursor = spool.Read()) Assert.That(cursor.MoveNext(), Is.False);
+        db.TrackCodeRebuild = true;
+
+        PbtLeafStaging.RebuildCodes(target, spool, chunks, 3, LimboLogs.Instance, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.AccountsVisited, Is.Zero);
+            Assert.That(db.CodeReads, Is.Zero);
+            Assert.That(db.CodeLeafReads, Is.Zero);
+            Assert.That(db.CodeWrites, Is.Zero);
+            Assert.That(db.CodeBatchSizes, Is.Empty);
+        }
+        AssertCodeRebuildReleased(db, target);
+        if (delegation)
+        {
+            using IPbtPersistence.IReader reader = target.CreateReader();
+            Assert.That(reader.GetCode(ValueKeccak.Compute(code!))!.Code.ToArray(), Is.EqualTo(code));
+        }
+    }
+
+    [Test]
+    public async Task Preimage_flat_code_rebuild_uses_import_not_export_concurrency([Values(1, 3)] int importConcurrency)
+    {
+        PbtConfig config = new()
+        {
+            ImportFromPreimageFlat = true,
+            ImportConcurrency = importConcurrency,
+            ExportConcurrency = importConcurrency == 1 ? 3 : 1,
+            ExportSortBufferBytes = SortBufferBytes,
+            ImportWindowSize = 1
+        };
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        using MemDb codes = new();
+        Dictionary<string, byte[]> model = [];
+        PreimageRocksdbPersistence source = CreateSource(flatDb, batch =>
+        {
+            for (int index = 0; index < 4; index++)
+            {
+                byte[] code = RebuildTestCode(index);
+                SetAccount(batch, model, Address.FromNumber((UInt256)(index + 1)), new Account(1, 0), code);
+                codes[ValueKeccak.Compute(code).Bytes] = code;
+            }
+        });
+        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
+        PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
+        using CountdownEvent reading = new(importConcurrency);
+        int entered = 0;
+        db.BeforeCodeRead = column =>
+        {
+            if (column != PbtColumns.CodeLeaves || Interlocked.Increment(ref entered) > importConcurrency) return;
+            reading.Signal();
+            if (!reading.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("Import concurrency did not permit the expected code readers.");
+        };
+
+        await CreateStep(source, codes, db, target, config).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.MaxActiveCodeLeafReads, Is.EqualTo(importConcurrency));
+            Assert.That(db.CodeWrites, Is.EqualTo(4));
+            Assert.That(db.ActiveSnapshots, Is.Zero);
+            Assert.That(db.ActiveCodeBatches, Is.Zero);
+            Assert.That(db.DisposedResourceUses, Is.Zero);
+            Assert.That(target.IsValid, Is.True);
+        }
         using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.GetCode(firstHash)!.Code.ToArray(), Is.EqualTo(firstCode));
+        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
+    }
 
-        static ValueHash256 AccountKey(int index)
+    private static void AssertCodeRebuildReleased(RecordingColumnsDb db, PbtRocksDbPersistence target)
+    {
+        using (Assert.EnterMultipleScope())
         {
-            ValueHash256 key = default;
-            BinaryPrimitives.WriteInt32BigEndian(key.BytesAsSpan[^4..], index);
-            return key;
+            Assert.That(db.ActiveSnapshots, Is.Zero);
+            Assert.That(db.ActiveCodeLeafReads, Is.Zero);
+            Assert.That(db.ActiveCodeWrites, Is.Zero);
+            Assert.That(db.ActiveCodeBatches, Is.Zero);
+            Assert.That(db.DisposedResourceUses, Is.Zero);
+            Assert.That(target.IsValid, Is.False, "code reconstruction alone must not publish staging");
         }
+    }
+
+    private static long StageCodes(PbtRocksDbPersistence target, PbtSortedSpool spool, int[] codes)
+    {
+        List<RebuildEntry> leaves = [];
+        for (int index = 0; index < codes.Length; index++)
+        {
+            byte[] code = RebuildTestCode(codes[index]);
+            ValueHash256 hash = ValueKeccak.Compute(code);
+            PbtTestLeaves.AddAccount(leaves, Address.FromNumber((UInt256)(index + 1)), new Account(1, 0).WithChangedCodeHash(new Hash256(hash)), code);
+        }
+        return StageLeaves(target, spool, leaves.DistinctBy(entry => entry.Key).ToList());
+    }
+
+    private static long StageLeaves(PbtRocksDbPersistence target, PbtSortedSpool spool, List<RebuildEntry> leaves)
+    {
+        leaves.Sort(static (left, right) => left.Key.Bytes.SequenceCompareTo(right.Key.Bytes));
+        using PbtSortedSpool.Writer writer = spool.CreateWriter();
+        using PbtLeafIngestion.LogicalBatch batch = new(target, 1, CancellationToken.None);
+        (ulong accounts, ulong slots, long chunks) = PbtLeafStaging.Stage(batch, leaves, writer, CancellationToken.None);
+        batch.Commit();
+        return chunks;
+    }
+
+    private static byte[] RebuildTestCode(int index)
+    {
+        byte[] code = new byte[5 + index % 3];
+        code[0] = 0x63;
+        BinaryPrimitives.WriteInt32BigEndian(code.AsSpan(1), index);
+        return code;
     }
 
     /// <summary>A sort budget small enough to spill the leaves of every test across several runs.</summary>
@@ -551,8 +743,13 @@ public class ImportPbtFromPreimageFlatTests
     [TestCase("missing-code")]
     [TestCase("persistence")]
     [TestCase("cancellation")]
+    [TestCase("code-spool-cancellation")]
+    [TestCase("code-read-cancellation")]
+    [TestCase("code-validation")]
     public async Task Failed_import_publishes_nothing_and_retries(string failure)
     {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(scratch.Path);
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         byte[] code = Bytes.FromHexString("0x6001600055");
         Hash256 codeHash = Keccak.Compute(code);
@@ -566,9 +763,17 @@ public class ImportPbtFromPreimageFlatTests
         using MemDb codes = new();
         if (failure != "missing-code") codes[codeHash.Bytes] = code;
         using RecordingColumnsDb db = new();
-        PbtConfig config = new() { ExportConcurrency = 1, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true };
+        PbtConfig config = new() { ExportConcurrency = 1, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true, ImportConcurrency = 3 };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();
+        db.TrackCodeRebuild = failure.StartsWith("code-", StringComparison.Ordinal);
+        db.BeforeAccountWrite = () => { if (failure == "code-spool-cancellation") cancellation.Cancel(); };
+        db.BeforeCodeRead = column =>
+        {
+            if (column != PbtColumns.CodeLeaves) return;
+            if (failure == "code-read-cancellation") cancellation.Cancel();
+            if (failure == "code-validation") throw new InvalidDataException("injected code reconstruction failure");
+        };
         db.AfterGroupCommit = () =>
         {
             if (db.GroupCommits != 1) return;
@@ -576,39 +781,51 @@ public class ImportPbtFromPreimageFlatTests
             if (failure == "cancellation") cancellation.Cancel();
         };
 
-        Task import = CreateStep(source, codes, db, target, config).Execute(cancellation.Token);
+        Task import = CreateStep(source, codes, db, target, config, scratch.Path).Execute(cancellation.Token);
 
-        if (failure == "cancellation") Assert.That(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
+        if (failure.EndsWith("cancellation", StringComparison.Ordinal)) Assert.That(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
         else
         {
             Exception? error = Assert.CatchAsync(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)));
-            Assert.That(error, failure == "missing-code"
-                ? Is.TypeOf<InvalidDataException>().With.Message.Contains("Missing source code")
-                : Is.TypeOf<IOException>().With.Message.Contains("injected fold persistence failure"));
+            Assert.That(error, failure switch
+            {
+                "missing-code" => Is.TypeOf<InvalidDataException>().With.Message.Contains("Missing source code"),
+                "code-validation" => Is.TypeOf<InvalidDataException>().With.Message.Contains("injected code reconstruction failure"),
+                _ => Is.TypeOf<IOException>().With.Message.Contains("injected fold persistence failure")
+            });
         }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
+            Assert.That(db.ActiveSnapshots, Is.Zero);
+            Assert.That(db.ActiveCodeBatches, Is.Zero);
+            Assert.That(db.ActiveCodeLeafReads, Is.Zero);
+            Assert.That(db.DisposedResourceUses, Is.Zero);
+            Assert.That(Directory.GetFileSystemEntries(Path.Combine(scratch.Path, "import")), Is.Empty);
         }
         db.AfterGroupCommit = null;
+        db.BeforeAccountWrite = null;
+        db.BeforeCodeRead = null;
         codes[codeHash.Bytes] = code;
-        await CreateStep(source, codes, db, target, config).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+        await CreateStep(source, codes, db, target, config, scratch.Path).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
+            Assert.That(Directory.GetFileSystemEntries(Path.Combine(scratch.Path, "import")), Is.Empty);
         }
     }
 
-    private static ImportPbtFromPreimageFlat CreateStep(IPersistence source, IDb codes, IColumnsDb<PbtColumns> db, PbtRocksDbPersistence target, PbtConfig config) =>
-        new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, ScratchFactory(), config, LimboLogs.Instance);
+    private static ImportPbtFromPreimageFlat CreateStep(IPersistence source, IDb codes, IColumnsDb<PbtColumns> db, PbtRocksDbPersistence target, PbtConfig config,
+        string? scratchDirectory = null) =>
+        new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, ScratchFactory(scratchDirectory), config, LimboLogs.Instance);
 
-    private static IDbFactory ScratchFactory()
+    private static IDbFactory ScratchFactory(string? directory = null)
     {
         IDbFactory dbFactory = Substitute.For<IDbFactory>();
-        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(Path.GetTempPath());
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(directory ?? Path.GetTempPath());
         return dbFactory;
     }
 
@@ -646,7 +863,32 @@ public class ImportPbtFromPreimageFlatTests
         public int ActiveViews;
         public int GroupCommits;
         public int CodeReads;
+        public bool TrackCodeRebuild;
+        public Action<PbtColumns>? BeforeCodeRead;
+        public Action? BeforeAccountWrite;
+        public int AccountsVisited;
+        public int CodeLeafReads;
+        public int CodeWrites;
+        public int ActiveSnapshots;
+        public int ActiveCodeLeafReads;
+        public int MaxActiveCodeLeafReads;
+        public int ActiveCodeWrites;
+        public int MaxActiveCodeWrites;
+        public int ActiveCodeBatches;
+        public int MaxActiveCodeBatches;
+        public int DisposedResourceUses;
+        public readonly ConcurrentQueue<int> CodeBatchSizes = new();
         private int _flushed;
+
+        private static void RecordMaximum(ref int maximum, int active)
+        {
+            int previous;
+            do
+            {
+                previous = Volatile.Read(ref maximum);
+                if (active <= previous) return;
+            } while (Interlocked.CompareExchange(ref maximum, active, previous) != previous);
+        }
 
         public RecordingColumnsDb()
         {
@@ -656,27 +898,95 @@ public class ImportPbtFromPreimageFlatTests
 
         public IDb GetColumnDb(PbtColumns key) => _columns[key];
         public IEnumerable<PbtColumns> ColumnKeys => _database.ColumnKeys;
-        public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => new RecordingSnapshot(this, _database.CreateSnapshot());
+        public IColumnDbSnapshot<PbtColumns> CreateSnapshot()
+        {
+            Interlocked.Increment(ref ActiveSnapshots);
+            return new RecordingSnapshot(this, _database.CreateSnapshot());
+        }
 
         private sealed class RecordingSnapshot(RecordingColumnsDb owner, IColumnDbSnapshot<PbtColumns> snapshot) : IColumnDbSnapshot<PbtColumns>
         {
-            public IReadOnlyKeyValueStore GetColumn(PbtColumns key) => key == PbtColumns.Codes
-                ? new RecordingCodes(owner, snapshot.GetColumn(key)) : snapshot.GetColumn(key);
-            public void Dispose() => snapshot.Dispose();
+            private int _disposed;
+            private int _reads;
+            public IReadOnlyKeyValueStore GetColumn(PbtColumns key) => key switch
+            {
+                PbtColumns.Codes or PbtColumns.CodeLeaves => new RecordingCodeStore(owner, this, key, snapshot.GetColumn(key)),
+                PbtColumns.Accounts when owner.TrackCodeRebuild => new RecordingAccounts(owner, (ISortedKeyValueStore)snapshot.GetColumn(key)),
+                _ => snapshot.GetColumn(key)
+            };
+            public void EnterRead()
+            {
+                Interlocked.Increment(ref _reads);
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    Interlocked.Decrement(ref _reads);
+                    Interlocked.Increment(ref owner.DisposedResourceUses);
+                    throw new ObjectDisposedException(nameof(RecordingSnapshot));
+                }
+            }
+            public void ExitRead() => Interlocked.Decrement(ref _reads);
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                if (Volatile.Read(ref _reads) != 0) Interlocked.Increment(ref owner.DisposedResourceUses);
+                snapshot.Dispose();
+                Interlocked.Decrement(ref owner.ActiveSnapshots);
+            }
         }
 
-        private sealed class RecordingCodes(RecordingColumnsDb owner, IReadOnlyKeyValueStore codes) : IReadOnlyKeyValueStore
+        private sealed class RecordingCodeStore(RecordingColumnsDb owner, RecordingSnapshot snapshot, PbtColumns column, IReadOnlyKeyValueStore store) : IReadOnlyKeyValueStore
         {
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
-                Interlocked.Increment(ref owner.CodeReads);
-                return codes.Get(key, flags);
+                snapshot.EnterRead();
+                if (column == PbtColumns.Codes) Interlocked.Increment(ref owner.CodeReads);
+                else
+                {
+                    Interlocked.Increment(ref owner.CodeLeafReads);
+                    RecordMaximum(ref owner.MaxActiveCodeLeafReads, Interlocked.Increment(ref owner.ActiveCodeLeafReads));
+                }
+                try
+                {
+                    owner.BeforeCodeRead?.Invoke(column);
+                    return store.Get(key, flags);
+                }
+                finally
+                {
+                    if (column == PbtColumns.CodeLeaves) Interlocked.Decrement(ref owner.ActiveCodeLeafReads);
+                    snapshot.ExitRead();
+                }
+            }
+        }
+
+        private sealed class RecordingAccounts(RecordingColumnsDb owner, ISortedKeyValueStore store) : ISortedKeyValueStore
+        {
+            public byte[]? FirstKey => store.FirstKey;
+            public byte[]? LastKey => store.LastKey;
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => store.Get(key, flags);
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+                new AccountView(owner, store.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags));
+
+            private sealed class AccountView(RecordingColumnsDb owner, ISortedView view) : ISortedView
+            {
+                public ReadOnlySpan<byte> CurrentKey => view.CurrentKey;
+                public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
+                public bool StartBefore(ReadOnlySpan<byte> value) => view.StartBefore(value);
+                public bool MoveNext()
+                {
+                    if (!view.MoveNext()) return false;
+                    Interlocked.Increment(ref owner.AccountsVisited);
+                    return true;
+                }
+                public void Dispose() => view.Dispose();
             }
         }
         public IColumnsWriteBatch<PbtColumns> StartWriteBatch()
         {
             Interlocked.Exchange(ref BeforeFirstBatch, null)?.Invoke();
-            return new RecordingBatch(this, _database.StartWriteBatch());
+            IColumnsWriteBatch<PbtColumns> batch = _database.StartWriteBatch();
+            bool trackCodeBatches = TrackCodeRebuild;
+            if (trackCodeBatches) RecordMaximum(ref MaxActiveCodeBatches, Interlocked.Increment(ref ActiveCodeBatches));
+            return new RecordingBatch(this, batch, trackCodeBatches);
         }
 
         public void Dispose() => _database.Dispose();
@@ -686,16 +996,60 @@ public class ImportPbtFromPreimageFlatTests
             if (!onlyWal && Interlocked.Exchange(ref _flushed, 1) == 0) Recording = true;
         }
 
-        private sealed class RecordingBatch(RecordingColumnsDb owner, IColumnsWriteBatch<PbtColumns> batch) : IColumnsWriteBatch<PbtColumns>
+        private sealed class RecordingBatch(RecordingColumnsDb owner, IColumnsWriteBatch<PbtColumns> batch, bool trackCodeBatches) : IColumnsWriteBatch<PbtColumns>
         {
             private bool _groups;
+            private int _codes;
+            private int _codeWrites;
+            private int _disposed;
             public IWriteBatch GetColumnBatch(PbtColumns key)
             {
                 IWriteBatch columnBatch = batch.GetColumnBatch(key);
+                if (key == PbtColumns.Codes && owner.TrackCodeRebuild)
+                {
+                    Interlocked.Exchange(ref _codes, 1);
+                    return new RecordingCodeBatch(owner, this, columnBatch);
+                }
+                if (key == PbtColumns.Accounts && owner.BeforeAccountWrite is not null) return new RecordingAccountBatch(owner, columnBatch);
                 if (key == PbtColumns.Metadata) return new RecordingMetadataBatch(owner, this, columnBatch);
                 if (key is PbtColumns.TopNodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
                 return columnBatch;
             }
+            private sealed class RecordingCodeBatch(RecordingColumnsDb owner, RecordingBatch ownerBatch, IWriteBatch codes) : IWriteBatch
+            {
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    RecordMaximum(ref owner.MaxActiveCodeWrites, Interlocked.Increment(ref owner.ActiveCodeWrites));
+                    try
+                    {
+                        if (Volatile.Read(ref ownerBatch._disposed) != 0)
+                        {
+                            Interlocked.Increment(ref owner.DisposedResourceUses);
+                            throw new ObjectDisposedException(nameof(RecordingBatch));
+                        }
+                        Interlocked.Increment(ref owner.CodeWrites);
+                        Interlocked.Increment(ref ownerBatch._codeWrites);
+                        codes.Set(key, value, flags);
+                    }
+                    finally { Interlocked.Decrement(ref owner.ActiveCodeWrites); }
+                }
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => codes.Merge(key, value, flags);
+                public void Clear() => codes.Clear();
+                public void Dispose() => codes.Dispose();
+            }
+
+            private sealed class RecordingAccountBatch(RecordingColumnsDb owner, IWriteBatch accounts) : IWriteBatch
+            {
+                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+                {
+                    owner.BeforeAccountWrite?.Invoke();
+                    accounts.Set(key, value, flags);
+                }
+                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => accounts.Merge(key, value, flags);
+                public void Clear() => accounts.Clear();
+                public void Dispose() => accounts.Dispose();
+            }
+
             private sealed class RecordingMetadataBatch(RecordingColumnsDb owner, RecordingBatch ownerBatch, IWriteBatch metadata) : IWriteBatch
             {
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -711,15 +1065,27 @@ public class ImportPbtFromPreimageFlatTests
             public void Clear()
             {
                 _groups = false;
+                Interlocked.Exchange(ref _codeWrites, 0);
                 batch.Clear();
             }
             public void Dispose()
             {
-                batch.Dispose();
-                if (_groups)
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                if (_codes != 0) RecordMaximum(ref owner.MaxActiveCodeWrites, Interlocked.Increment(ref owner.ActiveCodeWrites));
+                try
                 {
-                    Interlocked.Increment(ref owner.GroupCommits);
-                    owner.AfterGroupCommit?.Invoke();
+                    batch.Dispose();
+                    if (_codes != 0 && _codeWrites != 0) owner.CodeBatchSizes.Enqueue(_codeWrites);
+                    if (_groups)
+                    {
+                        Interlocked.Increment(ref owner.GroupCommits);
+                        owner.AfterGroupCommit?.Invoke();
+                    }
+                }
+                finally
+                {
+                    if (_codes != 0) Interlocked.Decrement(ref owner.ActiveCodeWrites);
+                    if (trackCodeBatches) Interlocked.Decrement(ref owner.ActiveCodeBatches);
                 }
             }
         }

@@ -174,8 +174,8 @@ public class PbtAnchorImportTests
     [Test]
     public void Noncanonical_snapshot_is_refused_with_or_without_preimages(
         [Values("code", "pushdata", "padding", "code-size", "missing-code", "delegation-with-code-leaves", "extra-code-chunk",
-            "orphan-storage-leaf")] string corruption, [Values] bool withPreimages) =>
-        AssertRefused(corruption, withPreimages);
+            "orphan-storage-leaf")] string corruption, [Values] bool withPreimages, [Values(1, 3)] int importConcurrency) =>
+        AssertRefused(corruption, withPreimages, importConcurrency);
 
     [Test]
     public void Preimages_refuse_a_snapshot_off_the_anchor_state(
@@ -204,6 +204,27 @@ public class PbtAnchorImportTests
         AssertUnpublished(harness);
         harness.Reopen();
         AssertUnpublished(harness);
+    }
+
+    [Test]
+    public async Task Cancellation_during_snapshot_staging_cleans_code_spool_and_can_be_retried([Values] bool withPreimages)
+    {
+        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3 });
+        using CancellationTokenSource cancellation = new();
+        bool observedCodeSpool = false;
+        using MemoryStream snapshot = new ObservedSnapshot(File.ReadAllBytes(Eip8347FixtureState.ArtifactPath("a4", "snapshot.pbt")), () =>
+        {
+            observedCodeSpool = Directory.GetDirectories(harness.Scratch.Path, "pbt-import-codes-*").Length == 1;
+            if (observedCodeSpool) cancellation.Cancel();
+        });
+        using FileStream preimages = OpenArtifact("a4", "preimages.bin");
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Publish(snapshot, withPreimages ? preimages : null, cancellation.Token));
+
+        Assert.That(observedCodeSpool, Is.True, "cancellation happens after the private code-spool directory is created");
+        AssertUnpublished(harness);
+        using FileStream retrySnapshot = OpenArtifact("a4", "snapshot.pbt");
+        AssertPublishedState(harness, await harness.Publish(retrySnapshot, withPreimages ? preimages : null, CancellationToken.None), "a4");
     }
 
     [Test]
@@ -266,9 +287,10 @@ public class PbtAnchorImportTests
     }
 
     [Test]
-    public async Task Snapshot_alone_publishes_the_native_state([Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name)
+    public async Task Snapshot_alone_publishes_the_native_state([Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name,
+        [Values(0, 1, 3)] int importConcurrency)
     {
-        using Harness harness = new(name);
+        using Harness harness = new(name, new PbtConfig { ImportConcurrency = importConcurrency });
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         ValueHash256 root = await harness.Publish(snapshot, null, CancellationToken.None);
 
@@ -369,9 +391,9 @@ public class PbtAnchorImportTests
         }
     }
 
-    private static void AssertRefused(string corruption, bool withPreimages)
+    private static void AssertRefused(string corruption, bool withPreimages, int importConcurrency = 1)
     {
-        using Harness harness = new("a4");
+        using Harness harness = new("a4", new PbtConfig { ImportConcurrency = importConcurrency });
         (MemoryStream snapshot, MemoryStream preimages) = Corrupt("a4", corruption);
         using (snapshot)
         using (preimages)
@@ -403,7 +425,11 @@ public class PbtAnchorImportTests
             case "code": Mutate(chunk, 1); break;
             case "pushdata": Mutate(chunk, 0); break;
             case "padding": Mutate(chunk, 31); break;
-            case "code-size": Mutate(basic, 7); break;
+            case "code-size":
+                foreach (RebuildEntry entry in leaves.FindAll(entry => entry.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone &&
+                    entry.Key.Bytes[^1] == PbtKeyDerivation.CodeHashLeafKey && entry.Leaf == writerCodeHash))
+                    Mutate((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHashOf(entry.Key), PbtKeyDerivation.BasicDataLeafKey), 7);
+                break;
             // A claimed code size of 2^28 plus the real one, whose buffering exceeds the local budget.
             case "oversized-code":
                 int basicIndex = leaves.FindIndex(entry => entry.Key.Equals(basic));
@@ -521,6 +547,7 @@ public class PbtAnchorImportTests
             Assert.That(reader.CurrentRoot, Is.EqualTo(expectedRoot.ValueHash256));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(harness.Anchor.Header)));
             Assert.That(harness.Pbt.Manager.HasStateForBlock(new StateId(harness.Anchor.Header)), Is.True, "the live manager sees the imported anchor");
+            Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         }
         foreach ((Address address, GethGenesisAllocJson expected) in Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name))
         {
@@ -549,6 +576,15 @@ public class PbtAnchorImportTests
     }
 
     private static FileStream OpenArtifact(string name, string file) => File.OpenRead(Eip8347FixtureState.ArtifactPath(name, file));
+
+    private sealed class ObservedSnapshot(byte[] bytes, Action onRead) : MemoryStream(bytes)
+    {
+        public override int ReadByte()
+        {
+            onRead();
+            return base.ReadByte();
+        }
+    }
 
     private sealed class Harness : IDisposable
     {

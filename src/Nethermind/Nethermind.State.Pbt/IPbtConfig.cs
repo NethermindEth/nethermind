@@ -50,11 +50,11 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Number of parallel workers scanning address ranges of the source state while exporting the EIP-8347 artifacts or importing from a preimage-flat database. 0 uses the processor count.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExportConcurrency { get; set; }
 
-    /// <summary>Export and preimage-flat import sort budget per scan worker, in bytes, split between the spools. Defaults to 256 MiB.</summary>
+    /// <summary>Sort budget per export or preimage-flat scan worker and for the import code spool, in bytes. Defaults to 256 MiB.</summary>
     /// <remarks>Resident sort memory is this times ExportConcurrency, plus up to half as many spare buffers again,
     /// which absorb the sort of a filled buffer while its worker fills the next one. Larger buffers spill fewer,
-    /// longer runs and so leave less to merge.</remarks>
-    [ConfigItem(Description = "Bytes buffered per export or preimage-flat import scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
+    /// longer runs and so leave less to merge. Code reconstruction uses a separate single-writer spool with this budget.</remarks>
+    [ConfigItem(Description = "Bytes buffered per export or preimage-flat import scan worker before records spill to a temporary run, split between the leaf and preimage spools. Also the buffer budget of the single-writer import code spool. Resident scan sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
     int ExportSortBufferBytes { get; set; }
 
     /// <summary>Whether the export also writes the EIP-8347 preimage stream beside the snapshot. Defaults to true.</summary>
@@ -69,7 +69,7 @@ public interface IPbtConfig : IConfig
 
     /// <summary>Threads each parallel stage of the background EIP-8347 migration import may use. Defaults to 1.</summary>
     /// <remarks>The import runs alongside block processing, so it is kept narrow unless raised.</remarks>
-    [ConfigItem(Description = "Maximum number of threads each parallel stage of the background EIP-8347 migration import (offline export scan, staging writes, preimage verification, tree fold) uses, leaving room for block processing. 0 uses the processor count.", DefaultValue = "1")]
+    [ConfigItem(Description = "Maximum number of threads each parallel stage of the background EIP-8347 migration import (offline export scan, staging writes, code reconstruction, preimage verification, tree fold) uses, leaving room for block processing. 0 uses the processor count.", DefaultValue = "1")]
     int ImportConcurrency { get; set; }
 
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>

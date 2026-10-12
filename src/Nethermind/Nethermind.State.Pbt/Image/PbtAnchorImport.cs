@@ -53,11 +53,22 @@ public sealed class PbtAnchorImport(
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
         float snapshotLength = snapshot.Length;
         RecoverStaging(anchor, cancellationToken);
-        (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-            token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
-            new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, logManager, cancellationToken);
-        Finish(anchor, root, accounts, slots, importing, cancellationToken);
-        return root;
+        string directory = Path.Combine(scratchDirectory, $"pbt-import-codes-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using PbtSortedSpool codes = new("import codes", directory, config.ExportSortBufferBytes, 1, logManager, cancellationToken)
+            { MaxConcurrentPreMerges = config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount };
+            (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
+                token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
+                new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, codes, logManager, cancellationToken);
+            Finish(anchor, root, accounts, slots, importing, cancellationToken);
+            return root;
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
 
         void VerifyStaged(ulong stagedAccounts, ulong stagedSlots, CancellationToken token)
         {
