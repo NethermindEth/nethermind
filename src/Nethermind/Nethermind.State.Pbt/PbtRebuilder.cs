@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -49,7 +48,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
 
         long receivedCount = 0;
         long committedWindows = 0;
-        Stopwatch progress = Stopwatch.StartNew();
         ValueHash256 root;
         using (StagingSink staging = new(target, cancellationToken))
         {
@@ -61,11 +59,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                 staging.Commit();
                 receivedCount += leaves;
                 committedWindows++;
-                if (progress.Elapsed >= TimeSpan.FromSeconds(10))
-                {
-                    if (_logger.IsInfo) _logger.Info($"PBT rebuild: {receivedCount} received leaves folded in {committedWindows} windows");
-                    progress.Restart();
-                }
             }
         }
 
