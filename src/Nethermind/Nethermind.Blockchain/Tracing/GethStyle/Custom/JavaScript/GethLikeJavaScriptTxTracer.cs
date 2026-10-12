@@ -92,6 +92,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             {
                 throw new JavaScriptTraceFailure(exception);
             }
+            if (_captureErrors && options.EnforceExecutionDeadline && timeout <= TimeSpan.Zero)
+            {
+                _engine.ThrowIfInterrupted();
+                throw new JavaScriptTraceFailure(_traceError is null
+                    ? new GethTraceDeadlineException()
+                    : new Exception(_traceError));
+            }
             if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
                 throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
             _cts = new CancellationTokenSource(timeout);

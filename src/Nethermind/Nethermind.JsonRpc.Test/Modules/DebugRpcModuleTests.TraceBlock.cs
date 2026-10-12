@@ -178,6 +178,8 @@ public partial class DebugRpcModuleTests
     [TestCase("empty-native", false)]
     [TestCase("empty-opcode", true)]
     [TestCase("empty-javascript", false)]
+    [TestCase("empty-javascript-immediate", false)]
+    [TestCase("unmatched-javascript-immediate", false)]
     [TestCase("unmatched-opcode", false)]
     [TestCase("unmatched-opcode", true)]
     [TestCase("javascript-valid", false)]
@@ -192,7 +194,7 @@ public partial class DebugRpcModuleTests
         bool valid = scenario == "javascript-valid";
         Dictionary<string, object> options = new()
         {
-            ["timeout"] = valid ? "5s" : "bad",
+            ["timeout"] = scenario.EndsWith("-immediate", StringComparison.Ordinal) ? "0s" : valid ? "5s" : "bad",
             ["streamMode"] = streamMode
         };
         if (unmatched) options["txHash"] = TestItem.KeccakD;
@@ -232,6 +234,16 @@ public partial class DebugRpcModuleTests
             }
         }
     }
+
+    [TestCase("timeout-zero", null)]
+    [TestCase("timeout-negative", null)]
+    [TestCase("timeout-zero", 0)]
+    [TestCase("timeout-zero", 1)]
+    [TestCase("timeout-negative", 2)]
+    [TestCase("setup-timeout", null)]
+    [TestCase("missing-timeout", null)]
+    public Task Debug_traceBlockByNumber_immediate_js_deadline_preserves_canonical_execution(string failure, int? selectedAt) =>
+        AssertTraceBlockByNumberJavaScriptRecovery(failure, -1, selectedAt);
 
     [TestCase("result", 0)]
     [TestCase("result", 1)]
@@ -327,14 +339,17 @@ public partial class DebugRpcModuleTests
             "fault" => "{fault:function(){throw Error('fault failure');},result:function(ctx,db){" + resultBody + "}}",
             "precedence" => "{fault:function(){throw Error('later fault failure');},enter:function(){},exit:function(){if(this.fail)throw Error('later exit failure');},step:function(log,db){if(this.fail)throw Error('later step failure');if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){this.fail=true;throw Error('first failure');}},result:function(ctx,db){if(this.fail)throw Error('later result failure');" + resultBody + "}}",
             _ when invalidRead is not null => "{fault:function(){},step:function(log,db){if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){try{" + invalidRead + ";}catch(e){}throw Error('input abort was swallowed');}},result:function(ctx,db){" + resultBody + "}}",
-            "setup" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
-            "missing" => "{fault:function(){}}",
+            "timeout-zero" or "timeout-negative" => baselineTracer,
+            "setup" or "setup-timeout" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
+            "missing" or "missing-timeout" => "{fault:function(){}}",
             "noncallable" => "{fault:function(){},result:42}",
             "unknown" => "unknown-js-tracer",
             _ => "{result:}"
         };
         Hash256 selectedHash = selectedAt >= 0 ? block.Transactions[selectedAt.Value].Hash! : TestItem.KeccakA;
         object traceOptions = selectedAt is null ? new { tracer } : new { tracer, txHash = selectedHash };
+        string? timeout = failure switch { "timeout-negative" => "-1s", "timeout-zero" or "setup-timeout" or "missing-timeout" => "0s", _ => null };
+        if (timeout is not null) traceOptions = selectedAt is null ? new { tracer, timeout } : new { tracer, timeout, txHash = selectedHash };
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, traceOptions);
         JToken actual = JToken.Parse(response);
         Assert.That(actual["error"], Is.Null, response);
@@ -359,6 +374,12 @@ public partial class DebugRpcModuleTests
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
                     Assert.That(entries[index]["result"], Is.Null);
+                    if (failure is "timeout-zero" or "timeout-negative")
+                        Assert.That((string?)entries[index]["error"], Is.EqualTo("execution timeout"));
+                    if (failure == "setup-timeout")
+                        Assert.That((string?)entries[index]["error"], Does.Contain("setup failure"));
+                    if (failure == "missing-timeout")
+                        Assert.That((string?)entries[index]["error"], Does.Contain("required function result"));
                     if (invalidRead is not null)
                     {
                         string expectedError = failure switch
@@ -378,7 +399,7 @@ public partial class DebugRpcModuleTests
         if (selectedAt is not null) return;
 
         observations.Enabled = false;
-        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, traceOptions);
         Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
         string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
@@ -487,6 +508,40 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result.TraceError, Is.Null);
             Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("\"0\""));
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_immediate_deadline_does_not_reclassify_host_or_external_failure(
+        [Values] bool interrupt, [Values(0, -1)] int timeout)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        bool reached = false;
+        Action fail = () =>
+        {
+            reached = true;
+            if (interrupt) engine.Interrupt();
+            else throw new InvalidOperationException("host failure");
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failForTest=action;}}"))
+            installer.InvokeMethod("install", fail);
+        GethTraceOptions options = new()
+        {
+            Tracer = "{fault:function(){},setup:function(){failForTest();},result:function(){return {};}}",
+            CaptureJavaScriptErrors = true,
+            EnforceExecutionDeadline = true,
+            Timeout = TimeSpan.FromSeconds(timeout)
+        };
+        Exception failure = Assert.Catch(() =>
+        {
+            using (new GethLikeJavaScriptTxTracer(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(), options)) { }
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reached, Is.True);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+            Assert.That(failure.Message, Does.Not.Contain("execution timeout"));
         }
     }
 
