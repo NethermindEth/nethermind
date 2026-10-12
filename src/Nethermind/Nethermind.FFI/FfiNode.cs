@@ -16,6 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -61,10 +62,8 @@ public sealed unsafe class FfiNode(
     private const int SyncStateSynced = 1;
 
     private readonly ILogger _logger = logManager.GetClassLogger<FfiNode>();
-    private NativeCallback? _txCallback;
-    private int _txPoolSubscribed;
-    private NativeCallback? _nodeCallback;
-    private int _nodeEventsSubscribed;
+    private readonly CallbackSlot _txCallback = new();
+    private readonly CallbackSlot _nodeCallback = new();
     private int _syncState = SyncStateUnknown;
 
     public BlockHeader? Head => blockTree.Head?.Header;
@@ -164,12 +163,13 @@ public sealed unsafe class FfiNode(
     /// <summary>Sets the native callback receiving tx pool events, or clears it with a null <paramref name="callback"/>.</summary>
     /// <remarks>
     /// Invoked synchronously on the thread raising the pool event, possibly concurrently. The pool is only subscribed
-    /// to once a callback is first set, so a host that never sets one adds nothing to tx admission.
+    /// to once a callback is first set, so a host that never sets one adds nothing to tx admission. A call in progress
+    /// can outlive clearing; see <see cref="WaitForTxCallbacks"/>.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A callback is already set; it has to be cleared first.</exception>
-    public void SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
+    public void SetTxCallback(delegate* unmanaged[Cdecl]<nint, NmTxInfo*, void> callback, nint userData)
     {
-        if (!SetCallback(ref _txCallback, ref _txPoolSubscribed, (nint)callback, userData)) return;
+        if (!_txCallback.Set((nint)callback, userData)) return;
 
         txPool.NewPending += OnNewPending;
         txPool.RemovedPending += OnRemovedPending;
@@ -180,12 +180,13 @@ public sealed unsafe class FfiNode(
     /// <remarks>
     /// Invoked synchronously on the thread raising the event, possibly concurrently. Setting a callback reports the
     /// current sync state to it straight away; afterwards only sync state changes are reported. The sync state is
-    /// the one eth_syncing reports, re-evaluated on every new head and sync mode change.
+    /// the one eth_syncing reports, re-evaluated on every new head and sync mode change. A call in progress can outlive
+    /// clearing; see <see cref="WaitForNodeCallbacks"/>.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A callback is already set; it has to be cleared first.</exception>
     public void SetNodeCallback(delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void> callback, nint userData)
     {
-        if (SetCallback(ref _nodeCallback, ref _nodeEventsSubscribed, (nint)callback, userData))
+        if (_nodeCallback.Set((nint)callback, userData))
         {
             blockTree.NewHeadBlock += OnNewHeadBlock;
             blockTree.BlocksFinalized += OnBlocksFinalized;
@@ -198,40 +199,37 @@ public sealed unsafe class FfiNode(
         UpdateSyncState();
     }
 
+    /// <summary>Waits until no tx callback call is in progress, so a cleared callback is no longer running.</summary>
+    /// <remarks>Waiting from inside a tx callback never returns.</remarks>
+    public void WaitForTxCallbacks() => _txCallback.WaitForInvocations();
+
+    /// <summary>Waits until no node callback call is in progress, so a cleared callback is no longer running.</summary>
+    /// <remarks>Waiting from inside a node callback never returns.</remarks>
+    public void WaitForNodeCallbacks() => _nodeCallback.WaitForInvocations();
+
+    /// <remarks>Clears both callbacks and waits for calls in progress, so none runs once this returns.</remarks>
     public void Dispose()
     {
-        if (Volatile.Read(ref _txPoolSubscribed) != 0)
+        if (_txCallback.IsSubscribed)
         {
             txPool.NewPending -= OnNewPending;
             txPool.RemovedPending -= OnRemovedPending;
             txPool.EvictedPending -= OnEvictedPending;
         }
 
-        if (Volatile.Read(ref _nodeEventsSubscribed) != 0)
+        if (_nodeCallback.IsSubscribed)
         {
             blockTree.NewHeadBlock -= OnNewHeadBlock;
             blockTree.BlocksFinalized -= OnBlocksFinalized;
             syncModeSelector.Changed -= OnSyncModeChanged;
         }
 
+        // An event raised before unsubscribing can still reach the handlers.
+        _txCallback.Set(0, 0);
+        _nodeCallback.Set(0, 0);
+        WaitForTxCallbacks();
+        WaitForNodeCallbacks();
         _envSource.Dispose();
-    }
-
-    /// <summary>Sets <paramref name="slot"/> to the callback, or clears it when <paramref name="function"/> is null.</summary>
-    /// <returns>Whether this is the first callback ever set, so the events feeding it still have to be subscribed.</returns>
-    /// <exception cref="InvalidOperationException">A callback is already set.</exception>
-    private static bool SetCallback(ref NativeCallback? slot, ref int subscribed, nint function, nint userData)
-    {
-        if (function == 0)
-        {
-            Volatile.Write(ref slot, null);
-            return false;
-        }
-
-        if (Interlocked.CompareExchange(ref slot, new NativeCallback(function, userData), null) is not null)
-            throw new InvalidOperationException("A callback is already set.");
-
-        return Interlocked.Exchange(ref subscribed, 1) == 0;
     }
 
     private void OnNewPending(object? sender, TxEventArgs e) => Notify(FfiTxEvent.Pending, e.Transaction);
@@ -242,24 +240,41 @@ public sealed unsafe class FfiNode(
 
     private void Notify(FfiTxEvent txEvent, Transaction tx)
     {
-        if (Volatile.Read(ref _txCallback) is not { } callback) return;
+        if (_txCallback.BeginInvoke() is not { } callback) return;
 
         // Raised from inside the pool: an exception here would fail the tx admission or removal that raised it.
         try
         {
             using ArrayPoolList<byte> encoded = TxDecoder.Instance.EncodeToArrayPoolList(tx, RlpBehaviors.SkipTypedWrapping);
-            fixed (byte* hash = tx.Hash!.Bytes)
+            NmTxInfo info = new()
+            {
+                Event = (int)txEvent,
+                Flags = txEvent is FfiTxEvent.Pending && IsExecutable(tx) ? NmTxInfo.Executable : 0,
+                Nonce = tx.Nonce,
+            };
+            NativeExports.CopyHash(tx.Hash, info.Hash);
+            tx.SenderAddress!.Bytes.CopyTo(new Span<byte>(info.Sender, Address.Size));
             fixed (byte* encodedTx = encoded.AsSpan())
             {
-                ((delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void>)callback.Function)(
-                    callback.UserData, (int)txEvent, hash, encodedTx, (nuint)encoded.Count);
+                info.Tx = encodedTx;
+                info.TxLength = (nuint)encoded.Count;
+                ((delegate* unmanaged[Cdecl]<nint, NmTxInfo*, void>)callback.Function)(callback.UserData, &info);
             }
         }
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error($"FFI tx callback failed for {txEvent} {tx.Hash}", e);
         }
+        finally
+        {
+            _txCallback.EndInvoke();
+        }
     }
+
+    /// <summary>Whether the pooled <paramref name="tx"/> follows its sender's nonce on the pool's head without a gap.</summary>
+    /// <remarks>An EIP-8250 keyed nonce is in its own domain, which the pool's pending nonce does not track.</remarks>
+    private bool IsExecutable(Transaction tx) =>
+        !KeyedNonceManager.UsesKeyedNonce(tx) && tx.Nonce < txPool.GetLatestPendingNonce(tx.SenderAddress!);
 
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
@@ -273,7 +288,7 @@ public sealed unsafe class FfiNode(
 
     private void UpdateSyncState()
     {
-        if (Volatile.Read(ref _nodeCallback) is null) return;
+        if (!_nodeCallback.IsSet) return;
 
         try
         {
@@ -290,7 +305,7 @@ public sealed unsafe class FfiNode(
 
     private void Notify(FfiNodeEvent nodeEvent, BlockHeader? header)
     {
-        if (Volatile.Read(ref _nodeCallback) is not { } callback) return;
+        if (_nodeCallback.BeginInvoke() is not { } callback) return;
 
         // Raised from block processing and sync: an exception here would fail the operation that raised it.
         try
@@ -304,6 +319,10 @@ public sealed unsafe class FfiNode(
         {
             if (_logger.IsError) _logger.Error($"FFI node callback failed for {nodeEvent} {header?.Number}", e);
         }
+        finally
+        {
+            _nodeCallback.EndInvoke();
+        }
     }
 
     private static byte[] EncodeReceipts(TxReceipt[] receipts, IReleaseSpec spec) =>
@@ -311,6 +330,57 @@ public sealed unsafe class FfiNode(
 
     /// <summary>A native function pointer and the user data passed back to it, swapped as one reference.</summary>
     private sealed record NativeCallback(nint Function, nint UserData);
+
+    /// <summary>A native callback that can be set and cleared while events invoke it concurrently.</summary>
+    private sealed class CallbackSlot
+    {
+        private NativeCallback? _callback;
+        private int _subscribed;
+        private int _invocations;
+
+        public bool IsSet => Volatile.Read(ref _callback) is not null;
+
+        /// <summary>Whether a callback was ever set, so the events feeding it are subscribed.</summary>
+        public bool IsSubscribed => Volatile.Read(ref _subscribed) != 0;
+
+        /// <summary>Sets the callback, or clears it when <paramref name="function"/> is null.</summary>
+        /// <returns>Whether this is the first callback ever set, so the events feeding it still have to be subscribed.</returns>
+        /// <exception cref="InvalidOperationException">A callback is already set.</exception>
+        public bool Set(nint function, nint userData)
+        {
+            if (function == 0)
+            {
+                Volatile.Write(ref _callback, null);
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _callback, new NativeCallback(function, userData), null) is not null)
+                throw new InvalidOperationException("A callback is already set.");
+
+            return Interlocked.Exchange(ref _subscribed, 1) == 0;
+        }
+
+        /// <summary>Starts a call of the callback, to be ended by <see cref="EndInvoke"/> when a callback is returned.</summary>
+        /// <remarks>
+        /// The call is counted before the callback is read, so once <see cref="WaitForInvocations"/> sees no call
+        /// after a clear, every later call reads the cleared slot.
+        /// </remarks>
+        public NativeCallback? BeginInvoke()
+        {
+            Interlocked.Increment(ref _invocations);
+            NativeCallback? callback = Volatile.Read(ref _callback);
+            if (callback is null) EndInvoke();
+            return callback;
+        }
+
+        public void EndInvoke() => Interlocked.Decrement(ref _invocations);
+
+        public void WaitForInvocations()
+        {
+            SpinWait spin = default;
+            while (Volatile.Read(ref _invocations) != 0) spin.SpinOnce();
+        }
+    }
 }
 
 /// <param name="Header">The processed header carrying the computed roots, when <paramref name="Status"/> is <see cref="FfiStatus.Ok"/>.</param>

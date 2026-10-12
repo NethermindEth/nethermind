@@ -269,46 +269,12 @@ public static unsafe class NativeExports
     public static void Free(void* pointer) => NativeMemory.Free(pointer);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    public static int SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
-    {
-        try
-        {
-            return (int)FfiHost.Use(node =>
-            {
-                node.SetTxCallback(callback, userData);
-                return FfiStatus.Ok;
-            });
-        }
-        catch (InvalidOperationException)
-        {
-            return (int)FfiStatus.CallbackAlreadySet;
-        }
-        catch
-        {
-            return (int)FfiStatus.InternalError;
-        }
-    }
+    public static int SetTxCallback(delegate* unmanaged[Cdecl]<nint, NmTxInfo*, void> callback, nint userData) =>
+        SetCallback(node => node.SetTxCallback(callback, userData), callback is null ? static node => node.WaitForTxCallbacks() : null);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    public static int SetNodeCallback(delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void> callback, nint userData)
-    {
-        try
-        {
-            return (int)FfiHost.Use(node =>
-            {
-                node.SetNodeCallback(callback, userData);
-                return FfiStatus.Ok;
-            });
-        }
-        catch (InvalidOperationException)
-        {
-            return (int)FfiStatus.CallbackAlreadySet;
-        }
-        catch
-        {
-            return (int)FfiStatus.InternalError;
-        }
-    }
+    public static int SetNodeCallback(delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void> callback, nint userData) =>
+        SetCallback(node => node.SetNodeCallback(callback, userData), callback is null ? static node => node.WaitForNodeCallbacks() : null);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     public static int Stop(int exitCode)
@@ -340,6 +306,34 @@ public static unsafe class NativeExports
 
     internal static void CopyHash(Hash256? hash, byte* destination) =>
         (hash ?? Hash256.Zero).Bytes.CopyTo(new Span<byte>(destination, Hash256.Size));
+
+    /// <param name="waitForCalls">When clearing, waits for the calls of the cleared callback still in progress.</param>
+    private static int SetCallback(Action<FfiNode> set, Action<FfiNode>? waitForCalls)
+    {
+        try
+        {
+            FfiNode? setOn = null;
+            FfiStatus status = FfiHost.Use(node =>
+            {
+                set(node);
+                setOn = node;
+                return FfiStatus.Ok;
+            });
+
+            // Outside the lock: a call in progress may be calling into the FFI, which waits for the lock while the node
+            // is stopping.
+            if (setOn is not null) waitForCalls?.Invoke(setOn);
+            return (int)status;
+        }
+        catch (InvalidOperationException)
+        {
+            return (int)FfiStatus.CallbackAlreadySet;
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
 
     private static Hash256 ReadHash(byte* hash) => new(new ReadOnlySpan<byte>(hash, Hash256.Size));
 
@@ -396,6 +390,21 @@ public unsafe struct NmAccount
     public ulong Nonce;
     public fixed byte Balance[32];
     public fixed byte CodeHash[32];
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct NmTxInfo
+{
+    /// <summary>The <see cref="Flags"/> bit of a tx that can be included on top of the pool's head.</summary>
+    public const uint Executable = 1;
+
+    public int Event;
+    public uint Flags;
+    public ulong Nonce;
+    public fixed byte Hash[32];
+    public fixed byte Sender[20];
+    public byte* Tx;
+    public nuint TxLength;
 }
 
 [StructLayout(LayoutKind.Sequential)]

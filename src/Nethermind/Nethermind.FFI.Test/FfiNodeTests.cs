@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
@@ -76,7 +77,7 @@ public class FfiNodeTests
     public async Task State_reads_serve_headers_accounts_storage_code_and_block_hashes()
     {
         using BasicTestBlockchain chain = await CreateChain(static _ => { });
-        Block transferBlock = await chain.AddBlock(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 10));
+        Block transferBlock = await chain.AddBlock(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 10, nonce: 0));
         Block head = await chain.AddBlock();
         using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
         FfiNode node = scope.Resolve<FfiNode>();
@@ -143,7 +144,7 @@ public class FfiNodeTests
         ];
     }
 
-    private static readonly ConcurrentQueue<(FfiTxEvent Event, Hash256 Hash, byte[] Tx)> TxEvents = new();
+    private static readonly ConcurrentQueue<(FfiTxEvent Event, Hash256 Hash, Address Sender, ulong Nonce, bool Executable, byte[] Tx)> TxEvents = new();
 
     [Test]
     public async Task Tx_callback_reports_pool_events_until_cleared()
@@ -160,19 +161,23 @@ public class FfiNodeTests
         }
 
         // The pool holds one tx, so the better-paying one evicts the first before being included in the block.
-        Transaction evicted = Transfer(chain, TestItem.PrivateKeyA, gasPrice: 1);
-        Transaction included = Transfer(chain, TestItem.PrivateKeyB, gasPrice: 10);
+        Transaction evicted = Transfer(chain, TestItem.PrivateKeyA, gasPrice: 1, nonce: 0);
+        Transaction included = Transfer(chain, TestItem.PrivateKeyB, gasPrice: 10, nonce: 0);
+        // Its sender's nonce 0 is missing, so it cannot be included yet.
+        Transaction gapped = Transfer(chain, TestItem.PrivateKeyC, gasPrice: 10, nonce: 1);
         Assert.That(chain.TxPool.SubmitTx(evicted, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         await chain.AddBlock(included);
+        Assert.That(chain.TxPool.SubmitTx(gapped, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        (FfiTxEvent, Hash256)[] expected =
+        (FfiTxEvent, Hash256, Address, ulong, bool)[] expected =
         [
-            (FfiTxEvent.Pending, evicted.Hash!),
-            (FfiTxEvent.Evicted, evicted.Hash!),
-            (FfiTxEvent.Pending, included.Hash!),
-            (FfiTxEvent.Removed, included.Hash!),
+            (FfiTxEvent.Pending, evicted.Hash!, TestItem.AddressA, 0, true),
+            (FfiTxEvent.Evicted, evicted.Hash!, TestItem.AddressA, 0, false),
+            (FfiTxEvent.Pending, included.Hash!, TestItem.AddressB, 0, true),
+            (FfiTxEvent.Removed, included.Hash!, TestItem.AddressB, 0, false),
+            (FfiTxEvent.Pending, gapped.Hash!, TestItem.AddressC, 1, false),
         ];
-        Assert.That(() => TxEvents.Select(static e => (e.Event, e.Hash)), Is.EqualTo(expected).After(5000, 50));
+        Assert.That(() => TxEvents.Select(static e => (e.Event, e.Hash, e.Sender, e.Nonce, e.Executable)), Is.EqualTo(expected).After(5000, 50));
         Assert.That(TxEvents.First().Tx, Is.EqualTo(TxDecoder.Instance.Encode(evicted, RlpBehaviors.SkipTypedWrapping).Bytes));
 
         unsafe
@@ -180,8 +185,48 @@ public class FfiNodeTests
             node.SetTxCallback(null, 0);
         }
 
-        Assert.That(chain.TxPool.SubmitTx(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 20), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(chain.TxPool.SubmitTx(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 20, nonce: 0), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         Assert.That(TxEvents, Has.Count.EqualTo(expected.Length));
+    }
+
+    private static readonly ManualResetEventSlim CallbackEntered = new();
+    private static readonly ManualResetEventSlim CallbackReleased = new();
+
+    [Test]
+    public async Task Waiting_for_callbacks_after_clearing_returns_once_calls_in_progress_finish()
+    {
+        CallbackEntered.Reset();
+        CallbackReleased.Reset();
+        using BasicTestBlockchain chain = await CreateChain(static _ => { });
+        using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
+        FfiNode node = scope.Resolve<FfiNode>();
+        unsafe
+        {
+            node.SetTxCallback(&BlockTxEvent, 0);
+        }
+
+        Task submit = Task.Run(() => chain.TxPool.SubmitTx(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 10, nonce: 0), TxHandlingOptions.None));
+        try
+        {
+            Assert.That(CallbackEntered.Wait(5000), Is.True);
+            unsafe
+            {
+                node.SetTxCallback(null, 0);
+            }
+
+            Task wait = Task.Run(node.WaitForTxCallbacks);
+            Assert.That(wait.Wait(200), Is.False);
+
+            CallbackReleased.Set();
+            Assert.That(wait.Wait(5000), Is.True);
+        }
+        finally
+        {
+            // Disposing the node waits for the blocked call too.
+            CallbackReleased.Set();
+        }
+
+        await submit;
     }
 
     private static readonly ConcurrentQueue<(FfiNodeEvent Event, ulong Number, Hash256 Hash)> NodeEvents = new();
@@ -229,8 +274,20 @@ public class FfiNodeTests
         NodeEvents.Enqueue(((FfiNodeEvent)status->Event, status->Number, new Hash256(new ReadOnlySpan<byte>(status->Hash, Hash256.Size))));
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static unsafe void RecordTxEvent(nint userData, int txEvent, byte* hash, byte* tx, nuint txLength) =>
-        TxEvents.Enqueue(((FfiTxEvent)txEvent, new Hash256(new ReadOnlySpan<byte>(hash, Hash256.Size)), new ReadOnlySpan<byte>(tx, (int)txLength).ToArray()));
+    private static unsafe void RecordTxEvent(nint userData, NmTxInfo* info) =>
+        TxEvents.Enqueue(((FfiTxEvent)info->Event,
+            new Hash256(new ReadOnlySpan<byte>(info->Hash, Hash256.Size)),
+            new Address(new ReadOnlySpan<byte>(info->Sender, Address.Size)),
+            info->Nonce,
+            (info->Flags & NmTxInfo.Executable) != 0,
+            new ReadOnlySpan<byte>(info->Tx, (int)info->TxLength).ToArray()));
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void BlockTxEvent(nint userData, NmTxInfo* info)
+    {
+        CallbackEntered.Set();
+        CallbackReleased.Wait();
+    }
 
     // FfiNode reads the sync state, which the test chain does not wire.
     private static Task<BasicTestBlockchain> CreateChain(Action<ContainerBuilder> configure) =>
@@ -242,8 +299,9 @@ public class FfiNodeTests
             configure(builder);
         });
 
-    private static Transaction Transfer(BasicTestBlockchain chain, PrivateKey sender, ulong gasPrice) => Build.A.Transaction
+    private static Transaction Transfer(BasicTestBlockchain chain, PrivateKey sender, ulong gasPrice, ulong nonce) => Build.A.Transaction
         .WithTo(TestItem.AddressD)
+        .WithNonce(nonce)
         .WithGasPrice(gasPrice)
         .WithGasLimit(GasCostOf.Transaction)
         .SignedAndResolved(sender, chain.SpecProvider.GetSpec(chain.BlockTree.Head!.Header).IsEip155Enabled)

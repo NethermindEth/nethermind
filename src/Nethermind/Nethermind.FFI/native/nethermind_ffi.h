@@ -95,15 +95,34 @@ typedef enum nm_tx_event
     NM_TX_EVICTED = 2,
 } nm_tx_event;
 
-/*
- * Receives tx pool events; see nm_set_tx_callback.
- *
- * event:   an nm_tx_event.
- * tx_hash: 32 bytes.
- * tx:      the EIP-2718 encoding as included in blocks (without a blob sidecar).
- * tx_hash and tx are only valid for the duration of the call.
- */
-typedef void (*nm_tx_callback)(void* user_data, int32_t event, const uint8_t* tx_hash, const uint8_t* tx, size_t tx_len);
+typedef enum nm_tx_flag
+{
+    /*
+     * Set on an NM_TX_PENDING tx that can be included on top of the pool's head: its nonce is its sender's next one, or
+     * follows the sender's pending txs without a gap. Not set on a tx with an EIP-8250 keyed nonce. A tx reported
+     * without it can become executable later, when the txs filling its nonce gap arrive, without another event.
+     */
+    NM_TX_EXECUTABLE = 1,
+} nm_tx_flag;
+
+/* A tx pool event; see nm_set_tx_callback. */
+typedef struct nm_tx_info
+{
+    /* An nm_tx_event. */
+    int32_t event;
+    /* nm_tx_flag bits. */
+    uint32_t flags;
+    uint64_t nonce;
+    uint8_t hash[32];
+    /* The sender the pool recovered from the signature. */
+    uint8_t sender[20];
+    /* The EIP-2718 encoding as included in blocks (without a blob sidecar). */
+    const uint8_t* tx;
+    size_t tx_len;
+} nm_tx_info;
+
+/* Receives tx pool events; see nm_set_tx_callback. info is only valid for the duration of the call. */
+typedef void (*nm_tx_callback)(void* user_data, const nm_tx_info* info);
 
 typedef enum nm_node_event
 {
@@ -216,8 +235,11 @@ void nm_free_block_result(nm_node* node, nm_block_result* result);
  * be set at a time: setting another one while it is set fails with NM_CALLBACK_ALREADY_SET.
  *
  * The callback runs synchronously on whichever thread changed the pool (network, RPC or block processing), possibly
- * concurrently, so it must be thread-safe and fast: it delays the pool operation that raised it. A call already in
- * progress may still complete after the callback is cleared.
+ * concurrently, so it must be thread-safe and fast: it delays the pool operation that raised it.
+ *
+ * Clearing waits for calls already in progress, so once it returns NM_OK the callback is not running and will not be
+ * called again, and its user_data can be released. It must not be cleared from inside its own call, which would wait
+ * for itself. When clearing returns NM_STOPPED the node is shutting down: no call happens after nm_join returns.
  *
  * Mirrors the pool's own events: a tx replaced by a higher-fee tx with the same sender and nonce is not reported, and
  * a tx dropped by the pool's eviction policy may be reported as NM_TX_REMOVED followed by NM_TX_EVICTED.
@@ -233,8 +255,9 @@ int nm_set_tx_callback(nm_node* node, nm_tx_callback callback, void* user_data);
  * every new head and sync mode change.
  *
  * The callback runs synchronously on the thread raising the event (block processing, sync or the forkchoice update
- * caller), possibly concurrently, so it must be thread-safe and fast: it delays the operation that raised it. A call
- * already in progress may still complete after the callback is cleared.
+ * caller), possibly concurrently, so it must be thread-safe and fast: it delays the operation that raised it.
+ *
+ * Clearing waits for calls in progress as nm_set_tx_callback does.
  */
 int nm_set_node_callback(nm_node* node, nm_node_callback callback, void* user_data);
 

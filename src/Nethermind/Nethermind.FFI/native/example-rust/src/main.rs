@@ -73,13 +73,18 @@ mod sys {
     pub type NmNodeCallback =
         unsafe extern "C" fn(user_data: *mut c_void, status: *const NmNodeStatus);
 
-    pub type NmTxCallback = unsafe extern "C" fn(
-        user_data: *mut c_void,
-        event: i32,
-        tx_hash: *const u8,
-        tx: *const u8,
-        tx_len: usize,
-    );
+    #[repr(C)]
+    pub struct NmTxInfo {
+        pub event: i32,
+        pub flags: u32,
+        pub nonce: u64,
+        pub hash: [u8; 32],
+        pub sender: [u8; 20],
+        pub tx: *const u8,
+        pub tx_len: usize,
+    }
+
+    pub type NmTxCallback = unsafe extern "C" fn(user_data: *mut c_void, info: *const NmTxInfo);
 
     unsafe extern "C" {
         pub fn nm_start(
@@ -398,15 +403,17 @@ unsafe extern "C" fn on_node(_user_data: *mut c_void, status: *const sys::NmNode
     );
 }
 
-unsafe extern "C" fn on_tx(
-    _user_data: *mut c_void,
-    event: i32,
-    tx_hash: *const u8,
-    _tx: *const u8,
-    tx_len: usize,
-) {
-    let hash = unsafe { slice::from_raw_parts(tx_hash, 32) };
-    println!("tx {event} {}  {tx_len} bytes", hex(hash));
+unsafe extern "C" fn on_tx(_user_data: *mut c_void, info: *const sys::NmTxInfo) {
+    let info = unsafe { &*info };
+    println!(
+        "tx {} {}  flags {} nonce {} {} bytes from {}",
+        info.event,
+        hex(&info.hash),
+        info.flags,
+        info.nonce,
+        info.tx_len,
+        hex(&info.sender)
+    );
 }
 
 unsafe fn copy(data: *const u8, length: usize) -> Vec<u8> {

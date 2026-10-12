@@ -22,14 +22,14 @@ static void print_hex(const char* label, const uint8_t* bytes, size_t length)
 static pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Called concurrently from the node's threads.
-static void on_tx(void* user_data, int32_t event, const uint8_t* tx_hash, const uint8_t* tx, size_t tx_len)
+static void on_tx(void* user_data, const nm_tx_info* info)
 {
     (void)user_data;
-    (void)tx;
     pthread_mutex_lock(&print_lock);
-    printf("tx %d ", event);
-    print_hex("", tx_hash, 32);
-    printf("  %zu bytes\n", tx_len);
+    printf("tx %d ", info->event);
+    print_hex("", info->hash, sizeof info->hash);
+    printf("  flags %u nonce %llu %zu bytes ", info->flags, (unsigned long long)info->nonce, info->tx_len);
+    print_hex("from ", info->sender, sizeof info->sender);
     fflush(stdout);
     pthread_mutex_unlock(&print_lock);
 }
