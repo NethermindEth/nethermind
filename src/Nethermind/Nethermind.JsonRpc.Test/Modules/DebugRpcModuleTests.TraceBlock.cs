@@ -49,6 +49,67 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [Test]
+    public async Task Debug_traceBlockByNumber_buffered_execution_deadline(
+        [Values("callTracer", "prestateTracer", "4byteTracer", "noopTracer", "")] string tracer,
+        [Values("0s", "-1s", "1s")] string timeout, [Values] bool filtered)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Dictionary<string, object> options = new() { ["timeout"] = timeout, ["streamMode"] = false };
+        if (tracer.Length != 0) options["tracer"] = tracer;
+        if (filtered) options["txHash"] = block.Transactions[^1].Hash!;
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        if (timeout == "1s" || tracer == "noopTracer")
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((JArray)json["result"]!, Has.Count.EqualTo(filtered ? 1 : block.Transactions.Length));
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            string byHash = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, options);
+            Assert.That(JToken.Parse(byHash)["error"], Is.Null, "ByHash deadline behavior is outside this change");
+        }
+    }
+
+    [TestCase("callTracer", "onlyTopCall")]
+    [TestCase("prestateTracer", "diffMode")]
+    public async Task Debug_traceBlockByNumber_native_config_error_precedes_expired_deadline(string tracer, string field)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer, timeout = "0s", tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"{{field}}":[]}""") });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Not.Null, response);
+        Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert").And.Not.Contain("execution timeout"), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_does_not_start_deadlines_without_a_selected_transaction(
+        [Values("callTracer", "prestateTracer", "4byteTracer", "")] string tracer, [Values] bool empty)
+    {
+        using Context context = await Context.Create();
+        Block block = empty ? await context.Blockchain.AddBlock()
+            : await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        Dictionary<string, object> options = new() { ["timeout"] = "0s", ["streamMode"] = false };
+        if (tracer.Length != 0) options["tracer"] = tracer;
+        if (!empty) options["txHash"] = TestItem.KeccakD;
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", block.Number, options);
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        Assert.That((JArray)json["result"]!, Is.Empty);
+    }
+
     [TestCase(false, "\"bad\"", "lookup")]
     [TestCase(false, "\"5s\"", "lookup")]
     [TestCase(true, "\"bad\"", "constructor")]

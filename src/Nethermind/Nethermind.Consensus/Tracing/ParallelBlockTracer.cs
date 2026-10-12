@@ -9,6 +9,7 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -255,7 +256,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {
-                IBlockTracer bounded = TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), hash, seeds);
+                IBlockTracer cancelable = tracer is GethLikeBlockDeadlineTracer deadline
+                    ? GethLikeBlockDeadlineTracer.WithCancellation(deadline, token)
+                    : tracer.WithCancellation(token);
+                IBlockTracer bounded = TransactionTraceBoundary.Wrap(cancelable, hash, seeds);
                 if (bounded is not TransactionTraceBoundary boundary)
                 {
                     tracer.TryDispose();
@@ -269,10 +273,21 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
-            catch
+            catch (OperationCanceledException) when (tracer is GethLikeBlockDeadlineTracer { Expired: true } expired)
             {
-                tracer.TryDispose();
+                GethTraceDeadlineException exception = new();
+                expired.DisposeAfterFailure(exception);
+                throw exception;
+            }
+            catch (Exception exception)
+            {
+                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.DisposeAfterFailure(exception);
+                else tracer.TryDispose();
                 throw;
+            }
+            finally
+            {
+                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.Dispose();
             }
         }
         finally
