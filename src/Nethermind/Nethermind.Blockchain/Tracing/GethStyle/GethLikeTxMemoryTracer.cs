@@ -26,7 +26,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
-        _ = options.Timeout;
+        options.ResolveTimeout();
     }
 
     /// <inheritdoc/>

@@ -77,7 +77,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     private static void ValidateLength(ref Utf8JsonReader reader)
     {
         long byteLen = reader.HasValueSequence ? reader.ValueSequence.Length : reader.ValueSpan.Length;
-        if (byteLen > MaxInputBytes) throw new JsonException($"Duration string exceeds {MaxInputBytes} characters.");
+        if (byteLen > MaxInputBytes) throw new JsonException($"Duration string exceeds {MaxInputBytes} bytes.");
     }
 
     private static TimeSpan ReadFromStackBuffer(ref Utf8JsonReader reader)
@@ -101,7 +101,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     internal static TimeSpan Parse(string value)
     {
         if (Encoding.UTF8.GetByteCount(value) > MaxInputBytes)
-            throw new TraceDurationFormatException($"Duration string exceeds {MaxInputBytes} characters.");
+            throw new TraceDurationFormatException($"Duration string exceeds {MaxInputBytes} bytes.");
 
         return Parse(value.AsSpan());
     }
@@ -122,6 +122,12 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     {
         Span<char> buf = stackalloc char[FormatBufferSize];
         writer.WriteStringValue(Format(value, buf));
+    }
+
+    internal static string Format(TimeSpan value)
+    {
+        Span<char> buf = stackalloc char[FormatBufferSize];
+        return new string(Format(value, buf));
     }
 
     // Port of Go's Duration.String() — builds the result right-to-left into buf.
