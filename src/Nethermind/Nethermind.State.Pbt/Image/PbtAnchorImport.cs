@@ -36,10 +36,10 @@ public sealed class PbtAnchorImport(
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorImport>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
-    /// <remarks>The preimages are not ingested: they only rebuild the anchor's MPT root over the staged state. Without
-    /// them nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked. Preimages are
-    /// verified before the fold publishes the tree, which is what marks the target valid, so a refused import stays
-    /// unpublished and a restart wipes its staging.</remarks>
+    /// <remarks>The preimages are not ingested: joined against the snapshot's leaves as they stream, they only rebuild
+    /// the anchor's MPT root over the snapshot's state. Without them nothing ties the snapshot to the anchor's MPT root;
+    /// only its own claimed PBT root is checked. Preimages are verified before the fold publishes the tree, which is
+    /// what marks the target valid, so a refused import stays unpublished and a restart wipes its staging.</remarks>
     public async Task<ValueHash256> ImportSnapshot(Stream snapshot, Stream? preimages,
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
@@ -53,12 +53,14 @@ public sealed class PbtAnchorImport(
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
         float snapshotLength = snapshot.Length;
         RecoverStaging(anchor, cancellationToken);
+        using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ExportSortBufferBytes, logManager, cancellationToken);
+        verifier?.List(preimages!);
         string directory = Path.Combine(scratchDirectory, $"pbt-import-codes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
         {
             (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-                token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
+                token => verifier is null ? SnapshotLeaves(snapshot, token) : verifier.Join(SnapshotLeaves(snapshot, token)), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
                 new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
             Finish(anchor, root, accounts, slots, importing, cancellationToken);
             return root;
@@ -70,11 +72,8 @@ public sealed class PbtAnchorImport(
 
         void VerifyStaged(ulong stagedAccounts, ulong stagedSlots, CancellationToken token)
         {
-            if (preimages is null) return;
-            using (IPbtPersistence.IReader reader = target.CreateReader())
-                if (PbtImageVerifier.Verify(preimages, reader, anchor, scratchDirectory, config.MigrationVerifyBucketBytes, config.ExportSortBufferBytes,
-                        config.ImportConcurrency, logManager, token) != (stagedAccounts, stagedSlots))
-                    throw new InvalidDataException("Snapshot holds state its preimages do not list.");
+            if (verifier is null) return;
+            verifier.Verify(anchor, token);
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
     }
