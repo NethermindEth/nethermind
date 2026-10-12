@@ -321,13 +321,24 @@ public class DebugModuleTests
         Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
-    [TestCase(null)]
-    [TestCase("missingTracer")]
-    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(string? tracer)
+    [TestCase(null, false)]
+    [TestCase("missingTracer", false)]
+    [TestCase(null, true)]
+    [TestCase("noopTracer", true)]
+    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(string? tracer, bool headerRetained)
     {
         const ulong number = 26236007;
+        BlockParameter selector = new(number);
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
-        string response = await SerializedRequest("debug_traceBlockByNumber", new BlockParameter(number), new { tracer });
+        if (headerRetained)
+        {
+            BlockHeader header = Build.A.BlockHeader.WithNumber(number).TestObject;
+            _blockFinder.FindHeader(selector).Returns(header);
+            _blockchainBridge.HasStateForBlock(header).Returns(true);
+            _debugBridge.GetBlockTrace(selector, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+                .Returns(_ => throw new ArgumentNullException("block"));
+        }
+        string response = await SerializedRequest("debug_traceBlockByNumber", selector, new { tracer });
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {

@@ -480,7 +480,9 @@ public class DebugRpcModule(
             Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
             if (resolvedBlock is null)
             {
-                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
+                return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(
+                    blockNumber.Type == BlockParameterType.BlockNumber ? $"block #{blockNumber.BlockNumber} not found" : $"Block body not found for {blockNumber}",
+                    ErrorCodes.ResourceNotFound);
             }
 
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
@@ -502,6 +504,10 @@ public class DebugRpcModule(
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
+        }
+        catch (ArgumentNullException exception) when (exception.ParamName == "block" && blockNumber.Type == BlockParameterType.BlockNumber)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
         }
         catch (ArgumentNullException)
         {
