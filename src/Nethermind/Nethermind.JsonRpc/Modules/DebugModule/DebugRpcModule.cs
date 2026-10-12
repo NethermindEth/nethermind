@@ -505,6 +505,8 @@ public class DebugRpcModule(
 
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
+        // TraceBlockImpl signals a missing body with ThrowIfNull(block). Keep the selector overload
+        // rather than pre-resolving a Block, which would disable indexed replay.
         catch (ArgumentNullException exception) when (exception.ParamName == "block" && blockNumber.Type == BlockParameterType.BlockNumber)
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"block #{blockNumber.BlockNumber} not found", ErrorCodes.ResourceNotFound);
