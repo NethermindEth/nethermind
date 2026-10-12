@@ -42,9 +42,9 @@ public class JsonRpcIpcRunnerTests
         {
             switch (++attempts)
             {
-                case 1:
+                case <= 3:
                     throw new SocketException((int)SocketError.TooManyOpenSockets);
-                case 2:
+                case 4:
                     return accepted;
                 default:
                     await Task.Delay(Timeout.Infinite, token);
@@ -62,7 +62,8 @@ public class JsonRpcIpcRunnerTests
         {
             Assert.That(first, Is.SameAs(onAccepted.Task), "the accept loop must survive a failed accept");
             Assert.That(onAccepted.Task.IsCompletedSuccessfully ? onAccepted.Task.Result : null, Is.SameAs(accepted));
-            Assert.That(testLogger.LogList, Has.Some.StartsWith("Failed to accept an IPC connection (TooManyOpenSockets)"));
+            Assert.That(testLogger.LogList.Count(l => l.StartsWith("Failed to accept an IPC connection (TooManyOpenSockets)")), Is.EqualTo(1),
+                "a persistent accept error must be logged once, not on every retry");
         }
     }
 

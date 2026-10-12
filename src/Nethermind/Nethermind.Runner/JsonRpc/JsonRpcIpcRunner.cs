@@ -66,7 +66,15 @@ namespace Nethermind.Runner.JsonRpc
                 return;
             }
 
-            await AcceptConnectionsAsync(_server.AcceptAsync, OnAccepted, _logger, cancellationToken);
+            try
+            {
+                await AcceptConnectionsAsync(_server.AcceptAsync, OnAccepted, _logger, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // The task from Task.Factory.StartNew is discarded, so this is the only place the failure surfaces
+                if (_logger.IsError) _logger.Error("IPC server stopped accepting connections.", ex);
+            }
 
             void OnAccepted(Socket socket)
             {
@@ -83,9 +91,11 @@ namespace Nethermind.Runner.JsonRpc
             ILogger logger,
             CancellationToken cancellationToken)
         {
+            // Set while accept keeps failing, so a persistent error is logged once instead of on every retry
+            SocketError? acceptError = null;
             while (true)
             {
-                if (logger.IsInfo) logger.Info($"Waiting for an IPC connection...");
+                if (acceptError is null && logger.IsInfo) logger.Info($"Waiting for an IPC connection...");
 
                 Socket socket;
                 try
@@ -103,7 +113,8 @@ namespace Nethermind.Runner.JsonRpc
                 }
                 catch (SocketException ex)
                 {
-                    if (logger.IsWarn) logger.Warn($"Failed to accept an IPC connection ({ex.SocketErrorCode}), retrying.");
+                    if (ex.SocketErrorCode != acceptError && logger.IsWarn) logger.Warn($"Failed to accept an IPC connection ({ex.SocketErrorCode}), retrying.");
+                    acceptError = ex.SocketErrorCode;
 
                     // Avoids a busy loop while the error persists, e.g. when out of file descriptors
                     try
@@ -118,6 +129,7 @@ namespace Nethermind.Runner.JsonRpc
                     continue;
                 }
 
+                acceptError = null;
                 onAccepted(socket);
             }
         }
