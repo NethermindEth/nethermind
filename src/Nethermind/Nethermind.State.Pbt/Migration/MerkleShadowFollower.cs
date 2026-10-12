@@ -59,7 +59,7 @@ public sealed class MerkleShadowFollower(
         lock (_gate)
         {
             if (_scheduler is not null) return;
-            _scheduler = new PbtBalFollowerScheduler(Follow, () => Error, () => Cursor);
+            _scheduler = new PbtBalFollowerScheduler(Follow);
             blockTree.OnUpdateMainChain += OnCanonicalChanged;
             blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         }

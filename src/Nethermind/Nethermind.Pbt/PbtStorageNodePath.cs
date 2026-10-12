@@ -23,13 +23,11 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     /// <inheritdoc/>
     public static int MaxBitDepth => MaxByteLength * 8;
     /// <inheritdoc/>
-    public static PbtStorageNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth, validated: true);
+    public static PbtStorageNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth);
 
-    public PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth) : this(path, bitDepth, validated: false) { }
-
-    private PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth, bool validated)
+    public PbtStorageNodePath(ReadOnlySpan<byte> path, int bitDepth)
     {
-        if (!validated) PbtNodeCodec.ValidatePath(path, bitDepth, MaxBitDepth);
+        PbtNodeCodec.ValidatePath(path, bitDepth, MaxBitDepth);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(path.Length, MaxByteLength, nameof(path));
         path.CopyTo(_bytes);
         BitDepth = bitDepth;

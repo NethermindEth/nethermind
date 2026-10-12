@@ -32,7 +32,7 @@ public class MigrationEngineRpcE2ETests
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat,
             builder => builder.AddModule(new MergePluginModule()).AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>());
-        await harness.Scheduler.DisposeAsync();
+        await harness.HeadFollower.DisposeAsync();
         IEngineRpcModule engine = harness.Container.Resolve<IEngineRpcModule>();
         IEthRpcModule eth = harness.Container.Resolve<IRpcModuleFactory<IEthRpcModule>>().Create();
         IMigrationDebugRpcModule debug = harness.Container.Resolve<IMigrationDebugRpcModule>();

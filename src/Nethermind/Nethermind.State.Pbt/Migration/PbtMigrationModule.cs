@@ -5,6 +5,7 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Api.Steps;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Container;
@@ -12,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
+using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Synchronization.ParallelSync;
@@ -46,10 +48,16 @@ public sealed class PbtMigrationModule(IPbtConfig configuration) : Module
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
             .AddSingleton<PbtMigrationBootstrap>()
-            .AddSingleton<PbtMigrationImport>()
+            .AddSingleton<PbtMigrationImport, PbtMigrationBootstrap, PbtBalHeadFollower, IProcessExitSource, ILogManager>((bootstrap, follower, processExitSource, logManager) =>
+                new PbtMigrationImport(async token =>
+                {
+                    await bootstrap.Initialize(token);
+                    follower.Start();
+                }, processExitSource, logManager))
             .AddSingleton<PbtBalReplay>()
             .AddSingleton<PbtBalFollower>()
-            .AddSingleton<PbtBalFollowerScheduler>()
+            .AddSingleton<PbtBalFollowerScheduler, PbtBalFollower>(follower => new PbtBalFollowerScheduler(follower.Follow))
+            .AddSingleton<PbtBalHeadFollower>()
             .AddSingleton<PbtBranchFollower>()
             .AddSingleton<MerkleShadowFollower>()
             .Bind<IMerkleShadowFollower, MerkleShadowFollower>()

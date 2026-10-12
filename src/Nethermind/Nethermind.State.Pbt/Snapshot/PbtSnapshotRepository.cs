@@ -22,7 +22,7 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// Memory base and compacted layers coexist with four persisted tiers. Compacted edges are traversal
 /// shortcuts, not substitutes for independently available base snapshots.
 /// </remarks>
-public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
+public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtPersistedPublicationGate publicationGate) : IDisposable
 {
     // Metrics are optional; operational memory accounting must remain active for byte-budget enforcement.
     private readonly bool _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
@@ -31,13 +31,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
     private readonly Dictionary<StateId, PbtSnapshot> _compactedSnapshots = [];
     private StateId? _lastCommittedStateId;
     private readonly PbtPersistedIndex _persisted = new(Comparer<StateId>.Create(CompareStates));
-    private readonly ISnapshotCatalog _catalog = NullSnapshotCatalog.Instance;
-    private readonly PbtPersistedPublicationGate _publicationGate = new();
+    private readonly ISnapshotCatalog _catalog = catalog;
+    private readonly PbtPersistedPublicationGate _publicationGate = publicationGate;
     private long _memoryBytes;
     private bool _disposed;
-
-    public PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtPersistedPublicationGate publicationGate)
-        : this(metricsConfig) => (_catalog, _publicationGate) = (catalog, publicationGate);
 
     public long InMemorySnapshotBytes { get { lock (_lock) return _memoryBytes; } }
     public int PersistedCount { get { lock (_lock) return _persisted.Count; } }

@@ -1574,12 +1574,13 @@ public class PbtDbManagerTests
             reader.CurrentState.Returns(PersistenceState(0));
             Persistence.CreateReader().Returns(reader);
             Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>()).Returns(Batch);
-            PersistenceManager = new(config, Finalized, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+            PersistenceManager = new(config, Finalized, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
+                NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
         }
 
         public PbtConfig Config { get; }
         public PbtResourcePool Pool { get; }
-        public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig());
+        public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         public MemDb Metadata { get; } = new();
         public ICompactionSchedule Schedule { get; }
         public PbtTestContext.TestFinalizedStateProvider Finalized { get; } = new();
@@ -1589,7 +1590,7 @@ public class PbtDbManagerTests
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs, IPbtTrieNodeCache trieNodeCache) =>
             new(Repository, PersistenceManager, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
-                new MetricsConfig(), trieNodeCache);
+                new MetricsConfig(), trieNodeCache, NullPbtPersistedSnapshotLoader.Instance);
 
         public void Dispose()
         {

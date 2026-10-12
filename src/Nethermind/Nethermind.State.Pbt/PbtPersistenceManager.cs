@@ -3,14 +3,12 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
@@ -43,13 +41,6 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         (ulong)config.MinReorgDepth + (ulong)config.CompactSize);
     // StateId is wider than an atomic write; publish immutable boxes so readers cannot observe torn roots.
     private StrongBox<StateId>? _currentPersistedState;
-
-    public PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider finalizedStateProvider,
-        IPbtPersistence persistence, PbtSnapshotRepository repository, [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
-        IStatePersistenceBarrier persistenceBarrier, ILogManager logManager)
-        : this(config, finalizedStateProvider, persistence, repository, schedule, persistenceBarrier, logManager,
-            NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None)
-    { }
 
     public IPbtConfig Configuration => _config;
 

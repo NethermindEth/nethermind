@@ -13,7 +13,7 @@ namespace Nethermind.State.Pbt.Steps;
 public sealed class InitializePbtMigration(
     PbtMigrationBootstrap bootstrap,
     PbtMigrationImport import,
-    PbtBalFollowerScheduler follower,
+    PbtBalHeadFollower follower,
     PbtBranchFollower branchFollower,
     MerkleShadowFollower merkleShadow,
     IPbtConfig config) : IStep

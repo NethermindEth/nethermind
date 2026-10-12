@@ -33,7 +33,7 @@ public class PbtCarryForwardCachingPersistenceTests
     public void SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<PbtCarryForwardCachingPersistence, FakePersistence> scenario, int expectedAccountReads, int expectedRunReads)
     {
         FakePersistence inner = new();
-        PbtCarryForwardCachingPersistence cache = new(inner);
+        PbtCarryForwardCachingPersistence cache = new(inner, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind);
 
         Read(cache);
         scenario(cache, inner);
@@ -49,7 +49,7 @@ public class PbtCarryForwardCachingPersistenceTests
     [Test]
     public void GetSlotRun_ServesCallerOwnedCopies()
     {
-        PbtCarryForwardCachingPersistence cache = new(new FakePersistence());
+        PbtCarryForwardCachingPersistence cache = new(new FakePersistence(), PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind);
         using IPbtPersistence.IReader reader = cache.CreateReader();
 
         PackedSlotRun first = reader.GetSlotRun(Run1);
@@ -86,7 +86,7 @@ public class PbtCarryForwardCachingPersistenceTests
         const int readsPerReader = 64;
         ValueHash256[] addressHashes = [.. Enumerable.Range(0, 8).Select(i => PbtStateKey.AddressKeyHash(TestItem.Addresses[i]))];
         FakePersistence inner = new();
-        PbtCarryForwardCachingPersistence cache = new(inner);
+        PbtCarryForwardCachingPersistence cache = new(inner, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind);
         using Barrier startLine = new(readerThreads + 1);
         int mismatches = 0;
 

@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -32,7 +33,7 @@ public class PbtSnapshotBundleTests
     public void Mixed_persisted_and_memory_bundle_survives_pruning_and_honors_clears([Values] bool clear, [Values] bool rewrite)
     {
         using PbtPersistedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         PbtSnapshotContent persistedContent = new();
@@ -86,7 +87,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.ReadChain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false, slotFilterBitsPerKey: 0), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -347,7 +348,7 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
             Assert.That(Metrics.PbtTrieCacheMemory["account"] - initialMemory, Is.LessThanOrEqualTo(budget));
         }
-        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0);
+        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         int readsBeforeDirectRead = reader.GroupReadCount;
@@ -818,9 +819,9 @@ public class PbtSnapshotBundleTests
         byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
         Reader reader = new(new PbtVariableTreeKey([0]), null) { GroupPayload = persisted };
         PbtResourcePool pool = new(new PbtConfig());
-        PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
-            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted, memoryProvider), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared, memoryProvider))
-            : new(0);
+        PbtSnapshotChain sharedSnapshots = newestTier >= 1
+            ? PbtSnapshotBundleTestExtensions.ReadChain(pool, Content(groupKey, persisted, memoryProvider), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared, memoryProvider))
+            : new([]);
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
             ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared, memoryProvider), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local, memoryProvider))
             : new(0);
@@ -863,7 +864,7 @@ public class PbtSnapshotBundleTests
     public void Snapshot_group_resolution_honors_persisted_and_newer_memory_entries([Values] bool tombstone, [Values] bool newerMemory)
     {
         using PbtPersistedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         PbtStorageNodePath path = new([], 0);
         byte[] persistedEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);

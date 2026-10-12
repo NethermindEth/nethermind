@@ -168,7 +168,7 @@ public sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong version,
         try
         {
             Span<byte> commit = stackalloc byte[TrieNodeLogRecord.HeaderLength];
-            TrieNodeLogRecord.CommitRecord(version).Write(commit);
+            new TrieNodeLogRecord(TrieNodeLogRecord.Commit, 0, 0, version, ~version).Write(commit);
             foreach ((TrieNodeLogGeneration generation, _) in _touched)
             {
                 if (generation == _current)

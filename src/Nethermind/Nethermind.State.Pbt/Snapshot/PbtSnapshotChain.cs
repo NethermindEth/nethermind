@@ -14,12 +14,10 @@ public sealed class PbtPersistedPublicationGate
     public Lock Sync { get; } = new();
 }
 
-public sealed class PbtPersistedStorageLifetime
+public sealed class PbtPersistedStorageLifetime(IArenaManager? arena, BlobArenaManager? blobs)
 {
-    private IArenaManager? Arena { get; }
-    private BlobArenaManager? Blobs { get; }
-    public PbtPersistedStorageLifetime() { }
-    public PbtPersistedStorageLifetime(IArenaManager arena, BlobArenaManager blobs) => (Arena, Blobs) = (arena, blobs);
+    private IArenaManager? Arena { get; } = arena;
+    private BlobArenaManager? Blobs { get; } = blobs;
 
     public void AbortLoad()
     {

@@ -9,7 +9,7 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
     /// <summary>Gets the maximum supported path depth.</summary>
     static abstract int MaxBitDepth { get; }
     /// <summary>Creates a path from canonical bytes: exactly <c>(bitDepth + 7) / 8</c> of them with unused bits zero.</summary>
-    /// <remarks>Only the capacity is checked; the public constructor validates the bytes.</remarks>
+    /// <remarks>Only the capacity is checked in release builds; debug builds also validate the bytes.</remarks>
     /// <exception cref="ArgumentOutOfRangeException">The path exceeds the capacity.</exception>
     static abstract TSelf Create(ReadOnlySpan<byte> path, int bitDepth);
     /// <summary>Gets the number of consumed key bits.</summary>
