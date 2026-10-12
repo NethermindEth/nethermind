@@ -9,7 +9,7 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
-public class GnosisSpecProvider : ForkScheduleSpecProvider
+public partial class GnosisSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong ConstantinopleBlockNumber = 1_604_400;
     public const ulong ConstantinopleFixBlockNumber = 2_508_800;
@@ -23,7 +23,6 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public const ulong OsakaTimestamp = 0x69de2dbc;
-    public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     // Lazy because LondonGnosis.Apply → GnosisSpecProvider.FeeCollector → GnosisSpecProvider static
     // init → LondonGnosis.Instance (still building → null) is a circular init if Chiado or anything
@@ -65,6 +64,4 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong? DaoBlockNumber => null;
     public string SealEngine => SealEngineType.AuRa;
-
-    public static GnosisSpecProvider Instance { get; } = new();
 }

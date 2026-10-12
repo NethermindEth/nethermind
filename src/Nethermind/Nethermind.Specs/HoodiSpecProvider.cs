@@ -8,7 +8,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class HoodiSpecProvider : ForkScheduleSpecProvider
+public partial class HoodiSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong ShanghaiTimestamp = 0x0;
     public const ulong CancunTimestamp = 0x0;
@@ -46,6 +46,4 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Hoodi;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-
-    public static readonly HoodiSpecProvider Instance = new();
 }

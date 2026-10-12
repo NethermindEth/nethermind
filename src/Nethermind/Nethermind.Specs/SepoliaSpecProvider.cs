@@ -8,7 +8,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class SepoliaSpecProvider : ForkScheduleSpecProvider
+public partial class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
@@ -49,6 +49,4 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Sepolia;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
-
-    public static SepoliaSpecProvider Instance { get; } = new();
 }

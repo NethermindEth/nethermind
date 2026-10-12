@@ -7,7 +7,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MordenSpecProvider : ForkScheduleSpecProvider
+public partial class MordenSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong HomesteadBlockNumber = 494_000;
     public const ulong SpuriousDragonBlockNumber = 1_885_000;
@@ -26,6 +26,4 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
     public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public override ulong NetworkId => BlockchainIds.Morden;
     public override ulong? BeaconChainGenesisTimestamp => null;
-
-    public static MordenSpecProvider Instance { get; } = new();
 }

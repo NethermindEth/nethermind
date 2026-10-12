@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MainnetSpecProvider : ForkScheduleSpecProvider
+public partial class MainnetSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong HomesteadBlockNumber = 1_150_000;
     public const ulong DaoForkBlockNumber = 1_920_000;
@@ -32,15 +31,6 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public const ulong BPO2BlockTimestamp = 0x695db057;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue - 1;
     public const ulong BogotaBlockTimestamp = ulong.MaxValue;
-
-    public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
-    public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
-    public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
-    public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
-    public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
-    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
-    public static ForkActivation BogotaActivation { get; } = (ParisBlockNumber + 8, BogotaBlockTimestamp);
 
     public MainnetSpecProvider() : this(new ForkSchedule
     {
@@ -79,6 +69,4 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public override ulong? DaoBlockNumber => DaoForkBlockNumber;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong TimestampFork => ShanghaiBlockTimestamp;
-
-    public static MainnetSpecProvider Instance { get; } = new();
 }
