@@ -248,7 +248,7 @@ public static partial class EvmInstructions
             (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
             EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
-            if (vm.IsTracingActions)
+            if (DispatchFlags.ConstTracing && vm.IsTracingActions)
                 TraceRejectedCall<TGasPolicy, TOpCall>(vm, in dataOffset, in dataLength, codeSource, in callValue, gasLimitUl, codeInfo.IsPrecompile, precheckError);
 
             // If the call cannot proceed, return an empty response and push zero on the stack.
@@ -450,13 +450,11 @@ public static partial class EvmInstructions
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void TraceCallGasError<TGasPolicy, TOpCall>(VirtualMachine<TGasPolicy> vm, ulong initialGas, bool coldAccess, bool hasValueTransfer, in UInt256 requestedGas, ulong initialMemorySize,
-        in UInt256 dataOffset, in UInt256 dataLength, in UInt256 outputOffset, in UInt256 outputLength, bool newAccountCharge = false)
+        in UInt256 dataOffset, in UInt256 dataLength, in UInt256 outputOffset, in UInt256 outputLength, bool newAccountCharge)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
     {
         IReleaseSpec spec = vm.Spec;
-        if (!DispatchFlags.ConstTracing || !vm.IsTracingActions) return;
-
         ulong coldCost = spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
         ulong constantCost = spec.UseHotAndColdStorage ? GasCostOf.WarmStateRead : spec.GasCosts.CallCost;
         if (initialGas < constantCost)
@@ -564,7 +562,8 @@ public static partial class EvmInstructions
     {
         ExecutionEnvironment env = vm.VmState.Env;
         // The call already paid to expand memory over its input.
-        vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        bool loaded = vm.VmState.Memory.TryLoad(in dataOffset, in dataLength, out ReadOnlyMemory<byte> input);
+        Debug.Assert(loaded, "The rejected call input was validated and expanded before its precheck.");
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
     }
 

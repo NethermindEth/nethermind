@@ -5769,7 +5769,7 @@ public partial class FrameTxProcessorTests
     private static GethTraceOptions PrestateOptions(bool diffMode) => GethTraceOptions.Default with
     {
         Tracer = NativePrestateTracer.PrestateTracer,
-        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}}}""")
+        TracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"diffMode":{{(diffMode ? "true" : "false")}},"includeEmpty":{{(diffMode ? "false" : "true")}}}""")
     };
 
     private static BigInteger PrestateBalance(JsonElement state, string address) =>

@@ -18,11 +18,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -78,6 +81,54 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(calls[0].GetProperty("type").GetString(), Is.EqualTo(opcode.ToString()));
             Assert.That(calls[0].GetProperty("input").GetString(), Is.EqualTo(withInput ? "0xdeadbeef" : "0x"));
             Assert.That(calls[0].GetProperty("to").GetString(), Is.EqualTo("0x000000000000000000000000000000000000beef"));
+        }
+    }
+
+    [Test]
+    public void Call_tracer_records_depth_rejection(
+        [Values(Instruction.CALL, Instruction.CALLCODE, Instruction.DELEGATECALL, Instruction.STATICCALL)] Instruction opcode)
+    {
+        Prepare call = opcode switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(TestItem.AddressC, 50000),
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(TestItem.AddressC, 50000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(TestItem.AddressC, 50000),
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000),
+            _ => throw new ArgumentOutOfRangeException(nameof(opcode), opcode, null)
+        };
+        byte[] code = call.Op(Instruction.POP).STOP().Done;
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        ExecutionEnvironment env = ExecutionEnvironment.Rent(
+            new CodeInfo(code),
+            executingAccount: Recipient,
+            caller: Sender,
+            codeSource: Recipient,
+            callDepth: VirtualMachineStatics.MaxCallDepth,
+            value: UInt256.Zero,
+            inputData: ReadOnlyMemory<byte>.Empty);
+        EthereumGasPolicy gas = new() { Value = 1_000_000 };
+        StackAccessTracker accessTracker = new();
+        using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
+            gas,
+            ExecutionType.CALL,
+            env,
+            in accessTracker,
+            Snapshot.Empty);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
+        Machine.SetBlockExecutionContext(new BlockExecutionContext(block.Header, CancunSpec));
+        Machine.SetTxExecutionContext(new TxExecutionContext(Sender, CodeInfoRepository, null, UInt256.Zero));
+
+        Machine.ExecuteTransaction<OffFlag>(vmState, TestState, tracer);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)result.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame rejected = root.Calls![0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.Type, Is.EqualTo(opcode), "type");
+            Assert.That(rejected.Error, Is.EqualTo("max call depth exceeded"), "error");
+            Assert.That(rejected.Gas, Is.EqualTo(50000UL), "gas");
+            Assert.That(rejected.GasUsed, Is.Zero, "gasUsed");
         }
     }
 
@@ -499,6 +550,38 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             else
                 Assert.That(root.GetProperty("calls")[0].GetProperty("error").GetString(),
                     Is.EqualTo("out of gas: not enough gas for reentrancy sentry"));
+        }
+    }
+
+    private static TestCaseData[] ActionDiagnosticCompositionCases =>
+    [
+        new("01", 100000UL, "stack underflow (0 <=> 2)"),
+        new("600160006110003e", 21100UL, "out of gas")
+    ];
+
+    [TestCaseSource(nameof(ActionDiagnosticCompositionCases))]
+    public void Call_trace_diagnostics_do_not_depend_on_opcode_tracer(string bytecode, ulong gasLimit, string expectedError)
+    {
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.PragueActivation, gasLimit, Bytes.FromHexString(bytecode));
+        IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.PragueActivation);
+        using NativeCallTracer standalone = new(tx, spec, GetGethTraceOptions(null));
+        _processor.CallAndRestore(tx, block.Header, standalone);
+        using GethLikeTxTrace standaloneResult = standalone.BuildResult();
+        string standaloneJson = JsonSerializer.Serialize(standaloneResult.CustomTracerResult?.Value, SerializerOptions);
+
+        using NativeCallTracer composed = new(tx, spec, GetGethTraceOptions(null));
+        using CompositeTxTracer executionTracer = new(composed, new GasCheckpointTracer());
+        _processor.CallAndRestore(tx, block.Header, executionTracer);
+        using GethLikeTxTrace composedResult = composed.BuildResult();
+        string composedJson = JsonSerializer.Serialize(composedResult.CustomTracerResult?.Value, SerializerOptions);
+
+        using JsonDocument standaloneTrace = JsonDocument.Parse(standaloneJson);
+        using JsonDocument composedTrace = JsonDocument.Parse(composedJson);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(standaloneJson, Is.EqualTo(composedJson));
+            Assert.That(standaloneTrace.RootElement.GetProperty("error").GetString(), Is.EqualTo(expectedError));
+            Assert.That(composedTrace.RootElement.GetProperty("error").GetString(), Is.EqualTo(expectedError));
         }
     }
 

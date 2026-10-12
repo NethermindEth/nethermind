@@ -92,7 +92,8 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ulong traceInitialGas = TTracingInst.IsActive ? TGasPolicy.GetRemainingGas(in gas) : 0;
+        bool traceError = DispatchFlags.ConstTracing && (TTracingInst.IsActive || vm.IsTracingActions);
+        ulong traceInitialGas = traceError ? TGasPolicy.GetRemainingGas(in gas) : 0;
         ulong words = EvmCalculations.Div32Ceiling(in size, out bool outOfGas);
         if (TTracingInst.IsActive && !outOfGas && words <= (ulong.MaxValue - GasCostOf.VeryLow) / GasCostOf.Memory)
             vm.TraceMemoryOperationGasCost(in destOffset, in size, GasCostOf.VeryLow + GasCostOf.Memory * words);
@@ -102,7 +103,7 @@ public static partial class EvmInstructions
         // Ahead of the zero-length short-circuit: a zero-length read past the end still halts.
         if (UInt256.AddOverflow(size, sourceOffset, out UInt256 end) || end > source.Length)
         {
-            if (TTracingInst.IsActive)
+            if (traceError)
             {
                 // Geth calculates memory expansion before checking return-data bounds.
                 EvmPooledMemory traceMemory = vm.VmState.Memory;
@@ -110,7 +111,8 @@ public static partial class EvmInstructions
                 ulong remainingGas = TGasPolicy.GetRemainingGas(in gas);
                 if (!memoryOverflow)
                 {
-                    vm.TraceOperationGasCost(traceInitialGas - remainingGas + memoryCost);
+                    if (TTracingInst.IsActive)
+                        vm.TraceOperationGasCost(traceInitialGas - remainingGas + memoryCost);
                     if (memoryCost > remainingGas)
                         vm.TraceActionErrorDetails("out of gas");
                 }
