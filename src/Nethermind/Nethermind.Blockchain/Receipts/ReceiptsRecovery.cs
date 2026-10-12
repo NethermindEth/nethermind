@@ -170,6 +170,8 @@ namespace Nethermind.Blockchain.Receipts
             private int _lastTransactionIndex = -1;
             private Hash256? _lastTransactionHash;
 
+            public Hash256 TransactionHash => _lastTransactionHash!;
+
             public void RecoverReceiptData(TxReceipt receipt)
             {
                 receipt.TxHash = NextTransactionHash();

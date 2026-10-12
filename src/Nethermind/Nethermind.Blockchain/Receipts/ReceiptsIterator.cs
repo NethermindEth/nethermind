@@ -122,6 +122,12 @@ namespace Nethermind.Blockchain.Receipts
             _logRecoveryReceiptIndex = _receiptIndex;
         }
 
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current, out Hash256? transactionHash)
+        {
+            RecoverLogFieldsIfNeeded(ref current);
+            transactionHash = _recoveryContextConfigured ? null : _selectiveLogRecoveryContext?.TransactionHash;
+        }
+
         private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
             if (_recoveryContextConfigured) return;

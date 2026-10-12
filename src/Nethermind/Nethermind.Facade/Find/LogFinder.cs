@@ -237,7 +237,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(ref log))
                             {
                                 // On CL workload, recovery happens about 70% of the time.
-                                iterator.RecoverLogFieldsIfNeeded(ref receipt);
+                                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
 
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;
@@ -253,7 +253,7 @@ namespace Nethermind.Facade.Find
                                     blockTimestamp,
                                     blockHash ??= receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
-                                    txHash ??= receipt.TxHash.ToCommitment(),
+                                    txHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
                                     data,
                                     topics));
