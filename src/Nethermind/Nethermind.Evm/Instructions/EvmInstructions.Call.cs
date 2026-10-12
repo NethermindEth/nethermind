@@ -352,7 +352,7 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer, as for a value CALL.
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer, charged to the current frame as SELFDESTRUCT does.
         if (TSpec.IsEip8360Enabled && hasValueTransfer && vmState.AccessTracker.TransientCreates is not null && target != executingAccount)
         {
             if (vmState.IsTransientCreateContext
