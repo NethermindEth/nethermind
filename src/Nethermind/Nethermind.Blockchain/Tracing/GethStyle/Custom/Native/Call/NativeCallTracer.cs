@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -11,7 +12,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 

@@ -31,7 +31,6 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
@@ -380,7 +379,7 @@ public class GethStyleTracer(
         }
 
         bool streamsNative = writer is not null && options.TxHash is null && GethLikeNativeTracerFactory.IsNativeTracer(options.Tracer);
-        bool wantsLogIndex = WantsLogIndex(options);
+        bool wantsLogIndex = block.Transactions.Length != 0 && WantsLogIndex(options);
         if (allowIndexed && (writer is null || streamsNative) && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && TryGetParallelLogIndex(block, wantsLogIndex, out Func<Block, Transaction, BlockLogIndex>? parallelLogIndex))
         {
