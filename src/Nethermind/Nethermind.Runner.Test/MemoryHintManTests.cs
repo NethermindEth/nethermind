@@ -28,6 +28,7 @@ namespace Nethermind.Runner.Test
         private INetworkConfig _networkConfig;
         private MemoryHintMan _memoryHintMan;
         private MallocHelper _mallocHelper;
+        private int _txHashCacheSize;
 
         [SetUp]
         public void Setup()
@@ -39,7 +40,12 @@ namespace Nethermind.Runner.Test
             _networkConfig = new NetworkConfig();
             _mallocHelper = Substitute.For<MallocHelper>();
             _memoryHintMan = new MemoryHintMan(LimboLogs.Instance, _mallocHelper);
+            _txHashCacheSize = MemoryAllowance.TxHashCacheSize;
         }
+
+        // MemoryHintMan writes the process-wide MemoryAllowance; restore it so no test sees another's value.
+        [TearDown]
+        public void TearDown() => MemoryAllowance.TxHashCacheSize = _txHashCacheSize;
 
         private void SetMemoryAllowances(uint cpuCount) => _memoryHintMan.SetMemoryAllowances(
                 _dbConfig,
@@ -70,20 +76,28 @@ namespace Nethermind.Runner.Test
         }
 
         [Test]
-        public void Tx_hash_cache_keeps_its_default_size_under_the_shipped_memory_hint()
+        public void Tx_hash_cache_is_sized_from_the_pool_size([Values(1024, 2048)] int txPoolSize)
         {
-            int defaultSize = MemoryAllowance.TxHashCacheSize;
-            try
-            {
-                _initConfig.MemoryHint = 1024 * MB;
-                SetMemoryAllowances(4);
+            _txPoolConfig.Size = txPoolSize;
+            _initConfig.MemoryHint = 1024 * MB;
+            SetMemoryAllowances(4);
 
-                // A tiny cache disables the per-peer announcement shape check and the long-term seen-hash cache.
-                Assert.That(MemoryAllowance.TxHashCacheSize, Is.EqualTo(131_072));
-            }
-            finally
+            // A tiny cache disables the per-peer announcement shape check and the long-term seen-hash cache.
+            Assert.That(MemoryAllowance.TxHashCacheSize, Is.EqualTo(txPoolSize * 64));
+        }
+
+        [Test]
+        public void Tx_hash_cache_is_capped_by_a_small_memory_hint()
+        {
+            const int txPoolSize = 1024;
+            _txPoolConfig.Size = txPoolSize;
+            _initConfig.MemoryHint = 256 * MB;
+            SetMemoryAllowances(4);
+
+            using (Assert.EnterMultipleScope())
             {
-                MemoryAllowance.TxHashCacheSize = defaultSize;
+                Assert.That(MemoryAllowance.TxHashCacheSize, Is.InRange(1, txPoolSize * 64 - 1));
+                Assert.That(_memoryHintMan.TxPoolMemory, Is.EqualTo(txPoolSize * 40_000UL + (ulong)MemoryAllowance.TxHashCacheSize * 128UL));
             }
         }
 
