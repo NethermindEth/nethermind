@@ -23,12 +23,13 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public partial class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly bool _eip7668EverEnabled;
         private readonly IReceiptsRecovery _receiptsRecovery;
+        private readonly ReceiptsRecovery? _defaultReceiptsRecovery;
         private readonly IDb _receiptsDb;
         private readonly IDb _defaultColumn;
         private readonly IDb _transactionDb;
@@ -134,6 +135,7 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _eip7668EverEnabled = specProvider.GetFinalSpec().IsEip7668Enabled;
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _defaultReceiptsRecovery = receiptsRecovery.GetType() == typeof(ReceiptsRecovery) ? (ReceiptsRecovery)receiptsRecovery : null;
             _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -571,19 +573,15 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetReceiptData(blockNumber, blockHash);
-
-            Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
-            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null;
-
-            if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
-            {
-                recoveryContextFactory = () => _receiptsRecovery.CreateRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
-                logRecoveryContextFactory = () => _receiptsRecovery.CreateLogRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
-            }
-
             IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-
-            iterator = new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
+            if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            {
+                IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
+                    new RecoveryBlockSource(this, blockNumber, blockHash));
+                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context);
+                return true;
+            }
+            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
             return true;
         }
 

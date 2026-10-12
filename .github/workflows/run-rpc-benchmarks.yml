@@ -1091,6 +1091,26 @@ jobs:
             *) echo "Unknown image mode '${IMAGE_MODE}'."; exit 1 ;;
           esac
 
+      - name: Build direct hash baseline
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_sha=1697372789c12dbcd102c03f680147bea4d55554
+          baseline_image=nethermind-rpcbench:log-direct-hash-1697372
+          revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+          if [[ "$revision" != "$baseline_sha" ]]; then
+            git fetch --depth=1 origin "$baseline_sha"
+            baseline_context="$(mktemp -d "${RUNNER_TEMP}/direct-hash-baseline.XXXXXX")"
+            git archive "$baseline_sha" | tar -x -C "$baseline_context"
+            source_date_epoch="$(git log -1 --format=%ct "$baseline_sha")"
+            docker build "$baseline_context" -f "$baseline_context/Dockerfile" -t "$baseline_image" \
+              --build-arg BUILD_CONFIG=release --build-arg CI=true \
+              --build-arg COMMIT_HASH="$baseline_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+          fi
+          docker image inspect "$baseline_image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
+          [[ "$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$baseline_sha" ]]
+
       - name: Pull reference client image
         if: needs.resolve.outputs.comparison == 'true'
         env:
