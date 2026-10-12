@@ -14,11 +14,17 @@ namespace Nethermind.Consensus.Processing;
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator, IBlocksConfig blocksConfig, IProfile2EligibilityReplayer? profile2Replayer = null)
     : IInclusionListSatisfactionChecker
 {
-    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState)
+    public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState, TxReceipt[] receipts)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
         // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
+        if (suggestedBlock.InclusionListTransactions is null) return true;
+
+        // Only a claim before the end of the payload needs the gas used before its index.
+        (ulong Execution, ulong State)[]? gasUsedBefore = suggestedBlock.InclusionListClaims is { Length: > 0 }
+            ? InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts)
+            : null;
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas,
-            suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer);
+            suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer, gasUsedBefore);
     }
 }

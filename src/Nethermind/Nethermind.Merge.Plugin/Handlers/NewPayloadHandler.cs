@@ -517,34 +517,54 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return IsInclusionListSatisfied(block, inclusionList);
     }
 
+    /// <remarks>Execution's per-transaction gas is not retained, so a claim before the end of the payload is judged
+    /// at both bounds of the gas used before it, none and the whole block's, and answered only when they agree.
+    /// Fitting more can only condemn more, so an unsatisfied verdict at the whole block's gas stands.</remarks>
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
 
-        SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
-        return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
-            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
-            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, _profile2Replayer);
+        IReadOnlyStateProvider state = new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header);
+        ulong transactionCount = (ulong)block.Transactions.Length;
+        bool earlyClaims = Array.Exists(block.InclusionListClaims ?? [], claim => claim.TransactionIndex < transactionCount);
+        IProfile2EligibilityReplayer? replayer = _profile2Replayer;
+        if (earlyClaims)
+        {
+            state = new CachedAccountStateProvider(state);
+            replayer = replayer is null ? null : new RequestReplayer(replayer);
+        }
+
+        bool? satisfied = Evaluate(block, inclusionList, state, spec, replayer, null);
+        if (satisfied is not true || !earlyClaims) return satisfied;
+
+        return Evaluate(block, inclusionList, state, spec, replayer, new (ulong, ulong)[block.Transactions.Length]) is true ? true : null;
     }
+
+    private bool? Evaluate(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, IProfile2EligibilityReplayer? replayer,
+        (ulong Execution, ulong State)[]? gasUsedBefore) =>
+        spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
+            ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec, replayer, gasUsedBefore)
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer, gasUsedBefore);
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
     /// <remarks>Account reads are shared across the gas bounds.</remarks>
-    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
+    private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec,
+        IProfile2EligibilityReplayer? replayer, (ulong Execution, ulong State)[]? gasUsedBefore)
     {
-        state = new CachedAccountStateProvider(state);
-        IProfile2EligibilityReplayer? replayer = _profile2Replayer is null ? null : new RequestReplayer(_profile2Replayer);
+        state = state as CachedAccountStateProvider ?? new CachedAccountStateProvider(state);
+        replayer = replayer is null or RequestReplayer ? replayer : new RequestReplayer(replayer);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer, gasUsedBefore)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer, gasUsedBefore)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer, gasUsedBefore) ? true : null;
         }
         finally
         {

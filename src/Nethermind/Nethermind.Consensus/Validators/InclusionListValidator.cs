@@ -31,16 +31,21 @@ public static class InclusionListValidator
     /// <param name="claims">The builder's EIP-8369 claimed evaluation indices.</param>
     /// <param name="replayer">Decides Profile 2 eligibility; <c>null</c> enforces every omitted candidate that
     /// passes the determinate checks.</param>
+    /// <param name="gasUsedBefore">EIP-8037 execution and state gas the block used before each transaction index,
+    /// one entry per transaction, which a Profile 2 candidate claimed before the end of the payload must fit;
+    /// <c>null</c> judges that fit against the whole block's gas, which only excuses more.</param>
     public static bool IsSatisfied(Block block, Transaction[]? il, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ulong maxVerifyGasPerTx = Eip8369Constants.MaxVerifyGasPerTx,
-        ushort[]? ilMembership = null, InclusionListClaim[]? claims = null, IProfile2EligibilityReplayer? replayer = null)
+        ushort[]? ilMembership = null, InclusionListClaim[]? claims = null, IProfile2EligibilityReplayer? replayer = null,
+        IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore = null)
     {
         if (!spec.InclusionListsEnabled) return true;
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
 
-        // No room for even the cheapest possible tx → nothing is appendable.
+        // No room for even the cheapest possible tx → nothing is appendable, unless a claim moves an
+        // evaluation before the end of the payload.
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
-        if (block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
+        if (claims is not { Length: > 0 } && block.GasUsed + minIntrinsicGas > block.GasLimit) return true;
 
         // A conforming aggregate runs to tens of thousands of entries, far past what the stack can hold.
         bool[]? rented = il.Length > StackAllocEntries
@@ -50,7 +55,8 @@ public static class InclusionListValidator
         {
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
-            Profile2Inputs profile2 = new(maxVerifyGasPerTx, ilMembership?.Length == il.Length ? ilMembership : null, claims, replayer);
+            if (gasUsedBefore is not null && gasUsedBefore.Count != block.Transactions.Length) gasUsedBefore = null;
+            Profile2Inputs profile2 = new(maxVerifyGasPerTx, ilMembership?.Length == il.Length ? ilMembership : null, claims, replayer, gasUsedBefore);
             return IsSatisfied(block, il, included, state, spec, txValidator, in profile2);
         }
         finally
@@ -77,7 +83,7 @@ public static class InclusionListValidator
 
         Dictionary<AddressAsKey, AccountStruct>? accountCache = null;
         HashSet<Hash256AsKey>? admitted = null;
-        List<Transaction>? toReplay = null;
+        List<(Transaction Transaction, int Index)>? toReplay = null;
         for (int i = 0; i < il.Length; i++)
         {
             if (included[i]) continue;
@@ -87,10 +93,12 @@ public static class InclusionListValidator
                 // EIP-8369: a frame transaction outside Profile 2 is enforced by no profile, so its omission is excused.
                 if (Eip8369Profile2.Classify(il[i], profile2.MaxVerifyGasPerTx) != Profile2Exclusion.None) continue;
                 // Eligibility is a property of the bytes, so the first occurrence answers for every copy.
-                if (il[i].Hash is { } frameHash && ilByHash[frameHash] != i) continue;
-                if (!IsReplayableOmission(il[i], block, il, state, spec, txValidator, in profile2, ref accountCache, ref admitted)) continue;
+                if (il[i].Hash is not { } frameHash || ilByHash[frameHash] != i) continue;
+                // EIP-7805 § Evaluation index: the builder's claim, if it is the hash's only one, else the end of the payload.
+                int index = ResolveClaimedIndex(profile2.Claims, frameHash, block.Transactions.Length) ?? block.Transactions.Length;
+                if (!IsReplayableOmission(il[i], index, block, il, spec, txValidator, in profile2, ref admitted)) continue;
                 if (profile2.Replayer is null) return false;
-                (toReplay ??= []).Add(il[i]);
+                (toReplay ??= []).Add((il[i], index));
                 continue;
             }
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
@@ -99,25 +107,29 @@ public static class InclusionListValidator
     }
 
     /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
-    private readonly record struct Profile2Inputs(ulong MaxVerifyGasPerTx, ushort[]? IlMembership, InclusionListClaim[]? Claims, IProfile2EligibilityReplayer? Replayer);
+    private readonly record struct Profile2Inputs(ulong MaxVerifyGasPerTx, ushort[]? IlMembership, InclusionListClaim[]? Claims, IProfile2EligibilityReplayer? Replayer,
+        IReadOnlyList<(ulong Execution, ulong State)>? GasUsedBefore);
 
-    /// <summary>Whether an omitted Profile 2 candidate passes every check but the replay: the determinate
-    /// conditions at the end of the payload and admission by some committee position's VERIFY budget fill.</summary>
+    /// <summary>Whether an omitted Profile 2 candidate passes every check but the replay at its evaluation index:
+    /// the static, fee and gas-fit conditions, and admission by some committee position's VERIFY budget fill.</summary>
     /// <remarks>Only these reach the replay, so replay work is bounded by the per-IL budgets. Without membership no
-    /// position carries the entry, so it is not admitted (EIP-7805 as amended by EIP-8369).</remarks>
+    /// position carries the entry, so it is not admitted (EIP-7805 as amended by EIP-8369). The payer's balance is
+    /// left to the replay, which collects the maximum cost from the state at <paramref name="index"/>.</remarks>
     private static bool IsReplayableOmission(
         Transaction tx,
+        int index,
         Block block,
         Transaction[] il,
-        IReadOnlyStateProvider state,
         IReleaseSpec spec,
         ITxValidator txValidator,
         in Profile2Inputs profile2,
-        ref Dictionary<AddressAsKey, AccountStruct>? accountCache,
         ref HashSet<Hash256AsKey>? admitted)
     {
-        if (tx.Hash is null || profile2.IlMembership is not { } ilMembership) return false;
-        if (!CouldIncludeTx(tx, block, state, spec, txValidator, ref accountCache)) return false;
+        if (tx.Hash is null || tx.SenderAddress is null || profile2.IlMembership is not { } ilMembership) return false;
+        if (!FitsRemainingBlockGas(tx, block, spec, GasUsedBefore(block, index, profile2.GasUsedBefore))) return false;
+        if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
+        if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
+        if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out _) || !FrameTxValidation.TryCalculateMaxCost(tx, spec, out _)) return false;
 
         admitted ??= Eip8369Profile2.AdmitByVerifyBudget(InclusionListMembership.ByPosition(il, ilMembership), profile2.MaxVerifyGasPerTx,
             profile2.Replayer is { } signatures ? occurrence => signatures.AreSignaturesValid(occurrence, spec) : null);
@@ -126,33 +138,15 @@ public static class InclusionListValidator
 
     /// <summary>EIP-8369 § Attesters: whether omitting any of <paramref name="candidates"/> is unjustified.</summary>
     /// <remarks>
-    /// Each is judged at the default index, the end of the payload, and again at its claimed index when the
-    /// builder committed one; the omission is unjustified only at both, so a claim can excuse but never condemn.
-    /// Gas remaining only grows towards the start of the payload, so the fit at the end covers the claim. Every
+    /// Each is replayed once, at its evaluation index: EIP-7805 judges a claimed candidate at its claim alone, so a
+    /// claim at an index where the candidate is valid condemns the omission even if it is invalid at the end. Every
     /// replay goes to the replayer in one batch, so it reconstructs the block's state once.
     /// </remarks>
-    private static bool AnyUnjustified(Block block, List<Transaction> candidates, IReleaseSpec spec, in Profile2Inputs profile2)
+    private static bool AnyUnjustified(Block block, List<(Transaction Transaction, int Index)> candidates, IReleaseSpec spec, in Profile2Inputs profile2)
     {
-        int end = block.Transactions.Length;
-        List<(Transaction Transaction, int Index)> requests = new(candidates.Count * 2);
-        int[] claimedAt = new int[candidates.Count];
-        for (int i = 0; i < candidates.Count; i++)
+        foreach (bool eligible in profile2.Replayer!.AreEligible(block, candidates, spec))
         {
-            requests.Add((candidates[i], end));
-            claimedAt[i] = -1;
-            if (ResolveClaimedIndex(profile2.Claims, candidates[i].Hash!, end) is { } claimed && claimed != end)
-            {
-                claimedAt[i] = requests.Count;
-                requests.Add((candidates[i], claimed));
-            }
-        }
-
-        bool[] eligible = profile2.Replayer!.AreEligible(block, requests, spec);
-        for (int i = 0, next = 0; i < candidates.Count; i++, next++)
-        {
-            bool unjustified = eligible[next] && (claimedAt[i] < 0 || eligible[claimedAt[i]]);
-            if (claimedAt[i] >= 0) next++;
-            if (unjustified) return true;
+            if (eligible) return true;
         }
         return false;
     }
@@ -174,14 +168,11 @@ public static class InclusionListValidator
         return index;
     }
 
-    /// <summary>Whether an omitted inclusion-list entry could have been appended to <paramref name="block"/>.</summary>
-    /// <remarks>Judges an EIP-8369 Profile 2 candidate on the conditions its frame layout makes determinate —
-    /// the gas it would add, fee validity, and whether the payer its prefix nominates could cover the EIP-8141
-    /// maximum cost. The account nonce and EIP-3607 are Profile 1 conditions and do not apply to it.</remarks>
+    /// <summary>Whether an omitted Profile 1 inclusion-list entry could have been appended to <paramref name="block"/>.</summary>
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? accountCache)
     {
         if (tx.SenderAddress is null) return false;
-        if (!FitsRemainingBlockGas(tx, block, spec)) return false;
+        if (!FitsRemainingBlockGas(tx, block, spec, GasUsedBefore(block, block.Transactions.Length, null))) return false;
         // Appendability must match normal execution, so reuse the full well-formedness check, not a subset.
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
@@ -191,24 +182,11 @@ public static class InclusionListValidator
                 || (tx.MaxFeePerBlobGas ?? UInt256.Zero) < blobBaseFee))
             return false;
 
-        // A sponsored frame transaction is paid by the payer its validation prefix nominates, not by its
-        // sender. Always recomputed, never read from Transaction.PayerAddress, so the two cannot disagree.
-        Address payer = tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) ?? tx.SenderAddress : tx.SenderAddress;
-
+        Address payer = tx.SenderAddress;
         accountCache ??= [];
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(accountCache, payer, out bool cached);
         // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
         if (!cached) state.TryGetAccount(payer, out account);
-
-        // A frame transaction reserves max_gas and its EIP-8141 maximum cost, both of which the forms below
-        // under-count by at least the intrinsic cost; its sender is a smart account EIP-3607 does not bar.
-        if (tx.SupportsFrames)
-        {
-            return FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas)
-                   && (spec.IsEip8037Enabled || maxGas <= block.GasLimit - block.GasUsed)
-                   && FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 frameCost)
-                   && SpendableBalance(block, payer, in account) >= frameCost;
-        }
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(payer)) return false;
@@ -232,16 +210,45 @@ public static class InclusionListValidator
     /// matching dimension, so measuring it against the header's max(execution, state) rejects transactions the
     /// spec judges includable. Callers whose block carries no dimensions must not put an EIP-8037 block to this
     /// check — the max alone under-reports censorship — which is why the engine API declines to answer instead.</remarks>
-    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec)
+    private static bool FitsRemainingBlockGas(Transaction tx, Block block, IReleaseSpec spec, (ulong Execution, ulong State) gasUsed)
     {
-        // Subtract on the block side: GasUsed <= GasLimit is invariant, so this cannot underflow the
+        (ulong execution, ulong state) = gasUsed;
+        // Subtract on the block side: gas used <= GasLimit is invariant, so this cannot underflow the
         // way GasLimit - tx.GasLimit would for an oversized tx.
-        if (!spec.IsEip8037Enabled) return tx.GasLimit <= block.GasLimit - block.GasUsed;
+        if (!spec.IsEip8037Enabled)
+        {
+            ulong limit = tx.SupportsFrames && FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas) ? maxGas : tx.GasLimit;
+            return execution <= block.GasLimit && limit <= block.GasLimit - execution;
+        }
 
-        (ulong execution, ulong state) = block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
         return Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation)
             && Eip8037BlockGasInclusionCheck.Validate(block.GasLimit, execution, state, executionReservation, stateReservation)
                 == Eip8037BlockGasInclusionCheck.Outcome.Ok;
+    }
+
+    /// <summary>The block's gas used before transaction <paramref name="index"/>, in each EIP-8037 dimension.</summary>
+    /// <remarks>Without per-transaction totals an index before the end is charged the whole block's gas, which only
+    /// excuses more; callers that need the exact answer supply them or bound it.</remarks>
+    private static (ulong Execution, ulong State) GasUsedBefore(Block block, int index, IReadOnlyList<(ulong Execution, ulong State)>? gasUsedBefore) =>
+        index < block.Transactions.Length && gasUsedBefore is not null
+            ? gasUsedBefore[index]
+            : block.Header.GasUsedPerDimension ?? (block.GasUsed, block.GasUsed);
+
+    /// <summary>The EIP-8037 gas the block used before each of its transactions, from the receipts its execution produced.</summary>
+    /// <returns><c>null</c> unless the receipts' per-transaction gas adds up to the block's recorded totals.</returns>
+    public static (ulong Execution, ulong State)[]? GasUsedBeforeEachTransaction(Block block, IReadOnlyList<TxReceipt> receipts)
+    {
+        if (receipts.Count != block.Transactions.Length || block.Header.GasUsedPerDimension is not { } total) return null;
+
+        (ulong Execution, ulong State)[] before = new (ulong, ulong)[receipts.Count];
+        ulong execution = 0, state = 0;
+        for (int i = 0; i < receipts.Count; i++)
+        {
+            before[i] = (execution, state);
+            execution += receipts[i].BlockGasUsed;
+            state += receipts[i].StorageGasUsed;
+        }
+        return (execution, state) == total ? before : null;
     }
 
     /// <summary>Balance the sender would have had when an appended transaction executed.</summary>

@@ -178,7 +178,7 @@ public class BranchProcessor(
                 // A signal, not a rejection: the block is still committed, and it reads post-execution
                 // state. Assigned even under NoValidation, to clear a stale false on a reused instance.
                 bool inclusionListSatisfied = !checkInclusionList
-                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);
+                    || inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider, receipts);
                 processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
                 suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;
 

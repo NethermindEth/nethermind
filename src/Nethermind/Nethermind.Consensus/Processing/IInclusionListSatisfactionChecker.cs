@@ -11,5 +11,6 @@ namespace Nethermind.Consensus.Processing;
 /// inside block processing because appendability is judged against post-execution state.</remarks>
 public interface IInclusionListSatisfactionChecker
 {
-    bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState);
+    /// <param name="receipts">The receipts execution produced, which give the gas used before each transaction.</param>
+    bool IsSatisfied(Block processedBlock, Block suggestedBlock, IWorldState worldState, TxReceipt[] receipts);
 }

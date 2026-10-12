@@ -207,8 +207,10 @@ public class InclusionListValidatorTests
             // A sponsored transaction is judged against the payer its prefix nominates, not against its sender.
             yield return Case("Sponsored frame transaction is judged against its payer, not its sender",
                 [BuildFrameTx(SponsoredFrames)], false, payerBalance: 10.Ether, senderBalance: UInt256.One);
-            yield return Case("Sponsored frame transaction whose payer cannot pay is excused",
-                [BuildFrameTx(SponsoredFrames)], true, payerBalance: UInt256.One);
+            // EIP-7805 collects the maximum cost in the replay, from the state at the evaluation index, so a payer
+            // short of it at the end of the payload does not excuse the omission here.
+            yield return Case("Sponsored frame transaction's payer balance is left to the replay",
+                [BuildFrameTx(SponsoredFrames)], false, payerBalance: UInt256.One);
 
             // The determinate justifications EIP-8369 leaves to the attester's own reading of the payload.
             // 1,105,000 gas remains: the frame limits alone fit, and only the EIP-8141 intrinsic cost on
@@ -290,9 +292,9 @@ public class InclusionListValidatorTests
 
     private static readonly Transaction _candidate = Candidate(1, 100_000);
 
-    /// <summary>EIP-8369 § Builders and § Attesters: the index an omitted Profile 2 candidate is replayed at,
-    /// and how a claim moves it. Each case names the indices the candidate is eligible at and the replays
-    /// the verdict is expected to take, so a resolution rule that picks the wrong index fails on the call.</summary>
+    /// <summary>EIP-7805 § Evaluation index: the one index an omitted Profile 2 candidate is replayed at, and how a
+    /// claim moves it. Each case names the indices the candidate is eligible at and the replays the verdict is
+    /// expected to take, so a resolution rule that picks the wrong index fails on the call.</summary>
     public static IEnumerable<TestCaseData> ClaimCases
     {
         get
@@ -305,13 +307,13 @@ public class InclusionListValidatorTests
             yield return Case("Unclaimed candidate eligible at the end is censoring", null, [end], false, [end]);
             yield return Case("Unclaimed candidate ineligible at the end is excused by replay", null, [], true, [end]);
             yield return Case("Claim excuses a candidate ineligible where the builder tried",
-                [new(hash, 1)], [end], true, [end, 1]);
+                [new(hash, 1)], [end], true, [1]);
             yield return Case("Claim at index zero is before every block transaction",
-                [new(hash, 0)], [end], true, [end, 0]);
+                [new(hash, 0)], [end], true, [0]);
             yield return Case("Claim leaves enforced a candidate eligible where the builder tried",
-                [new(hash, 1)], [1, end], false, [end, 1]);
-            yield return Case("Claim cannot condemn a candidate eligible only before the end",
-                [new(hash, 1)], [1], true, [end, 1]);
+                [new(hash, 1)], [1, end], false, [1]);
+            yield return Case("Claim condemns a candidate eligible where claimed though ineligible at the end",
+                [new(hash, 1)], [1], false, [1]);
             yield return Case("Out-of-range claim resolves to the end of the payload",
                 [new(hash, 99)], [end], false, [end]);
             yield return Case("Claim at the end is the default index", [new(hash, end)], [end], false, [end]);
@@ -428,7 +430,6 @@ public class InclusionListValidatorTests
     public void Signatures_are_verified_once_per_entry_across_positions()
     {
         Transaction signed = Candidate(1, 100_000, signatures: 1);
-        // The unsigned candidate is what reaches the fill; the signed one is malformed and never would.
         Transaction[][] lists = [.. Enumerable.Repeat(new[] { signed, Candidate(2, 100_000) }, Eip7805Constants.InclusionListCommitteeSize)];
         (Transaction[] il, ushort[] membership) = Membership(lists);
         FakeReplayer replayer = new((_, _) => false);
@@ -448,14 +449,47 @@ public class InclusionListValidatorTests
         (Transaction[] il, ushort[] membership) = Membership([candidates]);
         Block block = Profile2Block(il, blockTxCount: 3, membership: membership,
             claims: [new(candidates[0].Hash!, 0), new(candidates[1].Hash!, 2)]);
-        FakeReplayer replayer = new((_, index) => index != 3);
+        FakeReplayer replayer = new((_, _) => false);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(IsSatisfied(block, replayer), Is.True);
             Assert.That(replayer.Batches, Is.EqualTo(1));
-            Assert.That(replayer.ReplayedAt, Is.EquivalentTo(new[] { 3, 0, 3, 2, 3 }));
+            Assert.That(replayer.ReplayedAt, Is.EquivalentTo(new[] { 0, 2, 3 }));
         }
+    }
+
+    /// <summary>EIP-7805: a claimed candidate must fit the gas the block used before its claim, not after the
+    /// whole payload. The block is full at the end, so only the gas before the claim lets it fit.</summary>
+    [TestCase(true, false, TestName = "Claim before a full block's transactions is judged on the gas used before it")]
+    [TestCase(false, true, TestName = "Without per-transaction gas a claim is judged on the whole block's gas")]
+    public void Claimed_candidate_fits_the_gas_used_before_its_index(bool withGasUsedBefore, bool satisfied)
+    {
+        Block block = Profile2Block([_candidate], blockTxCount: 3, claims: [new(_candidate.Hash!, 1)]);
+        block.Header.GasUsed = block.GasLimit;
+        block.Header.GasUsedPerDimension = (block.GasLimit, block.GasLimit);
+        (ulong, ulong)[] gasUsedBefore = [(0, 0), (21_000, 0), (block.GasLimit - 21_000, 0)];
+        FakeReplayer replayer = new((_, index) => index == 1);
+
+        bool result = InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, 10.Ether, 0),
+            _frameSpecProvider.GetSpec(block.Header), _txValidator, ilMembership: block.InclusionListMembership, claims: block.InclusionListClaims,
+            replayer: replayer, gasUsedBefore: withGasUsedBefore ? gasUsedBefore : null);
+
+        Assert.That(result, Is.EqualTo(satisfied));
+    }
+
+    /// <summary>The gas used before each transaction is read off the receipts only when they add up to the block's totals.</summary>
+    [TestCase(30_000UL, 5_000UL, true, TestName = "Receipts adding up to the block's gas give the gas before each transaction")]
+    [TestCase(30_001UL, 5_000UL, false, TestName = "Receipts not adding up to the block's gas give nothing")]
+    public void Gas_used_before_each_transaction_comes_from_consistent_receipts(ulong totalExecution, ulong totalState, bool consistent)
+    {
+        Block block = Profile2Block([], blockTxCount: 2);
+        block.Header.GasUsedPerDimension = (totalExecution, totalState);
+        TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
+
+        (ulong Execution, ulong State)[]? before = InclusionListValidator.GasUsedBeforeEachTransaction(block, receipts);
+
+        Assert.That(before, consistent ? Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }) : Is.Null);
     }
 
     /// <summary>Deduplicates committee positions' lists into one list and a membership mask per entry.</summary>
@@ -538,7 +572,7 @@ public class InclusionListValidatorTests
         tx.Hash = new Hash256(hash);
         tx.FrameSignatures = new TxFrameSignature[signatures];
         for (int i = 0; i < signatures; i++)
-            tx.FrameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, new byte[32], new byte[65]);
+            tx.FrameSignatures[i] = new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, TestItem.AddressA, ReadOnlyMemory<byte>.Empty, new byte[65]);
         return tx;
     }
 
