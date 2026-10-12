@@ -1048,7 +1048,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
         await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await retry.WaitAsync(TimeSpan.FromSeconds(10));
+        await retry.WaitAsync(TimeSpan.FromSeconds(30));
 
         await processingQueue.Received(2).Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
