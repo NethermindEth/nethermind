@@ -91,7 +91,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             TimeSpan timeout;
             try
             {
-                timeout = options.Timeout ?? DefaultTimeout;
+                timeout = options.ResolveTimeout() ?? DefaultTimeout;
             }
             catch (TraceDurationFormatException exception) when (_captureErrors)
             {
