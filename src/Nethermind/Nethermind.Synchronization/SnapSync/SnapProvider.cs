@@ -163,8 +163,9 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (responses.Length == 0)
             {
-                // A proof without any slot list answers the first account only; it is checked (and scored) like any
-                // other range so a peer cannot have the account's storage restarted from scratch for free.
+                // A proof without any slot list is a proof of absence for the first account: no slots in
+                // [StartingHash, LimitHash]. It is verified like any other range, so the range either completes or the
+                // account is refreshed from the same origin rather than restarted from scratch.
                 result = AddStorageRangeForAccount(request, 0, [], response.Proofs);
                 Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
 
