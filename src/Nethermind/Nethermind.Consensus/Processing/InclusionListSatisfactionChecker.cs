@@ -20,10 +20,10 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
         // P2P-decoded blocks legitimately have null IL; IsSatisfied treats null as "not applicable".
         if (suggestedBlock.InclusionListTransactions is null) return true;
 
-        // Only a claim before the end of the payload needs the gas used before its index.
-        (ulong Execution, ulong State)[]? gasUsedBefore = suggestedBlock.InclusionListClaims is { Length: > 0 }
-            ? InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts)
-            : null;
+        // A claim before the end of the payload needs the gas used before its index; recorded on the suggested block
+        // too, so a resend under other claims is judged on the same gas without re-executing.
+        (ulong Execution, ulong State)[]? gasUsedBefore = InclusionListValidator.GasUsedBeforeEachTransaction(processedBlock, receipts);
+        suggestedBlock.GasUsedBeforeTransactions = gasUsedBefore;
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions, worldState, spec, txValidator, blocksConfig.FocilProfile2MaxVerifyGas,
             suggestedBlock.InclusionListMembership, suggestedBlock.InclusionListClaims, profile2Replayer, gasUsedBefore);
     }

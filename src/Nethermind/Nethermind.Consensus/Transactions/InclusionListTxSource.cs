@@ -51,6 +51,8 @@ public class InclusionListTxSource(
         if (decoded.Profile2Candidates is { } cached && cached.MaxVerifyGasPerTx == maxVerifyGasPerTx) return cached.Candidates;
 
         IReleaseSpec spec = decoded.Spec;
+        // EIP-7805: before Profile 2 is active no entry is a candidate, so the build claims nothing.
+        if (!Eip8369Profile2.IsActive(spec)) return null;
         Func<Transaction, bool> signaturesValid = profile2Replayer is not null
             ? tx => profile2Replayer.AreSignaturesValid(tx, spec)
             : tx => Profile2EligibilityReplayer.AreSignaturesValid(tx, ecdsa, spec);

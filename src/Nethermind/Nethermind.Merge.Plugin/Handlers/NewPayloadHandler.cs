@@ -477,12 +477,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // max(execution, state) carries them back, so without what execution recorded this would answer on a
         // coarser gas rule than the processing path and could report real censorship as absent.
         block.Header.GasUsedPerDimension = RecordedGasDimensions(hash);
+        block.GasUsedBeforeTransactions = RecordedGasUsedBefore(hash);
         bool? satisfied = IsInclusionListSatisfied(block, block.InclusionListTransactions!);
         if (satisfied is null) return null;
 
         ValidationResult result = satisfied.Value ? ValidationResult.Valid : ValidationResult.InclusionListUnsatisfied;
 
-        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension));
+        _latestBlocks?.Set(hash, new CachedPayloadResult(result, null, ComputeInclusionListDigest(block), block.Header.GasUsedPerDimension, block.GasUsedBeforeTransactions));
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
@@ -501,11 +502,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
         Transaction[] inclusionList = TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions;
-        // FCU retains only transaction bytes; it cannot reconstruct Profile 2 membership or builder claims.
+        // FCU retains only transaction bytes; it cannot reconstruct Profile 2 membership or builder claims, which
+        // only matter once Profile 2 is active.
+        bool profile2Active = Eip8369Profile2.IsActive(_specProvider.GetSpec(block.Header));
         HashSet<Hash256>? includedHashes = null;
         foreach (Transaction transaction in inclusionList)
         {
-            if (!transaction.SupportsFrames || Eip8369Profile2.Classify(transaction, _focilProfile2MaxVerifyGas) != Profile2Exclusion.None) continue;
+            if (!profile2Active || !transaction.SupportsFrames || Eip8369Profile2.Classify(transaction, _focilProfile2MaxVerifyGas) != Profile2Exclusion.None) continue;
             if (includedHashes is null)
             {
                 includedHashes = [];
@@ -517,9 +520,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return IsInclusionListSatisfied(block, inclusionList);
     }
 
-    /// <remarks>Execution's per-transaction gas is not retained, so a claim before the end of the payload is judged
-    /// at both bounds of the gas used before it, none and the whole block's, and answered only when they agree.
-    /// Fitting more can only condemn more, so an unsatisfied verdict at the whole block's gas stands.</remarks>
+    /// <remarks>A claim before the end of the payload is fit against the gas execution recorded before its index. Once
+    /// that record is gone it is judged at both bounds of that gas, none and the whole block's, and answered only when
+    /// they agree. Fitting more can only condemn more, so an unsatisfied verdict at the whole block's gas stands.</remarks>
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
@@ -527,7 +530,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         IReadOnlyStateProvider state = new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header);
         ulong transactionCount = (ulong)block.Transactions.Length;
-        bool earlyClaims = Array.Exists(block.InclusionListClaims ?? [], claim => claim.TransactionIndex < transactionCount);
+        bool earlyClaims = Eip8369Profile2.IsActive(spec)
+            && Array.Exists(block.InclusionListClaims ?? [], claim => claim.TransactionIndex < transactionCount);
+        if (earlyClaims && block.GasUsedBeforeTransactions is { } recorded && recorded.Length == block.Transactions.Length)
+            return Evaluate(block, inclusionList, state, spec, _profile2Replayer, recorded);
         IProfile2EligibilityReplayer? replayer = _profile2Replayer;
         if (earlyClaims)
         {
@@ -652,6 +658,11 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             ? cached.GasUsedPerDimension
             : null)
         ?? _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.GasUsedPerDimension;
+
+    /// <summary>The gas execution recorded the block <paramref name="hash"/> names using before each of its transactions,
+    /// kept only by the cached answer.</summary>
+    private (ulong Execution, ulong State)[]? RecordedGasUsedBefore(Hash256 hash) =>
+        _latestBlocks is not null && _latestBlocks.TryGet(hash, out CachedPayloadResult cached) ? cached.GasUsedBefore : null;
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
     // the tree treats as canonical.
@@ -811,7 +822,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // Cache terminal outcomes only; SYNCING isn't terminal (we haven't processed the block yet).
             if (result is ValidationResult.Invalid or ValidationResult.Valid or ValidationResult.InclusionListUnsatisfied)
             {
-                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest, block.Header.GasUsedPerDimension));
+                _latestBlocks?.Set(block.GetOrCalculateHash(), new CachedPayloadResult(result, errorMessage, ilDigest, block.Header.GasUsedPerDimension, block.GasUsedBeforeTransactions));
                 // The verdict is given before the commit, so the block can be gone without committing by the time
                 // this runs. Whichever of the two marks the completion first, the other takes the entry back out.
                 if (completion?.MarkAnswerCached() == false) _latestBlocks?.Delete(block.GetOrCalculateHash());
@@ -1215,5 +1226,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ValidationResult Result,
         string? Message,
         ValueHash256 InclusionListDigest,
-        (ulong Execution, ulong State)? GasUsedPerDimension);
+        (ulong Execution, ulong State)? GasUsedPerDimension,
+        (ulong Execution, ulong State)[]? GasUsedBefore = null);
 }

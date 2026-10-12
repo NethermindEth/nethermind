@@ -24,10 +24,11 @@ namespace Nethermind.Blockchain.Test.Validators;
 public class InclusionListValidatorTests
 {
     private static readonly ISpecProvider _specProvider = new CustomSpecProvider(((ForkActivation)0, Bogota.Instance));
-    // Bogota carries inclusion lists alone; a chain wanting frame transactions too schedules their
-    // transition alongside it. That combination is what makes a frame transaction reachable as an entry.
-    private static readonly ISpecProvider _frameSpecProvider = new CustomSpecProvider(
-        ((ForkActivation)0, new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true }));
+    // Bogota carries inclusion lists alone; Profile 2 is active once frame transactions, keyed nonces and
+    // recent roots are scheduled alongside them, as Eip8369Prototype does.
+    private static readonly ISpecProvider _frameSpecProvider = new CustomSpecProvider(((ForkActivation)0, Eip8369Prototype.Instance));
+    // Inclusion lists and frame transactions without EIP-8250 and EIP-8272: Profile 2 is not yet active.
+    private static readonly IReleaseSpec _preProfile2Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true };
     private static readonly TxValidator _txValidator = new(TestBlockchainIds.ChainId);
     private static readonly Transaction _validTx = BuildTx();
 
@@ -72,6 +73,31 @@ public class InclusionListValidatorTests
             yield return Case("Tx cost overflows 256 bits", [BuildTx(gasLimit: 65_536, gasPrice: new UInt256(0, 0, 0, 1UL << 48), value: UInt256.One, to: TestItem.AddressB)], true);
             // The spec disallows duplicates, but adversarial input must not cause false rejection.
             yield return Case("Duplicate IL entries with tx included", [_validTx, _validTx], true, blockTxs: [_validTx], senderNonce: 1);
+        }
+    }
+
+    /// <summary>EIP-7805: before Profile 2 is active the original end-of-payload rule alone decides, on the origin's
+    /// nonce and balance; membership and claims have no effect and nothing is replayed.</summary>
+    [TestCase(10_000_000_000_000_000_000UL, 0UL, false, TestName = "Before Profile 2 an omitted frame tx the sender can pay is censoring despite a claim")]
+    [TestCase(1UL, 0UL, true, TestName = "Before Profile 2 an omitted frame tx the sender cannot pay is excused")]
+    [TestCase(10_000_000_000_000_000_000UL, 1UL, true, TestName = "Before Profile 2 an omitted frame tx with a stale nonce is excused")]
+    public void Frame_tx_omission_before_profile_2_follows_the_original_rule(ulong senderBalance, ulong senderNonce, bool satisfied)
+    {
+        // Without EIP-8250 a frame transaction still carries the scalar account nonce.
+        Transaction candidate = Candidate(1, 100_000);
+        candidate.NonceKeys = null;
+        Block block = Profile2Block([candidate], blockTxCount: 3, claims: [new(candidate.Hash!, 1)]);
+        FakeReplayer replayer = new((_, _) => false);
+
+        bool result = InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, senderBalance, senderNonce),
+            _preProfile2Spec, _txValidator, ilMembership: block.InclusionListMembership, claims: block.InclusionListClaims, replayer: replayer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8369Profile2.IsActive(_preProfile2Spec), Is.False);
+            Assert.That(result, Is.EqualTo(satisfied));
+            Assert.That(replayer.ReplayedAt, Is.Empty);
+            Assert.That(replayer.SignatureChecks, Is.Zero);
         }
     }
 
@@ -337,6 +363,10 @@ public class InclusionListValidatorTests
             yield return Case("Claim at the end is the default index", [new(hash, end)], [end], false, [end]);
             yield return Case("Duplicate claims for one hash are all ignored",
                 [new(hash, 1), new(hash, 2)], [end], false, [end]);
+            yield return Case("A hash claimed three times stays ignored",
+                [new(hash, 1), new(hash, 1), new(hash, 2)], [end], false, [end]);
+            yield return Case("Each hash resolves its own claim among several",
+                [new(Keccak.Compute("elsewhere"), 2), new(hash, 1)], [end], true, [1]);
             yield return Case("Claim for a hash outside the list is ignored",
                 [new(Keccak.Compute("elsewhere"), 1)], [end], false, [end]);
         }
@@ -505,6 +535,21 @@ public class InclusionListValidatorTests
         Assert.That(result, Is.EqualTo(satisfied));
     }
 
+    /// <summary>The checker records the gas used before each transaction on the suggested block, which a resend
+    /// under other claims is then fit against without re-executing.</summary>
+    [Test]
+    public void Satisfaction_checker_records_the_gas_used_before_each_transaction()
+    {
+        Block processed = Profile2Block([], blockTxCount: 2);
+        processed.Header.GasUsedPerDimension = (30_000, 5_000);
+        Block suggested = Profile2Block([], blockTxCount: 2);
+        TxReceipt[] receipts = [new() { BlockGasUsed = 21_000, StorageGasUsed = 5_000 }, new() { BlockGasUsed = 9_000 }];
+        InclusionListSatisfactionChecker checker = new(_frameSpecProvider, _txValidator, new Nethermind.Config.BlocksConfig());
+
+        Assert.That(checker.IsSatisfied(processed, suggested, Substitute.For<IWorldState>(), receipts), Is.True);
+        Assert.That(suggested.GasUsedBeforeTransactions, Is.EqualTo(new (ulong, ulong)[] { (0, 0), (21_000, 5_000) }));
+    }
+
     /// <summary>The gas used before each transaction is read off the receipts only when they add up to the block's totals.</summary>
     [TestCase(30_000UL, 5_000UL, true, TestName = "Receipts adding up to the block's gas give the gas before each transaction")]
     [TestCase(30_001UL, 5_000UL, false, TestName = "Receipts not adding up to the block's gas give nothing")]
@@ -650,6 +695,8 @@ public class InclusionListValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             SenderAddress = TestItem.AddressA,
             Nonce = 0,
+            // EIP-8250 replaces the scalar nonce; the zero key alone is the account nonce.
+            NonceKeys = [UInt256.Zero],
             Frames = frames,
             FrameSignatures = [],
             GasLimit = FrameTxValidation.TotalGasLimit(frames),

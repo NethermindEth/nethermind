@@ -148,6 +148,11 @@ public class Block
     [JsonIgnore]
     public InclusionListClaim[]? InclusionListClaims { get; set; }
 
+    /// <summary>The EIP-8037 execution and state gas the block used before each of its transactions, as its execution
+    /// recorded them, so a later inclusion-list check can fit an EIP-8369 claim exactly; <c>null</c> when not recorded.</summary>
+    [JsonIgnore]
+    public (ulong Execution, ulong State)[]? GasUsedBeforeTransactions { get; set; }
+
     // Set after the post-execution check: false means the block is valid and executable but did not
     // honour its inclusion list (EIP-7805).
     [JsonIgnore]

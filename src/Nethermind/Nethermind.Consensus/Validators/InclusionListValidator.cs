@@ -24,7 +24,7 @@ public static class InclusionListValidator
     /// <summary>EIP-7805 <c>is_profile_2_candidate</c> condition 1: a frame transaction's noncryptographic static
     /// checks, as <see cref="TxValidator"/> registers them for frame transactions less the chain ID, which the
     /// replay checks instead, so a wrong chain ID still costs its list's budget.</summary>
-    public static ITxValidator Profile2StaticChecks { get; } = new CompositeTxValidator(
+    internal static ITxValidator Profile2StaticChecks { get; } = new CompositeTxValidator(
         new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
         NonceCapTxValidator.Instance,
         GasFieldsTxValidator.Instance,
@@ -52,6 +52,10 @@ public static class InclusionListValidator
         // No IL attached = non-engine-API path (genesis, RLP import); IL doesn't apply.
         if (il is null) return true;
 
+        // EIP-7805: before Profile 2 is active, membership and claims are carried but have no effect.
+        bool profile2Active = Eip8369Profile2.IsActive(spec);
+        if (!profile2Active) (ilMembership, claims) = (null, null);
+
         // No room for even the cheapest possible tx → nothing is appendable, unless a claim moves an
         // evaluation before the end of the payload.
         ulong minIntrinsicGas = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
@@ -66,7 +70,8 @@ public static class InclusionListValidator
             Span<bool> included = rented is null ? stackalloc bool[il.Length] : rented.AsSpan(0, il.Length);
             included.Clear();
             if (gasUsedBefore is not null && gasUsedBefore.Count != block.Transactions.Length) gasUsedBefore = null;
-            Profile2Inputs profile2 = new(maxVerifyGasPerTx, ilMembership?.Length == il.Length ? ilMembership : null, claims, replayer, gasUsedBefore);
+            Profile2Inputs profile2 = new(profile2Active, maxVerifyGasPerTx, ilMembership?.Length == il.Length ? ilMembership : null,
+                ClaimedIndices(claims, block.Transactions.Length), replayer, gasUsedBefore);
             return IsSatisfied(block, il, included, state, spec, txValidator, in profile2);
         }
         finally
@@ -98,29 +103,29 @@ public static class InclusionListValidator
         {
             if (included[i]) continue;
             if (il[i].Hash is { } hash && ilByHash.TryGetValue(hash, out int first) && included[first]) continue;
-            if (il[i].SupportsFrames)
+            if (il[i].SupportsFrames && profile2.Active)
             {
                 // EIP-8369: a frame transaction outside Profile 2 is enforced by no profile, so its omission is excused.
                 if (Eip8369Profile2.Classify(il[i], profile2.MaxVerifyGasPerTx) != Profile2Exclusion.None) continue;
                 // Eligibility is a property of the bytes, so the first occurrence answers for every copy.
                 if (il[i].Hash is not { } frameHash || ilByHash[frameHash] != i) continue;
                 // EIP-7805 § Evaluation index: the builder's claim, if it is the hash's only one, else the end of the payload.
-                int index = ResolveClaimedIndex(profile2.Claims, frameHash, block.Transactions.Length) ?? block.Transactions.Length;
+                int index = profile2.ClaimedIndices?.TryGetValue(frameHash, out int? claimed) == true && claimed is { } at ? at : block.Transactions.Length;
                 if (!IsReplayableOmission(il[i], index, block, il, spec, txValidator, in profile2, ref admitted)) continue;
                 if (profile2.Replayer is null) return false;
                 (toReplay ??= []).Add((il[i], index));
                 continue;
             }
             // EIP-7805: once Profile 2 is active, a blob transaction is in neither profile, so its omission is excused.
-            if (il[i].SupportsBlobs && Eip8369Profile2.IsActive(spec)) continue;
+            if (il[i].SupportsBlobs && profile2.Active) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
         }
         return toReplay is null || !AnyUnjustified(block, toReplay, spec, in profile2);
     }
 
     /// <summary>The inputs EIP-8369 Profile 2 enforcement takes beyond the list itself.</summary>
-    private readonly record struct Profile2Inputs(ulong MaxVerifyGasPerTx, ushort[]? IlMembership, InclusionListClaim[]? Claims, IProfile2EligibilityReplayer? Replayer,
-        IReadOnlyList<(ulong Execution, ulong State)>? GasUsedBefore);
+    private readonly record struct Profile2Inputs(bool Active, ulong MaxVerifyGasPerTx, ushort[]? IlMembership,
+        Dictionary<Hash256AsKey, int?>? ClaimedIndices, IProfile2EligibilityReplayer? Replayer, IReadOnlyList<(ulong Execution, ulong State)>? GasUsedBefore);
 
     /// <summary>Whether an omitted Profile 2 candidate passes every check but the replay at its evaluation index:
     /// the static, fee and gas-fit conditions, and admission by some committee position's VERIFY budget fill.</summary>
@@ -164,24 +169,28 @@ public static class InclusionListValidator
         return false;
     }
 
-    /// <summary>The index <paramref name="claims"/> commits for <paramref name="hash"/>, or <c>null</c> for none.</summary>
+    /// <summary>The index each claimed hash commits to, built once per check; <c>null</c> for a hash claimed more than once.</summary>
     /// <remarks>EIP-8369 § Builders: an out-of-range index defaults to the end of the payload. A hash claimed
     /// more than once has no single commitment, so every claim for it is ignored.</remarks>
-    private static int? ResolveClaimedIndex(InclusionListClaim[]? claims, Hash256 hash, int transactionCount)
+    private static Dictionary<Hash256AsKey, int?>? ClaimedIndices(InclusionListClaim[]? claims, int transactionCount)
     {
-        if (claims is null) return null;
+        if (claims is not { Length: > 0 }) return null;
 
-        int? index = null;
+        Dictionary<Hash256AsKey, int?> indices = new(claims.Length);
         foreach (InclusionListClaim claim in claims)
         {
-            if (claim.TransactionHash != hash) continue;
-            if (index is not null) return null;
-            index = claim.TransactionIndex < (ulong)transactionCount ? (int)claim.TransactionIndex : transactionCount;
+            if (claim.TransactionHash is not { } hash) continue;
+            ref int? index = ref CollectionsMarshal.GetValueRefOrAddDefault(indices, hash, out bool exists);
+            index = exists ? null : claim.TransactionIndex < (ulong)transactionCount ? (int)claim.TransactionIndex : transactionCount;
         }
-        return index;
+        return indices;
     }
 
-    /// <summary>Whether an omitted Profile 1 inclusion-list entry could have been appended to <paramref name="block"/>.</summary>
+    /// <summary>Whether an omitted inclusion-list entry could have been appended to <paramref name="block"/>, judged
+    /// at the end of the payload: every Profile 1 entry, and before Profile 2 is active every entry.</summary>
+    /// <remarks>EIP-7805 judges a frame transaction before activation by the same end-of-payload nonce and balance
+    /// check on its origin, the sender, which must cover the EIP-8141 maximum cost; its code is a smart account
+    /// EIP-3607 does not bar.</remarks>
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? accountCache)
     {
         if (tx.SenderAddress is null) return false;
@@ -200,6 +209,12 @@ public static class InclusionListValidator
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(accountCache, payer, out bool cached);
         // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
         if (!cached) state.TryGetAccount(payer, out account);
+
+        if (tx.SupportsFrames)
+        {
+            return FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 frameCost)
+                && SpendableBalance(block, payer, in account) >= frameCost && account.Nonce == tx.Nonce;
+        }
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(payer)) return false;

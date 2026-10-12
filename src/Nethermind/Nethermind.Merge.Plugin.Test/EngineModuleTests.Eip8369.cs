@@ -377,7 +377,7 @@ public partial class EngineModuleTests
 
     private async Task<MergeTestBlockchain> CreateProfile2Blockchain(MergeConfig? config = null, Action<ContainerBuilder>? configure = null) =>
         await CreateBlockchain(
-            new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true },
+            Eip8369Prototype.Instance,
             config ?? new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder =>
             {
@@ -452,6 +452,8 @@ public partial class EngineModuleTests
         ChainId = chain.SpecProvider.ChainId,
         Nonce = 0,
         SenderAddress = sender,
+        // EIP-8250 replaces the scalar nonce; the zero key alone is the account nonce.
+        NonceKeys = [UInt256.Zero],
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, verifyGas, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 2.GWei,
