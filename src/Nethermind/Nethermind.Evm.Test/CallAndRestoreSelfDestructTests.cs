@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
