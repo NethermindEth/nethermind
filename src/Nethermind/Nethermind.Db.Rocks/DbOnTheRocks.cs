@@ -90,6 +90,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     // instance is handed out - so the reads from GetViewBetween on other threads never race a write.
     private int _prefixExtractorLength;
 
+    /// <summary>Widest prefix extractor of the database and its columns: 0 for none, <see cref="int.MaxValue"/> for one of unknown width.</summary>
+    internal int PrefixExtractorLength => _prefixExtractorLength;
+
     private readonly IFileSystem _fileSystem;
 
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
@@ -1143,6 +1146,24 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         if (Interlocked.Decrement(ref _pinnedSlices) == 0 && Volatile.Read(ref _nativeCloseDeferred)) CloseNative();
     }
+
+    /// <summary>
+    /// Keeps the native database open for a native component holding its handle, the way a pinned slice
+    /// does: <see cref="Dispose"/> waits for the lease, and past its timeout leaves the close to the last release.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">The database is being disposed.</exception>
+    internal void AcquireNativeLease()
+    {
+        // Counted before the disposing check, so Dispose either waits for this lease or this call sees it disposing.
+        Interlocked.Increment(ref _pinnedSlices);
+        if (!_isDisposing) return;
+
+        ReleasePinnedSlice();
+        throw new ObjectDisposedException(Name);
+    }
+
+    /// <summary>Releases a lease taken with <see cref="AcquireNativeLease"/>.</summary>
+    internal void ReleaseNativeLease() => ReleasePinnedSlice();
 
     /// <summary>Waits for the slices <see cref="GetNativeSlice(ReadOnlySpan{byte}, IColumnFamilyHandle?, out nint, ReadFlags)"/> handed out to be released.</summary>
     /// <returns><see langword="false"/> if slices are still pinned after <see cref="PinnedSliceDrainTimeout"/>.</returns>

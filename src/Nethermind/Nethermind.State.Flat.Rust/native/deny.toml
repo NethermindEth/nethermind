@@ -1,0 +1,11 @@
+# Run with `cargo deny check bans`.
+
+[bans]
+# The store drives the RocksDB instance C# opened, through the C API of the library C# loaded; a crate bringing its
+# own RocksDB would link a second copy that must never touch that instance.
+deny = [
+    { crate = "rocksdb", reason = "use the RocksApi table of the C# library" },
+    { crate = "librocksdb-sys", reason = "use the RocksApi table of the C# library" },
+    { crate = "rust-rocksdb", reason = "use the RocksApi table of the C# library" },
+    { crate = "rust-librocksdb-sys", reason = "use the RocksApi table of the C# library" },
+]

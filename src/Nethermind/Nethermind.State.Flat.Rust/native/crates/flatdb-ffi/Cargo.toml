@@ -1,0 +1,21 @@
+[package]
+name = "flatdb-ffi"
+description = "C ABI of the FlatDB core, loaded by Nethermind.State.Flat.Rust as libnethermind_flatdb."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "nethermind_flatdb"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+flatdb-core.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+
+[lints]
+workspace = true

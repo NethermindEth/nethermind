@@ -882,6 +882,7 @@
           "Nethermind.Specs": "[2.2.0-preview, )",
           "Nethermind.State.Flat": "[2.2.0-preview, )",
           "Nethermind.State.Flat.History": "[2.2.0-preview, )",
+          "Nethermind.State.Flat.Rust": "[2.2.0-preview, )",
           "Nethermind.Synchronization": "[2.2.0-preview, )"
         }
       },
@@ -1190,6 +1191,15 @@
           "Nethermind.State": "[2.2.0-preview, )",
           "Nethermind.State.Flat": "[2.2.0-preview, )",
           "Nethermind.Trie": "[2.2.0-preview, )"
+        }
+      },
+      "nethermind.state.flat.rust": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Core": "[2.2.0-preview, )",
+          "Nethermind.Db": "[2.2.0-preview, )",
+          "Nethermind.Db.Rocks": "[2.2.0-preview, )",
+          "Nethermind.State.Flat": "[2.2.0-preview, )"
         }
       },
       "nethermind.statediff.core": {

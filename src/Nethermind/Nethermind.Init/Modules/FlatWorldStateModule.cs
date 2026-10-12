@@ -26,6 +26,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Rust;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
 
@@ -212,6 +213,19 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
                 "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
+        }
+
+        if (flatDbConfig.Enabled && flatDbConfig.Backend != FlatDbBackend.CSharp)
+        {
+            // Every other history and archive-proof setting needs HistoryEnabled, as checked above.
+            if (flatDbConfig.EnableLongFinality || flatDbConfig.HistoryEnabled)
+            {
+                throw new InvalidConfigurationException(
+                    $"FlatDb.Backend={flatDbConfig.Backend} supports neither the persisted-snapshot tier nor flat history yet. " +
+                    "Set FlatDb.EnableLongFinality=false and FlatDb.HistoryEnabled=false, or FlatDb.Backend=CSharp.", -1);
+            }
+
+            builder.AddModule(new FlatRustWorldStateModule(flatDbConfig));
         }
     }
 

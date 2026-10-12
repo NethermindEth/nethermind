@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/flatdb-core", "crates/flatdb-ffi", "crates/flatdb-bench"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "LGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+flatdb-core = { path = "crates/flatdb-core" }
+thiserror = "2"
+parking_lot = "0.12"
+libloading = "0.9"
+rstest = "0.27"
+tempfile = "3"
+criterion = "0.8"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+debug = 1
