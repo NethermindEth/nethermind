@@ -44,12 +44,17 @@ public class PortableLightClientTests
                 "update" => LightClientWireCodec.EncodeUpdate(update, spec),
                 "finality" => LightClientWireCodec.EncodeFinality(new()
                 {
-                    AttestedHeader = update.AttestedHeader, FinalizedHeader = update.FinalizedHeader,
-                    FinalityBranch = update.FinalityBranch, SyncAggregate = update.SyncAggregate, SignatureSlot = update.SignatureSlot,
+                    AttestedHeader = update.AttestedHeader,
+                    FinalizedHeader = update.FinalizedHeader,
+                    FinalityBranch = update.FinalityBranch,
+                    SyncAggregate = update.SyncAggregate,
+                    SignatureSlot = update.SignatureSlot,
                 }, spec),
                 _ => LightClientWireCodec.EncodeOptimistic(new()
                 {
-                    AttestedHeader = update.AttestedHeader, SyncAggregate = update.SyncAggregate, SignatureSlot = update.SignatureSlot,
+                    AttestedHeader = update.AttestedHeader,
+                    SyncAggregate = update.SyncAggregate,
+                    SignatureSlot = update.SignatureSlot,
                 }, spec),
             };
             if (scenario is "signature" or "proof")
