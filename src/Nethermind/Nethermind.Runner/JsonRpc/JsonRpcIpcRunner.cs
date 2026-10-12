@@ -26,6 +26,7 @@ namespace Nethermind.Runner.JsonRpc
         IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
+        private static readonly TimeSpan AcceptRetryDelay = TimeSpan.FromMilliseconds(100);
         private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
@@ -65,16 +66,59 @@ namespace Nethermind.Runner.JsonRpc
                 return;
             }
 
-            while (true)
+            await AcceptConnectionsAsync(_server.AcceptAsync, OnAccepted, _logger, cancellationToken);
+
+            void OnAccepted(Socket socket)
             {
-                if (_logger.IsInfo) _logger.Info($"Waiting for an IPC connection...");
-
-                Socket socket = await _server.AcceptAsync(cancellationToken);
-
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
                 _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken));
+            }
+        }
+
+        internal static async Task AcceptConnectionsAsync(
+            Func<CancellationToken, ValueTask<Socket>> accept,
+            Action<Socket> onAccepted,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                if (logger.IsInfo) logger.Info($"Waiting for an IPC connection...");
+
+                Socket socket;
+                try
+                {
+                    socket = await accept(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                // The listener was disposed on shutdown
+                catch (Exception ex) when (ex is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
+                {
+                    return;
+                }
+                catch (SocketException ex)
+                {
+                    if (logger.IsWarn) logger.Warn($"Failed to accept an IPC connection ({ex.SocketErrorCode}), retrying.");
+
+                    // Avoids a busy loop while the error persists, e.g. when out of file descriptors
+                    try
+                    {
+                        await Task.Delay(AcceptRetryDelay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                onAccepted(socket);
             }
         }
 

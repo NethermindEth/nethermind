@@ -3,6 +3,7 @@
 
 #nullable enable
 using System;
+using System.Diagnostics;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
@@ -28,6 +29,68 @@ namespace Nethermind.Runner.Test.JsonRpc;
 [Parallelizable(ParallelScope.Self)]
 public class JsonRpcIpcRunnerTests
 {
+    [Test]
+    public async Task AcceptConnectionsAsync_keeps_accepting_after_an_accept_error()
+    {
+        TestLogger testLogger = new();
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        using Socket accepted = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        TaskCompletionSource<Socket> onAccepted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int attempts = 0;
+
+        async ValueTask<Socket> Accept(CancellationToken token)
+        {
+            switch (++attempts)
+            {
+                case 1:
+                    throw new SocketException((int)SocketError.TooManyOpenSockets);
+                case 2:
+                    return accepted;
+                default:
+                    await Task.Delay(Timeout.Infinite, token);
+                    throw new UnreachableException();
+            }
+        }
+
+        Task loop = JsonRpcIpcRunner.AcceptConnectionsAsync(Accept, socket => onAccepted.TrySetResult(socket), new(testLogger), cts.Token);
+
+        Task first = await Task.WhenAny(onAccepted.Task, loop);
+        cts.Cancel();
+        await loop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(onAccepted.Task), "the accept loop must survive a failed accept");
+            Assert.That(onAccepted.Task.IsCompletedSuccessfully ? onAccepted.Task.Result : null, Is.SameAs(accepted));
+            Assert.That(testLogger.LogList, Has.Some.StartsWith("Failed to accept an IPC connection (TooManyOpenSockets)"));
+        }
+    }
+
+    private static readonly TestCaseData[] ShutdownAcceptErrors =
+    [
+        new TestCaseData(new SocketException((int)SocketError.OperationAborted)).SetName("listener disposed while accepting"),
+        new TestCaseData(new ObjectDisposedException(nameof(Socket))).SetName("listener already disposed"),
+    ];
+
+    [TestCaseSource(nameof(ShutdownAcceptErrors))]
+    public async Task AcceptConnectionsAsync_stops_quietly_on_shutdown(Exception acceptError)
+    {
+        TestLogger testLogger = new();
+        bool accepted = false;
+
+        await JsonRpcIpcRunner.AcceptConnectionsAsync(
+            _ => ValueTask.FromException<Socket>(acceptError),
+            _ => accepted = true,
+            new(testLogger),
+            CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False);
+            Assert.That(testLogger.LogList, Has.None.StartsWith("Failed to accept"));
+        }
+    }
+
     [Test]
     public async Task HandleIpcConnection_logs_disconnect_not_server_error_when_client_drops_mid_response()
     {
