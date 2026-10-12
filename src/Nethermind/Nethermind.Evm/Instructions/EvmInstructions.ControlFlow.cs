@@ -350,9 +350,9 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes the SELFDESTRUCT opcode.
+    /// Executes the SELFDESTRUCT opcode (SENDALL under EIP-4758).
     /// This method handles gas adjustments, account balance transfers,
-    /// and marks the executing account for destruction.
+    /// and marks the executing account for destruction where the fork still allows it.
     /// </summary>
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708, TSpec>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -394,7 +394,7 @@ public static partial class EvmInstructions
         Address executingAccount = vmState.Env.ExecutingAccount;
         // Mark the executing account for destruction if allowed: always before EIP-6780, only when created in this
         // transaction under it, and never under EIP-4758 (SENDALL), which only moves the balance.
-        bool destroys = !spec.IsEip4758Enabled
+        bool destroys = !TSpec.IsEip4758Enabled
             && (!TSpec.SelfdestructOnlyOnSameTransaction || vmState.AccessTracker.CreateList.Contains(executingAccount));
         if (destroys)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
