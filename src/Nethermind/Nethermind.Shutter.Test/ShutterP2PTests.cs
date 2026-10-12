@@ -17,6 +17,8 @@ public class ShutterP2PTests
         [],
         new Dto.Envelope().ToByteArray(),
         new Dto.Envelope { Message = Any.Pack(new Dto.DecryptionTrigger()) }.ToByteArray(),
+        new Dto.Envelope { Message = Any.Pack(new Dto.DecryptionKeys { InstanceID = 7 }) }.ToByteArray(),
+        new Dto.Envelope { Message = Any.Pack(new Dto.DecryptionKeys { InstanceID = 7, Optimism = new() }) }.ToByteArray(),
         [0xff, 0xff, 0xff],
     ];
 
@@ -32,7 +34,7 @@ public class ShutterP2PTests
     [Test]
     public void Decryption_keys_envelope_parses()
     {
-        Dto.DecryptionKeys expected = new() { InstanceID = 7, Eon = 3 };
+        Dto.DecryptionKeys expected = new() { InstanceID = 7, Eon = 3, Gnosis = new() { Slot = 11 } };
         byte[] message = new Dto.Envelope { Message = Any.Pack(expected) }.ToByteArray();
 
         bool parsed = ShutterP2P.TryParseDecryptionKeys(message, LimboLogs.Instance.GetClassLogger<ShutterP2P>(), out Dto.DecryptionKeys? keys);

@@ -186,7 +186,7 @@ public class ShutterP2P : IShutterP2P
         if (TryParseDecryptionKeys(msg, _logger, out Dto.DecryptionKeys? decryptionKeys))
         {
             onKeysReceived(decryptionKeys).ContinueWith(
-                t => { if (_logger.IsError) _logger.Error("Shutter decryption keys handler failed.", t.Exception); },
+                t => { if (_logger.IsWarn) _logger.Warn($"Shutter decryption keys handler failed: {t.Exception}"); },
                 TaskContinuationOptions.OnlyOnFaulted);
         }
     }
@@ -198,14 +198,14 @@ public class ShutterP2P : IShutterP2P
         try
         {
             Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-            // Message is null when the field is absent, which is a peer error, not ours.
-            if (envelope.Message is not null && envelope.Message.TryUnpack(out Dto.DecryptionKeys keys))
+            // Message and the Gnosis oneof are null when absent, which is a peer error, not ours.
+            if (envelope.Message is not null && envelope.Message.TryUnpack(out Dto.DecryptionKeys keys) && keys.Gnosis is not null)
             {
                 decryptionKeys = keys;
                 return true;
             }
 
-            if (logger.IsDebug) logger.Debug("Could not parse Shutter decryption keys: protobuf type names did not match.");
+            if (logger.IsDebug) logger.Debug("Could not parse Shutter decryption keys: envelope does not contain Gnosis decryption keys.");
         }
         catch (Exception e)
         {
