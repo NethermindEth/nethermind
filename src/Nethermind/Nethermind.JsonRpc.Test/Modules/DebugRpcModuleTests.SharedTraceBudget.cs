@@ -91,7 +91,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.Throws<OperationCanceledException>(() => chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options));
                 Assert.That(probe.Attempts, Is.EqualTo(1));
-                Assert.That(clock.Calls, Is.EqualTo(2));
+                Assert.That(clock.Calls, Is.InRange(2, 3), "indexed workers may acquire the execution permit out of transaction order");
                 Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
                 return;
             }

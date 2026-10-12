@@ -4,6 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
@@ -24,7 +27,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
     public bool IsTracingRewards => inner.IsTracingRewards;
 
     internal static IBlockTracer<GethLikeTxTrace> Wrap(IBlockTracer<GethLikeTxTrace> tracer, GethTraceOptions options, CancellationToken external) =>
-        options.EnforceExecutionDeadline && options.Tracer is null or "" or "callTracer" or "prestateTracer" or "4byteTracer"
+        options.EnforceExecutionDeadline && options.Tracer is null or "" or NativeCallTracer.CallTracer or NativePrestateTracer.PrestateTracer or Native4ByteTracer.FourByteTracer
             ? new GethLikeBlockDeadlineTracer(tracer, options, external)
             : tracer;
 
@@ -51,7 +54,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
 
         try
         {
-            TimeSpan duration = options.ResolveTimeout() ?? TimeSpan.FromSeconds(5);
+            TimeSpan duration = options.ResolveTimeout() ?? GethTraceDeadline.DefaultTimeout;
             _deadline = new(_external, options.DeadlineClock);
             _deadline.Start(duration);
             CheckDeadline();
@@ -114,13 +117,15 @@ internal sealed class GethLikeBlockDeadlineTracer(
 
     private void ReleaseDeadline() => DisposableExtensions.DisposeAndNull(ref _deadline);
 
-    internal void DisposeAfterFailure(Exception exception)
+    internal void HandleFailure(Exception exception)
     {
+        Exception failure = exception is OperationCanceledException && Expired ? new GethTraceDeadlineException() : exception;
         try { Dispose(); }
         catch (Exception cleanupException)
         {
-            exception.Data[nameof(GethLikeBlockDeadlineTracer)] = cleanupException;
+            failure.Data[nameof(GethLikeBlockDeadlineTracer)] = cleanupException;
         }
+        if (!ReferenceEquals(failure, exception)) throw failure;
     }
 
     public void Dispose()

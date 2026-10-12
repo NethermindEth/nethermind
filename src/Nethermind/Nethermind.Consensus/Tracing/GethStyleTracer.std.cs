@@ -337,15 +337,9 @@ public class GethStyleTracer(
             scope.Component.BlockchainProcessor.Process(block, TraceProcessingOptions.ReadOnlyReplay, executionTracer, cancellationToken);
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), txHash) : tracer.BuildResult()).SingleOrDefault();
         }
-        catch (OperationCanceledException) when (tracer is GethLikeBlockDeadlineTracer { Expired: true })
-        {
-            GethTraceDeadlineException exception = new();
-            ((GethLikeBlockDeadlineTracer)tracer).DisposeAfterFailure(exception);
-            throw exception;
-        }
         catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
         {
-            deadline.DisposeAfterFailure(exception);
+            deadline.HandleFailure(exception);
             throw;
         }
         finally
@@ -419,15 +413,9 @@ public class GethStyleTracer(
 
             return new GethLikeTxTraceCollection(keptTxHash is null ? tracer.BuildResult() : KeepTrace(tracer.BuildResult(), keptTxHash));
         }
-        catch (OperationCanceledException) when (tracer is GethLikeBlockDeadlineTracer { Expired: true })
-        {
-            GethTraceDeadlineException exception = new();
-            ((GethLikeBlockDeadlineTracer)tracer).DisposeAfterFailure(exception);
-            throw exception;
-        }
         catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
         {
-            deadline.DisposeAfterFailure(exception);
+            deadline.HandleFailure(exception);
             throw;
         }
         finally

@@ -273,15 +273,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
-            catch (OperationCanceledException) when (tracer is GethLikeBlockDeadlineTracer { Expired: true } expired)
-            {
-                GethTraceDeadlineException exception = new();
-                expired.DisposeAfterFailure(exception);
-                throw exception;
-            }
             catch (Exception exception)
             {
-                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.DisposeAfterFailure(exception);
+                if (tracer is GethLikeBlockDeadlineTracer deadline) deadline.HandleFailure(exception);
                 else tracer.TryDispose();
                 throw;
             }

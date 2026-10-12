@@ -8,6 +8,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethTraceDeadline : IDisposable
 {
+    internal static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan MaximumTimerDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
     private readonly object _gate = new();
     private readonly CancellationTokenSource _request = new();

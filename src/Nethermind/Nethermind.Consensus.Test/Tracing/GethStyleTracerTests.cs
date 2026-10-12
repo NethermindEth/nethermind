@@ -162,7 +162,7 @@ public class GethStyleTracerTests
             {
                 Exception exception = Assert.Catch(ProcessTransaction);
                 Assert.That(exception, failure == "start" ? Is.TypeOf<GethTraceDeadlineException>() : Is.TypeOf<InvalidOperationException>());
-                tracer.DisposeAfterFailure(exception!);
+                tracer.HandleFailure(exception!);
             }
         }
         using (Assert.EnterMultipleScope())
@@ -195,8 +195,42 @@ public class GethStyleTracerTests
         inner.BuildResult().Returns(_ => throw cleanup);
         InvalidOperationException primary = new("execution");
         using GethLikeBlockDeadlineTracer tracer = new(inner, new(), CancellationToken.None);
-        Assert.That(() => tracer.DisposeAfterFailure(primary), Throws.Nothing);
+        Assert.That(() => tracer.HandleFailure(primary), Throws.Nothing);
         Assert.That(primary.Data[nameof(GethLikeBlockDeadlineTracer)], Is.SameAs(cleanup));
+    }
+
+    [Test]
+    public void Buffered_deadline_failure_normalization_preserves_external_priority_and_cleanup(
+        [Values] bool expire, [Values] bool cancelExternal)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(new DisposalCountingTracer());
+        InvalidOperationException cleanup = new("cleanup");
+        inner.BuildResult().Returns(_ => throw cleanup);
+        using GethLikeBlockDeadlineTracer tracer = new(inner, new() { DeadlineClock = clock }, external.Token);
+        using ITxTracer owned = tracer.StartNewTxTrace(Build.A.Transaction.TestObject);
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(GethTraceDeadline.DefaultTimeout));
+        if (expire) clock.Advance(GethTraceDeadline.DefaultTimeout);
+        if (cancelExternal) external.Cancel();
+        OperationCanceledException original = new(external.Token);
+
+        Exception failure = Assert.Catch(() =>
+        {
+            try { throw original; }
+            catch (Exception exception)
+            {
+                tracer.HandleFailure(exception);
+                throw;
+            }
+        });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, expire && !cancelExternal ? Is.TypeOf<GethTraceDeadlineException>() : Is.SameAs(original));
+            Assert.That(failure.Data[nameof(GethLikeBlockDeadlineTracer)], Is.SameAs(cleanup));
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
     }
 
     private sealed class DisposalCountingTracer : TxTracer
