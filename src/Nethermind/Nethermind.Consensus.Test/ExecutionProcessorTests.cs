@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -246,6 +247,21 @@ public class ExecutionProcessorTests
         _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customWithdrawals), Arg.Any<CallOutputTracer>());
         _transactionProcessor.Received(1).Execute(Arg.Is<Transaction>(t => t.To == customConsolidations), Arg.Any<CallOutputTracer>());
         _transactionProcessor.DidNotReceive().Execute(Arg.Is<Transaction>(t => t.To == eip7002Account || t.To == eip7251Account), Arg.Any<CallOutputTracer>());
+    }
+
+    [Test]
+    public void ListSystemContracts_reports_the_request_contracts_configured_by_spec()
+    {
+        _spec.Eip7002ContractAddress.Returns(TestItem.AddressA);
+        _spec.Eip7251ContractAddress.Returns(TestItem.AddressB);
+
+        OrderedDictionary<string, Address> systemContracts = _spec.ListSystemContracts();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(systemContracts[Eip7002Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressA));
+            Assert.That(systemContracts[Eip7251Constants.ContractAddressKey], Is.EqualTo(TestItem.AddressB));
+        }
     }
 
     private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
