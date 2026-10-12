@@ -709,6 +709,12 @@ public partial class VirtualMachine<TGasPolicy>(
             executionDepositCost = ulong.MaxValue;
             stateDepositCost = long.MaxValue;
         }
+        else if (previousState.ExecutionType == ExecutionType.TCREATE)
+        {
+            // EIP-8360: TCREATE code is discarded at the end of the transaction, so it pays no code-deposit cost.
+            executionDepositCost = 0;
+            stateDepositCost = 0;
+        }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
@@ -758,13 +764,21 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
             // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
-            // there fails the deposit.
+            // there fails the deposit. EIP-8360 TCREATE code is discarded at the end of the transaction.
             chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
-                && TryMeterBalData((ulong)code.Length);
+                && (previousState.ExecutionType == ExecutionType.TCREATE || TryMeterBalData((ulong)code.Length));
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
-                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                if (previousState.ExecutionType == ExecutionType.TCREATE)
+                {
+                    // EIP-8360: paid no deposit, so the code must not reach the code database.
+                    _codeInfoRepository.InsertTransientCode(code, callCodeOwner, spec);
+                }
+                else
+                {
+                    _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                }
                 if (IsTracingActions)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - codeDepositGasCost, callCodeOwner, code);
@@ -1399,9 +1413,15 @@ public partial class VirtualMachine<TGasPolicy>(
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
-    private CallResult RunPrecompile<Eip158>(VmState<TGasPolicy> state)
+    private CallResult RunPrecompile<Eip158, Eip8360>(VmState<TGasPolicy> state)
         where Eip158 : struct, IFlag
+        where Eip8360 : struct, IFlag
     {
+        if (Eip8360.IsActive && state.AccessTracker.TransientCreates is not null && !TryChargeTransientCreateTransfer(state, isNewTransientCreate: false))
+        {
+            return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+        }
+
         ReadOnlyMemory<byte> callData = state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
@@ -1590,7 +1610,10 @@ public partial class VirtualMachine<TGasPolicy>(
         // If this is the first call frame (not a continuation), adjust account balances and nonces.
         if (!vmState.IsContinuation)
         {
-            GetExecutionHandlers().InitializeFrame(this, vmState);
+            if (!GetExecutionHandlers().InitializeFrame(this, vmState))
+            {
+                return new CallResult(EvmExceptionType.OutOfGas);
+            }
         }
 
         // If no machine code is present, treat the call as empty.
