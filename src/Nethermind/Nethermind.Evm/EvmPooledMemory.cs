@@ -714,8 +714,6 @@ public partial struct EvmPooledMemory
         ((newActiveWords * newActiveWords) >> 9) -
         ((activeWords * activeWords) >> 9);
 
-    private static readonly TraceMemory EmptyTraceMemory = new(0, default);
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     public TraceMemory GetTrace()
     {

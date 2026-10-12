@@ -40,7 +40,7 @@ public sealed class EthereumVirtualMachine(
 /// Static fields shared across all VirtualMachine generic instantiations.
 /// Moved out of the generic class to avoid duplication per type parameter.
 /// </summary>
-public static class VirtualMachineStatics
+public static partial class VirtualMachineStatics
 {
     public const int MaxCallDepth = 1024;
 
@@ -84,9 +84,6 @@ public static class VirtualMachineStatics
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
-    public static readonly OutOfGasException PrecompileOutOfGasException = new();
-    internal static readonly Address Ripemd160Address = Address.FromNumber(3);
     internal const string EcRecoverPrecompileName = "ECREC";
 
     /// <summary>

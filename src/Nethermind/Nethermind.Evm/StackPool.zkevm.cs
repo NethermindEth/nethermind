@@ -7,7 +7,8 @@ namespace Nethermind.Evm;
 
 internal static partial class StackPool
 {
-    private static readonly EvmObjectPool<StackItem> _stackPool = new();
+    // Lazy, so the guest runs no class constructor for this type.
+    private static EvmObjectPool<StackItem> _stackPool => field ??= new();
 
     public static partial void ReturnStacks(byte[] dataStack)
     {

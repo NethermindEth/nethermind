@@ -5,11 +5,15 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm;
 
 public partial struct EvmPooledMemory
 {
+    // Computed on access, so the guest runs no class constructor for this type.
+    private static TraceMemory EmptyTraceMemory => new(0, default);
+
     /// <summary>
     /// Returns the first of the <paramref name="length"/> bytes at <paramref name="offset"/> when they lie inside both
     /// the active and the initialized memory, or a null reference when they do not.

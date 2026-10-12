@@ -7,15 +7,13 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public sealed class IdentityPrecompile : IPrecompile<IdentityPrecompile>
+public sealed partial class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
     public static IdentityPrecompile Instance { get; } = new();
 
     private IdentityPrecompile()
     {
     }
-
-    public static Address Address { get; } = Address.FromNumber(4);
 
     public string Name => "ID";
 

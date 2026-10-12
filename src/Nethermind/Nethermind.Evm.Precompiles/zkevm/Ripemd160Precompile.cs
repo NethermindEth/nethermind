@@ -10,6 +10,9 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Ripemd160Precompile
 {
+    // Lazy, so the guest runs no class constructor for this type.
+    public static Address Address => field ??= Address.FromNumber(3);
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         byte[] output = new byte[32];

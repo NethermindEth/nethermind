@@ -10,6 +10,10 @@ namespace Nethermind.Evm.CodeAnalysis;
 
 public sealed partial class CodeInfo
 {
+    // Lazy, so the guest runs no class constructor for this type.
+    public static CodeInfo Empty => field ??= new CodeInfo(_emptyAnalyzer);
+    private static JumpDestinationAnalyzer _emptyAnalyzer => field ??= new JumpDestinationAnalyzer(new CodeInfo(), skipAnalysis: true);
+
     private ReadOnlyMemory<byte> _code;
 
     /// <remarks>

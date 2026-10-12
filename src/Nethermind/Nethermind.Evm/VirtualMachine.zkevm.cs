@@ -18,10 +18,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     // Cache the dispatch tables in plain per-TGasPolicy statics: the guest executes a single fork, and
     // ConditionalWeakTable (used by the std build) relies on GC dependent-handles the zkEVM guest can't map.
-    private static readonly OpcodeTable _opcodeTable = new();
+    // Lazy, so the guest runs no class constructor for this type.
+    private static OpcodeTable? _opcodeTable;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static OpcodeTable GetOpcodeTable() => _opcodeTable;
+    private static OpcodeTable GetOpcodeTable() => _opcodeTable ??= new();
 
     /// <inheritdoc/>
     /// <remarks>The guest is compiled ahead of time, so a rebuilt table has no promoted code to capture.</remarks>
