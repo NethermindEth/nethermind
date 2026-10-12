@@ -869,6 +869,22 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public async Task Fetch_header_ignores_a_peer_failing_the_request()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        peers[0].SetHeaderFailure(true);
+        peers[1].HeaderToReturn = requested;
+        peers[1].SetHeaderResponseTime(100);
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.SameAs(requested));
+    }
+
+    [Test]
     public async Task Fetch_header_falls_back_to_an_allocated_peer_when_no_head_header_is_returned()
     {
         await using Context ctx = new();

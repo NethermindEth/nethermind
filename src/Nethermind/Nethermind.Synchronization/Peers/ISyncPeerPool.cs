@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -142,7 +143,7 @@ namespace Nethermind.Synchronization.Peers
         /// The header whose hash is <paramref name="hash"/>, or <c>null</c> if no peer supplied it in time.
         /// A response for any other block is discarded, so the result never depends on which peer answered.
         /// </returns>
-        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, ILogger logger = default, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -152,7 +153,7 @@ namespace Nethermind.Synchronization.Peers
                 List<Task<BlockHeader?>> requests = new(syncPeerPool.InitializedPeersCount);
                 foreach (PeerInfo peer in syncPeerPool.InitializedPeers)
                 {
-                    requests.Add(FetchHeader(syncPeerPool, peer, hash, cts.Token));
+                    requests.Add(FetchHeader(syncPeerPool, peer, hash, logger, cts.Token));
                 }
 
                 while (requests.Count > 0)
@@ -175,6 +176,11 @@ namespace Nethermind.Synchronization.Peers
                 // Timeout or no peer.
                 return null;
             }
+            catch (Exception ex)
+            {
+                if (logger.IsDebug) logger.Debug($"Failed to fetch header {hash} from an allocated peer: {ex}");
+                return null;
+            }
 
             static Task<BlockHeader?> FetchAllocatedHeader(ISyncPeerPool syncPeerPool, Hash256 headerHash, CancellationToken token) =>
                 syncPeerPool.AllocateAndRun(
@@ -189,7 +195,7 @@ namespace Nethermind.Synchronization.Peers
                     AllocationContexts.Headers,
                     token);
 
-            static async Task<BlockHeader?> FetchHeader(ISyncPeerPool syncPeerPool, PeerInfo peer, Hash256 headerHash, CancellationToken token)
+            static async Task<BlockHeader?> FetchHeader(ISyncPeerPool syncPeerPool, PeerInfo peer, Hash256 headerHash, ILogger logger, CancellationToken token)
             {
                 try
                 {
@@ -197,6 +203,11 @@ namespace Nethermind.Synchronization.Peers
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
                 {
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    if (logger.IsDebug) logger.Debug($"Peer {peer} failed to return header {headerHash}: {ex}");
                     return null;
                 }
             }
