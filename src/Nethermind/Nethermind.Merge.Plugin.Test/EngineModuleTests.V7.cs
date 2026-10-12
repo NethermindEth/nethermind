@@ -103,7 +103,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
         ResultWrapper<ForkchoiceUpdatedV2Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payloadResult = await rpc.engine_getPayloadV7(Bytes.FromHexString(fcuResult.Data.PayloadId!));
 
         // Before EIP-7668 "0x" reads as the zero bloom, so the hash computed over 256 zero bytes still matches.
         JsonNode payloadJson = JsonNode.Parse(chain.JsonSerializer.Serialize(payloadResult.Data!.ExecutionPayload))!;
@@ -111,7 +111,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 executionPayload = chain.JsonSerializer.Deserialize<ExecutionPayloadV4>(payloadJson.ToJsonString())!;
 
         ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
-            executionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+            executionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, [], inclusionListMembership: Membership([]));
 
         Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), newPayload.Data.ValidationError);
     }
@@ -1171,7 +1171,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> built = await rpc.engine_getPayloadV7(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
         byte[][] requests = built.Data!.ExecutionRequests!;
         Assert.That(payload.Transactions, Is.Empty);
@@ -1202,7 +1202,7 @@ public partial class EngineModuleTests
             await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
             probe.Watch(payload.BlockHash);
-            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer()).Bytes], inclusionListMembership: Membership([Rlp.Encode(BuildInclusionListTransfer()).Bytes]));
             await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally
@@ -1239,7 +1239,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
             new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
-        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> built = await rpc.engine_getPayloadV7(Bytes.FromHexString(build.Data.PayloadId!));
         ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
         byte[][] requests = built.Data!.ExecutionRequests!;
         Assert.That(payload.Transactions, Is.Empty);
@@ -1264,11 +1264,11 @@ public partial class EngineModuleTests
         try
         {
             OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
-            ResultWrapper<PayloadStatusV2> timedOut = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            ResultWrapper<PayloadStatusV2> timedOut = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList, inclusionListMembership: Membership(inclusionList));
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
             probe.Watch(payload.BlockHash);
-            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, resendSameList ? inclusionList : []);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, resendSameList ? inclusionList : [], inclusionListMembership: Membership(resendSameList ? inclusionList : []));
             await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally
@@ -1669,13 +1669,13 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(head, Keccak.Zero, head), BuildBogotaPayloadAttributes(inclusionList: []));
         Assert.That(fcu.Result.ResultType, Is.EqualTo(ResultType.Success), fcu.Result.Error);
         await improved;
-        ResultWrapper<GetPayloadV6Result?> payload = await producer.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ResultWrapper<GetPayloadV7Result?> payload = await producer.EngineRpcModule.engine_getPayloadV7(Bytes.FromHexString(fcu.Data.PayloadId!));
         ExecutionPayloadV4 executionPayload = payload.Data!.ExecutionPayload;
         Assert.That(executionPayload.Transactions, Has.Length.EqualTo(txs.Length));
 
         BlockHeader parent = validator.BlockTree.Head!.Header;
         ResultWrapper<NewPayloadWithWitnessV1Result> result = await validator.EngineRpcModule.engine_newPayloadWithWitnessV6(
-            executionPayload, [], Keccak.Zero, payload.Data.ExecutionRequests, []);
+            executionPayload, [], Keccak.Zero, payload.Data.ExecutionRequests, [], inclusionListMembership: Membership([]));
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid), result.Data.ValidationError);
 
         Block suggested = executionPayload.TryGetBlock().Data!;

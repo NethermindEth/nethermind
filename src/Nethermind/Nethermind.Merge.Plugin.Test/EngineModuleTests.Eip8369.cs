@@ -123,17 +123,17 @@ public partial class EngineModuleTests
     public async Task NewPayloadV6_fills_the_verify_budget_per_position(bool samePosition, bool satisfied)
     {
         using MergeTestBlockchain chain = await CreateProfile2Blockchain();
-        // Each declares 600,000 of VERIFY gas, so whichever the fill takes second overruns the position's 1,048,576;
-        // the stuffing's sender is picked so that its hash, and so its turn, comes first.
-        byte[] candidate = Encode(Profile2FrameTx(chain, Profile2Sender, 600_000));
-        byte[] stuffing = TestItem.Addresses.Select(a => Encode(Profile2FrameTx(chain, a, 600_000)))
-            .First(tx => Keccak.Compute(tx).CompareTo(Keccak.Compute(candidate)) < 0);
+        // Each declares 250,000 of VERIFY gas, under MAX_VERIFY_GAS_PER_TX, so four fill a position's 1,048,576 and
+        // a fifth overruns it; the stuffing's senders are picked so that their hashes, and so their turns, come first.
+        byte[] candidate = Encode(Profile2FrameTx(chain, Profile2Sender, 250_000));
+        byte[][] stuffing = [.. TestItem.Addresses.Where(a => a != Profile2Sender).Select(a => Encode(Profile2FrameTx(chain, a, 250_000)))
+            .Where(tx => Keccak.Compute(tx).CompareTo(Keccak.Compute(candidate)) < 0).Take(4)];
         byte[] enabler = Encode(Profile2Enabler());
-        // One payload, built with all three at one position so the candidate is tried first and omitted.
-        (byte[][] il, byte[][] built3) = Lists([stuffing, candidate, enabler]);
+        // One payload, built with all of them at one position so the candidate is tried first and omitted.
+        (byte[][] il, byte[][] built3) = Lists([.. stuffing, candidate, enabler]);
         (GetPayloadV7Result built, _) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes((il, built3)));
-        // Aligned with il = [stuffing, candidate, enabler]: the candidate alone at position 1.
-        byte[][] membership = samePosition ? built3 : [Bitvector(1), Bitvector(2), Bitvector(1)];
+        // Aligned with il = [..stuffing, candidate, enabler]: the candidate alone at position 1.
+        byte[][] membership = samePosition ? built3 : [.. stuffing.Select(_ => Bitvector(1)), Bitvector(2), Bitvector(1)];
         Assume.That(built.ExecutionPayload.Transactions, Is.EqualTo(new[] { enabler }));
 
         ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
@@ -274,18 +274,19 @@ public partial class EngineModuleTests
     }
 
     /// <summary>The builder fills each committee position's VERIFY budget apart, in ascending hash order: the
-    /// stuffed position admits two of its three entries and the third gets no claim, while the other position's
+    /// stuffed position admits four of its five entries and the fifth gets no claim, while the other position's
     /// candidate keeps its claim however the first spends.</summary>
     [Test]
     public async Task ForkchoiceUpdatedV5_builder_claims_per_committee_position()
     {
         using MergeTestBlockchain chain = await CreateProfile2Blockchain();
-        // 520,000 each: two fit one position's 1,048,576, a third does not; pooled, the two would exhaust the budget.
-        byte[][] stuffing = [.. new[] { TestItem.AddressE, TestItem.AddressF, TestItem.Addresses[0] }.Select(a => Encode(Profile2FrameTx(chain, a, 520_000)))];
+        // 250,000 each, under MAX_VERIFY_GAS_PER_TX: four fit one position's 1,048,576, a fifth does not; pooled, the
+        // four would exhaust the budget.
+        byte[][] stuffing = [.. TestItem.Addresses.Where(a => a != Profile2Sender).Take(5).Select(a => Encode(Profile2FrameTx(chain, a, 250_000)))];
         byte[] frameBytes = Encode(Profile2FrameTx(chain, Profile2Sender, 100_000));
         byte[] enablerBytes = Encode(Profile2Enabler());
         (byte[][] il, byte[][] membership) = Lists(stuffing, [frameBytes, enablerBytes]);
-        Hash256[] admittedStuffing = [.. stuffing.Select(Keccak.Compute).Order().Take(2)];
+        Hash256[] admittedStuffing = [.. stuffing.Select(Keccak.Compute).Order().Take(4)];
 
         (GetPayloadV7Result built, _) = await BuildWithFcu(chain, BuildBogotaPayloadAttributes((il, membership)));
         ResultWrapper<PayloadStatusV2> newPayload = await chain.EngineRpcModule.engine_newPayloadV6(
