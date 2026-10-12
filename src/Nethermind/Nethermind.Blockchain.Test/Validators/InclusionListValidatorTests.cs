@@ -76,18 +76,17 @@ public class InclusionListValidatorTests
         }
     }
 
-    /// <summary>EIP-7805: before Profile 2 is active the original end-of-payload rule alone decides, on the origin's
-    /// nonce and balance; membership and claims have no effect and nothing is replayed.</summary>
-    [TestCase(10_000_000_000_000_000_000UL, 0UL, false, TestName = "Before Profile 2 an omitted frame tx the sender can pay is censoring despite a claim")]
-    [TestCase(1UL, 0UL, true, TestName = "Before Profile 2 an omitted frame tx the sender cannot pay is excused")]
-    [TestCase(10_000_000_000_000_000_000UL, 1UL, true, TestName = "Before Profile 2 an omitted frame tx with a stale nonce is excused")]
-    public void Frame_tx_omission_before_profile_2_follows_the_original_rule(ulong senderBalance, ulong senderNonce, bool satisfied)
+    /// <summary>Before Profile 2 is active an omitted frame transaction is excused, as before this change: membership
+    /// and claims have no effect, and nothing is replayed or signature-checked.</summary>
+    [TestCase(10_000_000_000_000_000_000UL, 0UL, TestName = "Before Profile 2 an omitted frame tx is excused despite a claim")]
+    [TestCase(1UL, 1UL, TestName = "Before Profile 2 an omitted frame tx is excused whatever its sender's state")]
+    public void Frame_tx_omission_is_excused_before_profile_2(ulong senderBalance, ulong senderNonce)
     {
         // Without EIP-8250 a frame transaction still carries the scalar account nonce.
         Transaction candidate = Candidate(1, 100_000);
         candidate.NonceKeys = null;
         Block block = Profile2Block([candidate], blockTxCount: 3, claims: [new(candidate.Hash!, 1)]);
-        FakeReplayer replayer = new((_, _) => false);
+        FakeReplayer replayer = new((_, _) => true);
 
         bool result = InclusionListValidator.IsSatisfied(block, block.InclusionListTransactions, StateWith(TestItem.AddressA, senderBalance, senderNonce),
             _preProfile2Spec, _txValidator, ilMembership: block.InclusionListMembership, claims: block.InclusionListClaims, replayer: replayer);
@@ -95,7 +94,7 @@ public class InclusionListValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8369Profile2.IsActive(_preProfile2Spec), Is.False);
-            Assert.That(result, Is.EqualTo(satisfied));
+            Assert.That(result, Is.True);
             Assert.That(replayer.ReplayedAt, Is.Empty);
             Assert.That(replayer.SignatureChecks, Is.Zero);
         }

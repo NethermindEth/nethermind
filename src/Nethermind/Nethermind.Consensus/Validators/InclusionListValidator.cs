@@ -116,6 +116,9 @@ public static class InclusionListValidator
                 (toReplay ??= []).Add((il[i], index));
                 continue;
             }
+            // Before Profile 2 is active a frame transaction is excused, as the end-of-payload rule cannot judge its
+            // programmable validation.
+            if (il[i].SupportsFrames) continue;
             // EIP-7805: once Profile 2 is active, a blob transaction is in neither profile, so its omission is excused.
             if (il[i].SupportsBlobs && profile2.Active) continue;
             if (CouldIncludeTx(il[i], block, state, spec, txValidator, ref accountCache)) return false;
@@ -186,11 +189,8 @@ public static class InclusionListValidator
         return indices;
     }
 
-    /// <summary>Whether an omitted inclusion-list entry could have been appended to <paramref name="block"/>, judged
-    /// at the end of the payload: every Profile 1 entry, and before Profile 2 is active every entry.</summary>
-    /// <remarks>EIP-7805 judges a frame transaction before activation by the same end-of-payload nonce and balance
-    /// check on its origin, the sender, which must cover the EIP-8141 maximum cost; its code is a smart account
-    /// EIP-3607 does not bar.</remarks>
+    /// <summary>Whether an omitted non-frame inclusion-list entry could have been appended to <paramref name="block"/>,
+    /// judged at the end of the payload.</summary>
     private static bool CouldIncludeTx(Transaction tx, Block block, IReadOnlyStateProvider state, IReleaseSpec spec, ITxValidator txValidator, ref Dictionary<AddressAsKey, AccountStruct>? accountCache)
     {
         if (tx.SenderAddress is null) return false;
@@ -209,12 +209,6 @@ public static class InclusionListValidator
         ref AccountStruct account = ref CollectionsMarshal.GetValueRefOrAddDefault(accountCache, payer, out bool cached);
         // Cache the negative result too (default struct = balance 0, nonce 0, empty codehash).
         if (!cached) state.TryGetAccount(payer, out account);
-
-        if (tx.SupportsFrames)
-        {
-            return FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 frameCost)
-                && SpendableBalance(block, payer, in account) >= frameCost && account.Nonce == tx.Nonce;
-        }
 
         // EIP-3607: a sender with non-delegated code cannot send a tx.
         if (account.HasCode && !state.IsDelegatedCode(payer)) return false;
