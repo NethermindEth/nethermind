@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
