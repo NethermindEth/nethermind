@@ -563,11 +563,11 @@ jobs:
             fi
             FIXTURE_DIR="$SCOPED_DIR"
           elif [ "$SCOPE" = "frames" ]; then
-            # Only the frame-transaction tests: the rest of this archive's for_bogota tree duplicates
+            # Only the Bogota-specific tests: the rest of this archive's for_bogota tree duplicates
             # the Amsterdam corpus the other lanes already run against their own pinned release.
             SCOPED_DIR="$(find "$FIXTURE_DIR" -maxdepth 3 -type d -path '*/for_bogota/bogota' | head -1)"
             if [ -z "$SCOPED_DIR" ]; then
-              echo "::error::Could not find the frame-transaction fixture subdirectory in $FIXTURE_DIR"
+              echo "::error::Could not find the for_bogota/bogota fixture subdirectory in $FIXTURE_DIR"
               find "$FIXTURE_DIR" -maxdepth 3 -type d | head -30
               exit 1
             fi
