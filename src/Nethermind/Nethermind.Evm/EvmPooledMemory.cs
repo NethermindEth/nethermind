@@ -144,7 +144,7 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.u0 + (ulong)length <= Size);
         int intLocation = TruncateToInt32(location.u0);
         ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length, location.u0);
-        value.CopyTo(GetBackingSpan(intLocation, length));
+        Bytes.Copy(value, GetBackingSpan(intLocation, length));
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -173,7 +173,7 @@ public partial struct EvmPooledMemory
         {
             int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
-            source.Slice(intSourceOffset, copiedLength).CopyTo(target);
+            Bytes.Copy(source.Slice(intSourceOffset, copiedLength), target);
         }
 
         if (copiedLength != length)
@@ -639,7 +639,7 @@ public partial struct EvmPooledMemory
             length,
             sourceEnd);
         Span<byte> target = GetBackingSpan(TruncateToInt32(destination.u0), intLength);
-        GetBackingSpan(TruncateToInt32(source.u0), intLength).CopyTo(target);
+        Bytes.Copy(GetBackingSpan(TruncateToInt32(source.u0), intLength), target);
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -902,50 +902,6 @@ public partial struct EvmPooledMemory
         }
     }
 
-#if ZK_EVM
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        byte[] array = SafeArrayPool<byte>.Shared.Rent(minLength, out bool isFresh);
-        initializedSize = isFresh ? (ulong)array.Length : 0;
-        return array;
-    }
-
-    private static void ReturnLarge(byte[] array) => SafeArrayPool<byte>.Shared.Return(array);
-#else
-    private const int MaxSharedArrayLength = 1 << 20;
-    // Buffers above this limit are allocated directly and are never returned to a pool.
-    private const int MaxLargePooledArrayLength = 1 << 22;
-    private static readonly System.Buffers.ArrayPool<byte> _largeArrayPool =
-        System.Buffers.ArrayPool<byte>.Create(maxArrayLength: MaxLargePooledArrayLength, maxArraysPerBucket: 16);
-
-    private static byte[] RentLarge(int minLength, out ulong initializedSize)
-    {
-        if (minLength > MaxLargePooledArrayLength)
-        {
-            byte[] fresh = new byte[ArrayPoolUtilities.GetPowerOfTwoCapacity(minLength)];
-            initializedSize = (ulong)fresh.Length;
-            return fresh;
-        }
-
-        initializedSize = 0;
-        return minLength > MaxSharedArrayLength
-            ? _largeArrayPool.Rent(minLength)
-            : SafeArrayPool<byte>.Shared.Rent(minLength);
-    }
-
-    private static void ReturnLarge(byte[] array)
-    {
-        if (array.Length > MaxLargePooledArrayLength)
-        {
-            return;
-        }
-
-        if (array.Length > MaxSharedArrayLength)
-            _largeArrayPool.Return(array);
-        else
-            SafeArrayPool<byte>.Shared.Return(array);
-    }
-#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void RentSlow(ulong requiredEnd)

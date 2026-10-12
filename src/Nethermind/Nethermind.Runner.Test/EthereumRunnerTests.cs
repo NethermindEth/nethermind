@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -108,7 +109,7 @@ public class EthereumRunnerTests
             Assert.That(waiting.IsCompleted, Is.False, "RPC startup must wait for cleanup.");
             released.SetResult();
             if (cancelStartup)
-                Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
+                await Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(RunnerTimeout));
             else
                 await waiting.WaitAsync(RunnerTimeout);
         }
@@ -132,14 +133,16 @@ public class EthereumRunnerTests
         logger.Received(fail ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("warmup failure")));
     }
 
-    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, Supported }
+    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, CustomPipelineBehindCatchUp, Supported, SupportedBehindCatchUp }
 
     [TestCase(WarmupScenario.Disabled, "disabled by configuration.")]
     [TestCase(WarmupScenario.Diagnostic, "a database diagnostic mode is enabled.")]
     [TestCase(WarmupScenario.CustomSpec, "the chain uses a custom spec provider.")]
     [TestCase(WarmupScenario.MissingMerge, "the standard Merge plugin is not enabled.")]
     [TestCase(WarmupScenario.CustomPipeline, "the chain uses a custom processing pipeline.")]
+    [TestCase(WarmupScenario.CustomPipelineBehindCatchUp, "the chain uses a custom processing pipeline.")]
     [TestCase(WarmupScenario.Supported, null)]
+    [TestCase(WarmupScenario.SupportedBehindCatchUp, null)]
     public async Task Startup_pipeline_warmup_checks_supported_configuration(WarmupScenario scenario, string? expectedReason)
     {
         ChainSpec spec = LoadWarmupChainSpec();
@@ -156,7 +159,15 @@ public class EthereumRunnerTests
         api.Config<IInitConfig>().Returns(config);
         api.SpecProvider.Returns(scenario == WarmupScenario.CustomSpec ? null : new ChainSpecBasedSpecProvider(spec));
         api.Plugins.Returns(scenario == WarmupScenario.MissingMerge ? [] : new INethermindPlugin[] { new MergePlugin(spec, new MergeConfig()) });
-        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(container.Resolve<IMainProcessingContext>());
+        IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
+        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(main);
+        if (scenario is WarmupScenario.CustomPipelineBehindCatchUp or WarmupScenario.SupportedBehindCatchUp)
+        {
+            IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
+            api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+            api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
+        }
 
         Assert.That(StartRpc.GetPipelineWarmupSkipReason(api), Is.EqualTo(expectedReason));
     }
@@ -175,6 +186,7 @@ public class EthereumRunnerTests
     [TestCase("bogota", false, false)]
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
+    [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
     public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
         WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
     {
@@ -216,7 +228,7 @@ public class EthereumRunnerTests
         bool nestedWarmupRan = false;
         bool liveRpcInfoPreserved = false;
         int outerPort = 0;
-        IJsonRpcLocalStats? warmRpcStats = null;
+        SuccessCountingRpcStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
@@ -229,10 +241,11 @@ public class EthereumRunnerTests
                         return config;
                     });
                 }
+                builder.AddDecorator<IJsonRpcLocalStats>((_, stats) => new SuccessCountingRpcStats(stats, "eth_call"));
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
-                    warmRpcStats = container.Resolve<IJsonRpcLocalStats>();
+                    warmRpcStats = (SuccessCountingRpcStats)container.Resolve<IJsonRpcLocalStats>();
                     outerPort = container.Resolve<IJsonRpcConfig>().Port;
                 });
                 if (throughStartRpc)
@@ -275,7 +288,7 @@ public class EthereumRunnerTests
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmRpcStats!.GetMethodStats("eth_call").Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
+            Assert.That(warmRpcStats!.Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
             Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
             AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
             AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
@@ -456,38 +469,38 @@ public class EthereumRunnerTests
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cancellation_does_not_create_storage()
+    public async Task Startup_pipeline_warmup_cancellation_does_not_create_storage()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
+        await Assert.ThrowsAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(new ChainSpec(),
             WarmupConfig(dataDirectory.Path), false, new CancellationToken(canceled: true)));
 
         Assert.That(Directory.Exists(dataDirectory.Path), Is.False);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
+    public async Task Startup_pipeline_warmup_cleans_up_after_rpc_start_cancellation([Values] bool flatState)
     {
         ChainSpec spec = LoadWarmupChainSpec();
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
 
-        Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
+        await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(spec,
             WarmupConfig(dataDirectory.Path), flatState, cancellation.Token, configureContainer: CancelWhenRpcStarts(cancellation)));
 
         Assert.That(Directory.EnumerateDirectories(Path.Combine(dataDirectory.Path, "startup-warmup")), Is.Empty);
     }
 
     [Test]
-    public void Startup_pipeline_warmup_propagates_rpc_bind_failure()
+    public async Task Startup_pipeline_warmup_propagates_rpc_bind_failure()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
         System.Net.Sockets.TcpListener? occupied = null;
         try
         {
-            Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<System.IO.IOException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(directory.Path), false, cancellation.Token, configureContainer: builder =>
                 {
                     IJsonRpcConfig? config = null;
@@ -566,6 +579,21 @@ public class EthereumRunnerTests
         }
     }
 
+    private sealed class SuccessCountingRpcStats(IJsonRpcLocalStats inner, string method) : IJsonRpcLocalStats
+    {
+        private int _successes;
+
+        public int Successes => Volatile.Read(ref _successes);
+
+        public bool IsEnabled => inner.IsEnabled;
+
+        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        {
+            if (report.Success && report.Method == method) Interlocked.Increment(ref _successes);
+            inner.ReportCall(report, elapsedMicroseconds, size);
+        }
+    }
+
     private static IConfigProvider WarmupConfig(string dataDirectory) => new ConfigProvider(new InitConfig { BaseDbPath = dataDirectory });
 
     private static Action<ContainerBuilder> CancelWhenRpcStarts(CancellationTokenSource cancellation, Action? beforeCancel = null) =>
@@ -598,7 +626,7 @@ public class EthereumRunnerTests
     }
 
     [Test, Platform("Win")]
-    public void Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
+    public async Task Startup_pipeline_warmup_cleanup_failure_preserves_cancellation()
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using CancellationTokenSource cancellation = new(RunnerTimeout);
@@ -607,7 +635,7 @@ public class EthereumRunnerTests
         FileStream? lockedFile = null;
         try
         {
-            Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
+            await Assert.CatchAsync<OperationCanceledException>(() => StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec(),
                 WarmupConfig(dataDirectory.Path), false, cancellation.Token, logger: new ILogger(logger),
                 configureContainer: CancelWhenRpcStarts(cancellation, () =>
                 {
@@ -1040,9 +1068,12 @@ public class EthereumRunnerTests
                 if (cancel)
                 {
                     cts.Cancel();
+                    await Assert.ThatAsync(() => task.WaitAsync(RunnerTimeout), Throws.InstanceOf<OperationCanceledException>());
                 }
-
-                await task.WaitAsync(RunnerTimeout);
+                else
+                {
+                    await task.WaitAsync(RunnerTimeout);
+                }
             }
             finally
             {

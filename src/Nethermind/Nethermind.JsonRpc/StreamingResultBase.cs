@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -15,7 +16,12 @@ namespace Nethermind.JsonRpc;
 /// </summary>
 public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, ILogger logger) : IDisposable
 {
-    internal static readonly JsonWriterOptions WriterOptions = new() { SkipValidation = true };
+    internal static readonly JsonWriterOptions WriterOptions = new()
+    {
+        SkipValidation = true,
+        Encoder = EthereumJsonSerializer.JsonOptions.Encoder,
+        MaxDepth = EthereumJsonSerializer.JsonOptions.MaxDepth
+    };
 
     private readonly CancellationTokenSource _timeoutCts = timeoutCts ?? throw new ArgumentNullException(nameof(timeoutCts));
 

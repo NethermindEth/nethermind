@@ -11,7 +11,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc.Test;
+using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Test.Helpers;
@@ -135,6 +137,17 @@ public class XdcBlockForRpcTests
 
         Assert.That(factory, Is.TypeOf<XdcBlockForRpcFactory>());
         Assert.That(factory.Create(chain.BlockTree.Head!, false, chain.SpecProvider), Is.TypeOf<XdcBlockForRpc>());
+    }
+
+    [TestCase(true, "xdc-full")]
+    [TestCase(false, "xdc-hashes")]
+    public void Block_transactions_keep_their_wire_format(bool full, string fixture)
+    {
+        XdcBlockHeader header = Build.A.XdcBlockHeader().WithValidator(Seal()).WithValidators(Masternodes).WithPenalties(Penalised).TestObject;
+        // Size comes from whichever block decoder other tests registered, so it is pinned to the captured value.
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(BlockForRpcWireFormatTests.AllTypes()).WithEncodedSize(0x4e6).TestObject;
+
+        JsonFixture.AssertMatches(typeof(XdcBlockForRpcTests).Assembly, fixture, BlockForRpcWireFormatTests.Serialize(_factory.Create(block, full, SpecProvider())));
     }
 
     /// <summary>The block and standalone-header models, which must agree on the XDPoS fields.</summary>

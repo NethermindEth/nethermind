@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Serialization.Rlp;
 using Autofac;
 
 namespace Nethermind.Consensus.Test;
@@ -57,6 +58,38 @@ public class RecoverSignaturesTest
 
         Assert.That(tx.SenderAddress, Is.EqualTo(signer.Address));
         Assert.That(tx.AuthorizationList.First().Authority, Is.EqualTo(authority.Address));
+    }
+
+    [Test]
+    public void RecoverData_FrameTxOnlyBlock_RecoversSecp256k1Signer()
+    {
+        PrivateKey signer = TestItem.PrivateKeyB;
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = BlockchainIds.GenericNonRealNetwork,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
+            FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, default)],
+            DecodedMaxFeePerGas = 100,
+        };
+        ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
+        Signature signature = new Ecdsa().Sign(signer, in sigHash);
+        byte[] vrs = new byte[TxFrameSignature.Secp256k1SignatureLength];
+        vrs[0] = signature.RecoveryId;
+        signature.Bytes.CopyTo(vrs.AsSpan(1));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer.Address, default, vrs)];
+
+        Block block = Build.A.Block.WithTransactions([tx]).TestObject;
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+        RecoverSignatures sut = new(_ecdsa, specProvider, Substitute.For<ILogManager>());
+
+        sut.RecoverData(block);
+
+        Assert.That(tx.FrameSignatures[0].Recovered?.Signer, Is.EqualTo(signer.Address));
+        Assert.That(tx.FrameSignatures[0].Recovered?.Message, Is.EqualTo(sigHash));
     }
 
     [Test]
@@ -128,13 +161,13 @@ public class RecoverSignaturesTest
     private const int PollMs = 5;
 
     [Test]
-    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Range(0, 1)] int budget)
+    public void Recovery_shares_worker_budget_with_authorization_lists([Values] bool background, [Range(0, 1)] int budget, [Values] bool shared)
     {
         ConcurrentBag<int> observedBudgets = [];
         IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
         ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
         {
-            observedBudgets.Add(ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0);
+            observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0);
             return TestItem.AddressA;
         });
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
@@ -154,21 +187,25 @@ public class RecoverSignaturesTest
                 .WithAuthorizationCode(authorizations).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
         }
 
+        ParallelUnbalancedWork.WorkerGroup? group = shared ? new(budget == 0 ? 2 : budget) : null;
+        using ParallelUnbalancedWork.WorkerScope? entered = group?.Enter();
         using ParallelUnbalancedWork.WorkerScope? outer = budget == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(budget);
         if (background)
         {
             recovery.StartRecovery(TestItem.KeccakA, txs, spec);
             Assert.That(() => recovery.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+            if (group?.Concurrency == 1) recovery.RecoverData(txs, spec);
         }
         else recovery.RecoverData(txs, spec);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(observedBudgets.Count, Is.InRange(16, 20));
-            Assert.That(observedBudgets, Is.All.EqualTo(background || budget == 0 ? Environment.ProcessorCount : budget));
+            int expectedBudget = group?.Concurrency ?? (background ? Math.Max(1, Environment.ProcessorCount / 2) : budget == 0 ? Environment.ProcessorCount : budget);
+            Assert.That(observedBudgets, Is.All.EqualTo(expectedBudget));
             Assert.That(txs.Select(tx => tx.SenderAddress), Is.All.EqualTo(TestItem.AddressA));
             Assert.That(txs.SelectMany(tx => tx.AuthorizationList!).Select(auth => auth.Authority), Is.All.EqualTo(TestItem.AddressA));
-            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer));
+            Assert.That(ParallelUnbalancedWork.WorkerScope.Current, Is.SameAs(outer ?? entered));
         }
     }
 

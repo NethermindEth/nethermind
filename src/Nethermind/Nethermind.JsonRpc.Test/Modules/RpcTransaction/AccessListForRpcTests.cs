@@ -82,4 +82,41 @@ public class AccessListForRpcTests
         string serialized = _serializer.Serialize(forRpc);
         Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedJson)).Using(JToken.EqualityComparer));
     }
+
+    [Test]
+    public void Serializes_to_exact_json()
+    {
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressA)
+            .AddStorage(UInt256.Zero)
+            .AddStorage((UInt256)0xabc)
+            .AddStorage(UInt256.MaxValue)
+            .AddAddress(TestItem.AddressB)
+            .Build();
+
+        string zeroKey = "0x" + new string('0', 64);
+        string abcKey = "0x" + new string('0', 61) + "abc";
+        string maxKey = "0x" + new string('f', 64);
+        string expected = $$"""[{"address":"{{AddressAJson}}","storageKeys":["{{zeroKey}}","{{abcKey}}","{{maxKey}}"]},{"address":"{{TestItem.AddressB}}","storageKeys":[]}]""";
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_serializer.Serialize(AccessListForRpc.FromAccessList(accessList)), Is.EqualTo(expected));
+            Assert.That(_serializer.Serialize(AccessListForRpc.FromAccessList(AccessList.Empty)), Is.EqualTo("[]"));
+            Assert.That(_serializer.Serialize(AccessListForRpc.FromAccessList(null)), Is.EqualTo("[]"));
+        }
+    }
+
+    [TestCase("address", "storageKeys")]
+    [TestCase("ADDRESS", "StorageKeys")]
+    [TestCase("addr\\u0065ss", "storage\\u004beys")]
+    public void Deserializes_property_names_case_insensitively(string addressName, string storageKeysName)
+    {
+        string json = $$"""[{"{{storageKeysName}}":["{{Slot1}}","{{Slot2}}"],"other":[1],"{{addressName}}":"{{AddressAJson}}"}]""";
+
+        AccessList accessList = _serializer.Deserialize<AccessListForRpc>(json)!.ToAccessList();
+
+        Assert.That(_serializer.Serialize(AccessListForRpc.FromAccessList(accessList)),
+            Is.EqualTo($$"""[{"address":"{{AddressAJson}}","storageKeys":["{{Slot1}}","{{Slot2}}"]}]"""));
+    }
 }

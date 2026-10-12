@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -32,6 +33,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -746,8 +748,20 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         private static void TraceConstructedBlock(ITracer tracer, Block block, IBlockTracer blockTracer, bool isSigned)
         {
-            if (isSigned) tracer.ExecuteSigned(block, blockTracer);
-            else tracer.Trace(block, blockTracer);
+            if (isSigned)
+            {
+                tracer.ExecuteSigned(block, blockTracer);
+                return;
+            }
+
+            try
+            {
+                tracer.Trace(block, blockTracer);
+            }
+            catch (InvalidTransactionException e)
+            {
+                throw new RejectedCallException(e);
+            }
         }
 
         /// <summary>A covered block is traced one transaction per worker, rewards last on the seeded end state; any
@@ -929,7 +943,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private void TraceBlockStreaming(Block block, ParityLikeBlockTracer tracer, CancellationToken ct)
         {
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
-            env.Component.Trace(block, tracer.WithCancellation(ct));
+            TraceConstructedBlock(env.Component, block, tracer.WithCancellation(ct), isSigned: false);
         }
 
         private void ExecuteBlockStreaming(BlockHeader baseHeader, Block block, ParityLikeBlockTracer tracer, CancellationToken ct, IReleaseSpec? specOverride = null, Hash256? transactionHash = null)

@@ -101,7 +101,8 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateExcessBlobGas(header, parent, spec, ref error))
                    && ValidateRequestsHash(header, spec, ref error)
                    && ValidateBlockAccessListHash(header, spec, ref error)
-                   && ValidateSlotNumber(header, spec, ref error);
+                   && ValidateSlotNumber(header, spec, ref error)
+                   && ValidateBloom(header, spec, ref error);
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -450,6 +451,19 @@ namespace Nethermind.Consensus.Validators
             }
 
             return true;
+        }
+
+        /// <summary>Checks the logs bloom is zero-length exactly when EIP-7668 is active.</summary>
+        protected bool ValidateBloom(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7668Enabled == (header.Bloom?.IsZeroLength ?? false))
+            {
+                return true;
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - logs bloom length does not match EIP-7668 activation.");
+            error = BlockErrorMessages.InvalidLogsBloomLength(spec.IsEip7668Enabled);
+            return false;
         }
 
     }

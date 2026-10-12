@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Threading;
@@ -18,25 +19,38 @@ public static partial class TxsDecoder
             0,
             txData.Length,
             ParallelUnbalancedWork.DefaultOptions,
-            (rlpDecoder, txData, decoded, failed, borrowMemory),
+            (rlpDecoder, txData, decoded, failed, skipErrors, borrowMemory),
             static (i, state) =>
             {
                 try
                 {
                     state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i], state.borrowMemory);
                 }
+                catch (Exception e) when (state.skipErrors && e is RlpException or ArgumentException)
+                {
+                }
                 catch
                 {
-                    // Defer to the serial fallback, which reproduces the exact single-threaded error
-                    // behavior (first invalid index, exception surface) and applies skipErrors.
                     Volatile.Write(ref state.failed[0], true);
                 }
 
                 return state;
             });
 
-        return Volatile.Read(ref failed[0])
-            ? DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory)
-            : new TransactionDecodingResult(decoded);
+        if (Volatile.Read(ref failed[0])) return DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory);
+
+        return new TransactionDecodingResult(skipErrors ? WithoutUndecoded(decoded) : decoded);
+    }
+
+    private static Transaction[] WithoutUndecoded(Transaction[] decoded)
+    {
+        int added = 0;
+        for (int i = 0; i < decoded.Length; i++)
+        {
+            if (decoded[i] is not null) decoded[added++] = decoded[i];
+        }
+
+        if (added != decoded.Length) Array.Resize(ref decoded, added);
+        return decoded;
     }
 }

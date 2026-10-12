@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Processing;
 /// <see cref="BlockAccessListBasedWorldState"/> is not reused: it rejects every account the list omits,
 /// and an omitted transaction's sender and payer usually are such accounts.
 /// <para>The prefix runs under <c>MAX_VERIFY_GAS_PER_TX</c> rather than EIP-8141's mempool <c>MAX_VERIFY_GAS</c>,
-/// and its recent roots are checked at the block's own slot, as EIP-8369 § Attesters specifies.</para>
+/// against the block's own header, so an EIP-8272 <c>recent_root_verify</c> frame reads the block's slot.</para>
 /// </remarks>
 public sealed class Profile2EligibilityReplayer(
     IReadOnlyTxProcessingEnvFactory envFactory,
@@ -110,7 +110,7 @@ public sealed class Profile2EligibilityReplayer(
                     {
                         (Transaction transaction, int index) = requests[order[next]];
                         cursor.ApplyBefore(state, (uint)index + 1, spec);
-                        eligible[order[next]] = Replay(state, processor, block, transaction, spec);
+                        eligible[order[next]] = Replay(state, processor, transaction, spec);
                     }
                 }
             }
@@ -125,17 +125,15 @@ public sealed class Profile2EligibilityReplayer(
     }
 
     /// <summary>Runs one candidate's checks against <paramref name="state"/>, which it leaves as found.</summary>
-    private bool Replay(IWorldState state, ITransactionProcessor processor, Block block, Transaction transaction, IReleaseSpec spec)
+    private bool Replay(IWorldState state, ITransactionProcessor processor, Transaction transaction, IReleaseSpec spec)
     {
         if (transaction.SenderAddress is not { } sender) return false;
         if (!IsNonceValid(state, transaction, sender)) return false;
-        if (transaction.RecentRootReferences is not null && !spec.IsEip8272Enabled) return false;
 
         Address payer = FrameTxValidation.GetPrefixPaymaster(transaction) ?? sender;
         FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, state, spec,
-            payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount,
             maxVerifyGas: blocksConfig.FocilProfile2MaxVerifyGas is 0 ? ulong.MaxValue : blocksConfig.FocilProfile2MaxVerifyGas,
-            recentRootAnchorSlot: block.Header.SlotNumber);
+            payer: payer, storageSlotBound: Eip8369Constants.AaVopsSlotCount);
         try
         {
             // Prefix-only simulation restores its own snapshot, so the reconstructed state serves the next candidate.

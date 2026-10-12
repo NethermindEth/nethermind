@@ -211,7 +211,17 @@ namespace Nethermind.Facade
 
         // Empty dict coalesces to no override: the exclusive env path is a free DoS vector for a no-op overlay.
         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride) =>
-            stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null || blockOverride is not null;
+            stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null ||
+            blockOverride is not null && HasBlockOverrides(blockOverride);
+
+        private static bool HasBlockOverrides(BlockOverride blockOverride) =>
+            blockOverride.Number is not null ||
+            blockOverride.PrevRandao is not null ||
+            blockOverride.Time is not null ||
+            blockOverride.GasLimit is not null ||
+            blockOverride.FeeRecipient is not null ||
+            blockOverride.BaseFeePerGas is not null ||
+            blockOverride.BlobBaseFee is not null;
 
         /// <summary>
         /// Returns the blob base fee override <paramref name="tx"/> runs with: zero for a blob call without a positive blob
@@ -412,11 +422,11 @@ namespace Nethermind.Facade
                 previousAccessList = accessTracer.AccessList;
             } while (!stop);
 
-            // EIP-7981 bills access-list bytes at the calldata floor-token rate, so a pre-warmed entry
-            // can cost more than the cold access it saves and the gas-minimal list is empty. Return it
+            // EIP-7981 and the EIP-8131 content floor bill access-list bytes at the floor rate, so a pre-warmed
+            // entry can cost more than the cold access it saves and the gas-minimal list is empty. Return it
             // only when it reaches the same outcome with strictly less gas, so removing entries that
             // alter execution (e.g. gasleft branching) can't swap in a failing or costlier run.
-            if (optimize && spec.IsEip7981Enabled && result.TransactionExecuted && accessTracer.AccessList is { IsEmpty: false })
+            if (optimize && (spec.IsEip7981Enabled || spec.IsEip8131Enabled) && result.TransactionExecuted && accessTracer.AccessList is { IsEmpty: false })
             {
                 CallOutputTracer emptyOutputTracer = new();
                 CancellationTxTracer emptyTracer = emptyOutputTracer.WithCancellation(cancellationToken);
@@ -639,25 +649,94 @@ namespace Nethermind.Facade
 
         public void RecoverTxSenders(Block block)
         {
-            TxReceipt[] receipts = receiptStorage.Get(block);
-            if (block.Transactions.Length == receipts.Length)
+            Transaction[] transactions = block.Transactions;
+            if (HaveSenders(transactions)) return;
+
+            // Senders are read straight from the stored receipts: decoding them whole would also build their logs,
+            // blooms and recovered fields, and cache them, none of which a sender needs.
+            if (!receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator))
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
+                RecoverTxSendersFromReceipts(block);
+                return;
+            }
+
+            using ArrayPoolList<Address?> storedSenders = new(transactions.Length);
+            int receiptCount = 0;
+            using (ReceiptsIterator receipts = iterator)
+            {
+                while (receipts.TryGetNext(out TxReceiptStructRef receipt))
                 {
-                    Transaction transaction = block.Transactions[i];
-                    TxReceipt receipt = receipts[i];
-                    transaction.SenderAddress ??= receipt.Sender ?? RecoverTxSender(transaction);
+                    if (receiptCount < transactions.Length)
+                    {
+                        // An absent sender decodes to the shared zero address, which a stored one never aliases.
+                        storedSenders.Add(transactions[receiptCount].SenderAddress is null && receipt.Sender.Bytes != Address.Zero.Bytes
+                            ? receipt.Sender.ToAddress()
+                            : null);
+                    }
+
+                    receiptCount++;
                 }
             }
-            else
+
+            if (receiptCount != transactions.Length)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction transaction = block.Transactions[i];
-                    transaction.SenderAddress ??= RecoverTxSender(transaction);
-                }
+                RecoverEachTxSender(block);
+                return;
+            }
+
+            bool? useSignatureChainId = null;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction transaction = transactions[i];
+                transaction.SenderAddress ??= storedSenders[i]
+                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
         }
+
+        private static bool HaveSenders(Transaction[] transactions)
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                if (transactions[i].SenderAddress is null) return false;
+            }
+
+            return true;
+        }
+
+        private void RecoverTxSendersFromReceipts(Block block)
+        {
+            TxReceipt[] receipts = receiptStorage.Get(block);
+            if (block.Transactions.Length != receipts.Length)
+            {
+                RecoverEachTxSender(block);
+                return;
+            }
+
+            bool? useSignatureChainId = null;
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction transaction = block.Transactions[i];
+                transaction.SenderAddress ??= receipts[i].Sender
+                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
+            }
+        }
+
+        private void RecoverEachTxSender(Block block)
+        {
+            Transaction[] transactions = block.Transactions;
+            bool? useSignatureChainId = null;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction transaction = transactions[i];
+                transaction.SenderAddress ??= RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
+            }
+        }
+
+        /// <summary>Whether a legacy signature's own chain id recovers the sender, as the receipts recovery does.</summary>
+        private bool UsesSignatureChainId(BlockHeader header) => !specProvider.GetSpec(header).ValidateChainId;
+
+        private Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
+            ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
         public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
             filterManager.PollPendingTransactionHashes(filterId);

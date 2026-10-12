@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -21,13 +24,12 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="payer">A second account whose storage the prefix may read, or <c>null</c> for
 /// <paramref name="sender"/> only.</param>
 /// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
-/// <param name="maxVerifyGas">The prefix's VERIFY gas bound; EIP-8141's <c>MAX_VERIFY_GAS</c> by default.</param>
-/// <param name="recentRootAnchorSlot">The slot recent roots are checked at, or <c>null</c> for the slot after the header.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="preempt">Polled with <paramref name="token"/>; once it returns true the simulation stops and
 /// <see cref="Preempted"/> stays set.</param>
+/// <param name="maxVerifyGas">The prefix's VERIFY gas bound; EIP-8141's <c>MAX_VERIFY_GAS</c> by default.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
@@ -37,10 +39,9 @@ public sealed class FrameTxValidationTracer(
     TimeProvider? timeProvider = null,
     CancellationToken token = default,
     Func<bool>? preempt = null,
-    Address? payer = null,
-    UInt256 storageSlotBound = default,
     ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
-    ulong? recentRootAnchorSlot = null)
+    Address? payer = null,
+    UInt256 storageSlotBound = default)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -63,6 +64,15 @@ public sealed class FrameTxValidationTracer(
 
     /// <summary>Set between a CREATE2 and the creation frame it is expected to open.</summary>
     private bool _createPending;
+
+    /// <summary>The <c>RECENT_ROOT_ADDRESS</c> storage keys the executing EIP-8272 <c>recent_root_verify</c> frame
+    /// derives from its tuples, or <c>null</c> outside one.</summary>
+    /// <remarks>EIP-8272 public-mempool rule: the frame is a violation unless the fork is active and that address
+    /// runs exactly <c>RECENT_ROOT_CODE</c>, since code needing neither permission would otherwise pass.</remarks>
+    private HashSet<UInt256>? _recentRootKeys;
+
+    /// <summary>Whether the current opcode runs <c>RECENT_ROOT_CODE</c> at the top level of a <c>recent_root_verify</c> frame.</summary>
+    private bool _inRecentRootCode;
 
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
@@ -97,14 +107,30 @@ public sealed class FrameTxValidationTracer(
 
     public Address? Payer { get; private set; }
 
-    ulong IFrameTxPrefixTracer.MaxVerifyGas => maxVerifyGas;
+    public ulong MaxVerifyGas => maxVerifyGas;
 
-    ulong? IFrameTxPrefixTracer.RecentRootAnchorSlot => recentRootAnchorSlot;
+    /// <summary>EIP-8298 targets the prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    public IReadOnlyList<FrameTxCodeDependency> CodeDependencies => _codeDependencies ?? (IReadOnlyList<FrameTxCodeDependency>)[];
 
-    void IFrameTxPrefixTracer.StartPrefixFrame(bool isDeployFrame, Address target)
+    private List<FrameTxCodeDependency>? _codeDependencies;
+
+    void IFrameTxPrefixTracer.StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target)
     {
         SettleCreate();
         _inDeployFrame = isDeployFrame;
+        _recentRootKeys = null;
+        if (FrameTxValidation.IsRecentRootVerifyFrame(frame))
+        {
+            if (!spec.IsEip8272Enabled || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
+            {
+                Violate("recent_root_verify frame without RECENT_ROOT_CODE at RECENT_ROOT_ADDRESS");
+            }
+            else
+            {
+                _recentRootKeys = RecentRootKeys(frame.Data.Span);
+            }
+        }
+
         _inExpiryFrame = _prefixFrameIndex++ == 0 && !isDeployFrame && target == expiryVerifier;
 
         // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
@@ -114,6 +140,10 @@ public sealed class FrameTxValidationTracer(
         {
             Violate($"deploy frame target {target} is not an undelegated contract");
         }
+        else if (isDeployFrame && HasMutableCode(target))
+        {
+            Violate($"deploy frame target {target} has mutable code");
+        }
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -122,6 +152,8 @@ public sealed class FrameTxValidationTracer(
         _valueStackIndex = -1;
         SettleCreate();
         if (Violated) return;
+
+        _inRecentRootCode = _recentRootKeys is not null && env.CallDepth == 0 && env.ExecutingAccount == Eip8272Constants.RecentRootAddress;
 
         switch (opcode)
         {
@@ -142,6 +174,9 @@ public sealed class FrameTxValidationTracer(
                 {
                     Violate("banned opcode TIMESTAMP in validation prefix");
                 }
+                break;
+            case Instruction.SLOTNUM:
+                if (!_inRecentRootCode) Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.CALL:
             case Instruction.CALLCODE:
@@ -165,16 +200,24 @@ public sealed class FrameTxValidationTracer(
             case Instruction.GASLIMIT:
             case Instruction.BASEFEE:
             case Instruction.BLOBBASEFEE:
-            case Instruction.SLOTNUM:
             case Instruction.INVALID:
             case Instruction.SELFDESTRUCT:
             case Instruction.BALANCE:
             case Instruction.SELFBALANCE:
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
+            case Instruction.SETCODEFROM when spec.IsEip8298Enabled:
+                // EIP-8298 writes code outside both deploy-frame carve-outs, and copies whatever the source
+                // holds at inclusion, which its owner can change with SETCODEFROM.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
             case Instruction.CREATE:
                 // Its address is f(factory, factory.nonce), which any third party can move by making the
                 // factory create again; only CREATE2 makes the deployment a pure function of the transaction.
+                Violate($"banned opcode {opcode} in validation prefix");
+                break;
+            case Instruction.TCREATE when spec.IsEip8360Enabled:
+                // EIP-8360: never installs code at tx.sender, the one creation the prefix admits.
                 Violate($"banned opcode {opcode} in validation prefix");
                 break;
             case Instruction.CREATE2:
@@ -215,6 +258,12 @@ public sealed class FrameTxValidationTracer(
                 Violate($"CALL*/EXTCODE* to disallowed target {target} in validation prefix");
                 return;
             }
+
+            if (HasMutableCode(target))
+            {
+                Violate($"CALL*/EXTCODE* target {target} has mutable code in validation prefix");
+                return;
+            }
         }
 
         // A funded call or create executes or pushes zero on the caller's balance alone, which is the same
@@ -231,7 +280,7 @@ public sealed class FrameTxValidationTracer(
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
         // SLOAD may read only in-surface storage, including transitively via CALL*/DELEGATECALL.
-        if (!Violated && !InSurface(address, in storageIndex)) ViolateSurface("SLOAD", address, in storageIndex);
+        if (!Violated && !InSurface(address, in storageIndex) && !IsRecentRootKeyRead(address, storageIndex)) ViolateSurface("SLOAD", address, in storageIndex);
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
@@ -299,6 +348,104 @@ public sealed class FrameTxValidationTracer(
         if (target == sender || spec.IsPrecompile(target)) return false;
         if (!state.IsContract(target)) return true;
         return state.IsDelegatedCode(target);
+    }
+
+    /// <summary>Under EIP-8298, whether a contract other than tx.sender can rewrite its own code by running SETCODEFROM.</summary>
+    /// <remarks>
+    /// Code changes only through SETCODEFROM run in the account's own context, directly or via code it
+    /// DELEGATECALLs or CALLCODEs, and EIP-6780 rules out redeployment, so the scan has no false negatives.
+    /// Direct SETCODEFROM is refused. A target that can only reach it by delegating, such as a proxy
+    /// implementation, is admitted but recorded in <see cref="CodeDependencies"/>, so the pool revalidates
+    /// when its code changes and caps how many pending transactions rely on that account.
+    /// </remarks>
+    private bool HasMutableCode(Address target)
+    {
+        if (!spec.IsEip8298Enabled || target == sender || spec.IsPrecompile(target)) return false;
+
+        ValueHash256 codeHash = state.GetCodeHash(target);
+        (ValueHash256, bool) key = (codeHash, spec.IsEip8024Enabled);
+        if (!MutableCodeCache.TryGet(key, out CodeMutability mutability))
+        {
+            mutability = ScanCodeMutability(state.GetCode(in codeHash).Span, key.Item2);
+            MutableCodeCache.Set(key, mutability);
+        }
+
+        if (mutability == CodeMutability.ViaDelegation) AddCodeDependency(target, codeHash);
+        return mutability == CodeMutability.Direct;
+    }
+
+    private void AddCodeDependency(Address target, in ValueHash256 codeHash)
+    {
+        List<FrameTxCodeDependency> dependencies = _codeDependencies ??= [];
+        foreach (FrameTxCodeDependency dependency in dependencies)
+        {
+            if (dependency.Account == target) return;
+        }
+
+        dependencies.Add(new FrameTxCodeDependency(target, codeHash));
+    }
+
+    internal enum CodeMutability : byte
+    {
+        None,
+        ViaDelegation,
+        Direct,
+    }
+
+    /// <summary>EIP-8298 code mutability verdicts, keyed by code hash and whether EIP-8024 immediates are skipped.</summary>
+    internal static readonly ClockCache<(ValueHash256, bool), CodeMutability> MutableCodeCache =
+        new(4_096, comparer: EqualityComparer<(ValueHash256, bool)>.Default);
+
+    /// <summary>Classifies <paramref name="code"/> by whether it holds SETCODEFROM, or else DELEGATECALL or CALLCODE, as an instruction.</summary>
+    /// <remarks>
+    /// Skips PUSH data, and, under EIP-8024, valid DUPN/SWAPN/EXCHANGE immediates. Those are never PUSH or
+    /// JUMPDEST bytes, so every jump destination stays an instruction boundary of this scan.
+    /// </remarks>
+    private static CodeMutability ScanCodeMutability(ReadOnlySpan<byte> code, bool eip8024)
+    {
+        CodeMutability mutability = CodeMutability.None;
+        for (int i = 0; i < code.Length; i++)
+        {
+            Instruction opcode = (Instruction)code[i];
+            switch (opcode)
+            {
+                case Instruction.SETCODEFROM:
+                    return CodeMutability.Direct;
+                case Instruction.DELEGATECALL or Instruction.CALLCODE:
+                    mutability = CodeMutability.ViaDelegation;
+                    break;
+                case >= Instruction.PUSH1 and <= Instruction.PUSH32:
+                    i += opcode - Instruction.PUSH0;
+                    break;
+                case Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE when eip8024 && HasEip8024Immediate(code, i):
+                    i++;
+                    break;
+            }
+        }
+
+        return mutability;
+    }
+
+    /// <summary>Whether the byte after the DUPN/SWAPN/EXCHANGE at <paramref name="i"/> is its valid EIP-8024 immediate, and so not an instruction.</summary>
+    private static bool HasEip8024Immediate(ReadOnlySpan<byte> code, int i) =>
+        i + 1 < code.Length && ((Instruction)code[i] == Instruction.EXCHANGE
+            ? EvmInstructions.IsValidEip8024PairImmediate(code[i + 1])
+            : EvmInstructions.IsValidEip8024SingleImmediate(code[i + 1]));
+
+    /// <summary>EIP-8272: <c>RECENT_ROOT_CODE</c> may read the keys its own frame's tuples derive, and nothing else.</summary>
+    private bool IsRecentRootKeyRead(Address address, in UInt256 storageIndex) =>
+        _inRecentRootCode && address == Eip8272Constants.RecentRootAddress && _recentRootKeys!.Contains(storageIndex);
+
+    private static HashSet<UInt256> RecentRootKeys(ReadOnlySpan<byte> tuples)
+    {
+        HashSet<UInt256> keys = [];
+        for (int offset = 0; offset < tuples.Length; offset += Eip8272Constants.RecentRootTupleLength)
+        {
+            (ValueHash256 sourceId, ulong slot, _) = RecentRootStore.ReadTuple(tuples.Slice(offset));
+            keys.Add(RecentRootStore.ReferenceCell(sourceId, slot).Index);
+        }
+
+        return keys;
     }
 
     private static bool IsCall(Instruction opcode) => opcode is

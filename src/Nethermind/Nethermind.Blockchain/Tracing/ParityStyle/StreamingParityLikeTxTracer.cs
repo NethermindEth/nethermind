@@ -514,7 +514,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         ParityLikeTxTrace result = base.BuildResult();
         if (_fillVmTraceSlot && IsTracingInstructions && !_streamVmTrace)
         {
-            JsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
+            TypeInfoJsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
         }
 
         if (action is not null && result.Action is null) ReturnActionTree(action);

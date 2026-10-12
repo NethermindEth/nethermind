@@ -87,6 +87,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
             .AddScoped<BalTxProcessorFactory>()
+            .AddScoped<ZeroNonceStorageAccountsTransition>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
@@ -141,6 +142,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<FrameTxWidthLedger>()
+                .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>

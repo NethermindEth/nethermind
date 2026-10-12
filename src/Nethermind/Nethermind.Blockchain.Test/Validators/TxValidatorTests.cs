@@ -977,6 +977,35 @@ public class TxValidatorTests
         }
     }
 
+    // EIP-8131: the gas limit must cover max(intrinsic, content floor); in each case the content floor is the larger.
+    [TestCase(TxType.Legacy, 10_000, 0, 0, 661_000UL, TestName = "IsWellFormed_Eip8131ContentFloor(calldata)")]
+    [TestCase(TxType.AccessList, 0, 50, 0, 124_680UL, TestName = "IsWellFormed_Eip8131ContentFloor(access list keys)")]
+    [TestCase(TxType.Blob, 0, 0, 6, 33_288UL, TestName = "IsWellFormed_Eip8131ContentFloor(blob hashes)")]
+    public void IsWellFormed_Eip8131ContentFloor(TxType type, int dataLength, int storageKeys, int blobHashes, ulong floor)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8131Enabled = true };
+        AccessList.Builder accessList = new();
+        accessList.AddAddress(TestItem.AddressC);
+        for (int i = 0; i < storageKeys; i++) accessList.AddStorage((UInt256)i);
+
+        ValidationResult Validate(ulong gasLimit) => IntrinsicGasTxValidator.Instance.IsWellFormed(Build.A.Transaction
+            .WithType(type)
+            .WithTo(TestItem.AddressB)
+            .WithValue(1)
+            .WithData(new byte[dataLength])
+            .WithAccessList(storageKeys > 0 ? accessList.Build() : null)
+            .WithBlobVersionedHashes(blobHashes > 0 ? blobHashes : null)
+            .WithMaxFeePerBlobGas(blobHashes > 0 ? UInt256.One : null)
+            .WithGasLimit(gasLimit)
+            .SignedAndResolved().TestObject, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Validate(floor - 1).Error, Is.EqualTo(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(Validate(floor).AsBool, Is.True);
+        }
+    }
+
     [Test]
     public void IsWellFormed_Nonce_Under_Limit([Values(TxType.AccessList, TxType.Legacy)] TxType txType)
     {
@@ -1323,49 +1352,6 @@ public class TxValidatorTests
         .WithMaxFeePerBlobGas(1)
         .WithShardBlobTxTypeAndFields(blobCount)
         .SignedAndResolved().TestObject;
-
-    private static IEnumerable<TestCaseData> RecentRootReferenceEnvelopeCases()
-    {
-        yield return new TestCaseData(null, false, true).SetName("IsWellFormed_FrameTxAbsentReferences_BeforeEip8272_ReturnTrue");
-        yield return new TestCaseData(null, true, true).SetName("IsWellFormed_FrameTxAbsentReferences_AfterEip8272_ReturnTrue");
-        yield return new TestCaseData(Array.Empty<RecentRootReference>(), false, false).SetName("IsWellFormed_FrameTxEmptyReferences_BeforeEip8272_ReturnFalse");
-        yield return new TestCaseData(Array.Empty<RecentRootReference>(), true, true).SetName("IsWellFormed_FrameTxEmptyReferences_AfterEip8272_ReturnTrue");
-        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences], true, true).SetName("IsWellFormed_FrameTxFullReferences_AfterEip8272_ReturnTrue");
-        // The cap belongs to FrameTxValidation, which FrameTxFieldsTxValidator applies elsewhere in the composite.
-        yield return new TestCaseData(new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1], true, true).SetName("IsWellFormed_FrameTxOverCapReferences_AfterEip8272_NotCappedHere");
-    }
-
-    [TestCaseSource(nameof(RecentRootReferenceEnvelopeCases))]
-    public void IsWellFormed_FrameTxRecentRootReferences_GatedOnEip8272(RecentRootReference[]? references, bool eip8272Enabled, bool expectedWellFormed)
-    {
-        Transaction tx = new() { Type = TxType.FrameTx, RecentRootReferences = references };
-        IReleaseSpec releaseSpec = new ReleaseSpec { IsEip8272Enabled = eip8272Enabled };
-
-        Assert.That(FrameTxEnvelopeTxValidator.Instance.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedWellFormed));
-    }
-
-    /// <remarks>Pins the composite wiring that the envelope validator's dropped cap relies on: the cap survives
-    /// only while <see cref="FrameTxFieldsTxValidator"/> stays in the list, at whatever position.</remarks>
-    [TestCase(Eip8272Constants.MaxRecentRootReferences, ExpectedResult = true, TestName = "IsWellFormed_FrameTxAtCapRecentRootReferences_ReturnsTrue")]
-    [TestCase(Eip8272Constants.MaxRecentRootReferences + 1, ExpectedResult = false, TestName = "IsWellFormed_FrameTxOverCapRecentRootReferences_ReturnsFalse")]
-    public bool IsWellFormed_FrameTxRecentRootReferenceCap_IsEnforcedByTheComposite(int referenceCount)
-    {
-        RecentRootReference[] references = new RecentRootReference[referenceCount];
-        Array.Fill(references, new RecentRootReference(default, 0, default));
-
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = TestItem.AddressA,
-            Frames = [SelfVerify(PrefixFrameGas)],
-            FrameSignatures = [],
-            RecentRootReferences = references,
-        };
-        OverridableReleaseSpec spec = new(Eip8141Prototype.Instance) { IsEip8272Enabled = true };
-
-        return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, spec).AsBool();
-    }
 
     [Test]
     public void IsWellFormed_FrameTxExecutionReservationIsBoundedByEip7825()

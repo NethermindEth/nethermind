@@ -13,6 +13,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -67,15 +69,18 @@ public class RpcModuleTests
         _timeoutCertificateManager = Substitute.For<ITimeoutCertificateManager>();
         _rewardsStore = Substitute.For<IRewardsStore>();
 
-        _rpcModule = new XdcRpcModule(
-            _blockTree,
-            _snapshotManager,
-            _specProvider,
-            _epochSwitchManager,
-            _votesManager,
-            _timeoutCertificateManager,
-            _rewardsStore);
+        _rpcModule = CreateRpcModule(new XdcHeaderDecoder());
     }
+
+    private XdcRpcModule CreateRpcModule(IHeaderDecoder headerDecoder) => new(
+        _blockTree,
+        _snapshotManager,
+        _specProvider,
+        _epochSwitchManager,
+        _votesManager,
+        _timeoutCertificateManager,
+        _rewardsStore,
+        headerDecoder);
 
     [Test]
     public void BuildRpcSnapshot_ShouldUseSnapshotIdentity()
@@ -703,6 +708,30 @@ public class RpcModuleTests
             Assert.That(result.Data!.Committed, Is.False);
             Assert.That(result.Data.Error, Is.Not.Null);
         }
+    }
+
+    /// <remarks>
+    /// The XDC checkpoint contract hashes <c>EncodedRLP</c> as the block hash, so a subnet node must encode with the
+    /// subnet layout, which carries <c>NextValidators</c>.
+    /// </remarks>
+    [Test]
+    public void GetV2BlockByNumber_ShouldEncodeSubnetHeaderMatchingItsHash()
+    {
+        XdcSubnetBlockHeader header = Build.A.XdcSubnetBlockHeader()
+            .WithNextValidators([TestItem.AddressA, TestItem.AddressB])
+            .WithGeneratedExtraConsensusData(1)
+            .TestObject;
+        header.Hash = header.CalculateHash().ToHash256();
+        _blockTree.FindHeader(header.Number).Returns(header);
+        _blockTree.IsMainChain(header).Returns(true);
+        _blockTree.FinalizedHash.Returns(header.Hash);
+        _blockTree.LastFinalizedBlockLevel.Returns(header.Number);
+
+        ResultWrapper<V2BlockInfo> result = CreateRpcModule(new XdcSubnetHeaderDecoder())
+            .XDPoS_getV2BlockByNumber(new BlockParameter(header.Number));
+
+        Assert.That(result.Data?.EncodedRLP, Is.Not.Null);
+        Assert.That(Keccak.Compute(Convert.FromBase64String(result.Data!.EncodedRLP!)), Is.EqualTo(header.Hash));
     }
 
     /// <summary>

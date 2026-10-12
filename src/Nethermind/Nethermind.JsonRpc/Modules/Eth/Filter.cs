@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -100,7 +102,7 @@ public class Filter : IJsonRpcParam
             case JsonValueKind.Undefined or JsonValueKind.Null:
                 return null;
             case JsonValueKind.String:
-                return [new AddressAsKey(new Address(token.ToString()))];
+                return [new AddressAsKey(ParseAddress(token))];
             case JsonValueKind.Array:
                 int addressCount = token.GetArrayLength();
                 if (addressCount > MaxAddressCount)
@@ -111,7 +113,7 @@ public class Filter : IJsonRpcParam
                 HashSet<AddressAsKey> result = new(addressCount);
                 foreach (JsonElement element in token.EnumerateArray())
                 {
-                    result.Add(new(new Address(element.ToString())));
+                    result.Add(new(ParseAddress(element)));
                 }
 
                 return result;
@@ -138,7 +140,7 @@ public class Filter : IJsonRpcParam
                     topics[slotIndex++] = null;
                     break;
                 case JsonValueKind.String:
-                    topics[slotIndex++] = [new Hash256(token.GetString()!)];
+                    topics[slotIndex++] = [ParseHash(token)];
                     break;
                 case JsonValueKind.Array:
                     int topicCount = token.GetArrayLength();
@@ -151,7 +153,7 @@ public class Filter : IJsonRpcParam
                     int i = 0;
                     foreach (JsonElement element in token.EnumerateArray())
                     {
-                        result[i++] = new Hash256(element.ToString());
+                        result[i++] = ParseHash(element);
                     }
 
                     topics[slotIndex++] = result;
@@ -162,5 +164,40 @@ public class Filter : IJsonRpcParam
         }
 
         return topics;
+    }
+
+    private static Address ParseAddress(JsonElement element)
+    {
+        Span<byte> bytes = stackalloc byte[Core.Address.Size];
+        return TryDecodeHex(element, bytes) ? new Address(bytes) : new Address(element.ToString());
+    }
+
+    private static Hash256 ParseHash(JsonElement element)
+    {
+        Span<byte> bytes = stackalloc byte[Hash256.Size];
+        return TryDecodeHex(element, bytes) ? new Hash256(bytes) : new Hash256(element.ToString());
+    }
+
+    /// <summary>
+    /// Decodes a JSON string of exactly <paramref name="destination"/>'s length in even-length hex straight from its UTF-8 bytes.
+    /// </summary>
+    /// <remarks>
+    /// Anything else (escapes, odd length, wrong size, non-strings) returns <see langword="false"/> so callers fall back to the
+    /// string parse, which keeps the accepted inputs and the errors unchanged.
+    /// </remarks>
+    private static bool TryDecodeHex(JsonElement element, Span<byte> destination)
+    {
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        ReadOnlySpan<byte> hex = JsonMarshal.GetRawUtf8Value(element)[1..^1];
+        if (hex is [(byte)'0', (byte)'x', ..])
+        {
+            hex = hex[2..];
+        }
+
+        return hex.Length == destination.Length * 2 && HexConverter.TryDecodeFromUtf8(hex, destination);
     }
 }

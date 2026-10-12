@@ -89,8 +89,9 @@ public class Profile2EligibilityReplayerTests
         Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 
-    /// <summary>EIP-8369 § Attesters takes <c>current_slot</c> from the block itself, so a reference exactly
-    /// <c>RECENT_ROOT_USABLE_WINDOW</c> slots back is still usable, and one at the block's own slot is not.</summary>
+    /// <summary>EIP-8369 § Attesters takes <c>current_slot</c> from the block itself, so the canonical
+    /// <c>recent_root_verify</c> frame accepts a reference exactly <c>RECENT_ROOT_USABLE_WINDOW</c> slots back,
+    /// and rejects one at the block's own slot.</summary>
     [TestCase(BlockSlot - Eip8272Constants.RecentRootUsableWindow, true, TestName = "Recent root at the oldest usable slot is eligible")]
     [TestCase(BlockSlot - 1, true, TestName = "Recent root one slot back is eligible")]
     [TestCase(BlockSlot, false, TestName = "Recent root at the block's own slot is ineligible")]
@@ -100,14 +101,14 @@ public class Profile2EligibilityReplayerTests
         ValueHash256 root = Keccak.Compute("root").ValueHash256;
         using BasicTestBlockchain chain = await CreateChain(ApproveWhileSlotIsZero(0), worldState =>
         {
-            // A storage-only account is empty under EIP-161, so the predeploy's store needs a nonce to survive genesis.
             worldState.CreateAccountIfNotExists(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
+            worldState.InsertCode(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, Spec);
             worldState.Set(RecentRootStore.ReferenceCell(sourceId, referenceSlot), RecentRootStore.EntryHash(sourceId, referenceSlot, root).ToUInt256());
         });
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
 
         Transaction tx = FrameTx();
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, referenceSlot, root)];
+        tx.Frames = [FrameTxTestFrames.RecentRootVerify(50_000, (sourceId, referenceSlot, root)), .. tx.Frames!];
         Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 

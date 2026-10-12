@@ -94,7 +94,7 @@ namespace Nethermind.State.Proofs
             writer.WriteStartObject();
 
             writer.WritePropertyName("accountProof"u8);
-            JsonSerializer.Serialize(writer, value.Proof, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Proof, options);
 
             writer.WritePropertyName("address"u8);
             _addressConverter.Write(writer, value.Address, options);
@@ -112,7 +112,7 @@ namespace Nethermind.State.Proofs
             _hashConverter.Write(writer, value.StorageRoot, options);
 
             writer.WritePropertyName("storageProof"u8);
-            JsonSerializer.Serialize(writer, value.StorageProofs, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.StorageProofs, options);
 
             writer.WriteEndObject();
         }

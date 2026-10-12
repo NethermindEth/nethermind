@@ -14,16 +14,11 @@ namespace Nethermind.Evm.Tracing;
 /// the carve-outs the frame's whole call subtree, which is where a factory does its work.</remarks>
 public interface IFrameTxPrefixTracer
 {
+    /// <param name="frame">The frame about to run.</param>
     /// <param name="isDeployFrame">Whether the frame about to run is the prefix-opening <c>deploy</c> frame.</param>
     /// <param name="target">The address the frame dispatches, already resolved from <c>frame.Target</c>.</param>
-    void StartPrefixFrame(bool isDeployFrame, Address target);
+    void StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target);
 
-    /// <summary>The VERIFY gas the prefix may spend, signature verification included.</summary>
-    /// <remarks>EIP-8141's <c>MAX_VERIFY_GAS</c> for mempool admission; EIP-8369 Profile 2 replay allows up to
-    /// <c>MAX_VERIFY_GAS_PER_TX</c>.</remarks>
+    /// <summary>The <c>MAX_VERIFY_GAS</c> budget the prefix simulation runs under.</summary>
     ulong MaxVerifyGas => Eip8141Constants.MaxVerifyGas;
-
-    /// <summary>The <c>current_slot</c> EIP-8272 recent-root references are checked against, or <c>null</c> for the
-    /// slot after the executing header, which is where mempool admission expects the transaction to land.</summary>
-    ulong? RecentRootAnchorSlot => null;
 }

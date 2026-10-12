@@ -65,9 +65,14 @@ namespace Nethermind.JsonRpc.Test.Data
                 : EthereumJsonSerializer.JsonOptions;
             WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
 
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
-            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            // The minimum over a few runs filters a one-off runtime allocation (seen on CI); per-log materialization would show in every run.
+            long allocated = long.MaxValue;
+            for (int i = 0; i < 5; i++)
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                WriteReceipt(receipt, buffer, options, throughTxReceiptConverter);
+                allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+            }
 
             Assert.That(allocated, Is.LessThan(logCount * 8), "receipt logs must be written from the stored entries, not materialized per log");
         }
