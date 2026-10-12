@@ -763,8 +763,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             PongMsg Pong(IPEndPoint from) => new(from, _timestamper.UnixTime.SecondsLong + 20, TestItem.KeccakA.ValueHash256);
 
-            Assert.That(handler.Handle(Pong(new IPEndPoint(_receiver.Address.Address, _receiver.Address.Port + 1))), Is.False);
-            Assert.That(handler.Handle(Pong(_receiver.Address)), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(handler.Handle(Pong(new IPEndPoint(_receiver.Address.Address, _receiver.Address.Port + 1))), Is.False);
+                Assert.That(handler.Handle(Pong(_receiver.Address)), Is.True);
+            }
         }
 
         [Test]
