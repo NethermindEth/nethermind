@@ -700,6 +700,11 @@
     "hash": "sha256-wh2lc+KxBjd/3E37q7j+7nBGaHAsSV4EidAZNXIOtds="
   },
   {
+    "pname": "Nethermind.Libp2p.Protocols.Quic",
+    "version": "1.0.3",
+    "hash": "sha256-exiJI0B8Fx6xHAtnFWFp2AYDfC386Iwg33sbUZp4zoI="
+  },
+  {
     "pname": "Nethermind.Libp2p.Protocols.Yamux",
     "version": "1.0.3",
     "hash": "sha256-lUaRkL+Xi+i6ltg6UGYaAWeoMDRNHfNPUjWiOil+ItI="
