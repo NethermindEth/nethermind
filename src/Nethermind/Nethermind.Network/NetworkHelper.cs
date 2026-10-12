@@ -65,14 +65,15 @@ public static class NetworkHelper
         if (exception is AggregateException)
             exception = exception.InnerException!;
 
-        switch (exception)
+        // Kestrel wraps the socket error as IOException -> AddressInUseException -> SocketException.
+        for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            case SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied }:
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied })
                 return ports != null ? new(exception, ports) : new(exception, urls!);
-            default:
-                ExceptionDispatchInfo.Throw(exception);
-                throw exception; // Make compiler happy, should never execute
         }
+
+        ExceptionDispatchInfo.Throw(exception);
+        throw exception; // Make compiler happy, should never execute
     }
 
     public static T HandlePortTakenError<T>(Func<T> action, params int[] ports)
