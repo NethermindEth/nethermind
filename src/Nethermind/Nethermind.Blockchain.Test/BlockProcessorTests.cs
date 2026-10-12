@@ -2867,9 +2867,10 @@ public partial class BlockProcessorTests
     [Test]
     public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
         [Values] bool retry,
-        [Values] bool validationSucceeds)
+        [Values] bool validationSucceeds,
+        [Values] bool eip8116)
     {
-        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds);
+        CanonicalReceiptEventSetup setup = BuildCanonicalReceiptEventSetup(retry, validationSucceeds, eip8116);
         using IContainer container = setup.Container;
 
         if (validationSucceeds)
@@ -2887,7 +2888,7 @@ public partial class BlockProcessorTests
             Assert.That(setup.BalManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
             Assert.That(
                 setup.Handler.Events,
-                validationSucceeds ? Is.EqualTo(CanonicalReceiptEvents) : Is.Empty,
+                validationSucceeds ? Is.EqualTo(eip8116 ? Eip8116ReceiptEvents : CanonicalReceiptEvents) : Is.Empty,
                 "only an accepted processing attempt may publish callbacks");
         }
     }
@@ -3625,6 +3626,13 @@ public partial class BlockProcessorTests
         new(1, 1, 70_000, 120_000, 70_000, 1),
     ];
 
+    /// <summary>EIP-8116: events are published after the block is finalised, so the receipt gas is per transaction.</summary>
+    private static readonly TransactionProcessedSnapshot[] Eip8116ReceiptEvents =
+    [
+        new(0, 0, 50_000, 50_000, 30_000, 0),
+        new(1, 1, 70_000, 70_000, 70_000, 1),
+    ];
+
     private readonly record struct CanonicalReceiptEventSetup(
         Block Block,
         BlockHeader Parent,
@@ -3637,7 +3645,7 @@ public partial class BlockProcessorTests
     /// <summary>Wires the registered parallel decorator over a real <see cref="BlockProcessor"/> and
     /// <see cref="BranchProcessor"/> so a test can drive whole processing attempts — including the BAL
     /// sequential retry — against a recording transaction-processed handler.</summary>
-    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds)
+    private static CanonicalReceiptEventSetup BuildCanonicalReceiptEventSetup(bool retry, bool validationSucceeds, bool eip8116 = false)
     {
         GasConsumed[] gasConsumed = CanonicalReceiptGasConsumed();
         Block block = BuildParallelValidationBlock(gasConsumed.Length);
@@ -3652,7 +3660,7 @@ public partial class BlockProcessorTests
             stateHeaderProvider.Parent = Build.A.BlockHeader.WithNumber(0).WithHash(block.ParentHash!).WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
+        TestSingleReleaseSpecProvider specProvider = new(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8116Enabled = eip8116 });
         RecordingTransactionProcessedEventHandler handler = new();
         ReceiptMetadataTransactionProcessorAdapter transactionProcessorAdapter = new(gasConsumed);
         ParallelTestBlockAccessListManager balManager = new(transactionProcessorAdapter)
