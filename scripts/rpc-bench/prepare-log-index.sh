@@ -77,6 +77,7 @@ import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text(errors="replace")
+text = re.sub(r"\x1b\[[0-9;]*m", "", text)
 pivots = re.findall(r"Log index sync: using block ([0-9]+) as pivot\.", text)
 sys.exit(0 if "Log index sync (Backward): completed." in text
     and pivots and int(pivots[-1]) >= int(sys.argv[2]) else 1)
