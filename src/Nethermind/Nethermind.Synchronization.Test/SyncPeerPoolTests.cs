@@ -73,10 +73,11 @@ public class SyncPeerPoolTests
             Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
 
         public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
-            Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
-                AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
-                    : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
-                        : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
+            _shouldFail ? Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(new Exception("Failed"))
+                : Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(
+                    AnswersWithNullHeader ? new ArrayPoolList<BlockHeader>([null!])
+                        : HeaderToReturn is null ? ArrayPoolList<BlockHeader>.Empty()
+                            : new ArrayPoolList<BlockHeader>([HeaderToReturn]));
 
         /// <summary>
         /// Header this peer answers header requests with, whatever hash was asked for. When unset, head-header
@@ -882,6 +883,23 @@ public class SyncPeerPoolTests
         BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
 
         Assert.That(result, Is.SameAs(requested));
+    }
+
+    [Test]
+    public async Task Fetch_header_returns_null_when_the_allocated_peer_fails_the_request()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+
+        BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+        foreach (SimpleSyncPeerMock peer in peers)
+        {
+            peer.SetHeaderFailure(true);
+        }
+
+        BlockHeader? result = await ctx.Pool.FetchHeaderFromPeer(requested.Hash!);
+
+        Assert.That(result, Is.Null);
     }
 
     [Test]

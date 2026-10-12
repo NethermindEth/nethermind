@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.Peers
         /// The header whose hash is <paramref name="hash"/>, or <c>null</c> if no peer supplied it in time.
         /// A response for any other block is discarded, so the result never depends on which peer answered.
         /// </returns>
-        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, ILogger logger = default, CancellationToken cancellationToken = default)
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default, ILogger logger = default)
         {
             try
             {
@@ -207,7 +207,7 @@ namespace Nethermind.Synchronization.Peers
                 }
                 catch (Exception ex)
                 {
-                    if (logger.IsDebug) logger.Debug($"Peer {peer} failed to return header {headerHash}: {ex}");
+                    if (logger.IsDebug) logger.Debug($"Peer {peer} failed to return header {headerHash}: {ex.Message}");
                     return null;
                 }
             }
