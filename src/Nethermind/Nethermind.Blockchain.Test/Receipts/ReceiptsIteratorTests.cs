@@ -3,12 +3,15 @@
 
 using System;
 using System.Buffers;
+using Autofac;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -157,7 +160,8 @@ public class ReceiptsIteratorTests
         {
             foreach (Transaction transaction in transactions) transaction.Hash = null;
         }
-        ReceiptsRecovery recovery = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), MainnetSpecProvider.Instance, false);
+        using IContainer container = CreateRecoveryContainer();
+        IReceiptsRecovery recovery = container.Resolve<IReceiptsRecovery>();
         using TestMemDb receiptDb = new();
         ReceiptsIterator iterator = new(span, receiptDb, static () => null, _decoder.GetRefDecoder(span),
             CreateLogRecoveryContext);
@@ -226,7 +230,8 @@ public class ReceiptsIteratorTests
         ReceiptRecoveryBlock recoveryBlock = fromEncoded
             ? blockDecoder.DecodeToReceiptRecoveryBlock(null, encodedBlock, RlpBehaviors.None)!.Value
             : new ReceiptRecoveryBlock(block);
-        ReceiptsRecovery recovery = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId), MainnetSpecProvider.Instance, false);
+        using IContainer container = CreateRecoveryContainer();
+        IReceiptsRecovery recovery = container.Resolve<IReceiptsRecovery>();
         using IReceiptsRecovery.ISelectiveLogRecoveryContext context =
             (IReceiptsRecovery.ISelectiveLogRecoveryContext)recovery.CreateLogRecoveryContext(recoveryBlock);
 
@@ -236,6 +241,11 @@ public class ReceiptsIteratorTests
             context.RecoverReceiptData(ref receipt, transactionIndex);
         });
     }
+
+    private static IContainer CreateRecoveryContainer() => new ContainerBuilder()
+        .AddModule(new TestNethermindModule(new ReceiptConfig { CompactReceiptStore = true }))
+        .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+        .Build();
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
