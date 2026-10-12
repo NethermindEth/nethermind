@@ -74,6 +74,19 @@ public class ForkTests
     }
 
     [Test]
+    public void Eip4758Prototype_enables_only_sendall_on_top_of_Amsterdam()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip4758Prototype.Instance.Parent, Is.SameAs(Amsterdam.Instance));
+            Assert.That(Eip4758Prototype.Instance.IsEip4758Enabled, Is.True);
+            Assert.That(Eip4758Prototype.Instance.IsEip7805Enabled, Is.False);
+            Assert.That(SpecNameParser.Parse("Eip4758Prototype"), Is.SameAs(Eip4758Prototype.Instance));
+            Assert.That(Bogota.Instance.IsEip4758Enabled, Is.False);
+        }
+    }
+
+    [Test]
     public void Frame_transaction_extension_prototypes_each_add_one_eip_to_Eip8141Prototype()
     {
         using (Assert.EnterMultipleScope())
