@@ -77,10 +77,14 @@ namespace Nethermind.Wallet
                     PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
                     string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
-                    _fileSystem.File.WriteAllBytes(newFile, nodeKey.KeyBytes);
+                    FileStreamOptions options = new() { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
                     if (!OperatingSystem.IsWindows())
                     {
-                        _fileSystem.File.SetUnixFileMode(newFile, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 0600
+                        options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite; // 0600
+                    }
+                    using (FileSystemStream stream = _fileSystem.FileStream.New(newFile, options))
+                    {
+                        stream.Write(nodeKey.KeyBytes);
                     }
                     SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
                     _keyStore.StoreKey(nodeKey, nodeKeyPassword);
