@@ -40,14 +40,12 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
     {
         foreach (JsonPropertyInfo property in typeInfo.Properties)
         {
-            if (IsNonNullableOption(property) && name.Equals(property.Name, comparison)) return true;
+            if ((property.PropertyType == typeof(bool) || property.PropertyType == typeof(long)) && name.Equals(property.Name, comparison))
+                return true;
         }
 
         return false;
     }
-
-    private static bool IsNonNullableOption(JsonPropertyInfo property) =>
-        property.PropertyType == typeof(bool) || property.PropertyType == typeof(long);
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), options);
