@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -68,11 +69,30 @@ public class AuraWithdrawalProcessorTests
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.WithdrawalsEnabled.Returns(true);
 
-        // Contract.CallCore wraps every reverted or faulted system call in AbiException.
+        // Contract.CallCore throws AbiException without an inner exception when the system call reverts or runs out of gas.
         contract.When(c => c.ExecuteWithdrawals(block.Header, Arg.Any<UInt256>(), Arg.Any<IList<ulong>>(), Arg.Any<IList<Address>>()))
             .Throw(new AbiException("System call to executeSystemWithdrawals returned error 'revert'"));
 
         Assert.Throws<InvalidBlockException>(() => withdrawalProcessor.ProcessWithdrawals(block, spec));
+    }
+
+    [Test]
+    public void Should_not_report_wrapped_execution_fault_as_invalid_block()
+    {
+        IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
+        AuraWithdrawalProcessor withdrawalProcessor = new(contract, LimboLogs.Instance);
+        Block block = Build.A.Block
+            .WithNumber(123)
+            .WithWithdrawals(Build.A.Withdrawal.WithAmount(1_000_000UL).WithRecipient(Address.Zero).TestObject)
+            .TestObject;
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.WithdrawalsEnabled.Returns(true);
+
+        // Contract.CallCore wraps any exception thrown during execution (e.g. a state read failure) in AbiException.
+        contract.When(c => c.ExecuteWithdrawals(block.Header, Arg.Any<UInt256>(), Arg.Any<IList<ulong>>(), Arg.Any<IList<Address>>()))
+            .Throw(new AbiException("System call to executeSystemWithdrawals returned an exception", new InvalidOperationException("state read failed")));
+
+        Assert.Throws<AbiException>(() => withdrawalProcessor.ProcessWithdrawals(block, spec));
     }
 
     [Test]

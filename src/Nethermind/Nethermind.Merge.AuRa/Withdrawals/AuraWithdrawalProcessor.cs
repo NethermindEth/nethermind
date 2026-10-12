@@ -57,7 +57,9 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is AbiException)
+        // Only Contract.CallCore's status-failure path (revert, out of gas, invalid opcode) has no inner exception;
+        // a wrapped exception is a node-local fault (e.g. missing trie node, DB error) and must not invalidate the block.
+        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is AbiException { InnerException: null })
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }
