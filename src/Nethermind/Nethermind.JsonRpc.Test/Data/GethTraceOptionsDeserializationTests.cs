@@ -125,6 +125,95 @@ public class GethTraceOptionsDeserializationTests
         Assert.That(document.RootElement.GetProperty("timeout").GetString(), Is.EqualTo("bad"));
     }
 
+    private static IEnumerable<TestCaseData> NullBooleanCases()
+    {
+        foreach (string property in new[] { "disableStorage", "disableStack", "enableMemory", "enableReturnData" })
+            foreach ((string values, bool expected) in new (string, bool)[]
+            {
+            ("null", false), ("true,null", true), ("null,true", true), ("true,false,null", false), ("\"true\",null", true)
+            })
+                yield return new TestCaseData(values, expected, property);
+    }
+
+    [TestCaseSource(nameof(NullBooleanCases))]
+    public void ByNumber_null_boolean_does_not_replace_the_previous_value(string values, bool expected, string property)
+    {
+        string[] tokens = values.Split(',');
+        string[] members = new string[tokens.Length];
+        for (int i = 0; i < tokens.Length; i++) members[i] = $"\"{property}\":{tokens[i]}";
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{" + string.Join(',', members) + "}", serializerOptions)!;
+        bool actual = property switch
+        {
+            "disableStorage" => options.DisableStorage,
+            "disableStack" => options.DisableStack,
+            "enableMemory" => options.EnableMemory,
+            _ => options.EnableReturnData
+        };
+        GethTraceOptions copy = options with { DisableStorage = !expected, DisableStack = !expected, EnableMemory = !expected, EnableReturnData = !expected };
+        using JsonDocument serialized = JsonDocument.Parse(JsonSerializer.Serialize(copy, serializerOptions));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(serialized.RootElement.GetProperty(property).GetBoolean(), Is.EqualTo(!expected), "record copies must serialize their current values");
+        }
+    }
+
+    [TestCase("null", 0)]
+    [TestCase("2,null", 2)]
+    [TestCase("null,2", 2)]
+    [TestCase("2,3,null", 3)]
+    public void ByNumber_null_limit_does_not_replace_the_previous_value(string values, long expected)
+    {
+        string[] tokens = values.Split(',');
+        string[] members = new string[tokens.Length];
+        for (int i = 0; i < tokens.Length; i++) members[i] = $"\"limit\":{tokens[i]}";
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{" + string.Join(',', members) + "}", CreateByNumberSerializerOptions())!;
+
+        Assert.That(options.Limit, Is.EqualTo(expected));
+    }
+
+    [TestCase("timeout", "{\"timeout\":\"5s\",\"timeout\":null}")]
+    [TestCase("tracer", "{\"tracer\":\"noopTracer\",\"tracer\":null}")]
+    [TestCase("txIndex", "{\"txIndex\":\"0x2\",\"txIndex\":null}")]
+    public void ByNumber_null_nullable_option_replaces_the_previous_value(string property, string json)
+    {
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions())!;
+
+        object? actual = property switch
+        {
+            "timeout" => options.Timeout,
+            "tracer" => options.Tracer,
+            _ => options.TxIndex
+        };
+        Assert.That(actual, Is.Null);
+    }
+
+    [Test]
+    public void ByNumber_boolean_normalization_preserves_raw_timeout_length_validation()
+    {
+        string timeout = new string('0', 11).Replace("0", "\\u0030", StringComparison.Ordinal) + "1s";
+        string json = $"{{\"disableStack\":null,\"timeout\":\"{timeout}\"}}";
+
+        JsonException exception = Assert.Throws<JsonException>(() =>
+            JsonSerializer.Deserialize<GethTraceOptions>(json, CreateByNumberSerializerOptions()))!;
+
+        Assert.That(exception.Message, Does.Contain("64 bytes"));
+    }
+
+    [TestCase("\"enableMemory\":true,\"disableMemory\":null", true)]
+    [TestCase("\"disableMemory\":false,\"enableMemory\":null", true)]
+    [TestCase("\"ENABLEMEMORY\":true,\"enableMemory\":null", true)]
+    [TestCase("\"enableMemory\":true,\"disableMemory\":true,\"enableMemory\":null", false)]
+    public void ByNumber_null_memory_alias_preserves_property_order(string members, bool expected)
+    {
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{" + members + "}", CreateByNumberSerializerOptions())!;
+
+        Assert.That(options.EnableMemory, Is.EqualTo(expected));
+    }
+
     private static JsonSerializerOptions CreateByNumberSerializerOptions(IJsonTypeInfoResolver? resolver = null)
     {
         JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);

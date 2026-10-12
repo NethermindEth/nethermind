@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,8 +10,33 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions>
 {
-    public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        JsonSerializer.Deserialize<WireOptions>(ref reader, options)!;
+    public override GethTraceOptions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        using JsonDocument document = JsonDocument.ParseValue(ref reader);
+        ArrayBufferWriter<byte> buffer = new();
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+            foreach (JsonProperty property in document.RootElement.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.Null && IsNonNullableOption(property.Name)) continue;
+                writer.WritePropertyName(property.Name);
+                writer.WriteRawValue(property.Value.GetRawText(), skipInputValidation: true);
+            }
+            writer.WriteEndObject();
+        }
+
+        Utf8JsonReader normalizedReader = new(buffer.WrittenSpan);
+        return JsonSerializer.Deserialize<WireOptions>(ref normalizedReader, options)!;
+    }
+
+    private static bool IsNonNullableOption(string name) =>
+        name.Equals("disableMemory", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("disableStorage", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("enableMemory", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("enableReturnData", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("disableStack", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("limit", StringComparison.OrdinalIgnoreCase);
 
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(writer, value as WireOptions ?? new WireOptions(value), options);
