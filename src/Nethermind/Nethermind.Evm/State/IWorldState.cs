@@ -126,6 +126,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
 
+    /// <summary>Reads the value a slot held before its contract's storage was cleared in the current transaction (EIP-7906).</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared.</returns>
+    bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
     /// <summary>Only valid where no revert can follow AND the round is committed before any further
     /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
     void MarkStorageDestroyed(Address address) => ClearStorage(address);
@@ -151,6 +159,17 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+
+    /// <summary>Sets the account's code to code adopted from another account by EIP-8298 <c>SETCODEFROM</c>.</summary>
+    /// <remarks>
+    /// Same state effect as <see cref="InsertCode"/>. Kept apart so a block access list records the change by its
+    /// code hash rather than its bytecode, as EIP-8298 requires. A forwarding implementation must override it, as
+    /// deriving from <c>WorldStateDecorator</c> does; the default sends it to its own <see cref="InsertCode"/>, so
+    /// a recording state it wraps records bytecode.
+    /// </remarks>
+    /// <returns>As <see cref="InsertCode"/>.</returns>
+    bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => InsertCode(address, in codeHash, code, spec);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 

@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [Test]
-    public void Boost_relay_rejects_null_payload_attributes()
+    public async Task Boost_relay_rejects_null_payload_attributes()
     {
         const string relayUrl = "http://localhost";
         MockHttpMessageHandler mockHttp = new();
@@ -48,7 +48,7 @@ public partial class EngineModuleTests
             SuggestedFeeRecipient = Address.Zero
         };
 
-        Assert.ThrowsAsync<HttpRequestException>(async () =>
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await relay.GetPayloadAttributes(payloadAttributes, CancellationToken.None));
     }
 

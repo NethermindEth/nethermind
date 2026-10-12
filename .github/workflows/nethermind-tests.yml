@@ -91,6 +91,7 @@ jobs:
           - Nethermind.Optimism.Test
           - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
+          - Nethermind.SendPolicy.Plugin.Test
           - Nethermind.Serialization.JsonGenerator.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Serialization.SszGenerator.Test

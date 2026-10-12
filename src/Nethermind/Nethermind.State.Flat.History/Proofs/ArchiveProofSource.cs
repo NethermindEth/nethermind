@@ -77,7 +77,7 @@ public sealed class ArchiveProofSource(
 
         if (!ArchiveProofPathWalker.TryProveAccount(collector, accounts, stateId.StateRoot, diagnostics, out AccountStruct account)) return;
 
-        ValueHash256[] slots = collector.GetHashedStorageKeys();
+        ReadOnlySpan<ValueHash256> slots = collector.GetHashedStorageKeys().Span;
         if (slots.Length == 0 || !account.HasStorage) return;
 
         HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
@@ -89,7 +89,7 @@ public sealed class ArchiveProofSource(
         }
     }
 
-    private void PrefetchStorage(HistoricalTrieNodeBuilder storage, in ValueHash256 stateRoot, in ValueHash256 identity, ValueHash256[] slots)
+    private void PrefetchStorage(HistoricalTrieNodeBuilder storage, in ValueHash256 stateRoot, in ValueHash256 identity, ReadOnlySpan<ValueHash256> slots)
     {
         ArchiveProofNodeCache cache = _nodeCache.Value;
         bool storageRootKnown = TryReadCachedStorageRoot(cache, stateRoot, identity, out ValueHash256 storageRoot);

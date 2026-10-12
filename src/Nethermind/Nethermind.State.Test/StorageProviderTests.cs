@@ -415,6 +415,63 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Large_map_pool_reuses_the_largest_nearby_map([Values] bool returnLargestFirst)
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> smaller = new(1024, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(2048, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> oversized = new(65536, UInt256Comparer.Instance);
+        smaller.Add(UInt256.One, 7);
+        larger.Add(UInt256.One, 9);
+
+        pool.Return(returnLargestFirst ? larger : smaller);
+        pool.Return(returnLargestFirst ? smaller : larger);
+        pool.Return(oversized);
+
+        OptimizedDictionary<UInt256, int> rented = pool.Rent(1024);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rented, Is.SameAs(larger));
+            Assert.That(rented, Is.Empty);
+            Assert.That(rented.Capacity, Is.InRange(2048, 4096));
+        }
+
+        rented.Add(UInt256.One, 11);
+        pool.Return(rented);
+        Assert.That(pool.Rent(1024), Is.SameAs(larger).And.Empty);
+        Assert.That(pool.Rent(1024), Is.SameAs(smaller).And.Empty);
+        Assert.That(pool.Rent(1024), Is.SameAs(oversized));
+    }
+
+    [Test]
+    public void Large_map_pool_falls_back_to_best_fit_when_all_maps_are_oversized([Values] bool returnLargestFirst)
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> smaller = new(16384, UInt256Comparer.Instance);
+        OptimizedDictionary<UInt256, int> larger = new(65536, UInt256Comparer.Instance);
+        pool.Return(returnLargestFirst ? larger : smaller);
+        pool.Return(returnLargestFirst ? smaller : larger);
+
+        Assert.That(pool.Rent(1024), Is.SameAs(smaller));
+        Assert.That(pool.Rent(1024), Is.SameAs(larger));
+    }
+
+    [Test]
+    public void Large_map_pool_does_not_exceed_its_retained_capacity_budget()
+    {
+        PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
+        OptimizedDictionary<UInt256, int> first = new(65536, UInt256Comparer.Instance);
+        int retainedCount = PersistentStorageProvider.LargeMapPool<UInt256, int>.MaxRetainedEntries / first.Capacity;
+        OptimizedDictionary<UInt256, int>[] maps = new OptimizedDictionary<UInt256, int>[retainedCount + 1];
+        maps[0] = first;
+        for (int i = 1; i < maps.Length; i++) maps[i] = new(65536, UInt256Comparer.Instance);
+        foreach (OptimizedDictionary<UInt256, int> map in maps) pool.Return(map);
+
+        for (int i = 0; i < retainedCount; i++) Assert.That(pool.Rent(65536), Is.SameAs(maps[i]));
+        Assert.That(pool.Rent(65536), Is.Not.SameAs(maps[^1]));
+    }
+
+    [Test]
     public void Large_map_pool_keeps_only_maps_it_can_rent_again()
     {
         PersistentStorageProvider.LargeMapPool<UInt256, int> pool = new(UInt256Comparer.Instance, minRetainedCapacity: 1024);
@@ -708,6 +765,61 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.EmptyPosition, mid, Snapshot.EmptyPosition);
         provider.GetOriginal(in cell, out originalValue);
         Assert.That(originalValue, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+    }
+
+    [Test]
+    public void Storage_before_clear_is_the_value_at_the_start_of_the_stacked_transaction()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell written = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+        provider.Set(written, (UInt256)5);
+        provider.Set(untouched, (UInt256)6);
+        provider.Commit(Frontier.Instance);
+        provider.CommitTree(0);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Set(written, (UInt256)7);
+        provider.ClearStorage(ctx.Address1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((true, (UInt256)5)), "tx0 wrote then cleared: its prestate");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((true, (UInt256)6)), "tx0 cleared an unwritten slot: its prestate");
+        }
+        provider.Set(written, (UInt256)8);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((false, UInt256.Zero)), "a clear by an earlier transaction is not this transaction's");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((false, UInt256.Zero)));
+        }
+        provider.Set(written, (UInt256)9);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        Snapshot beforeClears = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(written, (UInt256)10);
+        provider.ClearStorage(ctx.Address1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((true, (UInt256)9)), "tx2 clears twice a slot tx1 wrote: tx1's value");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((true, UInt256.Zero)), "tx0's clear is tx2's prestate");
+        }
+
+        provider.Restore(beforeClears);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((false, UInt256.Zero)), "a reverted clear is gone");
+            Assert.That(ReadSlot(provider, written), Is.EqualTo((UInt256)9));
+        }
+    }
+
+    private static (bool, UInt256) BeforeClear(WorldState provider, in StorageCell cell)
+    {
+        bool cleared = provider.TryGetStorageBeforeClear(in cell, out UInt256 value);
+        return (cleared, value);
     }
 
     [Test]
@@ -2265,18 +2377,22 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
+    public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer([Values(1, 2048)] int slotCount)
     {
         using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell readCell = new(TestItem.AddressA, 1);
-
-        provider.Get(readCell, out _);
+        StorageCell[] readCells = new StorageCell[slotCount];
+        for (int i = 0; i < readCells.Length; i++)
+        {
+            readCells[i] = new StorageCell(TestItem.AddressA, (UInt256)(i + 1));
+            provider.Get(readCells[i], out _);
+        }
+        provider.Get(readCells[0], out _);
 
         ReadCollectingStorageTracer tracer = new();
         provider.Commit(Frontier.Instance, tracer);
 
-        Assert.That(tracer.Reads, Does.Contain(readCell));
+        Assert.That(tracer.Reads, Is.EquivalentTo(readCells));
 
         // The round's read capture must be cleared by the read-only commit:
         // a subsequent commit without new reads reports nothing.
@@ -2285,6 +2401,159 @@ public class StorageProviderTests(bool useFlat)
 
         Assert.That(secondRoundTracer.Reads, Is.Empty);
     }
+
+    [Test]
+    public void GetOriginal_WriteAfterManyReads_PreservesOriginalValue([Values(2, 2048)] int slotCount)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        for (int i = 1; i <= slotCount; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        provider.Set(first, (UInt256)23);
+        provider.GetOriginal(first, out UInt256 original);
+        provider.Get(first, out UInt256 current);
+        provider.GetOriginal(first, out UInt256 repeatedOriginal);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original, Is.EqualTo((UInt256)17));
+            Assert.That(current, Is.EqualTo((UInt256)23));
+            Assert.That(repeatedOriginal, Is.EqualTo(original));
+        }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void GetOriginal_ClearAfterPendingReads_PreservesOriginalValue(bool destroy, bool restore)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell first = new(ctx.Address1, 1);
+        provider.Set(first, (UInt256)17);
+        provider.Commit(Frontier.Instance);
+
+        for (int i = 1; i <= 2048; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (destroy) provider.MarkStorageDestroyed(ctx.Address1);
+        else provider.ClearStorage(ctx.Address1);
+
+        provider.Get(first, out UInt256 cleared);
+        provider.GetOriginal(first, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cleared, Is.EqualTo(UInt256.Zero));
+            Assert.That(original, Is.EqualTo((UInt256)17));
+        }
+
+        if (restore)
+        {
+            provider.Restore(snapshot);
+            provider.Get(first, out UInt256 restored);
+            provider.GetOriginal(first, out UInt256 restoredOriginal);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restored, Is.EqualTo((UInt256)17));
+                Assert.That(restoredOriginal, Is.EqualTo((UInt256)17));
+            }
+        }
+    }
+
+#if ZK_EVM
+    [Test]
+    public void Get_ManyReads_IndexesOriginalValuesEagerly()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Commit(Frontier.Instance);
+        for (int i = 1; i <= 2048; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        OptimizedDictionary<StorageCell, UInt256> originals =
+            (OptimizedDictionary<StorageCell, UInt256>)GetPrivateField(provider._persistentStorageProvider, "_originalValues");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(originals.Count, Is.EqualTo(2048), "Guest reads must index every original value immediately.");
+            Assert.That(typeof(PersistentStorageProvider).GetField("_pendingOriginalValues", BindingFlags.Instance | BindingFlags.NonPublic), Is.Null,
+                "The guest must not allocate a deferred capture buffer.");
+        }
+        provider.Commit(Frontier.Instance);
+        Assert.That(originals.Count, Is.Zero, "Commit must clear the guest original-value index.");
+    }
+
+#else
+    [Test]
+    public void Commit_ReadOnlyRounds_ReusesPendingBuffer([Values(2, 2048)] int slotCount)
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
+        provider.Commit(Frontier.Instance);
+        object buffer = null;
+        for (int round = 0; round < 3; round++)
+        {
+            for (int i = 1; i <= slotCount; i++)
+            {
+                provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+            }
+
+            object currentBuffer = GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues");
+            buffer ??= currentBuffer;
+            Assert.That(currentBuffer, Is.SameAs(buffer));
+            provider.Commit(Frontier.Instance);
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
+            Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Commit_OversizedPendingBuffer_ReleasesBuffer()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
+        provider.Commit(Frontier.Instance);
+        for (int i = 1; i <= CoreCollectionExtensions.DefaultTrimAboveCapacity + 1; i++)
+        {
+            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
+        }
+
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        provider.Commit(Frontier.Instance);
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
+    }
+
+    [Test]
+    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
+            provider.Get(cell, out _);
+            provider.Commit(Frontier.Instance);
+            provider.Get(cell, out _);
+            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
+        }
+
+        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
+    }
+
+#endif
 
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
@@ -2527,6 +2796,7 @@ public class StorageProviderTests(bool useFlat)
         public WorldState StateProvider { get; }
         internal WrittenData WrittenData = null;
         private readonly IContainer _container;
+        private readonly IDisposable _initialScope;
 
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
@@ -2563,14 +2833,24 @@ public class StorageProviderTests(bool useFlat)
             StateProvider = new WorldState(scopeProvider, LogManager);
             if (setInitialState)
             {
-                StateProvider.BeginScope(IWorldState.PreGenesis);
+                _initialScope = StateProvider.BeginScope(IWorldState.PreGenesis);
                 StateProvider.CreateAccount(Address1, 0);
                 StateProvider.CreateAccount(Address2, 0);
                 StateProvider.Commit(Frontier.Instance);
             }
         }
 
-        public void Dispose() => _container?.Dispose();
+        public void Dispose()
+        {
+            try
+            {
+                _initialScope?.Dispose();
+            }
+            finally
+            {
+                _container?.Dispose();
+            }
+        }
     }
 
     internal record WrittenData(

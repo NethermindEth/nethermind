@@ -87,6 +87,7 @@ public static class VirtualMachineStatics
     public static readonly PrecompileExecutionFailureException PrecompileExecutionFailureException = new();
     public static readonly OutOfGasException PrecompileOutOfGasException = new();
     internal static readonly Address Ripemd160Address = Address.FromNumber(3);
+    internal const string EcRecoverPrecompileName = "ECREC";
 
     /// <summary>
     /// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.
@@ -269,6 +270,9 @@ public partial class VirtualMachine<TGasPolicy>(
     partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
+    /// <summary>The block context fields opcodes read since the caller last reset it.</summary>
+    internal BlockContextReads BlockContextReads { get; set; }
+
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
@@ -281,21 +285,15 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
 
-    /// <summary>Whether accessing <paramref name="address"/> now is the cold, first-touch access EIP-8279 meters.</summary>
-    /// <remarks>
-    /// Mirrors the cold charge: precompiles are always warm, and access-list tracing prices every access warm.
-    /// </remarks>
-    internal bool IsColdBalAccess(Address address) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(address) && !_blockExecutionContext.Spec.IsPrecompile(address);
+    /// <summary>Meters the address bytes the transaction's first access to <paramref name="address"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalAddress(Address address) => _txExecutionContext.BalDataMeter?.TryMeterAddress(address) ?? true;
 
-    /// <inheritdoc cref="IsColdBalAccess(Address)"/>
-    internal bool IsColdBalAccess(in StorageCell storageCell) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(in storageCell);
-
-    /// <summary>Meters the address bytes a cold access to <paramref name="address"/> is about to add.</summary>
-    /// <returns><see langword="false"/> when the access is cold and metering it runs out of gas.</returns>
-    internal bool TryMeterColdBalAccess(Address address) =>
-        !IsColdBalAccess(address) || TryMeterBalData(Eip8279Constants.AddressBytes);
+    /// <summary>Meters the key bytes the transaction's first access to <paramref name="storageCell"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalStorageKey(in StorageCell storageCell) => _txExecutionContext.BalDataMeter?.TryMeterStorageKey(in storageCell) ?? true;
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
@@ -696,6 +694,16 @@ public partial class VirtualMachine<TGasPolicy>(
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
+        if (CodeDepositHandler.HasAdoptedCode(spec, _worldState, previousState.Env.ExecutingAccount))
+        {
+            if (IsTracingActions)
+            {
+                Address createdAccount = previousState.Env.ExecutingAccount;
+                _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), createdAccount, _worldState.GetCode(createdAccount));
+            }
+            return;
+        }
+
         if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in previousState.Gas, out ulong executionDepositCost, out long stateDepositCost))
         {
             executionDepositCost = ulong.MaxValue;
@@ -1202,10 +1210,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </summary>
     /// <remarks>
     /// The Parity touch-bug account (RIPEMD-160) is excluded because <see cref="RunPrecompile"/> records its
-    /// EIP-161 empty-account deletion, which the inline path does not replay.
+    /// EIP-161 empty-account deletion, which the inline path does not replay. EIP-8151 ecRecover is excluded
+    /// so its account warming rolls back if it runs out of gas.
     /// </remarks>
     protected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource) =>
-        !codeSource.Equals(Ripemd160Address);
+        !codeSource.Equals(Ripemd160Address) && !IsEip8151EcRecover(precompile, Spec);
 
     /// <summary>Returns a buffer of <paramref name="length"/> bytes for the ID precompile to copy its input into.</summary>
     /// <remarks>Buffers up to <see cref="VirtualMachineStatics.MaxRetainedPrecompileScratch"/> live on this
@@ -1317,12 +1326,17 @@ public partial class VirtualMachine<TGasPolicy>(
     protected void TraceTransactionActionEnd(VmState<TGasPolicy> currentState, in CallResult callResult)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
+        bool isCreateSuccess = currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert;
+        // Adopted code (EIP-8298) has no return data to deposit, but is reported as the created code.
+        bool hasAdoptedCode = isCreateSuccess && CodeDepositHandler.HasAdoptedCode(spec, _worldState, currentState.Env.ExecutingAccount);
+        ReadOnlyMemory<byte> outputBytes = hasAdoptedCode ? ReadOnlyMemory<byte>.Empty : callResult.Output;
+
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
         ulong codeDepositGasCost = 0;
         bool hasEnoughGasForCodeDeposit = true;
-        if (currentState.ExecutionType.IsAnyCreate() && !callResult.IsException && !callResult.ShouldRevert)
+        if (isCreateSuccess)
         {
-            if (CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
+            if (CodeDepositHandler.CalculateCost(spec, outputBytes.Length, in currentState.Gas, out ulong executionDepositCost, out long stateDepositCost))
             {
                 ulong remainingGas = TGasPolicy.GetRemainingGas(currentState.Gas);
                 ulong stateSpill = TGasPolicy.CalculateStateGasSpill(in currentState.Gas, stateDepositCost);
@@ -1336,9 +1350,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 hasEnoughGasForCodeDeposit = false;
             }
         }
-
-        // Cache the output bytes for reuse in the tracing reports.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output;
 
         // If an exception occurred during execution, report the error immediately.
         if (callResult.IsException)
@@ -1375,7 +1386,8 @@ public partial class VirtualMachine<TGasPolicy>(
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
             {
-                _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, outputBytes);
+                ReadOnlyMemory<byte> createdCode = hasAdoptedCode ? _worldState.GetCode(currentState.Env.ExecutingAccount) : outputBytes;
+                _txTracer.ReportActionEnd(gasAvailable - codeDepositGasCost, currentState.To, createdCode);
             }
         }
         else
@@ -1448,14 +1460,20 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             Result<byte[]> output = precompile.Run(callData, spec);
             bool success = output;
+            byte[] data = success ? output.Data! : [];
+            if (success && IsEip8151EcRecover(precompile, spec) && !TryRestrictEcRecoverOutput(state, spec, ref data))
+            {
+                return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+            }
+
             return new(
-                success ? output.Data : [],
+                data,
                 precompileSuccess: success,
                 shouldRevert: !success,
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
@@ -1474,6 +1492,42 @@ public partial class VirtualMachine<TGasPolicy>(
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
         !state.IsTopLevel && !IsTracingActions && !_txTracer.IsTracingInstructions;
 
+    /// <remarks>By name, not type or address: the result cache wraps ecRecover, a state override can move it, and this
+    /// assembly cannot reference its type. The constant is interned, so a match is a reference comparison.</remarks>
+    private static bool IsEip8151EcRecover(IPrecompile precompile, IReleaseSpec spec) =>
+        spec.IsEip8151Enabled && precompile.Name == EcRecoverPrecompileName;
+
+    /// <summary>Zeroes ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
+    /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer, and
+    /// charges the access cost and meters the EIP-8279 address bytes before reading the account so running out of gas
+    /// leaves it cold and out of the BAL.</remarks>
+    /// <returns><c>false</c> when the frame cannot pay the access cost or the floor cannot take the address bytes.</returns>
+    private bool TryRestrictEcRecoverOutput(VmState<TGasPolicy> state, IReleaseSpec spec, ref byte[] output)
+    {
+        if (output.Length == 0)
+        {
+            output = Bytes.Zero32;
+            return true;
+        }
+
+        Address recovered = new(output.AsSpan(output.Length - Address.Size));
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+            || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
+        {
+            return false;
+        }
+
+        _worldState.AddAccountRead(recovered);
+        if (IsTracingActions) _txTracer.ReportPrecompileAccountRead(recovered);
+        ReadOnlySpan<byte> code = _codeInfoRepository.GetCachedCodeInfo(recovered, followDelegation: false, spec, out _).CodeSpan;
+        if (!code.IsEmpty && !Eip7702Constants.IsDelegatedCode(code))
+        {
+            output = Bytes.Zero32;
+        }
+
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogExecutionException(IPrecompile precompile, Exception exception)
         => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
@@ -1489,9 +1543,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    protected static string GetErrorString(IPrecompile precompile, string? error)
-        => $"Precompile {precompile.Name} failed with error: {error}";
+    /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
+    protected static string GetErrorString(string? error)
+        => error ?? EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()!;
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
@@ -1703,7 +1757,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
+        {
             TGasPolicy.ClearExecutionGas(ref gas);
+            BlockContextReads |= BlockContextReads.OutOfGas;
+        }
 
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }

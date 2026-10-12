@@ -208,8 +208,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BLOBBASEFEE] = OpcodeHandler<BlobBaseFeeOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip7843Enabled)
             lookup[(int)Instruction.SLOTNUM] = OpcodeHandler<SlotNumOpcode<TTracingInst>, TTracingInst, TCancelable>();
-        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
-            lookup[(int)Instruction.RECENTROOTREFLOAD] = OpcodeHandler<RecentRootRefLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.POP] = OpcodeHandler<PopOpcode, TTracingInst, TCancelable>();
         lookup[(int)Instruction.MLOAD] = OpcodeHandler<MLoadOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
@@ -582,6 +580,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.SSTORE] = SStoreOpcodeHandler<TTracingInst, TCancelable, Eip8038, Eip2929, Eip8279>(spec);
         lookup[(int)Instruction.SELFDESTRUCT] =
             GetSelfDestructHandler<TTracingInst, TCancelable, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>, Eip8038>(spec);
+        if (spec.IsEip8298Enabled)
+            lookup[(int)Instruction.SETCODEFROM] = OpcodeHandler<SetCodeFromOpcode<TTracingInst, EvmInstructions.AccessSpec<Eip2929, Eip8038, Eip8279>>, TTracingInst, TCancelable>();
     }
 
     private static delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>
@@ -1134,6 +1134,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
+    private readonly struct SetCodeFromOpcode<TTracingInst, TSpec> : IOpcodeBody where TTracingInst : struct, IFlag
+        where TSpec : struct, EvmInstructions.IAccessSpec
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionSetCodeFrom<TGasPolicy, TTracingInst, TSpec>(ref stack, ref gas, vm);
+    }
+
+    [SkipLocalsInit]
     private readonly struct BlockHashOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
@@ -1153,9 +1161,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeGas(ref TGasPolicy gas) => TGasPolicy.UpdateGas<GasPolicy.BaseGasCost>(ref gas);
 
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            HasCheckedBody ? stack.Push32Bytes<TTracingInst, OffFlag>(in vm.BlockExecutionContext.PrevRandao)
-                : EvmInstructions.InstructionPrevRandao<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
+        {
+            if (!HasCheckedBody) return EvmInstructions.InstructionPrevRandao<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
+            vm.BlockContextReads |= BlockContextReads.PrevRandao;
+            return stack.Push32Bytes<TTracingInst, OffFlag>(in vm.BlockExecutionContext.PrevRandao);
+        }
     }
 
     [SkipLocalsInit]
@@ -1247,13 +1258,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionSigDataCopy<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
-    }
-
-    [SkipLocalsInit]
-    private readonly struct RecentRootRefLoadOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
-    {
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionRecentRootRefLoad<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
