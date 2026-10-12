@@ -3,7 +3,6 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
 
