@@ -563,7 +563,7 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
-            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            ResultWrapper<UInt256?> gasEstimate = EstimateGas(rpcTx, BlockParameter.Latest);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
@@ -685,19 +685,36 @@ public partial class EthRpcModule(
     }
 
     public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
-            transactionCall, blockParameter, stateOverride, blockOverride);
+        transactionCall.HasBlobFeeCapWithoutBlobHashes
+            ? BlobFeeCapWithoutBlobHashes<HexBytes>()
+            : ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
+                transactionCall, blockParameter, stateOverride, blockOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
     public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
+        transactionCall.HasBlobFeeCapWithoutBlobHashes
+            ? BlobFeeCapWithoutBlobHashes<UInt256?>()
+            : EstimateGas(transactionCall, blockParameter, stateOverride, blockOverride);
+
+    /// <remarks>
+    /// <c>eth_fillTransaction</c> estimates through here, so only the call methods reject a blob fee cap without blob
+    /// hashes, as in Geth.
+    /// </remarks>
+    private ResultWrapper<UInt256?> EstimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
         ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
             transactionCall, blockParameter, stateOverride, blockOverride);
 
+    private static ResultWrapper<T> BlobFeeCapWithoutBlobHashes<T>() =>
+        ResultWrapper<T>.Fail(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes, ErrorCodes.InvalidInput);
+
     public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true)
     {
+        if (transactionCall.HasBlobFeeCapWithoutBlobHashes)
+            return BlobFeeCapWithoutBlobHashes<AccessListResultForRpc?>();
+
         // The fees are filled once, against the header the call then runs on, before anything prices the request.
         SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
         CreateAccessListTxExecutor.FeeDefaults feeDefaults = search.IsError

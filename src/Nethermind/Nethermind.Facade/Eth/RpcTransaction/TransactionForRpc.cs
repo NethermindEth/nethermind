@@ -61,6 +61,12 @@ public abstract class TransactionForRpc
     [JsonIgnore]
     internal bool IsTypeDefaulted { get; set; }
 
+    // True when a request without an explicit type sets maxFeePerBlobGas but no blobVersionedHashes, and is not a frame
+    // transaction. Only blobVersionedHashes select the blob class, so the cap would otherwise be silently dropped.
+    // Set only during JSON deserialization.
+    [JsonIgnore]
+    internal bool HasBlobFeeCapWithoutBlobHashes { get; set; }
+
     [JsonConstructor]
     protected TransactionForRpc() { }
 
@@ -82,6 +88,7 @@ public abstract class TransactionForRpc
         BlockTimestamp = extraData.BlockTimestamp;
         Gas = null;
         IsTypeDefaulted = false;
+        HasBlobFeeCapWithoutBlobHashes = false;
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -246,23 +253,29 @@ public abstract class TransactionForRpc
             // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
 
-            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
+            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted, out bool hasBlobFeeCapWithoutBlobHashes);
 
             TransactionForRpc? result = (TransactionForRpc?)TypeInfoJsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
+                // An EIP-8141 frame transaction carries the blob fee cap whether or not it carries blobs.
+                result.HasBlobFeeCapWithoutBlobHashes = hasBlobFeeCapWithoutBlobHashes && result is not FrameTransactionForRpc;
             }
             return result;
         }
 
         private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
         private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
+        private static ReadOnlySpan<byte> MaxFeePerBlobGasFieldUtf8 => "maxfeeperblobgas"u8;
+        private static ReadOnlySpan<byte> BlobVersionedHashesFieldUtf8 => "blobversionedhashes"u8;
 
-        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
+        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted, out bool hasBlobFeeCapWithoutBlobHashes)
         {
             TxType? setType = null;
             bool hasGasPrice = false;
+            bool hasBlobFeeCap = false;
+            bool hasBlobHashes = false;
             // Bit i set ⇒ non-null discriminator for _txTypes[i] seen; lowest bit wins (registration order).
             // An explicit null is the same as omitting the member, as in geth, which keys on non-nil fields.
             ulong discriminated = 0;
@@ -282,12 +295,19 @@ public abstract class TransactionForRpc
 
                     ulong matched = 0;
                     bool isGasPrice = false;
+                    bool isBlobFeeCap = false;
+                    bool isBlobHashes = false;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
                         isGasPrice = true;
                     }
+                    else if (NameEqualsIgnoreCase(ref reader, MaxFeePerBlobGasFieldUtf8))
+                    {
+                        isBlobFeeCap = true;
+                    }
                     else
                     {
+                        isBlobHashes = NameEqualsIgnoreCase(ref reader, BlobVersionedHashesFieldUtf8);
                         int count = _txTypes.Count;
                         for (int i = 0; i < count; i++)
                         {
@@ -307,11 +327,15 @@ public abstract class TransactionForRpc
                     {
                         discriminated |= matched;
                         hasGasPrice |= isGasPrice;
+                        hasBlobFeeCap |= isBlobFeeCap;
+                        hasBlobHashes |= isBlobHashes;
                     }
 
                     if (!reader.TrySkip()) break;
                 }
             }
+
+            hasBlobFeeCapWithoutBlobHashes = setType is null && hasBlobFeeCap && !hasBlobHashes;
 
             Type? viaDiscriminator = null;
             if (discriminated != 0)

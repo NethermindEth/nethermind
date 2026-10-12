@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -10,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -73,6 +75,22 @@ public partial class EthRpcModuleTests
         Assert.That(filled.Gas, Is.EqualTo(0x76c0UL), "caller-supplied gas must be preserved - fill only touches omitted fields");
         Assert.That(filled.MaxFeePerGas, Is.EqualTo((UInt256)0x9184e72a000), "caller-supplied maxFeePerGas must be preserved");
         Assert.That(filled.MaxPriorityFeePerGas, Is.EqualTo((UInt256)0x3b9aca00), "caller-supplied maxPriorityFeePerGas must be preserved");
+    }
+
+    [Test]
+    public async Task FillTransaction_WhenBlobFeeCapWithoutBlobHashes_EstimatesOmittedGas()
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        using JsonDocument rpcTx = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressC}\",\"to\":\"{TestItem.AddressB}\",\"value\":\"0x1\",\"maxFeePerBlobGas\":\"0x1\"}}");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_fillTransaction", rpcTx.RootElement);
+
+        JToken response = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"], Is.Null, serialized);
+            Assert.That(response["result"]?["tx"]?["gas"]?.Value<string>(), Is.EqualTo("0x5208"), serialized);
+        }
     }
 
     [Test]

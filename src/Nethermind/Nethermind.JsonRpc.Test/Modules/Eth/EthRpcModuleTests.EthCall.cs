@@ -69,6 +69,20 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task EthCall_FrameTransaction_without_type_accepts_zero_blob_fee_cap_without_blob_hashes()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        transaction.MaxFeePerBlobGas = 0;
+        JsonObject call = JsonNode.Parse(ctx.Test.JsonSerializer.Serialize(transaction))!.AsObject();
+        call.Remove("type");
+
+        string response = await ctx.Test.TestEthRpc("eth_call", call, "latest");
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
     public async Task Rpc_discards_unobserved_logs(
         [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
         [Range(0, 4)] int topicCount,
@@ -1524,6 +1538,56 @@ public partial class EthRpcModuleTests
             // A non-null list still selects its type, which can't create a contract.
             Assert.That(JToken.Parse(typed)["error"]?["message"]?.Value<string>(), Does.Contain(typeError), typed);
         }
+    }
+
+    [Test]
+    public async Task Blob_fee_cap_without_blob_hashes_is_rejected_by_calls_only(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1")] string method,
+        [Values("0x0", "0x1")] string blobFeeCap,
+        [Values] bool nullBlobHashes,
+        [Values] bool cancun)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(cancun ? Cancun.Instance : Shanghai.Instance));
+        string blobHashes = nullBlobHashes ? ",\"blobVersionedHashes\":null" : "";
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"maxFeePerBlobGas\":\"{blobFeeCap}\"{blobHashes}}}");
+
+        string response = method == "eth_simulateV1"
+            ? await ctx.Test.TestEthRpc(method, new { blockStateCalls = new[] { new { calls = new[] { call.RootElement } } } }, "latest")
+            : await ctx.Test.TestEthRpc(method, call.RootElement, "latest");
+
+        JToken? error = JToken.Parse(response)["error"];
+        if (method == "eth_simulateV1")
+        {
+            Assert.That(error, Is.Null, response);
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.BlobFeeCapWithoutBlobHashes), response);
+        }
+    }
+
+    [Test]
+    public async Task Call_methods_accept_blob_fee_cap_with_blob_hashes(
+        [Values("eth_call", "eth_estimateGas", "eth_createAccessList")] string method,
+        [Values] bool blobFields)
+    {
+        Block[] blocks = [Build.A.Block.WithNumber(0).WithExcessBlobGas(1ul).TestObject];
+        using TestRpcBlockchain test = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject)
+            .Build(new TestSpecProvider(Cancun.Instance));
+        string blob = blobFields
+            ? ",\"maxFeePerBlobGas\":\"0x1\",\"blobVersionedHashes\":[\"0x0100000000000000000000000000000000000000000000000000000000000000\"]"
+            : "";
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\"{blob}}}");
+        using JsonDocument stateOverride = JsonDocument.Parse($"{{\"{TestItem.AddressA}\":{{\"balance\":\"0xde0b6b3a7640000\"}}}}");
+
+        string response = await test.TestEthRpc(method, call.RootElement, "latest", stateOverride.RootElement);
+
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
     }
 
     [Test]
