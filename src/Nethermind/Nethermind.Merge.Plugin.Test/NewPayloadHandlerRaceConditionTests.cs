@@ -266,7 +266,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     /// do not change it, so newPayload answers on <see cref="IBlockProcessingQueue.BlockExecuted"/> and does not
     /// wait for <see cref="IBlockProcessingQueue.BlockRemoved"/>.
     /// </summary>
-    [Test, MaxTime(10_000)]
+    /// <remarks>
+    /// No wall-clock limit: a stalled runner must not fail a request that was answered correctly. The budget is
+    /// long enough that only the verdict can answer the request, and a handler that waited for the removal would
+    /// leave it pending, so the bounded wait for the answer fails it.
+    /// </remarks>
+    [Test]
     public async Task ValidateBlockAndProcess_answers_on_the_verdict_without_waiting_for_removal()
     {
         Block block = PostMergeBlock();
@@ -287,7 +292,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             wasProcessed: false,
             validateSuggestedBlock: true,
             processingQueue: processingQueue,
-            timeoutMs: 5_000);
+            timeoutMs: 60_000);
 
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
@@ -296,7 +301,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request;
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
