@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
+using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Rlpx;
@@ -723,9 +724,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
-        public async Task Ping_should_not_bond_requested_endpoint_when_pong_source_differs(CancellationToken token)
+        public async Task Ping_should_not_bond_either_endpoint_when_pong_source_differs(
+            [Values("192.168.1.4:30303", "192.168.1.2:30304")] string pongSource,
+            [Values] bool findNodeFromPongSource,
+            CancellationToken token)
         {
-            IPEndPoint pongFarAddress = new(IPAddress.Parse("192.168.1.4"), _receiver.Address.Port);
+            await UseExpiringRequestTimeouts();
+            IPEndPoint pongFarAddress = IPEndPoint.Parse(pongSource);
             ConfigureBondCallback(pongFarAddress, pongEnrSequence: 42);
 
             bool result = await _adapter.Ping(_receiver, token);
@@ -733,7 +738,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<EnrRequestMsg>());
             _msgSender.ClearReceivedCalls();
 
-            FindNodeMsg findNodeMsg = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
+            FindNodeMsg findNodeMsg = new(findNodeFromPongSource ? pongFarAddress : _receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _testPublicKey.Bytes);
             findNodeMsg = AddReceiverFarAddress(findNodeMsg);
 
             Node[] expectedNodes = [new(TestItem.PublicKeyD, "192.168.1.3", 30303)];
@@ -745,6 +750,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await _adapter.OnIncomingMsg(findNodeMsg);
 
             await _msgSender.DidNotReceive().SendMsg(Arg.Any<NeighborsMsg>());
+        }
+
+        [Test]
+        public void Pong_handler_should_wait_for_pong_from_pinged_endpoint_after_one_from_elsewhere()
+        {
+            PingMsg ping = new(_receiver.Address, _timestamper.UnixTime.SecondsLong + 20, _kademliaConfig.CurrentNodeId.Address)
+            {
+                Mdc = TestItem.KeccakA.ValueHash256
+            };
+            PongMsgHandler handler = new(ping);
+
+            PongMsg Pong(IPEndPoint from) => new(from, _timestamper.UnixTime.SecondsLong + 20, TestItem.KeccakA.ValueHash256);
+
+            Assert.That(handler.Handle(Pong(new IPEndPoint(_receiver.Address.Address, _receiver.Address.Port + 1))), Is.False);
+            Assert.That(handler.Handle(Pong(_receiver.Address)), Is.True);
         }
 
         [Test]
@@ -1253,6 +1273,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task OnIncomingMsg_ping_should_not_publish_when_exact_endpoint_bond_fails(CancellationToken token)
         {
+            await UseExpiringRequestTimeouts();
             IPEndPoint discoveryEndpoint = new(_receiver.Address.Address, 30304);
             ConfigureBondCallback(new IPEndPoint(IPAddress.Parse("192.168.1.9"), discoveryEndpoint.Port));
             PingMsg pingMsg = new(
