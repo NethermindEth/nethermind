@@ -23,6 +23,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _logRecoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
+        private IReceiptsRecovery.ISelectiveLogRecoveryContext? _selectiveLogRecoveryContext;
+        private int _logRecoveryReceiptIndex;
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
@@ -100,14 +102,42 @@ namespace Nethermind.Blockchain.Receipts
         /// Recovers only the block hash and number, transaction index and transaction hash, which is all a log carries;
         /// the other receipt fields stay as decoded for the rest of the iteration.
         /// </summary>
-        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current) =>
-            RecoverIfNeeded(ref current, _logRecoveryContextFactory);
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current)
+        {
+            if (_recoveryContextConfigured || _receiptIndex == _logRecoveryReceiptIndex) return;
+
+            if (_selectiveLogRecoveryContext is null)
+            {
+                IReceiptsRecovery.IRecoveryContext? context = _logRecoveryContextFactory?.Invoke();
+                if (context is not IReceiptsRecovery.ISelectiveLogRecoveryContext selective)
+                {
+                    ConfigureRecovery(ref current, context);
+                    return;
+                }
+
+                _selectiveLogRecoveryContext = selective;
+            }
+
+            _selectiveLogRecoveryContext!.RecoverReceiptData(ref current, _receiptIndex - 1);
+            _logRecoveryReceiptIndex = _receiptIndex;
+        }
+
+        public void RecoverLogFieldsIfNeeded(ref TxReceiptStructRef current, out Hash256? transactionHash)
+        {
+            RecoverLogFieldsIfNeeded(ref current);
+            transactionHash = _recoveryContextConfigured ? null : _selectiveLogRecoveryContext?.TransactionHash;
+        }
 
         private void RecoverIfNeeded(ref TxReceiptStructRef current, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory)
         {
             if (_recoveryContextConfigured) return;
 
-            _recoveryContext = recoveryContextFactory?.Invoke();
+            ConfigureRecovery(ref current, recoveryContextFactory?.Invoke());
+        }
+
+        private void ConfigureRecovery(ref TxReceiptStructRef current, IReceiptsRecovery.IRecoveryContext? context)
+        {
+            _recoveryContext = context;
             if (_recoveryContext is not null)
             {
                 // Need to replay the context.
@@ -130,6 +160,7 @@ namespace Nethermind.Blockchain.Receipts
                 _blocksDb?.DangerousReleaseMemory(_reader.Data);
             }
             _recoveryContext?.Dispose();
+            _selectiveLogRecoveryContext?.Dispose();
         }
 
         public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) =>
