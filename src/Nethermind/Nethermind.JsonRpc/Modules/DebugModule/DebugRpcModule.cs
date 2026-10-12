@@ -480,7 +480,7 @@ public class DebugRpcModule(
             {
                 try
                 {
-                    _ = effective.Timeout;
+                    effective.ResolveTimeout();
                 }
                 catch (TraceDurationFormatException exception)
                 {
