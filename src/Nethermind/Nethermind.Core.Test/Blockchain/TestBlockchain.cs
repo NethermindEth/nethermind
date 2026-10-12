@@ -326,6 +326,35 @@ public class TestBlockchain : IDisposable
 
     public ILogManager LogManager => Container.Resolve<ILogManager>();
 
+    /// <summary>Deploys the system contracts that the execution requests of <paramref name="finalSpec"/> read from.</summary>
+    /// <remarks>
+    /// Keyed on the final spec, so a genesis built at any point of a fork schedule stays valid once a later fork reading
+    /// requests (EIP-7002, EIP-7251, EIP-8282) activates.
+    /// </remarks>
+    public static void DeployRequestPredeploys(IWorldState state, IReleaseSpec? finalSpec, IReleaseSpec genesisSpec)
+    {
+        if (finalSpec?.WithdrawalsEnabled is true)
+        {
+            state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+            state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, genesisSpec);
+        }
+
+        if (finalSpec?.ConsolidationRequestsEnabled is true)
+        {
+            state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+            state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, genesisSpec);
+        }
+
+        if (finalSpec?.BuilderRequestsEnabled is true)
+        {
+            state.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+            state.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, genesisSpec);
+
+            state.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+            state.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, genesisSpec);
+        }
+    }
+
     private class TestGenesisBuilder(
         ISpecProvider specProvider,
         IWorldState state,
@@ -357,28 +386,7 @@ public class TestBlockchain : IDisposable
             state.InsertCode(TestItem.AddressA, code, specProvider.GenesisSpec);
             state.Set(new StorageCell(TestItem.AddressA, UInt256.One), (UInt256)0xabcdef);
 
-            IReleaseSpec? finalSpec = specProvider.GetFinalSpec();
-
-            if (finalSpec?.WithdrawalsEnabled is true)
-            {
-                state.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                state.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, specProvider.GenesisSpec);
-            }
-
-            if (finalSpec?.ConsolidationRequestsEnabled is true)
-            {
-                state.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                state.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, specProvider.GenesisSpec);
-            }
-
-            if (finalSpec?.BuilderRequestsEnabled is true)
-            {
-                state.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
-                state.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, specProvider.GenesisSpec);
-
-                state.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
-                state.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, specProvider.GenesisSpec);
-            }
+            DeployRequestPredeploys(state, specProvider.GetFinalSpec(), specProvider.GenesisSpec);
 
             BlockBuilder genesisBlockBuilder = Builders.Build.A.Block.Genesis;
 

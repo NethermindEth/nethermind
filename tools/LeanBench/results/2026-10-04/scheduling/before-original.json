@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "commandLine": "/Users/marc/nether/eip8288-lean-bench/tools/artifacts/bin/LeanBench/release/LeanBench.dll --scheduling-checks=true --out=/tmp/eip8288-scheduling-before-v3 --source-revision=c574cbb16a576c5121c1b0f9017920b776ab33a8",
+    "utc": "2026-10-04T09:32:13.980682+00:00",
+    "sourceRevision": "c574cbb16a576c5121c1b0f9017920b776ab33a8",
+    "assemblySha256": {
+      "LeanBench.dll": "5A6133FA50B71F1670A6037B13388DDFAA347C145967F62A478D1DA0671974CA",
+      "Nethermind.Network.dll": "9A03105B4C322A21164EB9D79E7CE31EA7318235F97C2E07DABE9B85EDBD3C71",
+      "Nethermind.Consensus.dll": "E2CFEE93823DF85850162C47194494DFA5214A4E0094027895E0A916929BF029"
+    },
+    "backend": "Synthetic statement-checked scheduling backend; no native cryptography or performance measurements",
+    "pool": "Timer rows use controlled synthetic pool snapshots; the background-to-block row admits a real signed FrameTx to the production pool",
+    "clock": "Manual monotonic clock, one-second timer notifications; busyTicks is virtual elapsed time, not native proving duration",
+    "scope": "Actual wrapper selection/store, gossip scheduler and exact-parent builder reuse; no network, services or Lean prover changes"
+  },
+  "results": [
+    {
+      "scenario": "unchanged-wrapper-body-change-and-exact-builder-reuse",
+      "repeatedWrapperSelections": 120,
+      "proofCalls": 1,
+      "proofCallsAfterFirstSelection": 1,
+      "changedBodyAdditionalProofCalls": 0,
+      "exactBuilderAttempts": 120,
+      "exactBuilderAdditionalProofCalls": 0,
+      "exactBuilderVerificationCalls": 120,
+      "damagedParentRejected": true
+    },
+    {
+      "scenario": "background-proof-to-production-blockprocessor",
+      "transaction": "Real secp256k1 signed FrameTx admitted to production pool; controlled dependency verifier",
+      "backgroundProofCalls": 1,
+      "builderAdditionalProofCalls": 1,
+      "unchangedImprovementAdditionalProofCalls": 0,
+      "actualBodyTransactions": 1,
+      "returnedProofMutationIsolated": true
+    },
+    {
+      "scenario": "eligible-completed-wrapper-during-new-proof",
+      "virtualBusySeconds": 3,
+      "bothTransactionsRemainPending": true,
+      "eligibleCompletedWrapperSendsWhileBlocked": 0,
+      "incompleteWrapperSendsWhileBlocked": 0,
+      "completedNewWrapperSends": 1,
+      "totalProofCalls": 2,
+      "maxConcurrentProofCalls": 1
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 1,
+      "timerNotificationsWhileBlocked": 1,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 24.1756
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 3,
+      "timerNotificationsWhileBlocked": 3,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 47.678
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 10,
+      "timerNotificationsWhileBlocked": 10,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 128.3157
+    },
+    {
+      "scenario": "removed-selection-during-proof",
+      "virtualBusySeconds": 3,
+      "timerNotificationsWhileBlocked": 3,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 0,
+      "staleDelivery": true,
+      "harnessWallMilliseconds": 36.4891
+    }
+  ]
+}

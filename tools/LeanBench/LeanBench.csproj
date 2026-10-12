@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <AssemblyName>LeanBench</AssemblyName>
+    <RootNamespace>Nethermind.Tools.LeanBench</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
+    <ProjectReference Include="../../src/Nethermind/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+</Project>

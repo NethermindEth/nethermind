@@ -1,0 +1,54 @@
+{
+  "initialDirectCase": {
+    "fixture": "00-sphincs1-direct-nonce0",
+    "transactionHash": "0x9decd680857f0ab38b68c2d3983e6617a8f66dbe13fa6fa7b0f3dcbbc5bce277",
+    "response": {
+      "jsonrpc": "2.0",
+      "result": [
+        "0x9decd680857f0ab38b68c2d3983e6617a8f66dbe13fa6fa7b0f3dcbbc5bce277"
+      ],
+      "id": 1
+    },
+    "seconds": 0.11560047697275877,
+    "receipts": [
+      {
+        "transactionHash": "0x9decd680857f0ab38b68c2d3983e6617a8f66dbe13fa6fa7b0f3dcbbc5bce277",
+        "blockHash": "0x9d2803fa1efddfe21d11613cf1b17a7d71a244726fff94e13ac21d176f0e4855",
+        "blockNumber": "0x1f",
+        "status": "0x1",
+        "gasUsed": "0x6d61"
+      },
+      {
+        "transactionHash": "0x9decd680857f0ab38b68c2d3983e6617a8f66dbe13fa6fa7b0f3dcbbc5bce277",
+        "blockHash": "0x9d2803fa1efddfe21d11613cf1b17a7d71a244726fff94e13ac21d176f0e4855",
+        "blockNumber": "0x1f",
+        "status": "0x1",
+        "gasUsed": "0x6d61"
+      }
+    ]
+  },
+  "originalRecursiveAttempt": [
+    {
+      "fixture": "00-sphincs1-recursive-nonce1",
+      "transactionHash": "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e",
+      "ingress": {
+        "jsonrpc": "2.0",
+        "result": [
+          "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e"
+        ],
+        "id": 1
+      },
+      "producerIngressPort": 19545
+    }
+  ],
+  "sourceProvenance": "5bc3d3e0e63890c82ea255008539a33fd36c965049473116a051922566a7f117  src/Nethermind/artifacts/bin/Nethermind.Consensus/release/Nethermind.Consensus.dll\nbf95a8ec7eaa414b0f1a660ebcfece5d11b845f92664bfb8c4144162aea942ab  src/Nethermind/Nethermind.Consensus/Eip8288/RecursiveStarkAggregator.cs\na8e8507eb39cdbf5272141d2d6f6ba061e3011e52573ba130b496b4a19d13255  /tmp/eip8288-unchanged-parent-source.diff\n",
+  "sourceDeltaSha256": "a8e8507eb39cdbf5272141d2d6f6ba061e3011e52573ba130b496b4a19d13255",
+  "baseRunnerRevision": "5fae5c6e8c4bb6df6b825e8cc970b8e306052784",
+  "initAssemblyProvenance": "980f94ff7fbd19f03bf89d95451e74da3a057946c8c70229e24ffc05b700b439  ../client/Nethermind.Init.dll\n",
+  "initialDirectObservation": {
+    "beaconSlot": 32,
+    "proofBytes": 265528,
+    "source": "Saved operator inspection of the first proof-bearing beacon/EL block; node receipts are retained in initialDirectCase."
+  },
+  "helperBinaryObservedAfterCaptureSha256": "58632a95a892dcc76696a75cb3d01f097a3cabb271cbc9a5cffc2d20b482a158"
+}

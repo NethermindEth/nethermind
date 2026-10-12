@@ -1,0 +1,71 @@
+[
+  {
+    "object": "sphincs-parent",
+    "proofBytes": 265052,
+    "dependencies": 1,
+    "payloadBytes": 264944,
+    "openingDimensions": [
+      23,
+      28,
+      32
+    ],
+    "cpuStreamScalars": 1186,
+    "memoryLog": 17,
+    "tableLogs": {
+      "XOR": 13,
+      "MUL": 12,
+      "SET": 13,
+      "DEREF": 12,
+      "JUMP": 11,
+      "BLAKE2S": 6,
+      "SHA3": 11
+    },
+    "inverseRateLog": 1
+  },
+  {
+    "object": "generic-parent",
+    "proofBytes": 314388,
+    "dependencies": 1,
+    "payloadBytes": 314280,
+    "openingDimensions": [
+      23,
+      28,
+      32
+    ],
+    "cpuStreamScalars": 1501,
+    "memoryLog": 22,
+    "tableLogs": {
+      "XOR": 19,
+      "MUL": 20,
+      "SET": 20,
+      "DEREF": 20,
+      "JUMP": 19,
+      "BLAKE2S": 14,
+      "SHA3": 10
+    },
+    "inverseRateLog": 1
+  },
+  {
+    "object": "mixed-root",
+    "proofBytes": 325548,
+    "dependencies": 2,
+    "payloadBytes": 325344,
+    "openingDimensions": [
+      23,
+      28,
+      32
+    ],
+    "cpuStreamScalars": 1354,
+    "memoryLog": 20,
+    "tableLogs": {
+      "XOR": 18,
+      "MUL": 19,
+      "SET": 17,
+      "DEREF": 18,
+      "JUMP": 16,
+      "BLAKE2S": 15,
+      "SHA3": 3
+    },
+    "inverseRateLog": 1
+  }
+]

@@ -1,0 +1,29 @@
+{
+  "scope": "two separate preproved S1/G1 parents; same-block fresh merge required",
+  "nativePeakRssBytes": 1752313856,
+  "perNodeMarginBytes": 536870912,
+  "baseline": {
+    "capturedEpoch": 1791089068.1658618,
+    "hostAvailableFloorBytes": 6442450944,
+    "scope": "finite mixed functionality; separate from archived spam guard",
+    "elMemoryBytes": [
+      671846400,
+      625160192
+    ],
+    "elMemoryLimits": [
+      5120000000,
+      5120000000
+    ],
+    "elOomKilled": [
+      false,
+      false
+    ],
+    "elRestarts": [
+      0,
+      0
+    ],
+    "hostCpuPercent": 7.467532467532467,
+    "hostAvailableBytes": 13577506816
+  },
+  "ordering": "Stage1 canonical/native/gossip/pool checks passed. Both stage drivers observe finality concurrently and recheck original canonical block/both beacon anchors before success."
+}
