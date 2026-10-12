@@ -49,6 +49,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ServiceProvider _serviceProvider;
     private readonly GossipMessageValidator? _messageValidator;
+    private readonly Action<PubsubRouter, PubsubSettings>? _configureGossip;
     // Lazy because the pool's implementation is built from this host.
     private readonly Lazy<IBeaconSyncPeerPool>? _peerPool;
 
@@ -92,13 +93,15 @@ public sealed class BeaconP2P : IAsyncDisposable
         ILogManager logManager,
         GossipMessageValidator? messageValidator = null,
         SlotClock? clock = null,
-        Lazy<IBeaconSyncPeerPool>? peerPool = null)
+        Lazy<IBeaconSyncPeerPool>? peerPool = null,
+        Action<PubsubRouter, PubsubSettings>? configureGossip = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidations, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidations));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidationBytes, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidationBytes));
         _config = config;
         _peerPool = peerPool;
         _messageValidator = messageValidator;
+        _configureGossip = configureGossip;
         _store = store;
         _statusSource = statusSource;
         _metadataSource = metadataSource;
@@ -231,6 +234,8 @@ public sealed class BeaconP2P : IAsyncDisposable
         [
             .. GossipTopics.SubscribedTopicNames,
             .. GossipTopics.GloasTopicNames,
+            GossipTopics.LightClientFinalityUpdate,
+            GossipTopics.LightClientOptimisticUpdate,
             .. Enumerable.Range(0, (int)Eip7594DasConstants.DataColumnSidecarSubnetCount).Select(static subnet => GossipTopics.DataColumnSidecarTopicName((ulong)subnet)),
         ];
         foreach (ulong epoch in GossipTopics.DigestRotationEpochs(spec, 0).Prepend(0UL))
@@ -304,6 +309,7 @@ public sealed class BeaconP2P : IAsyncDisposable
                 _router.OnDeferredMessage = _deferredValidation.ValidateAsync;
             }
 
+            _configureGossip?.Invoke(_router, _serviceProvider.GetRequiredService<PubsubSettings>());
             await _router.StartAsync(_localPeer, _startCts.Token);
             if (_logger.IsInfo) _logger.Info($"Beacon chain P2P listening on port {listenEndpoint.Port} as {LocalPeerId}");
         }

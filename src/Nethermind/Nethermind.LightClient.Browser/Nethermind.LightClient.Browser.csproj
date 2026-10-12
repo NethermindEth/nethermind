@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmBuildNative>true</WasmBuildNative>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <WasmEnableThreads>false</WasmEnableThreads>
+    <BlstSourceRoot Condition="'$(BlstSourceRoot)' == ''">$(MSBuildThisFileDirectory)native/blst</BlstSourceRoot>
+    <SecpSourceRoot Condition="'$(SecpSourceRoot)' == ''">$(MSBuildThisFileDirectory)native/secp256k1</SecpSourceRoot>
+    <EmccExtraLDFlags>$(EmccExtraLDFlags) -I&quot;$(BlstSourceRoot)/src&quot; -I&quot;$(SecpSourceRoot)/src&quot; -DUSE_FORCE_WIDEMUL_INT64=1 -DENABLE_MODULE_RECOVERY=1 -DENABLE_MODULE_ECDH=1 -s MAXIMUM_MEMORY=536870912</EmccExtraLDFlags>
+    <_ExtraTrimmerArgs>$(_ExtraTrimmerArgs) --substitutions &quot;$(MSBuildThisFileDirectory)browser.substitutions.xml&quot;</_ExtraTrimmerArgs>
+    <MSBuildAllProjects>$(MSBuildAllProjects);$(MSBuildThisFileDirectory)browser.substitutions.xml</MSBuildAllProjects>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="native/**/*.cs" />
+    <ProjectReference Include="../Nethermind.LightClient.Verifier/Nethermind.LightClient.Verifier.csproj" />
+    <ProjectReference Include="native/Nethermind.Crypto.Bls.Browser.csproj" />
+    <ProjectReference Include="native/Nethermind.Crypto.SecP256k1.Browser.csproj" />
+    <NativeFileReference Include="native/blst.c" />
+    <NativeFileReference Include="$(SecpSourceRoot)/src/secp256k1.c" />
+    <NativeFileReference Include="$(SecpSourceRoot)/src/precomputed_ecmult.c" />
+    <NativeFileReference Include="$(SecpSourceRoot)/src/precomputed_ecmult_gen.c" />
+    <Content Include="$(BlstSourceRoot)/LICENSE" Link="wwwroot/licenses/blst.LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(BlstBindingsRoot)/LICENSE" Link="wwwroot/licenses/blst-bindings.LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(BlstBindingsRoot)/NOTICE" Link="wwwroot/licenses/blst-bindings.NOTICE" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(SecpSourceRoot)/COPYING" Link="wwwroot/licenses/secp256k1.COPYING" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(SecpBindingsRoot)/LICENSE" Link="wwwroot/licenses/secp256k1-bindings.LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="wwwroot/**/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RequireBlstSources" BeforeTargets="Build" Condition="!Exists('$(BlstSourceRoot)/src/server.c')">
+    <Error Text="Run the browser prepare-native.ps1 script to download the pinned blst source, or pass -p:BlstSourceRoot=&lt;blst checkout&gt;." />
+  </Target>
+  <Target Name="RequireSecpSources" BeforeTargets="Build" Condition="!Exists('$(SecpSourceRoot)/src/secp256k1.c')">
+    <Error Text="Run prepare-native.ps1 and pass its SecpSourceRoot property to build browser secp256k1." />
+  </Target>
+  <Import Project="native/precompiles.targets" />
+</Project>

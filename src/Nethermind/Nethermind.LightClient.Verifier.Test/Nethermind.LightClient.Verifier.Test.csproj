@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../tests.props" />
+  <PropertyGroup>
+    <Nullable>annotations</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="NUnit.Framework" />
+    <ProjectReference Include="../Nethermind.LightClient.Verifier/Nethermind.LightClient.Verifier.csproj" />
+    <Compile Include="../Nethermind.LightClient.Test/ConsensusTests.cs" Link="ConsensusTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/VerifiedConsensusJournalTests.cs" Link="VerifiedConsensusJournalTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/VerifiedCallTests.cs" Link="VerifiedCallTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/FuluFixtureTests.cs" Link="FuluFixtureTests.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/ExecutionProofVerifierTests.cs" Link="ExecutionProofVerifierTests.cs" />
+    <Compile Include="../Nethermind.LightClient/VerifiedRpc.cs" Link="Rpc/VerifiedRpc.cs" />
+    <Compile Include="../Nethermind.LightClient/VerifiedExecutionData.cs" Link="Rpc/VerifiedExecutionData.cs" />
+    <Compile Include="../Nethermind.LightClient/BoundedJson.cs" Link="Rpc/BoundedJson.cs" />
+    <Compile Include="../Nethermind.LightClient/Consensus/ConsensusSync.cs" Link="Consensus/ConsensusSync.cs" />
+    <Compile Include="../Nethermind.Facade/Eth/BlockForRpc.cs" Link="Rpc/BlockForRpc.cs" />
+    <Compile Include="../Nethermind.Facade/Eth/BlockNonceConverter.cs" Link="Rpc/BlockNonceConverter.cs" />
+    <Compile Include="../Nethermind.Facade/Eth/BlockTransactions.cs" Link="Rpc/BlockTransactions.cs" />
+    <Compile Include="../Nethermind.JsonRpc/Data/ReceiptForRpc.cs" Link="Rpc/ReceiptForRpc.cs" />
+    <Compile Include="../Nethermind.JsonRpc/Data/ReceiptLogsForRpc.cs" Link="Rpc/ReceiptLogsForRpc.cs" />
+    <Compile Include="../Nethermind.JsonRpc/Data/FrameReceiptForRpc.cs" Link="Rpc/FrameReceiptForRpc.cs" />
+    <Compile Include="../Nethermind.JsonRpc/Data/LogEntryForRpc.cs" Link="Rpc/LogEntryForRpc.cs" />
+    <Compile Include="../Nethermind.JsonRpc/Data/LogsForRpcConverter.cs" Link="Rpc/LogsForRpcConverter.cs" />
+    <Content Include="../Nethermind.LightClient.Test/TestData/Fulu/**/*" Link="TestData/Fulu/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

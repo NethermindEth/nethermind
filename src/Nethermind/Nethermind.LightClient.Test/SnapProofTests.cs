@@ -32,7 +32,12 @@ public class SnapProofTests
         if (tamper)
             Assert.That(() => ExecutionPeerTransport.VerifyAccountRange(Keccak.Compute(leaf), Address, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
         else
-            Assert.That(ExecutionPeerTransport.VerifyAccountRange(Keccak.Compute(leaf), Address, response, NullLogManager.Instance), Is.EqualTo(account));
+        {
+            VerifiedHead head = new(0, 0, Hash256.Zero, Keccak.Compute(leaf));
+            (Account exported, byte[][] witness) = ExecutionPeerTransport.ExportAccountProof(head, Address, response, NullLogManager.Instance);
+            Assert.That(exported, Is.EqualTo(account));
+            Assert.That(ExecutionProofVerifier.VerifyAccount(head.StateRoot, Address, witness), Is.EqualTo(account));
+        }
     }
 
     [Test]
@@ -71,6 +76,33 @@ public class SnapProofTests
         if (tamper)
             Assert.That(() => ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance), Throws.TypeOf<InvalidDataException>());
         else
-            Assert.That(ExecutionPeerTransport.VerifyStorageRange(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance), Is.EqualTo((UInt256)42));
+        {
+            ExecutionStorageProof exported = ExecutionPeerTransport.ExportStorageProof(account, ValueKeccak.Compute(Address.Bytes), key, response, NullLogManager.Instance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exported.Value, Is.EqualTo((UInt256)42));
+                Assert.That(ExecutionProofVerifier.VerifyStorage(account.StorageRoot, key, exported.Proof), Is.EqualTo((UInt256)42));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_absence_is_verified_for_omitted_or_empty_group([Values] bool emptyGroup)
+    {
+        byte[] leaf = Leaf(ValueKeccak.Compute(((UInt256)1).ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42).Bytes);
+        Account account = new(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> groups = new(1);
+        if (emptyGroup) groups.Add(new ArrayPoolList<PathWithStorageSlot>(0));
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = groups,
+            Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { leaf }),
+        };
+        ExecutionStorageProof exported = ExecutionPeerTransport.ExportStorageProof(account, ValueKeccak.Compute(Address.Bytes), 2, response, NullLogManager.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exported.Value, Is.EqualTo(UInt256.Zero));
+            Assert.That(ExecutionProofVerifier.VerifyStorage(account.StorageRoot, 2, exported.Proof), Is.EqualTo(UInt256.Zero));
+        }
     }
 }

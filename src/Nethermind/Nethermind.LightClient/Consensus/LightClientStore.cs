@@ -52,12 +52,16 @@ internal sealed class LightClientStore
         RequireRecent(currentSlot);
     }
 
-    /// <summary>Requires the most recent authenticated header to be at most fourteen days old.</summary>
-    /// <remarks>A conservative local policy, not a computation of the network's weak-subjectivity period.</remarks>
+    /// <summary>Requires the most recent authenticated header to be no more than 256 epochs of slots old.</summary>
+    /// <remarks>
+    /// Uses the minimum validator withdrawal delay, a lower bound of the Electra and Gloas weak-subjectivity periods.
+    /// The state-dependent churn term is not computed without the full authenticated validator state.
+    /// https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/
+    /// </remarks>
     /// <exception cref="LightClientLocalStateException">The authenticated state is too old to trust.</exception>
     internal void RequireRecent(ulong currentSlot) => RequireLocal(
-        currentSlot - Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot <= 14 * 24 * 60 * 60 / _spec.SecondsPerSlot,
-        "Authenticated light-client state is older than fourteen days.");
+        currentSlot - Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot <= Presets.MinValidatorWithdrawabilityDelay * _spec.SlotsPerEpoch,
+        "Authenticated light-client state is older than the conservative 256-epoch weak-subjectivity bound; supply a recent trusted checkpoint.");
 
     /// <summary>A detached copy of the most recent authenticated finalized header.</summary>
     public LightClientHeader FinalizedHeader => CloneHeader(Volatile.Read(ref _snapshot).Header);
@@ -71,6 +75,15 @@ internal sealed class LightClientStore
     /// <summary>Whether the next committee is authenticated and available for period rollover.</summary>
     public bool NextSyncCommitteeKnown => Volatile.Read(ref _snapshot).NextCommittee is not null;
 
+    internal (ulong Period, bool NextKnown) SyncProgress
+    {
+        get
+        {
+            Snapshot snapshot = Volatile.Read(ref _snapshot);
+            return (PeriodAtSlot(snapshot.SyncHeader.Beacon!.Slot), snapshot.NextCommittee is not null);
+        }
+    }
+
     internal int PreviousMaxParticipants => Volatile.Read(ref _snapshot).PreviousMaxParticipants;
 
     internal int CurrentMaxParticipants => Volatile.Read(ref _snapshot).CurrentMaxParticipants;
@@ -83,6 +96,19 @@ internal sealed class LightClientStore
             LightClientUpdate? update = Volatile.Read(ref _snapshot).BestUpdate;
             return update is null ? null : CloneUpdate(update);
         }
+    }
+
+    /// <summary>Revalidates a saved recovery candidate without changing authenticated heads or committee participation.</summary>
+    internal void RestoreBestUpdate(LightClientUpdate? update, ulong currentSlot)
+    {
+        if (update is null)
+        {
+            Volatile.Write(ref _snapshot, _snapshot with { BestUpdate = null });
+            return;
+        }
+        ProcessCore(update.AttestedHeader, update.FinalizedHeader, update.FinalityBranch,
+            update.NextSyncCommittee, update.NextSyncCommitteeBranch, update.SyncAggregate,
+            update.SignatureSlot, currentSlot, restoreCandidate: true);
     }
 
     public void Process(LightClientFinalityUpdate update, ulong currentSlot) => Process(new LightClientUpdate
@@ -154,7 +180,8 @@ internal sealed class LightClientStore
     }
 
     private void ProcessCore(LightClientHeader? attested, LightClientHeader? finalized, Hash256[]? finalityBranch,
-        SyncCommittee? next, Hash256[]? nextBranch, SyncAggregate? aggregate, ulong signatureSlot, ulong currentSlot)
+        SyncCommittee? next, Hash256[]? nextBranch, SyncAggregate? aggregate, ulong signatureSlot, ulong currentSlot,
+        bool restoreCandidate = false)
     {
         ValidateSupportedSlot(currentSlot);
         ValidateSupportedSlot(signatureSlot);
@@ -203,11 +230,6 @@ internal sealed class LightClientStore
 
         SyncCommittee signingCommittee = signaturePeriod == storePeriod ? snapshot.CurrentCommittee : snapshot.NextCommittee!;
         int participants = VerifySignature(signingCommittee, aggregate, signatureSlot, attested.Beacon);
-        int currentMax = Math.Max(snapshot.CurrentMaxParticipants, participants);
-        int safetyThreshold = Math.Max(snapshot.PreviousMaxParticipants, currentMax) / 2;
-        LightClientHeader optimistic = participants > safetyThreshold && attestedSlot > snapshot.OptimisticHeader.Beacon!.Slot
-            ? CloneHeader(attested) : snapshot.OptimisticHeader;
-
         LightClientUpdate candidate = CloneUpdate(new LightClientUpdate
         {
             AttestedHeader = attested,
@@ -218,6 +240,17 @@ internal sealed class LightClientStore
             SyncAggregate = aggregate,
             SignatureSlot = signatureSlot,
         });
+        if (restoreCandidate)
+        {
+            Require(participants <= snapshot.CurrentMaxParticipants, "Saved recovery candidate exceeds authenticated participation history.");
+            Volatile.Write(ref _snapshot, snapshot with { BestUpdate = candidate });
+            return;
+        }
+
+        int currentMax = Math.Max(snapshot.CurrentMaxParticipants, participants);
+        int safetyThreshold = Math.Max(snapshot.PreviousMaxParticipants, currentMax) / 2;
+        LightClientHeader optimistic = participants > safetyThreshold && attestedSlot > snapshot.OptimisticHeader.Beacon!.Slot
+            ? CloneHeader(attested) : snapshot.OptimisticHeader;
         LightClientUpdate? best = snapshot.BestUpdate is null || Better(candidate, snapshot.BestUpdate) ? candidate : snapshot.BestUpdate;
 
         bool supermajorityFinality = participants * 3 >= Presets.SyncCommitteeSize * 2 && hasFinality;

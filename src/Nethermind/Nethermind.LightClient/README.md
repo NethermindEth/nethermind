@@ -35,9 +35,14 @@ fetches its finalized checkpoint through the standard
 [`finality_checkpoints` Beacon API](https://github.com/ethereum/beacon-APIs/blob/master/apis/beacon/states/finality_checkpoints.yaml)
 over HTTPS with a 10-second timeout and a 4 KiB response limit. It does not
 follow redirects. `--checkpoint` takes precedence over `--checkpoint-url` and
-avoids this HTTP request. Choose or cross-check the provider before relying on
-its checkpoint: P2P signatures authenticate updates *after* that root, but do
-not independently establish whether the root belongs to the canonical chain.
+avoids the primary provider HTTP requests. Add `--checkpoint-check-url
+https://ANOTHER-BEACON-API` to require a separately chosen provider to report
+the selected root as canonical and finalized on the same network. For a
+provider-selected root, the cross-check must use a different host. This is
+another provider assertion: P2P signatures authenticate updates *after* that
+root, but do not independently establish whether it belongs to the canonical
+chain. Provider network genesis root and time are checked before initial
+selection and before a cross-check.
 
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
@@ -45,25 +50,44 @@ The root must be a recent **finalized beacon block root**. It is not an executio
 block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
 The bootstrap, and on restart the latest replayed authenticated header, must be
-at most fourteen days old. That is a conservative local policy, not a
-computation of the network's weak-subjectivity period.
+at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on these
+networks). This uses the minimum validator withdrawal delay, a conservative
+lower bound of the supported forks' [weak-subjectivity periods](https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/).
+It does not compute the full state-dependent validator churn term. A saved
+original checkpoint may be older when replay proves recent authenticated
+progress; a stale replay requires an explicitly chosen recent checkpoint.
 `--data-dir` selects the verified consensus journal directory (default:
 `src/Nethermind/artifacts/lightclient`). Restart with the same network and
 checkpoint to replay saved updates; a new checkpoint starts a separate journal.
-The saved files are verified again on replay and never replace the supplied
-checkpoint. An automatically fetched root can change between launches, so use
-the same explicit root when you want to replay a particular journal.
+The journal files are verified again on replay and never replace the chosen
+checkpoint. A provider-selected root, its epoch, source URL and selection time
+are persisted in `<network>-checkpoint.json` and reused on restart without
+fetching a replacement from that provider. Changing the provider requires an
+explicit `--checkpoint` or a separate `--data-dir`. Journals from earlier
+versions without provider provenance require their original explicit root;
+they cannot be abandoned implicitly in favor of a fresh provider root.
+The journal retains the committee chain, finalized and optimistic heads, and
+a separately bounded timeout-recovery candidate. The candidate, including an
+explicit empty state after finality, is bound to the exact saved chain and head
+generations. Its signature and branches are reverified on restart without
+changing the replayed heads or participation thresholds. Interrupted or corrupt
+candidate persistence disables that recovery candidate while preserving the
+authenticated replay state.
 
 The host listens for beacon P2P on TCP/UDP 9050 and execution P2P on TCP/UDP
 30307. Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
+Both P2P stacks use Nethermind's automatic IPv4/IPv6 IP resolver and its bounded
+retry, refresh and address-validation behavior. The resolved public address is
+used in discovery records; IP detection does not open or forward router/firewall
+ports. Failure to resolve an address leaves outbound discovery and dialing available.
 
 Example request:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x0000000000000000000000000000000000000000","finalized"]}'
+Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x0000000000000000000000000000000000000000","latest"]}'
 ```
 
 ## Verified RPC contract
@@ -76,22 +100,37 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 | `eth_getTransactionCount` | The same authenticated account's nonce |
 | `eth_getStorageAt` | Requested storage key authenticated against that account's storage root; 32-byte DATA result |
 | `eth_getCode` | Bytes whose Keccak hash matches that account's authenticated code hash |
+| `eth_getProof` | Standard [EIP-1186](https://eips.ethereum.org/EIPS/eip-1186) account and storage path witnesses, reconstructed from verified SNAP ranges and verified again before export |
 | `eth_call` | Local Nethermind EVM execution over proof-backed selected state; no execution RPC |
 | `eth_estimateGas` | Local Nethermind gas estimator over the same proof-backed selected state |
 | `eth_getBlockByNumber`, `eth_getBlockByHash` | Authenticated execution header, transaction root, withdrawals root and block body |
 | `eth_getBlockTransactionCountByNumber`, `eth_getBlockTransactionCountByHash` | Transaction count from the authenticated block body |
 | `eth_getTransactionByBlockNumberAndIndex`, `eth_getTransactionByBlockHashAndIndex` | Transaction from the authenticated block body |
+| `eth_getTransactionByHash`, `eth_getTransactionReceipt` | Bounded observed transaction index and recent authenticated block scan; body and receipt roots are verified locally |
 | `eth_getBlockReceipts`, `eth_getLogs` | Receipt trie and bloom authenticated by the block header; log results are complete within the accepted range |
+| `eth_feeHistory` | Authenticated headers and complete verified receipts for gas-weighted effective tips |
+| `eth_gasPrice`, `eth_maxPriorityFeePerGas` | Local fee suggestion from the authenticated latest block; gas price adds the derived next-block base fee |
+| `eth_sendRawTransaction` | Local envelope, signature, fork and authenticated state checks, followed by execution P2P relay; blob sidecars are KZG verified |
 
 State methods accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
-Historical state selectors are limited to 32 ancestors of the finalized head;
+Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated
+head. Gossip advances it between recovery polls; it is not restricted to the
+older finalized block. Use `"finalized"` explicitly when finality is required.
+Historical state selectors are limited to 32 ancestors of either the finalized
+head or the authenticated optimistic head. A browser or wallet's pinned prior
+optimistic hash remains usable when the native head advances, provided it is
+still an ancestor in that window; orphan hashes fail canonical validation.
 availability within that range still depends on a SNAP peer retaining the state root.
 At most two historical state requests run concurrently; excess requests fail promptly,
 leaving SNAP and HTTP capacity for current-head reads.
-Block, receipt, and log reads retain their separate 256-block history window.
-`pending` and `safe` are rejected. The optimistic head can be reorganized,
-whereas the finalized head is stable. Each request captures a head once,
+Block and receipt selectors, relay execution headers, and single-block log hash
+selectors retain a separate 256-ancestor window anchored to either head.
+Multi-block log ranges remain limited to finalized history.
+`pending`, `safe` and `earliest` return an explicit unavailable error (`-32001`):
+execution peers do not authenticate pending state, a distinct safe execution head
+is not available, and genesis is outside the bounded history. The optimistic head can be reorganized,
+whereas the finalized head is stable. Each state or block request pins its selected authenticated head,
 including during a concurrent consensus update. Returned account and storage values are not
 trusted until their ranges reconstruct the selected state/storage root. Authenticated account/storage absence
 returns zero or empty code; an incomplete proof fails.
@@ -108,8 +147,40 @@ made by a call or estimate are discarded. `BLOCKHASH` uses the authenticated par
 an anchored execution-header chain, or the verified EIP-2935 history-contract
 storage as required by the active fork. Reverts return JSON-RPC error code `3`
 with their return data. An estimate of a reverting transaction returns the same
-error rather than a gas quantity. Blob/frame transactions, state overrides and
-pending state are not supported.
+error rather than a gas quantity. Blob and frame transactions use the selected
+execution fork's existing conversion and EVM rules. Frame estimates fill omitted
+execution/state limits through local replay; explicitly supplied limits determine
+the fixed frame gas reservation. State overrides and pending state are unavailable.
+
+`eth_getProof` accepts at most 64 storage keys. The returned account/storage
+witnesses can be verified independently against the selected header's state root;
+SNAP range witnesses are not returned as if they were path proofs.
+`eth_feeHistory` accepts 1–16 blocks and at most 100 monotonically increasing
+percentiles in `[0,100]`. Empty percentiles require only authenticated headers;
+nonempty percentiles use verified receipt gas consumption, never a gas-limit
+approximation. Fee suggestions use the gas-weighted 60th percentile of the
+authenticated latest block's effective tips. They are local estimates, not
+claims about a global pending transaction pool.
+
+Transaction hash lookup scans the last 16 authenticated optimistic blocks and
+16 finalized blocks, and consults a bounded observed index containing at most
+32,768 transactions with a 20-minute idle expiry. Index entries are rechecked
+against current authenticated ancestry before use, so an orphaned optimistic
+transaction is not returned after a reorganization. A `null` response means
+the transaction is not known in this scope; it does not prove global absence.
+The ETH/SNAP protocols do not provide a complete mined hash-to-block index.
+The index is rebuilt in memory after a restart.
+
+Signed submission rejects malformed envelopes, wrong-chain signatures,
+authenticated nonce regressions, insufficient balance, and underpriced fees.
+Frame admission uses Nethermind's bounded validation-prefix execution over
+verified payer and nonce-manager state. A bounded 32 MiB relay retains validated
+submissions for 10 minutes so peers can fetch announced envelopes, blob sidecars
+and cells through the existing ETH protocols. Submission returns an error when
+there is no usable execution peer. The returned hash confirms local validation
+and relay queueing; ETH has no admission acknowledgement, and inclusion must be
+observed through an authenticated block or receipt. The client stores no signing
+keys and does not sign transactions.
 
 Example `eth_call` reading WETH `totalSupply()`:
 
@@ -117,13 +188,22 @@ Example `eth_call` reading WETH `totalSupply()`:
 Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/json -Body '{"jsonrpc":"2.0","id":1,"method":"eth_call","params":[{"to":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2","data":"0x18160ddd"},"finalized"]}'
 ```
 
-JSON-RPC 2.0 batches (up to 32 requests) and notifications are supported. Transaction
-submission and transaction-hash lookups return `-32601`: the execution peer
-protocol does not provide a complete authenticated hash-to-block index.
+JSON-RPC 2.0 batches (up to 32 requests) and notifications are supported.
 No request is forwarded without verification. Receipt/log queries fail when
 any block body or receipt set is unavailable; log ranges are capped at 16
 finalized blocks and 10,000 matches.
-Request bodies, peer responses and proof nodes have explicit size limits.
+Verified block, transaction, receipt, log, fee-history and proof results have an
+8 MiB UTF-8 JSON limit. At most four execution-data requests may fetch and render
+at once; excess work receives `-32005` immediately. HTTP batches have a 16 MiB
+response budget, including a 512 KiB reserve for error envelopes. Earlier
+responses are retained when the budget is reached; remaining requests receive
+`-32005` without executing. Notifications still produce no response, and invalid
+envelopes retain their standard errors. Oversized results fail explicitly rather
+than returning incomplete data.
+Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
+A single HTTP `eth_sendRawTransaction` request may use up to 4 MiB plus 64 KiB
+of JSON text for a raw envelope/sidecar of at most 2 MiB; at most four such large
+requests run concurrently. Peer responses and proof nodes have separate size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
 Each admitted request, including an entire batch, has a 90-second deadline;
@@ -132,11 +212,51 @@ The console shows each JSON-RPC method, its result, and its handling time. Batch
 items are logged individually; malformed requests and oversized bodies are
 logged without their contents. Routine ASP.NET Core request logs are suppressed.
 
+## WebSocket subscriptions
+
+Connect to `ws://127.0.0.1:8545/ws` and send standard JSON-RPC requests:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}
+{"jsonrpc":"2.0","id":2,"method":"eth_subscribe","params":["logs",{"address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}]}
+```
+
+`newHeads` publishes authenticated optimistic execution headers. `logs` accepts
+the same address and positional topic filters as `eth_getLogs`, and publishes
+only locally verified block receipts. On a reorganization, previously delivered
+orphaned logs have `removed: true` before replacement logs are sent. Missing
+blocks are verified by tracing parents from the next authenticated head; a
+catch-up emits each intervening block's logs and only the newest head.
+Subscriptions start after their acknowledgement and belong to their connection.
+`eth_unsubscribe` takes the returned subscription ID. Pending transaction and
+sync-status subscriptions are unavailable.
+
+The host permits 16 connections and 16 subscriptions per connection. Each
+connection has a 128-message, 1 MiB outbound queue, a 256 KiB message limit,
+and a 10-second deadline to admit responses or a verified head's notifications.
+Healthy bursts wait for the sender to drain the bounded queue; a stalled client
+is disconnected independently of other clients. Verified reorganization history
+is capped at 32 blocks and 16 MiB of encoded headers/logs. If that history cannot
+repair a gap, execution data is unavailable, or a configured bound is exceeded,
+the connection closes so it cannot silently continue an incomplete stream.
+Reconnect, recover the affected range with `eth_getLogs`, then resubscribe.
+WebSocket requests retain the 64 KiB input and 32-item batch limits; submit
+large blob sidecars through HTTP.
+
 ## Direct P2P transport
 
 The beacon side uses
 [light-client bootstrap, updates-by-range, finality and optimistic req/resp](https://github.com/ethereum/consensus-specs/blob/master/specs/altair/light-client/p2p-interface.md)
-with SSZ-snappy framing and fork-context checks. The execution side uses
+with SSZ-snappy framing and fork-context checks. It also subscribes to
+`light_client_finality_update` and `light_client_optimistic_update` gossip.
+Fork topics are joined one epoch before activation and retired two epochs
+afterwards, including blob-schedule digest changes. Gossip payloads are capped
+at 16 KiB decoded and 32 pending validations; signatures and branches are
+checked before accepted messages are forwarded. Updates share a serialized
+consensus/journal owner with polling, and RPC publication reads only durably
+recorded headers. A one-minute request/response poll repairs missed messages
+and committee gaps while gossip advances the heads between polls.
+The execution side uses
 [SNAP account/storage ranges and bytecode](https://github.com/ethereum/devp2p/blob/master/caps/snap.md).
 It runs Nethermind's discv5 execution discovery, RLPx, `eth/68`–`eth/72` and
 `snap/1` or `snap/2` as the network schedule requires. Execution proofs are
@@ -146,6 +266,15 @@ value. The startup checkpoint remains a trusted input, whether supplied directly
 or fetched from the selected HTTPS provider. Chain-spec bootnodes and default
 ENRs seed discovery; direct public-network RLPx candidates come from discovered
 peer records from discv5 or the signed DNS ENR tree.
+
+Signed discovery ENRs are retained under `<data-dir>/el/<network>/discovery`
+using the existing discovery storage and revalidated on restart. The cache keeps
+at most 512 records; an oversized cache is preserved separately and discovery
+continues with fresh seeds. A peer that fails to provide valid selected-state
+data receives a bounded cooldown, while successful SNAP peers are tried first.
+When connection capacity is full and fewer than four usable SNAP peers remain,
+the client rotates one non-SNAP or failed SNAP connection to admit new candidates.
+Incoming peer requests use two workers and a queue of at most 32 requests.
 
 ## Security and current scope
 
@@ -181,43 +310,36 @@ atomic writes and revalidated from the original checkpoint on restart.
 The in-memory execution proof cache is not persisted. Availability depends on a
 SNAP peer retaining the selected state root.
 
-## Browser and mobile work
+## Browser and mobile
 
-The current desktop/server executable is not a browser or mobile package.
-Verification must run on the device to preserve this trust model; calling a
-remote instance moves verification trust to that server.
+[Nethermind.LightClient.Browser](../Nethermind.LightClient.Browser/README.md)
+builds the shared consensus processor, SSZ, trie/code verification and local
+EVM into .NET WebAssembly. A Worker runs verification with a pinned native
+blst backend; an EIP-1193 bridge exposes the provider and IndexedDB retains a
+journal that is reverified on restart. The browser run guide defines its
+supported methods, native precompile requirements and resource bounds.
 
-1. Extract a host-independent library containing the processor, transports and
-   verified reads. Move the reusable beacon types, SSZ/domain helpers and network
-   schedule out of the full `Nethermind.BeaconChain` dependency graph: it currently
-   pulls in Init, Merge, Kestrel, libp2p and full-node dependencies. Minimize the
-   trie/account dependencies as well. Keep the CLI as a separate thin host.
-2. Port cryptography. The pinned `Nethermind.Crypto.Bls` package provides desktop
-   native assets, including Linux ARM64, but no browser-WASM, iOS or Android
-   assets. Build and validate a [WASM native BLS backend](https://learn.microsoft.com/en-us/aspnet/core/blazor/webassembly-native-dependencies?view=aspnetcore-10.0), plus iOS static and Android
-   ARM64 native builds. Audit Keccak/intrinsic paths and native loading for each
-   target; run the same valid/invalid vectors against every backend.
-3. Browser: target .NET browser-WASM with a JavaScript/EIP-1193 provider bridge
-   instead of a listening server, and run signature work in a Web Worker.
-   Browsers cannot open the TCP/UDP sockets used by the current beacon and
-   execution stacks. Direct P2P therefore needs browser-compatible transports
-   (such as WebTransport/WebRTC plus compatible peers or relays) and a way to
-   discover them without raw UDP. A browser HTTP gateway would be a different
-   transport choice and must still supply data that the client verifies locally.
-4. Mobile: embed the library in Android/iOS hosts (for example MAUI or a native
-   application bridge), package the platform crypto libraries, and verify AOT,
-   trimming and JSON metadata. Test suspend/resume, stale finality, clock changes,
-   cancellation, background limits, battery cost and ARM64 memory use on devices.
-   Native AOT has [platform-specific restrictions](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/).
-5. Adapt the existing verified consensus journal and bounded request admission
-   to mobile lifecycle and storage APIs. Measure bundle
-   size, peak memory and sync/signature latency before choosing deployment defaults.
-6. Reuse the verification rules and test vectors across each platform and test
-   actual peer interoperability. Keep the native host and transport separate
-   from portable consensus and state verification code.
+Build the browser host as described there, then add
+`--browser-dir <published-browser-wwwroot>` to the native run command. Open
+`http://127.0.0.1:8545/browser/` and enter an independently trusted recent
+checkpoint. The native host supplies bounded raw P2P records and proof data;
+the browser verifies them locally. Browser sockets cannot directly use the
+existing beacon TCP and execution TCP/UDP transports, so this host uses
+untrusted proof relays with verification on the device. A relay can censor
+data; it cannot supply an accepted forged signature, header or state proof.
 
-[Helios](https://github.com/a16z/helios) is a useful reference for the portable
-library/host split. The present project does not provide those platform ports.
+Browser requests are restricted to the server's origin by default. Use
+`--browser-origin https://your-wallet.example` to permit one additional exact
+HTTPS origin (loopback HTTP is allowed for development). Wildcards and URLs
+with paths are rejected. A loopback listener rejects non-loopback Host headers
+to prevent DNS rebinding. These browser boundaries do not authenticate an RPC
+caller: use an authenticated gateway for a publicly exposed listener.
+
+Mobile remains separate work: package iOS/Android native crypto and an embedded
+host, then validate AOT, ARM64, suspend/resume, background networking, storage
+recovery and battery use. The shared verifier and test vectors can be reused.
+See Microsoft's [WASM native dependencies](https://learn.microsoft.com/en-us/aspnet/core/blazor/webassembly-native-dependencies?view=aspnetcore-10.0)
+and [Native AOT restrictions](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/).
 
 ## Validation
 

@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -18,39 +19,133 @@ public class FuluFixtureTests
     private static readonly Hash256 Checkpoint = new("0x4fda428c7ca70ced8ecd846de2a37a339f0518260f848dc5d5d42a4e47b7b3ba");
 
     [Test]
-    public void Captured_mainnet_bootstrap_and_finality_update_authenticate()
+    public void Captured_bootstrap_and_finality_update_authenticate([Values("mainnet", "hoodi")] string network)
     {
-        using JsonDocument bootstrapJson = Read("bootstrap");
-        using JsonDocument finalityJson = Read("finality");
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        using JsonDocument finalityJson = Read("finality", network);
         Assert.That(bootstrapJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
         Assert.That(finalityJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
 
         LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
         LightClientFinalityUpdate finality = Finality(finalityJson.RootElement.GetProperty("data"));
-        Assert.That(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), Is.EqualTo(Checkpoint));
+        Assert.That(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), Is.EqualTo(capture.Checkpoint));
 
-        BeaconChainSpec spec = BeaconChainSpec.Mainnet;
+        BeaconChainSpec spec = capture.Spec;
         LightClientBootstrap decodedBootstrap = LightClientWireCodec.DecodeBootstrap(LightClientWireCodec.EncodeBootstrap(bootstrap, spec), spec);
         LightClientFinalityUpdate decodedFinality = LightClientWireCodec.DecodeFinality(LightClientWireCodec.EncodeFinality(finality, spec), spec);
-        LightClientStore store = new(spec, Checkpoint, decodedBootstrap, decodedFinality.SignatureSlot);
+        LightClientStore store = new(spec, capture.Checkpoint, decodedBootstrap, decodedFinality.SignatureSlot);
         store.Process(decodedFinality, decodedFinality.SignatureSlot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(15384736UL));
-            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(15384813UL));
-            Assert.That(store.FinalizedHeader.Execution!.BlockHash,
-                Is.EqualTo(new Hash256("0xaf43d16d79770a96dbe621e0ae711cabb98319b5fa1a260ea22080947b48fb0a")));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(capture.FinalizedSlot));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(capture.OptimisticSlot));
+            Assert.That(store.FinalizedHeader.Execution!.BlockHash, Is.EqualTo(new Hash256(capture.ExecutionHash)));
         }
-
-        decodedFinality.FinalityBranch![0] = Hash256.Zero;
-        LightClientStore fresh = new(spec, Checkpoint, decodedBootstrap, decodedFinality.SignatureSlot);
-        Assert.That(() => fresh.Process(decodedFinality, decodedFinality.SignatureSlot),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("finality proof"));
     }
 
-    private static JsonDocument Read(string name) => JsonDocument.Parse(
-        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TestData", "Fulu", name + ".json")));
+    [Test]
+    public void Captured_bootstrap_rejects_invalid_proofs_or_a_different_anchor(
+        [Values("mainnet", "hoodi")] string network,
+        [Values("committee-proof", "execution-proof", "checkpoint")] string mutation)
+    {
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
+        Hash256 checkpoint = capture.Checkpoint;
+        switch (mutation)
+        {
+            case "committee-proof": bootstrap.CurrentSyncCommitteeBranch![0] = Hash256.Zero; break;
+            case "execution-proof": bootstrap.Header!.ExecutionBranch![0] = Hash256.Zero; break;
+            case "checkpoint": checkpoint = Hash256.Zero; break;
+        }
+
+        Assert.That(() => new LightClientStore(capture.Spec, checkpoint, bootstrap, capture.OptimisticSlot + 1),
+            Throws.TypeOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Captured_finality_rejects_forgery_without_publishing_it(
+        [Values("mainnet", "hoodi")] string network,
+        [Values("finality-proof", "signature", "signing-network")] string mutation)
+    {
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        using JsonDocument finalityJson = Read("finality", network);
+        LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
+        LightClientFinalityUpdate finality = Finality(finalityJson.RootElement.GetProperty("data"));
+        BeaconChainSpec spec = capture.Spec;
+        switch (mutation)
+        {
+            case "finality-proof": finality.FinalityBranch![0] = Hash256.Zero; break;
+            case "signature":
+                byte[] signature = finality.SyncAggregate!.SyncCommitteeSignature.Bytes.ToArray();
+                signature[32] ^= 1;
+                finality.SyncAggregate.SyncCommitteeSignature = new BlsSignature(signature);
+                break;
+            case "signing-network": spec = spec with { GenesisValidatorsRoot = Hash256.Zero }; break;
+        }
+        LightClientStore store = new(spec, capture.Checkpoint, bootstrap, finality.SignatureSlot);
+
+        Assert.That(() => store.Process(finality, finality.SignatureSlot), Throws.TypeOf<InvalidDataException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(capture.FinalizedSlot));
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(capture.FinalizedSlot));
+            Assert.That(store.CurrentMaxParticipants, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Captured_authenticated_heads_and_participation_survive_journal_replay([Values("mainnet", "hoodi")] string network)
+    {
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        using JsonDocument finalityJson = Read("finality", network);
+        LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
+        LightClientFinalityUpdate finality = Finality(finalityJson.RootElement.GetProperty("data"));
+        LightClientStore store = new(capture.Spec, capture.Checkpoint, bootstrap, finality.SignatureSlot);
+        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+            "NethermindLightClientFixtureJournal", Guid.NewGuid().ToString("N"));
+        VerifiedConsensusJournal journal = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+        try
+        {
+            await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+            store.Process(finality, finality.SignatureSlot);
+            await journal.AppendAsync(finality, store, CancellationToken.None);
+            VerifiedConsensusJournal reader = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+            LightClientStore? resumed = await reader.LoadAsync(finality.SignatureSlot, CancellationToken.None);
+            Assert.That(resumed, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(resumed!.FinalizedHeader.Execution!.BlockHash, Is.EqualTo(store.FinalizedHeader.Execution!.BlockHash));
+                Assert.That(resumed.OptimisticHeader.Beacon!.Slot, Is.EqualTo(capture.OptimisticSlot));
+                Assert.That(resumed.OptimisticHeader.Execution!.BlockHash, Is.EqualTo(store.OptimisticHeader.Execution!.BlockHash));
+                Assert.That(resumed.CurrentMaxParticipants, Is.EqualTo(store.CurrentMaxParticipants));
+                Assert.That(resumed.Period, Is.EqualTo(store.Period));
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private sealed record Capture(BeaconChainSpec Spec, Hash256 Checkpoint, ulong FinalizedSlot, ulong OptimisticSlot, string ExecutionHash);
+
+    private static Capture Fixture(string network) => network switch
+    {
+        "mainnet" => new(BeaconChainSpec.Mainnet, Checkpoint, 15384736, 15384813,
+            "0xaf43d16d79770a96dbe621e0ae711cabb98319b5fa1a260ea22080947b48fb0a"),
+        "hoodi" => new(BeaconChainSpec.Hoodi, new Hash256("0x5d5f221a04833992d266353bebe3d515dcd7ca9d4afa5550733f978eac535f51"), 4130560, 4130643,
+            "0x55a9432f7d806f4532dbcc2471da8b24ba2ab16a9ab7c5d51b482d01db95f527"),
+        _ => throw new ArgumentException("Unknown captured network.", nameof(network)),
+    };
+
+    private static JsonDocument Read(string name, string network) => JsonDocument.Parse(
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "TestData", "Fulu", network == "hoodi" ? "Hoodi" : "", name + ".json")));
 
     private static LightClientBootstrap Bootstrap(JsonElement json) => new()
     {

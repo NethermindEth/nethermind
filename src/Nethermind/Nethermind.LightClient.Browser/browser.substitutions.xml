@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="Nethermind.Serialization.Rlp">
+    <type fullname="Nethermind.Serialization.Rlp.Rlp">
+      <method signature="System.Boolean RegisterDefaultDecoders()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>

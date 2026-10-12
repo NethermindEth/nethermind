@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Crypto.SecP256r1</AssemblyName>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <Version>1.1.0</Version>
+    <RootNamespace>Nethermind.Crypto</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Secp256r1BindingsRoot Condition="'$(Secp256r1BindingsRoot)' == ''">$(MSBuildThisFileDirectory)portable-secp256r1-bindings</Secp256r1BindingsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(Secp256r1BindingsRoot)/*.cs" />
+  </ItemGroup>
+  <Target Name="RequireBindings" BeforeTargets="CoreCompile" Condition="!Exists('$(Secp256r1BindingsRoot)/SecP256r1.cs')">
+    <Error Text="Run prepare-precompiles.ps1 and pass its Secp256r1BindingsRoot property to build the browser P256 bindings." />
+  </Target>
+</Project>

@@ -18,4 +18,10 @@ internal interface IExecutionStateSource
     Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<TxReceipt[]> GetReceiptsAsync(Block block, CancellationToken cancellationToken) => throw new NotSupportedException();
+    Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();
+    Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
 }
+
+internal sealed record ExecutionAccountProof(Account Account, byte[][] AccountProof, ExecutionStorageProof[] StorageProofs);
+internal sealed record ExecutionStorageProof(UInt256 Key, UInt256 Value, byte[][] Proof);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Reflection;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using Autofac;
@@ -9,33 +10,218 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
+using Nethermind.TxPool;
 
 namespace Nethermind.LightClient.Test;
 
 public class TransportTests
 {
     [Test]
+    public async Task Production_discovery_storage_restarts_and_revalidates_signed_enrs([Values] bool tamper)
+    {
+        string directory = PeerTestDirectory();
+        try
+        {
+            using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+            NodeRecord record = new();
+            record.SetEntry(new SecP256k1Entry(key.CompressedPublicKey));
+            record.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.8")));
+            record.SetEntry(new TcpEntry(30303));
+            record.SetEntry(new UdpEntry(30303));
+            new NodeRecordSigner(new Ecdsa(), key).Sign(record);
+            NetworkNode node = new(record.ToString());
+            await using (ExecutionPeerTransport first = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
+                new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0, directory))
+            {
+                INetworkStorage storage = Services(first).ResolveKeyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
+                storage.StartBatch();
+                storage.UpdateNodes([node]);
+                storage.Commit();
+            }
+            if (tamper)
+            {
+                node.Enr!.Signature = new Signature(new byte[64], 0);
+                string persisted = Convert.ToHexString(key.PublicKey.Bytes) + ","
+                    + Convert.ToHexString(NetworkNodeDecoder.Instance.EncodeAsBytes(node)) + Environment.NewLine;
+                await File.WriteAllTextAsync(Path.Combine(directory, "el/mainnet/discovery", SimpleFilePublicKeyDb.DbFileName), persisted);
+            }
+            await using ExecutionPeerTransport resumed = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
+                new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0, directory);
+            NetworkNode[] restored = Services(resumed).ResolveKeyed<INetworkStorage>(DbNames.DiscoveryV5Nodes).GetPersistedNodes();
+            if (tamper) Assert.That(restored, Is.Empty);
+            else
+            {
+                Assert.That(restored.Single().NodeId, Is.EqualTo(key.PublicKey));
+                Assert.That(restored[0].IsEnr, Is.True);
+            }
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test]
+    public async Task Oversized_discovery_cache_is_preserved_and_does_not_block_startup()
+    {
+        string directory = PeerTestDirectory();
+        string cacheDirectory = Path.Combine(directory, "el/mainnet/discovery");
+        Directory.CreateDirectory(cacheDirectory);
+        string path = Path.Combine(cacheDirectory, SimpleFilePublicKeyDb.DbFileName);
+        try
+        {
+            await File.WriteAllBytesAsync(path, new byte[2 * 1024 * 1024 + 1]);
+            await using ExecutionPeerTransport transport = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
+                new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0, directory);
+            INetworkStorage storage = Services(transport).ResolveKeyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(storage.GetPersistedNodes(), Is.Empty);
+                Assert.That(File.Exists(path), Is.False);
+                Assert.That(Directory.GetFiles(cacheDirectory, "*.invalid-*"), Has.Length.EqualTo(1));
+            }
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    private static IContainer Services(ExecutionPeerTransport transport) => (IContainer)typeof(ExecutionPeerTransport)
+        .GetField("_services", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+
+    private static string PeerTestDirectory() => Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+        "NethermindLightClientPeerTests", Guid.NewGuid().ToString("N"));
+
+    [Test]
+    public void Discovery_snapshot_retains_only_a_bounded_set_of_signed_records()
+    {
+        using MemDb db = new();
+        NetworkStorage storage = new(db, Nethermind.Logging.LimboLogs.Instance);
+        BoundedEnrStorage bounded = new(storage);
+        NetworkNode[] nodes = new NetworkNode[BoundedEnrStorage.Capacity + 1];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            using PrivateKey key = new(((UInt256)(i + 1)).ToBigEndian());
+            NodeRecord record = new();
+            record.SetEntry(new SecP256k1Entry(key.CompressedPublicKey));
+            new NodeRecordSigner(new Ecdsa(), key).Sign(record);
+            nodes[i] = new(record.ToString());
+        }
+        bounded.StartBatch();
+        bounded.UpdateNodes(nodes);
+        bounded.Commit();
+        Assert.That(bounded.GetPersistedNodes(), Has.Length.EqualTo(BoundedEnrStorage.Capacity));
+        bounded.StartBatch();
+        bounded.UpdateNodes([nodes[^1]]);
+        bounded.Commit();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bounded.GetPersistedNodes().Single().NodeId, Is.EqualTo(nodes[^1].NodeId));
+            Assert.That(new NetworkStorage(db, Nethermind.Logging.LimboLogs.Instance).GetPersistedNodes().Single().NodeId, Is.EqualTo(nodes[^1].NodeId));
+        }
+    }
+
+    [Test]
+    public async Task Relay_pool_interface_serves_verified_blob_sidecars_and_cells()
+    {
+        await KzgPolynomialCommitments.InitializeAsync(Nethermind.Logging.LimboLogs.Instance.GetClassLogger<TransportTests>());
+        IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
+        ShardBlobNetworkWrapper wrapper = proofs.AllocateWrapper(new byte[131_072]);
+        proofs.ComputeProofsAndCommitments(wrapper);
+        Transaction transaction = new()
+        {
+            Type = TxType.Blob,
+            ChainId = 1,
+            Nonce = 7,
+            GasLimit = 21_000,
+            DecodedMaxFeePerGas = 10,
+            GasPrice = 2,
+            MaxFeePerBlobGas = 2,
+            To = Address.Zero,
+            BlobVersionedHashes = proofs.ComputeHashes(wrapper),
+            NetworkWrapper = wrapper,
+        };
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        new EthereumEcdsa(1).Sign(key, transaction);
+        transaction.Hash = transaction.CalculateHash();
+        using BoundedTransactionRelay relay = new();
+        relay.AddVerified(transaction);
+        ITxPool pool = relay;
+        Assert.That(pool.TryGetPendingTransaction(transaction.Hash, out Transaction? served), Is.True);
+        Assert.That(pool.TryGetPendingTransactionWithoutBlobs(transaction.Hash, out Transaction? metadata), Is.True);
+        Assert.That(pool.TryGetBlobCellsAndProofsV1(transaction.BlobVersionedHashes[0]!, BlobCellMask.FromIndices([0, 127]),
+            out BlobCellMask mask, out byte[][]? cells, out byte[][]? selectedProofs), Is.True);
+        ShardBlobNetworkWrapper partial = wrapper with { Blobs = [], CellMask = mask, Cells = cells };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.SupportsBlobs, Is.True);
+            Assert.That(pool.IsKnown(transaction.Hash), Is.True);
+            Assert.That(served, Is.SameAs(transaction));
+            Assert.That(((ShardBlobNetworkWrapper)metadata!.NetworkWrapper!).Blobs, Is.Empty);
+            Assert.That(pool.GetPendingBlobTransactionsCount(), Is.EqualTo(1));
+            Assert.That(pool.GetPendingTransactionsCount(), Is.Zero);
+            Assert.That(BlobCellsHelper.ValidateCells(partial), Is.True);
+            Assert.That(selectedProofs, Is.EqualTo(new[] { wrapper.Proofs[0], wrapper.Proofs[127] }));
+        }
+        Assert.That(pool.RemoveTransaction(transaction.Hash), Is.True);
+        Assert.That(pool.TryGetPendingTransaction(transaction.Hash, out _), Is.False);
+    }
+
+    [Test]
+    public async Task Peer_serving_scheduler_bounds_queue_and_cleans_up_shutdown()
+    {
+        LightPeerRequestScheduler scheduler = new(Nethermind.Logging.LimboLogs.Instance);
+        TaskCompletionSource occupied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int active = 0;
+        int cleaned = 0;
+        Task Run(ServingRequest _, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref active) == 2) occupied.TrySetResult();
+            return release.Task.WaitAsync(token);
+        }
+        Assert.That(scheduler.TryScheduleTask(new ServingRequest(), Run, TimeSpan.FromHours(1)), Is.True);
+        Assert.That(scheduler.TryScheduleTask(new ServingRequest(), Run, TimeSpan.FromHours(1)), Is.True);
+        await occupied.Task;
+        for (int i = 0; i < 32; i++)
+            Assert.That(scheduler.TryScheduleTask(new ServingRequest(), (_, token) =>
+            {
+                Assert.That(token.IsCancellationRequested, Is.True);
+                Interlocked.Increment(ref cleaned);
+                return Task.CompletedTask;
+            }), Is.True);
+        Assert.That(scheduler.TryScheduleTask(new ServingRequest(), Run), Is.False);
+        await scheduler.DisposeAsync();
+        Assert.That(cleaned, Is.EqualTo(32));
+        Assert.That(scheduler.TryScheduleTask(new ServingRequest(), Run), Is.False);
+    }
+
+    private sealed record ServingRequest : IBackgroundTaskRequest<ServingRequest>;
+
+    [Test]
     public async Task Execution_transport_uses_discv5_without_direct_bootnode_candidates()
     {
         await using ExecutionPeerTransport transport = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
             new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0);
-        IContainer services = (IContainer)typeof(ExecutionPeerTransport)
-            .GetField("_services", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
+        IContainer services = Services(transport);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(services.Resolve<IDiscoveryConfig>().DiscoveryVersion, Is.EqualTo(DiscoveryVersion.V5));
+            Assert.That(services.Resolve<INetworkConfig>().EnableExternalIpResolution, Is.True);
+            Assert.That(services.Resolve<IIPResolver>(), Is.TypeOf<IPResolver>());
             Assert.That(services.Resolve<NodesLoaderOptions>().LoadBootnodesAsPeerCandidates, Is.False);
         }
 
@@ -119,6 +305,51 @@ public class TransportTests
     }
 
     [Test]
+    public async Task Batch_byte_budget_preserves_successes_and_does_not_execute_remaining_items([Values] bool overBoundary)
+    {
+        int firstTokenBytes = BoundedJson.ResultLimit;
+        int envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = 1, result = "" }).Length - 2;
+        int secondTokenBytes = RpcEndpoint.BatchResponseLimit - RpcEndpoint.BatchErrorReserve - 3
+            - firstTokenBytes - 2 * envelopeBytes + (overBoundary ? 1 : 0);
+        using JsonDocument first = JsonDocument.Parse("\"" + new string('a', firstTokenBytes - 2) + "\"");
+        using JsonDocument second = JsonDocument.Parse("\"" + new string('b', secondTokenBytes - 2) + "\"");
+        using JsonDocument requests = JsonDocument.Parse("""
+            [{"jsonrpc":"2.0","method":"first","id":1},
+             {"jsonrpc":"2.0","method":"second","id":2},
+             {"jsonrpc":"2.0","method":"later","id":"retained"},
+             {"jsonrpc":"2.0","method":"notification"},
+             {"jsonrpc":"2.0","method":"invalid","id":true}]
+            """);
+        int executions = 0;
+        RecordingLogger logger = new();
+        DefaultHttpContext context = new();
+        context.Response.Body = new MemoryStream();
+        await RpcEndpoint.WriteBatchAsync(context, requests.RootElement, (_, _, _) =>
+            Task.FromResult<object>(Interlocked.Increment(ref executions) == 1 ? first.RootElement : second.RootElement),
+            logger, CancellationToken.None);
+        context.Response.Body.Position = 0;
+        using JsonDocument response = await JsonDocument.ParseAsync(context.Response.Body);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executions, Is.EqualTo(2));
+            Assert.That(context.Response.Body.Length, Is.LessThanOrEqualTo(RpcEndpoint.BatchResponseLimit));
+            Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(4));
+            Assert.That(response.RootElement[0].GetProperty("result").GetString()!.Length, Is.EqualTo(firstTokenBytes - 2));
+            if (overBoundary) Assert.That(response.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            else Assert.That(response.RootElement[1].GetProperty("result").GetString()!.Length, Is.EqualTo(secondTokenBytes - 2));
+            Assert.That(response.RootElement[2].GetProperty("id").GetString(), Is.EqualTo("retained"));
+            Assert.That(response.RootElement[2].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(response.RootElement[3].GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(response.RootElement[3].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
+            Assert.That(logger.Entries, Has.Count.EqualTo(5));
+            Assert.That(logger.Entries[1], Does.Contain(overBoundary ? "error -32005" : "-> ok"));
+            Assert.That(logger.Entries[3], Does.Contain("RPC notification -> error -32005 in "));
+            Assert.That(logger.Entries[4], Does.Contain("RPC invalid -> error -32600 in "));
+        }
+    }
+
+    [Test]
     public async Task Rpc_notifications_produce_no_response()
     {
         DefaultHttpContext context = await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\"}");
@@ -149,6 +380,30 @@ public class TransportTests
     }
 
     [Test]
+    public async Task Only_single_transaction_submission_can_exceed_the_standard_body_limit([Values] bool transaction)
+    {
+        string body = JsonSerializer.Serialize(new
+        {
+            jsonrpc = "2.0",
+            id = 1,
+            method = transaction ? "eth_sendRawTransaction" : "eth_chainId",
+            padding = new string('x', RpcEndpoint.StandardRequestBodySize),
+        });
+        DefaultHttpContext context = new();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
+        context.Response.Body = new MemoryStream();
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        await RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(transaction ? 200 : StatusCodes.Status413PayloadTooLarge));
+        if (transaction)
+        {
+            context.Response.Body.Position = 0;
+            using JsonDocument response = await JsonDocument.ParseAsync(context.Response.Body);
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32601));
+        }
+    }
+
+    [Test]
     public async Task Rpc_body_above_the_size_limit_is_refused([Values] bool rejectedByServer)
     {
         DefaultHttpContext context = new();
@@ -173,7 +428,7 @@ public class TransportTests
         TaskCompletionSource<bool> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task[] active = new Task[64];
         BlockingBody[] bodies = new BlockingBody[active.Length];
-        VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         try
         {
             for (int i = 0; i < active.Length; i++)
@@ -206,7 +461,7 @@ public class TransportTests
     {
         WaitingExecutionSource source = new();
         ManualDeadlineClock clock = new();
-        VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
         DefaultHttpContext context = new();
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
             "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"],\"id\":1},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":2}]"));
@@ -233,7 +488,7 @@ public class TransportTests
     {
         WaitingExecutionSource source = new(ignoreCancellation: true);
         ManualDeadlineClock clock = new();
-        VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
         DefaultHttpContext context = new();
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
             "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"]}"));
@@ -254,7 +509,7 @@ public class TransportTests
 
     private static async Task<DefaultHttpContext> InvokeAsync(string request, ILogger? logger = null)
     {
-        VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         DefaultHttpContext context = new();
         context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(request));
         context.Response.Body = new MemoryStream();

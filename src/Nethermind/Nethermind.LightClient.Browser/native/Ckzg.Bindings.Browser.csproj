@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Ckzg.Bindings</AssemblyName>
+    <AssemblyVersion>2.1.8.1641</AssemblyVersion>
+    <Version>2.1.8.1641</Version>
+    <RootNamespace>CkzgLib</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <CkzgBindingsRoot Condition="'$(CkzgBindingsRoot)' == ''">$(MSBuildThisFileDirectory)portable-ckzg-bindings</CkzgBindingsRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(CkzgBindingsRoot)/*.cs" />
+  </ItemGroup>
+  <Target Name="RequireBindings" BeforeTargets="CoreCompile" Condition="!Exists('$(CkzgBindingsRoot)/Ckzg.cs')">
+    <Error Text="Run prepare-precompiles.ps1 and pass its CkzgBindingsRoot property to build the browser KZG bindings." />
+  </Target>
+</Project>

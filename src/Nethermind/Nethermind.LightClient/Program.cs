@@ -17,8 +17,10 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
 {
     Console.WriteLine("Nethermind light client\n" +
         "Optional: --checkpoint <trusted beacon block root> or --checkpoint-url <trusted HTTPS Beacon API>\n" +
+        "          --checkpoint-check-url <independent trusted HTTPS Beacon API>\n" +
         "Optional: --network mainnet|hoodi|sepolia (default mainnet) --urls http://127.0.0.1:8545\n" +
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
+        "          --browser-dir <published browser wwwroot> --browser-origin <allowed origin>\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
@@ -51,10 +53,20 @@ BeaconChainSpec spec = network switch
     _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia."),
 };
 string? checkpointValue = builder.Configuration["checkpoint"];
+string? checkpointCheckUrl = builder.Configuration["checkpoint-check-url"];
+string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
+TimeProvider clock = TimeProvider.System;
+ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
 Hash256 checkpoint;
 if (checkpointValue is not null)
 {
     checkpoint = new(checkpointValue);
+    if (checkpointCheckUrl is not null)
+    {
+        using HttpClientHandler handler = new() { AllowAutoRedirect = false };
+        using HttpClient client = new(handler) { Timeout = TimeSpan.FromSeconds(10) };
+        await CheckpointSource.CrossCheckAsync(client, checkpointCheckUrl, checkpoint, spec, CancellationToken.None);
+    }
 }
 else
 {
@@ -62,8 +74,10 @@ else
         ?? throw new ArgumentException("Mainnet requires --checkpoint or --checkpoint-url; no public EF mainnet checkpoint endpoint is available.");
     using HttpClientHandler handler = new() { AllowAutoRedirect = false };
     using HttpClient client = new(handler) { Timeout = TimeSpan.FromSeconds(10) };
-    checkpoint = await CheckpointSource.FetchAsync(client, checkpointUrl, CancellationToken.None);
-    Console.WriteLine($"Trusted checkpoint from {checkpointUrl}: {checkpoint}");
+    CheckpointSelection selection = await CheckpointSource.ResolveAsync(client, checkpointUrl, network, dataDirectory,
+        spec, CurrentSlot(), checkpointCheckUrl, CancellationToken.None);
+    checkpoint = selection.Root;
+    Console.WriteLine($"{(selection.Reused ? "Reusing" : "Selected")} trusted checkpoint from {selection.Provider} (epoch {selection.Epoch}): {checkpoint}");
 }
 string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
 bool redirected = Console.IsOutputRedirected;
@@ -72,14 +86,12 @@ builder.WebHost.UseUrls(rpcUrl);
 builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = RpcEndpoint.MaxRequestBodySize);
 await using WebApplication app = builder.Build();
 ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LightClient");
-await using BeaconPeerTransport beacon = new(spec, logManager);
+using SemaphoreSlim consensusGate = new(1, 1);
+await using BeaconPeerTransport beacon = new(spec, logManager, time: clock);
 await beacon.StartAsync(app.Lifetime.ApplicationStopping);
 logger.LogInformation("Beacon P2P started; searching for light-client peers");
-TimeProvider clock = TimeProvider.System;
-ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
 using CancellationTokenSource bootstrapTimeout = CancellationTokenSource.CreateLinkedTokenSource(app.Lifetime.ApplicationStopping);
 bootstrapTimeout.CancelAfter(TimeSpan.FromMinutes(2));
-string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
 VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
 LightClientStore? resumed = await journal.LoadAsync(CurrentSlot(), bootstrapTimeout.Token);
 LightClientStore store;
@@ -92,12 +104,18 @@ else
 {
     LightClientStore? acceptedStore = null;
     LightClientBootstrap bootstrap = await beacon.BootstrapAsync(checkpoint,
-        value => acceptedStore = new(spec, checkpoint, value, CurrentSlot()), bootstrapTimeout.Token);
+        (value, _) =>
+        {
+            acceptedStore = new(spec, checkpoint, value, CurrentSlot());
+            return Task.CompletedTask;
+        }, bootstrapTimeout.Token);
     store = acceptedStore ?? throw new InvalidDataException("Beacon peers did not supply a valid trusted checkpoint.");
     await journal.InitializeAsync(bootstrap, store, bootstrapTimeout.Token);
     logger.LogInformation("Trusted checkpoint accepted");
 }
 LightClientHeader initialHeader = store.FinalizedHeader;
+LightClientHeader persistedFinalized = store.FinalizedHeader;
+LightClientHeader persistedOptimistic = store.OptimisticHeader;
 Hash256 initialHash = initialHeader.Execution?.BlockHash ?? initialHeader.ExecutionBlockHash
     ?? throw new InvalidDataException("Verified beacon header has no execution block hash.");
 VerifiedHead provisionalHead = new(initialHeader.Beacon!.Slot, initialHeader.Execution?.BlockNumber ?? 0,
@@ -107,7 +125,7 @@ VerifiedHead? latestHead = null;
 ulong finalizedExecutionTimestamp = 0;
 ulong ExecutionTime(VerifiedHead verified) => spec.GenesisTime + verified.Slot * spec.SecondsPerSlot;
 await using ExecutionPeerTransport execution = new(network, logManager,
-    provisionalHead, ExecutionTime(provisionalHead));
+    provisionalHead, ExecutionTime(provisionalHead), dataDirectory: dataDirectory);
 await execution.StartAsync();
 logger.LogInformation("Execution P2P started; searching for SNAP peers via {Domain}", execution.DiscoveryDomain);
 async Task<(VerifiedHead Head, ulong Timestamp)> ResolveAsync(LightClientHeader header, CancellationToken token)
@@ -123,7 +141,7 @@ async Task<(VerifiedHead Head, ulong Timestamp)> ResolveAsync(LightClientHeader 
 }
 async Task PublishFinalizedAsync(CancellationToken token)
 {
-    LightClientHeader header = store.FinalizedHeader;
+    LightClientHeader header = Volatile.Read(ref persistedFinalized);
     Hash256 hash = header.Execution?.BlockHash ?? header.ExecutionBlockHash
         ?? throw new InvalidDataException("Verified finalized header has no execution block hash.");
     VerifiedHead? current = Volatile.Read(ref head);
@@ -134,12 +152,13 @@ async Task PublishFinalizedAsync(CancellationToken token)
     finalizedExecutionTimestamp = timestamp;
     execution.UpdateHead(verified, timestamp);
     Volatile.Write(ref head, verified);
-    Volatile.Write(ref latestHead, verified);
+    if (Volatile.Read(ref latestHead) is not { } latest || latest.Slot <= verified.Slot)
+        Volatile.Write(ref latestHead, verified);
     logger.LogInformation("Finalized execution block {BlockNumber} verified", verified.Number);
 }
 async Task PublishOptimisticAsync(CancellationToken token)
 {
-    LightClientHeader header = store.OptimisticHeader;
+    LightClientHeader header = Volatile.Read(ref persistedOptimistic);
     Hash256 optimisticHash = header.Execution?.BlockHash ?? header.ExecutionBlockHash
         ?? throw new InvalidDataException("Verified optimistic header has no execution block hash.");
     VerifiedHead? current = Volatile.Read(ref latestHead);
@@ -171,13 +190,50 @@ bool IsHeadFresh(VerifiedHead? snapshot, ulong maximumAgeSeconds)
     return slot >= snapshot.Slot && slot - snapshot.Slot <= maximumAgeSeconds / spec.SecondsPerSlot;
 }
 using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
-VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead);
+using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead);
+await using VerifiedSubscriptions subscriptions = new(execution, execution.SpecProvider, spec.ChainId, rpc, logger);
 app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc, logger));
+LightClientRelay.Map(app, beacon, execution, rpc, spec, logger);
+BrowserHost.Configure(app, builder.Configuration["browser-dir"], builder.Configuration["browser-origin"], rpcUrl);
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
+app.MapGet("/ws", (HttpContext context) => subscriptions.HandleAsync(context));
+beacon.StartGossip(ProcessFinalityAsync, ProcessOptimisticAsync, app.Lifetime.ApplicationStopping);
 try { await LightClientHost.RunAsync(app, SyncAsync, logger); }
 finally { NLog.LogManager.Shutdown(); }
 
-Task PersistUpdateAsync(LightClientUpdate update, CancellationToken token) =>
-    PersistAsync(journal.AppendAsync(update, store, token), token);
+Task ProcessUpdateAsync(LightClientUpdate update, CancellationToken token) =>
+    ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.FinalizedHeader.Beacon!.Slot,
+        stopping => journal.AppendAsync(update, store, stopping), token);
+
+Task<bool> ProcessFinalityAsync(LightClientFinalityUpdate update, CancellationToken token) =>
+    ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.FinalizedHeader.Beacon!.Slot,
+        stopping => journal.AppendAsync(update, store, stopping), token);
+
+Task<bool> ProcessOptimisticAsync(LightClientOptimisticUpdate update, CancellationToken token) =>
+    ProcessConsensusAsync(() => store.Process(update, CurrentSlot()), () => store.OptimisticHeader.Beacon!.Slot,
+        stopping => journal.AppendAsync(update, store, stopping), token);
+
+async Task<bool> ProcessConsensusAsync(Action process, Func<ulong> slot, Func<CancellationToken, Task> persist, CancellationToken token)
+{
+    await consensusGate.WaitAsync(token);
+    try
+    {
+        token.ThrowIfCancellationRequested();
+        ulong before = slot();
+        process();
+        // Once authenticated, an update is durably recorded before another mutation, independently of a peer's request deadline.
+        await PersistAsync(persist(app.Lifetime.ApplicationStopping), app.Lifetime.ApplicationStopping);
+        PublishPersistedHeaders();
+        return slot() > before;
+    }
+    finally { consensusGate.Release(); }
+}
+
+void PublishPersistedHeaders()
+{
+    Volatile.Write(ref persistedFinalized, store.FinalizedHeader);
+    Volatile.Write(ref persistedOptimistic, store.OptimisticHeader);
+}
 
 async Task PersistAsync(Task write, CancellationToken token)
 {
@@ -186,16 +242,26 @@ async Task PersistAsync(Task write, CancellationToken token)
     {
         logger.LogCritical(exception, "Verified consensus state could not be persisted; stopping the client");
         app.Lifetime.StopApplication();
-        throw;
+        throw new IOException("Verified consensus persistence failed.", exception);
     }
 }
 
 async Task SyncAsync(CancellationToken cancellationToken)
 {
-    using CancellationTokenSource peersStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-    Task peerCounts = ReportPeersAsync(peersStop.Token);
+    using CancellationTokenSource workersStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    Task[] workers = [PollConsensusAsync(workersStop.Token), PublishConsensusAsync(workersStop.Token),
+        ReportPeersAsync(workersStop.Token), beacon.GossipCompletion];
+    await Task.WhenAny(workers);
+    app.Lifetime.StopApplication();
+    await workersStop.CancelAsync();
+    await Task.WhenAll(workers);
+}
+
+async Task PublishConsensusAsync(CancellationToken cancellationToken)
+{
     (bool HasWarned, VerifiedHead? Head) finalizedWarning = default;
     (bool HasWarned, VerifiedHead? Head) optimisticWarning = default;
+    Hash256? subscriptionHash = null;
     try
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -207,76 +273,23 @@ async Task SyncAsync(CancellationToken cancellationToken)
             }
             try
             {
-                await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
-                    PersistUpdateAsync, PublishFinalizedAsync, cancellationToken);
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
-            }
-            try
-            {
-                LightClientUpdate? bestUpdate = store.BestUpdate;
-                ulong slot = CurrentSlot();
-                if (bestUpdate is not null && store.ForceUpdate(slot))
-                {
-                    await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, cancellationToken), cancellationToken);
-                    logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
-                }
                 await PublishOptimisticAsync(cancellationToken);
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Publishing consensus progress failed; retaining the last verified finalized head");
             }
-            try
-            {
-                LightClientFinalityUpdate? update;
-                using (CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    update = await beacon.PollFinalityAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
-                }
-                if (update is not null)
-                {
-                    await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
-                    await PublishFinalizedAsync(cancellationToken);
-                    await PublishOptimisticAsync(cancellationToken);
-                }
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
-            }
-            try
-            {
-                LightClientOptimisticUpdate? update;
-                using (CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
-                {
-                    attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    update = await beacon.PollOptimisticAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
-                }
-                if (update is not null)
-                {
-                    await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
-                    await PublishOptimisticAsync(cancellationToken);
-                }
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
-            }
             WarnIfStale(Volatile.Read(ref head), 30 * 60, "Finalized", ref finalizedWarning);
             WarnIfStale(Volatile.Read(ref latestHead), 2 * 60, "Optimistic", ref optimisticWarning);
-            await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken);
+            if (GetLatestHead() is { } observed && observed.BlockHash != subscriptionHash)
+            {
+                subscriptions.PublishHead(observed);
+                subscriptionHash = observed.BlockHash;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1), clock, cancellationToken);
         }
     }
     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
-    finally
-    {
-        await peersStop.CancelAsync();
-        await peerCounts;
-    }
 
     void WarnIfStale(VerifiedHead? current, ulong maximumAgeSeconds, string kind,
         ref (bool HasWarned, VerifiedHead? Head) warning)
@@ -292,6 +305,62 @@ async Task SyncAsync(CancellationToken cancellationToken)
             kind, current?.Slot, current?.Number);
         warning = (true, current);
     }
+}
+
+async Task PollConsensusAsync(CancellationToken cancellationToken)
+{
+    try
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
+                    ProcessUpdateAsync, cancellationToken);
+                await consensusGate.WaitAsync(cancellationToken);
+                try
+                {
+                    LightClientUpdate? bestUpdate = store.BestUpdate;
+                    ulong slot = CurrentSlot();
+                    if (bestUpdate is not null && store.ForceUpdate(slot))
+                    {
+                        await PersistAsync(journal.AppendForcedAsync(bestUpdate, slot, store, app.Lifetime.ApplicationStopping),
+                            app.Lifetime.ApplicationStopping);
+                        PublishPersistedHeaders();
+                        logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
+                    }
+                }
+                finally { consensusGate.Release(); }
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
+            }
+            try
+            {
+                using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attempt.CancelAfter(TimeSpan.FromSeconds(15));
+                await beacon.PollFinalityAsync(async (update, token) => { await ProcessFinalityAsync(update, token); }, attempt.Token);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
+            }
+            try
+            {
+                using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attempt.CancelAfter(TimeSpan.FromSeconds(15));
+                await beacon.PollOptimisticAsync(async (update, token) => { await ProcessOptimisticAsync(update, token); }, attempt.Token);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
+            }
+            // Gossip advances the heads continuously; req/resp repairs lost messages and committee gaps.
+            await Task.Delay(TimeSpan.FromMinutes(1), clock, cancellationToken);
+        }
+    }
+    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
 }
 
 async Task ReportPeersAsync(CancellationToken cancellationToken)

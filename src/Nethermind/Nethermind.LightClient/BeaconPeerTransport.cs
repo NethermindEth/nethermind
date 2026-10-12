@@ -28,15 +28,19 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private readonly BeaconP2P _p2p;
     private readonly BeaconDiscovery _discovery;
     private readonly BeaconPeerManager _peers;
+    private readonly LightClientGossip _gossip;
     private readonly Nethermind.Logging.ILogger _logger;
     private readonly CancellationTokenSource _stop = new();
     private Task? _peerLoop;
 
     internal int PeerCount => _peers.PeerCount;
+    internal Task GossipCompletion => _gossip.Completion;
 
-    internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, int p2pPort = 9050, int discoveryPort = 9050)
+    internal BeaconPeerTransport(BeaconChainSpec spec, ILogManager logManager, int p2pPort = 9050, int discoveryPort = 9050,
+        TimeProvider? time = null)
     {
         _logger = logManager.GetClassLogger<BeaconPeerTransport>();
+        _gossip = new(spec, logManager, time);
         BeaconChainConfig config = new()
         {
             P2PPort = p2pPort,
@@ -48,9 +52,9 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         BeaconChainStore store = new(_db, spec);
         ITimestamper clock = Timestamper.Default;
         BeaconChainStatusHolder status = new(spec, clock);
-        _ipResolver = new IPResolver(new NetworkConfig { EnableExternalIpResolution = false }, logManager);
+        _ipResolver = new IPResolver(new NetworkConfig(), logManager);
         _p2p = new BeaconP2P(config, spec, store, status, new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager);
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager, configureGossip: _gossip.Configure);
         _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager);
         _peers = new BeaconPeerManager(_p2p, config, status, logManager, _discovery, clock);
     }
@@ -63,20 +67,24 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             _peers.DialDiscoveredPeersAsync(_discovery.DiscoverPeers(_stop.Token), _stop.Token));
     }
 
-    internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Action<LightClientBootstrap> validate, CancellationToken token) =>
+    internal void StartGossip(Func<LightClientFinalityUpdate, CancellationToken, Task<bool>> finality,
+        Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> optimistic, CancellationToken token) =>
+        _gossip.Start(_p2p.GetTopic, finality, optimistic, token);
+
+    internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token) =>
         RequestAsync((peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
 
-    internal Task<LightClientUpdate> UpdateAsync(ulong period, Action<LightClientUpdate> validate, CancellationToken token) =>
+    internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         RequestAsync((peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
 
-    internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Action<LightClientFinalityUpdate> validate, CancellationToken token) =>
+    internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Func<LightClientFinalityUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         PollFromPeersAsync(_peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
 
-    internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Action<LightClientOptimisticUpdate> validate, CancellationToken token) =>
+    internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Func<LightClientOptimisticUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         PollFromPeersAsync(_peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
     internal static async Task<T?> PollFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Action<T> validate, CancellationToken token,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task> validate, CancellationToken token,
         TimeProvider? timeProvider = null) where T : class
     {
         (T? response, bool sawInapplicable) = await RequestFromPeersAsync(peers, request, validate, token, timeProvider);
@@ -85,7 +93,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     }
 
     private async Task<T> RequestAsync<T>(Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
-        Action<T> validate, CancellationToken token) where T : class
+        Func<T, CancellationToken, Task> validate, CancellationToken token) where T : class
     {
         long lastStatus = Stopwatch.GetTimestamp();
         while (true)
@@ -105,7 +113,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     }
 
     internal static async Task<(T? Response, bool SawInapplicable)> RequestFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
-        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Action<T> validate, CancellationToken token,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Func<T, CancellationToken, Task> validate, CancellationToken token,
         TimeProvider? timeProvider = null) where T : class
     {
         bool sawInapplicable = false;
@@ -114,28 +122,31 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             token.ThrowIfCancellationRequested();
             using CancellationTokenSource peerTimeout = new(PeerRequestTimeout, timeProvider ?? TimeProvider.System);
             using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(token, peerTimeout.Token);
+            T response;
             try
             {
-                T response = await request(peer, peerAttempt.Token);
-                try { validate(response); }
-                catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
-                catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
-                catch (InvalidDataException exception)
-                {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
-                    continue;
-                }
-                return (response, false);
+                response = await request(peer, peerAttempt.Token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (OperationCanceledException) when (peerTimeout.IsCancellationRequested)
             {
                 peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
+                continue;
             }
             catch (Exception exception)
             {
                 peer.ReportFailure(PeerFailureReason.RequestFailed, exception.Message);
+                continue;
             }
+            try { await validate(response, token); }
+            catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
+            catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
+            catch (InvalidDataException exception)
+            {
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
+                continue;
+            }
+            return (response, false);
         }
         return (null, sawInapplicable);
     }
@@ -153,6 +164,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             }
         }
         await _discovery.DisposeAsync();
+        await _gossip.DisposeAsync();
         await _p2p.DisposeAsync();
         await _ipResolver.DisposeAsync();
         _db.Dispose();

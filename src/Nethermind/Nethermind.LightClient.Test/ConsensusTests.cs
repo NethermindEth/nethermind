@@ -3,7 +3,6 @@
 
 using System.Collections;
 using System.Security.Cryptography;
-using System.Text.Json;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -261,7 +260,7 @@ public class ConsensusTests
         LightClientStore store = Store(Bootstrap(8190, 1));
         List<ulong> requested = [];
         int publications = 0;
-        Task CatchUp() => ConsensusSync.CatchUpAsync(store, Spec, (period, validate, _) =>
+        Task CatchUp() => ConsensusSync.CatchUpAsync(store, Spec, async (period, validate, token) =>
         {
             requested.Add(period);
             LightClientUpdate update = period switch
@@ -272,10 +271,11 @@ public class ConsensusTests
                 _ => throw new AssertionException("Unexpected sync committee period."),
             };
             if (tamper && period == 1) update.SyncAggregate!.SyncCommitteeSignature = default;
-            validate(update);
-            return Task.FromResult(update);
-        }, () => 16390, (_, _) => Task.CompletedTask, _ =>
+            await validate(update, token);
+            return update;
+        }, () => 16390, (update, _) =>
         {
+            store.Process(update, 16390);
             publications++;
             return Task.CompletedTask;
         }, CancellationToken.None);
@@ -328,14 +328,14 @@ public class ConsensusTests
     }
 
     [Test]
-    public void Checkpoint_age_policy_accepts_its_boundary_and_refuses_the_next_slot([Values(100799, 100800, 100801)] int ageSlots)
+    public void Checkpoint_age_policy_accepts_its_boundary_and_refuses_the_next_slot([Values(8191, 8192, 8193)] int ageSlots)
     {
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         BeaconChainSpec spec = Spec with { GloasForkEpoch = ulong.MaxValue };
 
-        if (ageSlots > 100800)
-            Assert.That(() => new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1), Throws.TypeOf<LightClientLocalStateException>().With.Message.Contains("fourteen days"));
+        if (ageSlots > 8192)
+            Assert.That(() => new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1), Throws.TypeOf<LightClientLocalStateException>().With.Message.Contains("256-epoch"));
         else
             Assert.That(new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1).FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
     }
@@ -356,7 +356,7 @@ public class ConsensusTests
     {
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = invalid == 0 ? Hash(0x42) : SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        ulong currentSlot = invalid == 1 ? 0 : invalid == 2 ? 100802UL : 1;
+        ulong currentSlot = invalid == 1 ? 0 : invalid == 2 ? 8194UL : 1;
         if (invalid == 0)
             Assert.That(() => new LightClientStore(Spec with { GloasForkEpoch = ulong.MaxValue }, checkpoint, bootstrap, currentSlot), Throws.TypeOf<InvalidDataException>());
         else
@@ -437,23 +437,6 @@ public class ConsensusTests
             Throws.TypeOf<InvalidDataException>());
     }
 
-    [Test]
-    public void Official_mainnet_electra_proofs_authenticate_the_reference_state([Values("current_sync_committee", "next_sync_committee", "finality_root")] string field)
-    {
-        string directory = Path.Combine(AppContext.BaseDirectory, "TestData", "Electra");
-        BeaconStateElectra.Decode(Snappier.Snappy.DecompressToArray(File.ReadAllBytes(Path.Combine(directory, "BeaconState.ssz_snappy"))), out BeaconStateElectra state);
-        Hash256 root = SszRoots.HashTreeRoot(state);
-        using JsonDocument fixture = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, field + "_merkle_proof.json")));
-        JsonElement proof = fixture.RootElement;
-        Hash256 leaf = new(proof.GetProperty("leaf").GetString()!);
-        Hash256[] branch = proof.GetProperty("branch").EnumerateArray().Select(hash => new Hash256(hash.GetString()!)).ToArray();
-        int generalizedIndex = proof.GetProperty("generalizedIndex").GetInt32();
-
-        Assert.That(LightClientStore.VerifyBranch(leaf, branch, generalizedIndex, root), Is.True);
-        branch[0] = Hash(0x42);
-        Assert.That(LightClientStore.VerifyBranch(leaf, branch, generalizedIndex, root), Is.False);
-    }
-
     private static LightClientStore Store(LightClientBootstrap bootstrap) =>
         new(Spec, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, bootstrap.Header.Beacon!.Slot);
 
@@ -488,7 +471,7 @@ public class ConsensusTests
         return update;
     }
 
-    private static void Sign(LightClientUpdate update, byte key, int participants, BeaconChainSpec spec, ulong? domainSlot = null)
+    internal static void Sign(LightClientUpdate update, byte key, int participants, BeaconChainSpec spec, ulong? domainSlot = null)
     {
         Hash256 domain = Domains.ComputeDomain(DomainType.SyncCommittee, spec.VersionForEpoch(spec.GetEpoch(domainSlot ?? update.SignatureSlot - 1)), spec.GenesisValidatorsRoot);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(update.AttestedHeader!.Beacon!), domain);
@@ -586,7 +569,7 @@ public class ConsensusTests
 
     private static Hash256 Hash(byte fill) => new(Enumerable.Repeat(fill, 32).ToArray());
 
-    private static Hash256[] Tree(Dictionary<int, Hash256> leaves)
+    internal static Hash256[] Tree(Dictionary<int, Hash256> leaves)
     {
         int size = 1;
         while (size <= leaves.Keys.Max()) size <<= 1;
@@ -603,7 +586,7 @@ public class ConsensusTests
         return tree;
     }
 
-    private static Hash256[] Branch(Hash256[] tree, int index)
+    internal static Hash256[] Branch(Hash256[] tree, int index)
     {
         List<Hash256> branch = [];
         while (index > 1)

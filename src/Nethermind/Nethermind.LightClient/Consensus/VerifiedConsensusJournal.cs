@@ -11,7 +11,7 @@ namespace Nethermind.LightClient.Consensus;
 
 /// <summary>Persists the updates needed to reconstruct a finalized light-client store from its trusted checkpoint.</summary>
 /// <remarks>
-/// The committee chain and latest finalized head are written atomically to separate files. On restart every
+/// The committee chain, latest authenticated heads and recovery candidate are written atomically to separate files. On restart every
 /// retained update is verified again; the saved files never become a new trust anchor. One synchronization owner
 /// calls the mutating methods after successful <see cref="LightClientStore.Process(LightClientUpdate, ulong)"/>.
 /// </remarks>
@@ -28,13 +28,21 @@ internal sealed class VerifiedConsensusJournal
     private readonly byte _network;
     private readonly string _chainPath;
     private readonly string _headPath;
+    private readonly string _optimisticPath;
+    private readonly string _bestPath;
     private readonly ILogger _logger;
     private readonly List<(byte Kind, byte[] Data)> _updates = [];
     private byte[]? _bootstrap;
     private byte[]? _chainDigest;
+    private byte[]? _headDigest;
+    private byte[]? _optimisticDigest;
+    private byte[]? _bestGeneration;
     private (byte Kind, byte[] Data)? _latestHead;
+    private (byte Kind, byte[] Data)? _latestOptimistic;
+    private (byte Kind, byte[] Data)? _latestBest;
     private ulong _period;
     private ulong _slot;
+    private ulong _optimisticSlot;
     private bool _nextKnown;
     private int _previousMaxParticipants;
     private int _currentMaxParticipants;
@@ -54,6 +62,8 @@ internal sealed class VerifiedConsensusJournal
         string prefix = $"{network}-{Convert.ToHexString(trustedCheckpoint.Bytes)}";
         _chainPath = Path.Combine(directory, prefix + ".chain");
         _headPath = Path.Combine(directory, prefix + ".head");
+        _optimisticPath = Path.Combine(directory, prefix + ".optimistic");
+        _bestPath = Path.Combine(directory, prefix + ".best");
     }
 
     /// <summary>Replays the saved bootstrap and updates, or returns null when no journal exists.</summary>
@@ -82,37 +92,126 @@ internal sealed class VerifiedConsensusJournal
         }
         if (offset != payload.Length) throw new InvalidDataException("Saved committee chain has trailing data.");
 
-        (byte Kind, byte[] Data)? latestHead = null;
-        if (File.Exists(_headPath))
-        {
-            try
-            {
-                byte[] head = await ReadBoundedAsync(_headPath, MaxRecordBytes + 108, cancellationToken);
-                byte[] headPayload = VerifyEnvelope(head, 1).ToArray();
-                if (!headPayload.AsSpan(39, DigestBytes).SequenceEqual(chainDigest))
-                    throw new InvalidDataException("Saved head refers to an older committee chain.");
-                int headOffset = 39 + DigestBytes;
-                byte kind = ReadByte(headPayload, ref headOffset);
-                byte[] encoded = ReadRecord(headPayload, ref headOffset);
-                if (headOffset != headPayload.Length) throw new InvalidDataException("Saved head has trailing data.");
-                ProcessRecord(store, kind, encoded, currentSlot);
-                latestHead = (kind, encoded);
-            }
-            catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
-            {
-                _logger.LogWarning(exception, "Discarding saved light-client head {Path}; reverting to authenticated committee chain", _headPath);
-            }
-        }
-
-        store.RequireRecent(currentSlot);
+        (byte Kind, byte[] Data, byte[] Digest)? latestHead = await LoadHeadAsync(_headPath, 1, store, chainDigest, currentSlot, cancellationToken);
+        (byte Kind, byte[] Data, byte[] Digest)? latestOptimistic = await LoadHeadAsync(_optimisticPath, 2, store, chainDigest, currentSlot, cancellationToken);
         _bootstrap = bootstrapBytes;
         _updates.Clear();
         _updates.AddRange(updates);
         _chainDigest = chainDigest;
-        _latestHead = latestHead;
+        _latestHead = latestHead is { } head ? (head.Kind, head.Data) : null;
+        _latestOptimistic = latestOptimistic is { } optimistic ? (optimistic.Kind, optimistic.Data) : null;
+        _headDigest = latestHead?.Digest;
+        _optimisticDigest = latestOptimistic?.Digest;
+        await LoadBestAsync(store, currentSlot, cancellationToken);
+        store.RequireRecent(currentSlot);
         RecordState(store);
         return store;
     }
+
+    private async Task<(byte Kind, byte[] Data, byte[] Digest)?> LoadHeadAsync(string path, byte fileKind, LightClientStore store,
+        byte[] chainDigest, ulong currentSlot, CancellationToken cancellationToken)
+    {
+        if (!File.Exists(path)) return null;
+        try
+        {
+            byte[] head = await ReadBoundedAsync(path, MaxRecordBytes + 108, cancellationToken);
+            byte[] payload = VerifyEnvelope(head, fileKind).ToArray();
+            if (!payload.AsSpan(39, DigestBytes).SequenceEqual(chainDigest))
+                throw new InvalidDataException("Saved head refers to an older committee chain.");
+            int offset = 39 + DigestBytes;
+            byte kind = ReadByte(payload, ref offset);
+            byte[] encoded = ReadRecord(payload, ref offset);
+            if (offset != payload.Length) throw new InvalidDataException("Saved head has trailing data.");
+            ProcessRecord(store, kind, encoded, currentSlot);
+            return (kind, encoded, head.AsSpan(head.Length - DigestBytes).ToArray());
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
+        {
+            _logger.LogWarning(exception, "Discarding saved light-client head {Path}; retaining authenticated replay state", path);
+            return null;
+        }
+    }
+
+    private async Task LoadBestAsync(LightClientStore store, ulong currentSlot, CancellationToken cancellationToken)
+    {
+        _latestBest = null;
+        _bestGeneration = null;
+        store.RestoreBestUpdate(null, currentSlot);
+        if (!File.Exists(_bestPath)) return;
+        try
+        {
+            byte[] file = await ReadBoundedAsync(_bestPath, MaxRecordBytes + 172, cancellationToken);
+            byte[] payload = VerifyEnvelope(file, 3).ToArray();
+            byte[] generation = Generation();
+            if (payload.Length < 39 + generation.Length + 1 || !payload.AsSpan(39, generation.Length).SequenceEqual(generation))
+                throw new InvalidDataException("Saved recovery candidate refers to different authenticated heads or committee chain.");
+            int offset = 39 + generation.Length;
+            byte kind = ReadByte(payload, ref offset);
+            byte[]? encoded = kind == 0 ? null : ReadRecord(payload, ref offset);
+            if (offset != payload.Length) throw new InvalidDataException("Saved recovery candidate has trailing data.");
+            if (encoded is not null)
+            {
+                LightClientUpdate candidate;
+                if (kind == 4)
+                {
+                    LightClientOptimisticUpdate optimistic = LightClientWireCodec.DecodeOptimistic(encoded, _spec);
+                    candidate = new()
+                    {
+                        AttestedHeader = optimistic.AttestedHeader,
+                        SyncAggregate = optimistic.SyncAggregate,
+                        SignatureSlot = optimistic.SignatureSlot,
+                    };
+                }
+                else if (kind == 1) candidate = LightClientWireCodec.DecodeUpdate(encoded, _spec);
+                else throw new InvalidDataException("Saved recovery candidate has an unknown update type.");
+                store.RestoreBestUpdate(candidate, currentSlot);
+                _latestBest = (kind, encoded);
+            }
+            _bestGeneration = generation;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
+        {
+            _logger.LogWarning(exception, "Discarding saved light-client recovery candidate {Path}; retaining authenticated heads", _bestPath);
+        }
+    }
+
+    private async Task SaveBestAsync(LightClientStore store, CancellationToken cancellationToken)
+    {
+        LightClientUpdate? update = store.BestUpdate;
+        (byte Kind, byte[] Data)? candidate = update is null ? null : EncodeCandidate(update);
+        byte[] generation = Generation();
+        bool sameCandidate = _latestBest is { } previous
+            ? candidate is { } current && previous.Kind == current.Kind && previous.Data.AsSpan().SequenceEqual(current.Data)
+            : candidate is null;
+        if (sameCandidate && generation.AsSpan().SequenceEqual(_bestGeneration)) return;
+        using MemoryStream output = new();
+        WritePrefix(output, 3);
+        output.Write(generation);
+        output.WriteByte(candidate?.Kind ?? 0);
+        if (candidate is { } best) WriteRecord(output, best.Data);
+        await WriteAtomicAsync(_bestPath, Finish(output), cancellationToken);
+        _latestBest = candidate;
+        _bestGeneration = generation;
+    }
+
+    private byte[] Generation()
+    {
+        byte[] generation = new byte[3 * DigestBytes];
+        (_chainDigest ?? throw new InvalidOperationException("The consensus journal is not initialized.")).CopyTo(generation, 0);
+        _headDigest?.CopyTo(generation, DigestBytes);
+        _optimisticDigest?.CopyTo(generation, 2 * DigestBytes);
+        return generation;
+    }
+
+    private (byte Kind, byte[] Data) EncodeCandidate(LightClientUpdate update) =>
+        update.FinalityBranch is null && update.NextSyncCommitteeBranch is null
+            ? ((byte)4, LightClientWireCodec.EncodeOptimistic(new LightClientOptimisticUpdate
+            {
+                AttestedHeader = update.AttestedHeader,
+                SyncAggregate = update.SyncAggregate,
+                SignatureSlot = update.SignatureSlot,
+            }, _spec))
+            : ((byte)1, LightClientWireCodec.EncodeUpdate(update, _spec));
 
     /// <summary>Atomically saves an authenticated bootstrap as the start of a new journal.</summary>
     internal async Task InitializeAsync(LightClientBootstrap bootstrap, LightClientStore store, CancellationToken cancellationToken)
@@ -124,6 +223,14 @@ internal sealed class VerifiedConsensusJournal
         _updates.Clear();
         _chainDigest = chain.AsSpan(chain.Length - DigestBytes).ToArray();
         _latestHead = null;
+        _latestOptimistic = null;
+        _headDigest = null;
+        _optimisticDigest = null;
+        _latestBest = null;
+        _bestGeneration = null;
+        DeleteSupersededHead(_headPath);
+        DeleteSupersededHead(_optimisticPath);
+        await SaveBestAsync(store, cancellationToken);
         RecordState(store);
     }
 
@@ -137,9 +244,11 @@ internal sealed class VerifiedConsensusJournal
         else if (store.FinalizedHeader.Beacon!.Slot > _slot)
         {
             byte[] encoded = LightClientWireCodec.EncodeUpdate(update, _spec);
-            await WriteAtomicAsync(_headPath, BuildHead(1, encoded), cancellationToken);
-            _latestHead = (1, encoded);
+            await SaveFinalizedAsync(1, encoded, store.OptimisticHeader.Beacon!.Slot > _optimisticSlot, cancellationToken);
         }
+        else if (store.OptimisticHeader.Beacon!.Slot > _optimisticSlot)
+            await SaveOptimisticAsync(1, LightClientWireCodec.EncodeUpdate(update, _spec), cancellationToken);
+        await SaveBestAsync(store, cancellationToken);
         RecordState(store);
     }
 
@@ -153,18 +262,56 @@ internal sealed class VerifiedConsensusJournal
         else if (store.FinalizedHeader.Beacon!.Slot > _slot)
         {
             byte[] encoded = LightClientWireCodec.EncodeFinality(update, _spec);
-            await WriteAtomicAsync(_headPath, BuildHead(2, encoded), cancellationToken);
-            _latestHead = (2, encoded);
+            await SaveFinalizedAsync(2, encoded, store.OptimisticHeader.Beacon!.Slot > _optimisticSlot, cancellationToken);
         }
+        else if (store.OptimisticHeader.Beacon!.Slot > _optimisticSlot)
+            await SaveOptimisticAsync(2, LightClientWireCodec.EncodeFinality(update, _spec), cancellationToken);
+        await SaveBestAsync(store, cancellationToken);
         RecordState(store);
     }
 
-    /// <summary>Saves an authenticated optimistic update when it raises the participation safety threshold.</summary>
+    /// <summary>Saves an authenticated optimistic update and any raised participation safety threshold.</summary>
     internal async Task AppendAsync(LightClientOptimisticUpdate update, LightClientStore store, CancellationToken cancellationToken)
     {
         if (RequiresChainRecord(store))
             await AppendChainAsync(4, LightClientWireCodec.EncodeOptimistic(update, _spec), cancellationToken);
+        else if (store.OptimisticHeader.Beacon!.Slot > _optimisticSlot)
+            await SaveOptimisticAsync(4, LightClientWireCodec.EncodeOptimistic(update, _spec), cancellationToken);
+        await SaveBestAsync(store, cancellationToken);
         RecordState(store);
+    }
+
+    private async Task SaveFinalizedAsync(byte kind, byte[] encoded, bool supersedesOptimistic, CancellationToken cancellationToken)
+    {
+        byte[] file = BuildHead(kind, encoded);
+        await WriteAtomicAsync(_headPath, file, cancellationToken);
+        _latestHead = (kind, encoded);
+        _headDigest = file.AsSpan(file.Length - DigestBytes).ToArray();
+        if (supersedesOptimistic) DeleteOptimistic();
+    }
+
+    private async Task SaveOptimisticAsync(byte kind, byte[] encoded, CancellationToken cancellationToken)
+    {
+        byte[] file = BuildHead(kind, encoded, 2);
+        await WriteAtomicAsync(_optimisticPath, file, cancellationToken);
+        _latestOptimistic = (kind, encoded);
+        _optimisticDigest = file.AsSpan(file.Length - DigestBytes).ToArray();
+    }
+
+    private void DeleteOptimistic()
+    {
+        _latestOptimistic = null;
+        _optimisticDigest = null;
+        DeleteSupersededHead(_optimisticPath);
+    }
+
+    private void DeleteSupersededHead(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception, "Could not delete superseded light-client head {Path}", path);
+        }
     }
 
     /// <summary>Persists the authenticated candidate and timeout that advanced the sync committee without finality.</summary>
@@ -173,6 +320,7 @@ internal sealed class VerifiedConsensusJournal
     {
         byte[] record = BuildForcedRecord(bestUpdate, forceSlot);
         await AppendChainAsync(3, record, cancellationToken);
+        await SaveBestAsync(store, cancellationToken);
         RecordState(store);
     }
 
@@ -183,11 +331,13 @@ internal sealed class VerifiedConsensusJournal
     private async Task AppendChainAsync(byte kind, byte[] encoded, CancellationToken cancellationToken)
     {
         byte[] bootstrap = _bootstrap ?? throw new InvalidOperationException("The consensus journal is not initialized.");
-        int additional = _latestHead is null ? 1 : 2;
+        int additional = 1 + (_latestHead is null ? 0 : 1) + (_latestOptimistic is null ? 0 : 1) + (_latestBest is null ? 0 : 1);
         if (_updates.Count + additional > MaxUpdates)
             throw new InvalidDataException("Saved committee chain reached its update limit; supply a newer trusted checkpoint.");
         List<(byte Kind, byte[] Data)> updates = [.. _updates];
         if (_latestHead is { } head) updates.Add(head);
+        if (_latestOptimistic is { } optimistic) updates.Add(optimistic);
+        if (_latestBest is { } best) updates.Add(best);
         updates.Add((kind, encoded));
         byte[] chain = BuildChain(bootstrap, updates);
         await WriteAtomicAsync(_chainPath, chain, cancellationToken);
@@ -195,12 +345,12 @@ internal sealed class VerifiedConsensusJournal
         _updates.AddRange(updates);
         _chainDigest = chain.AsSpan(chain.Length - DigestBytes).ToArray();
         _latestHead = null;
-        try { File.Delete(_headPath); }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // The chain digest already invalidates the stale head, so leaving it only costs a warning on restart.
-            _logger.LogWarning(exception, "Could not delete superseded light-client head {Path}", _headPath);
-        }
+        _latestOptimistic = null;
+        _headDigest = null;
+        _optimisticDigest = null;
+        _bestGeneration = null;
+        DeleteSupersededHead(_headPath);
+        DeleteSupersededHead(_optimisticPath);
     }
 
     private void RecordState(LightClientStore store)
@@ -208,6 +358,7 @@ internal sealed class VerifiedConsensusJournal
         _period = store.Period;
         _nextKnown = store.NextSyncCommitteeKnown;
         _slot = store.FinalizedHeader.Beacon!.Slot;
+        _optimisticSlot = store.OptimisticHeader.Beacon!.Slot;
         _previousMaxParticipants = store.PreviousMaxParticipants;
         _currentMaxParticipants = store.CurrentMaxParticipants;
     }
@@ -227,10 +378,10 @@ internal sealed class VerifiedConsensusJournal
         return Finish(output);
     }
 
-    private byte[] BuildHead(byte kind, byte[] update)
+    private byte[] BuildHead(byte kind, byte[] update, byte fileKind = 1)
     {
         using MemoryStream output = new();
-        WritePrefix(output, 1);
+        WritePrefix(output, fileKind);
         output.Write(_chainDigest ?? throw new InvalidOperationException("The consensus journal is not initialized."));
         output.WriteByte(kind);
         WriteRecord(output, update);
@@ -239,18 +390,10 @@ internal sealed class VerifiedConsensusJournal
 
     private byte[] BuildForcedRecord(LightClientUpdate bestUpdate, ulong forceSlot)
     {
-        bool optimistic = bestUpdate.FinalityBranch is null && bestUpdate.NextSyncCommitteeBranch is null;
-        byte[] encoded = optimistic
-            ? LightClientWireCodec.EncodeOptimistic(new LightClientOptimisticUpdate
-            {
-                AttestedHeader = bestUpdate.AttestedHeader,
-                SyncAggregate = bestUpdate.SyncAggregate,
-                SignatureSlot = bestUpdate.SignatureSlot,
-            }, _spec)
-            : LightClientWireCodec.EncodeUpdate(bestUpdate, _spec);
+        (byte kind, byte[] encoded) = EncodeCandidate(bestUpdate);
         byte[] result = new byte[9 + encoded.Length];
         BinaryPrimitives.WriteUInt64LittleEndian(result, forceSlot);
-        result[8] = optimistic ? (byte)1 : (byte)0;
+        result[8] = kind == 4 ? (byte)1 : (byte)0;
         encoded.CopyTo(result, 9);
         return result;
     }
@@ -349,10 +492,12 @@ internal sealed class VerifiedConsensusJournal
 
     private static async Task<byte[]> ReadBoundedAsync(string path, int maxBytes, CancellationToken cancellationToken)
     {
-        FileInfo info = new(path);
-        if (info.Length > maxBytes) throw new InvalidDataException("Saved consensus data exceeds its size limit.");
-        byte[] bytes = await File.ReadAllBytesAsync(path, cancellationToken);
-        if (bytes.Length > maxBytes) throw new InvalidDataException("Saved consensus data exceeds its size limit.");
+        await using FileStream input = new(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
+        long length = input.Length;
+        if (length > maxBytes) throw new InvalidDataException("Saved consensus data exceeds its size limit.");
+        byte[] bytes = new byte[(int)length];
+        await input.ReadExactlyAsync(bytes, cancellationToken);
+        if (input.ReadByte() != -1) throw new InvalidDataException("Saved consensus data grew beyond its declared size.");
         return bytes;
     }
 

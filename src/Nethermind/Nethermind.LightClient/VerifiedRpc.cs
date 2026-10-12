@@ -13,12 +13,43 @@ namespace Nethermind.LightClient;
 
 internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
     VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null)
+    : IDisposable
 {
     private const ulong HistoricalStateDepth = 32;
+    private static readonly SemaphoreSlim ActiveExecutionData = new(4, 4);
     private readonly VerifiedExecutionData? _data = specProvider is null ? null : new(execution, specProvider, chainId);
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
 
+    internal async Task<byte[]> GetAuthenticatedHeaderRlpAsync(Hash256 hash, CancellationToken cancellationToken)
+    {
+        VerifiedHead finalized = getHead();
+        VerifiedHead? latest = getLatestHead?.Invoke();
+        if (hash == finalized.BlockHash || hash == latest?.BlockHash)
+            return Rlp.Encode(await execution.GetHeaderAsync(hash == finalized.BlockHash ? finalized : latest!, cancellationToken)).Bytes;
+        await AcquireHistoricalStateAsync(cancellationToken);
+        try
+        {
+            BlockHeader header = await ResolveDataHeaderAsync(JsonSerializer.SerializeToElement(hash.ToString()), true,
+                cancellationToken, finalized, pinnedLatest: latest);
+            return Rlp.Encode(header).Bytes;
+        }
+        finally { _historicalStateRequests.Release(); }
+    }
+
     internal async Task<object> InvokeAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
+    {
+        bool data = method is "eth_getBlockByNumber" or "eth_getBlockByHash" or "eth_getBlockTransactionCountByNumber"
+            or "eth_getBlockTransactionCountByHash" or "eth_getTransactionByBlockNumberAndIndex"
+            or "eth_getTransactionByBlockHashAndIndex" or "eth_getBlockReceipts" or "eth_getLogs"
+            or "eth_getTransactionByHash" or "eth_getTransactionReceipt" or "eth_feeHistory"
+            or "eth_gasPrice" or "eth_maxPriorityFeePerGas" or "eth_getProof";
+        if (data && !await ActiveExecutionData.WaitAsync(0, cancellationToken))
+            throw new RpcException(-32005, "Four verified execution data requests are already active.");
+        try { return await InvokeCoreAsync(method, parameters, cancellationToken); }
+        finally { if (data) ActiveExecutionData.Release(); }
+    }
+
+    private async Task<object> InvokeCoreAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
     {
         int count = parameters.ValueKind switch
         {
@@ -30,6 +61,24 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         {
             if (count != 0) throw InvalidParameters();
             return method == "eth_chainId" ? Quantity(chainId) : Quantity(LatestHead().Number);
+        }
+        if (method == "eth_sendRawTransaction")
+        {
+            if (_data is null) throw new RpcException(-32601, "Verified transaction relay is unavailable.");
+            if (count != 1) throw InvalidParameters();
+            byte[] raw;
+            try { raw = ReadData(parameters[0], 2 * 1024 * 1024); }
+            catch (Exception exception) when (exception is InvalidDataException or FormatException) { throw InvalidParameters(); }
+            return await _data.SendRawTransactionAsync(LatestHead(), raw, calls, cancellationToken);
+        }
+        if (method == "eth_getProof") return await GetProofAsync(parameters, count, cancellationToken);
+        if (method is "eth_feeHistory" or "eth_gasPrice" or "eth_maxPriorityFeePerGas")
+            return await GetFeesAsync(method, parameters, count, cancellationToken);
+        if (method is "eth_getTransactionByHash" or "eth_getTransactionReceipt")
+        {
+            if (count != 1) throw InvalidParameters();
+            return await GetTransactionByHashAsync(new Hash256(ReadParameterData(parameters[0], 32)),
+                method == "eth_getTransactionReceipt", cancellationToken);
         }
         if (method is "eth_getBlockByNumber" or "eth_getBlockByHash" or "eth_getBlockTransactionCountByNumber"
             or "eth_getBlockTransactionCountByHash" or "eth_getTransactionByBlockNumberAndIndex"
@@ -74,6 +123,162 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             throw new RpcException(-32000, "Execution peers returned an invalid or unavailable proof.");
         }
         finally { if (historicalState) _historicalStateRequests.Release(); }
+    }
+
+    private async Task<JsonElement> GetProofAsync(JsonElement parameters, int count, CancellationToken cancellationToken)
+    {
+        if (count != 3 || parameters[0].ValueKind != JsonValueKind.String
+            || parameters[0].GetString() is not { Length: 42 } text || !Address.IsValidAddress(text, allowPrefix: true)
+            || parameters[1].ValueKind != JsonValueKind.Array || parameters[1].GetArrayLength() > 64) throw InvalidParameters();
+        Address address = new(text);
+        UInt256[] keys = new UInt256[parameters[1].GetArrayLength()];
+        for (int i = 0; i < keys.Length; i++) keys[i] = ParseQuantity(parameters[1][i], allowLeadingZeros: true);
+        (VerifiedHead head, bool historical) = await ResolveStateHeadAsync(parameters[2], cancellationToken);
+        try
+        {
+            ExecutionAccountProof proof = await execution.GetProofAsync(head, address, keys, cancellationToken);
+            if (ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, proof.AccountProof) != proof.Account
+                || proof.StorageProofs.Length != keys.Length) throw new InvalidDataException("Invalid exported account proof.");
+            object[] storage = new object[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                ExecutionStorageProof slot = proof.StorageProofs[i];
+                if (slot.Key != keys[i] || ExecutionProofVerifier.VerifyStorage(proof.Account.StorageRoot, slot.Key, slot.Proof) != slot.Value)
+                    throw new InvalidDataException("Invalid exported storage proof.");
+                storage[i] = new { key = Quantity(slot.Key), value = Quantity(slot.Value), proof = slot.Proof };
+            }
+            return BoundedJson.ToElement(new
+            {
+                address = address.ToString(),
+                balance = Quantity(proof.Account.Balance),
+                nonce = Quantity(proof.Account.Nonce),
+                codeHash = proof.Account.CodeHash.ToString(),
+                storageHash = proof.Account.StorageRoot.ToString(),
+                accountProof = proof.AccountProof,
+                storageProof = storage,
+            });
+        }
+        catch (Exception exception) when (exception is InvalidDataException or RlpException)
+        {
+            throw new RpcException(-32000, "Execution peers returned invalid or unavailable path proofs.");
+        }
+        finally { if (historical) _historicalStateRequests.Release(); }
+    }
+
+    private async Task<object> GetFeesAsync(string method, JsonElement parameters, int count, CancellationToken cancellationToken)
+    {
+        if (_data is null) throw new RpcException(-32601, "Verified execution data is unavailable.");
+        double[]? percentiles;
+        BlockHeader newest;
+        int blocks;
+        if (method == "eth_feeHistory")
+        {
+            if (count != 3) throw InvalidParameters();
+            UInt256 requested = ParseQuantity(parameters[0]);
+            if (requested < 1 || requested > 16) throw new RpcException(-32602, "Fee history is limited to 1 through 16 authenticated blocks.");
+            blocks = (int)requested;
+            double[] parsedPercentiles = ParsePercentiles(parameters[2]);
+            percentiles = parsedPercentiles.Length == 0 ? null : parsedPercentiles;
+            newest = await ResolveDataHeaderAsync(parameters[1], false, cancellationToken);
+        }
+        else
+        {
+            if (count != 0) throw InvalidParameters();
+            newest = await execution.GetHeaderAsync(LatestHead(), cancellationToken);
+            blocks = 1;
+            percentiles = [60];
+        }
+        blocks = checked((int)Math.Min((ulong)blocks, newest.Number + 1));
+        BlockHeader[] headers = await GetRecentHeadersAsync(newest, blocks, cancellationToken);
+        JsonElement history = await _data.GetFeeHistoryAsync(headers, percentiles, cancellationToken);
+        if (method == "eth_feeHistory") return history;
+        UInt256 tip = ParseQuantity(history.GetProperty("reward")[0][0]);
+        if (method == "eth_maxPriorityFeePerGas") return Quantity(tip);
+        UInt256 baseFee = ParseQuantity(history.GetProperty("baseFeePerGas")[1]);
+        return Quantity(UInt256.AddOverflow(baseFee, tip, out UInt256 price) ? UInt256.MaxValue : price);
+    }
+
+    private static double[] ParsePercentiles(JsonElement parameter)
+    {
+        if (parameter.ValueKind != JsonValueKind.Array || parameter.GetArrayLength() > 100) throw InvalidParameters();
+        double[] result = new double[parameter.GetArrayLength()];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (parameter[i].ValueKind != JsonValueKind.Number || !parameter[i].TryGetDouble(out double value)
+                || !double.IsFinite(value) || value < 0 || value > 100 || i != 0 && value < result[i - 1]) throw InvalidParameters();
+            result[i] = value;
+        }
+        return result;
+    }
+
+    private async Task<BlockHeader[]> GetRecentHeadersAsync(BlockHeader newest, int count, CancellationToken cancellationToken)
+    {
+        BlockHeader[] headers = new BlockHeader[count];
+        headers[^1] = newest;
+        if (count == 1) return headers;
+        VerifiedHead anchor = new(0, newest.Number, newest.Hash!, newest.StateRoot!);
+        ulong first = newest.Number - (ulong)count + 1;
+        Hash256[] hashes = await execution.GetAncestorHashesAsync(anchor, first, cancellationToken);
+        if (hashes.Length != count || hashes[^1] != newest.Hash) throw new InvalidDataException("Invalid authenticated ancestor chain.");
+        for (int i = 0; i < count - 1; i++)
+        {
+            headers[i] = await execution.GetHeaderByHashAsync(hashes[i], cancellationToken);
+            if (headers[i].Hash != hashes[i] || headers[i].Number != first + (ulong)i)
+                throw new InvalidDataException("An ancestor header differs from the authenticated chain.");
+        }
+        return headers;
+    }
+
+    private async Task<JsonElement> GetTransactionByHashAsync(Hash256 hash, bool receipt, CancellationToken cancellationToken)
+    {
+        if (_data is null) throw new RpcException(-32601, "Verified execution data is unavailable.");
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(90));
+        cancellationToken = deadline.Token;
+        HashSet<Hash256> visited = [];
+        if (_data.TryLocateTransaction(hash, out BlockHeader? indexed))
+        {
+            try
+            {
+                BlockHeader canonical = await ResolveIndexedTransactionHeaderAsync(indexed!, cancellationToken);
+                if (await _data.FindTransactionAsync(canonical, hash, receipt, cancellationToken) is { } known) return known;
+            }
+            catch (RpcException exception) when (exception.Code == -32001) { }
+        }
+        if (getLatestHead?.Invoke() is { } latest)
+        {
+            BlockHeader header = await execution.GetHeaderAsync(latest, cancellationToken);
+            visited.Add(header.Hash!);
+            if (await _data.FindTransactionAsync(header, hash, receipt, cancellationToken) is { } optimistic) return optimistic;
+            BlockHeader[] optimisticHeaders = await GetRecentHeadersAsync(header, checked((int)Math.Min(16UL, latest.Number + 1)), cancellationToken);
+            for (int i = optimisticHeaders.Length - 2; i >= 0; i--)
+            {
+                visited.Add(optimisticHeaders[i].Hash!);
+                if (await _data.FindTransactionAsync(optimisticHeaders[i], hash, receipt, cancellationToken) is { } recent) return recent;
+            }
+        }
+        VerifiedHead finalized = getHead();
+        BlockHeader newest = await execution.GetHeaderAsync(finalized, cancellationToken);
+        if (visited.Add(newest.Hash!) && await _data.FindTransactionAsync(newest, hash, receipt, cancellationToken) is { } current) return current;
+        BlockHeader[] headers = await GetRecentHeadersAsync(newest, checked((int)Math.Min(16UL, finalized.Number + 1)), cancellationToken);
+        for (int i = headers.Length - 2; i >= 0; i--)
+            if (visited.Add(headers[i].Hash!) && await _data.FindTransactionAsync(headers[i], hash, receipt, cancellationToken) is { } found) return found;
+        return JsonSerializer.SerializeToElement<object?>(null);
+    }
+
+    private async Task<BlockHeader> ResolveIndexedTransactionHeaderAsync(BlockHeader indexed, CancellationToken cancellationToken)
+    {
+        VerifiedHead? latest = getLatestHead?.Invoke();
+        if (latest is not null && indexed.Hash == latest.BlockHash) return await execution.GetHeaderAsync(latest, cancellationToken);
+        VerifiedHead finalized = getHead();
+        VerifiedHead anchor = indexed.Number <= finalized.Number ? finalized
+            : latest ?? throw new RpcException(-32001, "The indexed transaction is outside the authenticated chain.");
+        if (indexed.Number > anchor.Number || anchor.Number - indexed.Number > 256)
+            throw new RpcException(-32001, "The indexed transaction is outside the authenticated history window.");
+        BlockHeader canonical = await execution.GetCanonicalHeaderAsync(anchor, indexed.Number, cancellationToken);
+        if (canonical.Hash != indexed.Hash)
+            throw new RpcException(-32001, "The indexed transaction's block is no longer canonical.");
+        return canonical;
     }
 
     private async Task<JsonElement> InvokeExecutionDataAsync(string method, JsonElement parameters, int count, CancellationToken cancellationToken)
@@ -122,38 +327,35 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
     }
 
     private async Task<BlockHeader> ResolveDataHeaderAsync(JsonElement selector, bool hashOnly,
-        CancellationToken cancellationToken, VerifiedHead? pinnedFinalized = null, bool stateHistory = false)
+        CancellationToken cancellationToken, VerifiedHead? pinnedFinalized = null, bool stateHistory = false,
+        VerifiedHead? pinnedLatest = null)
     {
         if (selector.ValueKind != JsonValueKind.String) throw InvalidParameters();
         string value = selector.GetString()!;
-        if (!hashOnly && value == "latest") return await execution.GetHeaderAsync(LatestHead(), cancellationToken);
+        RejectUnavailableTag(value);
+        VerifiedHead? latest = pinnedLatest ?? getLatestHead?.Invoke();
+        if (!hashOnly && value == "latest") return await execution.GetHeaderAsync(latest ?? LatestHead(), cancellationToken);
         if (hashOnly || value.Length == 66)
         {
             Hash256 requested = new(ReadParameterData(selector, 32));
-            if (getLatestHead?.Invoke() is { } latest && requested == latest.BlockHash)
+            if (latest is not null && requested == latest.BlockHash)
                 return await execution.GetHeaderAsync(latest, cancellationToken);
             VerifiedHead finalizedHead = pinnedFinalized ?? getHead();
             if (requested == finalizedHead.BlockHash) return await execution.GetHeaderAsync(finalizedHead, cancellationToken);
             BlockHeader candidate = await execution.GetHeaderByHashAsync(requested, cancellationToken);
-            if (stateHistory) ValidateHistoricalStateNumber(finalizedHead, candidate.Number);
-            else if (candidate.Number > finalizedHead.Number || finalizedHead.Number - candidate.Number > 256)
-                throw new RpcException(-32001, "Block is outside the verified finalized history window.");
-            BlockHeader canonical = await execution.GetCanonicalHeaderAsync(finalizedHead, candidate.Number, cancellationToken);
-            if (canonical.Hash != requested)
-                throw new RpcException(-32001, "Block is not in the verified finalized chain.");
-            return candidate;
+            VerifiedHead anchor = SelectHistoryAnchor(finalizedHead, latest, candidate.Number, stateHistory ? HistoricalStateDepth : 256);
+            BlockHeader canonical = await execution.GetCanonicalHeaderAsync(anchor, candidate.Number, cancellationToken);
+            if (canonical.Hash != requested || canonical.Number != candidate.Number)
+                throw new RpcException(-32001, "Block is not in the selected authenticated chain.");
+            return canonical;
         }
         if (value == "finalized") return await execution.GetHeaderAsync(pinnedFinalized ?? getHead(), cancellationToken);
         UInt256 parsed = ParseQuantity(selector);
-        if (getLatestHead?.Invoke() is { } current && parsed == (UInt256)current.Number)
-            return await execution.GetHeaderAsync(current, cancellationToken);
+        if (latest is not null && parsed == (UInt256)latest.Number)
+            return await execution.GetHeaderAsync(latest, cancellationToken);
         VerifiedHead head = pinnedFinalized ?? getHead();
-        if (parsed > (UInt256)head.Number || parsed > ulong.MaxValue)
-            throw new RpcException(-32001, "Block is newer than the verified finalized head.");
-        ulong number = (ulong)parsed;
-        if (head.Number - number > 256)
-            throw new RpcException(-32001, "Block is outside the verified finalized history window.");
-        return await execution.GetCanonicalHeaderAsync(head, number, cancellationToken);
+        VerifiedHead numberAnchor = SelectHistoryAnchor(head, latest, parsed, stateHistory ? HistoricalStateDepth : 256);
+        return await execution.GetCanonicalHeaderAsync(numberAnchor, (ulong)parsed, cancellationToken);
     }
 
     private async Task<JsonElement> GetLogsAsync(JsonElement filter, CancellationToken cancellationToken)
@@ -229,7 +431,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         return (ulong)number;
     }
 
-    private static HashSet<Address>? ParseAddresses(JsonElement value)
+    internal static HashSet<Address>? ParseAddresses(JsonElement value)
     {
         HashSet<Address> result = [];
         if (value.ValueKind == JsonValueKind.String) Add(value);
@@ -246,7 +448,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
     }
 
-    private static List<HashSet<Hash256>?> ParseTopics(JsonElement value)
+    internal static List<HashSet<Hash256>?> ParseTopics(JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 4) throw InvalidParameters();
         List<HashSet<Hash256>?> result = [];
@@ -278,23 +480,26 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         if (block.ValueKind == JsonValueKind.String)
         {
             string selector = block.GetString()!;
+            RejectUnavailableTag(selector);
             if (selector == "latest") return (LatestHead(), false);
             if (selector.Length == 66)
             {
                 Hash256 requested = new(ReadParameterData(block, 32));
-                if (getLatestHead?.Invoke() is { } optimistic && requested == optimistic.BlockHash)
+                VerifiedHead? optimistic = getLatestHead?.Invoke();
+                if (optimistic is not null && requested == optimistic.BlockHash)
                     return (optimistic, false);
                 VerifiedHead hashAnchor = getHead();
                 if (requested == hashAnchor.BlockHash) return (hashAnchor, false);
-                return await HistoricalStateHashAsync(hashAnchor, block, cancellationToken);
+                return await HistoricalStateHashAsync(hashAnchor, optimistic, block, cancellationToken);
             }
             if (selector == "finalized") return (getHead(), false);
             UInt256 number = ParseQuantity(block);
-            if (getLatestHead?.Invoke() is { } latest && number == (UInt256)latest.Number)
+            VerifiedHead? latest = getLatestHead?.Invoke();
+            if (latest is not null && number == (UInt256)latest.Number)
                 return (latest, false);
             VerifiedHead finalized = getHead();
             if (number == (UInt256)finalized.Number) return (finalized, false);
-            return await HistoricalStateHeadAsync(finalized, number, cancellationToken);
+            return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, number, HistoricalStateDepth), number, cancellationToken);
         }
         else if (block.ValueKind == JsonValueKind.Object)
         {
@@ -311,33 +516,36 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             {
                 if (hash.ValueKind != JsonValueKind.String) throw InvalidParameters();
                 Hash256 requested = new(ReadParameterData(hash, 32));
-                if (getLatestHead?.Invoke() is { } latest && requested == latest.BlockHash)
+                VerifiedHead? latest = getLatestHead?.Invoke();
+                if (latest is not null && requested == latest.BlockHash)
                     return (latest, false);
                 VerifiedHead finalized = getHead();
                 if (requested == finalized.BlockHash) return (finalized, false);
-                return await HistoricalStateHashAsync(finalized, hash, cancellationToken);
+                return await HistoricalStateHashAsync(finalized, latest, hash, cancellationToken);
             }
             else
             {
                 UInt256 parsed = ParseQuantity(number);
-                if (getLatestHead?.Invoke() is { } latest && parsed == (UInt256)latest.Number)
+                VerifiedHead? latest = getLatestHead?.Invoke();
+                if (latest is not null && parsed == (UInt256)latest.Number)
                     return (latest, false);
                 VerifiedHead finalized = getHead();
                 if (parsed == (UInt256)finalized.Number) return (finalized, false);
-                return await HistoricalStateHeadAsync(finalized, parsed, cancellationToken);
+                return await HistoricalStateHeadAsync(SelectHistoryAnchor(finalized, latest, parsed, HistoricalStateDepth), parsed, cancellationToken);
             }
         }
         else throw InvalidParameters();
     }
 
-    private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHashAsync(VerifiedHead finalized, JsonElement hash,
+    private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHashAsync(VerifiedHead finalized, VerifiedHead? latest, JsonElement hash,
         CancellationToken cancellationToken)
     {
         await AcquireHistoricalStateAsync(cancellationToken);
         try
         {
-            BlockHeader header = await ResolveDataHeaderAsync(hash, hashOnly: true, cancellationToken, finalized, stateHistory: true);
-            return (new(finalized.Slot, header.Number, header.Hash!, header.StateRoot!), true);
+            BlockHeader header = await ResolveDataHeaderAsync(hash, hashOnly: true, cancellationToken, finalized, stateHistory: true, pinnedLatest: latest);
+            VerifiedHead anchor = SelectHistoryAnchor(finalized, latest, header.Number, HistoricalStateDepth);
+            return (new(anchor.Slot, header.Number, header.Hash!, header.StateRoot!), true);
         }
         catch
         {
@@ -346,19 +554,17 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         }
     }
 
-    private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHeadAsync(VerifiedHead finalized, UInt256 number,
+    private async Task<(VerifiedHead Head, bool Historical)> HistoricalStateHeadAsync(VerifiedHead anchor, UInt256 number,
         CancellationToken cancellationToken)
     {
-        if (number > ulong.MaxValue)
-            throw new RpcException(-32001, "Block is outside the verified historical state window.");
-        ValidateHistoricalStateNumber(finalized, (ulong)number);
         await AcquireHistoricalStateAsync(cancellationToken);
         try
         {
             try
             {
-                BlockHeader header = await execution.GetCanonicalHeaderAsync(finalized, (ulong)number, cancellationToken);
-                return (new(finalized.Slot, header.Number, header.Hash!, header.StateRoot!), true);
+                BlockHeader header = await execution.GetCanonicalHeaderAsync(anchor, (ulong)number, cancellationToken);
+                if (header.Number != (ulong)number) throw new RpcException(-32000, "Execution peer returned a header outside the selected authenticated chain.");
+                return (new(anchor.Slot, header.Number, header.Hash!, header.StateRoot!), true);
             }
             catch (NotSupportedException)
             {
@@ -378,10 +584,12 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
             throw new RpcException(-32000, "Too many concurrent historical state requests.");
     }
 
-    private static void ValidateHistoricalStateNumber(VerifiedHead finalized, ulong number)
+    private static VerifiedHead SelectHistoryAnchor(VerifiedHead finalized, VerifiedHead? latest, UInt256 number, ulong depth)
     {
-        if (number > finalized.Number || finalized.Number - number > HistoricalStateDepth)
-            throw new RpcException(-32001, "Block is outside the verified historical state window.");
+        VerifiedHead anchor = number > (UInt256)finalized.Number && latest is not null ? latest : finalized;
+        if (number > (UInt256)anchor.Number || number > ulong.MaxValue || anchor.Number - (ulong)number > depth)
+            throw new RpcException(-32001, "Block is outside the verified history window.");
+        return anchor;
     }
 
     private static byte[] ReadData(JsonElement element, int maximumBytes)
@@ -422,7 +630,20 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         catch (FormatException) { throw InvalidParameters(); }
     }
 
-    private static string Quantity(ulong value) => $"0x{value:x}";
-    private static string Quantity(UInt256 value) => value.ToHexString(skipLeadingZeros: true);
+    private static void RejectUnavailableTag(string selector)
+    {
+        if (selector == "pending") throw new RpcException(-32001, "Pending state cannot be authenticated from execution peers.");
+        if (selector == "safe") throw new RpcException(-32001, "A distinct authenticated safe execution head is unavailable; select finalized or latest explicitly.");
+        if (selector == "earliest") throw new RpcException(-32001, "Genesis is outside the bounded authenticated history; use a recent block selector.");
+    }
+
+    internal static string Quantity(ulong value) => $"0x{value:x}";
+    internal static string Quantity(UInt256 value) => value.ToHexString(skipLeadingZeros: true);
     private static RpcException InvalidParameters() => new(-32602, "Invalid verified RPC parameters.");
+
+    public void Dispose()
+    {
+        _data?.Dispose();
+        _historicalStateRequests.Dispose();
+    }
 }

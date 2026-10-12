@@ -42,6 +42,61 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         finally { _slots.Release(); }
     }
 
+    internal async Task ValidateFrameAdmissionAsync(VerifiedHead head, Transaction transaction, BlockHeader contextHeader,
+        IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        if (FrameTxValidation.ValidationWorkGas(transaction) > Eip8141Constants.MaxVerifyGas
+            || FrameTxValidation.ValidationWorkStateGas(transaction) > 500_000)
+            throw new RpcException(-32003, "Frame validation prefix exceeds the bounded public-mempool work limit.");
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(60));
+        CancellationToken token = deadline.Token;
+        await _slots.WaitAsync(token);
+        try
+        {
+            BlockHeader header = await GetHeaderAsync(head, token);
+            for (int attempt = 0; attempt < 128; attempt++)
+            {
+                token.ThrowIfCancellationRequested();
+                CallState backend = new(head, _cache);
+                WorldState state = new(backend, logs);
+                if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
+                using (scope)
+                {
+                    try
+                    {
+                        if (transaction.NonceKeys is { } keys)
+                        {
+                            foreach (UInt256 key in keys)
+                                if (transaction.Nonce < KeyedNonceManager.CurrentNonceSeq(state, transaction.SenderAddress!, key))
+                                    throw new RpcException(-32003, "Frame transaction nonce is below authenticated keyed state.");
+                        }
+                        else if (transaction.Nonce < state.GetNonce(transaction.SenderAddress!))
+                            throw new RpcException(-32003, "Frame transaction nonce is below authenticated state.");
+                        EthereumTransactionProcessor processor = CreateProcessor(head, state);
+                        BlockExecutionContext context = new(contextHeader, spec);
+                        processor.SetBlockExecutionContext(in context);
+                        TransactionResult result = processor.Process(transaction, NullTxTracer.Instance.WithCancellation(token),
+                            ExecutionOptions.Restore | ExecutionOptions.FrameValidationPrefixOnly);
+                        if (!result) throw new RpcException(-32003, result.GetErrorMessage(null) ?? "Frame validation prefix failed.");
+                        return;
+                    }
+                    catch (MissingCallState missing) { await FillAsync(head, missing, token); }
+                }
+            }
+            throw new RpcException(-32000, "Frame validation accessed too many distinct authenticated state items.");
+        }
+        finally { _slots.Release(); }
+    }
+
+    private EthereumTransactionProcessor CreateProcessor(VerifiedHead head, WorldState state)
+    {
+        IBlockhashProvider blockhashes = new VerifiedBlockhashes(state, head, _cache);
+        EthereumVirtualMachine vm = new(blockhashes, specs, logs);
+        CodeInfoRepository code = new(state, new EthereumPrecompileProvider());
+        return new(BlobBaseFeeCalculator.Instance, specs, state, vm, code, logs);
+    }
+
     private async Task<string> ExecuteCoreAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, CancellationToken token)
     {
         TransactionForRpc model;
@@ -57,8 +112,6 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         if (converted.IsError) throw new RpcException(-32602, converted.Error);
         Transaction tx = converted.Data;
         tx.SenderAddress ??= Address.Zero;
-        if (tx.Type == TxType.Blob || tx.Type == TxType.FrameTx)
-            throw new RpcException(-32602, "Blob and frame transactions are not supported by verified execution.");
         tx.Hash = tx.Type <= TxType.FrameTx ? null : tx.CalculateHash();
 
         for (int attempt = 0; attempt < 128; attempt++)
@@ -71,18 +124,36 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             {
                 try
                 {
-                    tx.Nonce = state.GetNonce(tx.SenderAddress);
+                    if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
                     BlockHeader callHeader = header.Clone();
                     callHeader.IsPostMerge = true;
                     callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(tx);
-                    IBlockhashProvider blockhashes = new VerifiedBlockhashes(state, head, _cache);
-                    EthereumVirtualMachine vm = new(blockhashes, specs, logs);
-                    CodeInfoRepository code = new(state, new EthereumPrecompileProvider());
-                    EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specs, state, vm, code, logs);
+                    EthereumTransactionProcessor processor = CreateProcessor(head, state);
                     BlockExecutionContext context = new(callHeader, spec);
                     if (estimateGas)
                     {
-                        GasEstimation estimation = new GasEstimator(processor, state).Estimate(tx, in context, gasCap: GasCap, token: token);
+                        GasEstimator estimator = new(processor, state);
+                        if (model is FrameTransactionForRpc { Frames: { } frames })
+                        {
+                            bool[] fillExecution = new bool[frames.Length];
+                            bool[] fillState = new bool[frames.Length];
+                            bool missing = false;
+                            for (int i = 0; i < frames.Length; i++)
+                            {
+                                fillExecution[i] = frames[i].ExecutionGas is null;
+                                fillState[i] = frames[i].StateGas is null;
+                                missing |= fillExecution[i] || fillState[i];
+                            }
+                            if (missing)
+                            {
+                                Result<TxFrame[]> filled = estimator.EstimateFrameGas(tx, context, fillExecution, fillState, GasCap,
+                                    GasEstimator.DefaultErrorMargin, token, out bool reverted);
+                                if (filled.IsError) throw new RpcException(reverted ? 3 : -32000, filled.Error);
+                                tx.Frames = filled.Data;
+                                tx.GasLimit = FrameTxValidation.TotalGasLimit(tx.Frames);
+                            }
+                        }
+                        GasEstimation estimation = estimator.Estimate(tx, in context, gasCap: GasCap, token: token);
                         if (estimation.Reverted)
                             throw new RpcException(3, estimation.Error ?? "execution reverted", (estimation.RevertData ?? []).ToHexString(withZeroX: true));
                         if (estimation.Error is not null)
