@@ -81,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
-        delegationAddress = vmSpec.IsEip7702Enabled ? codeInfo.DelegatedAddress : null;
+        delegationAddress = codeInfo.DelegatedAddress is { } delegated && vmSpec.IsEip7702Enabled ? delegated : null;
         if (delegationAddress is not null)
         {
             if (followDelegation)
