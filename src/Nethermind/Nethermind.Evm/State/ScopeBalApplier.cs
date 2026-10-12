@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -65,10 +66,11 @@ public static class ScopeBalApplier
                 if (accountChanges.CodeChanges.Length == 0) continue;
 
                 CodeChange codeChange = accountChanges.CodeChanges[^1];
-                if (writtenCodeHashes?.Contains(codeChange.CodeHash) == true || scope.CodeDb.ContainsCode(codeChange.CodeHash)) continue;
+                if (writtenCodeHashes?.Contains(codeChange.CodeHash) == true || scope.CodeDb.ContainsCode(codeChange.CodeHash)
+                    || !TryGetCode(bal, codeChange, out byte[]? code)) continue;
 
                 codeSetter ??= scope.CodeDb.BeginCodeWrite();
-                codeSetter.Set(codeChange.CodeHash, codeChange.Code);
+                codeSetter.Set(codeChange.CodeHash, code);
                 (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
             }
             return writtenCodeHashes;
@@ -136,5 +138,27 @@ public static class ScopeBalApplier
         {
             if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
         }
+    }
+
+    /// <remarks>
+    /// EIP-8298: an adopted change carries only a hash. Bytecode the code database lacks was deposited earlier in the
+    /// block, possibly by an account whose final code differs, so it is taken from that change.
+    /// </remarks>
+    private static bool TryGetCode(ReadOnlyBlockAccessList bal, in CodeChange codeChange, [NotNullWhen(true)] out byte[]? code)
+    {
+        if (!codeChange.IsAdopted)
+        {
+            code = codeChange.Code;
+            return true;
+        }
+
+        if (bal.GetCodeChangesByHash()?.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) declared) == true)
+        {
+            code = declared.Code;
+            return true;
+        }
+
+        code = null;
+        return false;
     }
 }

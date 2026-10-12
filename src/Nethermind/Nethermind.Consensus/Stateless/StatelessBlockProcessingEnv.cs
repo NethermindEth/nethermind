@@ -87,9 +87,7 @@ public partial class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree),
-            specProvider: specProvider,
-            headerFinder: statelessBlockTree
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(

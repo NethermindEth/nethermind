@@ -167,7 +167,7 @@ public class MigrationBalFollowerTests
         };
 
         if (reorg) Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token), Is.False);
-        else Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
+        else await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
 
         AssertState(harness, "a1");
         AssertAbsent(harness, "a2");
@@ -495,7 +495,7 @@ public class MigrationBalFollowerTests
                 Assert.That(owner.Disposed, Is.False);
                 if (cancel) throw new OperationCanceledException();
             }, default);
-            if (cancel) Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
+            if (cancel) await Assert.ThrowsAsync<OperationCanceledException>(async () => await task);
             else Assert.That(await task, Is.True);
             Assert.That(owner.Disposed, Is.True);
         }

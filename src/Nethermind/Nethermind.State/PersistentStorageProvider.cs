@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+#if !ZK_EVM
+using System.Buffers;
+#endif
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -45,6 +48,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
     private OptimizedDictionary<StorageCell, UInt256> _originalValues = [];
+#if !ZK_EVM
+    private static readonly ArrayPool<KeyValuePair<StorageCell, UInt256>> PendingOriginalsPool =
+        ArrayPool<KeyValuePair<StorageCell, UInt256>>.Create(LargeMapPool<StorageCell, UInt256>.MaxRetainedCapacity, 1);
+    private ArrayPoolList<KeyValuePair<StorageCell, UInt256>>? _pendingOriginalValues;
+    private bool _originalsIndexed;
+#endif
     // The provider's own map while a pooled large one holds the round's entries.
     private OptimizedDictionary<StorageCell, UInt256>? _parkedOriginalValues;
     // A map past the trim limit is cut back every round, so it would regrow on the LOH. A resize takes the next prime
@@ -72,6 +81,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
+#if !ZK_EVM
+        ClearPendingOriginals();
+        _originalsIndexed = false;
+#endif
         if (_parkedOriginalValues is not null)
         {
             OriginalsPool.Return(_originalValues);
@@ -108,7 +121,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
+#if ZK_EVM
     public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
+#else
+    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope)
+    {
+        _currentScope = scope;
+        if (scope is null)
+        {
+            _pendingOriginalValues?.Dispose();
+            _pendingOriginalValues = null;
+        }
+    }
+
+#endif
 
     private IWorldStateScopeProvider.IScope CurrentScope =>
         _currentScope ?? throw new InvalidOperationException("Persistent storage can only be used within a world-state scope.");
@@ -192,33 +218,50 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         // Journal originals (OriginalIdx != -1) only exist above a transaction snapshot, so with none on the
         // stack the captured original is the answer.
-        if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0)
+        if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0
+            && TryGetJournalledTransactionStartValue(in storageCell, _transactionChangesSnapshots.Peek(), out value))
         {
-            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
-            if (!Unsafe.IsNullRef(ref head))
-            {
-                int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
-                if (head.CurrentIdx <= currentSnapshot)
-                {
-                    // Untouched this transaction — the current value is the tx original.
-                    value = head.Value;
-                    return;
-                }
+            return;
+        }
 
-                // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
-                if (head.OriginalIdx != -1)
-                {
-                    value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
-                    return;
-                }
+        value = _lastCapturedOriginal;
+    }
+
+    /// <summary>Reads a slot's value at the start of the current transaction from the block's journal.</summary>
+    /// <remarks>
+    /// A head the transaction has not written still holds that value. One it has written points at it through
+    /// <c>OriginalIdx</c>, where -1 means nothing in the block wrote the slot before, so the journal has no answer.
+    /// </remarks>
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="currentSnapshot">The journal position the current transaction started at.</param>
+    /// <param name="value">The value at the start of the transaction, when the journal holds it.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetJournalledTransactionStartValue(in StorageCell storageCell, int currentSnapshot, out UInt256 value)
+    {
+        ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
+        if (!Unsafe.IsNullRef(ref head))
+        {
+            if (head.CurrentIdx <= currentSnapshot)
+            {
+                value = head.Value;
+                return true;
+            }
+
+            if (head.OriginalIdx != -1)
+            {
+                value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
+                return true;
             }
         }
-        value = _lastCapturedOriginal;
+
+        value = default;
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void LoadCapturedOriginal(in StorageCell storageCell)
     {
+        EnsureOriginalsIndexed();
         if (!_originalValues.TryGetValue(storageCell, out UInt256 value))
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
 
@@ -328,6 +371,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceOriginalValues(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
+        EnsureOriginalsIndexed();
         foreach ((StorageCell cell, UInt256 originalValue) in _originalValues)
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
@@ -350,6 +394,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
+        EnsureOriginalsIndexed();
         bool hasStorageClears = _storageClearJournal.Count != 0;
 
         // Heads come mostly grouped by contract, so the root set is probed once per run of one.
@@ -650,12 +695,56 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal void GetPureRead(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(in storageCell, out value);
 
+    /// <summary>Reads the value a slot held at the start of the current transaction when its contract's storage was cleared in it.</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared in the current transaction.</returns>
+    internal bool TryGetBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        if (_storageClearJournal.Count == 0)
+        {
+            value = default;
+            return false;
+        }
+
+        int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+        foreach (StorageClearChange clear in _storageClearJournal)
+        {
+            if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot)
+            {
+                continue;
+            }
+
+            if (TryGetJournalledTransactionStartValue(in storageCell, currentSnapshot, out value))
+            {
+                return true;
+            }
+
+            if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
+            {
+                value = trace.After;
+            }
+            else if (clear.BlockChange.MissingAreDefault)
+            {
+                value = default;
+            }
+            else
+            {
+                GetPureRead(in storageCell, out value);
+            }
+
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
     /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
     /// no side effects). Only the first-loaded value is captured here, backing
     /// <see cref="GetOriginal"/> and commit-time <see cref="IStorageTracer.ReportStorageRead"/>.
     /// </summary>
+#if ZK_EVM
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
         OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
@@ -672,6 +761,72 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _lastCapturedCell = cell;
         _lastCapturedOriginal = slot;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureOriginalsIndexed() { }
+
+#else
+    private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
+    {
+        _lastCapturedCell = cell;
+        if (!_originalsIndexed)
+        {
+            (_pendingOriginalValues ??= new(PendingOriginalsPool, PooledDictionaryCapacity))
+                .Add(new KeyValuePair<StorageCell, UInt256>(cell, value));
+            _lastCapturedOriginal = value;
+            return;
+        }
+
+        _lastCapturedOriginal = CaptureIndexedOriginalValue(in cell, in value);
+    }
+
+    private void EnsureOriginalsIndexed()
+    {
+        if (_originalsIndexed) return;
+        if (_pendingOriginalValues is { } pending)
+        {
+            foreach (KeyValuePair<StorageCell, UInt256> entry in pending)
+            {
+                CaptureIndexedOriginalValue(entry.Key, entry.Value);
+            }
+
+            ClearPendingOriginals();
+        }
+
+        _originalsIndexed = true;
+    }
+
+    private void ClearPendingOriginals()
+    {
+        if (_pendingOriginalValues is not { } pending) return;
+        if (pending.Capacity > Core.Collections.CollectionExtensions.DefaultTrimAboveCapacity)
+        {
+            pending.Dispose();
+            _pendingOriginalValues = null;
+        }
+        else
+        {
+            pending.Clear();
+        }
+    }
+
+    private UInt256 CaptureIndexedOriginalValue(in StorageCell cell, in UInt256 value)
+    {
+        OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
+        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
+        {
+            GrowOriginalsIntoLarge();
+        }
+
+        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
+        if (!exists)
+        {
+            slot = value;
+        }
+        return slot;
+    }
+
+#endif
 
     private void GrowOriginalsIntoLarge()
     {
@@ -729,10 +884,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         if (_changes.Count == 0)
         {
+#if ZK_EVM
             if (_originalValues.Count != 0)
+#else
+            if (_originalValues.Count != 0 || _pendingOriginalValues is { Count: > 0 })
+#endif
             {
                 if (tracer.IsTracingStorage)
                 {
+                    EnsureOriginalsIndexed();
                     foreach (StorageCell cell in _originalValues.Keys)
                     {
                         tracer.ReportStorageRead(cell);
@@ -757,6 +917,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void ResetContractState(Address address)
     {
+        EnsureOriginalsIndexed();
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
         _toUpdateRoots.TryAdd(address, true);
         PerContractState state = GetOrCreateStorage(address);
@@ -772,6 +933,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return;
         }
 
+        EnsureOriginalsIndexed();
         List<KeyValuePair<StorageCell, UInt256>>? originalValues = null;
         // Every storage read/write registers the contract before adding originals or journal entries.
         if (contractState is not null)
@@ -806,7 +968,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
         int journalIndex = _storageClearJournal.Count;
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared, _changes.Count));
         PushStorageClear(journalIndex);
     }
 
@@ -840,6 +1002,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     protected override void RestoreStorageClear(int journalIndex)
     {
+        EnsureOriginalsIndexed();
         int lastIndex = _storageClearJournal.Count - 1;
         if ((uint)journalIndex >= (uint)_storageClearJournal.Count || journalIndex != lastIndex)
         {
@@ -882,7 +1045,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, UInt256>>? OriginalValues,
         bool? RootUpdate,
-        bool WasCleared);
+        bool WasCleared,
+        int ChangeIndex);
 
     /// <summary>A slot index as a map key.</summary>
     /// <remarks>
@@ -1067,23 +1231,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         internal const int MaxRetainedEntries = 256 * 1024;
         internal const int MaxRetainedCapacity = 128 * 1024;
+        private const int MaxReuseCapacityFactor = 4;
         private readonly IEqualityComparer<TKey> _comparer = comparer ?? EqualityComparer<TKey>.Default;
         private readonly Lock _lock = new();
         private readonly List<OptimizedDictionary<TKey, TValue>> _retained = [];
         private int _retainedEntries;
 
-        /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
         public OptimizedDictionary<TKey, TValue> Rent(int minCapacity)
         {
             lock (_lock)
             {
-                int best = -1;
+                int bestFit = -1;
+                int largestNearby = -1;
                 for (int i = 0; i < _retained.Count; i++)
                 {
                     int capacity = _retained[i].Capacity;
-                    if (capacity >= minCapacity && (best < 0 || capacity < _retained[best].Capacity)) best = i;
+                    if (capacity < minCapacity) continue;
+
+                    if (bestFit < 0 || capacity < _retained[bestFit].Capacity) bestFit = i;
+                    if (capacity <= (long)minCapacity * MaxReuseCapacityFactor
+                        && (largestNearby < 0 || capacity > _retained[largestNearby].Capacity)) largestNearby = i;
                 }
 
+                int best = largestNearby >= 0 ? largestNearby : bestFit;
                 if (best >= 0)
                 {
                     OptimizedDictionary<TKey, TValue> retained = _retained[best];

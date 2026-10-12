@@ -1140,21 +1140,170 @@ public class BlockCachePreWarmerTests
 
     /// <summary>
     /// A session that slipped in before the consumer registered (the BAL sequential-retry scope swap leaves such a
-    /// window) must be gone before the consumer reads, or its populators would write another head's state under it.
+    /// window) must not warm once the consumer reads, or its populators would write another head's state under it.
     /// </summary>
     [Test]
-    public void ConsumerScope_Opening_JoinsTheRunningSpeculativeSession()
+    public void ConsumerScope_Opening_StopsTheRunningSpeculativeSession()
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         BlockHeader head = BuildParentHeader();
         using CancellationTokenSource cancellation = new();
-        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
+        int passes = 0;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            Interlocked.Increment(ref passes);
+            return null;
+        }, idlePassDelayMs: 5, cancellation.Token);
         Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
+
+        int passesAtOpen;
+        using (mainWorldState.BeginScope(head))
+        {
+            passesAtOpen = Volatile.Read(ref passes);
+            Assert.That(session.Wait(DiscoveryTimeout), Is.True, "the stopped session must end");
+        }
+
+        Assert.That(Volatile.Read(ref passes), Is.EqualTo(passesAtOpen), "no pass may start once a consumer has opened");
+    }
+
+    [Test]
+    public void ConsumerScope_Opening_WaitsForASessionInAPass()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        using CancellationTokenSource cancellation = new();
+        using ManualResetEventSlim inPass = new(false);
+        // Not disposed: the fallback below may still set it after the test ends.
+        ManualResetEventSlim release = new(false);
+        // Should the open not wait, the pass is released anyway, so the test fails instead of hanging.
+        _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            inPass.Set();
+            release.Wait();
+            return null;
+        }, idlePassDelayMs: 5, cancellation.Token);
+        Assert.That(inPass.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be in a pass");
+
+        Task open = Task.Run(() =>
+        {
+            using (mainWorldState.BeginScope(head)) { }
+        });
+        Assert.That(open.Wait(PendingProbe), Is.False, "a session in a pass may still write, so the open waits for it");
+        release.Set();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(open.Wait(DiscoveryTimeout), Is.True, "the open goes ahead once the pass ends");
+            Assert.That(session.IsCompleted, Is.True);
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.False, "the open joined it");
+        }
+    }
+
+    [Test]
+    public void ConsumerScope_Opening_WaitsForASessionWarmingItsDelta()
+    {
+        using ManualResetEventSlim inWarm = new(false);
+        // Not disposed: the fallback below may still set it after the test ends.
+        ManualResetEventSlim release = new(false);
+        // Should the open not wait, the warm is released anyway, so the test fails instead of hanging.
+        _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
+        IHasAccessList hint = Substitute.For<IHasAccessList>();
+        hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+        {
+            inWarm.Set();
+            release.Wait();
+            return null;
+        });
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        // An empty delta still warms the system-contract hints, which is where this pass is held.
+        Block delta = BuildEmptyChild(head, timestamp: 12);
+        using CancellationTokenSource cancellation = new();
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ => (delta, Osaka.Instance), idlePassDelayMs: 5, cancellation.Token);
+        Assert.That(inWarm.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be warming its delta");
+
+        Task open = Task.Run(() =>
+        {
+            using (mainWorldState.BeginScope(head)) { }
+        });
+        Assert.That(open.Wait(PendingProbe), Is.False, "a session warming its delta may still write, so the open waits for it");
+        release.Set();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(open.Wait(DiscoveryTimeout), Is.True, "the open goes ahead once the warm ends");
+            Assert.That(session.IsCompleted, Is.True);
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.False, "the open joined it");
+        }
+    }
+
+    /// <summary>
+    /// Stopping a speculative session must also clear another parent's entries when the incoming spec disables warming.
+    /// An idle session may finish asynchronously, but it must be cancelled and run no further pass over the cleared caches.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_ForAnotherParent_StopsTheSessionAndClearsOtherHeadEntries([Values] bool specDisablesPreWarming)
+    {
+        PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
+        BlockHeader head = BuildParentHeader();
+        BlockHeader parent = BuildOtherStateHeader(head);
+        using CancellationTokenSource cancellation = new();
+        CancellationToken speculativeToken = default;
+        int passes = 0;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, token =>
+        {
+            speculativeToken = token;
+            Interlocked.Increment(ref passes);
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+        Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref passes) > 0 && !preWarmer.SpeculativePassActive, DiscoveryTimeout), Is.True,
+            "precondition: the session must be waiting out its idle delay");
+        AddressAsKey sentinel = TestItem.AddressD;
+        caches.StateCache.Set(in sentinel, new Account(123));
+
+        // The block builds on another state, so the caches are cleared while the stopped session may not have ended yet.
+        IReleaseSpec spec = specDisablesPreWarming ? Amsterdam.Instance : Osaka.Instance;
+        await StartPrewarming(preWarmer, BuildChildBlock(parent), parent, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(speculativeToken.IsCancellationRequested, Is.True, "the session is cancelled before execution can use the caches");
+            Assert.That(preWarmer.SpeculativePassActive, Is.False, "no speculative pass may overlap execution");
+            Assert.That(caches.StateCache.TryGetValue(in sentinel, out _), Is.False, "the caches held another state and are cleared");
+        }
+        await session.WaitAsync(DiscoveryTimeout);
+        Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the stopped session runs no further pass over the cleared caches");
+    }
+
+    [Test]
+    public void ConsumerScope_Opening_LeavesASessionBetweenPassesToEndOnItsOwn()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        using CancellationTokenSource cancellation = new();
+        int passes = 0;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            Interlocked.Increment(ref passes);
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+        Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref passes) > 0 && !preWarmer.SpeculativePassActive, DiscoveryTimeout), Is.True,
+            "precondition: the session must be waiting out its idle delay");
 
         using (mainWorldState.BeginScope(head))
         {
-            Assert.That(session.IsCompleted, Is.True, "registering a consumer scope must join the session");
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.True, "a session between passes is stopped, not waited for");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.Wait(DiscoveryTimeout), Is.True, "the stopped session ends on its own");
+            Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "and starts no further pass");
         }
     }
 
@@ -1272,42 +1421,6 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preWarmer.SpeculativeMarkerPublished, Is.False,
             "the tiny-block handoff marker must only be honored once");
-    }
-
-    /// <summary>
-    /// A session's spec comes from a synthetic next-block header, so it can be started for a spec that enables warming
-    /// and then met by a block whose spec disables it — a fork boundary. Joining is not enough there: the session's
-    /// entries describe the head it warmed, so a block on a different parent must not read them.
-    /// </summary>
-    [Test]
-    public void PreWarmCaches_WhenSpecDisablesPreWarming_StillJoinsAndClearsOtherHeadEntries()
-    {
-        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: false);
-        using (preWarmer)
-        {
-            BlockHeader head = BuildParentHeader();
-            using CancellationTokenSource cancellation = new();
-            // Osaka has no block-level access lists, so warming is enabled and the session starts.
-            Task session = preWarmer.StartSpeculativePreWarm(
-                head, Osaka.Instance, generation: 1, _ => null, idlePassDelayMs: 5, cancellation.Token);
-            Assert.That(session.IsCompleted, Is.False, "precondition: the speculative session must be running");
-
-            AddressAsKey sentinel = TestItem.AddressD;
-            preBlockCaches.StateCache.Set(in sentinel, new Account(123));
-
-            // A side branch: this block's parent is not the head the session warmed.
-            BlockHeader sideParent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakB).TestObject;
-            // Amsterdam enables access lists, which disables warming for this configuration.
-            StartPrewarming(preWarmer, BuildChildBlock(sideParent), sideParent, Amsterdam.Instance).GetAwaiter().GetResult();
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(session.IsCompleted, Is.True, "a speculative session must never outlive the reactive path");
-                Assert.That(preBlockCaches.StateCache.TryGetValue(in sentinel, out _), Is.False,
-                    "entries warmed against another head must not survive into execution");
-            }
-        }
     }
 
     [Test]

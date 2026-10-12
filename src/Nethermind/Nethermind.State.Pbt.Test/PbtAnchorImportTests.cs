@@ -81,7 +81,7 @@ public class PbtAnchorImportTests
         Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.Null, "main processing does not write genesis into PBT");
         if (mode == "wrong-genesis")
         {
-            Assert.ThrowsAsync<InvalidDataException>(() => bootstrap.Initialize(CancellationToken.None));
+            await Assert.ThrowsAsync<InvalidDataException>(() => bootstrap.Initialize(CancellationToken.None));
             return;
         }
 
@@ -123,7 +123,7 @@ public class PbtAnchorImportTests
     /// <remarks>The anchor now comes only from the consumer's own chain, so the image's agreement with the
     /// anchor's MPT root is the whole of the check; there is no second description of the anchor to disagree.</remarks>
     [Test]
-    public void Rejects_wrong_trusted_anchor(
+    public async Task Rejects_wrong_trusted_anchor(
         [Values("trusted-root", "activation", "missing-hash", "missing-root", "claimed-pbt-root")] string failure)
     {
         using Harness harness = new("anchor");
@@ -139,7 +139,7 @@ public class PbtAnchorImportTests
         using MemoryStream snapshot = new(bytes);
         using FileStream preimages = OpenArtifact("anchor", "preimages.bin");
 
-        InvalidDataException exception = Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish(snapshot, preimages, CancellationToken.None))!;
+        InvalidDataException exception = (await Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish(snapshot, preimages, CancellationToken.None)))!;
 
         if (failure == "claimed-pbt-root") Assert.That(exception.Message, Does.Contain("claimed root"));
         AssertUnpublished(harness);
@@ -163,7 +163,7 @@ public class PbtAnchorImportTests
         (MemoryStream snapshot, MemoryStream preimages) = Corrupt("a4", "oversized-code");
         using (snapshot)
         using (preimages)
-            Assert.ThrowsAsync<PbtImageResourceLimitException>(() =>
+            await Assert.ThrowsAsync<PbtImageResourceLimitException>(() =>
                 harness.Publish(snapshot, preimages, CancellationToken.None));
 
         AssertUnpublished(harness);
@@ -172,13 +172,13 @@ public class PbtAnchorImportTests
 
     /// <remarks>Each snapshot carries a recomputed PBT root, so only the staging checks stand between it and publication.</remarks>
     [Test]
-    public void Noncanonical_snapshot_is_refused_with_or_without_preimages(
+    public Task Noncanonical_snapshot_is_refused_with_or_without_preimages(
         [Values("code", "pushdata", "padding", "code-size", "missing-code", "delegation-with-code-leaves", "extra-code-chunk",
             "orphan-storage-leaf")] string corruption, [Values] bool withPreimages, [Values(1, 3)] int importConcurrency) =>
         AssertRefused(corruption, withPreimages, importConcurrency);
 
     [Test]
-    public void Preimages_refuse_a_snapshot_off_the_anchor_state(
+    public Task Preimages_refuse_a_snapshot_off_the_anchor_state(
         [Values("nonce", "balance", "storage", "missing-storage", "surplus-account-leaves", "anchored-elsewhere",
             "missing-account-preimage", "missing-slot-preimage", "wrong-account-preimage", "wrong-slot-preimage", "surplus-slot-preimage")] string corruption) =>
         AssertRefused(corruption, withPreimages: true);
@@ -187,7 +187,7 @@ public class PbtAnchorImportTests
     [TestCase("cancelled-on-sync", typeof(OperationCanceledException))]
     [TestCase("sync-failure", typeof(IOException))]
     [TestCase("anchor-changed", typeof(InvalidOperationException))]
-    public void Failed_publication_publishes_nothing(string failure, Type expected)
+    public async Task Failed_publication_publishes_nothing(string failure, Type expected)
     {
         using Harness harness = new("a4");
         using CancellationTokenSource cancellation = new();
@@ -199,7 +199,7 @@ public class PbtAnchorImportTests
             case "anchor-changed": harness.IsAnchorCurrent = () => false; break;
         }
 
-        Assert.ThrowsAsync(Is.InstanceOf(expected), () => harness.Publish(cancellation.Token));
+        await Assert.ThrowsAsync(Is.InstanceOf(expected), () => harness.Publish(cancellation.Token));
 
         AssertUnpublished(harness);
         harness.Reopen();
@@ -219,7 +219,7 @@ public class PbtAnchorImportTests
         });
         using FileStream preimages = OpenArtifact("a4", "preimages.bin");
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Publish(snapshot, withPreimages ? preimages : null, cancellation.Token));
+        await Assert.ThrowsAsync<OperationCanceledException>(() => harness.Publish(snapshot, withPreimages ? preimages : null, cancellation.Token));
 
         Assert.That(observedCodeSpool, Is.True, "cancellation happens after the private code-spool directory is created");
         AssertUnpublished(harness);
@@ -250,7 +250,7 @@ public class PbtAnchorImportTests
         if (changeSource)
         {
             harness.Anchor = harness.Anchor with { ChainId = "another-chain" };
-            Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
+            await Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
             Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         }
         else AssertPublishedState(harness, await harness.Publish(), "a4");
@@ -379,7 +379,7 @@ public class PbtAnchorImportTests
         ImportPbtSnapshot step = container.Resolve<ImportPbtSnapshot>();
         await step.Execute(CancellationToken.None);
         // Even the same snapshot is refused once the database holds state.
-        Assert.ThrowsAsync<InvalidConfigurationException>(() => step.Execute(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidConfigurationException>(() => step.Execute(CancellationToken.None));
 
         using IPbtPersistence.IReader reader = container.Resolve<IPbtPersistence>().CreateReader();
         using (Assert.EnterMultipleScope())
@@ -391,15 +391,15 @@ public class PbtAnchorImportTests
         }
     }
 
-    private static void AssertRefused(string corruption, bool withPreimages, int importConcurrency = 1)
+    private static async Task AssertRefused(string corruption, bool withPreimages, int importConcurrency = 1)
     {
         using Harness harness = new("a4", new PbtConfig { ImportConcurrency = importConcurrency });
         (MemoryStream snapshot, MemoryStream preimages) = Corrupt("a4", corruption);
         using (snapshot)
         using (preimages)
         {
-            InvalidDataException exception = Assert.ThrowsAsync<InvalidDataException>(() =>
-                harness.Publish(snapshot, withPreimages ? preimages : null, CancellationToken.None))!;
+            InvalidDataException exception = (await Assert.ThrowsAsync<InvalidDataException>(() =>
+                harness.Publish(snapshot, withPreimages ? preimages : null, CancellationToken.None)))!;
             Assert.That(exception.Message, Does.Not.Contain("claimed root"));
         }
         AssertUnpublished(harness);

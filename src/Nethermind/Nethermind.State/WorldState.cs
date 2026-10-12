@@ -135,6 +135,12 @@ namespace Nethermind.State
             _persistentStorageProvider.GetPureRead(in cell, out value);
         }
 
+        public bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.TryGetBeforeClear(in storageCell, out value);
+        }
+
         /// <summary>Reads a parent-state account without recording a journal entry.</summary>
         /// <remarks>Only for immutable BAL parent readers.</remarks>
         internal Account? GetPureReadAccount(Address address)

@@ -340,7 +340,7 @@ public class PbtRocksDbPersistenceTests
             oracle.Insert(replacedKey, Value(99));
             ValueHash256 updatedRoot = reopened.Fold(reader.CurrentRoot, [(deletedKey, null), (replacedKey, Value(99))]);
             Assert.That(updatedRoot.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(reopened.EnumerateRecords(), Has.Count.EqualTo(30).And.All.Matches<PbtNodeRecord>(record => record.Encoding.Span[0] == 1), "the promoted leaf leaves 30 branches, all with inline leaves");
+            Assert.That(reopened.EnumerateRecords(), Has.Count.EqualTo(30).And.All.Matches<PbtNodeRecord>(record => record?.Encoding.Span[0] == 1), "the promoted leaf leaves 30 branches, all with inline leaves");
         }
         finally
         {

@@ -723,7 +723,7 @@ public class ImportPbtFromPreimageFlatTests
         if (failure.EndsWith("cancellation", StringComparison.Ordinal)) Assert.That(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
         else
         {
-            Exception? error = Assert.CatchAsync(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)));
+            Exception? error = await Assert.CatchAsync(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)));
             Assert.That(error, failure switch
             {
                 "missing-code" => Is.TypeOf<InvalidDataException>().With.Message.Contains("Missing source code"),

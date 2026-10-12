@@ -240,6 +240,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8250TransitionTimestamp = parameters.Eip8250TransitionTimestamp,
             Eip8272TransitionTimestamp = parameters.Eip8272TransitionTimestamp,
             Eip7906TransitionTimestamp = parameters.Eip7906TransitionTimestamp,
+            Eip8151TransitionTimestamp = parameters.Eip8151TransitionTimestamp,
             Eip7979TransitionTimestamp = parameters.Eip7979TransitionTimestamp,
             Eip7843TransitionTimestamp = parameters.Eip7843TransitionTimestamp,
             Eip7954TransitionTimestamp = parameters.Eip7954TransitionTimestamp,
@@ -248,6 +249,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip8131TransitionTimestamp = parameters.Eip8131TransitionTimestamp,
             Eip8279TransitionTimestamp = parameters.Eip8279TransitionTimestamp,
             Eip7805TransitionTimestamp = parameters.Eip7805TransitionTimestamp,
+            Eip8298TransitionTimestamp = parameters.Eip8298TransitionTimestamp,
         };
 
         chainSpec.Parameters.ExpandAll(parameters);
@@ -401,7 +403,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         {
             Author = beneficiary,
             Hash = Keccak.Zero, // need to run the block to know the actual hash
-            Bloom = Bloom.Empty,
+            Bloom = parameters.Eip7668TransitionTimestamp is not null && timestamp >= parameters.Eip7668TransitionTimestamp ? Bloom.ZeroLength : Bloom.Empty,
             MixHash = mixHash,
             Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,

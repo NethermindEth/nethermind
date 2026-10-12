@@ -196,7 +196,4 @@ public static class BlockErrorMessages
 
     public static string SlotNumberMismatch(ulong? expected, ulong? actual) =>
         $"SlotNumberMismatch: Slot number in header does not match calculated. Expected {expected}, got {actual}";
-
-    public const string RecentRootPredeployNotEmpty =
-        "RecentRootPredeployNotEmpty: EIP-8272 recent root address must have empty code and storage at activation.";
 }

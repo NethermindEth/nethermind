@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -46,12 +47,12 @@ public class PbtExportTests
     /// <remarks>Flat keeps no history, so an anchor below the persisted state can never be produced; that has to
     /// fail before the export spends an hour scanning. Without any persisted state there is nothing to default to.</remarks>
     [Test]
-    public void Refuses_an_anchor_the_flat_state_cannot_serve([Values("below-persisted", "nothing-persisted")] string invalid)
+    public async Task Refuses_an_anchor_the_flat_state_cannot_serve([Values("below-persisted", "nothing-persisted")] string invalid)
     {
         Harness harness = new() { Persisted = invalid == "below-persisted" ? new StateId(100, Keccak.EmptyTreeHash.ValueHash256) : StateId.PreGenesis };
         harness.Config.MigrationAnchor = invalid == "below-persisted" ? 99 : null;
 
-        Assert.ThrowsAsync<InvalidConfigurationException>(() => harness.Step().Execute(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidConfigurationException>(() => harness.Step().Execute(CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
         {
@@ -64,14 +65,14 @@ public class PbtExportTests
     /// the next boundary, wait for it to land, and only then pause so nothing accumulates under the reader. The
     /// reader here is hash-keyed, so the export itself refuses — after the sequence under test has run.</remarks>
     [Test]
-    public void Pins_the_anchor_then_pauses_processing_once_it_is_persisted([Values] bool anchorAhead)
+    public async Task Pins_the_anchor_then_pauses_processing_once_it_is_persisted([Values] bool anchorAhead)
     {
         Harness harness = new() { Persisted = new StateId(40, Keccak.EmptyTreeHash.ValueHash256) };
         harness.Config.MigrationAnchor = anchorAhead ? 42 : null;
         harness.ReachedState = new StateId(anchorAhead ? 42UL : 40UL, Keccak.EmptyTreeHash.ValueHash256);
         if (anchorAhead) harness.PollsBeforeReaching = 2;
 
-        Assert.ThrowsAsync<InvalidDataException>(() => harness.Step().Execute(CancellationToken.None),
+        await Assert.ThrowsAsync<InvalidDataException>(() => harness.Step().Execute(CancellationToken.None),
             "a hash-keyed flat state carries no preimages to derive EIP-8297 keys from");
 
         using (Assert.EnterMultipleScope())
