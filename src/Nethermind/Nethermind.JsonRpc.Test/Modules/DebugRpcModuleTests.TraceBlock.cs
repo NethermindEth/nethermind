@@ -60,7 +60,9 @@ public partial class DebugRpcModuleTests
                 ("false,null,true", true), ("\"true\",null", true), ("\"false\",null", false)
             })
             {
-                string config = "{" + string.Join(",", values.Split(',').Select(value => $"\"{field}\":{value}")) + "}";
+                string[] members = values.Split(',');
+                for (int i = 0; i < members.Length; i++) members[i] = $"\"{field}\":{members[i]}";
+                string config = "{" + string.Join(',', members) + "}";
                 yield return new TestCaseData(field, config, expected).SetName($"Native_boolean_config_{field}_{values}");
             }
             yield return new TestCaseData(field, $$$"""{"{{{field.ToUpperInvariant()}}}":true,"{{{field}}}":null,"unknown":{"nested":null}}""", true);
