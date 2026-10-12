@@ -148,6 +148,30 @@ public class SnapProviderTests
     }
 
     [Test]
+    public void AddStorageRange_ProofWithoutSlotLists_IsScoredAsAFailedRangeAndKeepsTheOrigin()
+    {
+        using IContainer container = CreateContainer();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+
+        using StorageRange request = new()
+        {
+            Accounts = new[] { new PathWithAccount(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject) }.ToPooledList(1),
+            StartingHash = TestItem.ValueKeccaks[1],
+            LimitHash = Keccak.MaxValue.ValueHash256,
+        };
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+            Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList()),
+        };
+
+        Assert.That(snapProvider.AddStorageRange(request, response), Is.Not.EqualTo(AddRangeResult.OK));
+        Assert.That(progressTracker.AccountsToRefreshCount, Is.EqualTo(1), "the account is re-proven from its origin, not restarted");
+    }
+
+    [Test]
     public void AddStorageRange_ResponseHasMoreSlotListsThanRequestedAccounts_KeepsRangePhaseCompletable()
     {
         using IContainer container = CreateContainerBuilder(new TestSyncConfig()

@@ -161,6 +161,21 @@ namespace Nethermind.Synchronization.SnapSync
                 return AddRangeResult.OutOfBounds;
             }
 
+            if (responses.Length == 0)
+            {
+                // A proof without any slot list answers the first account only; it is checked (and scored) like any
+                // other range so a peer cannot have the account's storage restarted from scratch for free.
+                result = AddStorageRangeForAccount(request, 0, [], response.Proofs);
+                Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: result));
+
+                foreach (PathWithAccount uncovered in request.Accounts.AsSpan()[1..])
+                {
+                    _progressTracker.EnqueueAccountStorage(uncovered);
+                }
+
+                return result;
+            }
+
             int slotCount = 0;
             for (int i = 0; i < responses.Length; i++)
             {
