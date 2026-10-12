@@ -69,4 +69,47 @@ public class ReceiptFixMigrationTests
             Assert.That(nodeReceipts.Get(block)[0].GasUsedTotal, Is.EqualTo(validReceipts[0].GasUsedTotal));
         }
     }
+
+    [Test]
+    public async Task Accepts_downloaded_receipts_with_zero_blooms_like_the_receipts_sync_feed()
+    {
+        InMemoryReceiptStorage canonicalReceipts = new();
+        IBlockTree blockTree = Core.Test.Builders.Build.A.BlockTree()
+            .WithTransactions(canonicalReceipts, static (_, _) => [Core.Test.Builders.Build.A.LogEntry.TestObject])
+            .OfChainLength(6).TestObject;
+        Block block = blockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        TxReceipt[] validReceipts = canonicalReceipts.Get(block);
+        TxReceipt[] zeroBloomReceipts = Array.ConvertAll(validReceipts, static r => new TxReceipt(r) { Bloom = Bloom.Empty });
+        InMemoryReceiptStorage nodeReceipts = new();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(new ArrayPoolList<TxReceipt[]?>(1) { zeroBloomReceipts }));
+        PeerInfo peerInfo = new(syncPeer);
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                SyncPeerAllocation allocation = new(AllocationContexts.Receipts);
+                allocation.AllocatePeer(peerInfo);
+                return Task.FromResult(allocation);
+            });
+
+        ReceiptFixMigration migration = new(
+            blockTree,
+            nodeReceipts,
+            syncPeerPool,
+            new SyncConfig { FixReceipts = true, FixReceiptsStartingBlock = 1, FixReceiptsLastBlock = 1 },
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        await migration.Run(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+            Assert.That(nodeReceipts.Get(block), Has.Length.EqualTo(validReceipts.Length));
+            Assert.That(nodeReceipts.Get(block)[0].Bloom, Is.EqualTo(validReceipts[0].Bloom));
+        }
+    }
 }

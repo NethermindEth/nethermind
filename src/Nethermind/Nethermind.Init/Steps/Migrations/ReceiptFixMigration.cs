@@ -134,7 +134,7 @@ namespace Nethermind.Init.Steps.Migrations
                         {
                             // Receipts come from an arbitrary peer: without this check a peer could write any receipts and logs for the block.
                             syncPeerPool.ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, "receipts root mismatch");
-                            if (_logger.IsInfo) _logger.Error($"Rejected missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)} with a receipts root mismatch.");
+                            if (_logger.IsError) _logger.Error($"Rejected missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)} with a receipts root mismatch.");
                         }
                         else
                         {
@@ -163,7 +163,10 @@ namespace Nethermind.Init.Steps.Migrations
                     return receipts.Length == 0;
                 }
 
-                return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, specProvider.GetSpec(block.Header), block.ReceiptsRoot) == block.ReceiptsRoot;
+                IReleaseSpec spec = specProvider.GetSpec(block.Header);
+                // Same rule as the fast-sync receipts feed: EIP-7668 roots ignore blooms, otherwise recompute all-zero blooms from logs.
+                if (!spec.IsEip7668Enabled) ReceiptsSyncFeed.NormalizeZeroBlooms(receipts);
+                return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot) == block.ReceiptsRoot;
             }
         }
     }
