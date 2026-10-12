@@ -47,15 +47,19 @@ while true; do
 done
 
 # Graceful shutdown drains the compression queue before the measured warm-up.
+stop_signal="$(docker inspect "$container" --format '{{.Config.StopSignal}}')"
+case "$stop_signal" in
+  SIGINT|2) expected_exit_code=130 ;;
+  ''|SIGTERM|15) expected_exit_code=143 ;;
+  *) die "unsupported index preparation stop signal: ${stop_signal}" ;;
+esac
+printf '%s\n' "$stop_signal" > "$out/stop-signal.txt"
 docker stop --time 600 "$container" >/dev/null
 docker inspect "$container" --format '{{json .State}}' > "$out/stop-state.json"
 docker logs "$container" > "$out/backfill.log" 2>&1
 strip_ansi "$out/backfill.log" > "$out/backfill-clean.log"
 exit_code="$(jq -r '.ExitCode' "$out/stop-state.json")"
-case "$exit_code" in
-  0|143) ;;
-  *) die "index preparation exited with code ${exit_code}" ;;
-esac
+[[ "$exit_code" == "0" || "$exit_code" == "$expected_exit_code" ]] || die "index preparation exited with code ${exit_code} (expected 0 or ${expected_exit_code} for ${stop_signal:-SIGTERM})"
 [[ "$(jq -r '.OOMKilled' "$out/stop-state.json")" == "false" ]] || die "index preparation was killed by OOM"
 for marker in 'Log index storage stopped' 'All DBs closed' 'Nethermind is shut down'; do
   grep -qF "$marker" "$out/backfill-clean.log" || die "index preparation is missing shutdown marker: ${marker}"
