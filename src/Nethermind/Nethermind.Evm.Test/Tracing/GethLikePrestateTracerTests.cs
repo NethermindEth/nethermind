@@ -238,9 +238,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private const string ExpectedSStoreDiffModeTrace = """
         {
           "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
             "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
               "balance": "0x0",
               "storage": {
@@ -308,14 +305,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedNestedCallsDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f242e",
@@ -393,12 +383,6 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     private const string ExpectedCreate2DiffModeTrace = """
         {
           "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            },
             "0x76e68a8696537e4141926f3e528733af9e237d69": {
               "balance": "0xde0b6b3a7640000",
               "code": "0x7f7f010203000000000000000000000000000000000000000000000000000000006000527f0060005260036000f3000000000000000000000000000000000000000000000060205262040506602960006000f5",
@@ -562,14 +546,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedExistingAccountDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
@@ -622,17 +599,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedEmptyToDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
-              "balance": "0x0"
-            },
-            "0x76e68a8696537e4141926f3e528733af9e237d69": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630fa3cc",
@@ -684,17 +651,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
     private const string ExpectedSelfDestructDiffModeTrace = """
         {
-          "pre": {
-            "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
-              "balance": "0x0"
-            },
-            "0x24cd2edba056b7c654a50e8201b619d4f624fdda": {
-              "balance": "0x0"
-            },
-            "0x76e68a8696537e4141926f3e528733af9e237d69": {
-              "balance": "0x0"
-            }
-          },
+          "pre": {},
           "post": {
             "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {
               "balance": "0x56bc75e2d630f2e9c",
