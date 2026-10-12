@@ -47,3 +47,15 @@ internal sealed class BatchHandle(RustFlatStore store, nint handle) : StoreChild
 {
     protected override FdbStatus Release(nint handle) => NativeMethods.fdb_batch_release(handle);
 }
+
+/// <summary>A native snapshot manager. Releasing it shuts the manager down, then frees the host its callbacks reach.</summary>
+/// <remarks>A manager that failed to be destroyed may still call its host, which is then kept alive.</remarks>
+internal sealed class ManagerHandle(RustFlatStore store, nint handle, GCHandle host) : StoreChildHandle(store, handle)
+{
+    protected override FdbStatus Release(nint handle)
+    {
+        FdbStatus status = NativeMethods.fdb_destroy(handle);
+        if (status == FdbStatus.Ok) host.Free();
+        return status;
+    }
+}

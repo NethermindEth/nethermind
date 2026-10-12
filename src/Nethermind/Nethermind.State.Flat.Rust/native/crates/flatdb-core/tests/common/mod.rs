@@ -4,8 +4,10 @@
 pub mod any_kv;
 pub mod faulty;
 pub mod loopback;
+pub mod manager;
 #[cfg(feature = "rocksdb-it")]
 pub mod rocks;
+pub mod snapshots;
 
 use flatdb_core::kv::{Column, IterOptions, KvIterator, KvReader, KvStore};
 

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Rust.Interop;
 
@@ -14,7 +15,7 @@ namespace Nethermind.State.Flat.Rust.Interop;
 internal static class FfiAbi
 {
     /// <summary>The ABI version this adapter speaks; must equal <c>fdb_abi_version()</c>.</summary>
-    public const uint Version = 2;
+    public const uint Version = 4;
 }
 
 /// <summary>Status code of a native call.</summary>
@@ -51,6 +52,12 @@ internal enum FfiStruct
     Stats,
     StateId,
     Account,
+    MgrCfg,
+    Host,
+    Counters,
+    Observation,
+    PersistedNode,
+    PersistedEvent,
 }
 
 internal enum FdbKvKind : uint
@@ -173,4 +180,99 @@ internal struct ManagedKvVTable
     public nint Write;
     public nint Flush;
     public nint SetWriteBuffer;
+}
+
+/// <summary>
+/// The settings of a native snapshot manager: the <see cref="Nethermind.Db.IFlatDbConfig"/> and
+/// <see cref="Nethermind.Config.IBlocksConfig"/> values <c>FlatDbManager</c>, <c>PersistenceManager</c>,
+/// <c>SnapshotCompactor</c> and <c>CompactionSchedule</c> read, with the compaction offset C# resolved.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FdbMgrCfg
+{
+    public uint AbiVersion;
+    public uint MaxInFlightCompactJob;
+    public ulong CompactSize;
+    public ulong PersistedSnapshotMaxCompactSize;
+    public ulong CompactionOffset;
+    public ulong MinReorgDepth;
+    public ulong MaxReorgDepth;
+    public ulong MaxInMemorySnapshotBytes;
+    public ulong SecondsPerSlot;
+    public double InMemorySlotFilterBitsPerKey;
+    /// <summary>Histogram observations queued between drains; 0 records none.</summary>
+    public uint ObservationCapacity;
+    public byte InlineCompaction;
+    /// <summary>Whether every persist queues its trie nodes for the <c>IsPersisted</c> replay.</summary>
+    public byte PersistedNodeEvents;
+    public byte DetailedMetrics;
+}
+
+/// <summary>The host callbacks of a native manager; see <see cref="RustHostCallbacks"/>.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FdbHost
+{
+    public nint Ctx;
+    public nint FinalizedBlockNumber;
+    public nint FinalizedStateRoot;
+    public nint FlushDeferred;
+}
+
+/// <summary>The counters of a native manager, one <c>long</c> per <see cref="Nethermind.State.Flat.Metrics"/> property, updated atomically in place.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FdbCounters
+{
+    public long SnapshotCount;
+    public long CompactedSnapshotCount;
+    public long SnapshotMemory;
+    public long CompactedSnapshotMemory;
+    public long TotalSnapshotMemory;
+    public long SnapshotBundleSize;
+    public long SnapshotBundlePersistedSnapshotSize;
+    public long SnapshotBundlePersistedSnapshotMemory;
+    public long InMemorySlotFilterMemory;
+    public long InMemorySlotFilterBuilds;
+    public long InMemorySlotFilterBuildFailures;
+    public long ObservationsDropped;
+}
+
+/// <summary>A histogram observation of a native manager.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FdbObservation
+{
+    public ushort Metric;
+    public ushort Label;
+    public double Value;
+}
+
+/// <summary>A trie node a native persist wrote.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FfiPersistedNode
+{
+    public const byte StorageNode = 1;
+
+    public fixed byte AddressHash[32];
+    public fixed byte Path[32];
+    public fixed byte Hash[32];
+    public byte PathLength;
+    public byte IsStorage;
+
+    /// <summary>The node as the <c>IsPersisted</c> replay keys it: the account path of a storage node, zero for a state node.</summary>
+    public readonly (bool IsStorage, ValueHash256 Address, TreePath Path) Key =>
+        (IsStorage == StorageNode,
+            new ValueHash256(MemoryMarshal.CreateReadOnlySpan(in AddressHash[0], ValueHash256.MemorySize)),
+            new TreePath(new ValueHash256(MemoryMarshal.CreateReadOnlySpan(in Path[0], ValueHash256.MemorySize)), PathLength));
+
+    public readonly ValueHash256 NodeHash => new(MemoryMarshal.CreateReadOnlySpan(in Hash[0], ValueHash256.MemorySize));
+}
+
+/// <summary>The trie nodes of one native persist; <see cref="Owner"/> keeps <see cref="Nodes"/> alive until released.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FdbPersistedEvent
+{
+    public FfiStateId From;
+    public FfiStateId To;
+    public FfiPersistedNode* Nodes;
+    public nuint NodeCount;
+    public nint Owner;
 }

@@ -43,9 +43,9 @@ pub const DELETE_STORAGE_TRIE_NODE_RANGE: u8 = 12;
 /// Applies every operation of `ops` to `batch`, in order. An operation that fails stops the stream; the ones before
 /// it stay applied, as they would have been by the C# calls.
 pub fn apply(batch: &mut impl PersistenceWriteBatch, ops: &[u8]) -> Result<(), FfiError> {
-    let mut reader = Reader { ops, position: 0 };
+    let mut reader = Reader::new(ops);
     let mut index = 0usize;
-    while reader.position < ops.len() {
+    while !reader.is_done() {
         let start = reader.position;
         apply_one(batch, &mut reader).map_err(|error| FfiError {
             status: error.status,
@@ -109,12 +109,21 @@ fn apply_one(batch: &mut impl PersistenceWriteBatch, reader: &mut Reader<'_>) ->
     Ok(())
 }
 
-struct Reader<'a> {
+/// Reads the fields of a packed stream, shared with [`crate::snapshot_stream`].
+pub(crate) struct Reader<'a> {
     ops: &'a [u8],
-    position: usize,
+    pub(crate) position: usize,
 }
 
 impl<'a> Reader<'a> {
+    pub(crate) fn new(ops: &'a [u8]) -> Self {
+        Self { ops, position: 0 }
+    }
+
+    pub(crate) fn is_done(&self) -> bool {
+        self.position >= self.ops.len()
+    }
+
     fn take(&mut self, count: usize) -> Result<&'a [u8], FfiError> {
         let end = self
             .position
@@ -130,27 +139,27 @@ impl<'a> Reader<'a> {
         Ok(self.take(N)?.try_into().expect("took N bytes"))
     }
 
-    fn u8(&mut self) -> Result<u8, FfiError> {
+    pub(crate) fn u8(&mut self) -> Result<u8, FfiError> {
         Ok(self.array::<1>()?[0])
     }
 
-    fn u64(&mut self) -> Result<u64, FfiError> {
+    pub(crate) fn u64(&mut self) -> Result<u64, FfiError> {
         Ok(u64::from_le_bytes(self.array()?))
     }
 
-    fn address(&mut self) -> Result<Address, FfiError> {
+    pub(crate) fn address(&mut self) -> Result<Address, FfiError> {
         self.array()
     }
 
-    fn hash(&mut self) -> Result<Hash256, FfiError> {
+    pub(crate) fn hash(&mut self) -> Result<Hash256, FfiError> {
         self.array()
     }
 
-    fn u256(&mut self) -> Result<U256, FfiError> {
+    pub(crate) fn u256(&mut self) -> Result<U256, FfiError> {
         Ok(U256([self.u64()?, self.u64()?, self.u64()?, self.u64()?]))
     }
 
-    fn account(&mut self) -> Result<Account, FfiError> {
+    pub(crate) fn account(&mut self) -> Result<Account, FfiError> {
         Ok(Account::with_hashes(
             self.u64()?,
             self.u256()?,
@@ -159,7 +168,7 @@ impl<'a> Reader<'a> {
         ))
     }
 
-    fn path(&mut self) -> Result<TreePath, FfiError> {
+    pub(crate) fn path(&mut self) -> Result<TreePath, FfiError> {
         let path = self.hash()?;
         let length = self.u8()?;
         if length > TreePath::MAX_LENGTH {
@@ -168,7 +177,7 @@ impl<'a> Reader<'a> {
         Ok(TreePath::new(path, length))
     }
 
-    fn bytes(&mut self) -> Result<&'a [u8], FfiError> {
+    pub(crate) fn bytes(&mut self) -> Result<&'a [u8], FfiError> {
         let length = u32::from_le_bytes(self.array()?);
         self.take(length as usize)
     }
@@ -185,6 +194,11 @@ pub mod writer {
     impl OpWriter {
         pub fn op(&mut self, tag: u8) -> &mut Self {
             self.0.push(tag);
+            self
+        }
+
+        pub fn byte(&mut self, value: u8) -> &mut Self {
+            self.0.push(value);
             self
         }
 

@@ -83,6 +83,10 @@ internal sealed class RustPersistence : IPersistence, IDisposable, IAsyncDisposa
         }
     }
 
+    /// <summary>Wraps a native reader of the store, for which the caller took a reference on the store.</summary>
+    internal IPersistence.IPersistenceReader WrapReader(nint reader, in StateId currentState) =>
+        new Reader(_store, new ReaderHandle(_store, reader), currentState);
+
     public void Flush() => _store.ThrowIfFailed(NativeMethods.fdb_store_flush(_store));
 
     public void Clear()

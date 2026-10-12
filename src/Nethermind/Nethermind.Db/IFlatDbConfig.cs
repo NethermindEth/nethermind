@@ -7,7 +7,7 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Implementation of the flat-state DB. `CSharp` is the default. `RustPersistence` runs the persistence layer in the native Rust library under the C# snapshot manager; it needs the native library next to the executable, `EnableLongFinality=false` and history disabled. `Rust`, which also runs the snapshot manager in the native library, is still being ported and refused at startup.", DefaultValue = "CSharp")]
+    [ConfigItem(Description = "Implementation of the flat-state DB. `CSharp` is the default. `RustPersistence` runs the persistence layer in the native Rust library under the C# snapshot manager. `Rust` also runs the snapshot manager (snapshots, compaction, persistence and the read-only bundles) in the native library. Both need the native library next to the executable, `EnableLongFinality=false` and history disabled.", DefaultValue = "CSharp")]
     FlatDbBackend Backend { get; set; }
 
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]

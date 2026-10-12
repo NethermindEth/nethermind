@@ -3,10 +3,14 @@
 use std::ffi::c_void;
 use std::mem::offset_of;
 
+use flatdb_core::host::{HostCallbacks, HostError};
 use flatdb_core::kv::KvError;
 use flatdb_core::kv::managed::ManagedKvVTable;
 use flatdb_core::kv::rocks_api::RocksApi;
+use flatdb_core::manager::ManagerError;
 use flatdb_core::persistence::PersistenceError;
+use flatdb_core::persistence_manager::PersistError;
+use flatdb_core::stats::{FlatCounters, Observation};
 use flatdb_core::types::{Account, EMPTY_TREE_HASH, Hash256, KECCAK_OF_EMPTY_STRING, StateId, U256};
 
 /// Status code returned by every fallible export.
@@ -78,6 +82,38 @@ impl From<PersistenceError> for FfiError {
             PersistenceError::InvalidOperation(_) => FdbStatus::InvalidOperation,
             PersistenceError::WrongBaseState { .. } => FdbStatus::WrongBaseState,
             PersistenceError::ValueTooLarge { .. } => FdbStatus::InvalidArgument,
+        };
+        Self {
+            status,
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<ManagerError> for FfiError {
+    fn from(error: ManagerError) -> Self {
+        let status = match &error {
+            ManagerError::Persistence(error) => return error.clone().into(),
+            ManagerError::Persist(error) => return error.clone().into(),
+            ManagerError::StateNotRetained(_) => FdbStatus::StateNotRetained,
+            ManagerError::GatherTimeout { .. } => FdbStatus::GatherTimeout,
+            ManagerError::PreGenesis => FdbStatus::InvalidArgument,
+            ManagerError::ShutDown => FdbStatus::ShutDown,
+            ManagerError::Cancelled => FdbStatus::Cancelled,
+        };
+        Self {
+            status,
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<PersistError> for FfiError {
+    fn from(error: PersistError) -> Self {
+        let status = match &error {
+            PersistError::Persistence(error) => return error.clone().into(),
+            PersistError::Host(HostError::Cancelled) => FdbStatus::Cancelled,
+            PersistError::Host(HostError::Failed(_)) => FdbStatus::InvalidOperation,
         };
         Self {
             status,
@@ -233,8 +269,103 @@ pub struct FdbKvDesc {
     pub managed: *const ManagedKvVTable,
 }
 
+/// Snapshot manager settings: the `IFlatDbConfig` and `IBlocksConfig` values `FlatDbManager`, `PersistenceManager`,
+/// `SnapshotCompactor` and `CompactionSchedule` read, with the compaction offset C# resolved.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FdbMgrCfg {
+    /// Must equal `fdb_abi_version()`.
+    pub abi_version: u32,
+    /// `MaxInFlightCompactJob`.
+    pub max_in_flight_compact_job: u32,
+    /// `CompactSize`.
+    pub compact_size: u64,
+    /// `PersistedSnapshotMaxCompactSize`.
+    pub persisted_snapshot_max_compact_size: u64,
+    /// `CompactionSchedule.Offset`.
+    pub compaction_offset: u64,
+    /// `MinReorgDepth`.
+    pub min_reorg_depth: u64,
+    /// `MaxReorgDepth`.
+    pub max_reorg_depth: u64,
+    /// `MaxInMemorySnapshotBytes`.
+    pub max_in_memory_snapshot_bytes: u64,
+    /// `IBlocksConfig.SecondsPerSlot`.
+    pub seconds_per_slot: u64,
+    /// `InMemorySnapshotBloomBitsPerKey`.
+    pub in_memory_slot_filter_bits_per_key: f64,
+    /// Histogram observations queued for `fdb_drain_observations`; 0 records none, as with detailed metrics off.
+    pub observation_capacity: u32,
+    /// `InlineCompaction`.
+    pub inline_compaction: u8,
+    /// Whether every persist queues its trie nodes for `fdb_take_persisted_event`.
+    pub persisted_node_events: u8,
+    /// `Db.Metrics.DetailedMetricsEnabled`, which decides whether the readers of the manager count carry-forward hits
+    /// and misses.
+    pub detailed_metrics: u8,
+}
+
+/// The host callbacks of a manager, `FdbHost`: [`HostCallbacks`] with every entry checked for null.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FdbHost {
+    pub ctx: usize,
+    pub finalized_block_number: Option<extern "C" fn(ctx: usize) -> u64>,
+    pub finalized_state_root: Option<extern "C" fn(ctx: usize, block_number: u64, root: &mut Hash256) -> u8>,
+    pub flush_deferred: Option<extern "C" fn(ctx: usize) -> i32>,
+}
+
+impl TryFrom<&FdbHost> for HostCallbacks {
+    type Error = FfiError;
+
+    fn try_from(host: &FdbHost) -> Result<Self, FfiError> {
+        let (Some(finalized_block_number), Some(finalized_state_root), Some(flush_deferred)) = (
+            host.finalized_block_number,
+            host.finalized_state_root,
+            host.flush_deferred,
+        ) else {
+            return Err(FfiError::invalid_argument("the host lacks a callback"));
+        };
+        Ok(HostCallbacks {
+            ctx: host.ctx,
+            finalized_block_number,
+            finalized_state_root,
+            flush_deferred,
+        })
+    }
+}
+
+/// [`FfiPersistedNode::is_storage`]: the node is a storage trie node of the account `address_hash` is the path of.
+pub const PERSISTED_STORAGE_NODE: u8 = 1;
+
+/// A trie node a persist wrote, for the C# replay of `IsPersisted`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FfiPersistedNode {
+    /// The account path of a storage trie node; zero for a state trie node.
+    pub address_hash: Hash256,
+    pub path: Hash256,
+    /// The hash the node was added with.
+    pub hash: Hash256,
+    pub path_length: u8,
+    /// [`PERSISTED_STORAGE_NODE`] or 0.
+    pub is_storage: u8,
+}
+
+/// The nodes of one persist, `fdb_take_persisted_event`'s record. `owner` keeps `nodes` alive until released with
+/// `fdb_persisted_event_release`; it is null when no persist was queued.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FdbPersistedEvent {
+    pub from: FfiStateId,
+    pub to: FfiStateId,
+    pub nodes: *const FfiPersistedNode,
+    pub node_count: usize,
+    pub owner: *mut c_void,
+}
+
 /// Size of every `repr(C)` type, in the order `fdb_struct_sizes` reports them.
-pub const STRUCT_SIZES: [u32; 8] = [
+pub const STRUCT_SIZES: [u32; 14] = [
     size_of::<FdbStoreCfg>() as u32,
     size_of::<FdbKvDesc>() as u32,
     size_of::<RocksApi>() as u32,
@@ -243,11 +374,17 @@ pub const STRUCT_SIZES: [u32; 8] = [
     size_of::<FdbStats>() as u32,
     size_of::<FfiStateId>() as u32,
     size_of::<FfiAccount>() as u32,
+    size_of::<FdbMgrCfg>() as u32,
+    size_of::<FdbHost>() as u32,
+    size_of::<FlatCounters>() as u32,
+    size_of::<Observation>() as u32,
+    size_of::<FfiPersistedNode>() as u32,
+    size_of::<FdbPersistedEvent>() as u32,
 ];
 
 /// Offset of every field of the `repr(C)` types with several fields, in declaration order, as `fdb_struct_offsets`
 /// reports them. With [`STRUCT_SIZES`] it pins the layouts the C# mirrors must match.
-pub const FIELD_OFFSETS: [u32; 42] = [
+pub const FIELD_OFFSETS: [u32; 85] = [
     offset_of!(FdbStoreCfg, abi_version) as u32,
     offset_of!(FdbStoreCfg, layout) as u32,
     offset_of!(FdbStoreCfg, write_buffer_floor) as u32,
@@ -290,4 +427,47 @@ pub const FIELD_OFFSETS: [u32; 42] = [
     offset_of!(FfiAccount, storage_root) as u32,
     offset_of!(FfiAccount, code_hash) as u32,
     offset_of!(FfiAccount, flags) as u32,
+    offset_of!(FdbMgrCfg, abi_version) as u32,
+    offset_of!(FdbMgrCfg, max_in_flight_compact_job) as u32,
+    offset_of!(FdbMgrCfg, compact_size) as u32,
+    offset_of!(FdbMgrCfg, persisted_snapshot_max_compact_size) as u32,
+    offset_of!(FdbMgrCfg, compaction_offset) as u32,
+    offset_of!(FdbMgrCfg, min_reorg_depth) as u32,
+    offset_of!(FdbMgrCfg, max_reorg_depth) as u32,
+    offset_of!(FdbMgrCfg, max_in_memory_snapshot_bytes) as u32,
+    offset_of!(FdbMgrCfg, seconds_per_slot) as u32,
+    offset_of!(FdbMgrCfg, in_memory_slot_filter_bits_per_key) as u32,
+    offset_of!(FdbMgrCfg, observation_capacity) as u32,
+    offset_of!(FdbMgrCfg, inline_compaction) as u32,
+    offset_of!(FdbMgrCfg, persisted_node_events) as u32,
+    offset_of!(FdbMgrCfg, detailed_metrics) as u32,
+    offset_of!(FdbHost, ctx) as u32,
+    offset_of!(FdbHost, finalized_block_number) as u32,
+    offset_of!(FdbHost, finalized_state_root) as u32,
+    offset_of!(FdbHost, flush_deferred) as u32,
+    offset_of!(FlatCounters, snapshot_count) as u32,
+    offset_of!(FlatCounters, compacted_snapshot_count) as u32,
+    offset_of!(FlatCounters, snapshot_memory) as u32,
+    offset_of!(FlatCounters, compacted_snapshot_memory) as u32,
+    offset_of!(FlatCounters, total_snapshot_memory) as u32,
+    offset_of!(FlatCounters, snapshot_bundle_size) as u32,
+    offset_of!(FlatCounters, snapshot_bundle_persisted_snapshot_size) as u32,
+    offset_of!(FlatCounters, snapshot_bundle_persisted_snapshot_memory) as u32,
+    offset_of!(FlatCounters, in_memory_slot_filter_memory) as u32,
+    offset_of!(FlatCounters, in_memory_slot_filter_builds) as u32,
+    offset_of!(FlatCounters, in_memory_slot_filter_build_failures) as u32,
+    offset_of!(FlatCounters, observations_dropped) as u32,
+    offset_of!(Observation, metric) as u32,
+    offset_of!(Observation, label) as u32,
+    offset_of!(Observation, value) as u32,
+    offset_of!(FfiPersistedNode, address_hash) as u32,
+    offset_of!(FfiPersistedNode, path) as u32,
+    offset_of!(FfiPersistedNode, hash) as u32,
+    offset_of!(FfiPersistedNode, path_length) as u32,
+    offset_of!(FfiPersistedNode, is_storage) as u32,
+    offset_of!(FdbPersistedEvent, from) as u32,
+    offset_of!(FdbPersistedEvent, to) as u32,
+    offset_of!(FdbPersistedEvent, nodes) as u32,
+    offset_of!(FdbPersistedEvent, node_count) as u32,
+    offset_of!(FdbPersistedEvent, owner) as u32,
 ];

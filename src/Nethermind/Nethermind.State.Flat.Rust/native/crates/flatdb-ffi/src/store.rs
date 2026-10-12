@@ -55,11 +55,11 @@ macro_rules! with_kv {
 pub(crate) use with_kv;
 
 /// A store, handed to C# as an opaque pointer: the persistence stack `FlatWorldStateModule` builds, over a key-value
-/// backend.
+/// backend. The snapshot manager created over it shares the stack.
 pub struct FdbStore {
     /// The backend, for the read count and the debug exports; the persistence holds its own clone.
     pub kv: AnyKv,
-    pub persistence: Box<dyn DynPersistence>,
+    pub persistence: Arc<dyn DynPersistence>,
     pub info: FdbStoreInfo,
     pub carry_forward_metrics: Option<Arc<CarryForwardMetrics>>,
     /// The poison flag, cloned by every open reader, iterator and batch, which the store must outlive.
@@ -144,7 +144,7 @@ impl FdbStore {
 
 /// The persistence stack over one backend.
 struct Stack {
-    persistence: Box<dyn DynPersistence>,
+    persistence: Arc<dyn DynPersistence>,
     rlp_wrap_slots: bool,
     carry_forward_metrics: Option<Arc<CarryForwardMetrics>>,
 }
@@ -158,7 +158,7 @@ impl Stack {
         let cached = CachedReaderPersistence::new(persistence)?;
         if cfg.carry_forward == 0 {
             return Ok(Self {
-                persistence: Box::new(cached),
+                persistence: Arc::new(cached),
                 rlp_wrap_slots,
                 carry_forward_metrics: None,
             });
@@ -167,7 +167,7 @@ impl Stack {
         let carry_forward = CarryForwardCachingPersistence::new(cached)?;
         Ok(Self {
             carry_forward_metrics: Some(carry_forward.metrics().clone()),
-            persistence: Box::new(carry_forward),
+            persistence: Arc::new(carry_forward),
             rlp_wrap_slots,
         })
     }

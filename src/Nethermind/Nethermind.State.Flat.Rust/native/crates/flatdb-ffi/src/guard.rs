@@ -33,20 +33,30 @@ pub fn ffi_guard(body: impl FnOnce() -> Result<(), FfiError>) -> i32 {
 pub struct Poison(AtomicBool);
 
 impl Poison {
+    pub const MESSAGE: &str = "the flat DB store is poisoned by an earlier panic";
+
     /// Runs a call on the store's state inside [`ffi_guard`]. A panic poisons the store and goes on to `ffi_guard`, as
     /// the caches it shares may be left half-updated; every later call then fails with [`FdbStatus::Poisoned`].
     pub fn guard<T>(&self, body: impl FnOnce() -> Result<T, FfiError>) -> Result<T, FfiError> {
-        if self.0.load(Ordering::Acquire) {
+        if self.is_set() {
             return Err(FfiError {
                 status: FdbStatus::Poisoned,
-                message: "the flat DB store is poisoned by an earlier panic".to_owned(),
+                message: Self::MESSAGE.to_owned(),
             });
         }
 
         panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or_else(|payload| {
-            self.0.store(true, Ordering::Release);
+            self.set();
             panic::resume_unwind(payload)
         })
+    }
+
+    pub fn set(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn is_set(&self) -> bool {
+        self.0.load(Ordering::Acquire)
     }
 }
 

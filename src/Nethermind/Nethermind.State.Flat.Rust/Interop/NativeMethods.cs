@@ -134,4 +134,82 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_batch_release(nint batch);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_mgr_create(RustFlatStore store, FdbMgrCfg* cfg, FdbHost* host, nint* manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_signal_exit(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_shutdown(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_destroy(nint manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbCounters* fdb_stats(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_drain_observations(ManagerHandle manager, FdbObservation* buffer, nuint capacity, nuint* count);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_take_persisted_event(ManagerHandle manager, FdbPersistedEvent* persistedEvent);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_persisted_event_release(nint owner);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_bld_new(FfiStateId* from, FfiStateId* to, nuint accounts, nuint storages, nuint stateNodes, nuint storageNodes, nint* builder);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_bld_append(nint builder, byte* records, nuint length);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_bld_absorb(nint into, nint from);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_bld_release(nint builder);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_add_snapshot(ManagerHandle manager, nint builder);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_queue_compaction(ManagerHandle manager, FfiStateId* to, long* stallNs);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_gather(ManagerHandle manager, FfiStateId* baseBlock, uint readerFlags, byte filtered, nint* reader, FfiStateId* readerState);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_has_state(ManagerHandle manager, FfiStateId* stateId, byte* has);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_persisted_state(ManagerHandle manager, FfiStateId* persisted);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_reset_persisted(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_add_to_persistence(ManagerHandle manager, FfiStateId* latest);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_flush_to_persistence(ManagerHandle manager, FfiStateId* persisted);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_drop_unreachable(ManagerHandle manager, FfiStateId* head);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_take_fatal_error(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_clear_bundle_cache(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_log_install(uint level);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_log_take(uint* level, byte* buffer, nuint capacity, nuint* length, byte* has);
+
+    [LibraryImport(LibraryName)]
+    public static partial ulong fdb_log_dropped();
 }

@@ -17,6 +17,7 @@ test-api = []
 
 [dependencies]
 flatdb-core.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

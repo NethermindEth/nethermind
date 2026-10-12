@@ -7,8 +7,11 @@
 
 pub mod abi;
 pub mod guard;
+pub mod manager;
+pub mod manager_exports;
 pub mod op_stream;
 pub mod persistence;
+pub mod snapshot_stream;
 pub mod store;
 
 use std::ptr;
@@ -431,7 +434,7 @@ pub unsafe extern "C" fn fdb_reader_get_account_raw(
         };
         let read = reader
             .poison
-            .guard(|| Ok(reader.get_account_raw(address_hash, buffer)?))?;
+            .guard(|| Ok(reader.get_account_raw_into(address_hash, buffer)?))?;
         report_len(read, capacity, len)
     })
 }
@@ -805,7 +808,7 @@ unsafe fn array<'a, const N: usize>(data: *const u8) -> Result<&'a [u8; N], FfiE
 
 /// # Safety
 /// `pointer` must be null or valid for writes.
-unsafe fn out<'a, T>(pointer: *mut T) -> Result<&'a mut T, FfiError> {
+pub(crate) unsafe fn out<'a, T>(pointer: *mut T) -> Result<&'a mut T, FfiError> {
     // SAFETY: the caller guarantees a writable pointer.
     unsafe { pointer.as_mut() }.ok_or_else(|| FfiError::invalid_argument("null out-pointer"))
 }
@@ -826,14 +829,14 @@ unsafe fn batch_mut<'a>(batch: *mut FdbBatch) -> Result<&'a mut FdbBatch, FfiErr
 
 /// # Safety
 /// `store` must be null or a live store.
-unsafe fn store_ref<'a>(store: *const FdbStore) -> Result<&'a FdbStore, FfiError> {
+pub(crate) unsafe fn store_ref<'a>(store: *const FdbStore) -> Result<&'a FdbStore, FfiError> {
     // SAFETY: the caller passes null or a live store.
     unsafe { store.as_ref() }.ok_or_else(|| FfiError::invalid_argument("null store"))
 }
 
 /// # Safety
 /// `data` must be valid for reads of `len` bytes unless `len` is 0.
-unsafe fn bytes<'a>(data: *const u8, len: usize) -> Result<&'a [u8], FfiError> {
+pub(crate) unsafe fn bytes<'a>(data: *const u8, len: usize) -> Result<&'a [u8], FfiError> {
     match (data.is_null(), len) {
         (_, 0) => Ok(&[]),
         (true, _) => Err(FfiError::invalid_argument("null pointer with a non-zero length")),
@@ -844,7 +847,7 @@ unsafe fn bytes<'a>(data: *const u8, len: usize) -> Result<&'a [u8], FfiError> {
 
 /// # Safety
 /// `data` must be valid for writes of `len` bytes unless `len` is 0.
-unsafe fn bytes_mut<'a>(data: *mut u8, len: usize) -> Result<&'a mut [u8], FfiError> {
+pub(crate) unsafe fn bytes_mut<'a>(data: *mut u8, len: usize) -> Result<&'a mut [u8], FfiError> {
     match (data.is_null(), len) {
         (_, 0) => Ok(&mut []),
         (true, _) => Err(FfiError::invalid_argument("null pointer with a non-zero length")),
@@ -1433,8 +1436,8 @@ mod tests {
         // SAFETY: the buffer holds 16 values.
         let count = unsafe { fdb_struct_sizes(sizes.as_mut_ptr(), sizes.len() as u32) };
         assert_eq!(&sizes[..count as usize], &STRUCT_SIZES);
-        let mut offsets = [0u32; 64];
-        // SAFETY: the buffer holds 64 values.
+        let mut offsets = [0u32; 128];
+        // SAFETY: the buffer holds 128 values.
         let count = unsafe { fdb_struct_offsets(offsets.as_mut_ptr(), offsets.len() as u32) };
         assert_eq!(&offsets[..count as usize], &FIELD_OFFSETS);
 

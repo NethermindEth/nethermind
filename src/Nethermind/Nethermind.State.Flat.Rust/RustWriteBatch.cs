@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +10,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
+using static Nethermind.State.Flat.Rust.Interop.OpFieldWriter;
 
 namespace Nethermind.State.Flat.Rust;
 
@@ -27,13 +27,6 @@ namespace Nethermind.State.Flat.Rust;
 internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle handle) : IPersistence.IWriteBatch
 {
     private const int BufferSize = 64 * 1024;
-
-    private const int AddressSize = Address.Size;
-    private const int HashSize = ValueHash256.MemorySize;
-    private const int UInt256Size = 32;
-    private const int AccountSize = sizeof(ulong) + UInt256Size + 2 * HashSize;
-    private const int PathSize = HashSize + 1;
-    private const int LengthSize = sizeof(uint);
 
     private const byte SelfDestructOp = 0;
     private const byte SetAccountOp = 1;
@@ -55,7 +48,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
 
     public void SelfDestruct(Address addr)
     {
-        OpWriter op = Append(SelfDestructOp, AddressSize);
+        OpFieldWriter op = Append(SelfDestructOp, AddressSize);
         op.Write(addr.Bytes);
     }
 
@@ -67,7 +60,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
             return;
         }
 
-        OpWriter op = Append(SetAccountOp, AddressSize + AccountSize);
+        OpFieldWriter op = Append(SetAccountOp, AddressSize + AccountSize);
         op.Write(addr.Bytes);
         op.Write(account);
     }
@@ -76,13 +69,13 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
     {
         if (value is null)
         {
-            OpWriter remove = Append(RemoveStorageOp, AddressSize + UInt256Size);
+            OpFieldWriter remove = Append(RemoveStorageOp, AddressSize + UInt256Size);
             remove.Write(addr.Bytes);
             remove.Write(slot);
             return;
         }
 
-        OpWriter op = Append(SetStorageOp, AddressSize + 2 * UInt256Size);
+        OpFieldWriter op = Append(SetStorageOp, AddressSize + 2 * UInt256Size);
         op.Write(addr.Bytes);
         op.Write(slot);
         op.Write(value.Value);
@@ -90,14 +83,14 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
 
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp)
     {
-        OpWriter op = Append(SetStateTrieNodeOp, PathSize + LengthSize + rlp.Length);
+        OpFieldWriter op = Append(SetStateTrieNodeOp, PathSize + LengthSize + rlp.Length);
         op.Write(path);
         op.WriteWithLength(rlp);
     }
 
     public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp)
     {
-        OpWriter op = Append(SetStorageTrieNodeOp, HashSize + PathSize + LengthSize + rlp.Length);
+        OpFieldWriter op = Append(SetStorageTrieNodeOp, HashSize + PathSize + LengthSize + rlp.Length);
         op.Write(address.Bytes);
         op.Write(path);
         op.WriteWithLength(rlp);
@@ -113,7 +106,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
         ctx.DecodeByteArraySpan();
         ReadOnlySpan<byte> value = rlpValue[..ctx.Position];
 
-        OpWriter op = Append(SetStorageRawEncodedOp, 2 * HashSize + LengthSize + value.Length);
+        OpFieldWriter op = Append(SetStorageRawEncodedOp, 2 * HashSize + LengthSize + value.Length);
         op.Write(addrHash.Bytes);
         op.Write(slotHash.Bytes);
         op.WriteWithLength(value);
@@ -122,7 +115,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
     public void SetAccountRaw(in ValueHash256 addrHash, Account account)
     {
         ThrowIfRawUnavailable();
-        OpWriter op = Append(SetAccountRawOp, HashSize + AccountSize);
+        OpFieldWriter op = Append(SetAccountRawOp, HashSize + AccountSize);
         op.Write(addrHash.Bytes);
         op.Write(account);
     }
@@ -130,7 +123,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
     public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
     {
         ThrowIfSnapSyncUnavailable();
-        OpWriter op = Append(DeleteAccountRangeOp, 2 * HashSize);
+        OpFieldWriter op = Append(DeleteAccountRangeOp, 2 * HashSize);
         op.Write(fromPath.Bytes);
         op.Write(toPath.Bytes);
     }
@@ -138,7 +131,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
     {
         ThrowIfSnapSyncUnavailable();
-        OpWriter op = Append(DeleteStorageRangeOp, 3 * HashSize);
+        OpFieldWriter op = Append(DeleteStorageRangeOp, 3 * HashSize);
         op.Write(addressHash.Bytes);
         op.Write(fromPath.Bytes);
         op.Write(toPath.Bytes);
@@ -146,14 +139,14 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
 
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to)
     {
-        OpWriter op = Append(DeleteStateTrieNodeRangeOp, 2 * HashSize);
+        OpFieldWriter op = Append(DeleteStateTrieNodeRangeOp, 2 * HashSize);
         op.Write(from.Bytes);
         op.Write(to.Bytes);
     }
 
     public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
     {
-        OpWriter op = Append(DeleteStorageTrieNodeRangeOp, 3 * HashSize);
+        OpFieldWriter op = Append(DeleteStorageTrieNodeRangeOp, 3 * HashSize);
         op.Write(addressHash.Bytes);
         op.Write(from.Bytes);
         op.Write(to.Bytes);
@@ -202,7 +195,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
     }
 
     /// <summary>Reserves room for an operation of <paramref name="size"/> bytes after its tag, handing over the buffer first if it is full.</summary>
-    private OpWriter Append(byte tag, int size)
+    private OpFieldWriter Append(byte tag, int size)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -220,7 +213,7 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
         Span<byte> op = _buffer.AsSpan(_length, needed);
         _length += needed;
         op[0] = tag;
-        return new OpWriter(op[1..]);
+        return new OpFieldWriter(op[1..]);
     }
 
     /// <summary>Applies the buffered operations to the native batch.</summary>
@@ -233,54 +226,6 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
         fixed (byte* ops = _buffer)
         {
             store.ThrowIfFailed(NativeMethods.fdb_batch_apply(handle, ops, (nuint)length));
-        }
-    }
-
-    /// <summary>Writes the fields of one operation.</summary>
-    private ref struct OpWriter(Span<byte> span)
-    {
-        private Span<byte> _rest = span;
-
-        public void Write(scoped ReadOnlySpan<byte> bytes)
-        {
-            bytes.CopyTo(_rest);
-            _rest = _rest[bytes.Length..];
-        }
-
-        public void WriteWithLength(scoped ReadOnlySpan<byte> bytes)
-        {
-            BinaryPrimitives.WriteUInt32LittleEndian(_rest, (uint)bytes.Length);
-            _rest = _rest[LengthSize..];
-            Write(bytes);
-        }
-
-        public void Write(ulong value)
-        {
-            BinaryPrimitives.WriteUInt64LittleEndian(_rest, value);
-            _rest = _rest[sizeof(ulong)..];
-        }
-
-        public void Write(in UInt256 value)
-        {
-            Write(value.u0);
-            Write(value.u1);
-            Write(value.u2);
-            Write(value.u3);
-        }
-
-        public void Write(Account account)
-        {
-            Write(account.Nonce);
-            Write(account.Balance);
-            Write(account.StorageRoot.Bytes);
-            Write(account.CodeHash.Bytes);
-        }
-
-        public void Write(in TreePath path)
-        {
-            Write(path.Path.Bytes);
-            _rest[0] = (byte)path.Length;
-            _rest = _rest[1..];
         }
     }
 }

@@ -138,6 +138,9 @@ internal sealed unsafe class RustFlatStore : SafeHandle
     /// <summary>Throws what the C# persistence would for a failed call on the store.</summary>
     public void ThrowIfFailed(FdbStatus status) => ThrowIfFailed(status, _rocksDb);
 
+    /// <summary>Lets <see cref="DbOnTheRocks.HandleFatalDbError"/> shut the node down on a RocksDB error the native library hit off any call.</summary>
+    public void ReportFatal(string message) => _rocksDb?.HandleFatalDbError(new RocksDbException(message));
+
     /// <remarks>
     /// A RocksDB failure becomes the <see cref="RocksDbException"/> the bindings throw, after
     /// <see cref="DbOnTheRocks.HandleFatalDbError"/> had its say, as every <see cref="DbOnTheRocks"/> call does.

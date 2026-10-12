@@ -29,16 +29,24 @@ public class FfiAbiTests
             [FfiStruct.Stats] = sizeof(FdbStats),
             [FfiStruct.StateId] = sizeof(FfiStateId),
             [FfiStruct.Account] = sizeof(FfiAccount),
+            [FfiStruct.MgrCfg] = sizeof(FdbMgrCfg),
+            [FfiStruct.Host] = sizeof(FdbHost),
+            [FfiStruct.Counters] = sizeof(FdbCounters),
+            [FfiStruct.Observation] = sizeof(FdbObservation),
+            [FfiStruct.PersistedNode] = sizeof(FfiPersistedNode),
+            [FfiStruct.PersistedEvent] = sizeof(FdbPersistedEvent),
         };
         uint[] expectedOffsets =
         [
             .. FieldOffsets<FdbStoreCfg>(), .. FieldOffsets<FdbKvDesc>(), .. FieldOffsets<ManagedKvVTable>(), .. FieldOffsets<FdbStoreInfo>(),
             .. FieldOffsets<FdbStats>(), .. FieldOffsets<FfiStateId>(), .. FieldOffsets<FfiAccount>(),
+            .. FieldOffsets<FdbMgrCfg>(), .. FieldOffsets<FdbHost>(), .. FieldOffsets<FdbCounters>(), .. FieldOffsets<FdbObservation>(),
+            .. FieldOffsets<FfiPersistedNode>(), .. FieldOffsets<FdbPersistedEvent>(),
         ];
-        uint* sizes = stackalloc uint[16];
-        uint count = NativeMethods.fdb_struct_sizes(sizes, 16);
-        uint* offsets = stackalloc uint[64];
-        uint offsetCount = NativeMethods.fdb_struct_offsets(offsets, 64);
+        uint* sizes = stackalloc uint[32];
+        uint count = NativeMethods.fdb_struct_sizes(sizes, 32);
+        uint* offsets = stackalloc uint[128];
+        uint offsetCount = NativeMethods.fdb_struct_offsets(offsets, 128);
 
         using (Assert.EnterMultipleScope())
         {
@@ -51,6 +59,14 @@ public class FfiAbiTests
             Assert.That(new ReadOnlySpan<uint>(offsets, (int)offsetCount).ToArray(), Is.EqualTo(expectedOffsets));
         }
     }
+
+    /// <summary>A failed native call throws what the C# backend throws for the same failure.</summary>
+    [TestCase((int)FdbStatus.GatherTimeout, typeof(InvalidOperationException))]
+    [TestCase((int)FdbStatus.WrongBaseState, typeof(InvalidOperationException))]
+    [TestCase((int)FdbStatus.Cancelled, typeof(OperationCanceledException))]
+    [TestCase((int)FdbStatus.ShutDown, typeof(ObjectDisposedException))]
+    public void Statuses_throw_the_exceptions_of_the_csharp_backend(int status, Type expected) =>
+        Assert.That(StatusMap.ToException((FdbStatus)status, "failed"), Is.TypeOf(expected));
 
     /// <summary>The offset of every field of <typeparamref name="T"/>, in declaration order.</summary>
     private static IEnumerable<uint> FieldOffsets<T>() where T : struct =>
