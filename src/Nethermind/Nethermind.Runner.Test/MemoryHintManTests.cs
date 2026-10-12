@@ -70,6 +70,24 @@ namespace Nethermind.Runner.Test
         }
 
         [Test]
+        public void Tx_hash_cache_keeps_its_default_size_under_the_shipped_memory_hint()
+        {
+            int defaultSize = MemoryAllowance.TxHashCacheSize;
+            try
+            {
+                _initConfig.MemoryHint = 1024 * MB;
+                SetMemoryAllowances(4);
+
+                // A tiny cache disables the per-peer announcement shape check and the long-term seen-hash cache.
+                Assert.That(MemoryAllowance.TxHashCacheSize, Is.EqualTo(131_072));
+            }
+            finally
+            {
+                MemoryAllowance.TxHashCacheSize = defaultSize;
+            }
+        }
+
+        [Test]
         public void Db_size_are_computed_correctly(
             [Values(256 * MB, 512 * MB, 1 * GB, 4 * GB, 6 * GB, 16 * GB, 32 * GB, 64 * GB, 128 * GB)]
             ulong memoryHint,
