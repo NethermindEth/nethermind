@@ -473,7 +473,7 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
-            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!);
+            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!, header.Number);
             if (resolvedBlock is null)
             {
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
