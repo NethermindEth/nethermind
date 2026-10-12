@@ -91,7 +91,7 @@ public class ConfigProvider : IConfigProvider
 
     public object? GetRawValue(string category, string name)
     {
-        if (IsSensitive(category, name))
+        if (!IsReadable(category, name))
         {
             return null;
         }
@@ -111,22 +111,50 @@ public class ConfigProvider : IConfigProvider
             ?.GetValue(value) : null;
     }
 
-    private static bool IsSensitive(string category, string name)
+    /// <summary>
+    /// Whether <paramref name="category"/> and <paramref name="name"/> resolve to a property declared on a
+    /// discovered config interface that is not flagged <see cref="ConfigItemAttribute.IsSensitive"/>.
+    /// </summary>
+    /// <remarks>
+    /// Sources build their lookup key from both parts (<c>Category.Name</c>, <c>NETHERMIND_CATEGORY_NAME</c>),
+    /// so a split that does not resolve to a property (e.g. an empty category with <c>KeyStore.TestNodeKey</c>
+    /// as the name) can still reach a sensitive value and is rejected.
+    /// </remarks>
+    private static bool IsReadable(string? category, string? name)
     {
+        if (string.IsNullOrEmpty(name)) return false;
+
+        bool found = false;
         foreach ((Type configType, _) in ConfigTypesFromAssembly)
         {
-            string categoryName = configType.Name[1..];
-            if (!categoryName.Equals(category, StringComparison.OrdinalIgnoreCase)
-                && !categoryName.Equals(category + "Config", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
+            if (!IsCategory(configType, category)) continue;
 
             PropertyInfo? property = configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            return property?.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true;
+            if (property is null) continue;
+
+            if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) return false;
+
+            found = true;
         }
 
-        return false;
+        return found;
+    }
+
+    private static bool IsCategory(Type configType, string? category)
+    {
+        string? typeCategory = ConfigExtensions.GetCategoryName(configType);
+        if (typeCategory is null || string.IsNullOrEmpty(category))
+        {
+            return typeCategory is null && string.IsNullOrEmpty(category);
+        }
+
+        ReadOnlySpan<char> requested = category.AsSpan();
+        if (requested.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+        {
+            requested = requested[..^"Config".Length];
+        }
+
+        return requested.Equals(typeCategory, StringComparison.OrdinalIgnoreCase);
     }
 
     public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);
