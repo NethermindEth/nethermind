@@ -38,7 +38,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private HashSet<AddressAsKey>? _transientCreates;
     private readonly bool _diffMode;
     private readonly bool _isEip8298Enabled;
-    // EIP-4758: SELFDESTRUCT (SENDALL) never deletes an account.
     private readonly bool _isEip4758Enabled;
 
     public NativePrestateTracer(
