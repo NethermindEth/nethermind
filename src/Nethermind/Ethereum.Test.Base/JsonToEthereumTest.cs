@@ -108,9 +108,8 @@ namespace Ethereum.Test.Base
                 return engineNewPayload.ValidationError;
             }
 
-            // An inline validation error trails the real arguments, and newPayloadV6 adds a fifth one,
-            // so index 4 there is the inclusion list rather than the error.
-            int validationErrorParamIndex = newPayloadVersion >= 6 ? 5 : newPayloadVersion >= 4 ? 4 : 3;
+            // An inline validation error trails the real arguments.
+            int validationErrorParamIndex = NewPayloadArgumentCount(engineNewPayload, newPayloadVersion);
             if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
                 return null;
@@ -125,6 +124,14 @@ namespace Ethereum.Test.Base
                 _ => null,
             };
         }
+
+        /// <summary>The number of real <c>engine_newPayloadV*</c> arguments a fixture carries, before any inline validation error.</summary>
+        /// <remarks>newPayloadV6 adds the inclusion list as a fifth argument, and EIP-8369 fixtures append membership and
+        /// claims after it. Older FOCIL fixtures stop at five, so six elements there are five arguments and an error.</remarks>
+        public static int NewPayloadArgumentCount(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion) =>
+            newPayloadVersion >= 6 ? (engineNewPayload.Params.Length >= 7 ? 7 : 5)
+            : newPayloadVersion >= 4 ? 4
+            : 3;
 
         /// <summary>
         /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to

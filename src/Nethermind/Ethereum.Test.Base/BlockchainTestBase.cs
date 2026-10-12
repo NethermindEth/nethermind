@@ -463,7 +463,7 @@ public abstract class BlockchainTestBase
                 && enginePayload.ExecutionWitnessMutated != true
                 && validationError is null;
 
-            int paramCount = NewPayloadParamCounts[newPayloadVersion];
+            int paramCount = Math.Min(NewPayloadParamCounts[newPayloadVersion], JsonToEthereumTest.NewPayloadArgumentCount(enginePayload, newPayloadVersion));
             IEnumerable<string> paramsRaw = enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText());
             string paramsJson = "[" + string.Join(",", paramsRaw) + "]";
 
