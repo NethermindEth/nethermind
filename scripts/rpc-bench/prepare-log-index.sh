@@ -48,9 +48,18 @@ done
 
 # Graceful shutdown drains the compression queue before the measured warm-up.
 docker stop --time 600 "$container" >/dev/null
-[[ "$(docker inspect "$container" --format '{{.State.ExitCode}}')" == "0" ]] || die "index preparation did not stop cleanly"
+docker inspect "$container" --format '{{json .State}}' > "$out/stop-state.json"
 docker logs "$container" > "$out/backfill.log" 2>&1
-grep -q 'Log index storage stopped' "$out/backfill.log" || die "index storage did not finish stopping"
+strip_ansi "$out/backfill.log" > "$out/backfill-clean.log"
+exit_code="$(jq -r '.ExitCode' "$out/stop-state.json")"
+case "$exit_code" in
+  0|143) ;;
+  *) die "index preparation exited with code ${exit_code}" ;;
+esac
+[[ "$(jq -r '.OOMKilled' "$out/stop-state.json")" == "false" ]] || die "index preparation was killed by OOM"
+for marker in 'Log index storage stopped' 'All DBs closed' 'Nethermind is shut down'; do
+  grep -qF "$marker" "$out/backfill-clean.log" || die "index preparation is missing shutdown marker: ${marker}"
+done
 coverage_ready || die "index coverage was lost during preparation"
 restart_time="$(date -u +%Y-%m-%dT%H:%M:%S.%NZ)"
 docker start "$container" >/dev/null
