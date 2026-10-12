@@ -4418,6 +4418,28 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_forget_rejected_hash_and_resubmit_full_blob_tx_the_pool_does_not_hold()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(0UL)
+            .SignedAndResolved()
+            .TestObject;
+
+        using SparseBlobPoolPeerRegistry registry = new(_transactionPool, new BlobCustodyTracker(), RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        _transactionPool.SubmitTx(tx, TxHandlingOptions.None).Returns(AcceptTxResult.AlreadyKnown, AcceptTxResult.Accepted);
+        _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction?>()).Returns(false);
+
+        registry.AddPeer(peer);
+        AcceptTxResult? result = registry.RecordTransaction(peer, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        _transactionPool.Received(1).ForgetRejectedBlobTransaction(tx.Hash!);
+        _transactionPool.Received(2).SubmitTx(tx, TxHandlingOptions.None);
+    }
+
+    [Test]
     public void registry_should_reject_null_early_cell()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out _);

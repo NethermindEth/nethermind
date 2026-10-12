@@ -786,6 +786,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Blob_transaction_known_only_as_a_rejected_hash_is_forgotten_and_resubmitted()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None)
+                .Returns(AcceptTxResult.AlreadyKnown, AcceptTxResult.Accepted);
+            _transactionPool.TryGetPendingBlobTransaction(hash, out Arg.Any<Transaction?>()).Returns(false);
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            _transactionPool.Received(1).ForgetRejectedBlobTransaction(hash);
+            _transactionPool.Received(2).SubmitTx(tx, TxHandlingOptions.None);
+        }
+
+        [Test]
+        public void Blob_transaction_the_pool_holds_is_not_resubmitted()
+        {
+            Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.AlreadyKnown);
+            _transactionPool.TryGetPendingBlobTransaction(tx.Hash!, out Arg.Any<Transaction?>()).Returns(x => { x[1] = tx; return true; });
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+
+            _transactionPool.DidNotReceive().ForgetRejectedBlobTransaction(Arg.Any<Hash256>());
+            _transactionPool.Received(1).SubmitTx(tx, TxHandlingOptions.None);
+        }
+
         private sealed class TestEth62ProtocolHandler(
             ISession session,
             IMessageSerializationService serializer,

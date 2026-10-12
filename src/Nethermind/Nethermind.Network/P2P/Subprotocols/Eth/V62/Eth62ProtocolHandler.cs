@@ -398,15 +398,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
-            bool canRecycle = false;
-            AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
-                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            AcceptTxResult accepted = Submit(tx, out bool canRecycle);
+            // A blob tx hash does not cover the sidecar, so a peer that delivered this hash with a corrupted sidecar
+            // first has left it "known" without the pool holding it. Forget that verdict and judge this copy on its
+            // own, as the sparse path does; otherwise the honest copy is censored until the next head.
+            if (accepted == AcceptTxResult.AlreadyKnown && tx.SupportsBlobs && tx.Hash is { } hash && !_txPool.TryGetPendingBlobTransaction(hash, out _))
+            {
+                _txPool.ForgetRejectedBlobTransaction(hash);
+                accepted = Submit(tx, out canRecycle);
+            }
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+
+            AcceptTxResult Submit(Transaction tx, out bool canRecycle)
+            {
+                canRecycle = false;
+                return _txPool is IRecyclableTxPool recyclablePool
+                    ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                    : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            }
         }
 
         protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
