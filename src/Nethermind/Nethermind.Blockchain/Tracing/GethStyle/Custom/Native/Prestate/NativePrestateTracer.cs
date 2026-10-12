@@ -38,6 +38,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private HashSet<AddressAsKey>? _transientCreates;
     private readonly bool _diffMode;
     private readonly bool _isEip8298Enabled;
+    // EIP-4758: SELFDESTRUCT (SENDALL) never deletes an account.
+    private readonly bool _isEip4758Enabled;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -59,6 +61,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _worldState = worldState;
         _txHash = txHash;
         _isEip8298Enabled = spec?.IsEip8298Enabled == true;
+        _isEip4758Enabled = spec?.IsEip4758Enabled == true;
         InstructionMask = _isEip8298Enabled ? CaptureMask | (UInt256.One << (int)Instruction.SETCODEFROM) : CaptureMask;
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
@@ -212,7 +215,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 {
                     address = stack.PeekAddress(0);
                     LookupAccount(address);
-                    if (_diffMode && _op == Instruction.SELFDESTRUCT)
+                    if (_diffMode && _op == Instruction.SELFDESTRUCT && !_isEip4758Enabled)
                         _deletedAccounts.Add(address);
                 }
                 break;
