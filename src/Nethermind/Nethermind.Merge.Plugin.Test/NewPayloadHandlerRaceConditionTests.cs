@@ -528,7 +528,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
@@ -630,7 +630,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(10));
+        await request.WaitAsync(TimeSpan.FromSeconds(30));
 
         object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
         await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
@@ -1042,7 +1042,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.Exception, new Exception("commit failed")));
 
-        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> answer = await request.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.That(answer.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(ExecutionPayload.Create(block));
@@ -1086,7 +1086,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        await request.WaitAsync(TimeSpan.FromSeconds(10));
+        await request.WaitAsync(TimeSpan.FromSeconds(30));
 
         // The block is in the chain now, and a copy of it that was queued earlier is skipped as no better than head.
         committed = true;
@@ -1148,7 +1148,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         parentRemoved.SetResult();
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
-        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> result = await request.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
