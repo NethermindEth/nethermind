@@ -16,7 +16,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -37,10 +36,11 @@ public class StartupPortInUseTests
     {
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
+        Task portInUse = Task.FromException(new PortInUseException(new SocketException((int)SocketError.AddressAlreadyInUse), 30303));
         if (discovery)
-            discoveryApp.StartAsync().Returns(Task.FromException(new PortInUseException(new SocketException((int)SocketError.AddressAlreadyInUse), 30303)));
+            discoveryApp.StartAsync().Returns(portInUse);
         else
-            rlpxHost.Init().Returns(Task.FromException(new PortInUseException(new SocketException((int)SocketError.AddressAlreadyInUse), 30303)));
+            rlpxHost.Init().Returns(portInUse);
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new SyncConfig { NetworkingEnabled = false }))
