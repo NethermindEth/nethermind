@@ -19,11 +19,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public partial class StateTree : PatriciaTree
     {
         private static readonly AccountDecoder _decoder = new();
-
-        public static readonly Rlp EmptyAccountRlp = _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)

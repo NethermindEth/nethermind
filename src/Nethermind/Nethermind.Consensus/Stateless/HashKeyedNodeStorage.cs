@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Stateless;
 /// </remarks>
 internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBatch
 {
-    private static readonly NodeKey EmptyRootKey = new(Keccak.EmptyTreeHash.ValueHash256);
+    private static readonly NodeKey EmptyRootKey = new(ValueKeccak.EmptyTreeHash);
 
     // Created by the first write, so a probe tests a reference rather than the map's count, two narrow loads in the guest.
     private OptimizedDictionary<NodeKey, byte[]?>? _nodes;

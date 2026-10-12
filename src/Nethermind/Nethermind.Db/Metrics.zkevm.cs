@@ -5,13 +5,14 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db;
 
+// Lazy, so the guest runs no class constructor for this type.
 public static partial class Metrics
 {
-    public static Dictionary<string, long> DbReads { get; } = [];
-    public static Dictionary<string, long> DbWrites { get; } = [];
-    public static Dictionary<string, long> DbSize { get; } = [];
-    public static Dictionary<string, long> DbMemtableSize { get; } = [];
-    public static Dictionary<string, long> DbBlockCacheSize { get; } = [];
-    public static Dictionary<string, long> DbIndexFilterSize { get; } = [];
+    public static Dictionary<string, long> DbReads => field ??= [];
+    public static Dictionary<string, long> DbWrites => field ??= [];
+    public static Dictionary<string, long> DbSize => field ??= [];
+    public static Dictionary<string, long> DbMemtableSize => field ??= [];
+    public static Dictionary<string, long> DbBlockCacheSize => field ??= [];
+    public static Dictionary<string, long> DbIndexFilterSize => field ??= [];
     // DbStats and DbCompactionStats omitted: double-valued and unread in the guest.
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -78,6 +79,12 @@ internal sealed partial class PersistentStorageProvider
 
             writes += WriteDeletes(deferredDeletes.AsSpan(), storageWriteBatch);
             return (writes, skipped);
+        }
+
+        // Lazy, so the guest runs no class constructor for this type.
+        private static partial class Pool
+        {
+            private static ConcurrentQueue<PerContractState> _pool => field ??= [];
         }
     }
 }

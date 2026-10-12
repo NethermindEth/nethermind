@@ -13,6 +13,17 @@ namespace Nethermind.Core.Extensions;
 
 public static unsafe partial class Bytes
 {
+    // Preinitializable arrays or lazy, so the guest runs no class constructor for this type.
+    private static readonly byte[] _zeroByte = [0];
+    private static readonly byte[] _oneByte = [1];
+    private static readonly byte[] _twoByte = [2];
+
+    public static ReadOnlyMemory<byte> ZeroByte => _zeroByte;
+    public static ReadOnlyMemory<byte> OneByte => _oneByte;
+    public static ReadOnlyMemory<byte> TwoByte => _twoByte;
+
+    internal static uint[] Lookup32 => field ??= CreateLookup32();
+
     /// <summary>
     /// Reverses the byte order of a 64-bit word.
     /// </summary>
