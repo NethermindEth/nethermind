@@ -759,7 +759,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
         """;
 
-    [TestCase(NoConfig, ExpectedSelfDestructPrestateTrace)]
+    [TestCase(NoConfig, ExpectedEmptyToPrestateTrace)]
+    [TestCase("""{"includeEmpty":true}""", ExpectedSelfDestructPrestateTrace)]
     [TestCase(PrestateMode, ExpectedEmptyToPrestateTrace)]
     [TestCase(DiffMode, ExpectedSelfDestructDiffModeTrace)]
     public void Test_PrestateTrace_SelfDestruct(string? config, string expectedTrace)
@@ -1013,7 +1014,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(accounts[target].Code is null, Is.EqualTo(disableCode));
+                Assert.That(accounts[target].Code.IsEmpty, Is.EqualTo(disableCode));
                 Assert.That(accounts[target].CodeHash, Is.Not.Null);
             }
         }
@@ -1153,5 +1154,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         .Op(Instruction.STOP)
         .Done;
 
-
+    private static byte[] SelfDestruct => Prepare.EvmCode
+        .PushData(TestItem.AddressC.ToString(false, false).PadLeft(64, '0'))
+        .Op(Instruction.SELFDESTRUCT)
+        .Done;
 }

@@ -1744,6 +1744,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
+            if (TTracingInst.IsActive && exceptionType == EvmExceptionType.Revert)
+                _txTracer.ForEach<ITraceRevertFault, EvmExceptionType>(
+                    static tracer => tracer.IsTracingInstructions, EvmExceptionType.Revert,
+                    static (tracer, error) => tracer.ReportOperationError(error));
             if (TTracingInst.IsActive)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             if (IsTracingActions)
@@ -1776,10 +1780,6 @@ public partial class VirtualMachine<TGasPolicy>(
         return new CallResult(dataReturn.AsMemory(0, dataReturnLength), null);
 
     Revert:
-        if (TTracingInst.IsActive)
-            _txTracer.ForEach<ITraceRevertFault, EvmExceptionType>(
-                static tracer => tracer.IsTracingInstructions, EvmExceptionType.Revert,
-                static (tracer, error) => tracer.ReportOperationError(error));
         Debug.Assert(ReturnData is byte[], "REVERT stages a byte array before stopping dispatch.");
         byte[] revertData = Unsafe.As<byte[]>(ReturnData);
         int revertDataLength = _returnDataScratch.GetLength(revertData);
