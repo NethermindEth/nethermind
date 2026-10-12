@@ -64,7 +64,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             };
             throw new InvalidDataException($"json: cannot unmarshal {type} into Go value of type map[string]jsontext.Value");
         }
-        return config.Value.Deserialize<Dictionary<string, JsonElement>>()!;
+        return TypeInfoJsonSerializer.Deserialize<Dictionary<string, JsonElement>>(config.Value, EthereumJsonSerializer.JsonOptions)!;
     }
 
     /// <inheritdoc/>
@@ -139,7 +139,8 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             {
                 int index = 0;
                 foreach (GethLikeTxTrace trace in child.BuildResult())
-                    values[index++].Add(name, JsonSerializer.SerializeToElement(trace, EthereumJsonSerializer.JsonOptions));
+                    values[index++].Add(name, JsonSerializer.SerializeToElement(trace,
+                        TypeInfoJsonSerializer.GetTypeInfo<GethLikeTxTrace>(EthereumJsonSerializer.JsonOptions)));
                 if (index != results.Length)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }

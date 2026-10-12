@@ -319,6 +319,7 @@ public static partial class EvmInstructions
         if (DispatchFlags.ConstTracing && vm.IsTracingActions)
             TraceCallGasError<TGasPolicy, TOpCall>(vm, initialGas, traceColdAccess, hasValueTransfer, in gasLimit, traceMemorySize,
                 in dataOffset, in dataLength, in outputOffset, in outputLength, traceNewAccountCharge);
+    OutOfGas:
         return EvmExceptionType.OutOfGas;
     }
 

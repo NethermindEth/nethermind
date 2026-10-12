@@ -175,7 +175,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             foreach ((AddressAsKey address, NativePrestateTracerAccount account) in _prestate)
             {
-                if (account.Balance.GetValueOrDefault().IsZero && account.Nonce.GetValueOrDefault().IsZero && account.CodeHash is null)
+                if (account.Balance.GetValueOrDefault().IsZero && account.Nonce.GetValueOrDefault().IsZero && account.CodeHash is null
+                    && account.Storage is not { Count: > 0 })
                     _prestate.Remove(address);
             }
         }
@@ -330,7 +331,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
     private void LookupDelegation(Address address)
     {
-        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address), out Address? target))
+        if (_isEip7702Enabled && ICodeInfoRepository.TryGetDelegatedAddress(_worldState!.GetCode(address).Span, out Address? target))
             LookupAccount(target);
     }
 

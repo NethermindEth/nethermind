@@ -176,7 +176,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     if ((nuint)aboveInputs >= (nuint)(EvmStack.MaxStackSize - TOpcode.StackGrowth - TOpcode.StackInputs))
                     {
                         EvmExceptionType stackFailure = aboveInputs < 0 ? EvmExceptionType.StackUnderflow : EvmExceptionType.StackOverflow;
-                        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) && stackFailure == EvmExceptionType.StackUnderflow)
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions && stackFailure == EvmExceptionType.StackUnderflow)
                             state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitChain(ref state, gas, pc, head, stackFailure);
                     }
@@ -185,7 +185,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 {
                     if (TOpcode.StackInputs != 0 && head < TOpcode.StackInputs)
                     {
-                        if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag))
+                        if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions)
                             state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
                         return ExitChain(ref state, gas, pc, head, EvmExceptionType.StackUnderflow);
                     }
@@ -231,7 +231,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas = GetExecutionGas(ref state.Gas);
             }
 
-            if (TTracingInst.IsActive && typeof(TTracingInst) != typeof(SilentInstructionFlag) &&
+            if (DispatchFlags.ConstTracing && state.Vm.IsTracingActions &&
                 !TOpcode.HasCheckedBody && exceptionType == EvmExceptionType.StackUnderflow && TOpcode.StackInputs > 0)
                 state.Vm.TraceActionErrorDetails($"stack underflow ({traceStackHead} <=> {TOpcode.StackInputs})");
 
