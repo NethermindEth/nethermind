@@ -55,6 +55,10 @@ namespace Nethermind.Wallet.Test
             PrivateKey nodeKey = test.NodeKeyManager.LoadNodeKey().Unprotect();
             Assert.That(nodeKey, Is.EqualTo(TestItem.PrivateKeyA));
             test.FileSystem.File.Received().WriteAllBytes(filePath, Arg.Is<byte[]>(a => a.SequenceEqual(nodeKey.KeyBytes)));
+            if (!OperatingSystem.IsWindows())
+            {
+                test.FileSystem.File.Received().SetUnixFileMode(filePath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            }
         }
 
         [Test]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.IO.Abstractions;
 using System.Security;
 using Autofac.Features.AttributeFilters;
@@ -77,6 +78,10 @@ namespace Nethermind.Wallet
                     string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
                     _fileSystem.File.WriteAllBytes(newFile, nodeKey.KeyBytes);
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        _fileSystem.File.SetUnixFileMode(newFile, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 0600
+                    }
                     SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
                     _keyStore.StoreKey(nodeKey, nodeKeyPassword);
                     if (_logger.IsInfo) _logger.Info("Store this password for unlocking the node key for JSON RPC - this is not secure - this log message will be in your log files. Use only in DEV contexts.");
