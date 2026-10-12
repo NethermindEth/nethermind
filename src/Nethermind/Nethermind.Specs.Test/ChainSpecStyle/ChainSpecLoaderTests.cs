@@ -178,6 +178,29 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.Eip2565Transition, Is.Null);
     }
 
+    [Test]
+    public void Can_load_explicit_null_blob_schedule()
+    {
+        const string json = """
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "blobSchedule": null },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpec chainSpec = new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+
+        Assert.That(chainSpec.Parameters.BlobSchedule, Is.Empty);
+    }
+
     /// <summary>Loads a chain spec whose genesis, at timestamp 0, follows <paramref name="transitionParam"/> set to <paramref name="transitionTimestamp"/>.</summary>
     private static ChainSpec LoadChainSpecWithTransition(string transitionParam, ulong transitionTimestamp)
     {

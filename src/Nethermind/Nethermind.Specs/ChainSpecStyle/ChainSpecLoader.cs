@@ -270,10 +270,10 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     }
 
     /// <summary>Keeps the last listed settings for each timestamp, so forks that activate together apply the latest fork's limits.</summary>
-    private static SortedSet<BlobScheduleSettings> CollapseBlobSchedule(List<BlobScheduleSettings> blobSchedule)
+    private static SortedSet<BlobScheduleSettings> CollapseBlobSchedule(List<BlobScheduleSettings>? blobSchedule)
     {
         SortedSet<BlobScheduleSettings> collapsed = [];
-        foreach (BlobScheduleSettings settings in blobSchedule)
+        foreach (BlobScheduleSettings settings in blobSchedule ?? [])
         {
             collapsed.Remove(settings);
             collapsed.Add(settings);
