@@ -1527,6 +1527,46 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Account_read_count_tracks_only_the_resend_execution_context()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        BlockHeader header = chain.BlockTree.Head!.Header;
+        AccountReadCountingStateReader reader = new(chain.StateReader, TestItem.AddressC)
+        {
+            TrackedBlockHash = header.Hash
+        };
+        TaskCompletionSource<(bool Exists, AccountStruct Account)> unrelatedRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ThreadPool.UnsafeQueueUserWorkItem(_ =>
+        {
+            try
+            {
+                bool exists = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct account);
+                unrelatedRead.SetResult((exists, account));
+            }
+            catch (Exception exception)
+            {
+                unrelatedRead.SetException(exception);
+            }
+        }, null);
+
+        (bool exists, AccountStruct account) = await unrelatedRead.Task.WaitAsync(chain.CancellationToken);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(account.Balance, Is.GreaterThan(UInt256.Zero));
+            Assert.That(reader.AccountReads, Is.Zero, "background reports are outside the payload resend");
+        }
+
+        bool resendExists = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct resendAccount);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resendExists, Is.True);
+            Assert.That(resendAccount.Balance, Is.EqualTo(account.Balance));
+            Assert.That(reader.AccountReads, Is.EqualTo(1), "the resend still charges its real account read");
+        }
+    }
+
     /// <summary>Entries exercising known and ambiguous compliance after gas-dimension cache loss.</summary>
     public enum InclusionListEntry { Boundary, Included, Small, WrongNonce }
 
@@ -1534,7 +1574,12 @@ public partial class EngineModuleTests
     private sealed class AccountReadCountingStateReader(IStateReader inner, Address sender) : IStateReader
     {
         private int _accountReads;
-        public Hash256? TrackedBlockHash { get; set; }
+        private readonly AsyncLocal<Hash256?> _trackedBlockHash = new();
+        public Hash256? TrackedBlockHash
+        {
+            get => _trackedBlockHash.Value;
+            set => _trackedBlockHash.Value = value;
+        }
         public int AccountReads => Volatile.Read(ref _accountReads);
 
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
