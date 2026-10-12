@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -24,7 +23,7 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
         [JsonConverter(typeof(RawDurationConverter))]
         public new string? Timeout
         {
-            get => TimeoutText ?? (base.Timeout is { } duration ? duration.Ticks.ToString(CultureInfo.InvariantCulture) + "00ns" : null);
+            get => TimeoutText ?? (base.Timeout is { } duration ? CustomTimeDurationConverter.Format(duration) : null);
             init => TimeoutText = value;
         }
     }

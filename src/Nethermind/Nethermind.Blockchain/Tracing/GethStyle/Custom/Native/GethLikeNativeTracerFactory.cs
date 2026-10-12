@@ -49,7 +49,7 @@ public static class GethLikeNativeTracerFactory
         GethLikeNativeTxTracer tracer = tracerDelegate(options, block, transaction, worldState, releaseSpec);
         try
         {
-            _ = options.Timeout;
+            options.ResolveTimeout();
             return tracer;
         }
         catch

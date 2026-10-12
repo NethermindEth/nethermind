@@ -18,13 +18,34 @@ public class GethTraceOptionsDeserializationTests
     [TestCase("5s", 5)]
     public void ByNumber_options_defer_duration_parsing(string timeout, int? seconds)
     {
-        JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);
-        serializerOptions.Converters.Insert(0, new GethTraceOptionsConverter());
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
         GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>($$"""{"timeout":"{{timeout}}","tracer":"noopTracer"}""", serializerOptions)!;
+        GethTraceOptions copy = options with { Limit = 1 };
 
         Assert.That(options.Tracer, Is.EqualTo("noopTracer"));
-        if (seconds is null) Assert.Catch<FormatException>(() => _ = options.Timeout);
-        else Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(seconds.Value)));
+        if (seconds is null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.Timeout, Is.Null);
+                Assert.That(copy.Timeout, Is.Null);
+                Assert.DoesNotThrow(() => _ = options.ToString());
+                Assert.DoesNotThrow(() => JsonSerializer.Serialize(options, EthereumJsonSerializer.JsonRpcRequestOptions));
+                Assert.Throws<TraceDurationFormatException>(() => options.ResolveTimeout());
+                Assert.Throws<TraceDurationFormatException>(() => copy.ResolveTimeout());
+            }
+        }
+        else
+        {
+            TimeSpan expected = TimeSpan.FromSeconds(seconds.Value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(options.Timeout, Is.EqualTo(expected));
+                Assert.That(options.ResolveTimeout(), Is.EqualTo(expected));
+                Assert.That(copy.Timeout, Is.EqualTo(expected));
+                Assert.That(copy.ResolveTimeout(), Is.EqualTo(expected));
+            }
+        }
     }
 
     [Test]
@@ -33,9 +54,14 @@ public class GethTraceOptionsDeserializationTests
         string timeout = new('x', 10_000);
         GethTraceOptions options = new() { TimeoutText = timeout };
 
-        FormatException exception = Assert.Catch<FormatException>(() => _ = options.Timeout)!;
+        TraceDurationFormatException exception = Assert.Throws<TraceDurationFormatException>(() => options.ResolveTimeout())!;
 
-        Assert.That(exception.Message, Does.Not.Contain(timeout));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Timeout, Is.Null);
+            Assert.That(exception.Message, Does.Not.Contain(timeout));
+            Assert.That(exception.Message, Does.Contain("64 bytes"));
+        }
     }
 
     [Test]
@@ -51,8 +77,7 @@ public class GethTraceOptionsDeserializationTests
             }
             """;
         GethTraceOptions expected = JsonSerializer.Deserialize<GethTraceOptions>(json, EthereumJsonSerializer.JsonRpcRequestOptions)!;
-        JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);
-        serializerOptions.Converters.Insert(0, new GethTraceOptionsConverter());
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
         GethTraceOptions actual = JsonSerializer.Deserialize<GethTraceOptions>(json, serializerOptions)!;
 
         Assert.That(
@@ -64,11 +89,7 @@ public class GethTraceOptionsDeserializationTests
     public void ByNumber_options_use_the_supplied_metadata_resolver()
     {
         RecordingResolver resolver = new(EthereumJsonSerializer.JsonRpcRequestOptions.TypeInfoResolver!);
-        JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions)
-        {
-            TypeInfoResolver = resolver
-        };
-        serializerOptions.Converters.Insert(0, new GethTraceOptionsConverter());
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions(resolver);
 
         GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"timeout\":\"5s\"}", serializerOptions)!;
 
@@ -77,6 +98,39 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
             Assert.That(resolver.RequestedTypes, Does.Contain("WireOptions"));
         }
+    }
+
+    [TestCase(50_000_000L, "5s")]
+    [TestCase(long.MaxValue, "256204778h48m5.4775807s")]
+    [TestCase(long.MinValue, "-256204778h48m5.4775808s")]
+    public void ByNumber_options_write_the_normal_duration_format(long ticks, string expected)
+    {
+        GethTraceOptions options = new() { Timeout = TimeSpan.FromTicks(ticks) };
+
+        string json = JsonSerializer.Serialize(options, CreateByNumberSerializerOptions());
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        Assert.That(document.RootElement.GetProperty("timeout").GetString(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ByNumber_options_round_trip_malformed_raw_duration()
+    {
+        JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"timeout\":\"bad\"}", serializerOptions)!;
+
+        string json = JsonSerializer.Serialize(options, serializerOptions);
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        Assert.That(document.RootElement.GetProperty("timeout").GetString(), Is.EqualTo("bad"));
+    }
+
+    private static JsonSerializerOptions CreateByNumberSerializerOptions(IJsonTypeInfoResolver? resolver = null)
+    {
+        JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions);
+        if (resolver is not null) serializerOptions.TypeInfoResolver = resolver;
+        serializerOptions.Converters.Insert(0, new GethTraceOptionsConverter());
+        return serializerOptions;
     }
 
     private sealed class RecordingResolver(IJsonTypeInfoResolver inner) : IJsonTypeInfoResolver
