@@ -1255,7 +1255,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.WriteFunc = (_, _) => throw new IOException("disk full");
-            Assert.That(() => fullTrieStore.PrepareStableState(default), Throws.Exception);
+            Assert.That(() => fullTrieStore.PrepareStableState(default), Throws.InstanceOf<IOException>());
 
             memDb.WriteFunc = null;
             Task retry = Task.Run(() => { using (fullTrieStore.PrepareStableState(default)) { } });
