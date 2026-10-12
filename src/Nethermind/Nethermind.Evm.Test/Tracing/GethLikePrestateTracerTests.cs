@@ -689,12 +689,11 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, VictimBalance);
         TestState.InsertCode(TestItem.AddressC, victimCode, Spec);
 
-        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 500_000);
+        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000);
         if (revert) code = code.Revert(0, 0);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
-        (Block block, Transaction transaction) = PrepareTx(fork, 1_000_000, code.Done);
-        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        Execute(tracer, code.Done, fork);
         return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
     }
 
