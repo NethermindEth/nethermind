@@ -375,13 +375,7 @@ public class FrameTxValidationPrefixSimulationTests
         FrameTxValidationTracer tracer = new(Sender, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec,
             maxCodeBodies: Eip8369Constants.MaxReplayCodeBodies, maxCodeBytes: Eip8369Constants.MaxReplayCodeBytes);
 
-        try
-        {
-            Run(FrameTx(nonce: 0, SelfVerifyFrame()), tracer);
-        }
-        catch (OperationCanceledException) when (tracer.Violated)
-        {
-        }
+        Run(FrameTx(nonce: 0, SelfVerifyFrame()), tracer);
 
         using (Assert.EnterMultipleScope())
         {
