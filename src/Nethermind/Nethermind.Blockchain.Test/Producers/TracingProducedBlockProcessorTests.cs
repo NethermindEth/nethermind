@@ -19,6 +19,8 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -137,6 +139,39 @@ public class TracingProducedBlockProcessorTests
             Assert.That(block.Header.GasUsedPerDimension, Is.EqualTo((producerGas, 7UL)));
             Assert.That(block.Header.Bloom, Is.SameAs(producerBloom));
         }
+    }
+
+    [Test]
+    public void Receipt_dump_holds_per_transaction_gas_under_eip8116([Values] bool eip8116)
+    {
+        const ulong txGas = 100;
+        using TempDirectory dumpDirectory = new();
+        Transaction[] transactions = Enumerable.Range(0, 2)
+            .Select(static n => Build.A.Transaction.WithNonce((ulong)n).SignedAndResolved(TestItem.PrivateKeyA).TestObject).ToArray();
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject;
+        IBlockchainProcessor inner = Substitute.For<IBlockchainProcessor>();
+        inner.Process(block, ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IBlockTracer tracer = call.Arg<IBlockTracer>();
+                tracer.StartNewBlockTrace(block);
+                foreach (Transaction tx in transactions)
+                {
+                    tracer.StartNewTxTrace(tx).MarkAsSuccess(TestItem.AddressA, txGas, [], []);
+                    tracer.EndTxTrace();
+                }
+                tracer.EndBlockTrace();
+                return block;
+            });
+        TestSingleReleaseSpecProvider specProvider = new(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8116Enabled = eip8116 });
+
+        new TracingProducedBlockProcessor(inner, new BlocksConfig { DumpProducedBlocks = ProducedBlockDumpOptions.Receipts }, specProvider,
+                LimboLogs.Instance, new ProducedBlockDumpDirectory(dumpDirectory.Path))
+            .Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
+        JsonElement receipts = ReadDump("receipts", block, dumpDirectory.Path);
+        Assert.That(receipts.EnumerateArray().Select(static r => Convert.ToUInt64(r.GetProperty("gasUsedTotal").GetString(), 16)),
+            Is.EqualTo(eip8116 ? new[] { txGas, txGas } : new[] { txGas, 2 * txGas }));
     }
 
     [Test]
