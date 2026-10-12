@@ -168,6 +168,9 @@ jobs:
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: windows-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
+          - { runner: windows-11-arm, project: Nethermind.Db.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Evm.Test, chunk: '' }
+          - { runner: windows-11-arm, project: Nethermind.Runner.Test, chunk: '' }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
