@@ -270,19 +270,24 @@ public class GethTraceOptionsDeserializationTests
         foreach (string property in new[] { "disableStorage", "disableStack", "enableMemory", "enableReturnData" })
             foreach ((string values, bool expected) in new (string, bool)[]
             {
-            ("null", false), ("true,null", true), ("null,true", true), ("true,false,null", false), ("\"true\",null", true)
+                ("null", false), ("true,null", true), ("null,true", true), ("true,false,null", false), ("\"true\",null", true)
             })
                 yield return new TestCaseData(values, expected, property);
+    }
+
+    private static string BuildMembers(string property, string values)
+    {
+        string[] tokens = values.Split(',');
+        string[] members = new string[tokens.Length];
+        for (int i = 0; i < tokens.Length; i++) members[i] = $"\"{property}\":{tokens[i]}";
+        return "{" + string.Join(',', members) + "}";
     }
 
     [TestCaseSource(nameof(NullBooleanCases))]
     public void ByNumber_null_boolean_does_not_replace_the_previous_value(string values, bool expected, string property)
     {
-        string[] tokens = values.Split(',');
-        string[] members = new string[tokens.Length];
-        for (int i = 0; i < tokens.Length; i++) members[i] = $"\"{property}\":{tokens[i]}";
         JsonSerializerOptions serializerOptions = CreateByNumberSerializerOptions();
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{" + string.Join(',', members) + "}", serializerOptions)!;
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers(property, values), serializerOptions)!;
         bool actual = property switch
         {
             "disableStorage" => options.DisableStorage,
@@ -306,11 +311,7 @@ public class GethTraceOptionsDeserializationTests
     [TestCase("2,3,null", 3)]
     public void ByNumber_null_limit_does_not_replace_the_previous_value(string values, long expected)
     {
-        string[] tokens = values.Split(',');
-        string[] members = new string[tokens.Length];
-        for (int i = 0; i < tokens.Length; i++) members[i] = $"\"limit\":{tokens[i]}";
-
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{" + string.Join(',', members) + "}", CreateByNumberSerializerOptions())!;
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>(BuildMembers("limit", values), CreateByNumberSerializerOptions())!;
 
         Assert.That(options.Limit, Is.EqualTo(expected));
     }
