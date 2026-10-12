@@ -778,6 +778,36 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_recover_authorities_only_for_set_code_replacement_that_can_replace([Values] bool bumpsFee)
+        {
+            TestSpecProvider provider = new(Prague.Instance);
+            _txPool = CreatePool(specProvider: provider);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction SetCodeTx(UInt256 fee, UInt256 value) => Build.A.Transaction
+                .WithType(TxType.SetCode)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithGasLimit(100_000)
+                .WithValue(value)
+                .WithAuthorizationCode(_ethereumEcdsa.Sign(TestItem.PrivateKeyA, provider.ChainId, TestItem.AddressC, 0))
+                .WithTo(TestItem.AddressA)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+
+            Assert.That(_txPool.SubmitTx(SetCodeTx(9.GWei, 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction replacement = SetCodeTx(bumpsFee ? 10.GWei : 9.GWei, 2);
+            AcceptTxResult result = _txPool.SubmitTx(replacement, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(bumpsFee ? AcceptTxResult.Accepted : AcceptTxResult.ReplacementNotAllowed));
+                Assert.That(replacement.AuthorizationList![0].Authority, bumpsFee ? Is.EqualTo(TestItem.AddressA) : Is.Null);
+            }
+        }
+
+        [Test]
         public async Task should_evict_transaction_above_init_code_limit_after_fork()
         {
             Block head = _blockTree.Head;
@@ -6692,8 +6722,8 @@ namespace Nethermind.TxPool.Test
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
-                .WithMaxFeePerGas(9.GWei)
-                .WithMaxPriorityFeePerGas(9.GWei)
+                .WithMaxFeePerGas(10.GWei)
+                .WithMaxPriorityFeePerGas(10.GWei)
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
