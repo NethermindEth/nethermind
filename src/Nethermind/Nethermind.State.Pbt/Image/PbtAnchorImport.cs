@@ -57,11 +57,9 @@ public sealed class PbtAnchorImport(
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool codes = new("import codes", directory, config.ExportSortBufferBytes, 1, logManager, cancellationToken)
-            { MaxConcurrentPreMerges = config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount };
             (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
                 token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
-                new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, codes, logManager, cancellationToken);
+                new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
             Finish(anchor, root, accounts, slots, importing, cancellationToken);
             return root;
         }

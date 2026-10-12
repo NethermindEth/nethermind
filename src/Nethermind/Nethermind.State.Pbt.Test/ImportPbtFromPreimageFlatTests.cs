@@ -40,127 +40,77 @@ public class ImportPbtFromPreimageFlatTests
     private const ulong SourceBlock = 7;
 
     [Test]
-    public void Code_rebuild_drains_spool_without_account_or_code_db_reads(
+    public void Code_reassembly_writes_each_distinct_code_without_db_reads(
         [Values(4, PbtLeafIngestion.BatchSize + 2, 1000)] int distinctCodes, [Values(1, 3)] int concurrency)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         Directory.CreateDirectory(scratch.Path);
-        using RecordingColumnsDb db = new();
+        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
         PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        using (PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None))
-        {
-            int[] codes = Enumerable.Range(0, distinctCodes).Concat(Enumerable.Range(0, distinctCodes))
-                .Concat(Enumerable.Range(0, distinctCodes)).Concat(Enumerable.Range(0, distinctCodes)).ToArray();
-            long chunks = StageCodes(target, spool, codes);
-            using (PbtSortedSpool.Cursor cursor = spool.Read())
-            {
-                if (distinctCodes > 4) Assert.That(Directory.GetFileSystemEntries(scratch.Path).Length, Is.GreaterThan(1), "the spool must merge spilled runs");
-                Dictionary<ValueHash256, uint> expected = Enumerable.Range(0, distinctCodes)
-                    .ToDictionary(index => ValueKeccak.Compute(RebuildTestCode(index)), index => (uint)RebuildTestCode(index).Length);
-                while (cursor.MoveNext())
-                {
-                    Assert.That(expected.Remove(new ValueHash256(cursor.Key), out uint size), Is.True);
-                    Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(cursor.Value), Is.EqualTo(size));
-                }
-                Assert.That(expected, Is.Empty, "staging must spool every distinct ordinary code hash and its length");
-            }
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(db.CodeReads, Is.Zero);
-                Assert.That(db.CodeLeafReads, Is.Zero, "account staging must not reconstruct code");
-            }
-            db.TrackCodeRebuild = true;
-            PbtLeafStaging.RebuildCodes(target, spool, chunks, concurrency, LimboLogs.Instance, CancellationToken.None);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(db.AccountsVisited, Is.Zero, "reconstruction must not rescan accounts");
-                Assert.That(db.CodeReads, Is.Zero, "the spool already supplies unique hashes and lengths");
-                Assert.That(db.CodeLeafReads, Is.EqualTo(distinctCodes));
-                Assert.That(db.CodeWrites, Is.EqualTo(distinctCodes));
-                Assert.That(db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, distinctCodes / PbtLeafIngestion.BatchSize)
-                    .Concat(distinctCodes % PbtLeafIngestion.BatchSize == 0 ? [] : new[] { distinctCodes % PbtLeafIngestion.BatchSize })));
-            }
-            AssertCodeRebuildReleased(db, target);
-            using IPbtPersistence.IReader reader = target.CreateReader();
-            for (int index = 0; index < distinctCodes; index++)
-                Assert.That(reader.GetCode(ValueKeccak.Compute(RebuildTestCode(index)))!.Code.ToArray(), Is.EqualTo(RebuildTestCode(index)),
-                    "parallel workers must receive copied spool keys and lengths");
-        }
-        Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
-    }
+        // Each code is named by four accounts; the last two span several chunk stems and hold no nonzero chunk.
+        List<byte[]> codes = [.. Enumerable.Range(0, distinctCodes).Select(RebuildTestCode),
+            Enumerable.Range(0, 20_000).Select(static index => (byte)index).ToArray(), new byte[10_000]];
+        List<RebuildEntry> leaves = CodeAccountLeaves([.. codes, .. codes, .. codes, .. codes]);
 
-    [Test]
-    public void Code_rebuild_overlaps_reads_but_serializes_write_batches([Values(1, 3)] int concurrency)
-    {
-        using TempPath scratch = TempPath.GetTempDirectory();
-        Directory.CreateDirectory(scratch.Path);
-        using PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None);
-        using RecordingColumnsDb db = new();
-        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        int distinctCodes = PbtLeafIngestion.BatchSize + 2;
-        long chunks = StageCodes(target, spool, Enumerable.Range(0, distinctCodes).ToArray());
-        db.TrackCodeRebuild = true;
-        using CountdownEvent reading = new(concurrency);
-        int entered = 0;
-        db.BeforeCodeRead = column =>
-        {
-            if (column != PbtColumns.CodeLeaves || Interlocked.Increment(ref entered) > concurrency) return;
-            reading.Signal();
-            if (!reading.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("Code readers did not overlap.");
-        };
-
-        PbtLeafStaging.RebuildCodes(target, spool, chunks, concurrency, LimboLogs.Instance, CancellationToken.None);
+        StageAndReassemble(target, scratch.Path, leaves, concurrency, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.MaxActiveCodeLeafReads, Is.EqualTo(concurrency));
-            Assert.That(db.MaxActiveCodeWrites, Is.EqualTo(1));
-            Assert.That(db.MaxActiveCodeBatches, Is.EqualTo(1));
-            Assert.That(db.CodeBatchSizes, Is.EqualTo(new[] { PbtLeafIngestion.BatchSize, 2 }));
-            Assert.That(db.CodeWrites, Is.EqualTo(distinctCodes));
             Assert.That(db.AccountsVisited, Is.Zero);
             Assert.That(db.CodeReads, Is.Zero);
+            Assert.That(db.CodeLeafReads, Is.Zero, "reassembly must not read the staged code leaves back");
+            Assert.That(db.CodeWrites, Is.EqualTo(codes.Count));
+            Assert.That(db.MaxActiveCodeWrites, Is.EqualTo(1));
+            Assert.That(db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, codes.Count / PbtLeafIngestion.BatchSize)
+                .Concat(codes.Count % PbtLeafIngestion.BatchSize == 0 ? [] : new[] { codes.Count % PbtLeafIngestion.BatchSize })));
+            Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
         }
         AssertCodeRebuildReleased(db, target);
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        foreach (byte[] code in codes) Assert.That(reader.GetCode(ValueKeccak.Compute(code))!.Code.ToArray(), Is.EqualTo(code));
     }
 
     [Test]
-    public void Code_rebuild_failure_joins_workers_and_releases_resources([Values("spool-cancel", "read-cancel", "invalid-leaf", "orphan-leaf")] string failure)
+    public void Code_reassembly_failure_releases_resources(
+        [Values("spool-cancel", "write-cancel", "invalid-leaf", "zero-leaf", "orphan-stem", "extra-chunk")] string failure)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         Directory.CreateDirectory(scratch.Path);
-        using RecordingColumnsDb db = new();
+        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
         PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();
-        using (PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, cancellation.Token))
+        List<RebuildEntry> leaves = CodeAccountLeaves([.. Enumerable.Range(0, 4).Select(RebuildTestCode)]);
+        ValueHash256 firstHash = ValueKeccak.Compute(RebuildTestCode(0));
+        PbtVariableTreeKey firstChunk = (PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(firstHash.Bytes, 0);
+        int firstChunkIndex = leaves.FindIndex(entry => entry.Key.Equals(firstChunk));
+        switch (failure)
         {
-            long chunks = StageCodes(target, spool, [0, 1, 2, 3]);
-            if (failure is "invalid-leaf" or "orphan-leaf")
-            {
-                using IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.None);
-                byte[] code = RebuildTestCode(failure == "invalid-leaf" ? 0 : 99);
-                ValueHash256 hash = ValueKeccak.Compute(code);
-                foreach ((PbtPath key, ValueHash256 value) in Eip8297KeyDerivation.CodeLeaves(hash, code))
-                    batch.SetCodeLeaf(key, failure == "invalid-leaf" ? default : value);
-                batch.Commit();
-                if (failure == "orphan-leaf") chunks++;
-            }
-            db.TrackCodeRebuild = true;
-            if (failure == "spool-cancel") cancellation.Cancel();
-            db.BeforeCodeRead = column => { if (failure == "read-cancel" && column == PbtColumns.CodeLeaves) cancellation.Cancel(); };
-
-            Action rebuild = () => PbtLeafStaging.RebuildCodes(target, spool, chunks, 3, LimboLogs.Instance, cancellation.Token);
-            if (failure.EndsWith("cancel", StringComparison.Ordinal)) Assert.Throws<OperationCanceledException>(rebuild);
-            else Assert.Throws<InvalidDataException>(rebuild);
-
-            AssertCodeRebuildReleased(db, target);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(db.AccountsVisited, Is.Zero);
-                Assert.That(db.CodeReads, Is.Zero);
-            }
+            case "spool-cancel": cancellation.Cancel(); break;
+            case "write-cancel": db.BeforeCodeWrite = cancellation.Cancel; break;
+            case "invalid-leaf": leaves[firstChunkIndex] = new(firstChunk, Keccak.OfAnEmptyString.ValueHash256); break;
+            case "zero-leaf": leaves[firstChunkIndex] = new(firstChunk, default); break;
+            case "orphan-stem":
+                ValueHash256 orphanHash = ValueKeccak.Compute(RebuildTestCode(99));
+                foreach ((PbtPath key, ValueHash256 value) in Eip8297KeyDerivation.CodeLeaves(orphanHash, RebuildTestCode(99)))
+                    leaves.Add(new((PbtVariableTreeKey)key, value));
+                break;
+            case "extra-chunk":
+                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(firstHash.Bytes, 1), Keccak.OfAnEmptyString.ValueHash256));
+                break;
         }
-        Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
+
+        Action reassemble = () => StageAndReassemble(target, scratch.Path, leaves, 3, cancellation.Token);
+        if (failure.EndsWith("cancel", StringComparison.Ordinal)) Assert.That(reassemble, Throws.InstanceOf<OperationCanceledException>());
+        else Assert.That(reassemble, Throws.InstanceOf<InvalidDataException>());
+
+        AssertCodeRebuildReleased(db, target);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.AccountsVisited, Is.Zero);
+            Assert.That(db.CodeReads, Is.Zero);
+            Assert.That(db.CodeLeafReads, Is.Zero);
+            Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
+        }
     }
 
     [Test]
@@ -168,25 +118,21 @@ public class ImportPbtFromPreimageFlatTests
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         Directory.CreateDirectory(scratch.Path);
-        using PbtSortedSpool spool = new("test codes", scratch.Path, SortBufferBytes, 1, LimboLogs.Instance, CancellationToken.None);
-        using RecordingColumnsDb db = new();
+        using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
         PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         byte[]? code = delegation ? Bytes.FromHexString("ef01000000000000000000000000000000000000000001") : null;
         List<RebuildEntry> leaves = [];
         PbtTestLeaves.AddAccount(leaves, TestItem.AddressA, new Account(1, 0), code);
-        long chunks = StageLeaves(target, spool, leaves);
-        using (PbtSortedSpool.Cursor cursor = spool.Read()) Assert.That(cursor.MoveNext(), Is.False);
-        db.TrackCodeRebuild = true;
 
-        PbtLeafStaging.RebuildCodes(target, spool, chunks, 3, LimboLogs.Instance, CancellationToken.None);
+        StageAndReassemble(target, scratch.Path, leaves, 3, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.AccountsVisited, Is.Zero);
             Assert.That(db.CodeReads, Is.Zero);
             Assert.That(db.CodeLeafReads, Is.Zero);
-            Assert.That(db.CodeWrites, Is.Zero);
-            Assert.That(db.CodeBatchSizes, Is.Empty);
+            Assert.That(db.CodeWrites, Is.EqualTo(delegation ? 1 : 0), "only staging writes the delegation code");
+            Assert.That(db.CodeBatchSizes, Is.EqualTo(delegation ? new[] { 1 } : []));
         }
         AssertCodeRebuildReleased(db, target);
         if (delegation)
@@ -197,7 +143,7 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     [Test]
-    public async Task Preimage_flat_code_rebuild_uses_import_not_export_concurrency([Values(1, 3)] int importConcurrency)
+    public async Task Preimage_flat_import_reassembles_codes_without_code_leaf_reads([Values(1, 3)] int importConcurrency)
     {
         PbtConfig config = new()
         {
@@ -221,20 +167,12 @@ public class ImportPbtFromPreimageFlatTests
         });
         using RecordingColumnsDb db = new() { TrackCodeRebuild = true };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
-        using CountdownEvent reading = new(importConcurrency);
-        int entered = 0;
-        db.BeforeCodeRead = column =>
-        {
-            if (column != PbtColumns.CodeLeaves || Interlocked.Increment(ref entered) > importConcurrency) return;
-            reading.Signal();
-            if (!reading.Wait(TimeSpan.FromSeconds(15))) throw new TimeoutException("Import concurrency did not permit the expected code readers.");
-        };
 
         await CreateStep(source, codes, db, target, config).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.MaxActiveCodeLeafReads, Is.EqualTo(importConcurrency));
+            Assert.That(db.CodeLeafReads, Is.Zero);
             Assert.That(db.CodeWrites, Is.EqualTo(4));
             Assert.That(db.ActiveSnapshots, Is.Zero);
             Assert.That(db.ActiveCodeBatches, Is.Zero);
@@ -250,7 +188,6 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.ActiveSnapshots, Is.Zero);
-            Assert.That(db.ActiveCodeLeafReads, Is.Zero);
             Assert.That(db.ActiveCodeWrites, Is.Zero);
             Assert.That(db.ActiveCodeBatches, Is.Zero);
             Assert.That(db.DisposedResourceUses, Is.Zero);
@@ -258,26 +195,27 @@ public class ImportPbtFromPreimageFlatTests
         }
     }
 
-    private static long StageCodes(PbtRocksDbPersistence target, PbtSortedSpool spool, int[] codes)
+    /// <summary>The leaves of one contract account per code, with its code-chunk leaves.</summary>
+    private static List<RebuildEntry> CodeAccountLeaves(List<byte[]> codes)
     {
         List<RebuildEntry> leaves = [];
-        for (int index = 0; index < codes.Length; index++)
-        {
-            byte[] code = RebuildTestCode(codes[index]);
-            ValueHash256 hash = ValueKeccak.Compute(code);
-            PbtTestLeaves.AddAccount(leaves, Address.FromNumber((UInt256)(index + 1)), new Account(1, 0).WithChangedCodeHash(new Hash256(hash)), code);
-        }
-        return StageLeaves(target, spool, leaves.DistinctBy(entry => entry.Key).ToList());
+        for (int index = 0; index < codes.Count; index++)
+            PbtTestLeaves.AddAccount(leaves, Address.FromNumber((UInt256)(index + 1)),
+                new Account(1, 0).WithChangedCodeHash(Keccak.Compute(codes[index])), codes[index]);
+        return [.. leaves.DistinctBy(entry => entry.Key)];
     }
 
-    private static long StageLeaves(PbtRocksDbPersistence target, PbtSortedSpool spool, List<RebuildEntry> leaves)
+    private static void StageAndReassemble(PbtRocksDbPersistence target, string directory, List<RebuildEntry> leaves, int concurrency,
+        CancellationToken cancellationToken)
     {
         leaves.Sort(static (left, right) => left.Key.Bytes.SequenceCompareTo(right.Key.Bytes));
-        using PbtSortedSpool.Writer writer = spool.CreateWriter();
-        using PbtLeafIngestion.LogicalBatch batch = new(target, 1, CancellationToken.None);
-        (ulong accounts, ulong slots, long chunks) = PbtLeafStaging.Stage(batch, leaves, writer, CancellationToken.None);
-        batch.Commit();
-        return chunks;
+        using PbtCodeReassembly codes = new(target, directory, SortBufferBytes, concurrency, LimboLogs.Instance, cancellationToken);
+        using (PbtLeafIngestion.LogicalBatch batch = new(target, 1, cancellationToken))
+        {
+            PbtLeafStaging.Stage(batch, leaves, codes, cancellationToken);
+            batch.Commit();
+        }
+        codes.Complete();
     }
 
     private static byte[] RebuildTestCode(int index)
@@ -744,7 +682,7 @@ public class ImportPbtFromPreimageFlatTests
     [TestCase("persistence")]
     [TestCase("cancellation")]
     [TestCase("code-spool-cancellation")]
-    [TestCase("code-read-cancellation")]
+    [TestCase("code-write-cancellation")]
     [TestCase("code-validation")]
     public async Task Failed_import_publishes_nothing_and_retries(string failure)
     {
@@ -768,10 +706,9 @@ public class ImportPbtFromPreimageFlatTests
         using CancellationTokenSource cancellation = new();
         db.TrackCodeRebuild = failure.StartsWith("code-", StringComparison.Ordinal);
         db.BeforeAccountWrite = () => { if (failure == "code-spool-cancellation") cancellation.Cancel(); };
-        db.BeforeCodeRead = column =>
+        db.BeforeCodeWrite = () =>
         {
-            if (column != PbtColumns.CodeLeaves) return;
-            if (failure == "code-read-cancellation") cancellation.Cancel();
+            if (failure == "code-write-cancellation") cancellation.Cancel();
             if (failure == "code-validation") throw new InvalidDataException("injected code reconstruction failure");
         };
         db.AfterGroupCommit = () =>
@@ -800,13 +737,12 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
             Assert.That(db.ActiveSnapshots, Is.Zero);
             Assert.That(db.ActiveCodeBatches, Is.Zero);
-            Assert.That(db.ActiveCodeLeafReads, Is.Zero);
             Assert.That(db.DisposedResourceUses, Is.Zero);
             Assert.That(Directory.GetFileSystemEntries(Path.Combine(scratch.Path, "import")), Is.Empty);
         }
         db.AfterGroupCommit = null;
         db.BeforeAccountWrite = null;
-        db.BeforeCodeRead = null;
+        db.BeforeCodeWrite = null;
         codes[codeHash.Bytes] = code;
         await CreateStep(source, codes, db, target, config, scratch.Path).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
@@ -864,18 +800,15 @@ public class ImportPbtFromPreimageFlatTests
         public int GroupCommits;
         public int CodeReads;
         public bool TrackCodeRebuild;
-        public Action<PbtColumns>? BeforeCodeRead;
+        public Action? BeforeCodeWrite;
         public Action? BeforeAccountWrite;
         public int AccountsVisited;
         public int CodeLeafReads;
         public int CodeWrites;
         public int ActiveSnapshots;
-        public int ActiveCodeLeafReads;
-        public int MaxActiveCodeLeafReads;
         public int ActiveCodeWrites;
         public int MaxActiveCodeWrites;
         public int ActiveCodeBatches;
-        public int MaxActiveCodeBatches;
         public int DisposedResourceUses;
         public readonly ConcurrentQueue<int> CodeBatchSizes = new();
         private int _flushed;
@@ -939,20 +872,13 @@ public class ImportPbtFromPreimageFlatTests
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 snapshot.EnterRead();
-                if (column == PbtColumns.Codes) Interlocked.Increment(ref owner.CodeReads);
-                else
-                {
-                    Interlocked.Increment(ref owner.CodeLeafReads);
-                    RecordMaximum(ref owner.MaxActiveCodeLeafReads, Interlocked.Increment(ref owner.ActiveCodeLeafReads));
-                }
+                Interlocked.Increment(ref column == PbtColumns.Codes ? ref owner.CodeReads : ref owner.CodeLeafReads);
                 try
                 {
-                    owner.BeforeCodeRead?.Invoke(column);
                     return store.Get(key, flags);
                 }
                 finally
                 {
-                    if (column == PbtColumns.CodeLeaves) Interlocked.Decrement(ref owner.ActiveCodeLeafReads);
                     snapshot.ExitRead();
                 }
             }
@@ -985,7 +911,7 @@ public class ImportPbtFromPreimageFlatTests
             Interlocked.Exchange(ref BeforeFirstBatch, null)?.Invoke();
             IColumnsWriteBatch<PbtColumns> batch = _database.StartWriteBatch();
             bool trackCodeBatches = TrackCodeRebuild;
-            if (trackCodeBatches) RecordMaximum(ref MaxActiveCodeBatches, Interlocked.Increment(ref ActiveCodeBatches));
+            if (trackCodeBatches) Interlocked.Increment(ref ActiveCodeBatches);
             return new RecordingBatch(this, batch, trackCodeBatches);
         }
 
@@ -1027,6 +953,7 @@ public class ImportPbtFromPreimageFlatTests
                             Interlocked.Increment(ref owner.DisposedResourceUses);
                             throw new ObjectDisposedException(nameof(RecordingBatch));
                         }
+                        owner.BeforeCodeWrite?.Invoke();
                         Interlocked.Increment(ref owner.CodeWrites);
                         Interlocked.Increment(ref ownerBatch._codeWrites);
                         codes.Set(key, value, flags);

@@ -33,11 +33,12 @@ public static class PbtLeafIngestion
     /// <param name="concurrency">Maximum staging write flushers and code reconstruction workers; zero uses the processor count.</param>
     /// <param name="windowSize">Maximum leaves per fold window; zero uses the rebuilder's default.</param>
     /// <param name="verifyStaged">Checks the staged accounts and slots before the tree is published.</param>
-    /// <param name="codes">Caller-owned spool of code hashes and lengths, populated during staging and drained before publication.</param>
+    /// <param name="scratchDirectory">Caller-owned directory for the code reassembly's spools.</param>
+    /// <param name="sortBufferBytes">Bytes buffered per code reassembly spool before a sorted run spills.</param>
     /// <returns>The tree root and the staged accounts and slots.</returns>
     public static async Task<(ValueHash256 Root, ulong Accounts, ulong Slots)> Ingest(PbtRocksDbPersistence target, PbtRebuilder rebuilder,
         Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, int concurrency, StateId targetState, int windowSize,
-        ValueHash256? expectedRoot, Action<ulong, ulong, CancellationToken> verifyStaged, PbtSortedSpool codes, ILogManager logManager,
+        ValueHash256? expectedRoot, Action<ulong, ulong, CancellationToken> verifyStaged, string scratchDirectory, int sortBufferBytes, ILogManager logManager,
         CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -48,7 +49,7 @@ public static class PbtLeafIngestion
             try
             {
                 (ulong Accounts, ulong Slots) staged = Stage(target, PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
-                    concurrency, codes, logManager, linked.Token);
+                    concurrency, scratchDirectory, sortBufferBytes, logManager, linked.Token);
                 verifyStaged(staged.Accounts, staged.Slots, linked.Token);
                 return staged;
             }
@@ -70,18 +71,18 @@ public static class PbtLeafIngestion
     }
 
     private static (ulong Accounts, ulong Slots) Stage(PbtRocksDbPersistence target, IEnumerable<RebuildEntry> leaves, int concurrency,
-        PbtSortedSpool codes, ILogManager logManager, CancellationToken cancellationToken)
+        string scratchDirectory, int sortBufferBytes, ILogManager logManager, CancellationToken cancellationToken)
     {
         int workers = concurrency > 0 ? concurrency : Environment.ProcessorCount;
-        (ulong Accounts, ulong Slots, long CodeChunks) staged;
-        using (PbtSortedSpool.Writer writer = codes.CreateWriter())
+        (ulong Accounts, ulong Slots) staged;
+        using PbtCodeReassembly codes = new(target, scratchDirectory, sortBufferBytes, workers, logManager, cancellationToken);
         using (LogicalBatch batch = new(target, workers, cancellationToken))
         {
-            staged = PbtLeafStaging.Stage(batch, leaves, writer, cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, leaves, codes, cancellationToken);
             batch.Commit();
         }
-        PbtLeafStaging.RebuildCodes(target, codes, staged.CodeChunks, workers, logManager, cancellationToken);
-        return (staged.Accounts, staged.Slots);
+        codes.Complete();
+        return staged;
     }
 
     /// <summary>The ascending leaves of a spool of tree keys and leaf values.</summary>

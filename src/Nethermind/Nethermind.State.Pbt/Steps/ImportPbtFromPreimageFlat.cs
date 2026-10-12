@@ -72,11 +72,9 @@ public class ImportPbtFromPreimageFlat(
             using PbtSortedSpool leaves = new("import leaves", directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
             float leafCount = PbtOfflineSource.Spool("PBT import scan", reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken).Leaves;
-            using PbtSortedSpool codes = new("import codes", directory, config.ExportSortBufferBytes, 1, logManager, cancellationToken)
-            { MaxConcurrentPreMerges = config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount };
             // State is addressed by the source block header's root; the fold records its tree root beside it.
             await PbtLeafIngestion.Ingest(pbtPersistence, rebuilder, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount, config.ImportConcurrency,
-                sourceState, config.ImportWindowSize, expectedRoot: null, static (_, _, _) => { }, codes, logManager, cancellationToken);
+                sourceState, config.ImportWindowSize, expectedRoot: null, static (_, _, _) => { }, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
         }
         finally
         {
