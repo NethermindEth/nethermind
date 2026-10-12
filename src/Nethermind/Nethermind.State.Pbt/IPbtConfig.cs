@@ -61,12 +61,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Whether the EIP-8347 export also writes preimages.bin. When false, only snapshot.pbt is written.", DefaultValue = "true", HiddenFromDocs = true)]
     bool ExportPreimages { get; set; }
 
-    /// <summary>Memory for the preimage verifier's bucket tables, in bytes, shared by all its workers. Defaults to 4 GiB.</summary>
-    /// <remarks>The preimage reader pauses while the tables are full; the workers sweep them once they are 90% full,
-    /// or once the reader is done.</remarks>
-    [ConfigItem(Description = "Bytes of listed accounts and slots the EIP-8347 preimage verifier queues in its bucket tables, shared by all its workers, before the preimage reader pauses.", DefaultValue = "4294967296", HiddenFromDocs = true)]
-    long MigrationVerifyBucketBytes { get; set; }
-
     /// <summary>Threads each parallel stage of the background EIP-8347 migration import may use. Defaults to 1.</summary>
     /// <remarks>The import runs alongside block processing, so it is kept narrow unless raised.</remarks>
     [ConfigItem(Description = "Maximum number of threads each parallel stage of the background EIP-8347 migration import (offline export scan, staging writes, code reconstruction, preimage verification, tree fold) uses, leaving room for block processing. 0 uses the processor count.", DefaultValue = "1")]
