@@ -91,6 +91,11 @@ public class ConfigProvider : IConfigProvider
 
     public object? GetRawValue(string category, string name)
     {
+        if (IsSensitive(category, name))
+        {
+            return null;
+        }
+
         for (int i = 0; i < _configSource.Count; i++)
         {
             (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
@@ -104,6 +109,24 @@ public class ConfigProvider : IConfigProvider
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
             ?.GetValue(value) : null;
+    }
+
+    private static bool IsSensitive(string category, string name)
+    {
+        foreach ((Type configType, _) in ConfigTypesFromAssembly)
+        {
+            string categoryName = configType.Name[1..];
+            if (!categoryName.Equals(category, StringComparison.OrdinalIgnoreCase)
+                && !categoryName.Equals(category + "Config", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            PropertyInfo? property = configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            return property?.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true;
+        }
+
+        return false;
     }
 
     public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);

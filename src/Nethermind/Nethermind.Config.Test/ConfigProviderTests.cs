@@ -180,6 +180,19 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [TestCase("KeyStore")]
+        [TestCase("KeyStoreConfig")]
+        public void Raw_value_of_a_sensitive_item_is_never_returned(string category)
+        {
+            IConfigProvider provider = Provider(($"{category}.TestNodeKey", "hunter2"), ("KeyStore.Cipher", "aes-128-ctr"));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetRawValue(category, "TestNodeKey"), Is.Null);
+                Assert.That(provider.GetRawValue("KeyStore", "Cipher"), Is.EqualTo("aes-128-ctr"));
+            }
+        }
+
         private static IConfigProvider Provider(params (string Key, string Value)[] overrides)
         {
             ConfigProvider provider = new();
