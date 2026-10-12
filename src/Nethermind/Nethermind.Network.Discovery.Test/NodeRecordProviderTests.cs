@@ -11,6 +11,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -504,11 +505,13 @@ public class NodeRecordProviderTests
         underlyingLogger.Received(1).Warn(Arg.Is<string>(message => message.StartsWith("No external IP address")));
     }
 
-    [TestCase(true, true, true)]
-    [TestCase(null, true, false)]
-    [TestCase(false, true, false)]
-    [TestCase(true, false, false)]
-    public async Task GetCurrentAsync_PublishesSnapEntryOnlyWhenServingSnap(bool? snapServingEnabled, bool canServe, bool expectSnap)
+    // The entry lists the served snap versions; an empty list means snap/1 only.
+    [TestCase(true, true, false, "84736e6170c0")]
+    [TestCase(true, true, true, "84736e6170c20102")]
+    [TestCase(null, true, true, null)]
+    [TestCase(false, true, true, null)]
+    [TestCase(true, false, true, null)]
+    public async Task GetCurrentAsync_PublishesServedSnapVersions(bool? snapServingEnabled, bool canServe, bool balEnabled, string? expectedSnapEntryHex)
     {
         Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -517,23 +520,28 @@ public class NodeRecordProviderTests
         forkInfo.GetForkId(1, 10).Returns(new NetworkForkId(0x01020304, 20));
         ISnapServer snapServer = Substitute.For<ISnapServer>();
         snapServer.CanServe.Returns(canServe);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetFinalSpec().BlockLevelAccessListsEnabled.Returns(balEnabled);
         NodeRecordProvider provider = CreateProvider(
             blockTree,
             forkInfo,
             new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Parse("192.0.2.1")),
             timestampMilliseconds: 1_000,
             syncConfig: new SyncConfig { SnapServingEnabled = snapServingEnabled },
-            snapServer: snapServer);
+            snapServer: snapServer,
+            specProvider: specProvider);
 
         NodeRecord record = await provider.GetCurrentAsync();
 
-        // go-ethereum encodes the snap entry as the key followed by an empty list.
-        byte[] snapEntryRlp = [0x84, (byte)'s', (byte)'n', (byte)'a', (byte)'p', 0xc0];
+        bool expectSnap = expectedSnapEntryHex is not null;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(record.HasEntry(EnrContentKey.Snap), Is.EqualTo(expectSnap));
-            Assert.That(record.ToRlpBytes().AsSpan().IndexOf(snapEntryRlp) >= 0, Is.EqualTo(expectSnap));
             Assert.That(NodeRecord.FromBytes(record.ToRlpBytes()).HasEntry(EnrContentKey.Snap), Is.EqualTo(expectSnap));
+            if (expectSnap)
+            {
+                Assert.That(record.GetHex(), Does.Contain(expectedSnapEntryHex));
+            }
         }
     }
 
@@ -575,7 +583,8 @@ public class NodeRecordProviderTests
         NetworkListenerState? listenerState = null,
         Action? onUnixTime = null,
         ISyncConfig? syncConfig = null,
-        ISnapServer? snapServer = null)
+        ISnapServer? snapServer = null,
+        ISpecProvider? specProvider = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
@@ -586,7 +595,7 @@ public class NodeRecordProviderTests
             listenerState.SetDiscoveryAddress(resolvedIp.LocalIp);
         }
 
-        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, listenerState, logManager, onUnixTime, syncConfig, snapServer);
+        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, listenerState, logManager, onUnixTime, syncConfig, snapServer, specProvider);
     }
 
     private static NodeRecordProvider CreateProvider(
@@ -598,7 +607,8 @@ public class NodeRecordProviderTests
         ILogManager? logManager = null,
         Action? onUnixTime = null,
         ISyncConfig? syncConfig = null,
-        ISnapServer? snapServer = null)
+        ISnapServer? snapServer = null,
+        ISpecProvider? specProvider = null)
     {
         INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
         networkConfig.P2PPort.Returns(30303);
@@ -624,7 +634,8 @@ public class NodeRecordProviderTests
             logManager ?? LimboLogs.Instance,
             listenerState,
             syncConfig ?? new SyncConfig(),
-            snapServer ?? NoopSnapServer.Instance);
+            snapServer ?? NoopSnapServer.Instance,
+            specProvider ?? Substitute.For<ISpecProvider>());
     }
 
     private static NetworkListenerState CreateListenerState(IIPResolver.NethermindIp resolvedIp)

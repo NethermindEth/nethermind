@@ -7,6 +7,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -27,7 +28,8 @@ public sealed class NodeRecordProvider(
     ILogManager logManager,
     NetworkListenerState listenerState,
     ISyncConfig syncConfig,
-    ISnapServer snapServer
+    ISnapServer snapServer,
+    ISpecProvider specProvider
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -175,7 +177,9 @@ public sealed class NodeRecordProvider(
             currentForkId,
             // Stricter than the Hello capability, which a syncing node also offers: the entry means
             // the node serves snap, and a server that cannot serve (hash db layout) disconnects requests.
-            syncConfig.SnapServingEnabled == true && snapServer.CanServe);
+            syncConfig.SnapServingEnabled == true && snapServer.CanServe,
+            // A synced node offers snap/2 under the same rule as SnapP2PCapabilityResolver.
+            specProvider.GetFinalSpec().BlockLevelAccessListsEnabled);
     }
 
     private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
@@ -227,7 +231,7 @@ public sealed class NodeRecordProvider(
             if (state.UdpPort is { } udpPort) selfNodeRecord.SetEntry(new Udp6Entry(udpPort));
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
-        if (state.ServesSnap) selfNodeRecord.SetEntry(SnapEntry.Instance);
+        if (state.ServesSnap) selfNodeRecord.SetEntry(state.ServesSnap2 ? new SnapEntry(1, 2) : new SnapEntry());
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);
         if (!_enrSigner.Verify(selfNodeRecord))
@@ -252,5 +256,6 @@ public sealed class NodeRecordProvider(
         int? UdpPort,
         IPAddress? ExternalIpV6,
         NetworkForkId ForkId,
-        bool ServesSnap);
+        bool ServesSnap,
+        bool ServesSnap2);
 }
