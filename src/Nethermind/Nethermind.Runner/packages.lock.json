@@ -13,18 +13,18 @@
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Direct",
-        "requested": "[11.0.100-rc.1.26425.128, )",
-        "resolved": "11.0.100-rc.1.26425.128",
-        "contentHash": "KOcSH68Xsz91oSL/rLdR6uE3qvlUNaqEovT4N3VESeEtHVvEfRx+zrfxbUTw+8o4q14iq0E0o9NTWZpt7Es7Ng==",
+        "requested": "[11.0.100-rc.2.26504.105, )",
+        "resolved": "11.0.100-rc.2.26504.105",
+        "contentHash": "q/znp2xblP+ADVE8xqxGHSuq9XrQjpFn41CTs7PGPoqwfYdyz5B+2FGyCU5YNVhlnrkrOO5pkosO0AzxsF4iQA==",
         "dependencies": {
-          "System.IO.Hashing": "11.0.0-rc.1.26425.128"
+          "System.IO.Hashing": "11.0.0-rc.2.26504.105"
         }
       },
       "Microsoft.Extensions.FileProviders.Embedded": {
         "type": "Direct",
-        "requested": "[11.0.0-rc.1.26425.128, )",
-        "resolved": "11.0.0-rc.1.26425.128",
-        "contentHash": "KR+SCFBVh02vcApdsa4h34TdPKcYuNy/Z8LXecrJ0sXHgLgyMIP1A4oN7nmkiKIhV93TUvop9f9w8tz45Z39XQ=="
+        "requested": "[11.0.0-rc.2.26504.105, )",
+        "resolved": "11.0.0-rc.2.26504.105",
+        "contentHash": "mpRg6kwB4YoT2l0SWT89Pb/kPN6pheyx9O0bO/Yh+ZvFN+mnMaWflyk+bFkUZH9aB8rod1dClZAYID8oWgPAqQ=="
       },
       "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": {
         "type": "Direct",
@@ -49,9 +49,9 @@
       },
       "System.CommandLine": {
         "type": "Direct",
-        "requested": "[3.0.0-rc.1.26425.128, )",
-        "resolved": "3.0.0-rc.1.26425.128",
-        "contentHash": "YelucFACwwoc9L10R71DA2BwviTRNTCJysSAB9nh5tbg3+qzfFSX2r5Hk6kvZcSTMuRaEL7SigH3WorN8rkGag=="
+        "requested": "[3.0.0-rc.2.26504.105, )",
+        "resolved": "3.0.0-rc.2.26504.105",
+        "contentHash": "zaSlLeXTPAMyMgk6IkCqaTRC+61oVtwWLvFRysN9V0YYAP+8z8WDp4fwS/JRFv0l6xz04BJBrsFEWCX/3d8+xw=="
       },
       "AspNetCore.HealthChecks.UI.Core": {
         "type": "Transitive",
@@ -625,7 +625,7 @@
           "Nethermind.Core": "[2.2.0-preview, )",
           "Nethermind.Network.Enr": "[2.2.0-preview, )",
           "NonBlocking": "[2.1.2, )",
-          "System.Configuration.ConfigurationManager": "[11.0.0-rc.1.26425.128, )"
+          "System.Configuration.ConfigurationManager": "[11.0.0-rc.2.26504.105, )"
         }
       },
       "nethermind.consensus": {
@@ -699,7 +699,7 @@
           "Nethermind.Core": "[2.2.0-preview, )",
           "Nethermind.Crypto.Bls": "[1.1.0, )",
           "Nethermind.Serialization.Rlp": "[2.2.0-preview, )",
-          "System.Security.Cryptography.ProtectedData": "[11.0.0-rc.1.26425.128, )"
+          "System.Security.Cryptography.ProtectedData": "[11.0.0-rc.2.26504.105, )"
         }
       },
       "nethermind.db": {
@@ -1054,7 +1054,7 @@
       "nethermind.portfolioviewer.plugin": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "[11.0.0-rc.1.26425.128, )",
+          "Microsoft.Extensions.FileProviders.Embedded": "[11.0.0-rc.2.26504.105, )",
           "Nethermind.Api": "[2.2.0-preview, )",
           "Nethermind.Blockchain": "[2.2.0-preview, )",
           "Nethermind.Consensus": "[2.2.0-preview, )",
@@ -1158,7 +1158,7 @@
           "Nethermind.State": "[2.2.0-preview, )",
           "Nethermind.Synchronization": "[2.2.0-preview, )",
           "Nethermind.Trie": "[2.2.0-preview, )",
-          "System.IO.Hashing": "[11.0.0-rc.1.26425.128, )"
+          "System.IO.Hashing": "[11.0.0-rc.2.26504.105, )"
         }
       },
       "nethermind.state.flat.history": {
@@ -1651,24 +1651,24 @@
       },
       "System.Configuration.ConfigurationManager": {
         "type": "CentralTransitive",
-        "requested": "[11.0.0-rc.1.26425.128, )",
-        "resolved": "11.0.0-rc.1.26425.128",
-        "contentHash": "9Jw2mgyMP18PhjhSpZSJ70qgi4RZtD1x92VXG7AHFCrE+viDV7R6/KBrdGPi7/rJUGraIHIjUF8XPaX/kBGE/A==",
+        "requested": "[11.0.0-rc.2.26504.105, )",
+        "resolved": "11.0.0-rc.2.26504.105",
+        "contentHash": "OSYYg5yhpHnp6zcirj4tT2m+77GA4iW6CKgQmL9qfpYXsZJXLv9d+sAqyifgl/9dwhlVoVeAdvpd4IQpJGE2Lg==",
         "dependencies": {
-          "System.Security.Cryptography.ProtectedData": "11.0.0-rc.1.26425.128"
+          "System.Security.Cryptography.ProtectedData": "11.0.0-rc.2.26504.105"
         }
       },
       "System.IO.Hashing": {
         "type": "CentralTransitive",
-        "requested": "[11.0.0-rc.1.26425.128, )",
-        "resolved": "11.0.0-rc.1.26425.128",
-        "contentHash": "k2EG0GriOm2mGO+V0/9tq9JBNDI/TREnc7lM1/raddxXBLtxmTy1GrcH0jh8I4PBHV8ajD/J6AVqADeivNUXLA=="
+        "requested": "[11.0.0-rc.2.26504.105, )",
+        "resolved": "11.0.0-rc.2.26504.105",
+        "contentHash": "Q73ma37D8sFHOfHwFylgGYhl6eBb9hiYywHCE+9VZEZtFeKZsDVZhFc3k1CsPc+KxbMvAPy83zOuItj9X/1VUA=="
       },
       "System.Security.Cryptography.ProtectedData": {
         "type": "CentralTransitive",
-        "requested": "[11.0.0-rc.1.26425.128, )",
-        "resolved": "11.0.0-rc.1.26425.128",
-        "contentHash": "19smBOUx2Mj1J+AM7WsFItDU5+C7qE4uRI+k9vftujOssimGSMetPg57SJ6l0kJdJzdvS4u1xOxG2x4RZkOFkg=="
+        "requested": "[11.0.0-rc.2.26504.105, )",
+        "resolved": "11.0.0-rc.2.26504.105",
+        "contentHash": "mKLT7vtB8DLF9Y5WRitC1jSpFZeFSieb7wp5cELFL02zP1AP4Aix0rf+ydJQ+xR/sNFfElodoaQ9OMk47hic4A=="
       },
       "Testably.Abstractions": {
         "type": "CentralTransitive",
