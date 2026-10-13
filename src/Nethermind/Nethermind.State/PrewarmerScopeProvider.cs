@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -558,6 +559,8 @@ public class PrewarmerScopeProvider(
             baseStorageTree.HintSet(in index, in value);
         }
 
+        // Inlined, as it was before block processing's reads were reported: the report only adds a test of the observer.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
