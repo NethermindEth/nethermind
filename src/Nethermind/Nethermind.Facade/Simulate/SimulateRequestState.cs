@@ -16,17 +16,20 @@ public class SimulateRequestState : IBlobBaseFeeOverrideProvider
     /// <summary>Remaining EIP-8037 state-dimension block budget, mirroring <see cref="BlockGasLeft"/> (execution).</summary>
     public ulong BlockStateGasLeft { get; set; }
     public bool[] TxsWithExplicitGas { get; private set; } = [];
+    public ulong?[] GasLimitsToFitBlock { get; private set; } = [];
 
     public void SetTxsWithExplicitGas(TransactionWithSourceDetails[] calls)
     {
         if (TxsWithExplicitGas.Length < calls.Length)
         {
             TxsWithExplicitGas = new bool[calls.Length];
+            GasLimitsToFitBlock = new ulong?[calls.Length];
         }
 
         for (int i = 0; i < calls.Length; i++)
         {
             TxsWithExplicitGas[i] = calls[i].HadGasLimitInRequest;
+            GasLimitsToFitBlock[i] = calls[i].GasLimitToFitBlock;
         }
     }
 }

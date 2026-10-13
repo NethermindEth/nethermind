@@ -23,7 +23,8 @@ public class SimulateTxExecutor<TTrace>(
     IJsonRpcConfig rpcConfig,
     ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
-    ulong? secondsPerSlot = null)
+    ulong? secondsPerSlot = null,
+    bool requestedGasMustFitBlock = true)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -63,15 +64,12 @@ public class SimulateTxExecutor<TTrace>(
                         }
 
                         tx.ChainId = _blockchainBridge.GetChainId();
-                        // The block budget checks the gas as requested; the simulate adapter clamps it to the request budget afterwards.
-                        if (hadGasLimitInRequest && !tx.SupportsFrames)
-                        {
-                            tx.GasLimit = asLegacy!.Gas!.Value;
-                        }
 
                         calls[i] = new TransactionWithSourceDetails
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
+                            // The block checks the gas as requested, before the conversion clamped it to the RPC gas cap.
+                            GasLimitToFitBlock = requestedGasMustFitBlock && hadGasLimitInRequest ? asLegacy!.Gas : null,
                             HadNonceInRequest = hadNonceInRequest,
                             Transaction = tx
                         };

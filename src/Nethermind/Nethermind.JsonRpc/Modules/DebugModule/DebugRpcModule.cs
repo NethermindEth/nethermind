@@ -890,7 +890,9 @@ public class DebugRpcModule(
                 jsonRpcConfig,
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)),
-                _secondsPerSlot
+                _secondsPerSlot,
+                // Like eth_call, a bundle call is not bounded by the block gas limit; FillOmittedGas relies on this.
+                requestedGasMustFitBlock: false
             ).Execute(simulatePayload, concreteBlockParameter);
 
         if (simulationResult.ErrorCode != 0)

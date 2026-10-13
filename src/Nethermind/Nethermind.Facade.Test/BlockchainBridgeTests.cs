@@ -1405,7 +1405,7 @@ public class BlockchainBridgeTests
             BlockGasLeft = 80_000,
             Validate = validate,
         };
-        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, Transaction = new Transaction() }]);
+        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 80_001, Transaction = new Transaction() }]);
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
@@ -1451,7 +1451,7 @@ public class BlockchainBridgeTests
             BlockGasLeft = 1_000_000,
             Validate = true,
         };
-        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, Transaction = new Transaction() }]);
+        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 2 * (frameExecutionGas + 300_000), Transaction = new Transaction() }]);
 
         SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
