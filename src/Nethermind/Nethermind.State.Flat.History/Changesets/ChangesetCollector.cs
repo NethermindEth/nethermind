@@ -15,6 +15,9 @@ namespace Nethermind.State.Flat.History.Changesets;
 internal sealed class ChangesetCollector
 {
     private const int MaxRetainedEntries = 512;
+    // An account change is a struct of about 112 B kept inline, so fewer of them fit the memory 512 dictionary entries
+    // took before.
+    private const int MaxRetainedAccounts = 128;
     private const int MaxRetainedPacked = 64 * 1024;
 
     // The changes live in one reusable list, found through their index, so a transaction allocates none and every
@@ -94,15 +97,16 @@ internal sealed class ChangesetCollector
         return buffer.WithoutLeadingZeros();
     }
 
-    /// <summary>Clears the collector, keeping its dictionaries warm for the next transaction in this position. What
-    /// grew past what a transaction normally writes is let go of instead: the capture lives as long as the process and
-    /// holds one collector per position, so retaining every position's high-water mark would be unbounded in practice.</summary>
+    /// <summary>Clears the collector, keeping its list and dictionaries warm for the next transaction in this position.
+    /// What grew past what a transaction normally writes is let go of instead: the capture lives as long as the process
+    /// and holds one collector per position, so retaining every position's high-water mark would be unbounded in
+    /// practice.</summary>
     public void Reset()
     {
         _accountIndexes.Clear();
-        if (_accountIndexes.EnsureCapacity(0) > MaxRetainedEntries) _accountIndexes.TrimExcess();
+        if (_accountIndexes.EnsureCapacity(0) > MaxRetainedAccounts) _accountIndexes.TrimExcess();
         _accounts.Clear();
-        if (_accounts.Capacity > MaxRetainedEntries) _accounts.TrimExcess();
+        if (_accounts.Capacity > MaxRetainedAccounts) _accounts.TrimExcess();
         _storage.Clear();
         if (_storage.EnsureCapacity(0) > MaxRetainedEntries) _storage.TrimExcess();
         if (_packed.Length <= MaxRetainedPacked) return;

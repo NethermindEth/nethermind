@@ -77,7 +77,8 @@ public class ChangesetCollectorTests
         collector.Reset();
         collector.Code(TestItem.AddressD, Code);
         ChangesetCodec.Enumerator code = ChangesetCodec.Read(collector.Pack());
-        Assert.That(code.MoveNext() && code.CodeHash.SequenceEqual(ValueKeccak.Compute(Code).Bytes), Is.True, "the code is carried as its hash");
+        Assert.That(code.MoveNext(), Is.True, "precondition: the code change is packed");
+        Assert.That(code.CodeHash.ToArray(), Is.EqualTo(ValueKeccak.Compute(Code).ToByteArray()), "the code is carried as its hash");
         collector.Release();
     }
 
