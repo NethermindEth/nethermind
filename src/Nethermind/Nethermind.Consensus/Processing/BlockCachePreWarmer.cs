@@ -433,13 +433,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     return;
                 }
 
+                ParallelUnbalancedWork.BackgroundWork started;
                 lock (_gate)
                 {
                     if (_closed) return;
                     Interlocked.Increment(ref _running);
                     try
                     {
-                        _runs.Add(ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => Run(index, tx, token)));
+                        _runs.Add(started = ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => Run(index, tx, token)));
                     }
                     catch
                     {
@@ -452,6 +453,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
                 Interlocked.Increment(ref preWarmer._readAheadsStarted);
                 Blockchain.Metrics.PrewarmInFlightStarted++;
+                // Bench pacing, not for merge: block processing waits in its read for the read-ahead it started, so every
+                // read-ahead runs its rounds on the transaction block processing is executing, as the paced tests do.
+                started.WaitForCompletion();
             }
             catch (Exception ex)
             {
