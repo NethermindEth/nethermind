@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -19,7 +20,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 {
     public const string PrestateTracer = "prestateTracer";
 
-    public UInt256 InstructionMask => CaptureMask;
+    public UInt256 InstructionMask { get; }
 
     private static readonly UInt256 CaptureMask = CreateCaptureMask();
 
@@ -33,7 +34,10 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
     private readonly HashSet<AddressAsKey> _deletedAccounts;
+    // EIP-8360: storage opcodes of these accounts act on transient storage, so they read no state.
+    private HashSet<AddressAsKey>? _transientCreates;
     private readonly bool _diffMode;
+    private readonly bool _isEip8298Enabled;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -42,7 +46,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         Address? from,
         Address? to = null,
         Address? beneficiary = null,
-        Transaction? transaction = null)
+        Transaction? transaction = null,
+        IReleaseSpec? spec = null)
         : base(options)
     {
         IsTracingActions = true;
@@ -53,6 +58,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _worldState = worldState;
         _txHash = txHash;
+        _isEip8298Enabled = spec?.IsEip8298Enabled == true;
+        InstructionMask = _isEip8298Enabled ? CaptureMask | (UInt256.One << (int)Instruction.SETCODEFROM) : CaptureMask;
 
         NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
@@ -110,7 +117,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH or Instruction.EXTCODESIZE
         or Instruction.BALANCE or Instruction.SELFDESTRUCT
         or Instruction.DELEGATECALL or Instruction.CALL or Instruction.STATICCALL or Instruction.CALLCODE
-        or Instruction.CREATE or Instruction.CREATE2;
+        or Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE;
 
     public override GethLikeTxTrace BuildResult()
     {
@@ -158,8 +165,16 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
 
-        IsTracingMemory = _op == Instruction.CREATE2;
-        IsTracingStack = RequiresStack(_op);
+        IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
+        IsTracingStack = RequiresStack(_op) || (_op == Instruction.SETCODEFROM && _isEip8298Enabled);
+    }
+
+    /// <remarks>EIP-8151: ecRecover reads the recovered account's code to decide its output. The VM reports it, so the
+    /// account is found wherever a state override moved ecRecover, and only when the read happened.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
+    {
+        base.ReportPrecompileAccountRead(address);
+        if (_error is null) LookupAccount(address);
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -182,7 +197,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1)
+                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     LookupStorage(_executingAccount!, index);
@@ -201,6 +216,13 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                         _deletedAccounts.Add(address);
                 }
                 break;
+            // EIP-8298: SETCODEFROM reads the source account's code.
+            case Instruction.SETCODEFROM when _isEip8298Enabled:
+                if (stackLen >= 1)
+                {
+                    LookupAccount(stack.PeekAddress(0));
+                }
+                break;
             case Instruction.DELEGATECALL:
             case Instruction.CALL:
             case Instruction.STATICCALL:
@@ -212,6 +234,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 }
                 break;
             case Instruction.CREATE2:
+            case Instruction.TCREATE:
                 if (stackLen >= 4)
                 {
                     try
@@ -220,10 +243,14 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                         int length = stack.Peek(2).ReadEthInt32();
                         ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
                         ReadOnlySpan<byte> salt = stack.Peek(3);
-                        address = ContractAddress.From(_executingAccount!, salt, initCode);
+                        address = _op == Instruction.TCREATE
+                            ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
+                            : ContractAddress.From(_executingAccount!, salt, initCode);
                         LookupAccount(address);
                         if (_diffMode)
                             _createdAccounts.Add(address);
+                        if (_op == Instruction.TCREATE)
+                            (_transientCreates ??= []).Add(address);
                     }
                     catch
                     {
