@@ -93,8 +93,8 @@ jobs:
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
-          # An expired token would fail later pulls instead of falling back to anonymous
-          DOCKERHUB_OIDC_EXPIREIN: 21600
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
           username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
@@ -243,8 +243,8 @@ jobs:
         uses: docker/login-action@v4
         env:
           DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
-          # An expired token would fail later pulls instead of falling back to anonymous
-          DOCKERHUB_OIDC_EXPIREIN: 21600
+          # The longest lifetime docker/login-action accepts; the pinned images are pulled once and then cached
+          DOCKERHUB_OIDC_EXPIREIN: 3600
         with:
           username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
