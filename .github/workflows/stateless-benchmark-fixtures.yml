@@ -69,12 +69,34 @@ jobs:
   build:
     name: Build ZisK guest
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # An expired token would fail later pulls instead of falling back to anonymous
+          DOCKERHUB_OIDC_EXPIREIN: 21600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Build Nethermind
         working-directory: ${{ env.GUEST_DIR }}
@@ -142,6 +164,9 @@ jobs:
       max-parallel: 64
       matrix:
         include: ${{ fromJSON(needs.matrix.outputs.shards) }}
+    permissions:
+      contents: read
+      id-token: write
     env:
       GAS: ${{ matrix.gas }}
       SHARD: ${{ matrix.shard }}
@@ -203,6 +228,25 @@ jobs:
           jq "[.[] | select($known | not)]" "$RUNNER_TEMP/manifest.json" --args "${KNOWN_FAILURES[@]}" \
             > "$RUNNER_TEMP/manifest.run.json"
           mv "$RUNNER_TEMP/manifest.run.json" "$RUNNER_TEMP/manifest.json"
+
+      - name: Check Docker Hub OIDC availability
+        id: dockerhub
+        env:
+          CONNECTION_ID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+        run: |
+          if [[ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && -n "$CONNECTION_ID" ]]; then echo "available=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Log in to Docker Hub
+        # Skipped wherever OIDC is unavailable (forks, Dependabot, callers without
+        # id-token: write); those runs pull anonymously as before.
+        if: steps.dockerhub.outputs.available == 'true'
+        uses: docker/login-action@v4
+        env:
+          DOCKERHUB_OIDC_CONNECTIONID: ${{ vars.DOCKERHUB_READ_OIDC_CONNECTIONID }}
+          # An expired token would fail later pulls instead of falling back to anonymous
+          DOCKERHUB_OIDC_EXPIREIN: 21600
+        with:
+          username: ${{ vars.DOCKERHUB_READ_ORGANIZATION }}
 
       - name: Measure
         working-directory: ${{ env.GUEST_DIR }}

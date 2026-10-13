@@ -82,6 +82,12 @@ runs:
           tag=$(echo "$TAG" | sed 's/\//-/g') # replace '/' with '-'
         fi
 
+        # Benchmarks and nightly consumers treat these tags as master builds, so other refs must not overwrite them
+        if [[ "$GITHUB_REF" != "refs/heads/master" && "$tag" =~ ^(master|master-.*|nightly)$ ]]; then
+          echo "::error::Tag '${tag}' is reserved for builds from master"
+          exit 1
+        fi
+
         # Set the image label output
         image_label="${full_image_name}:${tag}"
         echo "image-label=${image_label}" >> $GITHUB_OUTPUT
