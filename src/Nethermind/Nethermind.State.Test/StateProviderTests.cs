@@ -67,6 +67,9 @@ public class StateProviderTests(bool useFlat)
     public void ApplyBal_MatchesTheSameChangesMadeThroughTheWorldState()
     {
         byte[] code = Bytes.FromHexString("0x60006000");
+        // EIP-8298: AddressE adopts by hash the code AddressF deposits and later replaces, so only F's first change has it.
+        byte[] adoptedCode = Bytes.FromHexString("0x60016001");
+        byte[] replacementCode = Bytes.FromHexString("0x60026002");
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(
                 Build.An.AccountChanges
@@ -90,6 +93,14 @@ public class StateProviderTests(bool useFlat)
                 Build.An.AccountChanges
                     .WithAddress(TestItem.AddressD)
                     .WithStorageChanges(1, new StorageChange(1, 0x55))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressE)
+                    .WithCodeChanges(CodeChange.Adopted(2, ValueKeccak.Compute(adoptedCode)))
+                    .TestObject,
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressF)
+                    .WithCodeChanges(new CodeChange(1, adoptedCode), new CodeChange(3, replacementCode))
                     .TestObject)
             .TestObject;
 
@@ -105,6 +116,11 @@ public class StateProviderTests(bool useFlat)
             state.InsertCode(TestItem.AddressC, code, Amsterdam.Instance);
             state.Set(new StorageCell(TestItem.AddressC, 5), 7);
             state.Set(new StorageCell(TestItem.AddressD, 1), 0x55);
+            state.CreateAccount(TestItem.AddressF, 0);
+            state.InsertCode(TestItem.AddressF, adoptedCode, Amsterdam.Instance);
+            state.CreateAccount(TestItem.AddressE, 0);
+            state.InsertCode(TestItem.AddressE, adoptedCode, Amsterdam.Instance);
+            state.InsertCode(TestItem.AddressF, replacementCode, Amsterdam.Instance);
         }, readBack: static _ => { });
 
         using Context applied = new(useFlat, UnavailableStateHeaderProvider.Instance);
@@ -130,6 +146,8 @@ public class StateProviderTests(bool useFlat)
                 Assert.That(newSlot, Is.EqualTo((UInt256)7));
                 state.Get(new StorageCell(TestItem.AddressD, 1), out UInt256 storageOnlySlot);
                 Assert.That(storageOnlySlot, Is.EqualTo((UInt256)0x55));
+                Assert.That(state.GetCode(TestItem.AddressE), Is.SequenceEqualTo(adoptedCode), "adopted code");
+                Assert.That(state.GetCode(TestItem.AddressF), Is.SequenceEqualTo(replacementCode), "replaced code");
             }
         });
 
@@ -234,6 +252,44 @@ public class StateProviderTests(bool useFlat)
         {
             Assert.That(state.AccountExists(_address1), Is.False, "the delete must land without the block having read the account first");
             Assert.That(removed, Is.EqualTo(new[] { (AddressAsKey)_address1 }), "a storage cache learns of the wipe only through the recorded removal");
+        }
+        state._stateProvider.ReturnRemovedAccounts(removed);
+    }
+
+    [Test]
+    public void DeleteAccount_WhenRecreatedAndDeletedAgainInOneCommit_RemovesThePreExistingAccount([Values] bool createdOverInFirstTx)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        WorldState state = (WorldState)ctx.WorldState;
+        BlockHeader baseBlock;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(_address1, 1);
+            state.Set(new StorageCell(_address1, 1), 5);
+            state.Commit(Frontier.Instance);
+            state.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        // Block production commits once per block, so both self-destructs share one journal.
+        state.GetBalance(_address1);
+        // A CREATE2 onto the pre-funded address updates it rather than creating it.
+        if (createdOverInFirstTx) state.IncrementNonce(_address1);
+        state.ClearStorage(_address1);
+        state.DeleteAccount(_address1);
+        state.CreateAccount(_address1, 0);
+        state.ClearStorage(_address1);
+        state.DeleteAccount(_address1);
+        state.Commit(Cancun.Instance);
+        state.RecalculateStateRoot();
+
+        List<AddressAsKey> removed = state._stateProvider.DetachRemovedAccountsWithStorage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(_address1), Is.False);
+            Assert.That(state.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(removed, Is.EqualTo(new[] { (AddressAsKey)_address1 }));
         }
         state._stateProvider.ReturnRemovedAccounts(removed);
     }
@@ -390,6 +446,36 @@ public class StateProviderTests(bool useFlat)
         provider.AddToBalance(_address1, 1, Frontier.Instance);
         provider.Restore(new Snapshot(Snapshot.Storage.Empty, 4));
         Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)4));
+    }
+
+    [Test]
+    public void Original_balance_is_the_balance_at_transaction_start()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(Frontier.Instance);
+
+        // After a commit the committed state is the transaction start.
+        provider.AddToBalance(_address1, 2, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+        Assert.That(provider.GetOriginalBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+
+        // A transaction stacked without a commit starts at its snapshot.
+        Snapshot txStart = provider.TakeSnapshot(newTransactionStart: true);
+        provider.AddToBalance(_address1, 4, Frontier.Instance);
+        provider.AddToBalance(_address1, 8, Frontier.Instance);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)15));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)3));
+
+        // Reverting the transaction drops its start, back to the commit.
+        provider.Restore(new Snapshot(Snapshot.Storage.Empty, txStart.StateSnapshot - 1));
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
+
+        // A write after the revert must not see the dropped start.
+        provider.AddToBalance(_address1, 16, Frontier.Instance);
+        Assert.That(provider.GetOriginalBalance(_address1), Is.EqualTo((UInt256)1));
     }
 
     [Test]
@@ -568,6 +654,51 @@ public class StateProviderTests(bool useFlat)
 
         Assert.That(provider.GetCode(keptCodeHash), Is.SequenceEqualTo(keptCode));
         Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Transient_code_is_readable_until_the_transaction_ends_and_is_not_persisted([Values] bool endsWithCommit, [Values] bool alsoDeployedPersistently)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x02, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertTransientCode(TestItem.AddressB, codeHash, code, spec);
+        if (alsoDeployedPersistently)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        // Transient storage is discarded between EIP-8141 frames, but the code lasts the whole transaction.
+        provider.ResetTransient();
+        Assert.That(provider.GetCode(TestItem.AddressB), Is.SequenceEqualTo(code));
+        Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+
+        // The transaction's finalization removes the account before it ends.
+        provider.DeleteAccount(TestItem.AddressB);
+        if (endsWithCommit) provider.Commit(spec, commitRoots: false);
+        else provider.DiscardTransientCode();
+        if (!alsoDeployedPersistently)
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        provider.Commit(spec);
+
+        if (alsoDeployedPersistently)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.SequenceEqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
     }
 
     [Test]

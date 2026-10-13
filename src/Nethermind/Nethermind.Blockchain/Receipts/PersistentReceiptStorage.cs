@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
+        private readonly bool _eip7668EverEnabled;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IDb _receiptsDb;
         private readonly IDb _defaultColumn;
@@ -131,6 +132,7 @@ namespace Nethermind.Blockchain.Receipts
             ulong Get(Hash256 key, ulong defaultValue) => _defaultColumn.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _eip7668EverEnabled = specProvider.GetFinalSpec().IsEip7668Enabled;
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
@@ -427,7 +429,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    receipts = _storageDecoder.Decode(in receiptsData);
+                    receipts = Decode(in receiptsData, block.Header);
 
                     if (recover)
                     {
@@ -523,12 +525,26 @@ namespace Nethermind.Blockchain.Receipts
             try
             {
                 if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
-                return _storageDecoder.Decode(in receiptsData);
+                return Decode(in receiptsData, header);
             }
             finally
             {
                 _receiptsDb.DangerousReleaseMemory(receiptsData);
             }
+        }
+
+        /// <remarks>
+        /// After EIP-7668 the compact encoding skips computing each bloom and a receipt synced without one would
+        /// compute it lazily, so every bloom is set to <see cref="Bloom.ZeroLength"/>. A chain that never schedules
+        /// the EIP skips the spec lookup.
+        /// </remarks>
+        private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
+        {
+            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
+
+            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
+            receipts.SetZeroLengthBlooms();
+            return receipts;
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;
@@ -616,6 +632,7 @@ namespace Nethermind.Blockchain.Receipts
             // and the DB write both defer: reads serve the receipts objects, never the bytes, so the RLP is only
             // needed by the queued write and is produced on the consumer instead of on the processing path.
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
@@ -825,6 +842,7 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            if (spec.IsEip7668Enabled) txReceipts.SetZeroLengthBlooms();
 
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;

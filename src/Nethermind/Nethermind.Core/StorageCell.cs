@@ -5,19 +5,15 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Address}->{Index}")]
-    public readonly struct StorageCell(Address address, in UInt256 index) : IEquatable<StorageCell>, IHash64bit<StorageCell>
+    public readonly partial struct StorageCell : IEquatable<StorageCell>, IHash64bit<StorageCell>
     {
         public static GenericEqualityComparer<StorageCell> EqualityComparer { get; } = new();
-        private readonly AddressAsKey _address = address;
-        [JsonInclude]
-        public readonly UInt256 Index = index;
 
         public Address Address => _address.Value;
 
@@ -41,9 +37,6 @@ namespace Nethermind.Core
         }
 
         public bool Equals(StorageCell other) => Equals(in other);
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public long GetHashCode64() => _address.Value.GetHashCode64(in Index);
 
         public override bool Equals(object? obj)
         {

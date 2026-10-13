@@ -49,7 +49,7 @@ public static partial class KzgPolynomialCommitments
         {
             initialization.GetAwaiter().GetResult();
         }
-        catch (Exception e)
+        catch (Exception e) when (e is not KzgSetupUnavailableException)
         {
             throw new KzgSetupUnavailableException("KZG trusted setup failed to load", e);
         }
@@ -81,16 +81,23 @@ public static partial class KzgPolynomialCommitments
             return;
 
         string trustedSetupTextFileLocation = setupFilePath ??
-            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ?? string.Empty,
-                "kzg_trusted_setup.txt");
+            Path.Combine(AppContext.BaseDirectory, "kzg_trusted_setup.txt");
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
 
-        Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
+        try
+        {
+            Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
 
-        if (_ckzgSetup == nint.Zero)
-            throw new InvalidOperationException("Failed to load trusted setup");
+            if (_ckzgSetup == nint.Zero)
+                throw new InvalidOperationException("Failed to load trusted setup");
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            throw new KzgSetupUnavailableException(
+                $"Unable to load KZG trusted setup from '{trustedSetupTextFileLocation}'. The file may be missing, unreadable, or invalid.", e);
+        }
     }
 
     /// <param name="commitment">Hash256 to calculate hash from.</param>

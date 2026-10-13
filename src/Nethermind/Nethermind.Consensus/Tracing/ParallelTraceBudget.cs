@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Db;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -14,15 +13,10 @@ public sealed class ParallelTraceBudget : IDisposable
 
     private readonly SemaphoreSlim _slots;
 
-    /// <summary>Creates the node-owned budget from configuration; dispose after all dependent tracers.</summary>
-    public ParallelTraceBudget(IFlatDbConfig config) : this(config.HistoryTransactionIndexTraceParallelism)
-    {
-    }
-
-    /// <summary>Creates a budget capped at sixteen workers; zero selects the processor count.</summary>
+    /// <summary>Creates a budget of one to sixteen workers.</summary>
     public ParallelTraceBudget(int degree)
     {
-        Degree = Math.Clamp(degree == 0 ? Environment.ProcessorCount : degree, 1, MaxDegree);
+        Degree = Math.Clamp(degree, 1, MaxDegree);
         _slots = new SemaphoreSlim(Degree, Degree);
     }
 

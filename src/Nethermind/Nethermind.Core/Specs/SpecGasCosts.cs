@@ -115,13 +115,15 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
                 ? GasCostOf.TotalCostFloorPerTokenEip7623
                 : GasCostOf.Free;
 
-        SClearRefund = spec.IsEip8038Enabled
-            ? RefundOf.SClearEip8038
-            : spec.IsEip3529Enabled
-                ? RefundOf.SClearAfterEip3529
-                : RefundOf.SClearBeforeEip3529;
+        SClearRefund = spec.IsEip3298Enabled
+            ? GasCostOf.Free
+            : spec.IsEip8038Enabled
+                ? RefundOf.SClearEip8038
+                : spec.IsEip3529Enabled
+                    ? RefundOf.SClearAfterEip3529
+                    : RefundOf.SClearBeforeEip3529;
 
-        DestroyRefund = spec.IsEip3529Enabled
+        DestroyRefund = spec.IsEip3529Enabled || spec.IsEip3298Enabled
             ? RefundOf.DestroyAfterEip3529
             : RefundOf.DestroyBeforeEip3529;
 

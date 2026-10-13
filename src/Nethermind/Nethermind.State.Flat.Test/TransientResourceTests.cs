@@ -42,4 +42,30 @@ public class TransientResourceTests
             Assert.That(slotOne, Is.Not.EqualTo(slotZero));
         }
     }
+
+    [Test]
+    public void Reset_AfterPrewarmMarks_ClearsTheDedupeBloom()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1024));
+        Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.True, "precondition: the first hint is queued");
+        Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.False, "precondition: a repeated hint is deduplicated");
+
+        resource.Reset();
+
+        Assert.That(resource.ShouldPrewarm(TestItem.AddressA, null), Is.True, "a reset resource must forget earlier hints");
+    }
+
+    [Test]
+    public void Reset_WhenNothingWasMarked_KeepsTheDedupeBloomEmpty()
+    {
+        using TransientResource resource = new(new TransientResource.Size(1024, 1024));
+
+        resource.Reset();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resource.PrewarmedAddresses.Count, Is.EqualTo(0), "an unused bloom stays empty");
+            Assert.That(resource.ShouldPrewarm(TestItem.AddressA, UInt256.One), Is.True, "nothing is marked after resetting an unused resource");
+        }
+    }
 }

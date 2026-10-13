@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -38,7 +37,7 @@ namespace Nethermind.State;
 /// the same StateProvider would skip re-inserting the bytes, throwing
 /// "Code 0x… is missing from the database" on the next read.
 /// </param>
-public class TrieStoreScopeProvider(
+public partial class TrieStoreScopeProvider(
     ITrieStore trieStore,
     IKeyValueStoreWithBatching codeDb,
     IStateHeaderProvider stateHeaderProvider,
@@ -130,7 +129,7 @@ public class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -263,8 +262,8 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -321,7 +320,7 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
-    private class WorldStateWriteBatch(
+    private partial class WorldStateWriteBatch(
         TrieStoreWorldStateBackendScope scope,
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
@@ -360,18 +359,7 @@ public class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
-            if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
-            {
-                scope._backingStateTree.SetAccounts(_dirtyAccounts);
-            }
-            else
-            {
-                using StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count);
-                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
-                {
-                    stateSetter.Set(kv.Key, kv.Value);
-                }
-            }
+            WriteAccounts(scope._backingStateTree, _dirtyAccounts);
 
             scope.ClearLoadedAccounts();
 
@@ -379,9 +367,12 @@ public class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
+
+        /// <summary>Writes the changed accounts into <paramref name="stateTree"/>.</summary>
+        private static partial void WriteAccounts(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts);
     }
 
-    public class StorageTreeBulkWriteBatch(
+    public partial class StorageTreeBulkWriteBatch(
         int estimatedEntries,
         StorageTree storageTree,
         Action<Address, Hash256> onRootUpdated,
@@ -400,7 +391,7 @@ public class TrieStoreScopeProvider(
         private int _writes;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
+            estimatedEntries > BulkWriteThreshold
                 ? new(estimatedEntries)
                 : null;
 

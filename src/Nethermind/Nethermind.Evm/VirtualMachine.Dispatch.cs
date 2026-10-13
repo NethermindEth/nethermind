@@ -25,10 +25,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredTracedSource;
     private delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[]? _filteredSilentSource;
     private UInt256 _filteredInstructionMask;
+    private bool _useCallDestinations;
 
     private struct SilentInstructionFlag : IFlag
     {
         public static bool IsActive => true;
+    }
+
+    /// <summary>The execution gas a handler carries in its scalar argument, read back from <paramref name="gas"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong GetExecutionGas(ref TGasPolicy gas) => TGasPolicy.GetRemainingGas(in gas);
+
+    /// <summary>A policy that holds only the carried execution <paramref name="gas"/>, for a body that charges nothing else.</summary>
+    /// <remarks>
+    /// Such a body never reads the rest of the policy, so it stays uninitialized, and a local policy can stay in registers.
+    /// A body that may touch the rest runs on the frame's policy instead: the carried gas is written to it with
+    /// <c>SetExecutionGas</c> before the body and read back with <see cref="GetExecutionGas"/> after, and written to it
+    /// once more as the chain leaves.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void LoadFixedGas(out TGasPolicy fixedGas, ulong gas)
+    {
+        Unsafe.SkipInit(out fixedGas);
+        SetExecutionGas(ref fixedGas, gas);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -63,6 +82,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         // The fork comes from Spec here and in GetOpcodeTable, so the cache key and the table contents
         // cannot describe different forks.
         IReleaseSpec spec = Spec;
+        _useCallDestinations = spec.IsEip7979Enabled;
         // Per transaction, not per table build: a cached table would otherwise let a later block
         // outside the compiled fork range run against rules that do not describe it.
         SpecFlags.Validate(spec);

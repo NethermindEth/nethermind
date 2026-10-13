@@ -288,7 +288,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                         foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
                         {
                             if (!filter.ShouldUseTxTrace(item.Action)) continue;
-                            JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+                            TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
                         }
                         FlushPipe(writer, pipeWriter, ct);
                     }
@@ -337,7 +337,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                         ct.ThrowIfCancellationRequested();
                         foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
                         {
-                            JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+                            TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
                         }
                         FlushPipe(writer, pipeWriter, ct);
                     }
@@ -361,7 +361,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
                     foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(storedTrace))
                     {
                         ct.ThrowIfCancellationRequested();
-                        JsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
+                        TypeInfoJsonSerializer.Serialize(writer, item, EthereumJsonSerializer.JsonOptions);
                     }
                     FlushPipe(writer, pipeWriter, ct);
                 },
