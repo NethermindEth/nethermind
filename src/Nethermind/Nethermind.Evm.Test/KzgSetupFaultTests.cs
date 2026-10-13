@@ -21,7 +21,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test;
 
 /// <summary>
-/// A KZG setup fault is a node fault, so it must escape the precompile dispatch that turns every other
+/// A KZG setup fault or running out of memory is a node fault, so it must escape the precompile dispatch that turns every other
 /// precompile exception into a failed call. Both dispatch paths are covered: CALL runs a precompile in a call
 /// frame, and an untraced STATICCALL runs it inline.
 /// </summary>
@@ -36,13 +36,20 @@ public class KzgSetupFaultTests : VirtualMachineTestsBase
     [OneTimeSetUp]
     public Task LoadKzgSetup() => KzgPolynomialCommitments.InitializeAsync();
 
-    [TestCase(Instruction.CALL)]
-    [TestCase(Instruction.STATICCALL)]
-    public void Setup_fault_escapes_the_point_evaluation_call(Instruction call)
+    [Test]
+    public void Node_fault_escapes_the_point_evaluation_call(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction call,
+        [ValueSource(nameof(NodeFaults))] Exception fault)
     {
-        UsePointEvaluationPrecompile(new ThrowingPrecompile(new KzgSetupUnavailableException("KZG trusted setup failed to load")));
+        UsePointEvaluationPrecompile(new ThrowingPrecompile(fault));
 
-        Assert.That(() => ExecuteCall(call, new byte[PointEvaluationInputLength]), Throws.TypeOf<KzgSetupUnavailableException>());
+        Assert.That(() => ExecuteCall(call, new byte[PointEvaluationInputLength]), Throws.TypeOf(fault.GetType()));
+    }
+
+    private static IEnumerable<Exception> NodeFaults()
+    {
+        yield return new KzgSetupUnavailableException("KZG trusted setup failed to load");
+        yield return new OutOfMemoryException();
     }
 
     [TestCase(Instruction.CALL)]

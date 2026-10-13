@@ -70,7 +70,7 @@ public class TaikoVirtualMachine(
                 Environment.Exit(ExitCodes.MissingPrecompile);
                 throw; // Unreachable
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is not OutOfMemoryException)
             {
                 if (_logger.IsError) LogExecutionException(precompile, exception);
                 return new(default, precompileSuccess: false, shouldRevert: true);
