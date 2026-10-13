@@ -1,11 +1,17 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 
@@ -16,7 +22,8 @@ public class ChainLevelInfoRepositoryTests
     [Test]
     public void TestMultiGet()
     {
-        ChainLevelInfoRepository repository = new(new MemDb());
+        using IContainer container = CreateContainer(new MemDb());
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
 
         ChainLevelInfo level1 = new(false, new BlockInfo(TestItem.KeccakA, 0));
         ChainLevelInfo level10 = new(false, new BlockInfo(TestItem.KeccakB, 0));
@@ -36,7 +43,8 @@ public class ChainLevelInfoRepositoryTests
     public void TestClearCache_removes_cached_levels()
     {
         MemDb db = new();
-        ChainLevelInfoRepository repository = new(db);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
 
         ChainLevelInfo level1 = new(false, new BlockInfo(TestItem.KeccakA, 0));
 
@@ -55,8 +63,137 @@ public class ChainLevelInfoRepositoryTests
         AssertChainLevelInfo(loaded, level1);
 
         // Clear cache - level should no longer be retrievable
-        (repository as IClearableCache)?.ClearCache();
+        ((IClearableCache)repository).ClearCache();
         Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void LoadLevel_serves_a_header_cache_sized_window_from_cache()
+    {
+        const int levelCount = 256 + 16;
+        MemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            repository.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, number)));
+        }
+
+        ((IClearableCache)repository).ClearCache();
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            repository.LoadLevel(number);
+        }
+
+        long readsAfterFirstPass = db.ReadsCount;
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            Assert.That(repository.LoadLevel(number)?.BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)number));
+        }
+
+        Assert.That(db.ReadsCount, Is.EqualTo(readsAfterFirstPass));
+    }
+
+    [Test]
+    public void LoadLevel_keeps_a_level_persisted_while_the_load_read_the_db()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        ChainLevelInfo persisted = new(true, new BlockInfo(TestItem.KeccakB, 2));
+        byte[] staleRlp = PersistUncached(repository, db, new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 1)));
+
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            repository.PersistLevel(1, persisted);
+            return staleRlp;
+        };
+
+        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
+        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
+    }
+
+    [Test]
+    public void LoadLevel_does_not_cache_a_level_deleted_while_the_load_read_the_db()
+    {
+        TestMemDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        byte[] deletedRlp = PersistUncached(repository, db, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            repository.Delete(1);
+            return deletedRlp;
+        };
+
+        Assert.That(repository.LoadLevel(1), Is.Not.Null);
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void Delete_clears_a_level_loaded_before_the_db_delete()
+    {
+        RemoveHookDb db = new();
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        PersistUncached(repository, db, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        db.BeforeRemove = () =>
+        {
+            db.BeforeRemove = null;
+            Assert.That(repository.LoadLevel(1), Is.Not.Null);
+        };
+
+        repository.Delete(1);
+
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void Delete_evicts_the_cached_level()
+    {
+        using IContainer container = CreateContainer(new MemDb());
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        repository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        Assert.That(repository.LoadLevel(1), Is.Not.Null);
+
+        repository.Delete(1);
+
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void PersistLevel_in_a_batch_replaces_the_cached_level()
+    {
+        using IContainer container = CreateContainer(new MemDb());
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        repository.PersistLevel(1, new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 1)));
+        Assert.That(repository.LoadLevel(1), Is.Not.Null);
+        ChainLevelInfo replacement = new(true, new BlockInfo(TestItem.KeccakB, 2));
+
+        using (BatchWrite batch = repository.StartBatch())
+        {
+            repository.PersistLevel(1, replacement, batch);
+            Assert.That(repository.LoadLevel(1), Is.SameAs(replacement));
+        }
+
+        ((IClearableCache)repository).ClearCache();
+        AssertChainLevelInfo(repository.LoadLevel(1), replacement);
+    }
+
+    private static IContainer CreateContainer(IDb blockInfosDb) => new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddKeyedSingleton<IDb>(DbNames.BlockInfos, blockInfosDb)
+        .Build();
+
+    /// <summary>Persists <paramref name="level"/> at number 1 and leaves the cache cold, returning its stored RLP.</summary>
+    private static byte[] PersistUncached(IChainLevelInfoRepository repository, IDb db, ChainLevelInfo level)
+    {
+        repository.PersistLevel(1, level);
+        ((IClearableCache)repository).ClearCache();
+        return db.Get(1UL.ToBigEndianByteArrayWithoutLeadingZeros())!;
     }
 
     private static void AssertChainLevelInfo(ChainLevelInfo actual, ChainLevelInfo expected)
@@ -72,5 +209,16 @@ public class ChainLevelInfoRepositoryTests
             Assert.That(actual.HasBlockOnMainChain, Is.EqualTo(expected.HasBlockOnMainChain));
             Assert.That(actual.BlockInfos, Is.EqualTo(expected.BlockInfos));
         });
+    }
+
+    private sealed class RemoveHookDb : TestMemDb
+    {
+        public Action BeforeRemove { get; set; }
+
+        public override void Remove(ReadOnlySpan<byte> key)
+        {
+            BeforeRemove?.Invoke();
+            base.Remove(key);
+        }
     }
 }

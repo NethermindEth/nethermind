@@ -45,10 +45,11 @@ public partial class StatelessBlockProcessingEnv(
         => _blockTree = blockTree;
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
-    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+    private readonly ICodeCache _codeCache = CreateCodeCache();
 
     // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
-    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    // ~0.4 MB zeroed per block (LOH on the host). On the host overflow only costs a re-read; the guest's
+    // map takes this as its initial size and grows past it.
     private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
@@ -65,6 +66,9 @@ public partial class StatelessBlockProcessingEnv(
 
     /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
     private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
+
+    /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
+    private static partial ICodeCache CreateCodeCache();
 
     private BlockProcessor GetProcessor()
     {

@@ -620,7 +620,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN);
 
-            Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+            Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
             Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
 
             VerifyReceipts(
@@ -640,7 +640,7 @@ namespace Nethermind.Db.Test.LogIndex
 
             await using (ILogIndexStorage failLogIndexStorage = CreateLogIndexStorage(failOnBlock: midBlock, failOnCallN: failOnCallN))
             {
-                Exception exception = Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
+                Exception exception = await Assert.ThrowsAsync<Exception>(() => AddReceiptsAsync(failLogIndexStorage, batches, isBackwardsSync));
                 Assert.That(exception, Has.Message.EqualTo(SaveFailingLogIndexStorage.FailMessage));
             }
 
@@ -691,8 +691,8 @@ namespace Nethermind.Db.Test.LogIndex
                 Throws.InstanceOf<LogIndexStateException>().And.Message.Contain("merge")
             );
 
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
-            Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
+            await Assert.DoesNotThrowAsync(() => storage.StopAsync());
         }
 
         [Combinatorial]

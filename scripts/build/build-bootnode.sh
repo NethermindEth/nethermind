@@ -17,7 +17,7 @@ echo "Building Nethermind.Bootnode"
 mkdir -p "$output_path"
 dotnet restore "$project" -p:SaveDiskSpace=true
 
-for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-x64"; do
+for rid in "linux-arm64" "linux-x64" "osx-arm64" "osx-x64" "win-arm64" "win-x64"; do
   echo "  Publishing for $rid"
 
   rid_output=$output_path/$rid

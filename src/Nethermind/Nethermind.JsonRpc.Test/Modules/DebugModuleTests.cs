@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -416,7 +418,7 @@ public class DebugModuleTests
     }
 
     [TestCaseSource(nameof(TraceBaseStateGuardErrorCases))]
-    public void DebugTraceTransactionByIndex_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
+    public void DebugTraceTransaction_WhenTraceBaseStateGuardRejects_ReturnsResourceUnavailable(
         Func<DebugRpcModule, BlockHeader, ResultWrapper<GethLikeTxTrace>> invoke,
         Action<BlockHeader, BlockHeader, IBlockFinder, IBlockchainBridge> setup,
         string expectedErrorSubstring)
@@ -425,12 +427,70 @@ public class DebugModuleTests
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
 
         setup(header, parent, _blockFinder, _blockchainBridge);
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
 
         ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
 
-        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
-        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
-        Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+        }
+    }
+
+    [Test]
+    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(header).Returns(false);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        GethLikeTxTrace trace = new();
+        _debugBridge.GetTransactionTrace(TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
+            new GethTraceOptions { Tracer = "noopTracer" });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(actual.Data, Is.SameAs(trace));
+        }
+    }
+
+    [Test]
+    public void DebugTraceCall_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(new GethLikeTxTrace { ReturnValue = [] });
+        GethTraceOptions options = new()
+        {
+            StateOverrides = withOverrides ? new() { [TestItem.AddressA] = new() { Nonce = 66 } } : null
+        };
+        TransactionForRpc call = new LegacyTransactionForRpc { To = TestItem.AddressA };
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceCall(call, selector, options);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingSingleResult)actual.Data).WriteAsJson(writer);
+        }
+        _debugBridge.Received(1).GetTransactionTrace(Arg.Any<Transaction>(),
+            Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
+            Arg.Is<GethTraceOptions>(o => o.StateOverrides == options.StateOverrides), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        _blockchainBridge.Received(1).HasStateForBlock(validated.Header);
     }
 
     [Test]
@@ -750,6 +810,16 @@ public class DebugModuleTests
             (
                 "ByBlockhashAndIndex",
                 static (module, header) => module.debug_traceTransactionByBlockhashAndIndex(header.Hash!, 0),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHash",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions { Tracer = "noopTracer" }),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHashStreaming",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];

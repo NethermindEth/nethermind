@@ -39,6 +39,24 @@ public ref partial struct EvmStack
         _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
 
     /// <summary>
+    /// Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, as the
+    /// destination of the jump running, and reports whether it is a jump destination.
+    /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
+    /// <remarks>
+    /// <see cref="AnalyzeJumpDestination(int)"/> without the tests that running code makes redundant: the code holds
+    /// the jump, so it does not start with STOP, and the destination is inside it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool AnalyzeJumpDestination(nint destination, ref byte code)
+    {
+        CodeInfo? codeInfo = _codeInfo;
+        return codeInfo is not null && ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) &&
+            codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
+    }
+
+    /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
     /// look-back proves it the destination of the jump running, and reports whether it did.
     /// </summary>
@@ -51,8 +69,9 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
     {
-        if (_codeInfo is null || !ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) ||
-            !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+        CodeInfo? codeInfo = _codeInfo;
+        if (codeInfo is null || !ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) ||
+            !codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;
@@ -66,9 +85,9 @@ public ref partial struct EvmStack
     /// <summary>Reports whether <paramref name="destination"/> is a jump destination already analyzed.</summary>
     /// <remarks>
     /// A bit test and nothing else, so a false answer may only mean "not analyzed yet". The fused PUSH2+JUMP
-    /// fuses only on a true answer and otherwise runs the two unfused, leaving the scan to the jump handler:
-    /// carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on every
-    /// execution, though almost none of them scan.
+    /// fuses only on a true answer and otherwise pushes and leaves the scan to the guest's unanalyzed-destination
+    /// jump handler: carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on
+    /// every execution, though almost none of them scan.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsKnownJumpDestination(int destination) =>

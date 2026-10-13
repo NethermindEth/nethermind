@@ -129,7 +129,7 @@ public sealed partial class JumpDestinationAnalyzer
     /// <summary>Reports whether <paramref name="destination"/>, a JUMPDEST byte, starts an instruction, marking it if so.</summary>
     /// <param name="destination">The position of a JUMPDEST byte in <paramref name="code"/>.</param>
     /// <param name="bitmap">The code's incremental bitmap.</param>
-    /// <param name="code">The code.</param>
+    /// <param name="code">The first byte of the code.</param>
     /// <param name="analyzedUntil">
     /// Where the contiguous scan from the start of the code stopped, an instruction start; advanced when the
     /// scan resumes from there.
@@ -146,38 +146,42 @@ public sealed partial class JumpDestinationAnalyzer
     /// out of look-backs or distance, the contiguous scan resumes instead, stopping at the first instruction
     /// boundary beyond the destination.
     /// </remarks>
-    internal static bool AnalyzeJump(int destination, long[] bitmap, ReadOnlySpan<byte> code, ref nint analyzedUntil)
+    // Inlined so the scanned-jump handler, which runs it for every scan, pays for no call or second frame.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool AnalyzeJump(nint destination, long[] bitmap, ref byte codeStart, ref nint analyzedUntil)
     {
-        ref byte codeStart = ref MemoryMarshal.GetReference(code);
         nint cursor = analyzedUntil;
         // A marked jump destination starts an instruction, so the scan may start there without any look-back.
-        if (destination > cursor)
+        nint start = destination > cursor ? FindMarkedBelow(bitmap, destination, Math.Max(cursor, destination - MaxMarkedDistance)) : -1;
+        if (start < 0)
         {
-            nint marked = FindMarkedBelow(bitmap, destination, Math.Max(cursor, destination - MaxMarkedDistance));
-            if (marked >= 0) return ScanFrom(marked, destination, bitmap, code, ref analyzedUntil);
-        }
-
-        // Within a PUSH's reach of the cursor, the contiguous scan is as cheap as any search.
-        nint floor = Math.Max(cursor, destination - MaxLocalScan) + MaxImmediateLength;
-        nint position = destination;
-        nint lookBacks = MaxLookBacks;
-        while (position > floor)
-        {
-            if (!TryFindReachingPush(ref Unsafe.Add(ref codeStart, position - MaxImmediateLength), out nint offset))
+            // Within a PUSH's reach of the cursor, the contiguous scan is as cheap as any search.
+            nint floor = Math.Max(cursor, destination - MaxLocalScan) + MaxImmediateLength;
+            nint position = destination;
+            nint lookBacks = MaxLookBacks;
+            // Read once here: inside the search, ILC rematerialises the array's address on every look-back.
+            ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
+            ulong highBits = biases;
+            while (position > floor)
             {
-                if (position != destination) return ScanFrom(position, destination, bitmap, code, ref analyzedUntil);
+                if (!TryFindReachingPush(ref Unsafe.Add(ref codeStart, position - MaxImmediateLength), ref biases, highBits, out nint offset))
+                {
+                    start = position;
+                    break;
+                }
 
-                MarkJumpDestinations(bitmap, (nuint)destination, 1L << destination);
-                return true;
+                if (--lookBacks == 0) break;
+                position += offset - MaxImmediateLength;
             }
 
-            if (--lookBacks == 0) break;
-            position += offset - MaxImmediateLength;
+            if (start < 0)
+            {
+                if (destination < cursor) return IsJumpDestination(bitmap, (int)destination);
+                start = cursor;
+            }
         }
 
-        return destination < cursor
-            ? IsJumpDestination(bitmap, destination)
-            : ScanFrom(cursor, destination, bitmap, code, ref analyzedUntil);
+        return ScanTo(start, destination, bitmap, ref codeStart, ref analyzedUntil);
     }
 
     /// <summary>Reports whether the 32 bytes before <paramref name="destination"/> prove that it starts an instruction.</summary>
@@ -231,14 +235,64 @@ public sealed partial class JumpDestinationAnalyzer
         return marked >= limit ? marked : -1;
     }
 
-    /// <summary>Scans from the instruction start <paramref name="start"/> through <paramref name="destination"/> and reports whether it is marked.</summary>
-    /// <remarks>Out of line, and reached by a tail call, so the look-back that decides most jumps does not pay for the scan's register saves.</remarks>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool ScanFrom(nint start, int destination, long[] bitmap, ReadOnlySpan<byte> code, ref nint analyzedUntil)
+    /// <summary>Scans from the instruction start <paramref name="start"/> up to the JUMPDEST at <paramref name="destination"/> and reports whether it starts an instruction, marking it if so.</summary>
+    /// <remarks>
+    /// Inlined into <see cref="AnalyzeJump"/>, which then calls nothing: a scan is a few dozen bytes, so the calls and
+    /// register saves of a separate scan cost more than the scan itself. Each jump destination is marked as it is
+    /// found, as most scans meet only one or two. The JUMPDEST at the destination bounds the scan: no run of other
+    /// opcodes passes it, so only a PUSH, whose data may cover it, is tested against it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe bool ScanTo(nint start, nint destination, long[] bitmap, ref byte code, ref nint analyzedUntil)
     {
-        nuint reached = ProcessJumpDestinationBitmap_Byte((nuint)start, bitmap, code[..(destination + 1)]);
-        if (start == analyzedUntil) analyzedUntil = (nint)reached;
-        return IsJumpDestination(bitmap, destination);
+        ref long bits = ref MemoryMarshal.GetArrayDataReference(bitmap);
+        ref int thresholds = ref MemoryMarshal.GetArrayDataReference(_byteScanThresholds);
+        nint jumpDest = thresholds;
+        nint push1 = Unsafe.Add(ref thresholds, 1);
+        nint reached;
+        bool startsInstruction;
+        // An unmanaged pointer for the PUSH skip's overshoot, as in ProcessJumpDestinationBitmap_Byte.
+        fixed (byte* codeStart = &code)
+        {
+            byte* position = codeStart + start - 1;
+            byte* end = codeStart + destination;
+            while (true)
+            {
+                // The JUMPDEST at the destination ends the run at the latest.
+                nint op;
+                do
+                {
+                    position++;
+                    op = (sbyte)*position;
+                } while (op < jumpDest);
+
+                if (op >= push1)
+                {
+                    position += op - (PUSH1 - 1);
+                    // The PUSH's data covers the destination.
+                    if (position >= end)
+                    {
+                        startsInstruction = false;
+                        break;
+                    }
+                }
+                else if (op == jumpDest)
+                {
+                    nint jumpDestination = (nint)(position - codeStart);
+                    Unsafe.Add(ref bits, jumpDestination >> BitShiftPerInt64) |= 1L << (int)jumpDestination;
+                    if (position == end)
+                    {
+                        startsInstruction = true;
+                        break;
+                    }
+                }
+            }
+
+            reached = (nint)(position + 1 - codeStart);
+        }
+
+        if (start == analyzedUntil) analyzedUntil = reached;
+        return startsInstruction;
     }
 
     /// <summary>
@@ -252,26 +306,25 @@ public sealed partial class JumpDestinationAnalyzer
     /// that does not reach, which costs a scan, but never misses one that does.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryFindReachingPush(ref byte window, out nint offset)
+    private static bool TryFindReachingPush(ref byte window, ref ulong biases, ulong highBits, out nint offset)
     {
-        ref ulong biases = ref MemoryMarshal.GetArrayDataReference(_reachBiases);
-        ulong highBits = biases;
-        ulong word0 = Unsafe.ReadUnaligned<ulong>(ref window);
-        ulong word1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, sizeof(ulong)));
-        ulong word2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 2 * sizeof(ulong)));
-        ulong word3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, 3 * sizeof(ulong)));
-        ulong reach0 = (word0 + Unsafe.Add(ref biases, 1)) & ~word0;
-        ulong reach1 = (word1 + Unsafe.Add(ref biases, 2)) & ~word1;
-        ulong reach2 = (word2 + Unsafe.Add(ref biases, 3)) & ~word2;
-        ulong reach3 = (word3 + Unsafe.Add(ref biases, 4)) & ~word3;
+        // A word at a time, stopping at the first that reaches, so the search holds one word rather than eight.
         offset = 0;
-        if (((reach0 | reach1 | reach2 | reach3) & highBits) == 0) return false;
+        ulong reaching = ReachingBytes(ref window, ref biases, 0) & highBits;
+        if (reaching == 0) { offset = sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 1) & highBits; }
+        if (reaching == 0) { offset = 2 * sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 2) & highBits; }
+        if (reaching == 0) { offset = 3 * sizeof(ulong); reaching = ReachingBytes(ref window, ref biases, 3) & highBits; }
+        if (reaching == 0) return false;
 
-        ulong reaching = reach0 & highBits;
-        if (reaching == 0) { offset = sizeof(ulong); reaching = reach1 & highBits; }
-        if (reaching == 0) { offset = 2 * sizeof(ulong); reaching = reach2 & highBits; }
-        if (reaching == 0) { offset = 3 * sizeof(ulong); reaching = reach3 & highBits; }
         offset += BitOperations.TrailingZeroCount(reaching) >> 3;
         return true;
+    }
+
+    /// <summary>The bytes of the <paramref name="word"/>th word of the look-back window whose high bit adding their offset plus one sets.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReachingBytes(ref byte window, ref ulong biases, int word)
+    {
+        ulong bytes = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref window, word * sizeof(ulong)));
+        return (bytes + Unsafe.Add(ref biases, word + 1)) & ~bytes;
     }
 }
