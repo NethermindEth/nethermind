@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The frame code runner API is experimental in the core (NMEVM0001). -->
+    <NoWarn>$(NoWarn);NMEVM0001;CS1591</NoWarn>
+    <!-- The Nethermind sources these projects build against: the repository's own, unless set from outside. -->
+    <NethermindSrc Condition="'$(NethermindSrc)' == ''">$(MSBuildThisFileDirectory)../src/Nethermind</NethermindSrc>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="System.Runtime.Intrinsics.Vector256&lt;byte&gt;" Alias="EvmWord" />
+  </ItemGroup>
+</Project>

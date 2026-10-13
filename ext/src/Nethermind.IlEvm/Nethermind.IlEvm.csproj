@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Nethermind.IlEvm</AssemblyName>
+    <RootNamespace>Nethermind.IlEvm</RootNamespace>
+    <!-- Emits IL at run time; never part of an AOT or zkEVM image. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
+  </ItemGroup>
+
+  <!-- Compiled against these, never copied: the node that loads the plugin provides them. -->
+  <ItemGroup>
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Api/Nethermind.Api.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Config/Nethermind.Config.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Core/Nethermind.Core.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Logging/Nethermind.Logging.csproj" Private="false" />
+  </ItemGroup>
+</Project>

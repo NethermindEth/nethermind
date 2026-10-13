@@ -1,0 +1,6 @@
+<Project>
+  <!-- These projects pin their own package versions; the repository's central versions apply to src/ only. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

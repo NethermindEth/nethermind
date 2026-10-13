@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <IsPackable>false</IsPackable>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Nethermind.IlEvm/Nethermind.IlEvm.csproj" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Core.Test/Nethermind.Core.Test.csproj" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.State/Nethermind.State.csproj" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Specs/Nethermind.Specs.csproj" />
+  </ItemGroup>
+</Project>
