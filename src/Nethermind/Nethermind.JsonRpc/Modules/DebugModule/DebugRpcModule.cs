@@ -472,7 +472,7 @@ public class DebugRpcModule(
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
             }
 
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            GethTraceOptions effective = (options ?? GethTraceOptions.Default) with { EnforceExecutionDeadline = true };
             bool hasTransactionToTrace = effective.TxHash is { } txHash
                 ? resolvedBlock.GetTransactionIndex(txHash.ValueHash256) >= 0
                 : resolvedBlock.Transactions.Length != 0;

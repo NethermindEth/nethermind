@@ -15,6 +15,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
@@ -611,6 +612,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
+
+            GethTraceDeadlineException or TargetInvocationException { InnerException: GethTraceDeadlineException }
+                when methodName == "debug_traceBlockByNumber" =>
+                GetErrorResponse(methodName, ErrorCodes.InvalidInput, "execution timeout", null, in request.IdRef, returnAction),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
