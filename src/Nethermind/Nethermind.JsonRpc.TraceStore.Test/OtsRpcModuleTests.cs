@@ -1,0 +1,1046 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core;
+using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
+using Nethermind.Evm;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.TraceStore.Ots;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using NUnit.Framework;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
+using Nethermind.Db.LogIndex;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+using Nethermind.State.Repositories;
+
+namespace Nethermind.JsonRpc.TraceStore.Test;
+
+public class OtsRpcModuleTests
+{
+    [TestCase(true, 0ul, new[] { 3, 3 }, true, false)]
+    [TestCase(true, 3ul, new[] { 1, 1 }, false, true)]
+    [TestCase(true, 1ul, new int[0], false, true)]
+    [TestCase(false, 0ul, new[] { 1, 1 }, false, true)]
+    [TestCase(false, 1ul, new[] { 3, 3 }, true, false)]
+    [TestCase(false, 3ul, new int[0], true, false)]
+    [TestCase(false, ulong.MaxValue, new int[0], true, false)]
+    [TestCase(true, ulong.MaxValue, new[] { 3, 3 }, false, false)]
+    public void Search_preserves_exclusive_cursor_whole_blocks_order_and_flags(bool backwards, ulong cursor, int[] numbers, bool first, bool last)
+    {
+        using Fixture f = new();
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, cursor, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        OtsSearchResult page = response.Data;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.Txs.Select(t => t.BlockNumber), Is.EqualTo(numbers.Select(n => (ulong?)n)));
+            Assert.That(page.Txs.Select(t => t.TransactionIndex), Is.EqualTo(numbers.Length == 0 ? [] : new long?[] { 1, 0 }));
+            Assert.That(page.Receipts.Select(r => r.TransactionHash), Is.EqualTo(page.Txs.Select(t => t.Hash)));
+            Assert.That(page.FirstPage, Is.EqualTo(first));
+            Assert.That(page.LastPage, Is.EqualTo(last));
+        }
+    }
+
+    [Test]
+    public void Both_directions_return_the_same_complete_history([Values] bool backwards)
+    {
+        using Fixture f = new();
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, 0, 25);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Txs.Select(t => t.BlockNumber), Is.EqualTo(new ulong?[] { 3, 3, 1, 1 }));
+            Assert.That(response.Data.FirstPage && response.Data.LastPage, Is.True);
+        }
+    }
+
+    [Test]
+    public void Search_includes_zero_value_reverted_internal_calls_and_deduplicates()
+    {
+        using Fixture f = new();
+        ParityLikeTxTrace trace = f.Traces[3][0];
+        trace.Action!.To = TestItem.AddressC;
+        trace.Action.Error = "Reverted";
+        trace.Action.Subtraces = [Call(TestItem.AddressA), Call(TestItem.AddressA)];
+        f.Save(3);
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs.Count(t => t.Hash == trace.TransactionHash), Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Log_only_involvement_and_rewards_are_not_transaction_call_involvement()
+    {
+        using Fixture f = new();
+        f.Traces[3].Add(new() { Action = new() { Type = "reward", Author = TestItem.AddressF } });
+        f.Save(3);
+        using ResultWrapper<OtsSearchResult> response = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs, Is.Empty);
+    }
+
+    [Test]
+    public void Search_stops_after_one_more_matching_block()
+    {
+        using Fixture f = new();
+        f.AddBlock(Call(TestItem.AddressA));
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(f.Serializer.Reads, Is.EqualTo(2));
+            Assert.That(response.Data.LastPage, Is.False);
+        }
+    }
+
+    [Test]
+    public void Missing_history_is_an_error_even_after_a_full_page([Values] bool backwards)
+    {
+        using Fixture f = new();
+        f.Store.Delete(f.Blocks[2].Hash!);
+        using ResultWrapper<OtsSearchResult> response = f.Search(backwards, 0, 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(response.Result.Error, Does.Contain("block 2"));
+            Assert.That(response.Data, Is.Null);
+        }
+    }
+
+    [Test]
+    public void Incomplete_or_mismatched_traces_are_not_silent_omissions([Values("missing", "duplicate", "wrong-hash", "wrong-block", "no-action")] string corruption)
+    {
+        using Fixture f = new();
+        switch (corruption)
+        {
+            case "missing": f.Traces[3].RemoveAt(0); break;
+            case "duplicate": f.Traces[3].Add(f.Traces[3][0]); break;
+            case "wrong-hash": f.Traces[3][0].TransactionHash = TestItem.KeccakH; break;
+            case "wrong-block": f.Traces[3][0].BlockHash = TestItem.KeccakH; break;
+            case "no-action": f.Traces[3][0].Action = null; break;
+        }
+        f.Save(3);
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public void Missing_receipts_are_an_error()
+    {
+        using Fixture f = new();
+        f.Receipts.RemoveReceipts(f.Blocks[3]);
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public void Invalid_page_sizes_are_rejected_before_reading_traces([Values(-1, 0, 26, int.MaxValue)] int pageSize)
+    {
+        using Fixture f = new();
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, pageSize);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(f.Serializer.Reads, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Reorg_during_search_does_not_return_a_mixed_page()
+    {
+        using Fixture f = new();
+        Block replacement = Build.A.Block.WithParent(f.Blocks[2]).WithExtraData([1]).TestObject;
+        f.Serializer.BeforeRead = () =>
+        {
+            f.Serializer.BeforeRead = null;
+            f.Tree.SuggestBlock(replacement);
+            f.Tree.TryUpdateMainChain(replacement.Header, true, true, replacement);
+        };
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 25);
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public void Trace_types_must_include_calls()
+    {
+        using Fixture f = new();
+        f.TraceConfig.TraceTypes = ParityTraceTypes.Rewards;
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public void Search_honors_timeout()
+    {
+        using Fixture f = new();
+        f.RpcConfig.Timeout = 1;
+        f.Serializer.BeforeRead = () => Thread.Sleep(50);
+        Assert.Throws<OperationCanceledException>(() => f.Search(true, 0, 25));
+    }
+
+    [Test]
+    public void Trace_maps_depth_types_nullable_values_and_revert_output()
+    {
+        using Fixture f = new();
+        ParityTraceAction root = f.Traces[3][0].Action!;
+        ParityTraceAction reverted = Call(TestItem.AddressD);
+        reverted.Error = "Reverted";
+        reverted.Result!.Output = [0xde, 0xad];
+        reverted.Subtraces.Add(new() { Type = "suicide", From = TestItem.AddressD, To = TestItem.AddressA, Value = 7, Result = null });
+        root.Subtraces =
+        [
+            new() { Type = "call", CallType = "staticcall", From = TestItem.AddressC, To = TestItem.AddressD },
+            new() { Type = "call", CallType = "delegatecall", From = TestItem.AddressC, To = TestItem.AddressD, Value = 9 },
+            new() { Type = "create", CreationMethod = "create2", From = TestItem.AddressC, To = TestItem.AddressD, Input = new byte[] { 1 }, Result = new() { Address = TestItem.AddressD, Code = [2] } },
+            new() { Type = "call", CallType = "call", From = TestItem.AddressC, To = TestItem.AddressD, IsPrecompiled = true, Value = 1 },
+            reverted
+        ];
+        f.Save(3);
+        using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(f.Blocks[3].Transactions[0].Hash!);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using JsonDocument json = Serialize(response);
+        JsonElement entries = json.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Select(e => e.Type), Is.EqualTo(new[] { "CALL", "STATICCALL", "DELEGATECALL", "CREATE2", "CALL", "SELFDESTRUCT" }));
+            Assert.That(response.Data.Select(e => e.Depth), Is.EqualTo(new[] { 0, 1, 1, 1, 1, 2 }));
+            Assert.That(entries[1].GetProperty("value").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(entries[2].GetProperty("value").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(entries[3].GetProperty("output").GetString(), Is.EqualTo("0x02"));
+            Assert.That(entries[4].GetProperty("output").GetString(), Is.EqualTo("0xdead"));
+            Assert.That(entries[5].GetProperty("input").GetString(), Is.EqualTo("0x"));
+            Assert.That(entries[0].GetProperty("depth").ValueKind, Is.EqualTo(JsonValueKind.Number));
+        }
+    }
+
+    [Test]
+    public void Unknown_transaction_is_an_error()
+    {
+        using Fixture f = new();
+        using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(TestItem.KeccakH);
+        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+    }
+
+    [Test]
+    public void Search_wire_format_includes_full_receipts_decimal_timestamp_and_block_log_indexes()
+    {
+        using Fixture f = new();
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using JsonDocument json = Serialize(response);
+        JsonElement receipt = json.RootElement.GetProperty("result").GetProperty("receipts")[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.GetProperty("timestamp").GetUInt64(), Is.EqualTo(f.Blocks[3].Timestamp));
+            Assert.That(receipt.GetProperty("logs")[0].GetProperty("logIndex").GetString(), Is.EqualTo("0x1"));
+            Assert.That(receipt.GetProperty("transactionHash").GetString(), Is.EqualTo(f.Blocks[3].Transactions[1].Hash!.ToString()));
+        }
+    }
+
+    [Test]
+    public void Production_module_registration_exposes_only_the_requested_subset()
+    {
+        using Fixture f = new();
+        IRpcModuleProvider provider = f.Container.Resolve<IRpcModuleProvider>();
+        using ResultWrapper<int> response = f.Module.ots_getApiLevel();
+        using JsonDocument json = Serialize(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Enabled, Does.Contain(ModuleType.Ots));
+            foreach (string method in new[] { "ots_getApiLevel", "ots_searchTransactionsBefore", "ots_searchTransactionsAfter", "ots_traceTransaction" })
+                Assert.That(provider.Resolve(method)?.ReadOnly, Is.EqualTo(method == "ots_getApiLevel"), method);
+            Assert.That(provider.Resolve("ots_getBlockDetails"), Is.Null);
+            Assert.That(json.RootElement.GetProperty("result").GetInt32(), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Search_recovers_transaction_senders_from_cached_receipts()
+    {
+        using Fixture f = new();
+        _ = f.Receipts.Get(f.Blocks[3]);
+        foreach (Transaction transaction in f.Tree.FindBlock(3)!.Transactions) transaction.SenderAddress = null;
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs.Cast<LegacyTransactionForRpc>().Select(tx => tx.From), Is.All.EqualTo(TestItem.AddressB));
+    }
+
+    [Test]
+    public void Empty_blocks_do_not_require_stored_transaction_traces()
+    {
+        using Fixture f = new();
+        f.AddBlock();
+        f.Store.Delete(f.Blocks[4].Hash!);
+        using ResultWrapper<OtsSearchResult> response = f.Search(true, 0, 1);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        Assert.That(response.Data.Txs.Select(tx => tx.BlockNumber), Is.EqualTo(new ulong?[] { 3, 3 }));
+    }
+
+    [Test]
+    public void Orphaned_transaction_traces_are_not_returned()
+    {
+        using Fixture f = new();
+        Hash256 transactionHash = f.Blocks[3].Transactions[0].Hash!;
+        Block replacement = Build.A.Block.WithParent(f.Blocks[2]).WithExtraData([1]).TestObject;
+        f.Tree.SuggestBlock(replacement);
+        f.Tree.TryUpdateMainChain(replacement.Header, true, true, replacement);
+        using ResultWrapper<List<OtsTraceEntry>> response = f.Module.ots_traceTransaction(transactionHash);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    [Test]
+    public async Task Ots_requires_explicit_rpc_enablement()
+    {
+        using Fixture f = new();
+        f.RpcConfig.EnabledModules = [];
+        using JsonDocument args = JsonDocument.Parse("[]");
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_getApiLevel", Params = args.RootElement }, context);
+        using JsonDocument json = Serialize(response);
+        Assert.That(json.RootElement.TryGetProperty("error", out _), Is.True);
+    }
+
+    [Test]
+    public async Task Requests_bind_through_the_real_rpc_dispatcher(
+        [Values("ots_getApiLevel", "ots_searchTransactionsBefore", "ots_searchTransactionsAfter", "ots_traceTransaction")] string method)
+    {
+        using Fixture f = new();
+        string parameters = method switch
+        {
+            "ots_getApiLevel" => "[]",
+            "ots_traceTransaction" => $"[\"{f.Blocks[3].Transactions[0].Hash}\"]",
+            _ => $"[\"{TestItem.AddressA}\",0,25]"
+        };
+        using JsonDocument args = JsonDocument.Parse(parameters);
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = method, Params = args.RootElement }, context);
+        using JsonDocument json = Serialize(response);
+        Assert.That(json.RootElement.TryGetProperty("result", out _), Is.True, json.RootElement.ToString());
+    }
+
+    public static IReleaseSpec[] ExecutionSpecs => [Shanghai.Instance, Osaka.Instance];
+
+    [Test]
+    public async Task Production_execution_persists_internal_call_history_including_failed_ancestors(
+        [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool revert)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        Prepare init = Prepare.EvmCode.CallWithValue(TestItem.AddressD, 50_000, 1);
+        if (revert) init.PushData(0).PushData(0).Op(Instruction.REVERT);
+        else init.Op(Instruction.STOP);
+        Transaction tx = Build.A.Transaction.WithTo(null).WithNonce(0).WithGasLimit(200_000).WithGasPrice(2_000_000_000).WithValue(10)
+            .WithData(init.Done).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(tx);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1));
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressD, 0, 25);
+        using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
+        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+            Assert.That(history.Data.Receipts[0].Status, Is.EqualTo(revert ? 0 : 1));
+            Assert.That(trace.Data.Select(t => t.Type), Is.EqualTo(new[] { "CREATE", "CALL" }));
+            Assert.That(trace.Data[1].To, Is.EqualTo(TestItem.AddressD));
+            Assert.That(trace.Data[1].Value, Is.EqualTo((Nethermind.Int256.UInt256)1));
+        }
+    }
+
+    [Test]
+    public void Walking_pages_has_no_duplicates_or_omissions([Values] bool backwards, [Values(1, 2, 3, 25)] int pageSize)
+    {
+        using Fixture f = new();
+        f.AddBlock();
+        f.AddBlock(Call(TestItem.AddressC));
+        f.AddBlock(Call(TestItem.AddressA), Call(TestItem.AddressA), Call(TestItem.AddressA));
+        f.AddBlock(Call(TestItem.AddressC));
+        f.AddBlock(Call(TestItem.AddressA));
+        Hash256[] expected = f.Blocks.SelectMany(b => b.Transactions)
+            .Where(t => t.To == TestItem.AddressA).Select(t => t.Hash!).ToArray();
+        List<Hash256> actual = [];
+        ulong cursor = 0;
+        for (int pageNumber = 0; ; pageNumber++)
+        {
+            Assert.That(pageNumber, Is.LessThan(f.Blocks.Count));
+            using ResultWrapper<OtsSearchResult> response = f.Search(backwards, cursor, pageSize);
+            Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+            OtsSearchResult page = response.Data;
+            Assert.That(page.Txs.Select(t => (t.BlockNumber, t.TransactionIndex)), Is.Ordered.Descending);
+            IEnumerable<Hash256> hashes = page.Txs.Select(t => t.Hash!);
+            actual.AddRange(backwards ? hashes : hashes.Reverse());
+            if (backwards ? page.LastPage : page.FirstPage) break;
+            Assert.That(page.Txs, Is.Not.Empty);
+            cursor = (backwards ? page.Txs[^1].BlockNumber : page.Txs[0].BlockNumber)!.Value;
+        }
+        Assert.That(actual, Is.EqualTo(backwards ? expected.Reverse() : expected));
+    }
+
+    [Test]
+    public async Task Successful_outer_transaction_preserves_failed_child_involvement_but_not_its_balance_change(
+        [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool childReverts)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        Prepare childCode = Prepare.EvmCode.CallWithValue(TestItem.AddressF, 50_000, 1);
+        if (childReverts) childCode.PushData(0).PushData(0).Op(Instruction.REVERT);
+        else childCode.Op(Instruction.STOP);
+        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf(childCode.Done).Done, 0);
+        Block deploymentBlock = await chain.AddBlock(deployment);
+        Address child = chain.ReceiptStorage.Get(deploymentBlock)[0].ContractAddress!;
+        Transaction outer = ExecutionTransaction(1, null, Prepare.EvmCode.CallWithValue(child, 150_000, 2).Op(Instruction.STOP).Done, 10);
+        Block block = await chain.AddBlock(outer);
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
+        using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(outer.Hash!);
+        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { outer.Hash }));
+            Assert.That(history.Data.Receipts[0].Status, Is.EqualTo(1));
+            Assert.That(trace.Data.Select(t => t.Type), Is.EqualTo(new[] { "CREATE", "CALL", "CALL" }));
+            Assert.That(trace.Data.Select(t => t.Depth), Is.EqualTo(new[] { 0, 1, 2 }));
+            Assert.That(trace.Data[2].From, Is.EqualTo(child));
+            Assert.That(trace.Data[2].To, Is.EqualTo(TestItem.AddressF));
+            Assert.That(trace.Data[2].Value, Is.EqualTo((UInt256)1));
+            Assert.That(chain.StateReader.GetBalance(block.Header, TestItem.AddressF), Is.EqualTo(childReverts ? UInt256.Zero : UInt256.One));
+        }
+    }
+
+    [Test]
+    public async Task Executed_creations_are_searchable_and_return_deployed_code(
+        [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool create2)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        byte[] runtime = [(byte)Instruction.STOP];
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        Prepare root = create2 ? Prepare.EvmCode.Create2(init, [1], 1) : Prepare.EvmCode.Create(init, 1);
+        Transaction tx = ExecutionTransaction(0, null, root.Op(Instruction.STOP).Done, 10);
+        Block block = await chain.AddBlock(tx);
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
+        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        Address created = trace.Data[1].To;
+        using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(created, 0, 25);
+        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+            Assert.That(trace.Data.Select(t => t.Type), Is.EqualTo(new[] { "CREATE", create2 ? "CREATE2" : "CREATE" }));
+            Assert.That(trace.Data[1].Depth, Is.EqualTo(1));
+            Assert.That(trace.Data[1].Output, Is.EqualTo(runtime));
+            Assert.That(chain.StateReader.GetCode(block.Header, created), Is.EqualTo(runtime));
+            Assert.That(chain.StateReader.GetBalance(block.Header, created), Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [Test]
+    public async Task Executed_selfdestruct_records_beneficiary_even_when_code_is_retained(
+        [ValueSource(nameof(ExecutionSpecs))] IReleaseSpec spec, [Values] bool createdInSameTransaction)
+    {
+        using BasicTestBlockchain chain = await CreateExecutionChain(spec);
+        byte[] code = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        Transaction tx = ExecutionTransaction(0, null, createdInSameTransaction ? code : Prepare.EvmCode.ForInitOf(code).Done, 10);
+        Block block = await chain.AddBlock(tx);
+        Address contract = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
+        if (!createdInSameTransaction)
+        {
+            tx = ExecutionTransaction(1, contract, [], 0);
+            block = await chain.AddBlock(tx);
+        }
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<OtsSearchResult> history = module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
+        using ResultWrapper<List<OtsTraceEntry>> trace = module.ots_traceTransaction(tx.Hash!);
+        Assert.That(history.Result.ResultType, Is.EqualTo(ResultType.Success), history.Result.Error);
+        Assert.That(trace.Result.ResultType, Is.EqualTo(ResultType.Success), trace.Result.Error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
+            Assert.That(trace.Data.Select(t => t.Type), Is.EqualTo(new[] { createdInSameTransaction ? "CREATE" : "CALL", "SELFDESTRUCT" }));
+            Assert.That(trace.Data[1].From, Is.EqualTo(contract));
+            Assert.That(trace.Data[1].To, Is.EqualTo(TestItem.AddressF));
+            Assert.That(trace.Data[1].Value, Is.EqualTo((UInt256)10));
+            Assert.That(chain.StateReader.GetBalance(block.Header, TestItem.AddressF), Is.EqualTo((UInt256)10));
+            Assert.That(chain.StateReader.GetCode(block.Header, contract), Is.EqualTo(!createdInSameTransaction && spec.IsEip6780Enabled ? code : []));
+        }
+    }
+
+    private static Transaction ExecutionTransaction(ulong nonce, Address? to, byte[] data, UInt256 value) =>
+        Build.A.Transaction.WithTo(to).WithNonce(nonce).WithGasLimit(500_000).WithGasPrice(2_000_000_000)
+            .WithValue(value).WithData(data).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+
+    private static Task<BasicTestBlockchain> CreateExecutionChain(IReleaseSpec spec)
+    {
+        TraceStoreConfig traceConfig = new() { Enabled = true, BlocksToKeep = 0 };
+        JsonRpcConfig rpcConfig = new();
+        return BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec))
+            .AddSingleton<ITraceStoreConfig>(traceConfig)
+            .AddSingleton<IJsonRpcConfig>(rpcConfig)
+            .AddModule(new TraceStorePlugin(traceConfig, rpcConfig).Module));
+    }
+
+    private static JsonDocument Serialize(JsonRpcResponse response)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+        JsonRpcResponseWriter.Write(buffer, response, EthereumJsonSerializer.JsonOptions);
+        return JsonDocument.Parse(buffer.WrittenMemory);
+    }
+
+    private static ParityTraceAction Call(Address to) => new()
+    {
+        Type = "call",
+        CallType = "call",
+        From = TestItem.PrivateKeyB.Address,
+        To = to
+    };
+
+    private sealed class Fixture : IDisposable, IAsyncDisposable
+    {
+        public IContainer Container { get; }
+        public IBlockTree Tree { get; }
+        public IReceiptStorage Receipts { get; }
+        public IDb Store { get; }
+        public IOtsRpcModule Module { get; }
+        public RecordingSerializer Serializer { get; }
+        public TraceStoreConfig TraceConfig { get; } = new() { Enabled = true, BlocksToKeep = 0 };
+        public JsonRpcConfig RpcConfig { get; } = new() { EnabledModules = [ModuleType.Ots] };
+        public List<Block> Blocks { get; } = [];
+        public Dictionary<int, List<ParityLikeTxTrace>> Traces { get; } = [];
+
+        public Fixture(IDbFactory? indexFactory = null, int fromBlock = 1, int lag = 0, bool resetIndex = false)
+        {
+            TraceConfig.AddressIndexEnabled = indexFactory is not null;
+            TraceConfig.AddressIndexFromBlock = fromBlock;
+            TraceConfig.AddressIndexLag = lag;
+            TraceConfig.AddressIndexReset = resetIndex;
+            Container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(TraceConfig, RpcConfig, new ReceiptConfig { StoreReceipts = true, TxLookupLimit = 0 }))
+                .AddModule(new TraceStorePlugin(TraceConfig, RpcConfig).Module)
+                .AddDecorator<IDbFactory>((_, inner) => indexFactory is null ? inner : new IndexOnlyDbFactory(inner, indexFactory))
+                .AddDecorator<ITraceSerializer<ParityLikeTxTrace>>((_, inner) => new RecordingSerializer(inner))
+                .AddSingleton<IJsonRpcService, JsonRpcService>()
+                .Build();
+            Tree = Container.Resolve<IBlockTree>();
+            Receipts = Container.Resolve<IReceiptStorage>();
+            Store = Container.ResolveKeyed<IDb>(TraceStorePlugin.DbName);
+            Serializer = (RecordingSerializer)Container.Resolve<ITraceSerializer<ParityLikeTxTrace>>();
+            Module = Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            Tree.SuggestBlock(genesis);
+            Tree.TryUpdateMainChain(genesis.Header, true, true, genesis);
+            Blocks.Add(genesis);
+            AddBlock(Call(TestItem.AddressA), Call(TestItem.AddressA));
+            AddBlock(Call(TestItem.AddressC));
+            AddBlock(Call(TestItem.AddressA), Call(TestItem.AddressA));
+        }
+
+        public ResultWrapper<OtsSearchResult> Search(bool backwards, ulong cursor, int pageSize) => backwards
+            ? Module.ots_searchTransactionsBefore(TestItem.AddressA, cursor, pageSize)
+            : Module.ots_searchTransactionsAfter(TestItem.AddressA, cursor, pageSize);
+
+        public void AddBlock(params ParityTraceAction[] actions)
+        {
+            int number = Blocks.Count;
+            Transaction[] transactions = actions.Select((a, i) => Build.A.Transaction
+                .WithNonce(number * 10 + i).WithTo(a.To).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
+            Block block = Build.A.Block.WithParent(Blocks[^1]).WithTransactions(transactions)
+                .WithReceiptsRoot(TestItem.KeccakA).WithTimestamp((ulong)number * 12).TestObject;
+            Tree.SuggestBlock(block);
+            Tree.TryUpdateMainChain(block.Header, true, true, block);
+            Blocks.Add(block);
+            TxReceipt[] receipts = transactions.Select((tx, i) => new TxReceipt
+            {
+                TxHash = tx.Hash,
+                Index = i,
+                BlockHash = block.Hash,
+                BlockNumber = block.Number,
+                Sender = tx.SenderAddress,
+                Recipient = tx.To,
+                StatusCode = 1,
+                GasUsed = 21000,
+                GasUsedTotal = (ulong)(i + 1) * 21000,
+                Logs = [new LogEntry(TestItem.AddressF, [], [TestItem.KeccakA])]
+            }).ToArray();
+            Receipts.Insert(block, receipts);
+            Traces[number] = actions.Select((a, i) => new ParityLikeTxTrace
+            {
+                BlockHash = block.Hash,
+                BlockNumber = block.Number,
+                TransactionHash = transactions[i].Hash,
+                TransactionPosition = i,
+                Action = a
+            }).ToList();
+            Save(number);
+        }
+
+        public void Save(int number) => Store.Set(Blocks[number].Hash!, Serializer.Serialize(Traces[number]));
+        public void Dispose() => Container.Dispose();
+        public ValueTask DisposeAsync() => Container.DisposeAsync();
+    }
+
+    private sealed class RecordingSerializer(ITraceSerializer<ParityLikeTxTrace> inner) : ITraceSerializer<ParityLikeTxTrace>
+    {
+        public int Reads { get; private set; }
+        public Action? BeforeRead { get; set; }
+        public List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
+        {
+            Reads++;
+            BeforeRead?.Invoke();
+            return inner.Deserialize(serialized);
+        }
+        public List<ParityLikeTxTrace>? Deserialize(Stream serialized) => inner.Deserialize(serialized);
+        public byte[] Serialize(IReadOnlyCollection<ParityLikeTxTrace> traces) => inner.Serialize(traces);
+    }
+
+    [Test]
+    public async Task Index_matches_scan_and_skips_unrelated_traces([Values] bool backwards, [Values(1, 3, 25)] int pageSize)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture indexed = new(env);
+        await using Fixture scanned = new();
+        foreach (Fixture f in new[] { indexed, scanned })
+        {
+            for (int i = 0; i < 10; i++) f.AddBlock(Call(TestItem.AddressC));
+            f.AddBlock(Call(TestItem.AddressA));
+            f.AddBlock();
+        }
+        await BuildIndex(indexed);
+        int before = indexed.Serializer.Reads;
+        ulong cursor = 0;
+        do
+        {
+            using ResultWrapper<OtsSearchResult> expected = scanned.Search(backwards, cursor, pageSize);
+            using ResultWrapper<OtsSearchResult> actual = indexed.Search(backwards, cursor, pageSize);
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Data.Txs.Select(t => t.Hash), Is.EqualTo(expected.Data.Txs.Select(t => t.Hash)));
+                Assert.That(actual.Data.FirstPage, Is.EqualTo(expected.Data.FirstPage));
+                Assert.That(actual.Data.LastPage, Is.EqualTo(expected.Data.LastPage));
+            }
+            if (backwards ? actual.Data.LastPage : actual.Data.FirstPage) break;
+            cursor = (backwards ? actual.Data.Txs[^1].BlockNumber : actual.Data.Txs[0].BlockNumber)!.Value;
+        } while (true);
+        Assert.That(indexed.Serializer.Reads - before, Is.LessThan(scanned.Serializer.Reads));
+    }
+
+    [Test]
+    public async Task Index_certifies_absent_address_without_deserializing([Values] bool backwards)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        await BuildIndex(f);
+        int before = f.Serializer.Reads;
+        using ResultWrapper<OtsSearchResult> result = backwards
+            ? f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25)
+            : f.Module.ots_searchTransactionsAfter(TestItem.AddressF, 0, 25);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            Assert.That(result.Data.Txs, Is.Empty);
+            Assert.That(f.Serializer.Reads, Is.EqualTo(before));
+        }
+    }
+
+    [Test]
+    public async Task Index_includes_all_call_participants_and_excludes_rewards(
+        [Values("from", "to", "create", "suicide", "precompile", "reverted", "reward")] string kind)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        ParityTraceAction child = Call(TestItem.AddressF);
+        switch (kind)
+        {
+            case "from": child.From = TestItem.AddressF; child.To = TestItem.AddressE; break;
+            case "create": child.Type = "create"; child.To = null; child.Result!.Address = TestItem.AddressF; break;
+            case "suicide": child.Type = "suicide"; break;
+            case "precompile": child.IsPrecompiled = true; break;
+            case "reverted": child.Error = "Reverted"; break;
+        }
+        if (kind == "reward") f.Traces[3].Add(new() { Action = new() { Type = "reward", Author = TestItem.AddressF } });
+        else f.Traces[3][0].Action!.Subtraces.Add(child);
+        f.Save(3);
+        await BuildIndex(f);
+        using ResultWrapper<OtsSearchResult> result = f.Module.ots_searchTransactionsBefore(TestItem.AddressF, 0, 25);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+        Assert.That(result.Data.Txs.Count, Is.EqualTo(kind == "reward" ? 0 : 1));
+    }
+
+    [Test]
+    public async Task Index_stops_at_missing_or_inconsistent_trace_and_resumes([Values("missing", "hash", "position", "duplicate", "action")] string corruption)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        byte[] original = f.Store.Get(f.Blocks[2].Hash!)!;
+        if (corruption == "missing") f.Store.Delete(f.Blocks[2].Hash!);
+        else
+        {
+            switch (corruption)
+            {
+                case "hash": f.Traces[2][0].TransactionHash = TestItem.KeccakH; break;
+                case "position": f.Traces[2][0].TransactionPosition = 8; break;
+                case "duplicate": f.Traces[2].Add(f.Traces[2][0]); break;
+                case "action": f.Traces[2][0].Action = null; break;
+            }
+            f.Save(2);
+        }
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        await BuildIndex(f);
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage.To, Is.EqualTo(1));
+        using (ResultWrapper<OtsSearchResult> failed = f.Search(true, 0, 25))
+            Assert.That(failed.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        f.Store.Set(f.Blocks[2].Hash!, original);
+        await BuildIndex(f);
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage.To, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Index_partial_coverage_scans_both_sides([Values] bool backwards)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env, fromBlock: 2, lag: 1);
+        await BuildIndex(f);
+        int before = f.Serializer.Reads;
+        using ResultWrapper<OtsSearchResult> result = f.Search(backwards, 0, 25);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            Assert.That(result.Data.Txs.Count, Is.EqualTo(4));
+            Assert.That(f.Serializer.Reads - before, Is.EqualTo(2));
+        }
+        f.Store.Delete(f.Blocks[1].Hash!);
+        using ResultWrapper<OtsSearchResult> missing = f.Search(backwards, 0, 25);
+        Assert.That(missing.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public async Task Index_selected_missing_data_remains_an_error([Values] bool receipts)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        await BuildIndex(f);
+        if (receipts) f.Receipts.RemoveReceipts(f.Blocks[3]);
+        else f.Store.Delete(f.Blocks[3].Hash!);
+        using ResultWrapper<OtsSearchResult> result = f.Search(true, 0, 1);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public async Task Index_reorg_falls_back_or_rejects_active_query([Values] bool duringQuery)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        await BuildIndex(f);
+        void Reorg()
+        {
+            f.Serializer.BeforeRead = null;
+            Block replacement = Build.A.Block.WithParent(f.Blocks[2]).WithExtraData([1]).TestObject;
+            f.Tree.SuggestBlock(replacement);
+            f.Tree.TryUpdateMainChain(replacement.Header, true, true, replacement);
+        }
+        if (duringQuery) f.Serializer.BeforeRead = Reorg;
+        else Reorg();
+        using ResultWrapper<OtsSearchResult> result = f.Search(true, 0, 25);
+        if (duringQuery) Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        else
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            Assert.That(result.Data.Txs.Select(t => t.BlockNumber), Is.EqualTo(new ulong?[] { 1, 1 }));
+            Assert.That(f.Container.Resolve<TraceAddressIndex>().FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Index_rejects_progressively_published_reorg_levels(
+        [Values] bool backwards, [Values("candidate", "lower-boundary", "upper-boundary")] string changed)
+    {
+        using IndexEnvironment env = new();
+        bool upper = changed == "upper-boundary";
+        bool lower = changed == "lower-boundary";
+        await using Fixture f = new(env, fromBlock: lower ? 2 : 1, lag: upper ? 2 : lower ? 1 : 0);
+        if (upper) f.AddBlock();
+        await BuildIndex(f);
+        int height = upper ? 3 : 1;
+        Block original = f.Blocks[height];
+        Block parent = f.Blocks[height - 1];
+        if (upper)
+        {
+            parent = Build.A.Block.WithParent(f.Blocks[1]).WithExtraData([8]).TestObject;
+            f.Tree.SuggestBlock(parent);
+        }
+        Block replacement = Build.A.Block.WithParent(parent).WithTransactions(original.Transactions)
+            .WithReceiptsRoot(TestItem.KeccakA).WithExtraData([9]).TestObject;
+        f.Tree.SuggestBlock(replacement);
+        List<ParityLikeTxTrace> traces = f.Serializer.Deserialize(f.Store.Get(original.Hash!)!)!;
+        foreach (ParityLikeTxTrace trace in traces) trace.BlockHash = replacement.Hash;
+        f.Store.Set(replacement.Hash!, f.Serializer.Serialize(traces));
+        TxReceipt[] receipts = f.Receipts.Get(original);
+        foreach (TxReceipt receipt in receipts) receipt.BlockHash = replacement.Hash;
+        f.Receipts.Insert(replacement, receipts);
+
+        IChainLevelInfoRepository levels = f.Container.Resolve<IChainLevelInfoRepository>();
+        // PersistLevel publishes its cache entry before the batch is committed or Head changes.
+        using BatchWrite batch = levels.StartBatch();
+        levels.PersistLevel((ulong)height, new ChainLevelInfo(true, new BlockInfo(replacement.Hash!, 1)), batch);
+        TraceAddressIndex.Candidates snapshot = f.Container.Resolve<TraceAddressIndex>()
+            .FindCandidates(TestItem.AddressA, 1, (ulong)f.Blocks.Count - 1, backwards, 26, CancellationToken.None)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(f.Tree.Head!.Hash, Is.EqualTo(f.Blocks[^1].Hash));
+            Assert.That(f.Tree.IsMainChain(f.Tree.Head.Header), Is.True);
+            Assert.That(f.Tree.IsMainChain(replacement.Header), Is.True);
+            Assert.That(f.Container.Resolve<TraceAddressIndex>().IsCanonical(snapshot.Coverage), Is.True);
+        }
+        using ResultWrapper<OtsSearchResult> result = f.Search(backwards, upper && backwards ? 4ul : 0, 1);
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+    }
+
+    [Test]
+    public async Task Index_restart_validates_checkpoint_and_namespace([Values("valid", "missing", "range", "hash", "config", "repair")] string state)
+    {
+        using IndexEnvironment env = new();
+        await using (Fixture f = new(env))
+        {
+            await BuildIndex(f);
+            byte[] checkpoint = env.Database!.GetColumnDb(LogIndexColumns.Meta).Get(TraceAddressIndex.CheckpointKey)!;
+            if (state == "missing") env.Database.GetColumnDb(LogIndexColumns.Meta).Remove(TraceAddressIndex.CheckpointKey);
+            if (state is "range" or "hash")
+            {
+                checkpoint[state == "range" ? 4 : ^1] ^= 1;
+                env.Database.GetColumnDb(LogIndexColumns.Meta).Set(TraceAddressIndex.CheckpointKey, checkpoint);
+            }
+            Assert.That(env.Settings!.DbName, Is.EqualTo("TraceAddressIndex"));
+            Assert.That(env.Settings.DbPath, Is.EqualTo("traceAddressIndex"));
+            Assert.That(env.Settings.ColumnsMergeOperators, Has.Count.EqualTo(5));
+        }
+        if (state == "repair") File.WriteAllText(Path.Combine(env.Path, "traceAddressIndex", "repaired.marker"), "test");
+        await using Fixture reopened = new(env, fromBlock: state == "config" ? 2 : 1);
+        TraceAddressIndex.Candidates? candidates = reopened.Container.Resolve<TraceAddressIndex>()
+            .FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None);
+        if (state == "valid")
+        {
+            Assert.That(candidates!.Blocks, Is.EqualTo(new[] { 3, 1 }));
+            Assert.That(reopened.Serializer.Reads, Is.Zero);
+        }
+        else Assert.That(candidates, Is.Null);
+        using ResultWrapper<OtsSearchResult> result = reopened.Search(true, 0, 25);
+        Assert.That(result.Data.Txs.Count, Is.EqualTo(4));
+    }
+
+    [Test]
+    public async Task Index_reset_rebuilds_invalid_checkpoint()
+    {
+        using IndexEnvironment env = new();
+        await using (Fixture original = new(env))
+        {
+            await BuildIndex(original);
+            env.Database!.GetColumnDb(LogIndexColumns.Meta).Remove(TraceAddressIndex.CheckpointKey);
+        }
+        await using Fixture reset = new(env, resetIndex: true);
+        TraceAddressIndex index = reset.Container.Resolve<TraceAddressIndex>();
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+        await BuildIndex(reset);
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Blocks, Is.EqualTo(new[] { 3, 1 }));
+    }
+
+    [Test]
+    public async Task Index_cancellation_and_stop_are_safe()
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await index.BuildNextAsync(cancellation.Token));
+        await BuildIndex(f);
+        Assert.Throws<OperationCanceledException>(() => index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, cancellation.Token));
+        index.Start();
+        await Task.WhenAll(index.StopAsync(), index.StopAsync());
+        await index.DisposeAsync();
+        await index.DisposeAsync();
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+    }
+
+    [Test]
+    public void Index_rejects_unsupported_configuration([Values("pruning", "trace-type", "from", "lag")] string invalid)
+    {
+        using Fixture f = new();
+        switch (invalid)
+        {
+            case "pruning": f.TraceConfig.BlocksToKeep = 1; break;
+            case "trace-type": f.TraceConfig.TraceTypes = ParityTraceTypes.Rewards; break;
+            case "from": f.TraceConfig.AddressIndexFromBlock = 0; break;
+            case "lag": f.TraceConfig.AddressIndexLag = -1; break;
+        }
+        Assert.Throws<ArgumentException>(() => new TraceAddressIndex(new MemDbFactory(), f.Store, f.Serializer, f.Tree, f.TraceConfig, LimboLogs.Instance));
+    }
+
+    [Test]
+    public async Task Index_backward_tail_is_bounded_without_losing_later_pages([Values] bool backwards)
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        for (int i = 0; i < 40; i++) f.AddBlock(Call(TestItem.AddressA));
+        await BuildIndex(f);
+        TraceAddressIndex.Candidates candidates = f.Container.Resolve<TraceAddressIndex>()
+            .FindCandidates(TestItem.AddressA, 1, 43, backwards, 26, CancellationToken.None)!;
+        Assert.That(candidates.Blocks, Has.Length.EqualTo(26));
+        List<Hash256> actual = [];
+        ulong cursor = 0;
+        for (int page = 0; ; page++)
+        {
+            Assert.That(page, Is.LessThan(3));
+            using ResultWrapper<OtsSearchResult> result = f.Search(backwards, cursor, 25);
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success), result.Result.Error);
+            actual.AddRange(result.Data.Txs.Select(t => t.Hash!));
+            if (backwards ? result.Data.LastPage : result.Data.FirstPage) break;
+            cursor = (backwards ? result.Data.Txs[^1].BlockNumber : result.Data.Txs[0].BlockNumber)!.Value;
+        }
+        Assert.That(actual.Distinct().Count(), Is.EqualTo(44));
+        Assert.That(actual.Count, Is.EqualTo(44));
+    }
+
+    [Test]
+    public async Task Index_and_event_index_have_independent_postings_and_metadata()
+    {
+        using IndexEnvironment env = new();
+        await using ILogIndexStorage events = new LogIndexStorage(env, LimboLogs.Instance,
+            new LogIndexConfig { Enabled = true, MaxReorgDepth = 0, CompressionDistance = 0, CompactionDistance = 0 });
+        LogIndexAggregate logs = new(100, 100, false);
+        logs.Address.Add(TestItem.AddressF, [100]);
+        await events.AddReceiptsAsync(logs);
+        await using Fixture f = new(env);
+        await BuildIndex(f);
+        using IEnumerator<int> found = events.GetEnumerator(TestItem.AddressF, 0, 200);
+        Assert.That(found.MoveNext(), Is.True);
+        Assert.That(found.Current, Is.EqualTo(100));
+        Assert.That(events.MinBlockNumber, Is.EqualTo(100));
+        TraceAddressIndex.Candidates candidates = f.Container.Resolve<TraceAddressIndex>()
+            .FindCandidates(TestItem.AddressF, 1, 3, true, 26, CancellationToken.None)!;
+        Assert.That(candidates.Blocks, Is.Empty);
+        Assert.That(candidates.Coverage.To, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Index_disposal_awaits_active_worker_before_closing_storage()
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        f.Serializer.BeforeRead = () =>
+        {
+            entered.Set();
+            Assert.That(release.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        };
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        await f.Container.Resolve<StartTraceAddressIndex>().Execute(CancellationToken.None);
+        Assert.That(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(10))), Is.True);
+        Task disposing = index.DisposeAsync().AsTask();
+        try { Assert.That(disposing.IsCompleted, Is.False); }
+        finally { release.Set(); }
+        await disposing.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+    }
+
+    [Test]
+    public async Task Index_cancellation_during_action_walk_does_not_publish_coverage()
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        using CancellationTokenSource cancellation = new();
+        f.Serializer.BeforeRead = cancellation.Cancel;
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await index.BuildNextAsync(cancellation.Token));
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None), Is.Null);
+        f.Serializer.BeforeRead = null;
+        await BuildIndex(f);
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage.To, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Index_corrupt_compressed_trace_never_advances_coverage()
+    {
+        using IndexEnvironment env = new();
+        await using Fixture f = new(env);
+        TraceAddressIndex index = f.Container.Resolve<TraceAddressIndex>();
+        Assert.That(await index.BuildNextAsync(CancellationToken.None), Is.True);
+        f.Store.Set(f.Blocks[2].Hash!, new byte[] { 1, 2, 3, 4 });
+        Assert.That(async () => await index.BuildNextAsync(CancellationToken.None), Throws.Exception);
+        Assert.That(index.FindCandidates(TestItem.AddressA, 1, 3, true, 26, CancellationToken.None)!.Coverage.To, Is.EqualTo(1));
+    }
+
+    private static async Task BuildIndex(Fixture fixture)
+    {
+        TraceAddressIndex index = fixture.Container.Resolve<TraceAddressIndex>();
+        int count = 0;
+        while (await index.BuildNextAsync(CancellationToken.None))
+            Assert.That(++count, Is.LessThan(fixture.Blocks.Count));
+    }
+
+    private sealed class IndexOnlyDbFactory(IDbFactory inner, IDbFactory index) : IDbFactory
+    {
+        public IDb CreateDb(DbSettings settings) => inner.CreateDb(settings);
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings settings) where T : struct, Enum =>
+            (settings.DbName == TraceAddressIndex.DbName ? index : inner).CreateColumnsDb<T>(settings);
+    }
+
+    private sealed class IndexEnvironment : IDbFactory, IDisposable
+    {
+        private readonly TempPath _path = TempPath.GetTempDirectory();
+        private readonly HyperClockCacheWrapper _cache = new(4_000_000);
+        private readonly RocksDbFactory _factory;
+        public string Path => _path.Path;
+        public IColumnsDb<LogIndexColumns>? Database { get; private set; }
+        public DbSettings? Settings { get; private set; }
+        public IndexEnvironment()
+        {
+            DbConfig config = new();
+            RocksDbConfigFactory rocksConfig = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            _factory = new(rocksConfig, config, _cache, LimboLogs.Instance, _path.Path);
+        }
+        public IDb CreateDb(DbSettings settings) => _factory.CreateDb(settings);
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings settings) where T : struct, Enum
+        {
+            Settings = settings;
+            IColumnsDb<T> db = _factory.CreateColumnsDb<T>(settings);
+            Database = (IColumnsDb<LogIndexColumns>)(object)db;
+            return db;
+        }
+        public void Dispose()
+        {
+            _cache.Dispose();
+            _path.Dispose();
+        }
+    }
+}
