@@ -35,6 +35,10 @@ public sealed class FlatStorageTree(
 
     private Trees? _trees;
 
+    // With UseNativeBulkSet the native bulk set maintains the storage trie instead of the managed tree.
+    private NativeTrieNodeStore? _nativeStore;
+    private Hash256 _nativeRoot = storageRoot;
+
     private const int EarlyIdle = 0;
     private const int EarlyApplying = 1;
     private const int EarlyClaimed = 2;
@@ -62,6 +66,10 @@ public sealed class FlatStorageTree(
 
     private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
 
+    private bool UsesNativeBulkSet => _config.UseNativeBulkSet && !_scope.Trieless;
+
+    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash);
+
     private Trees GetTrees() => Volatile.Read(ref _trees) ?? CreateTrees();
 
     private Trees CreateTrees()
@@ -78,7 +86,7 @@ public sealed class FlatStorageTree(
         return Interlocked.CompareExchange(ref _trees, created, null) ?? created;
     }
 
-    public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
+    public Hash256 RootHash => UsesNativeBulkSet ? _nativeRoot : Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -267,6 +275,13 @@ public sealed class FlatStorageTree(
     {
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
+        if (UsesNativeBulkSet)
+        {
+            _nativeRoot = Keccak.EmptyTreeHash;
+            _nativeStore?.Clear();
+            return;
+        }
+
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
         GetTrees().Tree.RootHash = Keccak.EmptyTreeHash;
     }
@@ -275,16 +290,23 @@ public sealed class FlatStorageTree(
     private const int MinWritesToHashInParallel = 4;
 
     // No trees means nothing was written, so there is nothing to commit.
-    public void CommitTree() => Volatile.Read(ref _trees)?.Tree.Commit();
+    public void CommitTree()
+    {
+        if (UsesNativeBulkSet) _nativeStore?.Publish();
+        else Volatile.Read(ref _trees)?.Tree.Commit();
+    }
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
+    internal bool HasUncommittedNodes => UsesNativeBulkSet
+        ? _nativeStore is { HasPending: true }
+        : Volatile.Read(ref _trees)?.Tree.RootRef is { IsDirty: true };
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
+        if (UsesNativeBulkSet) return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated);
 
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
@@ -364,6 +386,43 @@ public sealed class FlatStorageTree(
         }
 
         public void Dispose() => trieBatch.Dispose();
+    }
+
+    // UseNativeBulkSet: the native bulk set maintains the storage trie, like TrieStoreScopeProvider.StorageTreeBulkWriteBatch
+    // does the managed one, and values are mirrored into the flat overlay.
+    private sealed class NativeStorageWriteBatch(
+        FlatStorageTree storageTree,
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private bool _hasSelfDestruct;
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ValueHash256 key = default;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+            _entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
+            storageTree.Set(index, value);
+        }
+
+        public void Clear()
+        {
+            if (_entries.Count > 0) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasSelfDestruct = true;
+            storageTree.ClearStorage();
+        }
+
+        public void Dispose()
+        {
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = _entries;
+            if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
+            if (!storageTree._config.DeferStorageTrieCommit) storageTree._nativeStore?.Publish();
+            if (entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
+        }
     }
 
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.

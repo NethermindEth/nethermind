@@ -28,6 +28,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.Init.Modules;
 
@@ -186,6 +187,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 $"FlatDb.HistoryRetentionSinceBlock is set to {flatDbConfig.HistoryRetentionSinceBlock} but " +
                 $"FlatDb.HistoryRetention is {flatDbConfig.HistoryRetention}. Set FlatDb.HistoryRetention=SinceBlock " +
                 "to start history there, or unset the block.", -1);
+        }
+
+        if (flatDbConfig.Enabled && flatDbConfig.UseNativeBulkSet)
+        {
+            if (!NativePatriciaBulkSet.IsAvailable)
+                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet is set but libnethermind_patricia could not be loaded.", -1);
+            if (flatDbConfig.VerifyWithTrie)
+                throw new InvalidConfigurationException("FlatDb.UseNativeBulkSet cannot be combined with FlatDb.VerifyWithTrie, which reads the managed tries.", -1);
         }
 
         if (flatDbConfig.HistoryEnabled)

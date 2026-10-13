@@ -209,7 +209,9 @@ public class TestBlockchain : IDisposable
         // HistoryEnabled with it), so UseFlatDb must not be stamped over it.
         if (!TestStateBackend.PinsBackend(configs))
         {
-            configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Enabled = UseFlatDb;
+            flatDbConfig.UseNativeBulkSet = TestStateBackend.UseNativeBulkSet;
         }
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);

@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -33,6 +34,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
+    // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTree.
+    private readonly NativeTrieNodeStore? _nativeStateStore;
+    private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -86,6 +90,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _commitTarget = commitTarget;
 
         _initialStateRoot = currentStateId.StateRoot.ToCommitment();
+        _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -96,9 +101,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null);
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
@@ -214,11 +220,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return Interlocked.CompareExchange(ref _stateTree, tree, null) ?? tree;
     }
 
-    public Hash256 RootHash => Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _nativeStateStore is not null ? _nativeStateRoot : Volatile.Read(ref _stateTree)?.RootHash ?? _initialStateRoot;
 
+    /// <remarks>The native bulk set leaves the root up to date after every write batch.</remarks>
     public void UpdateRootHash()
     {
-        if (!_trieless) Volatile.Read(ref _stateTree)?.UpdateRootHash();
+        if (!_trieless && _nativeStateStore is null) Volatile.Read(ref _stateTree)?.UpdateRootHash();
+    }
+
+    private void SetAccountsNatively(Dictionary<AddressAsKey, Account?> accounts)
+    {
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
+        foreach ((AddressAsKey address, Account? account) in accounts)
+        {
+            KeccakCache.ComputeTo(address.Value.Bytes, out ValueHash256 key);
+            byte[]? encoded = account is null ? null
+                : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                : AccountDecoder.Instance.EncodeAsBytes(account);
+            entries.Add(new PatriciaTree.BulkSetEntry(in key, encoded));
+        }
+
+        _nativeStateRoot = _nativeStateStore!.BulkSet(_nativeStateRoot, entries.AsSpan());
     }
 
     public Account? Get(Address address)
@@ -539,7 +561,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            Volatile.Read(ref _stateTree)?.Commit();
+            if (_nativeStateStore is not null) _nativeStateStore.Publish();
+            else Volatile.Read(ref _stateTree)?.Commit();
         }
 
         _storages.Clear();
@@ -685,7 +708,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
+                    if (scope._nativeStateStore is not null)
+                    {
+                        scope.SetAccountsNatively(_dirtyAccounts);
+                    }
+                    else if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
                         scope.StateTree.SetAccounts(_dirtyAccounts);
                     }

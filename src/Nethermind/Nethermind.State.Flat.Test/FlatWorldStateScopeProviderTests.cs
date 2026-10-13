@@ -29,6 +29,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -782,9 +783,9 @@ public class FlatWorldStateScopeProviderTests
     #region Storage Root Tests
 
     [Test]
-    public void TestStorageRootAfterSingleSlotSet()
+    public void TestStorageRootAfterSingleSlotSet([Values] bool useNativeBulkSet)
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -820,9 +821,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestStorageRootAfterMultipleSlotsSingleCommit()
+    public void TestStorageRootAfterMultipleSlotsSingleCommit([Values] bool useNativeBulkSet)
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -864,12 +865,12 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void StorageRootAfterParallelCommitMatchesRawTrie([Values(1, 2, 4)] int concurrency)
+    public void StorageRootAfterParallelCommitMatchesRawTrie([Values(1, 2, 4)] int concurrency, [Values] bool useNativeBulkSet)
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         const int slotsPerCommit = 1024;
         const int commitCount = 2;
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
 
@@ -1102,6 +1103,12 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
     }
 
+    private static FlatDbConfig CreateConfig(bool useNativeBulkSet)
+    {
+        if (useNativeBulkSet) Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+        return new FlatDbConfig { UseNativeBulkSet = useNativeBulkSet };
+    }
+
     // Process-wide, so restore the previous value.
     private static IDisposable SetMinIdleGap(TimeSpan gap)
     {
@@ -1111,10 +1118,10 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void DeferredStorageTrieCommit_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch)
+    public void DeferredStorageTrieCommit_CommitsTheSameStorageNodes([Values(1, 3)] int contractCount, [Values] bool clearInSecondBatch, [Values] bool useNativeBulkSet)
     {
-        (HashSet<string> nodesInBatch, Hash256[] rootsInBatch) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch);
-        (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount, clearInSecondBatch);
+        (HashSet<string> nodesInBatch, Hash256[] rootsInBatch) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch, useNativeBulkSet);
+        (HashSet<string> nodesAtCommit, Hash256[] rootsAtCommit) = CommitStorageSlots(deferStorageTrieCommit: true, contractCount, clearInSecondBatch, useNativeBulkSet);
 
         Assert.That(nodesAtCommit, Is.Not.Empty);
         Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
@@ -1122,10 +1129,12 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void DeferredStorageTrieCommit_NextBlockBuildsOnTheCommittedNodes([Values] bool deferStorageTrieCommit, [Values] bool clearInSecondBatch)
+    public void DeferredStorageTrieCommit_NextBlockBuildsOnTheCommittedNodes([Values] bool deferStorageTrieCommit, [Values] bool clearInSecondBatch, [Values] bool useNativeBulkSet)
     {
         const int slotCount = 64;
-        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.DeferStorageTrieCommit = deferStorageTrieCommit;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB];
         foreach (Address address in addresses) ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
@@ -1173,10 +1182,12 @@ public class FlatWorldStateScopeProviderTests
         }
     }
 
-    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch)
+    private static (HashSet<string> Nodes, Hash256[] Roots) CommitStorageSlots(bool deferStorageTrieCommit, int contractCount, bool clearInSecondBatch, bool useNativeBulkSet)
     {
         const int slotCount = 64;
-        using TestContext ctx = new(config: new FlatDbConfig { DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatDbConfig config = CreateConfig(useNativeBulkSet);
+        config.DeferStorageTrieCommit = deferStorageTrieCommit;
+        using TestContext ctx = new(config: config);
         FlatWorldStateScope scope = ctx.Scope;
         Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
         addresses = addresses[..contractCount];
@@ -1209,9 +1220,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestStorageRootAfterMultipleCommits()
+    public void TestStorageRootAfterMultipleCommits([Values] bool useNativeBulkSet)
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -1256,9 +1267,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestStorageRootAfterSelfDestructAndNewSlots()
+    public void TestStorageRootAfterSelfDestructAndNewSlots([Values] bool useNativeBulkSet)
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;
@@ -1311,9 +1322,9 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void TestEmptyStorageRootWhenNoSlots()
+    public void TestEmptyStorageRootWhenNoSlots([Values] bool useNativeBulkSet)
     {
-        using TestContext ctx = new();
+        using TestContext ctx = new(config: CreateConfig(useNativeBulkSet));
         FlatWorldStateScope scope = ctx.Scope;
 
         Address testAddress = TestItem.AddressA;

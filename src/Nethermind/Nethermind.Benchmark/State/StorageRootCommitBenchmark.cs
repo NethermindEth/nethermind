@@ -52,12 +52,15 @@ public class StorageRootCommitBenchmark
     [Params(1, 8, 100, 1000)]
     public int ChangedSlots { get; set; }
 
+    [Params(false, true)]
+    public bool UseNativeBulkSet { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
         FlatWorldStateBenchmarkHarness.RequireTieredCompilationDisabled();
 
-        _config = new FlatDbConfig();
+        _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
         _resourcePool = new ResourcePool(_config);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
