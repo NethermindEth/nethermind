@@ -55,6 +55,13 @@ public class SimpleTransferFastPathDifferentialTests
         ActionsNoAccess
     }
 
+    public enum Coinbase
+    {
+        Other,
+        Recipient,
+        Sender
+    }
+
     private sealed record ReceiptCapture(
         byte Status,
         Address Recipient,
@@ -76,9 +83,14 @@ public class SimpleTransferFastPathDifferentialTests
         string[] AccessReports,
         long[] Refunds,
         string[] TracerEvents,
-        string Bal);
+        string Bal,
+        UInt256? SenderBalanceInBal);
 
-    private static IEnumerable<TestCaseData> Scenarios()
+    private static IEnumerable<TestCaseData> Scenarios() =>
+        PragueScenarios().SelectMany(static c => ((bool[])[false, true]).Select(plainState =>
+            new TestCaseData([.. c.Arguments, plainState]).SetName($"{c.TestName}_{(plainState ? "plain" : "bal")}State")));
+
+    private static IEnumerable<TestCaseData> PragueScenarios()
     {
         RecipientKind[] valueTransferKinds = [RecipientKind.Existing, RecipientKind.ExistingEmpty, RecipientKind.Nonexistent, RecipientKind.Self, RecipientKind.Delegated];
         foreach (RecipientKind kind in valueTransferKinds)
@@ -112,10 +124,10 @@ public class SimpleTransferFastPathDifferentialTests
             .SetName($"{mode}_{kind}_value{value}_7708{(eip7708 ? "On" : "Off")}_data{dataLength}_{tracer}");
 
     [TestCaseSource(nameof(Scenarios))]
-    public void Fast_path_and_evm_path_are_equivalent(ulong value, RecipientKind recipientKind, bool eip7708, int dataLength, TracerShape tracer, Mode mode)
+    public void Fast_path_and_evm_path_are_equivalent(ulong value, RecipientKind recipientKind, bool eip7708, int dataLength, TracerShape tracer, Mode mode, bool plainState)
     {
-        ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708, dataLength, tracer, mode);
-        ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708, dataLength, tracer, mode);
+        ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708, dataLength, tracer, mode, plainState: plainState);
+        ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708, dataLength, tracer, mode, plainState: plainState);
 
         AssertEquivalent(fast, slow, recipientKind);
     }
@@ -218,12 +230,15 @@ public class SimpleTransferFastPathDifferentialTests
         bool eip8037 = false,
         ulong? availableGas = null,
         ulong? gasLimit = null,
-        bool recipientIsCoinbase = false)
+        Coinbase coinbase = Coinbase.Other,
+        bool plainState = false)
     {
         IReleaseSpec fork = eip8037 ? Amsterdam.Instance : Prague.Instance;
         OverridableReleaseSpec spec = new(fork) { IsEip7708Enabled = eip7708 };
         TestSpecProvider specProvider = new(spec);
-        TracedAccessWorldState state = new(TestWorldStateFactory.CreateForTest(), parallel: false);
+        IWorldState innerState = TestWorldStateFactory.CreateForTest();
+        TracedAccessWorldState? tracedState = plainState ? null : new(innerState, parallel: false);
+        IWorldState state = tracedState ?? innerState;
         using IDisposable worldScope = state.BeginScope(IWorldState.PreGenesis);
 
         Address recipient = recipientKind switch
@@ -282,7 +297,12 @@ public class SimpleTransferFastPathDifferentialTests
             .WithTimestamp(eip8037 ? MainnetSpecProvider.AmsterdamBlockTimestamp : MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(100_000_000)
-            .WithBeneficiary(recipientIsCoinbase ? recipient : Address.Zero)
+            .WithBeneficiary(coinbase switch
+            {
+                Coinbase.Recipient => recipient,
+                Coinbase.Sender => TestItem.AddressA,
+                _ => Address.Zero
+            })
             .TestObject;
 
         bool forceDisabledBefore = TransactionProcessorBase.ForceSimpleTransferDisabled;
@@ -293,8 +313,8 @@ public class SimpleTransferFastPathDifferentialTests
             ITxTracer tracer = recordingTracer is not null ? recordingTracer : NullTxTracer.Instance;
             BlockExecutionContext ctx = new(block.Header, specProvider.GetSpec(block.Header));
 
-            BlockAccessListAtIndex bal = new() { Index = 1 };
-            state.SetGeneratingBlockAccessList(bal);
+            BlockAccessListAtIndex? bal = tracedState is null ? null : new() { Index = 1 };
+            tracedState?.SetGeneratingBlockAccessList(bal);
             long emptyCallsBefore = Metrics.EmptyCalls;
             TransactionResult result = mode switch
             {
@@ -324,7 +344,8 @@ public class SimpleTransferFastPathDifferentialTests
                 AccessReports: recordingTracer?.AccessReports.ToArray() ?? [],
                 Refunds: recordingTracer?.Refunds.ToArray() ?? [],
                 TracerEvents: recordingTracer?.Events.ToArray() ?? [],
-                Bal: DescribeBal(bal));
+                Bal: bal is null ? "" : DescribeBal(bal),
+                SenderBalanceInBal: bal?.GetAccountChanges(TestItem.AddressA)?.BalanceChange?.Value);
         }
         finally
         {
@@ -354,8 +375,10 @@ public class SimpleTransferFastPathDifferentialTests
         {
             foreach (ulong value in (ulong[])[1_000_000, 0])
             {
-                foreach (bool coinbase in (bool[])[false, true])
+                foreach (Coinbase coinbase in Enum.GetValues<Coinbase>())
                 {
+                    if (kind is RecipientKind.Self && coinbase is Coinbase.Sender) continue; // same as Coinbase.Recipient
+
                     foreach ((string name, ulong? gasLimit) in limits)
                     {
                         foreach (TracerShape tracer in (TracerShape[])[TracerShape.AllOn, TracerShape.None])
@@ -370,11 +393,20 @@ public class SimpleTransferFastPathDifferentialTests
     }
 
     [TestCaseSource(nameof(AmsterdamEdgeCases))]
-    public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, bool coinbase, ulong? gasLimit, TracerShape tracer)
+    public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, Coinbase coinbase, ulong? gasLimit, TracerShape tracer)
     {
-        ExecutionCapture fast = Run(false, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
-        ExecutionCapture slow = Run(true, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
+        ExecutionCapture fast = Run(false, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
+        ExecutionCapture slow = Run(true, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, coinbase: coinbase);
         AssertEquivalent(fast, slow, recipientKind);
+
+        // EIP-7928: a net-zero balance change is not recorded, any other records the post-tx balance. The base
+        // fee is zero, so a zero-value tx from the coinbase pays its whole fee back to the sender.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.SenderBalanceInBal, Is.EqualTo(fast.SenderBalance == 1.Ether ? (UInt256?)null : fast.SenderBalance), "sender BAL balance change");
+            if (coinbase is Coinbase.Sender && value == 0)
+                Assert.That(fast.SenderBalance, Is.EqualTo(1.Ether), "sender coinbase net-zero");
+        }
     }
 
     private sealed class RecordingTracer : TxTracer
