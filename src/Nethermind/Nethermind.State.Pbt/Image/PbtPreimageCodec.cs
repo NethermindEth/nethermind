@@ -26,7 +26,7 @@ public sealed class PbtPreimageReader(Stream source)
     /// <summary>The Keccak path of the slot read last, which ascends through its account's slots.</summary>
     public ValueHash256? SlotHash => _previousSlotHash;
 
-    public bool ReadAccount([NotNullWhen(true)] out Address? address, out uint slotCount, CancellationToken cancellationToken = default)
+    public bool ReadAccount([NotNullWhen(true)] out Address? address, out uint slotCount, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_remainingSlots != 0) throw new InvalidOperationException("Read all account slots before advancing.");
@@ -46,7 +46,7 @@ public sealed class PbtPreimageReader(Stream source)
         return true;
     }
 
-    public ValueHash256 ReadSlot(CancellationToken cancellationToken = default)
+    public ValueHash256 ReadSlot(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_remainingSlots == 0) throw new InvalidOperationException("No remaining account slots.");
@@ -70,7 +70,7 @@ public sealed class PbtPreimageReader(Stream source)
 /// <remarks>The caller owns the output. A failed/cancelled write leaves a partial, unpublished artifact.</remarks>
 public static class PbtPreimageCodec
 {
-    public static void Write(Stream destination, IEnumerable<PbtAccountPreimages> accounts, CancellationToken cancellationToken = default)
+    public static void Write(Stream destination, IEnumerable<PbtAccountPreimages> accounts, CancellationToken cancellationToken)
     {
         Span<byte> header = stackalloc byte[24];
         foreach (PbtAccountPreimages account in accounts)

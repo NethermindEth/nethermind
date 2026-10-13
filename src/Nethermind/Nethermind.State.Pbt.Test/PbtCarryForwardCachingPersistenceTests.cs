@@ -96,7 +96,7 @@ public class PbtCarryForwardCachingPersistenceTests
             startLine.SignalAndWait();
             for (ulong block = 1; block <= 30_000; block++)
             {
-                using (IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(new StateId(block - 1, Keccak.EmptyTreeHash), new StateId(block, Keccak.EmptyTreeHash), Keccak.EmptyTreeHash, WriteFlags.None))
+                using (IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(new StateId(block - 1, Keccak.EmptyTreeHash), new StateId(block, Keccak.EmptyTreeHash), Keccak.EmptyTreeHash))
                 {
                     foreach (ValueHash256 addressHash in addressHashes) batch.SetAccount(addressHash, new Account(1, block).ToPbtAccount());
                     batch.Commit();
@@ -148,7 +148,7 @@ public class PbtCarryForwardCachingPersistenceTests
 
         yield return new TestCaseData((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
         {
-            using IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash, WriteFlags.None);
+            using IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash);
             batch.SetAccount(AddressHash, new Account(1, 100).ToPbtAccount());
             batch.SetSlotRun(Run1, SlotRun.Empty);
         }), 1, 1)
@@ -157,7 +157,7 @@ public class PbtCarryForwardCachingPersistenceTests
         yield return new TestCaseData((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
         {
             // Advance the cache basis but leave the reader behind, so it must bypass the cache.
-            using IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash, WriteFlags.None);
+            using IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash);
             batch.Commit();
         }), 2, 2)
         { TestName = "reader_behind_basis_bypasses" };
@@ -166,7 +166,7 @@ public class PbtCarryForwardCachingPersistenceTests
     private static TestCaseData Scenario(string name, int expectedAccountReads, int expectedRunReads, Action<IPbtPersistence.IWriteBatch> write) =>
         new((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
         {
-            using (IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash, WriteFlags.None))
+            using (IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1, Keccak.EmptyTreeHash))
             {
                 write(batch);
                 batch.Commit();
@@ -195,8 +195,7 @@ public class PbtCarryForwardCachingPersistenceTests
         public int RunReads;
 
         public IPbtPersistence.IReader CreateReader() => new Reader(this);
-        public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags) => new WriteBatch();
-        public void Flush() { }
+        public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot) => new WriteBatch();
 
         private sealed class Reader(FakePersistence parent) : IPbtPersistence.IReader
         {
@@ -218,8 +217,6 @@ public class PbtCarryForwardCachingPersistenceTests
             }
 
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-            public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => throw new NotSupportedException();
-            public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
             public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
             public void Dispose() { }
         }
@@ -229,7 +226,6 @@ public class PbtCarryForwardCachingPersistenceTests
             public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) { }
             public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> { }
             public void SetCode(in ValueHash256 codeHash, CodeInfo code) { }
-            public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) { }
             public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> { }
             public void Commit() { }
             public void Dispose() { }

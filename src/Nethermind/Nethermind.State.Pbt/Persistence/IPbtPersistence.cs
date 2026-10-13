@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Memory;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -18,9 +17,7 @@ public interface IPbtPersistence
 {
     IReader CreateReader();
 
-    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags);
-
-    void Flush();
+    IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot);
 
     /// <summary>Drops cached reads so the next reader observes writes made behind this persistence.</summary>
     void ClearCaches() { }
@@ -35,11 +32,6 @@ public interface IPbtPersistence
         /// <typeparam name="TKey"><see cref="PbtPath"/> for a header-slot run, <see cref="PbtStoragePath"/> for any other.</typeparam>
         PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>;
         CodeInfo? GetCode(in ValueHash256 codeHash);
-        /// <summary>Gets the code-chunk leaf keyed by <paramref name="key"/>; false when absent, which an all-zero chunk always is.</summary>
-        bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value);
-        /// <summary>Gets a caller-owned, single-pass iterator over persisted accounts in address-hash order.</summary>
-        /// <remarks>Dispose the iterator before disposing its reader, including when iteration ends early or throws.</remarks>
-        IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts();
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
@@ -60,8 +52,6 @@ public interface IPbtPersistence
         /// <typeparam name="TKey"><see cref="PbtPath"/> for a header-slot run, <see cref="PbtStoragePath"/> for any other.</typeparam>
         void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>;
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
-        /// <summary>Stages the code-chunk leaf keyed by <paramref name="key"/>; the caller omits all-zero chunks.</summary>
-        void SetCodeLeaf(in PbtPath key, in ValueHash256 value);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>
         /// <remarks>
         /// The payload is borrowed for this call and its bytes must remain immutable. The caller retains

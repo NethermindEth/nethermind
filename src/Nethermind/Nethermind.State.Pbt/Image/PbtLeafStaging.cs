@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Image;
 /// <remarks>
 /// Leaves carry no storage roots and PBT never treats one as authoritative, so accounts are staged as their stem leaves.
 /// Code chunks are keyed by a hash of their code hash, so no bytecode can be reassembled as its chunks stream past: they
-/// are staged as leaves and handed to a <see cref="PbtCodeReassembly"/>, which reassembles each bytecode once the code
+/// are handed to a <see cref="PbtCodeReassembly"/>, which reassembles each bytecode once the code
 /// section ends.
 /// </remarks>
 public static class PbtLeafStaging
@@ -43,8 +43,7 @@ public static class PbtLeafStaging
             if (key[0] == Eip8297KeyDerivation.CodeZone)
             {
                 FlushAccount();
-                batch.Next().SetCodeLeaf((PbtPath)entry.Key, entry.Leaf);
-                codes.AddChunk(entry.Key, entry.Leaf);
+                codes.AddChunk((PbtPath)entry.Key, entry.Leaf);
                 continue;
             }
             if (key[0] == Eip8297KeyDerivation.AccountZone)

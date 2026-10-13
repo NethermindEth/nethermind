@@ -53,7 +53,6 @@ public static class PbtNodeGroupCodec
     public const int MaxPayloadLength = HeaderLength + MaxEntriesLength + MaxTrailerLength;
     private const uint ReservedRootBit = 1u << PbtThreeLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PbtThreeLevelGroupGeometry.PositionCount) - 1;
-    private const uint AllSlots = (1u << PbtThreeLevelGroupGeometry.BoundarySlots) - 1;
 
     /// <summary>Checks a payload's header, footer length, availability bits and descendant sizes without parsing its nodes.</summary>
     /// <returns>The availability bitmap.</returns>
@@ -178,13 +177,12 @@ public static class PbtNodeGroupCodec
     public static int GetTrailerLength(uint availability, ReadOnlySpan<byte> payload) =>
         OffsetsAndAvailabilityLength(availability) + DescendantsLength(payload);
 
-    /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots; an empty span means no descendants.</summary>
+    /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots.</summary>
     /// <param name="candidateSlots">The slots that may be nonzero; every other slot is known to be zero and is not read.</param>
     public static ushort DescendantMask(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {
-        if (descendantBytes.IsEmpty) return 0;
         ushort descendantMask = 0;
-        for (uint remaining = candidateSlots & AllSlots; remaining != 0; remaining &= remaining - 1)
+        for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
         {
             int slot = BitOperations.TrailingZeroCount(remaining);
             long slotBytes = descendantBytes[slot];

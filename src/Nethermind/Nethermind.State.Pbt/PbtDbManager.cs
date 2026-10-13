@@ -364,12 +364,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
-        {
-            value = default;
-            return false;
-        }
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => ((IEnumerable<KeyValuePair<ValueHash256, PbtAccount>>)[]).GetEnumerator();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
 
         public void Dispose()

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -65,9 +66,9 @@ internal static class Eip8347FixtureState
     {
         using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(anchor), WriteFlags.None);
         Dictionary<PbtVariableTreeKey, ValueHash256> leaves = [];
-        foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot)) leaves.Add(entry.Key, entry.Leaf);
+        foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, CancellationToken.None)) leaves.Add(entry.Key, entry.Leaf);
         PbtPreimageReader reader = new(preimages);
-        while (reader.ReadAccount(out Address? address, out uint slotCount))
+        while (reader.ReadAccount(out Address? address, out uint slotCount, CancellationToken.None))
         {
             ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address!);
             ValueHash256 basic = leaves.GetValueOrDefault((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey));
@@ -87,7 +88,7 @@ internal static class Eip8347FixtureState
             using SortedStateRoot storage = new();
             for (uint index = 0; index < slotCount; index++)
             {
-                ValueHash256 rawSlot = reader.ReadSlot();
+                ValueHash256 rawSlot = reader.ReadSlot(CancellationToken.None);
                 UInt256 slot = new(rawSlot.Bytes, isBigEndian: true);
                 UInt256 value = new(leaves[PbtTestLeaves.SlotKey(address!, slot)].Bytes, isBigEndian: true);
                 batch.SetStorage(address!, slot, value);

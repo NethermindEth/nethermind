@@ -4,7 +4,7 @@
 namespace Nethermind.Pbt;
 
 /// <summary>A canonical node's structural identity, independent of its in-memory capacity.</summary>
-public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> where TSelf : struct, IPbtNodePath<TSelf>
+public interface IPbtNodePath<TSelf> : IEquatable<TSelf> where TSelf : struct, IPbtNodePath<TSelf>
 {
     /// <summary>Gets the maximum supported path depth.</summary>
     static abstract int MaxBitDepth { get; }

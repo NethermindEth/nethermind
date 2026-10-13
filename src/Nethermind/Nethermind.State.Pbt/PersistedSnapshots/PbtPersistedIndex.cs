@@ -50,11 +50,10 @@ public sealed class PbtPersistedIndex(IComparer<StateId> stateOrder)
         return true;
     }
 
-    /// <summary>Unindexes the snapshot with this catalog key.</summary>
-    /// <param name="removed">The snapshot, whose lease passes to the caller.</param>
-    public bool Remove(in StateId to, long depth, [NotNullWhen(true)] out PbtPersistedSnapshot? removed)
+    /// <summary>Unindexes the snapshot with this catalog key; its lease passes to whoever obtained it via <see cref="TryGet"/>.</summary>
+    public void Remove(in StateId to, long depth)
     {
-        if (!_byCatalogKey.Remove((to, depth), out removed)) return false;
+        if (!_byCatalogKey.Remove((to, depth), out PbtPersistedSnapshot? removed)) return;
         SortedDictionary<long, PbtPersistedSnapshot> edges = _edges[(to, removed.Tier)];
         edges.Remove(depth);
         if (edges.Count == 0) _edges.Remove((to, removed.Tier));
@@ -65,7 +64,6 @@ public sealed class PbtPersistedIndex(IComparer<StateId> stateOrder)
             _states.Remove(to);
         }
         else _snapshotsPerState[to] = count;
-        return true;
     }
 
     /// <summary>Swaps indexed <paramref name="expected"/> for <paramref name="replacement"/>, which has the same catalog key and tier, leasing it.</summary>

@@ -20,11 +20,6 @@ public interface IPbtDbManager : IPbtCommitTarget
     /// <remarks>Rents nothing from the pool: a caller that only reads should prefer this.</remarks>
     PbtReadOnlySnapshotBundle? TryGatherReadOnlyBundle(in StateId stateId);
 
-    /// <inheritdoc cref="TryGatherReadOnlyBundle"/>
-    /// <exception cref="StateNotRetainedException">The state is not available.</exception>
-    PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId) =>
-        TryGatherReadOnlyBundle(stateId) ?? throw new StateNotRetainedException($"State {stateId} is not available");
-
     /// <summary>Assembles a writable bundle able to serve reads at <paramref name="stateId"/>, or null when that state is not available.</summary>
     /// <param name="usage">
     /// Pool category for the bundle's write buffer and the layers it seals. Chosen by the caller
@@ -48,7 +43,7 @@ public interface IPbtDbManager : IPbtCommitTarget
     bool HasStateForBlock(in StateId stateId);
 
     /// <summary>Prunes snapshots outside the head's ancestry without rewinding the durable base.</summary>
-    void DropStateNotReachableFrom(in StateId head) => throw new NotSupportedException("Head rewind is not supported by this PBT manager.");
+    void DropStateNotReachableFrom(in StateId head);
 
     /// <summary>Synchronously persists everything up to the committed head, e.g. after genesis processing.</summary>
     void FlushCache(CancellationToken cancellationToken);

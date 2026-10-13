@@ -4,7 +4,6 @@
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt.Snapshot;
@@ -12,18 +11,6 @@ namespace Nethermind.State.Pbt.Snapshot;
 public sealed class PbtPersistedPublicationGate
 {
     public Lock Sync { get; } = new();
-}
-
-public sealed class PbtPersistedStorageLifetime(IArenaManager? arena, BlobArenaManager? blobs)
-{
-    private IArenaManager? Arena { get; } = arena;
-    private BlobArenaManager? Blobs { get; } = blobs;
-
-    public void AbortLoad()
-    {
-        if (Arena is ArenaManager arena) arena.PreserveFilesOnFailure();
-        Blobs?.PreserveFilesOnFailure();
-    }
 }
 
 public sealed class PbtSnapshotLease : IDisposable

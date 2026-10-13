@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -58,10 +59,10 @@ internal static class PbtTestLeaves
     {
         List<PbtAccountPreimages> accounts = [];
         PbtPreimageReader reader = new(source);
-        while (reader.ReadAccount(out Address? address, out uint count))
+        while (reader.ReadAccount(out Address? address, out uint count, CancellationToken.None))
         {
             List<ValueHash256> slots = [];
-            for (uint index = 0; index < count; index++) slots.Add(reader.ReadSlot());
+            for (uint index = 0; index < count; index++) slots.Add(reader.ReadSlot(CancellationToken.None));
             accounts.Add(new(address!, count, slots));
         }
         return accounts;

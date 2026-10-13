@@ -25,8 +25,8 @@ public static class PbtPersistedSnapshotValidation
             + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count) throw Mismatch();
         foreach ((ValueHash256 address, PbtAccount? account) in content.Accounts)
             if (!persisted.TryGetAccount(address, out PbtAccount? actual) || actual != account) throw Mismatch();
-        foreach ((ValueHash256 address, bool value) in content.SelfDestructedStorageAddresses)
-            if (!persisted.TryGetStorageClear(address, out bool actual) || actual != value) throw Mismatch();
+        foreach ((ValueHash256 address, _) in content.SelfDestructedStorageAddresses)
+            if (!persisted.TryGetStorageClear(address)) throw Mismatch();
         foreach ((ValueHash256 hash, Evm.CodeAnalysis.CodeInfo code) in content.Codes)
             if (!persisted.TryGetCode(hash, out Evm.CodeAnalysis.CodeInfo? actual) || !actual!.CodeSpan.SequenceEqual(code.CodeSpan)) throw Mismatch();
         foreach ((HashedKey<PbtPath> key, PackedSlotRun run) in content.HeaderStorages) ValidateRun(persisted, key.Key, run);

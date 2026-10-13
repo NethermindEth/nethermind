@@ -82,8 +82,7 @@ public sealed class PbtMigrationBootstrap(
         }
         else
         {
-            using IPersistence.IPersistenceReader source = (genesisBootstrap?.Source
-                ?? throw new InvalidOperationException("Genesis bootstrap source is not registered.")).Persistence.CreateReader();
+            using IPersistence.IPersistenceReader source = genesisBootstrap!.Source.Persistence.CreateReader();
             Directory.CreateDirectory(scratch);
             string directory = Path.Combine(scratch, $"pbt-export-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);

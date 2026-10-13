@@ -7,7 +7,7 @@ namespace Nethermind.Pbt;
 
 /// <summary>Identifies a canonical tree node by its consumed MSB-first key path.</summary>
 /// <remarks>Paths are limited to 272 bits.</remarks>
-public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNodePath>, IComparable<PbtNodePath>
+public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNodePath>
 {
     private readonly PbtPath _path;
 
@@ -32,11 +32,6 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
     /// <inheritdoc/>
     public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => TPath.Create(Bytes, BitDepth);
 
-    public int CompareTo(PbtNodePath other)
-    {
-        int depthComparison = BitDepth.CompareTo(other.BitDepth);
-        return depthComparison != 0 ? depthComparison : Bytes.SequenceCompareTo(other.Bytes);
-    }
     public bool Equals(PbtNodePath other) => BitDepth == other.BitDepth && Bytes.SequenceEqual(other.Bytes);
     public override bool Equals(object? obj) => obj is PbtNodePath path && Equals(path);
     public override int GetHashCode() => PbtNodePathOperations.Hash(Bytes, BitDepth);

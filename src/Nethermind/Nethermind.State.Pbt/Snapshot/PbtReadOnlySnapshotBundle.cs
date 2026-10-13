@@ -93,7 +93,7 @@ public sealed class PbtReadOnlySnapshotBundle(
                 SlotRun.Return(run);
                 return true;
             }
-            if (persisted.TryGetStorageClear(address, out _)) { value = default; return true; }
+            if (persisted.TryGetStorageClear(address)) { value = default; return true; }
         }
         value = default;
         return false;
@@ -110,7 +110,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             PersistedSnapshots.PbtPersistedSnapshot persisted = PersistedLayer(index)!;
             if (persisted.TryGetSlotRun(key.Key, out run)) return true;
-            if (persisted.TryGetStorageClear(address, out _)) { run = SlotRun.Empty; return true; }
+            if (persisted.TryGetStorageClear(address)) { run = SlotRun.Empty; return true; }
         }
         run = null;
         return false;

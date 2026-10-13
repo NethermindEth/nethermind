@@ -3,14 +3,13 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Steps;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
@@ -49,11 +48,6 @@ public class ImportPbtFromPreimageFlat(
 
         // The one snapshot pins the source for the whole scan.
         using FlatPersistence.IPersistenceReader reader = flatSource.CreateReader();
-        if (!reader.IsPreimageMode)
-            throw new InvalidConfigurationException(
-                "Source flat database is not in preimage mode; addresses and slots cannot be recovered to build PBT.",
-                ExitCodes.ForbiddenOptionValue);
-
         StateId sourceState = reader.CurrentState;
         if (sourceState == StateId.PreGenesis)
         {
@@ -69,12 +63,12 @@ public class ImportPbtFromPreimageFlat(
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new("import leaves", directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
+            using SortedSpool leaves = new(directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
             float leafCount = PbtOfflineSource.Spool("PBT import scan", reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken).Leaves;
             // State is addressed by the source block header's root; the fold records its tree root beside it.
             await PbtLeafIngestion.Ingest(pbtPersistence, rebuilder, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount, config.ImportConcurrency,
-                sourceState, config.ImportWindowSize, expectedRoot: null, static (_, _, _) => { }, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
+                sourceState, config.ImportWindowSize, expectedRoot: null, static _ => { }, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
         }
         finally
         {

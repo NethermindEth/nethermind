@@ -41,9 +41,6 @@ public class PbtSnapshotCompactor(
         return added;
     }
 
-    public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst) =>
-        Compact(chainOldestFirst, PbtResourcePool.CompactUsage(chainOldestFirst.Count));
-
     private PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst, PbtResourcePool.Usage usage)
     {
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);

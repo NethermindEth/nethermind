@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Pbt.Common;
 
@@ -47,9 +48,9 @@ public sealed class PbtImageVerifier : IDisposable
     private readonly ILogManager _logManager;
     private readonly CancellationToken _cancellationToken;
     /// <summary>The listed accounts and slots by tree key: the Keccak address path, then for a slot its Keccak slot path.</summary>
-    private readonly PbtSortedSpool _byTreeKey;
+    private readonly SortedSpool _byTreeKey;
     /// <summary>The joined accounts and slots by Keccak path, as the MPT folds them.</summary>
-    private readonly PbtSortedSpool _byPath;
+    private readonly SortedSpool _byPath;
     private ulong _accounts;
     private ulong _slots;
 
@@ -60,8 +61,8 @@ public sealed class PbtImageVerifier : IDisposable
         Directory.CreateDirectory(_directory);
         _logManager = logManager;
         _cancellationToken = cancellationToken;
-        _byTreeKey = new PbtSortedSpool("verify preimages", _directory, bufferBytes, writerCount: 1, logManager, cancellationToken);
-        _byPath = new PbtSortedSpool("verify MPT", _directory, bufferBytes, writerCount: 1, logManager, cancellationToken);
+        _byTreeKey = new SortedSpool(_directory, bufferBytes, writerCount: 1, logManager, cancellationToken);
+        _byPath = new SortedSpool(_directory, bufferBytes, writerCount: 1, logManager, cancellationToken);
     }
 
     /// <summary>Spools the preimages by tree key; must precede <see cref="Join"/>.</summary>
@@ -71,7 +72,7 @@ public sealed class PbtImageVerifier : IDisposable
         using ProgressReporter progress = PbtImageProgress.Start(ReadPhase, "acc", 0, _logManager);
         Func<string> slotCounter = PbtImageProgress.Counter("slot", () => _slots);
         progress.Logger.SetFormat(p => PbtImageProgress.Format(ReadPhase, walked, $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
-        using PbtSortedSpool.Writer writer = _byTreeKey.CreateWriter();
+        using SortedSpool.Writer writer = _byTreeKey.CreateWriter();
         Span<byte> paths = stackalloc byte[2 * ValueHash256.MemorySize];
         preimages.Position = 0;
         PbtPreimageReader reader = new(preimages);
@@ -98,8 +99,8 @@ public sealed class PbtImageVerifier : IDisposable
     /// staging refuses noncanonical ones.</remarks>
     public IEnumerable<RebuildEntry> Join(IEnumerable<RebuildEntry> leaves)
     {
-        using PbtSortedSpool.Cursor listed = _byTreeKey.Read();
-        using PbtSortedSpool.Writer writer = _byPath.CreateWriter();
+        using SortedSpool.Cursor listed = _byTreeKey.Read();
+        using SortedSpool.Writer writer = _byPath.CreateWriter();
         bool hasListed = listed.MoveNext();
         byte[] path = new byte[PathKeyLength];
         ValueHash256? stem = null;
@@ -190,7 +191,7 @@ public sealed class PbtImageVerifier : IDisposable
         Stopwatch verifying = Stopwatch.StartNew();
         ValueHash256 mptRoot;
         using (ProgressReporter progress = PbtImageProgress.Start(MptPhase, "acc", _accounts, _logManager))
-        using (PbtSortedSpool.Cursor cursor = _byPath.Read())
+        using (SortedSpool.Cursor cursor = _byPath.Read())
         using (SortedStateRoot accountsRoot = new())
         using (SortedStateRoot storageRoot = new())
         {

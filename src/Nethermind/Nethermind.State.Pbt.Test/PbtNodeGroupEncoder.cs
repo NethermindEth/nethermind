@@ -30,7 +30,7 @@ internal static class PbtNodeGroupEncoder
         where TPath : struct, IPbtNodePath<TPath>
     {
         ArgumentNullException.ThrowIfNull(nodes);
-        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, ushort.MaxValue);
+        ushort descendantMask = PbtNodeGroupCodec.DescendantMask(descendantBytes, descendantBytes.IsEmpty ? (ushort)0 : (ushort)0xFF);
         ValidateGroupKey(groupKey);
         if (nodes.Count == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
         if (nodes.Count > PbtThreeLevelGroupGeometry.PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");

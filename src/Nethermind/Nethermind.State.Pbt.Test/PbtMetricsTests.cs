@@ -214,7 +214,7 @@ public class PbtMetricsTests
             content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)] = new Account(1, 100).ToPbtAccount();
             ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
         }
-        using PbtReadOnlySnapshotBundle bundle = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(state);
+        using PbtReadOnlySnapshotBundle bundle = ctx.Manager.GatherReadOnlyBundle(state);
         bundle.GetAccount(TestItem.AddressA);
         using (Assert.EnterMultipleScope())
         {

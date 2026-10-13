@@ -105,19 +105,15 @@ public class PbtAnchorImportTests
         using Harness harness = new(name, tinyVerifyBuffer
             ? new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 2 }
             : new PbtConfig());
-        ValueHash256 root = await harness.Publish();
-        AssertPublishedState(harness, root, name);
+        await harness.Publish();
+        AssertPublishedState(harness, name);
         harness.Reopen();
         harness.Target.OnSync = () => Assert.Fail("A matching restart must not rebuild the native anchor");
 
-        ValueHash256 reused = await harness.Publish();
+        await harness.Publish();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reused, Is.EqualTo(root));
-            Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
-        }
-        AssertPublishedState(harness, reused, name);
+        Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
+        AssertPublishedState(harness, name);
     }
 
     /// <remarks>The anchor now comes only from the consumer's own chain, so the image's agreement with the
@@ -153,7 +149,8 @@ public class PbtAnchorImportTests
         using Harness harness = new("anchor");
         harness.Anchor = harness.Anchor with { ActivationTimestamp = null };
 
-        AssertPublishedState(harness, await harness.Publish(), "anchor");
+        await harness.Publish();
+        AssertPublishedState(harness, "anchor");
     }
 
     [Test]
@@ -167,7 +164,8 @@ public class PbtAnchorImportTests
                 harness.Publish(snapshot, preimages, CancellationToken.None));
 
         AssertUnpublished(harness);
-        AssertPublishedState(harness, await harness.Publish(), "a4");
+        await harness.Publish();
+        AssertPublishedState(harness, "a4");
     }
 
     /// <remarks>Each snapshot carries a recomputed PBT root, so only the staging checks stand between it and publication.</remarks>
@@ -224,7 +222,8 @@ public class PbtAnchorImportTests
         Assert.That(observedCodeSpool, Is.True, "cancellation happens after the private code-spool directory is created");
         AssertUnpublished(harness);
         using FileStream retrySnapshot = OpenArtifact("a4", "snapshot.pbt");
-        AssertPublishedState(harness, await harness.Publish(retrySnapshot, withPreimages ? preimages : null, CancellationToken.None), "a4");
+        await harness.Publish(retrySnapshot, withPreimages ? preimages : null, CancellationToken.None);
+        AssertPublishedState(harness, "a4");
     }
 
     [Test]
@@ -242,7 +241,7 @@ public class PbtAnchorImportTests
         if (duringStaging)
         {
             // A crash mid-staging leaves staged rows without a validity marker.
-            using IPbtPersistence.IWriteBatch batch = new PbtRocksDbPersistence(harness.Target, config, NullTrieNodeLog.Instance).CreateStagingWriteBatch(WriteFlags.None);
+            using IPbtPersistence.IWriteBatch batch = new PbtRocksDbPersistence(harness.Target, config, NullTrieNodeLog.Instance).CreateStagingWriteBatch();
             batch.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
@@ -253,7 +252,11 @@ public class PbtAnchorImportTests
             await Assert.ThrowsAsync<InvalidDataException>(() => harness.Publish());
             Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
         }
-        else AssertPublishedState(harness, await harness.Publish(), "a4");
+        else
+        {
+            await harness.Publish();
+            AssertPublishedState(harness, "a4");
+        }
     }
 
     [Test]
@@ -292,9 +295,9 @@ public class PbtAnchorImportTests
     {
         using Harness harness = new(name, new PbtConfig { ImportConcurrency = importConcurrency });
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
-        ValueHash256 root = await harness.Publish(snapshot, null, CancellationToken.None);
+        await harness.Publish(snapshot, null, CancellationToken.None);
 
-        AssertPublishedState(harness, root, name);
+        AssertPublishedState(harness, name);
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);
     }
 
@@ -317,13 +320,13 @@ public class PbtAnchorImportTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 expectedRoot = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         using MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(expectedRoot));
+        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(expectedRoot), CancellationToken.None);
         snapshot.Position = 0;
 
-        ValueHash256 root = await harness.Publish(snapshot, null, CancellationToken.None);
+        await harness.Publish(snapshot, null, CancellationToken.None);
 
         using IPbtPersistence.IReader reader = new PbtRocksDbPersistence(harness.Target, new PbtConfig(), NullTrieNodeLog.Instance).CreateReader();
-        Assert.That(root, Is.EqualTo(expectedRoot));
+        Assert.That(reader.CurrentRoot, Is.EqualTo(expectedRoot));
         for (int index = 0; index < addresses.Length; index++)
         {
             using (Assert.EnterMultipleScope())
@@ -409,7 +412,7 @@ public class PbtAnchorImportTests
     private static (MemoryStream Snapshot, MemoryStream Preimages) Corrupt(string name, string corruption)
     {
         using FileStream original = OpenArtifact(name, "snapshot.pbt");
-        List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(original)];
+        List<RebuildEntry> leaves = [.. PbtSnapshotCodec.ReadLeaves(original, CancellationToken.None)];
         using FileStream originalPreimages = OpenArtifact(name, "preimages.bin");
         List<PbtAccountPreimages> accounts = PbtTestLeaves.ReadPreimages(originalPreimages);
         Address writer = new("0x1000000000000000000000000000000000000001");
@@ -480,10 +483,10 @@ public class PbtAnchorImportTests
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 attackerRoot = PbtSortedLeafFold.CalculateRoot(leaves, PbtSortedLeafFold.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         MemoryStream snapshot = new();
-        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(attackerRoot));
+        PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(attackerRoot), CancellationToken.None);
         snapshot.Position = 0;
         MemoryStream preimages = new();
-        PbtPreimageCodec.Write(preimages, accounts);
+        PbtPreimageCodec.Write(preimages, accounts, CancellationToken.None);
         preimages.Position = 0;
         return (snapshot, preimages);
 
@@ -535,7 +538,7 @@ public class PbtAnchorImportTests
         }
     }
 
-    private static void AssertPublishedState(Harness harness, ValueHash256 root, string name)
+    private static void AssertPublishedState(Harness harness, string name)
     {
         PbtConfig config = new();
         PbtRocksDbPersistence reopened = new(harness.Target, config, NullTrieNodeLog.Instance);
@@ -543,7 +546,6 @@ public class PbtAnchorImportTests
         Hash256 expectedRoot = Eip8347FixtureState.PbtRoot(name);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(root, Is.EqualTo(expectedRoot.ValueHash256));
             Assert.That(reader.CurrentRoot, Is.EqualTo(expectedRoot.ValueHash256));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(harness.Anchor.Header)));
             Assert.That(harness.Pbt.Manager.HasStateForBlock(new StateId(harness.Anchor.Header)), Is.True, "the live manager sees the imported anchor");
@@ -570,7 +572,7 @@ public class PbtAnchorImportTests
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
         using PbtNodeGroupStore oracle = new();
         List<(byte[] Key, byte[]? Value)> leaves = [];
-        foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
+        foreach (RebuildEntry leaf in PbtSnapshotCodec.ReadLeaves(snapshot, CancellationToken.None)) leaves.Add((leaf.Key.Bytes.ToArray(), leaf.Leaf.ToByteArray()));
         Assert.That(oracle.Fold(default, leaves, PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(expectedRoot.ValueHash256));
         PbtStoreTestExtensions.AssertSameGroups(harness.Target, reader, oracle);
     }
@@ -628,14 +630,14 @@ public class PbtAnchorImportTests
             _anchorImport = null;
         }
 
-        public async Task<ValueHash256> Publish(CancellationToken cancellationToken = default)
+        public async Task Publish(CancellationToken cancellationToken = default)
         {
             using FileStream snapshot = OpenArtifact(_name, "snapshot.pbt");
             using FileStream preimages = OpenArtifact(_name, "preimages.bin");
-            return await Publish(snapshot, preimages, cancellationToken);
+            await Publish(snapshot, preimages, cancellationToken);
         }
 
-        public Task<ValueHash256> Publish(Stream snapshot, Stream? preimages, CancellationToken cancellationToken) =>
+        public Task Publish(Stream snapshot, Stream? preimages, CancellationToken cancellationToken) =>
             AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
 
         public void Dispose()

@@ -19,9 +19,6 @@ public static class PbtStorageKeyLayout
     private const int ZoneOffset = ValueHash256.MemorySize;
     private const int RestOffset = ZoneOffset + 1;
 
-    /// <summary>Orders tree keys as their persisted encodings sort.</summary>
-    public static IComparer<PbtVariableTreeKey> Comparer { get; } = new PersistedOrderComparer();
-
     public static ReadOnlySpan<byte> Encode<TKey>(in TKey key, Span<byte> destination) where TKey : struct, IPbtKey<TKey>
     {
         ReadOnlySpan<byte> bytes = key.Bytes;
@@ -29,18 +26,5 @@ public static class PbtStorageKeyLayout
         destination[ZoneOffset] = bytes[0];
         bytes[RestOffset..].CopyTo(destination[RestOffset..]);
         return destination[..bytes.Length];
-    }
-
-    private sealed class PersistedOrderComparer : IComparer<PbtVariableTreeKey>
-    {
-        public int Compare(PbtVariableTreeKey x, PbtVariableTreeKey y)
-        {
-            ReadOnlySpan<byte> left = x.Bytes;
-            ReadOnlySpan<byte> right = y.Bytes;
-            int order = left.Slice(1, ValueHash256.MemorySize).SequenceCompareTo(right.Slice(1, ValueHash256.MemorySize));
-            if (order != 0) return order;
-            order = left[0].CompareTo(right[0]);
-            return order != 0 ? order : left[RestOffset..].SequenceCompareTo(right[RestOffset..]);
-        }
     }
 }

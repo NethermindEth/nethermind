@@ -260,7 +260,7 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter<TPath> writer = PbtNodeGroupWriter<TPath>.Rent(groupKey.BitDepth, new TrackingMemoryProvider());
         writer.Write(groupPath, position, payload.AsSpan(PbtNodeGroupCodec.HeaderLength, payload.Length - PbtNodeGroupCodec.HeaderLength - PbtNodeGroupCodec.GetTrailerLength(1, 0, default)));
-        using RefCountingMemory writtenPayload = writer.Detach(default, ushort.MaxValue)!;
+        using RefCountingMemory writtenPayload = writer.Detach(default, 0)!;
         Assert.That(writtenPayload.GetSpan().ToArray(), Is.EqualTo(payload));
         return 1;
     }
@@ -550,116 +550,6 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Import_rejects_non_boundary_keys() =>
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([new PbtPhysicalPayload(new PbtStorageNodePath([0x00], 1), [0, 0, 0, 0])]));
-
-    [Test]
-    public void Store_releases_owned_memory_across_create_replace_delete_reopen_lookup_and_disposal()
-    {
-        TrackingMemoryProvider provider = new();
-        PbtNodePath rootPath = new([], 0);
-        byte[] firstEncoding = LeafEncoding(0x00);
-        byte[] secondEncoding = LeafEncoding(0x80);
-
-        using (PbtNodeGroupStore store = new(provider))
-        {
-            store.SetNode(rootPath, firstEncoding, provider);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "create");
-
-            byte[]? lookup = store.GetNode(rootPath);
-            Assert.That(lookup, Is.EqualTo(firstEncoding), "lookup");
-            lookup![0] = 0x7F;
-            Assert.That(store.GetNode(rootPath), Is.EqualTo(firstEncoding), "lookup is owned");
-
-            store.SetNode(rootPath, secondEncoding, provider);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "replace");
-
-            IReadOnlyList<PbtPhysicalPayload> payloads = store.ExportPhysicalPayloads();
-            using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads, provider);
-            Assert.That(reopened.GetNode(rootPath), Is.EqualTo(secondEncoding), "reopen");
-
-            store.SetNode(rootPath, null, provider);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "delete leaves reopened owner");
-        }
-
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero, "disposal");
-    }
-
-    [Test]
-    public void Retained_group_leases_survive_replacement_deletion_and_store_disposal()
-    {
-        TrackingMemoryProvider provider = new();
-        PbtNodePath rootPath = new([], 0);
-        byte[] firstEncoding = LeafEncoding(0x00);
-        byte[] secondEncoding = LeafEncoding(0x80);
-        byte[] thirdEncoding = LeafEncoding(0x40);
-
-        using PbtNodeGroupStore store = new();
-        store.SetNode(rootPath, firstEncoding, provider);
-        RefCountingMemory firstLease = store.GetPhysicalNodeGroup(rootPath)!;
-        store.SetNodeGroup(rootPath, firstLease);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(firstEncoding)));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "the store borrows the published payload");
-        }
-
-        store.SetNode(rootPath, secondEncoding, provider);
-        RefCountingMemory secondLease = store.GetPhysicalNodeGroup(rootPath)!;
-        Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(firstEncoding)));
-
-        store.SetNode(rootPath, null, provider);
-        Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(firstEncoding)));
-        Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(secondEncoding)));
-
-        store.SetNode(rootPath, thirdEncoding, provider);
-        RefCountingMemory thirdLease = store.GetPhysicalNodeGroup(rootPath)!;
-        store.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(firstLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(firstEncoding)));
-            Assert.That(secondLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(secondEncoding)));
-            Assert.That(thirdLease.GetSpan().ToArray(), Is.EqualTo(RootGroup(thirdEncoding)));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(3));
-        }
-
-        ((IDisposable)thirdLease).Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(2));
-        ((IDisposable)firstLease).Dispose();
-        ((IDisposable)secondLease).Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
-    }
-
-    [TestCase(1, -1, typeof(ArgumentException))]
-    [TestCase(0, 1, typeof(InvalidDataException))]
-    public void Invalid_group_publication_preserves_prior_group_and_caller_reference(int keyDepth, int payloadLength, Type exceptionType)
-    {
-        TrackingMemoryProvider provider = new();
-        PbtNodePath rootPath = new([], 0);
-        byte[] encoding = LeafEncoding(0x00);
-        byte[] validPayload = RootGroup(encoding);
-        using PbtNodeGroupStore store = new();
-        store.SetNode(rootPath, encoding, provider);
-        PbtNodePath groupKey = new(new byte[(keyDepth + 7) / 8], keyDepth);
-        byte[] rejectedBytes = payloadLength < 0 ? validPayload : new byte[payloadLength];
-        RefCountingMemory rejectedPayload = provider.Rent(rejectedBytes.Length);
-        rejectedBytes.CopyTo(rejectedPayload.GetSpan());
-
-        Assert.That(() => store.SetNodeGroup(groupKey, rejectedPayload), Throws.TypeOf(exceptionType));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.GetNode(rootPath), Is.EqualTo(encoding));
-            Assert.That(rejectedPayload.GetSpan().ToArray(), Is.EqualTo(rejectedBytes));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(2));
-        }
-        ((IDisposable)rejectedPayload).Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.EqualTo(1), "rejected publication must not retain a lease");
-        store.Dispose();
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
-    }
-
-    [Test]
     public void Update_rejects_current_root_without_stored_root_group()
     {
         using PbtNodeGroupStore store = new();
@@ -821,18 +711,6 @@ public class PbtNodeGroupTests
     }
 
     [Test]
-    public void Failed_import_releases_previously_copied_payloads()
-    {
-        TrackingMemoryProvider provider = new();
-        PbtNodePath rootPath = new([], 0);
-        byte[] validPayload = RootGroup(LeafEncoding(0x00));
-        PbtPhysicalPayload valid = new(rootPath.ToPath<PbtStorageNodePath>(), validPayload);
-
-        Assert.Throws<InvalidDataException>(() => PbtNodeGroupStore.FromPhysicalPayloads([valid, valid], provider));
-        Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
-    }
-
-    [Test]
     public void Compressed_branch_jumps_create_no_intermediate_groups([Values(1, 2, 3, 5, 6, 7, 9, 13)] int sharedPrefixBits)
     {
         using PbtTreeHarness tree = new();
@@ -903,7 +781,7 @@ public class PbtNodeGroupTests
         }
 
         byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
-        using RefCountingMemory streamedPayload = streamingWriter.Detach(default, ushort.MaxValue)!;
+        using RefCountingMemory streamedPayload = streamingWriter.Detach(default, 0)!;
         GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload);
         using (Assert.EnterMultipleScope())
         {
@@ -969,7 +847,7 @@ public class PbtNodeGroupTests
                     if (copyRanges) reader.CopyRange(writer, startPosition, nextPosition);
                 }
             }
-            using RefCountingMemory? payload = writer.Detach(default, ushort.MaxValue);
+            using RefCountingMemory? payload = writer.Detach(default, 0);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(payload?.GetSpan().ToArray(), Is.EqualTo(expectedRecords.Count == 0 ? null : PbtNodeGroupEncoder.Encode(groupKey, expectedRecords, default)));
@@ -1013,7 +891,7 @@ public class PbtNodeGroupTests
         byte[] expected = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         Assert.That(provider.RentCount, Is.Zero);
 
-        using (RefCountingMemory payload = writer.Detach(default, ushort.MaxValue)!)
+        using (RefCountingMemory payload = writer.Detach(default, 0)!)
         {
             writer.Dispose();
             GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
@@ -1056,7 +934,7 @@ public class PbtNodeGroupTests
             PbtNodeCodec.WriteBranchTrailer(encoding[^PbtNodeCodec.BranchTrailerHeaderLength..], [], []);
         }
         Assert.That(writer.WrittenCount, Is.EqualTo(ushort.MaxValue));
-        using RefCountingMemory payload = writer.Detach(default, ushort.MaxValue)!;
+        using RefCountingMemory payload = writer.Detach(default, 0)!;
         Assert.That(PbtStoreTestExtensions.ReadGroup(new PbtNodePath([], 0), payload.GetSpan()).Nodes(), Has.Count.EqualTo(8));
     }
 
@@ -1118,7 +996,7 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         using PbtNodeGroupWriter<PbtNodePath> streamingWriter = PbtNodeGroupWriter<PbtNodePath>.Rent(0, new TrackingMemoryProvider());
         streamingWriter.Write(groupPath, PbtThreeLevelGroupGeometry.RootPosition, record.Encoding.Span);
-        using RefCountingMemory streamed = streamingWriter.Detach(slots, ushort.MaxValue)!;
+        using RefCountingMemory streamed = streamingWriter.Detach(slots, 0xFF)!;
         long[] stored = PbtStoreTestExtensions.ReadDescendantBytes(payload);
         using (Assert.EnterMultipleScope())
         {

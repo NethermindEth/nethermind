@@ -52,7 +52,6 @@ public static partial class TrieUpdater<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == bitDepth);
         BoundaryNode current = input;
-        if (operations.IsEmpty) return EncodeReanchored(current, path, bitDepth, encoding);
 
         if (operations.Length == 1)
         {
@@ -405,25 +404,22 @@ public static partial class TrieUpdater<TKey, TPath>
     private const int LeafHashBatch = 16;
 
     /// <summary>Replaces every set operation's value with its leaf hash, hashing up to <see cref="LeafHashBatch"/> leaves at a time; deletions stay default.</summary>
-    /// <remarks>A batch holds keys of one length only, so its preimages are equally long.</remarks>
     [SkipLocalsInit]
     private static void HashLeaves(Span<PbtWriteOperation<TKey>> operations)
     {
-        Span<byte> preimages = stackalloc byte[LeafHashBatch * PbtNodeCodec.LeafPreimageLength(TKey.Capacity)];
+        int preimageLength = PbtNodeCodec.LeafPreimageLength(TKey.Capacity);
+        Span<byte> preimages = stackalloc byte[LeafHashBatch * preimageLength];
         Span<int> indices = stackalloc int[LeafHashBatch];
         int count = 0;
-        int preimageLength = 0;
         for (int index = 0; index < operations.Length; index++)
         {
             if (operations[index].Value == default) continue;
             TKey key = operations[index].Key;
-            int length = PbtNodeCodec.LeafPreimageLength(key.Length);
-            if (count == LeafHashBatch || (count > 0 && length != preimageLength))
+            if (count == LeafHashBatch)
             {
                 HashLeafBatch(operations, indices[..count], preimages, preimageLength);
                 count = 0;
             }
-            preimageLength = length;
             PbtNodeCodec.WriteLeafPreimage(preimages.Slice(count * preimageLength, preimageLength), key.Bytes, operations[index].Value.Bytes);
             indices[count++] = index;
         }
