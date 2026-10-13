@@ -18,14 +18,19 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-[TestFixture(true)]
-[TestFixture(false)]
+/// <remarks>
+/// Fixture args: EIP-7708 on/off, and an Amsterdam base, whose EIP-8037 selects the deferred finalization
+/// path and whose EIP-8246 leaves no burn to log; the Prague base runs the inline path with the legacy burn logs.
+/// </remarks>
+[TestFixture(true, false)]
+[TestFixture(false, false)]
+[TestFixture(true, true)]
 [Parallelizable(ParallelScope.All)]
-public class Eip7708Tests(bool eip7708Enabled)
+public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
 {
     private Task<BasicTestBlockchain> CreateChain()
     {
-        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip7708Enabled = eip7708Enabled };
+        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = eip7708Enabled };
         return BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(spec)));
     }
 
@@ -96,7 +101,7 @@ public class Eip7708Tests(bool eip7708Enabled)
             .WithTo(TestItem.AddressB)
             .WithValue(transferValue)
             .WithNonce(nonce)
-            .WithGasLimit(21000)
+            .WithGasLimit(amsterdam ? 1_000_000ul : 21000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
@@ -291,13 +296,21 @@ public class Eip7708Tests(bool eip7708Enabled)
         // 2. TransferLog from Contract A selfdestruct (Contract A -> inheritorA)
         // 3. TransferLog from Contract B sending ETH to Contract A (Contract B -> Contract A)
         // 4. SelfDestructLog for account closure - from TransactionProcessor.cs when destroying
-        //    accounts in DestroyList at end of transaction (EIP-6780: created in same tx)
-        AssertLogs(chain.ReceiptStorage.Get(block), [
+        //    accounts in DestroyList at end of transaction (EIP-6780: created in same tx);
+        //    none on Amsterdam, as EIP-8246 keeps the balance rather than burning it
+        LogEntry[] transferLogs =
+        [
             ExpectedTransferLog(contractBAddress, contractAAddress, contractABalance),
             ExpectedTransferLog(contractAAddress, inheritorA, contractABalance),
-            ExpectedTransferLog(contractBAddress, contractAAddress, ethToSend),
-            ExpectedSelfDestructLog(contractAAddress, ethToSend)
-        ]);
+            ExpectedTransferLog(contractBAddress, contractAAddress, ethToSend)
+        ];
+        AssertLogs(chain.ReceiptStorage.Get(block), amsterdam
+            ? transferLogs
+            : [.. transferLogs, ExpectedSelfDestructLog(contractAAddress, ethToSend)]);
+        if (amsterdam)
+        {
+            Assert.That(chain.StateReader.GetBalance(block.Header, contractAAddress), Is.EqualTo((UInt256)ethToSend), "EIP-8246 keeps the balance");
+        }
     }
 
     [Test]
@@ -327,6 +340,7 @@ public class Eip7708Tests(bool eip7708Enabled)
     public async Task SameTx_SelfDestruct_ToSelf_Emits_OpcodeTime_SelfDestructLog()
     {
         // Inline path (7708 without 8037): same-tx self-burn emits the legacy SelfDestruct log at opcode time.
+        // On Amsterdam EIP-8246 burns nothing, so there is no log to emit at either point.
         // Creation and SELFDESTRUCT must happen in the SAME transaction (EIP-6780).
         using BasicTestBlockchain chain = await CreateChain();
         ulong nonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
@@ -351,9 +365,11 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         // SELFDESTRUCT zeroes the balance as it logs, so the end-of-tx destroy pass sees zero and adds nothing:
         // an end-of-tx-only implementation would place the self-destruct log after the factory's log, not before.
-        (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo(eip7708Enabled
-            ? [ExpectedTransferLog(factory, child, endowment), ExpectedSelfDestructLog(child, endowment), ContractLog(factory)]
-            : [ContractLog(factory)]);
+        (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo(!eip7708Enabled
+            ? [ContractLog(factory)]
+            : amsterdam
+                ? [ExpectedTransferLog(factory, child, endowment), ContractLog(factory)]
+                : [ExpectedTransferLog(factory, child, endowment), ExpectedSelfDestructLog(child, endowment), ContractLog(factory)]);
     }
 
     [Test]
