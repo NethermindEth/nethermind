@@ -3,7 +3,6 @@
 
 using System.Threading.Channels;
 using Nethermind.Core.Memory;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -64,7 +63,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
             throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
         await publishAfter;
         cancellationToken.ThrowIfCancellationRequested();
-        using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
+        using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root);
         batch.Commit();
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
         return root;
@@ -79,7 +78,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            (_batch ??= target.CreateStagingWriteBatch(WriteFlags.DisableWAL)).SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+            (_batch ??= target.CreateStagingWriteBatch()).SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
         }
 
         public void Commit()

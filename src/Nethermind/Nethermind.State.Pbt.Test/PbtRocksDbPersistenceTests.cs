@@ -88,7 +88,7 @@ public class PbtRocksDbPersistenceTests
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         StateId third = new(3, TestItem.KeccakC.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
         {
             foreach (uint start in new[] { 0u, 16u })
             {
@@ -106,13 +106,13 @@ public class PbtRocksDbPersistenceTests
         }
         byte[][] populatedRows = db.GetColumnDb(PbtColumns.Storages).GetAllKeys().ToArray();
         using IPbtPersistence.IReader populated = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
         {
             batch.SetSlot(Key(3), value);
             batch.Commit();
         }
         using IPbtPersistence.IReader replaced = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, third, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, third, default))
         {
             batch.SetSlotRun(SlotRun.RunKey(Key(3)), SlotRun.Empty);
             batch.Commit();
@@ -145,7 +145,7 @@ public class PbtRocksDbPersistenceTests
         PbtVariableTreeKey otherAddressKey = PbtTestLeaves.SlotKey(TestItem.AddressB, otherAddressSlot);
         UInt256 value = (UInt256)0x1234;
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
         {
             batch.SetSlot(headerKey, value);
             batch.SetSlot(overflowKey, value);
@@ -174,15 +174,15 @@ public class PbtRocksDbPersistenceTests
         UInt256 slot = (UInt256)0xabcd;
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
         {
             batch.SetAccount(addressHash, Account.TotallyEmpty.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(codeHash, code);
             batch.Commit();
         }
-        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, second, default, WriteFlags.None), Throws.InvalidOperationException);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, second, default), Throws.InvalidOperationException);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
         {
             batch.SetAccount(addressHash, null);
             batch.SetSlot(storageKey, default);
@@ -195,7 +195,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? second : first));
             Assert.That(reader.GetAccount(addressHash), Is.EqualTo(commit ? null : Account.TotallyEmpty.ToPbtAccount()));
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(commit ? default : slot));
-            Assert.That(reader.EnumerateAccounts().Drain().Count, Is.EqualTo(commit ? 0 : 1));
+            Assert.That(db.GetColumnDb(PbtColumns.Accounts).GetAllKeys().Count(), Is.EqualTo(commit ? 0 : 1));
             Assert.That(db.GetColumnDb(PbtColumns.Storages).GetAllKeys().Count(), Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.GetCode(codeHash), Is.EqualTo(code));
             Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256), Is.Null);
@@ -214,14 +214,14 @@ public class PbtRocksDbPersistenceTests
         StateId firstState = new(1, TestItem.KeccakA.ValueHash256);
         StateId secondState = new(2, TestItem.KeccakB.ValueHash256);
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, firstState, default))
         {
             using RefCountingMemory group = EncodeGroup(null, new(firstPath.ToPath<PbtStorageNodePath>(), firstNode), new(secondPath.ToPath<PbtStorageNodePath>(), secondNode));
             batch.SetNodeGroup(PbtTestPaths.Locate(firstPath).GroupKey, group);
             batch.Commit();
         }
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(firstState, secondState, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(firstState, secondState, default))
         {
             WriteGroup(batch, secondPath, secondNode);
             batch.Commit();
@@ -246,7 +246,7 @@ public class PbtRocksDbPersistenceTests
         using IPbtPersistence.IReader olderReader = persistence.CreateReader();
         TrackingMemoryProvider memoryProvider = new();
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None))
+            StateId.PreGenesis, new StateId(1, default), default))
         {
             foreach (PbtNodePath path in paths) WriteGroup(batch, path, BranchNode(1), memoryProvider);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
@@ -314,9 +314,9 @@ public class PbtRocksDbPersistenceTests
                     compactor.DoCompactSnapshot(next);
                     last = next;
                 }
-                persistenceManager.FlushToPersistence(CancellationToken.None);
+                persistenceManager.FlushToPersistenceState(CancellationToken.None);
                 Assert.That(repository.Count, Is.Zero);
-                Assert.That(persistenceManager.CheckPersistence(new StateId(2, TestItem.KeccakA.ValueHash256)), Is.False, "queued IDs behind persistence are harmless");
+                Assert.That(persistenceManager.CheckPersistenceAsync(new StateId(2, TestItem.KeccakA.ValueHash256)).GetAwaiter().GetResult(), Is.False, "queued IDs behind persistence are harmless");
             }
 
             using ColumnsDb<PbtColumns> reopenedDb = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, config);
@@ -391,7 +391,7 @@ public class PbtRocksDbPersistenceTests
         using (ColumnsDb<PbtColumns> db = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, pbtConfig))
         {
             PbtRocksDbPersistence persistence = new(db, pbtConfig, NullTrieNodeLog.Instance);
-            using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, treeRoot, WriteFlags.None);
+            using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, treeRoot);
             batch.SetAccount(addressHash, account.ToPbtAccount());
             batch.SetSlot(storageKey, slot);
             batch.SetCode(account.CodeHash.ValueHash256, code);
@@ -446,7 +446,7 @@ public class PbtRocksDbPersistenceTests
         RefCountingMemory payload;
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, new StateId(1, default), default, WriteFlags.None))
+            StateId.PreGenesis, new StateId(1, default), default))
         {
             WriteGroup(batch, path, originalNode);
             batch.Commit();
@@ -460,7 +460,7 @@ public class PbtRocksDbPersistenceTests
         }
 
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            new StateId(1, default), new StateId(2, default), default, WriteFlags.None))
+            new StateId(1, default), new StateId(2, default), default))
         {
             WriteGroup(batch, path, replacementNode);
             batch.Commit();
@@ -497,8 +497,7 @@ public class PbtRocksDbPersistenceTests
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
             StateId.PreGenesis,
             StateId.PreGenesis,
-            default,
-            WriteFlags.None))
+            default))
         {
             batch.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
@@ -516,7 +515,7 @@ public class PbtRocksDbPersistenceTests
         TrackingMemoryProvider memoryProvider = new();
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance);
         ValueHash256 stagedAddressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch(WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch())
         {
             staging.SetAccount(stagedAddressHash, Account.TotallyEmpty.ToPbtAccount());
             staging.Commit();
@@ -526,8 +525,7 @@ public class PbtRocksDbPersistenceTests
         IPbtPersistence.IWriteBatch final = persistence.CreateWriteBatch(
             StateId.PreGenesis,
             new StateId(7, TestItem.KeccakB.ValueHash256),
-            TestItem.KeccakA.ValueHash256,
-            WriteFlags.None);
+            TestItem.KeccakA.ValueHash256);
         PbtVariableTreeKey nodeKey = new([0x80]);
         WriteGroup(final, new PbtNodePath([], 0), PbtTreeHarness.EncodeLeaf(nodeKey), memoryProvider);
 
@@ -601,13 +599,13 @@ public class PbtRocksDbPersistenceTests
         byte[] physicalKey = groupKey.ToStorageKey(column);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default))
         {
             WriteGroup(batch, path, BranchNode(1));
             batch.Commit();
         }
         using IPbtPersistence.IReader olderReader = persistence.CreateReader();
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default))
         {
             WriteGroup(batch, path, BranchNode(2));
             batch.Commit();
@@ -625,7 +623,7 @@ public class PbtRocksDbPersistenceTests
                 if (column != PbtColumns.Metadata) Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("rootNodeGroup"u8), Is.Null);
             }
         }
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, new StateId(3, default), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(second, new StateId(3, default), default))
         {
             batch.SetNodeGroup(groupKey, null);
             batch.Commit();

@@ -533,7 +533,7 @@ public class PbtDbManagerTests
         }
 
         StateId state = new(1, root1);
-        IPbtDbManager manager = ctx.Manager;
+        PbtDbManager manager = ctx.Manager;
         PbtReadOnlySnapshotBundle first = manager.GatherReadOnlyBundle(state);
         PbtReadOnlySnapshotBundle second = manager.GatherReadOnlyBundle(state);
         Assert.That(second, Is.SameAs(first), "one state, one shared view");
@@ -640,7 +640,7 @@ public class PbtDbManagerTests
         }
 
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 5;
-        ctx.PersistenceManager.CheckPersistence(ctx.Repository.GetLastCommittedStateId()!.Value);
+        await ctx.PersistenceManager.CheckPersistenceAsync(ctx.Repository.GetLastCommittedStateId()!.Value);
 
         // With CompactSize 2 and no offset, only even finalized blocks are persisted.
         Assert.That(ctx.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(new StateId(4, roots[4])));
@@ -718,7 +718,7 @@ public class PbtDbManagerTests
     {
         using PersistenceManagerHarness harness = new(new PbtConfig { EnableLongFinality = false, CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32 });
         List<(StateId From, StateId To)> writes = [];
-        harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+        harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>())
             .Returns(call =>
             {
                 StateId from = call.ArgAt<StateId>(0);
@@ -735,8 +735,8 @@ public class PbtDbManagerTests
                 harness.Repository.TryAddCompacted(PersistenceSnapshot(number - width, number, harness.Pool));
         }
         if (trigger == PersistTrigger.FinalizedCheck) harness.Finalized.FinalizedBlockNumber = 192;
-        if (trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck) harness.PersistenceManager.CheckPersistence(PersistenceState(192));
-        else harness.PersistenceManager.FlushToPersistence(CancellationToken.None);
+        if (trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck) harness.PersistenceManager.CheckPersistenceAsync(PersistenceState(192)).GetAwaiter().GetResult();
+        else harness.PersistenceManager.FlushToPersistenceState(CancellationToken.None);
 
         Assert.That(writes.Count, Is.EqualTo(trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck ? 4 : 192 / width));
         for (int index = 0; index < writes.Count; index++)
@@ -758,7 +758,7 @@ public class PbtDbManagerTests
         harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
         harness.Finalized.FinalizedBlockNumber = (ulong)head;
 
-        harness.PersistenceManager.CheckPersistence(PersistenceState(head));
+        harness.PersistenceManager.CheckPersistenceAsync(PersistenceState(head)).GetAwaiter().GetResult();
 
         Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(expectedPersisted)));
     }
@@ -774,7 +774,7 @@ public class PbtDbManagerTests
         });
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 2, harness.Pool));
-        Assert.Throws<InvalidOperationException>(() => harness.PersistenceManager.FlushToPersistence(CancellationToken.None));
+        Assert.Throws<InvalidOperationException>(() => harness.PersistenceManager.FlushToPersistenceState(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
@@ -782,7 +782,7 @@ public class PbtDbManagerTests
         }
         harness.Batch.Received(1).Dispose();
         failCommit = false;
-        harness.PersistenceManager.FlushToPersistence(CancellationToken.None);
+        harness.PersistenceManager.FlushToPersistenceState(CancellationToken.None);
         Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
     }
 
@@ -799,7 +799,7 @@ public class PbtDbManagerTests
         TaskCompletionSource releasePersistence = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource producerStalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         List<StateId> persisted = [];
-        harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+        harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>())
             .Returns(call =>
             {
                 enteredPersistence.TrySetResult();
@@ -1161,7 +1161,7 @@ public class PbtDbManagerTests
             await using IContainer reopened = PersistedContainer(path, catalog, configure: configure);
             IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
             PbtPersistenceManager persistenceManager = reopened.Resolve<PbtPersistenceManager>();
-            using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(state);
+            using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(state)!;
             Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
             Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null);
             manager.FlushCache(CancellationToken.None);
@@ -1363,7 +1363,7 @@ public class PbtDbManagerTests
             Assert.That(freshBranch.TreeRoot, Is.EqualTo(TestItem.KeccakC.ValueHash256));
             Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
         }
-        harness.PersistenceManager.FlushToPersistence(CancellationToken.None);
+        harness.PersistenceManager.FlushToPersistenceState(CancellationToken.None);
         Assert.That(harness.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(newBranch));
     }
 
@@ -1386,7 +1386,7 @@ public class PbtDbManagerTests
             repository.TryAdd(orphan);
             using (orphan) container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(orphan);
             repository.RemoveMemoryState(PersistenceState(2));
-            using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(PersistenceState(3));
+            using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(PersistenceState(3))!;
             fault.FailRemove = true;
             Assert.Throws<IOException>(() => manager.DropStateNotReachableFrom(PersistenceState(1)));
             using (Assert.EnterMultipleScope())
@@ -1437,7 +1437,7 @@ public class PbtDbManagerTests
             committing.Set();
             Assert.That(resume.Wait(TimeSpan.FromSeconds(10)), Is.True);
         });
-        Task persist = Task.Run(() => harness.PersistenceManager.FlushToPersistence(CancellationToken.None));
+        Task persist = Task.Run(() => harness.PersistenceManager.FlushToPersistenceState(CancellationToken.None));
         Assert.That(committing.Wait(TimeSpan.FromSeconds(10)), Is.True);
         Task<bool> reset = Task.Run(() =>
         {
@@ -1523,7 +1523,7 @@ public class PbtDbManagerTests
             await using (IContainer reopened = PersistedContainer(path, catalog))
             {
                 IPbtDbManager manager = reopened.Resolve<IPbtDbManager>();
-                using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(abandoned);
+                using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(abandoned)!;
                 BlockHeader head = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
                 reopened.Resolve<ScopeProvider.PbtWorldStateManager>().DropStateNotReachableFrom(head);
                 using (Assert.EnterMultipleScope())
@@ -1573,7 +1573,7 @@ public class PbtDbManagerTests
             IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
             reader.CurrentState.Returns(PersistenceState(0));
             Persistence.CreateReader().Returns(reader);
-            Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>()).Returns(Batch);
+            Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>()).Returns(Batch);
             PersistenceManager = new(config, Finalized, Persistence, Repository, Schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
                 NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
         }
@@ -1654,7 +1654,7 @@ public class PbtDbManagerTests
                 .Build();
             Assert.That(flat.Resolve<IFlatDbConfig>().EnableLongFinality, Is.EqualTo(longFinality));
             IPbtPersistence pbtPersistence = pbt.Resolve<IPbtPersistence>();
-            using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, PersistenceState(0), TestItem.KeccakB.ValueHash256, WriteFlags.None)) batch.Commit();
+            using (IPbtPersistence.IWriteBatch batch = pbtPersistence.CreateWriteBatch(StateId.PreGenesis, PersistenceState(0), TestItem.KeccakB.ValueHash256)) batch.Commit();
             using (IPersistence.IWriteBatch batch = flat.Resolve<IPersistence>().CreateWriteBatch(StateId.PreGenesis, PersistenceState(0))) { }
             PbtSnapshotRepository pbtRepository = pbt.Resolve<PbtSnapshotRepository>();
             ISnapshotRepository flatRepository = flat.Resolve<ISnapshotRepository>();
@@ -1722,10 +1722,10 @@ public class PbtDbManagerTests
         finally { if (Directory.Exists(path)) Directory.Delete(path, true); }
     }
 
-    /// <summary>The state the first write <see cref="PbtPersistenceManager.CheckPersistence"/> makes for <paramref name="latest"/> persists, or null when it persists nothing.</summary>
+    /// <summary>The state the first write <see cref="PbtPersistenceManager.CheckPersistenceAsync"/> makes for <paramref name="latest"/> persists, or null when it persists nothing.</summary>
     private static StateId? PersistedTo(PersistenceManagerHarness harness, in StateId latest)
     {
-        harness.PersistenceManager.CheckPersistence(latest);
+        harness.PersistenceManager.CheckPersistenceAsync(latest).GetAwaiter().GetResult();
         object?[]? write = harness.Persistence.ReceivedCalls()
             .Where(static call => call.GetMethodInfo().Name == nameof(IPbtPersistence.CreateWriteBatch))
             .Select(static call => call.GetArguments()).FirstOrDefault();

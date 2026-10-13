@@ -36,7 +36,7 @@ public class PbtCachedReaderPersistenceTests
 
         ctx.Reader.DidNotReceive().Dispose();
 
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot))
             batch.Commit();
 
         ctx.Reader.DidNotReceive().Dispose();
@@ -56,15 +56,15 @@ public class PbtCachedReaderPersistenceTests
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot);
 
         Received.InOrder(() =>
         {
             ctx.Inner.CreateReader();
-            ctx.Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>());
+            ctx.Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>());
         });
 
-        IPbtPersistence.IWriteBatch second = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch second = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot);
         using IPbtPersistence.IReader duringBatch = persistence.CreateReader();
         using IPbtPersistence.IReader alsoDuringBatch = persistence.CreateReader();
 
@@ -103,7 +103,7 @@ public class PbtCachedReaderPersistenceTests
         Context ctx = new();
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot);
         batch.Commit();
         batch.Commit();
         batch.Dispose();
@@ -121,7 +121,7 @@ public class PbtCachedReaderPersistenceTests
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
         using IPbtPersistence.IReader beforeAbort = persistence.CreateReader();
-        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None).Dispose();
+        persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot).Dispose();
         using IPbtPersistence.IReader afterAbort = persistence.CreateReader();
 
         Assert.That(afterAbort, Is.SameAs(beforeAbort));
@@ -137,7 +137,7 @@ public class PbtCachedReaderPersistenceTests
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
         using IPbtPersistence.IReader beforeCommit = persistence.CreateReader();
-        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+        IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, _committedState, _committedRoot);
 
         Assert.That(() => batch.Commit(), Throws.InvalidOperationException);
         using IPbtPersistence.IReader afterFailedCommit = persistence.CreateReader();
@@ -154,12 +154,12 @@ public class PbtCachedReaderPersistenceTests
     public async Task WriteBatch_ThatFailedToOpen_LeavesTheSnapshotInvalidatable()
     {
         Context ctx = new();
-        ctx.Inner.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+        ctx.Inner.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, Arg.Any<ValueHash256>())
             .Throws(new InvalidOperationException("wrong base state"));
 
         await using PbtCachedReaderPersistence persistence = ctx.Build();
 
-        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, _committedRoot, WriteFlags.None),
+        Assert.That(() => persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, _committedRoot),
             Throws.InvalidOperationException);
 
         using IPbtPersistence.IReader beforeClear = persistence.CreateReader();
@@ -191,7 +191,7 @@ public class PbtCachedReaderPersistenceTests
         using IPbtPersistence.IReader reader = persistence.CreateReader();
         using RefCountingMemory lease = reader.GetNodeGroup(groupKey)!;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(
-            StateId.PreGenesis, _committedState, _committedRoot, WriteFlags.None);
+            StateId.PreGenesis, _committedState, _committedRoot);
 
         batch.SetNodeGroup(groupKey, payload);
         batch.SetNodeGroup(groupKey, null);
@@ -219,7 +219,7 @@ public class PbtCachedReaderPersistenceTests
         {
             // Return distinct snapshots so cache invalidation remains observable.
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
-            Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
+            Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>())
                 .Returns(Batch);
         }
 

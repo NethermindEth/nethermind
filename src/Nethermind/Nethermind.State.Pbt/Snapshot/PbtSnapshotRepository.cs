@@ -161,7 +161,6 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     /// </remarks>
     public bool TryLeaseCompactionWindow(in StateId head, long minBlockNumber, PbtSnapshotPooledList chain)
     {
-        if (Height(head) == minBlockNumber) return true;
         using PbtSnapshotChain? leased = Walk(head, MemoryPriority, edge =>
             Height(edge.From) < minBlockNumber ? Step.Skip : Height(edge.From) == minBlockNumber ? Step.Stop : Step.Traverse);
         if (leased is null) return false;
@@ -366,10 +365,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     }
 
     public PbtSnapshotLease? FindCandidateToPersist(in StateId seed, in StateId baseState, ulong compactSize,
-        Func<StateId, bool> acceptsFinalizedRoot, bool memoryOnly = false)
+        Func<StateId, bool> acceptsFinalizedRoot)
     {
         StateId floor = baseState;
-        using PbtSnapshotChain? chain = Walk(seed, memoryOnly ? MemoryPriority : PersistPriority, edge =>
+        using PbtSnapshotChain? chain = Walk(seed, PersistPriority, edge =>
             edge.From == floor ? unchecked(edge.To.BlockNumber - edge.From.BlockNumber) <= compactSize && acceptsFinalizedRoot(edge.To) ? Step.Stop : Step.Skip
             : Height(edge.From) > Height(floor) ? Step.Traverse : Step.Skip);
         return chain is { Layers.Count: > 0 } ? chain.Layers[0].Lease() : null;
@@ -442,7 +441,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
             lock (_lock)
                 if (!_persisted.TryGet(to, depth, out removed) || removed.Tier != tier) return false;
             _catalog.Remove(to, depth);
-            lock (_lock) _persisted.Remove(to, depth, out _);
+            lock (_lock) _persisted.Remove(to, depth);
         }
         removed.Dispose();
         return true;

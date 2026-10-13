@@ -284,7 +284,7 @@ public class PbtWorldStateScopeTests
         Assert.That(bundle.PendingMutationCount, Is.Zero);
         scope.Commit(0);
 
-        using PbtReadOnlySnapshotBundle reopened = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));
+        using PbtReadOnlySnapshotBundle reopened = ctx.Manager.GatherReadOnlyBundle(new StateId(0, scope.RootHash));
         List<RebuildEntry> expected = [];
         PbtTestLeaves.AddAccount(expected, TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject, code);
         PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 7, (UInt256)(updatedSlot == 7 ? 0xef : 0xab));

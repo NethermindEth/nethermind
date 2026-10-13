@@ -76,17 +76,8 @@ public class PbtNodeGroupPrefetchTests
         IPbtPersistence.IReader reader = Reader();
         reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call => ReadPayload(call.Arg<PbtStorageNodePath>()));
 
-        RefCountingMemory? ReadPayload(PbtStorageNodePath path)
-        {
-            if (descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup)) return null;
-            long[] sizes = new long[PbtThreeLevelGroupGeometry.BoundarySlots];
-            Array.Fill(sizes, descendantBytes);
-            byte[] branch = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
-            byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), branch)], sizes);
-            RefCountingMemory payload = memory.Rent(encoding.Length);
-            encoding.CopyTo(payload.GetSpan());
-            return payload;
-        }
+        RefCountingMemory? ReadPayload(PbtStorageNodePath path) =>
+            descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup) ? null : LifecyclePrefetchPayload(memory, path, descendantBytes);
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
         PbtStorageNodePath deeperSnapshot = PbtTestPaths.Prefix<PbtStorageNodePath>(storagePath.Bytes, 270);
         if (snapshotBacked)

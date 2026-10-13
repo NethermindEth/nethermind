@@ -133,7 +133,7 @@ public sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
-    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
+    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot; ignored for an empty group.</param>
     /// <param name="candidateSlots">The slots of <paramref name="descendantBytes"/> that may be nonzero; every other slot is known to be zero.</param>
     public RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes, ushort candidateSlots)
     {

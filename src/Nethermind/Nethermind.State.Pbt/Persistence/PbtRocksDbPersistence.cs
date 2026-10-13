@@ -102,25 +102,25 @@ public class PbtRocksDbPersistence(
 
     public IPbtPersistence.IReader CreateReader() => new Reader(trieNodeLog.OpenView(_db));
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags)
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         StateId current = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (current != from) throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {current}");
-        return StartWriteBatch(to, treeRoot, flags, publishState: true);
+        return StartWriteBatch(to, treeRoot, publishState: true);
     }
 
     // Staging batches may be open several at a time, which the log does not allow, so they bypass it.
-    public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
-        StartWriteBatch(default, default, flags, publishState: false);
+    public IPbtPersistence.IWriteBatch CreateStagingWriteBatch() =>
+        StartWriteBatch(default, default, publishState: false);
 
-    private WriteBatch StartWriteBatch(StateId to, ValueHash256 root, WriteFlags flags, bool publishState)
+    private WriteBatch StartWriteBatch(StateId to, ValueHash256 root, bool publishState)
     {
         // A group written straight to RocksDB must not be shadowed by an older version still in the log.
         if (!publishState) trieNodeLog.Drain();
         IColumnsWriteBatch<PbtColumns> batch = _db.StartWriteBatch();
         try
         {
-            return new WriteBatch(_db, batch, publishState ? trieNodeLog.StartWriteBatch(batch) : NullTrieNodeLog.Instance, to, root, flags, publishState);
+            return new WriteBatch(_db, batch, publishState ? trieNodeLog.StartWriteBatch(batch) : NullTrieNodeLog.Instance, to, root, publishState ? WriteFlags.None : WriteFlags.DisableWAL, publishState);
         }
         catch
         {
@@ -182,7 +182,6 @@ public class PbtRocksDbPersistence(
         private readonly IReadOnlyKeyValueStore _accounts = view.Snapshot.GetColumn(PbtColumns.Accounts);
         private readonly IReadOnlyKeyValueStore _storages = view.Snapshot.GetColumn(PbtColumns.Storages);
         private readonly IReadOnlyKeyValueStore _codes = view.Snapshot.GetColumn(PbtColumns.Codes);
-        private readonly IReadOnlyKeyValueStore _codeLeaves = view.Snapshot.GetColumn(PbtColumns.CodeLeaves);
         private readonly IReadOnlyKeyValueStore _accountNodeGroups = view.GetColumn(PbtColumns.AccountNodeGroups);
         private readonly IReadOnlyKeyValueStore _codeNodeGroups = view.GetColumn(PbtColumns.CodeNodeGroups);
         private readonly IReadOnlyKeyValueStore _storageNodeGroups = view.GetColumn(PbtColumns.StorageNodeGroups);
@@ -229,36 +228,6 @@ public class PbtRocksDbPersistence(
             {
                 _codes.DangerousReleaseMemory(value);
             }
-        }
-
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
-        {
-            ReadOnlySpan<byte> stored = _codeLeaves.GetSpan(key.Bytes);
-            try
-            {
-                if (stored.IsNull())
-                {
-                    value = default;
-                    return false;
-                }
-                if (stored.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT code leaf.");
-                value = new ValueHash256(stored);
-                return true;
-            }
-            finally
-            {
-                _codeLeaves.DangerousReleaseMemory(stored);
-            }
-        }
-
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts()
-        {
-            ISortedKeyValueStore accounts = (ISortedKeyValueStore)_accounts;
-            Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
-            upper.Fill(byte.MaxValue);
-            using ISortedView view = accounts.GetViewBetween([], upper);
-            while (view.MoveNext())
-                yield return new(new ValueHash256(view.CurrentKey), PbtAccount.Decode(view.CurrentValue));
         }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -329,9 +298,6 @@ public class PbtRocksDbPersistence(
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
             ColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
-
-        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) =>
-            ColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
             key.Length == PbtPath.KeyLength && key[0] == Eip8297KeyDerivation.AccountZone

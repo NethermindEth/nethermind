@@ -204,6 +204,6 @@ public static partial class TrieUpdater<TKey, TPath>
         /// deeper, where its shorter encoding hashes differently, and that re-anchored hash is what published the group.
         /// </remarks>
         public readonly ValueHash256 HashAt(int depth) =>
-            IsEmpty || IsLeaf || depth == _anchorDepth ? _hash : PbtNodeCodec.HashReanchored(Reader, depth - _anchorDepth);
+            depth == _anchorDepth ? _hash : PbtNodeCodec.HashReanchored(Reader, depth - _anchorDepth);
     }
 }

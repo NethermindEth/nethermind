@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Memory;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -58,10 +57,8 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         return atBasis ? new CachingReader(this, reader, generation) : reader;
     }
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags) =>
-        new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, treeRoot, flags), to);
-
-    public void Flush() => _inner.Flush();
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot) =>
+        new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, treeRoot), to);
 
     public void ClearCaches()
     {
@@ -177,8 +174,6 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public void Dispose() => inner.Dispose();
     }
@@ -202,7 +197,6 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
-        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) => inner.SetCodeLeaf(key, value);
 
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 

@@ -39,7 +39,7 @@ public class PbtRebuilderTests
         byte[] smallCode = Bytes.FromHexString("0x60016002");
 
         List<RebuildEntry> leaves = [];
-        using IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.None);
+        using IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch();
 
         void AddAccount(Address address, ulong nonce, in UInt256 balance, byte[]? code)
         {

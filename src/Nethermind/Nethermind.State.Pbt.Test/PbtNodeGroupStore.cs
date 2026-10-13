@@ -23,11 +23,10 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
 
     /// <summary>Reconstructs a store from canonical node-group payloads.</summary>
     public static PbtNodeGroupStore FromPhysicalPayloads(
-        IReadOnlyList<PbtPhysicalPayload> payloads,
-        IRefCountingMemoryProvider? memoryProvider = null)
+        IReadOnlyList<PbtPhysicalPayload> payloads)
     {
         ArgumentNullException.ThrowIfNull(payloads);
-        PbtNodeGroupStore store = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
+        PbtNodeGroupStore store = new();
         try
         {
             foreach (PbtPhysicalPayload payload in payloads)

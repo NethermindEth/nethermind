@@ -15,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Common;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
 
@@ -63,9 +64,9 @@ public static class PbtOfflineSource
         try
         {
             int spoolBytes = preimages is null ? sortBufferBytes : sortBufferBytes / 2;
-            using PbtSortedSpool leaves = new("export leaves", directory, spoolBytes, workers, logManager, cancellationToken)
+            using SortedSpool leaves = new(directory, spoolBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
-            using PbtSortedSpool? rawKeys = preimages is null ? null : new("export preimages", directory, spoolBytes, workers, logManager, cancellationToken)
+            using SortedSpool? rawKeys = preimages is null ? null : new(directory, spoolBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
             ScanTotals totals = Spool(ScanPhase, source, codeSource, leaves, rawKeys, workers, logManager, cancellationToken);
 
@@ -127,7 +128,7 @@ public static class PbtOfflineSource
                 using ProgressReporter progress = PbtImageProgress.Start(PreimagesPhase, "acc", accountCount, logManager);
                 Func<string> slotCounter = PbtImageProgress.Counter("slot", () => writtenSlots);
                 progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(PreimagesPhase, "acc", p)} | {slotCounter()}");
-                using PbtSortedSpool.Cursor cursor = rawKeys!.Read();
+                using SortedSpool.Cursor cursor = rawKeys!.Read();
                 while (cursor.MoveNext())
                 {
                     progress.Update(++written);
@@ -160,7 +161,7 @@ public static class PbtOfflineSource
     /// <param name="phase">Name the scan progress is logged under.</param>
     /// <param name="workers">Scan workers, each holding one writer of every spool.</param>
     public static ScanTotals Spool(string phase, FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
-        PbtSortedSpool leaves, PbtSortedSpool? rawKeys, int workers, ILogManager logManager, CancellationToken cancellationToken)
+        SortedSpool leaves, SortedSpool? rawKeys, int workers, ILogManager logManager, CancellationToken cancellationToken)
     {
         ScanTotals totals = new();
         int partitionCount = Math.Min(workers * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
@@ -174,8 +175,8 @@ public static class PbtOfflineSource
 
         void ScanPartitions()
         {
-            using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
-            using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
+            using SortedSpool.Writer leafWriter = leaves.CreateWriter();
+            using SortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
             ScanWorker worker = new(codeSource, leafWriter, rawKeyWriter, progress, keyspace, totals);
             int partition;
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
@@ -223,8 +224,8 @@ public static class PbtOfflineSource
     /// interleave through one preimage key and corrupt the preimage stream.</remarks>
     private sealed class ScanWorker(
         IReadOnlyKeyValueStore codeSource,
-        PbtSortedSpool.Writer leaves,
-        PbtSortedSpool.Writer? rawKeys,
+        SortedSpool.Writer leaves,
+        SortedSpool.Writer? rawKeys,
         ProgressReporter progress,
         PbtKeyspaceProgress keyspace,
         ScanTotals totals)

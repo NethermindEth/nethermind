@@ -289,7 +289,7 @@ public class MigrationBalFollowerTests
 
         public Hash256 TreeRoot(BlockHeader header)
         {
-            using PbtReadOnlySnapshotBundle bundle = Manager.GatherReadOnlyBundle(new StateId(header));
+            using PbtReadOnlySnapshotBundle bundle = Manager.TryGatherReadOnlyBundle(new StateId(header))!;
             return bundle.TreeRoot.ToHash256();
         }
 

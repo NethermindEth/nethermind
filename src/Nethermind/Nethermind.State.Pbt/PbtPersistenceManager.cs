@@ -129,8 +129,6 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         _repository.FindCandidateToPersist(seed, persisted, (ulong)_config.CompactSize, AcceptFinalizedRoot);
 
     /// <summary>Evaluates at most four persistence or conversion actions.</summary>
-    public bool CheckPersistence(in StateId latestSnapshot) => CheckPersistenceAsync(latestSnapshot).GetAwaiter().GetResult();
-
     public async Task<bool> CheckPersistenceAsync(StateId latestSnapshot)
     {
         await _persistenceLock.WaitAsync();
@@ -186,8 +184,6 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         }
     }
 
-    public void FlushToPersistence(CancellationToken cancellationToken) => FlushToPersistenceState(cancellationToken);
-
     public StateId FlushToPersistenceState(CancellationToken cancellationToken)
     {
         _persistenceLock.Wait();
@@ -216,7 +212,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
     {
         cancellationToken.ThrowIfCancellationRequested();
         _barrier.FlushDeferred();
-        using (IPbtPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(candidate.From, candidate.To, candidate.TreeRoot, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(candidate.From, candidate.To, candidate.TreeRoot))
         {
             if (candidate.Memory is { } snapshot)
             {

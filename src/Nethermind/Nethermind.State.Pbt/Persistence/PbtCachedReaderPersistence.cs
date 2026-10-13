@@ -4,7 +4,6 @@
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
-using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
@@ -45,12 +44,12 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         return _cachedReader;
     }
 
-    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags)
+    public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         PinReaderCache();
         try
         {
-            return new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, treeRoot, flags), this);
+            return new CacheClearingWriteBatch(_inner.CreateWriteBatch(from, to, treeRoot), this);
         }
         catch
         {
@@ -58,8 +57,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
             throw;
         }
     }
-
-    public void Flush() => _inner.Flush();
 
     private void PinReaderCache()
     {
@@ -129,8 +126,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
         public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public bool TryLease() => TryAcquireLease();
         protected override void CleanUp() => inner.Dispose();
@@ -145,7 +140,6 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) => inner.SetAccount(addressHash, account);
         public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> => inner.SetSlotRun(runKey, run);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
-        public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) => inner.SetCodeLeaf(key, value);
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 
         public void Commit()

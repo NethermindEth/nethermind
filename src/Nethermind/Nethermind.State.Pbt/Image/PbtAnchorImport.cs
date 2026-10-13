@@ -40,13 +40,13 @@ public sealed class PbtAnchorImport(
     /// the anchor's MPT root over the snapshot's state. Without them nothing ties the snapshot to the anchor's MPT root;
     /// only its own claimed PBT root is checked. Preimages are verified before the fold publishes the tree, which is
     /// what marks the target valid, so a refused import stays unpublished and a restart wipes its staging.</remarks>
-    public async Task<ValueHash256> ImportSnapshot(Stream snapshot, Stream? preimages,
-        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
+    public async Task ImportSnapshot(Stream snapshot, Stream? preimages,
+        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         anchor.Validate();
         Stopwatch importing = Stopwatch.StartNew();
-        if (ImportedEarlier(anchor) is { } imported) return imported;
+        if (ImportedEarlier(anchor)) return;
 
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
@@ -63,14 +63,13 @@ public sealed class PbtAnchorImport(
                 token => verifier is null ? SnapshotLeaves(snapshot, token) : verifier.Join(SnapshotLeaves(snapshot, token)), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
                 new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
             Finish(anchor, root, accounts, slots, importing, cancellationToken);
-            return root;
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
 
-        void VerifyStaged(ulong stagedAccounts, ulong stagedSlots, CancellationToken token)
+        void VerifyStaged(CancellationToken token)
         {
             if (verifier is null) return;
             verifier.Verify(anchor, token);
@@ -78,15 +77,14 @@ public sealed class PbtAnchorImport(
         }
     }
 
-    /// <summary>The native root when this anchor was already imported, or null when the import has yet to run.</summary>
-    private ValueHash256? ImportedEarlier(PbtImageAnchor anchor)
+    /// <summary>Whether this anchor was already imported.</summary>
+    private bool ImportedEarlier(PbtImageAnchor anchor)
     {
-        if (!target.IsValid || targetDb.GetColumnDb(PbtColumns.Metadata).Get(_provenanceKey) is not { } prepared) return null;
+        if (!target.IsValid || targetDb.GetColumnDb(PbtColumns.Metadata).Get(_provenanceKey) is not { } prepared) return false;
         if (!prepared.AsSpan().SequenceEqual(Provenance(anchor)))
             throw new InvalidDataException("The native PBT database was imported from another migration source.");
         if (_logger.IsInfo) _logger.Info($"PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} was imported earlier; reusing it.");
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        return reader.CurrentRoot;
+        return true;
     }
 
     private void Finish(PbtImageAnchor anchor, in ValueHash256 root, ulong stagedAccounts, ulong stagedSlots, Stopwatch importing, CancellationToken cancellationToken)

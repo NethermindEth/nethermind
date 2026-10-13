@@ -105,7 +105,7 @@ public class PbtFormatInteropTests
     }
 
     [Test]
-    public void Persisted_entries_preserve_null_empty_runs_clears_and_accounts([Values] bool delegated, [Values] bool clearValue)
+    public void Persisted_entries_preserve_null_empty_runs_clears_and_accounts([Values] bool delegated)
     {
         using PbtPersistedTestStore store = new();
         PbtSnapshotContent content = new();
@@ -118,7 +118,7 @@ public class PbtFormatInteropTests
         content.Accounts[other] = null;
         PbtAccount codeless = PbtAccount.From(new Account(2, 456), null);
         content.Accounts[default] = codeless;
-        content.SelfDestructedStorageAddresses[address] = clearValue;
+        content.SelfDestructedStorageAddresses[address] = true;
         PbtPath headerKey = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 7));
         content.HeaderStorages[new(headerKey)] = SlotRun.Empty;
         PbtStoragePath storageKey = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000));
@@ -140,8 +140,7 @@ public class PbtFormatInteropTests
             Assert.That(persisted.TryGetAccount(default, out PbtAccount? decodedCodeless), Is.True);
             Assert.That(decodedCodeless, Is.EqualTo(codeless));
             Assert.That(persisted.TryGetAccount(TestItem.KeccakC.ValueHash256, out _), Is.False);
-            Assert.That(persisted.TryGetStorageClear(address, out bool stored), Is.True);
-            Assert.That(stored, Is.EqualTo(clearValue));
+            Assert.That(persisted.TryGetStorageClear(address), Is.True);
             Assert.That(persisted.TryGetNodeGroup(root, out RefCountingMemory? group), Is.True);
             Assert.That(group, Is.Null);
         }
@@ -176,7 +175,7 @@ public class PbtFormatInteropTests
             byte[] node = depth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
             writer.Write(cursor, depth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
-            using RefCountingMemory memory = writer.Detach(default, ushort.MaxValue)!;
+            using RefCountingMemory memory = writer.Detach(default, 0)!;
             expected = memory.GetSpan().ToArray();
             content.SetNodeGroup(groupKey, tombstone ? null : memory);
         }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -261,13 +260,6 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
 
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
-        {
-            value = default;
-            return false;
-        }
-
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => Enumerable.Empty<KeyValuePair<ValueHash256, PbtAccount>>().GetEnumerator();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
         public void Dispose() => persisted.Dispose();
     }

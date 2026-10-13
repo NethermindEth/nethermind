@@ -10,6 +10,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
@@ -33,12 +34,12 @@ public sealed class PbtCodeReassembly : IDisposable
     private readonly int _concurrency;
     private readonly ILogManager _logManager;
     private readonly CancellationTokenSource _cancellation;
-    private readonly PbtSortedSpool _codes;
-    private readonly PbtSortedSpool _stems;
-    private readonly PbtSortedSpool _chunks;
-    private readonly PbtSortedSpool.Writer _codeWriter;
-    private PbtSortedSpool.Writer? _chunkWriter;
-    private PbtSortedSpool.Cursor? _stemCursor;
+    private readonly SortedSpool _codes;
+    private readonly SortedSpool _stems;
+    private readonly SortedSpool _chunks;
+    private readonly SortedSpool.Writer _codeWriter;
+    private SortedSpool.Writer? _chunkWriter;
+    private SortedSpool.Cursor? _stemCursor;
     private ValueHash256 _stemCode;
     private uint _stemFirstChunk;
     private Task? _rebuild;
@@ -51,9 +52,9 @@ public sealed class PbtCodeReassembly : IDisposable
         _concurrency = concurrency;
         _logManager = logManager;
         _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _codes = new("import codes", directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
-        _stems = new("import code stems", directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
-        _chunks = new("import code chunks", directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
+        _codes = new(directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
+        _stems = new(directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
+        _chunks = new(directory, sortBufferBytes, 1, logManager, _cancellation.Token) { MaxConcurrentPreMerges = concurrency };
         _codeWriter = _codes.CreateWriter();
     }
 
@@ -116,11 +117,11 @@ public sealed class PbtCodeReassembly : IDisposable
 
     /// <summary>Spools the stem of every chunk group of the added codes, with the code hash and first chunk id the stem holds.</summary>
     /// <returns>The writer of the chunks spool.</returns>
-    private PbtSortedSpool.Writer MapStems()
+    private SortedSpool.Writer MapStems()
     {
         _codeWriter.Dispose();
-        using (PbtSortedSpool.Writer stems = _stems.CreateWriter())
-        using (PbtSortedSpool.Cursor codes = _codes.Read())
+        using (SortedSpool.Writer stems = _stems.CreateWriter())
+        using (SortedSpool.Cursor codes = _codes.Read())
         {
             Span<byte> value = stackalloc byte[ChunkKeyLength];
             while (codes.MoveNext())
@@ -178,7 +179,7 @@ public sealed class PbtCodeReassembly : IDisposable
                         lock (writeLock)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
+                            batch ??= _target.CreateStagingWriteBatch();
                             batch.SetCode(entry.Hash, code);
                             walked = Math.Max(walked, PbtImageProgress.KeyspaceFraction(entry.Hash));
                             progress.Update(++rebuilt);
@@ -225,8 +226,8 @@ public sealed class PbtCodeReassembly : IDisposable
     /// <summary>Each added code with its chunks, absent chunks left zero, walking the codes and chunks spools side by side.</summary>
     private IEnumerable<(ValueHash256 Hash, int Size, ValueHash256[] Leaves)> Assembled(CancellationToken cancellationToken)
     {
-        using PbtSortedSpool.Cursor codes = _codes.Read();
-        using PbtSortedSpool.Cursor chunks = _chunks.Read();
+        using SortedSpool.Cursor codes = _codes.Read();
+        using SortedSpool.Cursor chunks = _chunks.Read();
         bool hasChunk = chunks.MoveNext();
         while (codes.MoveNext())
         {

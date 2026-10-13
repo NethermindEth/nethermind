@@ -70,7 +70,7 @@ public class PbtStateReaderTests
     {
         await using IContainer container = PbtTestContext.BuildProductionContainer(new PbtConfig { EnableLongFinality = false, CompactionOffset = 0 });
         StateId baseState = new(0, TestItem.KeccakA.ValueHash256);
-        using (IPbtPersistence.IWriteBatch batch = container.Resolve<IPbtPersistence>().CreateWriteBatch(StateId.PreGenesis, baseState, TestItem.KeccakB.ValueHash256, WriteFlags.None)) batch.Commit();
+        using (IPbtPersistence.IWriteBatch batch = container.Resolve<IPbtPersistence>().CreateWriteBatch(StateId.PreGenesis, baseState, TestItem.KeccakB.ValueHash256)) batch.Commit();
         IPbtDbManager manager = container.Resolve<IPbtDbManager>();
         IPbtResourcePool pool = container.Resolve<IPbtResourcePool>();
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakC).TestObject;
@@ -79,7 +79,7 @@ public class PbtStateReaderTests
         container.Resolve<PbtSnapshotRepository>().TryAdd(new(baseState, new(header), TestItem.KeccakD.ValueHash256,
             content, pool, PbtResourcePool.Usage.MainBlockProcessing));
         PbtStateReader reader = container.Resolve<PbtStateReader>();
-        using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(new(header));
+        using PbtReadOnlySnapshotBundle held = manager.TryGatherReadOnlyBundle(new(header))!;
         Assert.That(reader.HasStateForBlock(header), Is.True);
 
         manager.DropStateNotReachableFrom(baseState);

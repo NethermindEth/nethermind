@@ -30,6 +30,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Snapshot;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -81,7 +82,7 @@ public class PbtSnapshotCompactorTests
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<PbtNodePath> writer = PbtNodeGroupWriter<PbtNodePath>.Rent(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtThreeLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
-            return writer.Detach(default, ushort.MaxValue)!;
+            return writer.Detach(default, 0)!;
         }
     }
 
@@ -143,7 +144,6 @@ public class PbtSnapshotCompactorTests
         older.Accounts[address] = Build.An.Account.TestObject.ToPbtAccount();
         PbtSnapshotContent clearing = new();
         clearing.ClearStorage(address);
-        clearing.SelfDestructedStorageAddresses[address] = false;
         PbtSnapshotContent writing = new();
         (writeInClearLayer ? clearing : writing).SetSlot(key, replacement);
         writing.Accounts[address] = null;
@@ -155,8 +155,7 @@ public class PbtSnapshotCompactorTests
             DisposeSources(sources);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(merged.TryGetStorageClear(address, out bool clearValue), Is.True);
-                Assert.That(clearValue, Is.False, "clear semantics depend on presence, not the stored bool");
+                Assert.That(merged.TryGetStorageClear(address), Is.True);
                 Assert.That(merged.TryGetAccount(address, out PbtAccount? account), Is.True);
                 Assert.That(account, Is.Null);
                 bool found = TryReadRun(merged, key, out PackedSlotRun? run);
@@ -294,7 +293,7 @@ public class PbtSnapshotCompactorTests
             byte[] node = group.BitDepth == 0 ? PbtTreeHarness.EncodeLeaf(leaf)
                 : PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
             writer.Write(path, group.BitDepth == 0 ? PbtThreeLevelGroupGeometry.RootPosition : 0, node);
-            using RefCountingMemory payload = writer.Detach(default, ushort.MaxValue)!;
+            using RefCountingMemory payload = writer.Detach(default, 0)!;
             expected = payload.GetSpan().ToArray();
             older.SetNodeGroup(group, payload);
             newer.SetNodeGroup(group, tombstone ? null : payload);
@@ -902,9 +901,14 @@ public class PbtSnapshotCompactorTests
 
     private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst)
     {
-        using PbtSnapshotPooledList chain = PbtSnapshotBundleTestExtensions.Chain(_pool, layersOldestFirst);
-        return NewCompactor().Compact(chain);
+        StateId head = new((ulong)layersOldestFirst.Length, default);
+        ICompactionSchedule schedule = Substitute.For<ICompactionSchedule>();
+        schedule.GetCompactSize(head.BlockNumber).Returns(head.BlockNumber);
+        using PbtSnapshotRepository repository = new(new Nethermind.Monitoring.Config.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
+        for (int i = 0; i < layersOldestFirst.Length; i++)
+            repository.TryAdd(new PbtSnapshot(new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
+        Assert.That(new PbtSnapshotCompactor(_pool, schedule, repository, Config, LimboLogs.Instance).DoCompactSnapshot(head), Is.True);
+        Assert.That(repository.TryLeaseMemoryState(head, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted), Is.True);
+        return compacted!;
     }
-
-    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate()), Config, Nethermind.Logging.LimboLogs.Instance);
 }

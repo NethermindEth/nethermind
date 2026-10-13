@@ -39,7 +39,7 @@ public static class PbtSnapshotCodec
         return root;
     }
 
-    public static IEnumerable<RebuildEntry> ReadLeaves(Stream source, CancellationToken cancellationToken = default)
+    public static IEnumerable<RebuildEntry> ReadLeaves(Stream source, CancellationToken cancellationToken)
     {
         List<RebuildEntry> leaves = new(GroupWidth);
         using HeaderCursor headers = new(source, source.Position);
@@ -90,7 +90,7 @@ public static class PbtSnapshotCodec
     /// <paramref name="calculateRoot"/> folds from the same leaves as they are written.</summary>
     /// <param name="calculateRoot">Must consume every leaf of the stream it is given.</param>
     public static void Write(Stream destination, IEnumerable<RebuildEntry> leaves,
-        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot, CancellationToken cancellationToken = default)
+        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot, CancellationToken cancellationToken)
     {
         StemWriter writer = new(destination);
         bool written = false;

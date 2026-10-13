@@ -16,7 +16,6 @@ namespace Nethermind.State.Pbt.PersistedSnapshots;
 public sealed class PbtPersistedSnapshotLoader(
     PbtSnapshotRepository repository,
     PbtPersistedPublicationGate publicationGate,
-    PbtPersistedStorageLifetime lifetime,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
     [KeyFilter(DbNames.Pbt)] ISnapshotCatalog catalog,
@@ -79,7 +78,8 @@ public sealed class PbtPersistedSnapshotLoader(
         }
         catch
         {
-            lifetime.AbortLoad();
+            if (arena is ArenaManager mapped) mapped.PreserveFilesOnFailure();
+            blobs.PreserveFilesOnFailure();
             foreach (ArenaReservation reservation in reservations) reservation.PersistOnShutdown();
             repository.MarkPersistedTierForShutdown();
             throw;

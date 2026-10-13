@@ -58,7 +58,6 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(db.AccountsVisited, Is.Zero);
             Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(db.CodeLeafReads, Is.Zero, "reassembly must not read the staged code leaves back");
             Assert.That(db.CodeWrites, Is.EqualTo(codes.Count));
             Assert.That(db.MaxActiveCodeWrites, Is.EqualTo(1));
             Assert.That(db.CodeBatchSizes, Is.EqualTo(Enumerable.Repeat(PbtLeafIngestion.BatchSize, codes.Count / PbtLeafIngestion.BatchSize)
@@ -108,7 +107,6 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(db.AccountsVisited, Is.Zero);
             Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(db.CodeLeafReads, Is.Zero);
             Assert.That(Directory.GetFileSystemEntries(scratch.Path), Is.Empty);
         }
     }
@@ -130,7 +128,6 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(db.AccountsVisited, Is.Zero);
             Assert.That(db.CodeReads, Is.Zero);
-            Assert.That(db.CodeLeafReads, Is.Zero);
             Assert.That(db.CodeWrites, Is.EqualTo(delegation ? 1 : 0), "only staging writes the delegation code");
             Assert.That(db.CodeBatchSizes, Is.EqualTo(delegation ? new[] { 1 } : []));
         }
@@ -172,7 +169,6 @@ public class ImportPbtFromPreimageFlatTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(db.CodeLeafReads, Is.Zero);
             Assert.That(db.CodeWrites, Is.EqualTo(4));
             Assert.That(db.ActiveSnapshots, Is.Zero);
             Assert.That(db.ActiveCodeBatches, Is.Zero);
@@ -329,7 +325,7 @@ public class ImportPbtFromPreimageFlatTests
             return reader.CurrentRoot;
         }
 
-        using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch())
         {
             staging.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressC), new Account(1, 2).ToPbtAccount());
             PbtVariableTreeKey staleNodeKey = new([0x80]);
@@ -380,7 +376,7 @@ public class ImportPbtFromPreimageFlatTests
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ScanTreeConcurrency = concurrency };
         PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), TestItem.KeccakC.ValueHash256, WriteFlags.None)) batch.Commit();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), TestItem.KeccakC.ValueHash256)) batch.Commit();
         Dictionary<PbtColumns, (long Count, long Keys, long Values)> expected = [];
         HashSet<string> expectedRows = [];
         void Add(PbtColumns column, byte[] key, byte[] value)
@@ -597,7 +593,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtConfig config = new() { ScanTreeConcurrency = 2 };
         PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
         if (outcome != "empty")
-            using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), TestItem.KeccakB.ValueHash256, WriteFlags.None)) batch.Commit();
+            using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), TestItem.KeccakB.ValueHash256)) batch.Commit();
         bool malformed = outcome.StartsWith("malformed", StringComparison.Ordinal);
         if (malformed)
         {
@@ -670,7 +666,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig(), NullTrieNodeLog.Instance);
         ValueHash256 existingRoot = new(Keccak.Compute("existing").Bytes);
-        using (IPbtPersistence.IWriteBatch persisted = pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch persisted = pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), default))
             persisted.Commit();
 
         await CreateStep(flatSource, new MemDb(), pbtDb, pbtTarget, new PbtConfig()).Execute(CancellationToken.None);
@@ -804,7 +800,6 @@ public class ImportPbtFromPreimageFlatTests
         public Action? BeforeCodeWrite;
         public Action? BeforeAccountWrite;
         public int AccountsVisited;
-        public int CodeLeafReads;
         public int CodeWrites;
         public int ActiveSnapshots;
         public int ActiveCodeWrites;
@@ -844,7 +839,7 @@ public class ImportPbtFromPreimageFlatTests
             private int _reads;
             public IReadOnlyKeyValueStore GetColumn(PbtColumns key) => key switch
             {
-                PbtColumns.Codes or PbtColumns.CodeLeaves => new RecordingCodeStore(owner, this, key, snapshot.GetColumn(key)),
+                PbtColumns.Codes => new RecordingCodeStore(owner, this, snapshot.GetColumn(key)),
                 PbtColumns.Accounts when owner.TrackCodeRebuild => new RecordingAccounts(owner, (ISortedKeyValueStore)snapshot.GetColumn(key)),
                 _ => snapshot.GetColumn(key)
             };
@@ -868,12 +863,12 @@ public class ImportPbtFromPreimageFlatTests
             }
         }
 
-        private sealed class RecordingCodeStore(RecordingColumnsDb owner, RecordingSnapshot snapshot, PbtColumns column, IReadOnlyKeyValueStore store) : IReadOnlyKeyValueStore
+        private sealed class RecordingCodeStore(RecordingColumnsDb owner, RecordingSnapshot snapshot, IReadOnlyKeyValueStore store) : IReadOnlyKeyValueStore
         {
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
             {
                 snapshot.EnterRead();
-                Interlocked.Increment(ref column == PbtColumns.Codes ? ref owner.CodeReads : ref owner.CodeLeafReads);
+                Interlocked.Increment(ref owner.CodeReads);
                 try
                 {
                     return store.Get(key, flags);

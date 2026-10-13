@@ -93,7 +93,6 @@ public static class PbtNodeCodec
     [SkipLocalsInit]
     public static ValueHash256 HashReanchored(PbtBranchReader stored, int skippedBits)
     {
-        if (skippedBits == 0) return Blake3Hash.Hash(stored.Preimage);
         CompressedPrefix prefix = stored.Prefix;
         int bitCount = prefix.BitCount - skippedBits;
         Span<byte> preimage = stackalloc byte[BranchPreimageLength(bitCount)];

@@ -218,7 +218,7 @@ public class PbtTrieNodeLogTests
         PbtNodePath topKey = PbtTestPaths.Locate(topNode).GroupKey;
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
         byte[] topGroup;
-        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default, WriteFlags.None))
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default))
         {
             using RefCountingMemory root = EncodeGroup(rootNode, TestItem.KeccakA.ValueHash256);
             using RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256);
@@ -238,7 +238,7 @@ public class PbtTrieNodeLogTests
             Assert.That(_db.GetColumnDb(PbtColumns.Metadata).Get(PbtRocksDbPersistence.RootNodeGroupKey), Is.Not.Null, "the root group bypasses the log");
         }
 
-        Assert.That(() => Parallel.For(0, 16, _ => persistence.CreateStagingWriteBatch(WriteFlags.DisableWAL).Dispose()), Throws.Nothing);
+        Assert.That(() => Parallel.For(0, 16, _ => persistence.CreateStagingWriteBatch().Dispose()), Throws.Nothing);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Raw(TopKey), Is.EqualTo(topGroup), "a staging batch drains the log first");
@@ -246,10 +246,10 @@ public class PbtTrieNodeLogTests
         }
 
         StateId next = new(2, TestItem.KeccakB.ValueHash256);
-        using IPbtPersistence.IWriteBatch open = persistence.CreateWriteBatch(state, next, default, WriteFlags.None);
+        using IPbtPersistence.IWriteBatch open = persistence.CreateWriteBatch(state, next, default);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => persistence.CreateWriteBatch(state, next, default, WriteFlags.None), Throws.InvalidOperationException);
+            Assert.That(() => persistence.CreateWriteBatch(state, next, default), Throws.InvalidOperationException);
             Assert.That(persistence.Flush, Throws.InvalidOperationException);
         }
     }
@@ -652,7 +652,7 @@ public class PbtTrieNodeLogTests
         db.StartWriteBatch().Returns(_ => batch = new FailingMetadataBatch(_db.StartWriteBatch()));
         PbtRocksDbPersistence persistence = new(db, _config, _log);
 
-        IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None);
+        IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default);
         PbtNodePath topNode = new(Bytes.FromHexString("0x20"), 4);
         using (RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256))
             writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top);

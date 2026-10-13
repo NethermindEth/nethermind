@@ -10,6 +10,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
@@ -38,7 +39,7 @@ public static class PbtLeafIngestion
     /// <returns>The tree root and the staged accounts and slots.</returns>
     public static async Task<(ValueHash256 Root, ulong Accounts, ulong Slots)> Ingest(PbtRocksDbPersistence target, PbtRebuilder rebuilder,
         Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, int concurrency, StateId targetState, int windowSize,
-        ValueHash256? expectedRoot, Action<ulong, ulong, CancellationToken> verifyStaged, string scratchDirectory, int sortBufferBytes, ILogManager logManager,
+        ValueHash256? expectedRoot, Action<CancellationToken> verifyStaged, string scratchDirectory, int sortBufferBytes, ILogManager logManager,
         CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -50,7 +51,7 @@ public static class PbtLeafIngestion
             {
                 (ulong Accounts, ulong Slots) staged = Stage(target, PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
                     concurrency, scratchDirectory, sortBufferBytes, logManager, linked.Token);
-                verifyStaged(staged.Accounts, staged.Slots, linked.Token);
+                verifyStaged(linked.Token);
                 return staged;
             }
             catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
@@ -86,9 +87,9 @@ public static class PbtLeafIngestion
     }
 
     /// <summary>The ascending leaves of a spool of tree keys and leaf values.</summary>
-    public static IEnumerable<RebuildEntry> SpoolLeaves(PbtSortedSpool spool)
+    public static IEnumerable<RebuildEntry> SpoolLeaves(SortedSpool spool)
     {
-        using PbtSortedSpool.Cursor cursor = spool.Read();
+        using SortedSpool.Cursor cursor = spool.Read();
         while (cursor.MoveNext()) yield return new RebuildEntry(new PbtVariableTreeKey(cursor.Key), new ValueHash256(cursor.Value));
     }
 
@@ -136,7 +137,7 @@ public static class PbtLeafIngestion
         {
             if (_count == BatchSize) Enqueue();
             _count++;
-            return _batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
+            return _batch ??= _target.CreateStagingWriteBatch();
         }
 
         /// <summary>Waits for every staged write, then flushes the write buffers so the no-WAL writes are durable.</summary>

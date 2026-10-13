@@ -158,12 +158,8 @@ public sealed class PbtPersistedSnapshot : SmallRefCountingDisposable
         return found;
     }
 
-    public bool TryGetStorageClear(in ValueHash256 addressHash, out bool storedValue)
-    {
-        bool found = TryReadEntity(PbtPersistedKey.AddressEntity(addressHash, PbtPersistedKey.Clear), out byte[]? payload);
-        storedValue = found && payload![0] != 0;
-        return found;
-    }
+    public bool TryGetStorageClear(in ValueHash256 addressHash) =>
+        TryReadEntity(PbtPersistedKey.AddressEntity(addressHash, PbtPersistedKey.Clear), out _);
 
     /// <summary>Returns one caller-owned group reference, a found null tombstone, or an absent descriptor.</summary>
     public bool TryGetNodeGroup<TPath>(in TPath path, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>

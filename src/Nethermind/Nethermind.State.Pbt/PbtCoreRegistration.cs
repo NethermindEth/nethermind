@@ -72,7 +72,6 @@ public static class PbtCoreRegistration
         if (!config.EnableLongFinality)
             return builder
                 .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, _ => NullSnapshotCatalog.Instance)
-                .AddSingleton<PbtPersistedStorageLifetime>(_ => new(null, null))
                 .AddSingleton<IPbtPersistedSnapshotLoader>(NullPbtPersistedSnapshotLoader.Instance)
                 .AddSingleton<IPbtPersistedSnapshotCompactor>(NullPbtPersistedSnapshotCompactor.Instance);
 
@@ -91,7 +90,6 @@ public static class PbtCoreRegistration
                 }, ctx.Resolve<ILogManager>()))
             .AddKeyedSingleton<BlobArenaManager>(DbNames.Pbt, ctx => new BlobArenaManager(
                 Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "persistedSnapshot", "blob"), config.ArenaFileSizeBytes))
-            .AddSingleton<PbtPersistedStorageLifetime>(ctx => new(ctx.ResolveKeyed<IArenaManager>(DbNames.Pbt), ctx.ResolveKeyed<BlobArenaManager>(DbNames.Pbt)))
             .AddSingleton<IPbtPersistedSnapshotLoader, PbtPersistedSnapshotLoader>()
             .AddSingleton<IPbtPersistedSnapshotCompactor, PbtPersistedSnapshotCompactor>();
     }

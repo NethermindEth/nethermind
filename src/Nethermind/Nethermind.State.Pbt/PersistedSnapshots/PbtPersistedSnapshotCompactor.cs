@@ -170,7 +170,7 @@ public sealed class PbtPersistedSnapshotCompactor(
     private bool DoCompactSnapshot(StateId snapshotTo, ulong persistedBlockNumber)
     {
         ulong width = schedule.GetPersistedSnapshotCompactSize(snapshotTo.BlockNumber);
-        if (snapshotTo.BlockNumber == 0 || width <= 1 || repository.PersistedCount < 2) return false;
+        if (width <= 1 || repository.PersistedCount < 2) return false;
         ulong floor = unchecked((ulong)Math.Max(unchecked((long)snapshotTo.BlockNumber) - checked((long)width), unchecked((long)persistedBlockNumber)));
         return CompactRange(snapshotTo, floor, isCompactSized: false);
     }

@@ -1358,12 +1358,6 @@ public class PbtSnapshotBundleTests
             CodeReadCount++;
             return Codes.GetValueOrDefault(codeHash);
         }
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
-        {
-            value = default;
-            return false;
-        }
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             GroupReadCount++;

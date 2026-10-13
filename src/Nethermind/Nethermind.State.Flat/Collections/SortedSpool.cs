@@ -27,7 +27,7 @@ namespace Nethermind.State.Flat.Collections;
 /// The merged output is never materialized, and the runs outlive it, so <see cref="Read"/> may be called
 /// repeatedly.</para>
 /// </remarks>
-internal sealed class SortedSpool : IDisposable
+public sealed class SortedSpool : IDisposable
 {
     /// <summary>The table format's key and value ceiling, and thus the merge's scratch size.</summary>
     private const int MaxRecordFieldLength = 255;
@@ -109,7 +109,7 @@ internal sealed class SortedSpool : IDisposable
     /// <summary>A producer's handle on the spool. One per thread; a single handle is not itself thread-safe.</summary>
     /// <remarks>Disposing spills whatever the handle still holds, so every writer must be disposed before
     /// <see cref="Read"/> — records left in a live segment would silently be missing from the merge.</remarks>
-    internal sealed class Writer(SortedSpool spool) : IDisposable
+    public sealed class Writer(SortedSpool spool) : IDisposable
     {
         private Segment? _segment;
         private bool _closed;
@@ -412,7 +412,7 @@ internal sealed class SortedSpool : IDisposable
     /// comparison per level, against the binary heap's two. Leaf index <c>_k</c> is the sentinel: it seeds the
     /// tree, sorting below every real head, and marks an exhausted run, sorting above every real head.
     /// </remarks>
-    internal sealed class Cursor : IDisposable
+    public sealed class Cursor : IDisposable
     {
         private readonly MappedByteFile[] _files;
         private readonly SortedTableEnumerator<WholeReadSessionReader, NoOpPin>[] _sources;
