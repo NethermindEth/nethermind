@@ -13,14 +13,20 @@ namespace Nethermind.Evm.Test
 {
     public class TestAllTracerWithOutput : TxTracer
     {
+        /// <summary>
+        /// With <c>NETHERMIND_EVM_TEST_UNTRACED=1</c> the tests run without instruction tracing, as untraced execution
+        /// runs, where a frame code runner is offered the frames.
+        /// </summary>
+        private static readonly bool Untraced = Environment.GetEnvironmentVariable("NETHERMIND_EVM_TEST_UNTRACED") == "1";
+
         public override bool IsTracingReceipt => true;
         public override bool IsTracingActions => true;
-        public override bool IsTracingOpLevelStorage => true;
-        public override bool IsTracingMemory => true;
-        public override bool IsTracingInstructions => true;
+        public override bool IsTracingOpLevelStorage => !Untraced;
+        public override bool IsTracingMemory => !Untraced;
+        public override bool IsTracingInstructions => !Untraced;
         public override bool IsTracingRefunds => true;
         public override bool IsTracingCode => true;
-        public override bool IsTracingStack => true;
+        public override bool IsTracingStack => !Untraced;
         public override bool IsTracingState => true;
         public override bool IsTracingStorage => true;
         public override bool IsTracingBlockHash => true;
