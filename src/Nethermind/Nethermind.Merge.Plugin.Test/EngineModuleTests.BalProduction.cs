@@ -32,6 +32,9 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
+    /// <summary>Gas of a value transfer to a cold recipient under EIP-2780 and EIP-8038.</summary>
+    private const ulong IncludedTransferGas = GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + GasCostOf.TxValueCostEip2780;
+
     /// <summary>
     /// A transaction the producer executes and then drops must leave no trace in the block access list, and the
     /// included transactions and the post-execution withdrawal must keep contiguous indices; the node's own
@@ -77,7 +80,7 @@ public partial class EngineModuleTests
         {
             Assert.That(factory.DiscardedCount, Is.GreaterThan(0), "the discarded transaction never executed");
             Assert.That(payload.Transactions, Has.Length.EqualTo(included.Length));
-            Assert.That(payload.GasUsed, Is.EqualTo((ulong)included.Length * GasCostOf.Transaction));
+            Assert.That(payload.GasUsed, Is.EqualTo((ulong)included.Length * IncludedTransferGas));
             Assert.That(bal.GetAccountChanges(TestItem.AddressD), Is.Null);
             Assert.That(bal.GetAccountChanges(createdContract), Is.Null);
             ReadOnlyAccountChanges discardedSender = bal.GetAccountChanges(TestItem.AddressC)!;
