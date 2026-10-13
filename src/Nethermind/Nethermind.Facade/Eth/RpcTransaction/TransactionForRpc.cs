@@ -57,8 +57,8 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public ulong? Gas { get; set; }
 
-    // True when type came from a fallback (gasPrice-only or absolute default), not from an
-    // explicit `type` field or a discriminator. Set only during JSON deserialization.
+    // True when type came from a fallback (gasPrice-only or absolute default), not from a discriminator
+    // or a registered type above set-code. Set only during JSON deserialization.
     [JsonIgnore]
     internal bool IsTypeDefaulted { get; set; }
 
@@ -106,19 +106,21 @@ public abstract class TransactionForRpc
             ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
             : result;
 
-    /// <summary>
-    /// Converts an unsigned call that runs in a block of <paramref name="spec"/>, as <see cref="ToValidatedTransaction"/>
-    /// does, or as <see cref="ToTransaction"/> does without <paramref name="validateFeeCapOrder"/>. The call's fields
-    /// chose its type, so a field that fork lacks names a type it doesn't enable, even when its value is zero or empty,
-    /// and a call that converts is rejected before its fee cap order is checked; a defaulted type names no field. Transactions to
-    /// build or sign don't run in a known block, so they stay outside this check: they convert with
-    /// <see cref="ToValidatedTransaction"/>, or without <paramref name="checksFork"/> when they run as a call to
-    /// estimate their gas.
-    /// </summary>
-    public Result<Transaction> ToCallTransaction(IReleaseSpec spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
+    /// <summary>Converts an unsigned call that runs in a block of <paramref name="spec"/>, rejecting a field that block's fork lacks.</summary>
+    /// <param name="spec">The fork of the block the call runs in, or null when the block is unknown and the fork isn't checked.</param>
+    /// <param name="gasCap">The gas limit applied when the call sets none or a higher one.</param>
+    /// <param name="validateUserInput">Whether the request's fields are validated, as in <see cref="ToTransaction"/>.</param>
+    /// <param name="validateFeeCapOrder">Whether a fee cap below the priority fee is rejected, as in <see cref="ToValidatedTransaction"/>.</param>
+    /// <param name="checksFork">Whether the fork is checked; off for a transaction to build that runs as a call to estimate its gas.</param>
+    /// <remarks>
+    /// The call's fields chose its type, so a field the fork lacks names a type it doesn't enable, even when its value is
+    /// zero or empty; a defaulted type names no field. The fork check comes before the fee cap order check. Transactions
+    /// to build or sign go into a later block, so they stay outside this check and convert with <see cref="ToValidatedTransaction"/>.
+    /// </remarks>
+    public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
-        if (checksFork && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
+        if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
             return TxErrorMessages.InvalidTxType(spec.Name);
         return validateFeeCapOrder ? CheckFeeCapOrder(result) : result;
     }
@@ -348,13 +350,14 @@ public abstract class TransactionForRpc
             // As in geth, the fields pick the class for the Ethereum types up to set-code, so an explicit type never
             // drops a field or adds a requirement, and an unknown type is ignored. A registered type above set-code,
             // such as a chain extension, still picks its class, since its fields don't identify it.
+            int index = -1;
             if (setType > TxType.SetCode)
             {
                 for (int i = 0; i < registry.Types.Length; i++)
                 {
                     if (registry.Types[i].TxType == setType)
                     {
-                        discriminated |= 1UL << i;
+                        index = i;
                         break;
                     }
                 }
@@ -362,11 +365,11 @@ public abstract class TransactionForRpc
 
             // Discriminator field is a strong signal — not a default. It wins over gasPrice, otherwise a
             // legacy-priced request would silently lose its accessList/blobVersionedHashes/authorizationList.
-            // The newest indicated type must have every discriminator field seen; fields no single type
-            // carries, such as blobVersionedHashes with authorizationList, are rejected rather than dropped.
-            if (discriminated != 0)
+            // The selected type, explicit or else the newest indicated, must have every discriminator field seen; fields
+            // no single type carries, such as blobVersionedHashes with authorizationList, are rejected rather than dropped.
+            if (index != -1 || discriminated != 0)
             {
-                int index = BitOperations.TrailingZeroCount(discriminated);
+                if (index == -1) index = BitOperations.TrailingZeroCount(discriminated);
                 TxTypeInfo selected = registry.Types[index];
                 ulong missing = seen & ~registry.NamesByType[index];
                 if (missing != 0)
