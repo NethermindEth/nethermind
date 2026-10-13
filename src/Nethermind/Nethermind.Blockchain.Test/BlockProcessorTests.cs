@@ -2145,8 +2145,11 @@ public partial class BlockProcessorTests
 
         if (balFailure)
         {
-            Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
-            Assert.That(exception!.InnerException, Is.SameAs(failure));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
+                Assert.That(exception!.InnerException, Is.SameAs(failure));
+            }
         }
         else
         {
@@ -3401,13 +3404,13 @@ public partial class BlockProcessorTests
         GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
         InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, (ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed, transactionProcessor);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(ex.Message, Does.Contain("Block gas limit exceeded"));
             // The tally trips one tx past the limit; each worker may then finish the tx it already started,
             // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
             Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
-        });
+        }
     }
 
     [Test]
@@ -3439,7 +3442,7 @@ public partial class BlockProcessorTests
         });
         InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, ulong.MaxValue, transactionProcessor);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
             Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
@@ -3455,7 +3458,7 @@ public partial class BlockProcessorTests
                 Assert.That(failures.ContainsKey(int.Parse(named.Groups[1].Value)), Is.True);
             }
             Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + 1 + 2 * Environment.ProcessorCount));
-        });
+        }
     }
 
     /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
