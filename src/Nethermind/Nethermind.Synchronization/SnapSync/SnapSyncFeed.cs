@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.SnapSync
                         return SyncResponseHandlingResult.NotAssigned;
                     }
 
-                    _logger.Trace($"SNAP - timeout {peer}");
+                    _logger.Trace($"SNAP - timeout {peer:hide}");
                     Interlocked.Increment(ref Metrics.SnapRequestTimeouts);
                     OnUnproductiveResponse("no response");
                     return SyncResponseHandlingResult.LesserQuality;
@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                         if (repeatOffender)
                                         {
-                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer}");
+                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer:hide}");
                                             return SyncResponseHandlingResult.LesserQuality;
                                         }
 
@@ -313,7 +313,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                     if (allLastFailures == peerLastFailures)
                                     {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
+                                        _logger.Trace($"SNAP - peer to be punished:{peer:hide}");
                                         return SyncResponseHandlingResult.LesserQuality;
                                     }
 

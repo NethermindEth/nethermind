@@ -82,7 +82,7 @@ public abstract class KademliaAdapterBase(
                 NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
                 if (record is null)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node} after advertised sequence {requestedSequence}.");
+                    if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node:hide} after advertised sequence {requestedSequence}.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -93,7 +93,7 @@ public abstract class KademliaAdapterBase(
 
                 if (record.EnrSequence < node.RequestingEnrSequence)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
+                    if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node:hide}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -106,7 +106,7 @@ public abstract class KademliaAdapterBase(
                 {
                     // Do not observe a sequence from a record that is not authenticated for this node;
                     // doing so could suppress a later valid refresh.
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record is not valid for the node.");
+                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node:hide}; record is not valid for the node.");
                     if (node.TryClearEnrRequest(requestedSequence))
                     {
                         return;
@@ -117,7 +117,7 @@ public abstract class KademliaAdapterBase(
 
                 if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
                 {
-                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node:hide}; the newer ENR has no usable discovery endpoint reachable from this listener.");
                     if (node.ObserveEnrSequence(record.EnrSequence))
                     {
                         return;
@@ -148,7 +148,7 @@ public abstract class KademliaAdapterBase(
         catch (Exception e)
         {
             node.TryClearEnrRequest(node.RequestingEnrSequence);
-            if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node}: {e}");
+            if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node:hide}: {e:hide}");
         }
     }
 }

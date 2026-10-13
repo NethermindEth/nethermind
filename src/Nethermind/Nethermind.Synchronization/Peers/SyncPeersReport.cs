@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.Peers
                 RememberState(out bool _);
 
                 _logger.Debug(MakeSummaryReportForPeers(_peerPool.InitializedPeers, $"Sync peers - Connected: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}"));
-                _logger.Debug(MakeReportForPeers(OrderedPeers, ""));
+                _logger.Debug($"{MakeReportForPeers(OrderedPeers, ""):hide}");
             }
         }
 
@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Peers
                 if (_logger.IsDebug)
                 {
                     string header = $"Allocated sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}";
-                    _logger.Debug(MakeReportForPeers(OrderedPeers.Where(static p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header));
+                    _logger.Debug($"{MakeReportForPeers(OrderedPeers.Where(static p => (p.AllocatedContexts & AllocationContexts.All) != AllocationContexts.None), header):hide}");
                 }
             }
         }

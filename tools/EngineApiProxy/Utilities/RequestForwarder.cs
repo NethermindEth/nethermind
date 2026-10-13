@@ -23,7 +23,7 @@ public class RequestForwarder(
         try
         {
             string requestJson = JsonSerializer.Serialize(request);
-            string targetHost = _httpClient.BaseAddress?.ToString() ?? "unknown";
+            string targetHost = LogEndpoint.Url(_httpClient.BaseAddress?.ToString());
             _logger.Debug($"Forwarding request to EL at: {targetHost}");
             if (logResponse)
             {
@@ -67,17 +67,17 @@ public class RequestForwarder(
             }
             catch (HttpRequestException ex) when (ex.InnerException is HttpIOException ioEx)
             {
-                _logger.Error($"Network IO error communicating with EL: {ioEx.Message}. This could indicate connection issues or server premature disconnect.");
+                _logger.Error($"Network IO error communicating with EL: {(SensitiveLogMasking.Enabled ? ioEx.GetType().Name : ioEx.Message)}. This could indicate connection issues or server premature disconnect.");
                 return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Network IO error with EL: {ioEx.Message}");
             }
             catch (HttpRequestException ex)
             {
-                _logger.Error($"HTTP request error communicating with EL: {ex.Message}", ex);
+                _logger.Error($"HTTP request error communicating with EL: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
                 return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: HTTP error with EL: {ex.Message}");
             }
             catch (TaskCanceledException ex)
             {
-                _logger.Error($"Request timed out after {_config.RequestTimeoutSeconds}s: {ex.Message}", ex);
+                _logger.Error($"Request timed out after {_config.RequestTimeoutSeconds}s: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
                 return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Request to EL timed out after {_config.RequestTimeoutSeconds}s");
             }
 
@@ -108,7 +108,7 @@ public class RequestForwarder(
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error forwarding request to EL: {ex.Message}", ex);
+            _logger.Error($"Error forwarding request to EL: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return JsonRpcResponse.CreateErrorResponse(request.Id, JsonRpcResponse.InternalErrorCode, $"Proxy error: Communicating with EL: {ex.Message}");
         }
     }

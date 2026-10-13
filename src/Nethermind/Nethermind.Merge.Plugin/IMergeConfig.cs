@@ -38,7 +38,7 @@ public interface IMergeConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
     Hash256 TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Keccak.Zero : new Hash256(Bytes.FromHexString(TerminalBlockHash));
 
-    [ConfigItem(Description = "The URL of a builder relay. If specified, blocks are sent to the relay.", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of a builder relay. If specified, blocks are sent to the relay.", DefaultValue = "null", IsSensitive = true)]
     string? BuilderRelayUrl { get; set; }
 
     [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]

@@ -53,6 +53,13 @@ public struct ILogger : IEquatable<ILogger>
         if (IsDebug) _logger.Debug(text);
     }
 
+    /// <summary>Logs an interpolated debug message and optionally masks <c>:hide</c> fields.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Debug([InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler)
+    {
+        if (IsDebug) _logger.Debug(handler.ToStringAndClear());
+    }
+
     public bool Equals(ILogger other) => _logger == other._logger;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -61,10 +68,29 @@ public struct ILogger : IEquatable<ILogger>
         if (IsError) _logger.Error(text, ex);
     }
 
+    /// <summary>Logs an interpolated error message and optionally masks <c>:hide</c> fields.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Error(
+        [InterpolatedStringHandlerArgument("")] ref ErrorInterpolatedStringHandler handler,
+        Exception? ex = null)
+    {
+        if (IsError) _logger.Error(handler.ToStringAndClear(), ex);
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Info(string text)
     {
         if (IsInfo) _logger.Info(text);
+    }
+
+    /// <summary>
+    /// Logs an interpolated informational message and optionally masks fields marked with <c>:hide</c>.
+    /// </summary>
+    /// <remarks>Marked fields must be interpolated directly into this overload; <c>NETH008</c> rejects string materialization before logging.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler)
+    {
+        if (IsInfo) _logger.Info(handler.ToStringAndClear());
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -73,10 +99,24 @@ public struct ILogger : IEquatable<ILogger>
         if (IsTrace) _logger.Trace(text);
     }
 
+    /// <summary>Logs an interpolated trace message and optionally masks <c>:hide</c> fields.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Trace([InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler)
+    {
+        if (IsTrace) _logger.Trace(handler.ToStringAndClear());
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Warn(string text)
     {
         if (IsWarn) _logger.Warn(text);
+    }
+
+    /// <summary>Logs an interpolated warning message and optionally masks <c>:hide</c> fields.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Warn([InterpolatedStringHandlerArgument("")] ref WarnInterpolatedStringHandler handler)
+    {
+        if (IsWarn) _logger.Warn(handler.ToStringAndClear());
     }
 
     /// <summary>

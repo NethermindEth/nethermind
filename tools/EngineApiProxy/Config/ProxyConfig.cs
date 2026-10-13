@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.EngineApiProxy.Utilities;
+
 namespace Nethermind.EngineApiProxy.Config;
 
 /// <summary>
@@ -96,5 +98,5 @@ public class ProxyConfig
     /// </summary>
     public string NewPayloadMethod { get; set; } = "engine_newPayloadV4";
 
-    public override string ToString() => $"EC Endpoint: {ExecutionClientEndpoint}, CL Endpoint: {ConsensusClientEndpoint ?? "not set"}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogFile ?? "console only"}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, GetPayloadMethod: {GetPayloadMethod}, NewPayloadMethod: {NewPayloadMethod}, RequestTimeout: {RequestTimeoutSeconds}s";
+    public override string ToString() => $"EC Endpoint: {LogEndpoint.Url(ExecutionClientEndpoint)}, CL Endpoint: {(ConsensusClientEndpoint is null ? "not set" : LogEndpoint.Url(ConsensusClientEndpoint))}, Listen Port: {ListenPort}, Log Level: {LogLevel}, LogFile: {LogEndpoint.Address(LogFile ?? "console only")}, ValidateAllBlocks: {ValidateAllBlocks}, ValidationMode: {ValidationMode}, GetPayloadMethod: {GetPayloadMethod}, NewPayloadMethod: {NewPayloadMethod}, RequestTimeout: {RequestTimeoutSeconds}s";
 }

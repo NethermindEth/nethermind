@@ -122,12 +122,12 @@ public sealed class NodeSource(
             recentlyWrittenNodes.Release(peerCandidate.IdHash);
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node:s}.");
+                _logger.Trace($"Discv5 node source queue is full, dropping discovered node {node.ToString("s"):hide}.");
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceQueuedDiscoveredNode(Node candidate) =>
-                _logger.Trace($"Discv5 node source queued discovered node {candidate:s}.");
+                _logger.Trace($"Discv5 node source queued discovered node {candidate.ToString("s"):hide}.");
         }
 
         bool TryReservePeerCandidate(Node node, [NotNullWhen(true)] out Node? peerCandidate)
@@ -159,7 +159,7 @@ public sealed class NodeSource(
         {
             if (record.EnrSequence < discoveryNode.HighestObservedEnrSequence)
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipping stale discv5 ENR peer candidate for {discoveryNode:s}.");
+                if (_logger.IsTrace) _logger.Trace($"Skipping stale discv5 ENR peer candidate for {discoveryNode.ToString("s"):hide}.");
                 return false;
             }
 
@@ -170,7 +170,7 @@ public sealed class NodeSource(
 
             if (!forkInfo.IsNodeRecordForkCompatible(record))
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipping discv5 discovered node {discoveryNode:s} with incompatible fork ID.");
+                if (_logger.IsTrace) _logger.Trace($"Skipping discv5 discovered node {discoveryNode.ToString("s"):hide} with incompatible fork ID.");
                 return false;
             }
 
@@ -193,7 +193,7 @@ public sealed class NodeSource(
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Unable to parse discv5 discovered ENR for {discoveryNode}: {e}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to parse discv5 discovered ENR for {discoveryNode:hide}: {e:hide}");
             return false;
         }
     }

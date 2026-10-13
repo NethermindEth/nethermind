@@ -127,7 +127,7 @@ namespace Nethermind.Network
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void TraceSessionDisconnected(ISession session, DisconnectEventArgs e) =>
-            _logger.Trace($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
+            _logger.Trace($"{session.Direction} {session.Node.ToString("s"):hide} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details:hide}");
 
         private void SessionInitialized(object sender, EventArgs e)
         {
@@ -220,7 +220,7 @@ namespace Nethermind.Network
                 {
                     peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                     if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session:hide}.");
                 }
                 else
                 {
@@ -232,14 +232,14 @@ namespace Nethermind.Network
                             return dict;
                         });
 
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session:hide} not found.");
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session:hide} - adding sync peer {session.Node.ToString("s"):hide}");
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session:hide}");
             }
         }
 
@@ -249,12 +249,12 @@ namespace Nethermind.Network
 
             if (handler.ProtocolVersion >= 5)
             {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - enabling snappy");
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - enabling snappy");
                 session.EnableSnappy();
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session} - disabling snappy");
+                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - disabling snappy");
             }
 
             _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
@@ -273,7 +273,7 @@ namespace Nethermind.Network
                 _peerManager.OnP2PProtocolInitialized(session);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session}");
+            if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session:hide}");
         }
 
         private void OnSyncPeerProtocolInitialized(ISession session, SyncPeerProtocolHandlerBase handler, SyncPeerProtocolInitializedEventArgs args)
@@ -299,28 +299,28 @@ namespace Nethermind.Network
                         {
                             handler.RegisterSatelliteProtocol(registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;
-                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
+                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session:hide}. Sync peer has priority: {handler.IsPriority}");
                         }
                     }
 
                     _syncPool.AddPeer(handler);
                     if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session} created.");
+                    if (_logger.IsTrace) _logger.Trace($"{handler.ClientId} sync peer {session:hide} created.");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
+                    if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session:hide} for {session.Node.ToString("s"):hide}");
                     session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+                if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session:hide} - adding sync peer {session.Node.ToString("s"):hide}");
 
                 //Add/Update peer to the storage and to sync manager
                 _peerStorage.UpdateNode(CreatePersistedNode(session.Node));
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session:hide}");
             }
         }
 
@@ -344,11 +344,11 @@ namespace Nethermind.Network
         {
             if (session.IsClosing)
             {
-                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} skipping init, session closing: {session}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} skipping init, session closing: {session:hide}");
                 return false;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {protocolCode}.{protocolVersion} initialized in {session:hide}");
             return true;
         }
 
@@ -359,13 +359,13 @@ namespace Nethermind.Network
         {
             if (eventArgs.ListenPort == 0)
             {
-                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session}");
+                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {session:hide}");
                 return;
             }
 
             if (session.Node.Port != eventArgs.ListenPort)
             {
-                if (_logger.IsTrace) _logger.Trace($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
+                if (_logger.IsTrace) _logger.Trace($"Updating listen port for {session:hide} to: {eventArgs.ListenPort}");
                 session.Node.Port = eventArgs.ListenPort;
             }
 

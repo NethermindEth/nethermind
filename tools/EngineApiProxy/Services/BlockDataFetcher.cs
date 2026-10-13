@@ -98,7 +98,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error fetching block data: {ex.Message}", ex);
+            _logger.Error($"Error fetching block data: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return null;
         }
     }
@@ -139,7 +139,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error fetching beacon block header: {ex.Message}", ex);
+            _logger.Error($"Error fetching beacon block header: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return null;
         }
     }
@@ -181,7 +181,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
         }
         catch (Exception ex)
         {
-            _logger.Error($"Error fetching beacon block: {ex.Message}", ex);
+            _logger.Error($"Error fetching beacon block: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}", SensitiveLogMasking.Enabled ? null : ex);
             return null;
         }
     }

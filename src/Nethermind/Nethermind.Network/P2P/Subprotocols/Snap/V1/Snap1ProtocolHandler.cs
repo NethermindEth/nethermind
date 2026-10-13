@@ -127,7 +127,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             {
                 Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
                 if (Logger.IsDebug)
-                    Logger.Debug($"Peer disconnected because of requesting Snap data. Peer: {Session.Node.ClientId}");
+                    Logger.Debug($"Peer disconnected because of requesting Snap data. Peer: {Session.Node.ClientId:hide}");
                 return false;
             }
 

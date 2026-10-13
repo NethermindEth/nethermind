@@ -14,7 +14,7 @@ namespace Nethermind.KeyStore.Config;
 /// </summary>
 public interface IKeyStoreConfig : IConfig
 {
-    [ConfigItem(Description = "The path to the keystore directory.", DefaultValue = "keystore")]
+    [ConfigItem(Description = "The path to the keystore directory.", DefaultValue = "keystore", IsSensitiveWhenMasked = true)]
     string KeyStoreDirectory { get; set; }
 
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "UTF-8")]
@@ -65,7 +65,7 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = $"An array of passwords used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]", IsSensitive = true)]
     string[] Passwords { get; set; }
 
-    [ConfigItem(Description = $"An array of password files paths used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]")]
+    [ConfigItem(Description = $"An array of password files paths used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]", IsSensitive = true)]
     string[] PasswordFiles { get; set; }
 
     [ConfigItem(Description = $"An array of accounts to unlock on startup using passwords either in `{nameof(PasswordFiles)}` and `{nameof(Passwords)}`.", DefaultValue = "[]", IsSensitive = true)]

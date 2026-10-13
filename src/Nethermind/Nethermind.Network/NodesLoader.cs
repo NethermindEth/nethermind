@@ -45,14 +45,14 @@ namespace Nethermind.Network
                 LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
                 {
                     n.IsBootnode = true;
-                    if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
+                    if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n:hide}");
                 });
             }
 
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
             {
                 n.IsStatic = true;
-                if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
+                if (_logger.IsInfo) _logger.Info($"Static node  : {n:hide}");
             });
 
             IEnumerable<Node> combined = allPeers
@@ -82,7 +82,7 @@ namespace Nethermind.Network
                 }
                 catch (Exception)
                 {
-                    _logger.DebugError($"peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                    _logger.DebugError($"peer could not be loaded for {networkNode:hide}");
                     continue;
                 }
 
@@ -91,7 +91,7 @@ namespace Nethermind.Network
 
                 peers.Add(node);
 
-                if (_logger.IsTrace) _logger.Trace($"Adding a new peer candidate {node}");
+                if (_logger.IsTrace) _logger.Trace($"Adding a new peer candidate {node:hide}");
             }
         }
 

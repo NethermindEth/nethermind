@@ -72,7 +72,7 @@ public class ApiBuilder
 
     private ChainSpec LoadChainSpec(EthereumJsonSerializer ethereumJsonSerializer)
     {
-        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
+        if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath:hide}");
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 

@@ -7,10 +7,10 @@ namespace Nethermind.Era1;
 
 public interface IEraConfig : IConfig
 {
-    [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "", HiddenFromDocs = false)]
+    [ConfigItem(Description = "Directory of era1 archives to be imported.", DefaultValue = "", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
     string? ImportDirectory { get; set; }
 
-    [ConfigItem(Description = "Directory of archive export.", DefaultValue = "", HiddenFromDocs = false)]
+    [ConfigItem(Description = "Directory of archive export.", DefaultValue = "", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
     string? ExportDirectory { get; set; }
 
     [ConfigItem(Description = "Block number to import/export from.", DefaultValue = "0", HiddenFromDocs = false)]
@@ -19,7 +19,7 @@ public interface IEraConfig : IConfig
     [ConfigItem(Description = "Block number to import/export to.", DefaultValue = "0", HiddenFromDocs = false)]
     ulong To { get; set; }
 
-    [ConfigItem(Description = "Accumulator file to be used for trusting era files.", DefaultValue = "null", HiddenFromDocs = false)]
+    [ConfigItem(Description = "Accumulator file to be used for trusting era files.", DefaultValue = "null", HiddenFromDocs = false, IsSensitiveWhenMasked = true)]
     string? TrustedAccumulatorFile { get; set; }
 
     [ConfigItem(Description = "Max era1 size.", DefaultValue = "8192", HiddenFromDocs = true)]
