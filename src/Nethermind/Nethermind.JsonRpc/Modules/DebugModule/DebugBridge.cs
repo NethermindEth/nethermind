@@ -28,6 +28,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.TxPool;
 using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -51,6 +52,7 @@ public class DebugBridge : IDebugBridge
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly IWorldStateManager _worldStateManager;
+    private readonly ITxPool _txPool;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -71,9 +73,11 @@ public class DebugBridge : IDebugBridge
         IBlockProcessingPauseControl pauseControl,
         IBlockProcessingQueue processingQueue,
         ISyncProgressResolver syncProgressResolver,
-        ISyncPointers syncPointers)
+        ISyncPointers syncPointers,
+        ITxPool txPool)
     {
         _logger = logManager.GetClassLogger<DebugBridge>();
+        _txPool = txPool;
         _mutationLock = mutationLock;
         _pauseControl = pauseControl;
         _processingQueue = processingQueue;
@@ -321,19 +325,12 @@ public class DebugBridge : IDebugBridge
 
     public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
-    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
-    {
-        SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
-        if (searchResult.IsError)
-        {
-            throw new InvalidDataException(searchResult.Error);
-        }
+    public TxReceipt[] GetReceiptsForBlock(Block block) => _receiptFinder.Get(block);
 
-        Block block = searchResult.Object;
-        return _receiptFinder.Get(block);
-    }
+    public Transaction? GetTransactionFromHash(Hash256 txHash) =>
+        GetMinedTransaction(txHash) ?? (_txPool.TryGetPendingTransaction(txHash, out Transaction? pending) ? pending : null);
 
-    public Transaction? GetTransactionFromHash(Hash256 txHash)
+    private Transaction? GetMinedTransaction(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
         if (blockHash is null)

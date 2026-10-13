@@ -619,12 +619,19 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        TxReceipt[]? receipts = debugBridge.GetReceiptsForBlock(blockParameter);
-        if (receipts is null)
+        SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter, allowNulls: true);
+        if (searchResult.IsError)
         {
-            return ResultWrapper<RawReceiptsResult>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<RawReceiptsResult>.Fail(searchResult);
         }
 
+        // An unknown block yields null, as eth_getBlockReceipts does.
+        if (searchResult.Object is null)
+        {
+            return ResultWrapper<RawReceiptsResult>.Success(null);
+        }
+
+        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(searchResult.Object);
         if (receipts.Length == 0)
         {
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));

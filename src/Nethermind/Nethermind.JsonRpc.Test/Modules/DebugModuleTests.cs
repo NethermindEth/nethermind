@@ -159,7 +159,7 @@ public class DebugModuleTests
     public async Task DebugGetRawReceipts_WhenReceiptsExist_ReturnsHexArray()
     {
         TxReceipt[] receipts = [Build.A.Receipt.TestObject, Build.A.Receipt.TestObject];
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns(receipts);
+        _debugBridge.GetReceiptsForBlock(BlockAtNumberOne()).Returns(receipts);
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
 
@@ -170,10 +170,36 @@ public class DebugModuleTests
     [Test]
     public async Task DebugGetRawReceipts_WhenNoReceipts_ReturnsEmptyArray()
     {
-        _debugBridge.GetReceiptsForBlock(new BlockParameter(1L)).Returns([]);
+        _debugBridge.GetReceiptsForBlock(BlockAtNumberOne()).Returns([]);
 
         string serialized = await SerializedRequest("debug_getRawReceipts", "0x1");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
+    }
+
+    [Test]
+    public async Task DebugGetRawReceipts_WhenBlockUnknown_ReturnsNull([Values] bool byHash)
+    {
+        string serialized = await SerializedRequest("debug_getRawReceipts", byHash ? TestItem.KeccakA : "0x1");
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+        _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
+    }
+
+    [Test]
+    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError()
+    {
+        _blockFinder.LowestServedBlock.Returns(2UL);
+
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", "0x1");
+
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+    }
+
+    private Block BlockAtNumberOne()
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        _blockFinder.FindBlock(new BlockParameter(1L)).Returns(block);
+        return block;
     }
 
     [TestCaseSource(nameof(RawMissingCases))]
