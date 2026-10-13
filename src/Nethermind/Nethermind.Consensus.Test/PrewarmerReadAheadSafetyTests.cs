@@ -61,15 +61,29 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
         // put the block's values into the caches.
         block.Header.StateRoot = executed.StateRoot;
         block.Header.Hash = block.Header.CalculateHash();
-        List<string> wrong = [];
 
-        Run run = ProcessWithSession(block, afterSession: () => wrong.AddRange(EntriesNotAtTheParent()));
+        // A warm pass that gets ahead of every read block processing makes, as one may on a loaded machine while the test
+        // thread waits for a core, leaves block processing no read past the caches, and so no read-ahead: run it again.
+        const int maxAttempts = 5;
+        int attempt = 0;
+        int started;
+        do
+        {
+            attempt++;
+            List<string> wrong = [];
+            int before = PreWarmer.ReadAheadsStarted;
 
-        AssertSameRun(run, executed);
+            Run run = ProcessWithSession(block, afterSession: () => wrong.AddRange(EntriesNotAtTheParent()));
+
+            AssertSameRun(run, executed);
+            Assert.That(wrong, Is.Empty, $"every account and slot the caches hold before the write-back is the parent's (attempt {attempt})");
+            started = PreWarmer.ReadAheadsStarted - before;
+        }
+        while (started == 0 && attempt < maxAttempts);
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(wrong, Is.Empty, "every account and slot the caches hold before the write-back is the parent's");
-            Assert.That(PreWarmer.ReadAheadsStarted, Is.GreaterThan(0), "precondition: block processing started read-aheads");
+            Assert.That(started, Is.GreaterThan(0), $"precondition: block processing started read-aheads in one of {maxAttempts} attempts");
             Assert.That(PaceTimeouts, Is.Zero);
         }
     }
