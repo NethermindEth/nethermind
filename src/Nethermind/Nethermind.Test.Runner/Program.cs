@@ -201,6 +201,9 @@ internal class Program
                     ParallelExecutionBatchRead: batchRead);
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
+                // Bench harness, not for merge: shows the prewarming ran.
+                Console.Error.WriteLine($"PREWARM-COUNTERS handoffs={Nethermind.Blockchain.Metrics.PrewarmHandoffs} rejected={Nethermind.Blockchain.Metrics.PrewarmHandoffsRejected} missing={Nethermind.Blockchain.Metrics.PrewarmHandoffsMissing} refreshes={Nethermind.Blockchain.Metrics.PrewarmRefreshes}");
+                Console.Error.Flush();
             }
             else if (isStateTest)
             {
