@@ -63,13 +63,12 @@ namespace Nethermind.Consensus.Processing
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
                 HashSet<Transaction> consideredTx = new(ByHashTxComparer.Instance);
-                int i = 0;
                 foreach (Transaction currentTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -114,6 +113,7 @@ namespace Nethermind.Consensus.Processing
                 else
                 {
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
+                    int receiptsSnapshot = receiptsTracer.TakeSnapshot();
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -124,6 +124,11 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
+                        // A no-op today, as every processor failure returns before the receipt and the header's gas
+                        // used are written; it keeps a later failure from leaving either behind. The processor's own
+                        // running block gas cannot be reset from here, but it never reaches the sealed header: each
+                        // receipt rewrites the header's gas used from the receipts kept.
+                        receiptsTracer.Restore(receiptsSnapshot);
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                         EvictUnpaidFrameTx(currentTx, result);
