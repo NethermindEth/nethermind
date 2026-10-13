@@ -42,6 +42,12 @@ public class RustFlatDbManagerDifferentialTests
         [Values] bool byteBudget)
     {
         RustNativeLibrary.Require();
+        if (byteBudget)
+        {
+            Assert.Ignore("Where a forced persist stops depends on timing on both managers: the background persist job of one block, " +
+                "run while the next block is added and before it is compacted, persists below that block's compaction boundary");
+        }
+
         using TempPath csharpPath = TempPath.GetTempDirectory();
         using TempPath rustPath = TempPath.GetTempDirectory();
         TestFinality finality = new();

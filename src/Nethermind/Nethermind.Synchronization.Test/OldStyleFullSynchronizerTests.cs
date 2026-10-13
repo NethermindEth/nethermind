@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.Test
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ConfigProvider configProvider = new();
+            TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
             syncConfig.FastSync = false;
 

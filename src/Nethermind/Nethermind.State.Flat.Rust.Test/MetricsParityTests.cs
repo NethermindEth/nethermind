@@ -11,8 +11,10 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
@@ -38,8 +40,13 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// <para>
 /// Under <see cref="FlatDbBackend.Rust"/> the forked bundles label their reads by where the native bundle served them,
 /// as the C# bundles label theirs, but a trie node read finds no node object: a hash-only placeholder in a snapshot
-/// counts where the read ends, the database, where C# counts both its find in the snapshot and its load. The
-/// <see cref="Metrics.ActivePooledResource"/> family is not compared here.
+/// counts where the read ends, the database, where C# counts both its find in the snapshot and its load.
+/// </para>
+/// <para>
+/// The live pooled resources (<see cref="Metrics.ActivePooledResource"/>) are compared where no bundle is open: those of
+/// the compacted contents and the transient resources in the block stream, which builds the block contents outside
+/// any scope, and every kind, block contents included, in a stream of world state scopes. The created and cached ones
+/// differ by design: native contents are not pooled.
 /// </para>
 /// </remarks>
 [NonParallelizable]
@@ -67,6 +74,16 @@ public class MetricsParityTests
         nameof(Metrics.CompactorStallTime),
         nameof(Metrics.InMemorySlotFilterBuildTime),
         nameof(Metrics.ReadOnlySnapshotBundleTimes),
+    ];
+
+    /// <summary>
+    /// What the scopes' bundles were gathered over, which depends on whether the background persistence a block
+    /// triggers has persisted it and cleared the bundle cache before the next gather, on either backend.
+    /// </summary>
+    private static readonly string[] GatherOrderGauges =
+    [
+        nameof(Metrics.SnapshotBundleSize),
+        nameof(Metrics.InMemorySlotFilterBuilds),
     ];
 
     /// <summary>The gauges of the in-memory snapshots, compared before the flush, which persists them all.</summary>
@@ -106,6 +123,9 @@ public class MetricsParityTests
                 Assert.That(NonZero(rust.Scalars), Is.EqualTo(NonZero(csharp.Scalars)), "the counters and gauges that moved");
                 Assert.That(Render(rust.Scalars), Is.EqualTo(Render(csharp.Scalars)), "how far each moved");
                 Assert.That(rust.TotalReads, Is.EqualTo(csharp.TotalReads), "the reads of the flat database");
+                Assert.That(csharpBeforeFlush.Active.Keys, Does.Contain($"{ResourcePool.Usage.Compact4} SortedSnapshotContent"), "the stream holds compacted contents");
+                Assert.That(Render(BuiltOutsideScopes(rustBeforeFlush.Active)), Is.EqualTo(Render(BuiltOutsideScopes(csharpBeforeFlush.Active))), "the live pooled resources before the flush");
+                Assert.That(Render(BuiltOutsideScopes(rust.Active)), Is.EqualTo(Render(BuiltOutsideScopes(csharp.Active))), "the live pooled resources");
                 Assert.That(Without(rust.Histograms, ReadTimes), Is.EqualTo(Without(csharp.Histograms, ReadTimes)), "the histograms: observations, and sums but of times");
 
                 if (backend == FlatDbBackend.RustPersistence)
@@ -166,6 +186,27 @@ public class MetricsParityTests
     }
 
     /// <summary>
+    /// One seeded stream of blocks through the world state scopes of each backend: block processing, sometimes with a
+    /// second commit of nothing, a read-only scope that writes and commits, a slot-filtered query scope and every few
+    /// blocks an overridable scope committing two blocks, with persistence after each block and a flush at the end.
+    /// Whenever no scope is open, the flat counters and gauges and the live pooled resources must have moved alike.
+    /// </summary>
+    [Test]
+    public async Task Fork_scopes_move_the_flat_metrics_and_live_pooled_resources_the_original_scopes_move()
+    {
+        RustNativeLibrary.Require();
+        List<string> csharp = await RunScopes(FlatDbBackend.CSharp);
+        List<string> rust = await RunScopes(FlatDbBackend.Rust);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(csharp, Has.Some.Contains($"{ResourcePool.Usage.MainBlockProcessing} SnapshotContent="), "blocks hold their contents");
+            Assert.That(csharp, Has.Some.Contains($"{ResourcePool.Usage.Compact4} SortedSnapshotContent="), "blocks are compacted");
+            Assert.That(rust, Is.EqualTo(csharp));
+        }
+    }
+
+    /// <summary>
     /// The reads of the forked bundles: labelled as the C# ones, but a hash-only placeholder found in a snapshot counts
     /// once, where the read ends, so the node hits of the snapshots are fewer by the placeholders found.
     /// </summary>
@@ -211,6 +252,53 @@ public class MetricsParityTests
         }
     }
 
+    /// <returns>The flat counters and gauges and the live pooled resources the stream moved, after each block and after the flush.</returns>
+    private static async Task<List<string>> RunScopes(FlatDbBackend backend)
+    {
+        await using WorldStateNode node = new(backend);
+        IWorldStateManager manager = node.WorldStateManager;
+        IPersistenceManager persistenceManager = node.Resolve<IPersistenceManager>();
+        ScopeWorkload workload = new(new Random(20261016));
+        (Dictionary<string, long> scalars, Dictionary<string, long> active) before = (Observed.ReadScalars(), Observed.ReadLivePooled());
+        List<string> moved = [];
+
+        BlockHeader? head = null;
+        for (ulong number = 0; number < BlockCount; number++)
+        {
+            head = workload.Block(manager.GlobalWorldState, head, number);
+            workload.ReadOnly(manager.CreateResettableWorldState(), head);
+            workload.Query(manager.CreateReadOnlyQueryWorldState(), head);
+            if (number % 5 == 4)
+            {
+                using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
+                workload.Overridable(overridable.WorldState, head);
+            }
+
+            FlatManagerContainer.PersistUpTo(persistenceManager, new StateId(head));
+            // Drops nothing, as every block extends the head, but clears the bundle caches, whose leases on persisted
+            // snapshots the background persistence of either backend releases whenever it gets to it.
+            manager.DropStateNotReachableFrom(head);
+            moved.Add($"after block {number}: {Moved()}");
+        }
+
+        manager.FlushCache(CancellationToken.None);
+        moved.Add($"after the flush: {Moved()}");
+        return moved;
+
+        string Moved()
+        {
+            if (backend == FlatDbBackend.Rust)
+            {
+                node.Resolve<RustPersistence>().PublishMetrics();
+                node.Resolve<Fork.NativeFlatManager>().PublishMetrics();
+            }
+
+            Dictionary<string, long> scalars = Observed.Since(Observed.ReadScalars(), before.scalars);
+            foreach (string gauge in GatherOrderGauges) scalars.Remove(gauge);
+            return string.Join(", ", [.. NonZeroValues(scalars), .. NonZeroValues(Observed.Since(Observed.ReadLivePooled(), before.active))]);
+        }
+    }
+
     /// <summary>Publishes what the native store and manager of a Rust backend gathered.</summary>
     private static void Publish(FlatManagerContainer container, FlatDbBackend backend)
     {
@@ -224,6 +312,13 @@ public class MetricsParityTests
     private static string[] NonZero(Dictionary<string, long> scalars) =>
         [.. scalars.Where(static scalar => scalar.Value != 0).Select(static scalar => scalar.Key).Order(StringComparer.Ordinal)];
 
+    private static string[] NonZeroValues(Dictionary<string, long> values) =>
+        Render(values.Where(static value => value.Value != 0).ToDictionary());
+
+    /// <summary>The live pooled resources but the block contents, which the block stream builds outside any scope: as C# objects on the C# backend, as native snapshots of records, not counted, on the Rust one.</summary>
+    private static Dictionary<string, long> BuiltOutsideScopes(Dictionary<string, long> active) =>
+        active.Where(static resource => !resource.Key.EndsWith(" SnapshotContent", StringComparison.Ordinal)).ToDictionary();
+
     /// <summary>The observations of every histogram but <paramref name="metric"/>, as <c>metric label: count sum</c>, the sum left out for times.</summary>
     private static string[] Without(Dictionary<(string Metric, string Label), (int Count, double Sum)> histograms, string metric) =>
         [.. histograms.Where(entry => entry.Key.Metric != metric)
@@ -234,9 +329,10 @@ public class MetricsParityTests
     private static string[] Only(Dictionary<(string Metric, string Label), (int Count, double Sum)> histograms, string metric) =>
         [.. histograms.Where(entry => entry.Key.Metric == metric).Select(static entry => $"{entry.Key.Label}: {entry.Value.Count}").Order(StringComparer.Ordinal)];
 
-    /// <summary>What a run moved: the scalar <see cref="Metrics"/>, the observations of each histogram by label, and the related counters.</summary>
+    /// <summary>What a run moved: the scalar <see cref="Metrics"/>, the live pooled resources, the observations of each histogram by label, and the related counters.</summary>
     private sealed record Observed(
         Dictionary<string, long> Scalars,
+        Dictionary<string, long> Active,
         Dictionary<(string Metric, string Label), (int Count, double Sum)> Histograms,
         long TotalReads,
         long LoadedFromDb,
@@ -250,7 +346,8 @@ public class MetricsParityTests
         {
             (ulong[] calls, _) = SeamCounters.Read();
             return new Observed(
-                ScalarProperties.ToDictionary(static property => property.Name, static property => (long)property.GetValue(null)!),
+                ReadScalars(),
+                ReadLivePooled(),
                 observers.Summarize(),
                 container.Db.GatherMetric().TotalReads,
                 TriePruningMetrics.LoadedFromDbNodesCount,
@@ -258,9 +355,22 @@ public class MetricsParityTests
                 [.. calls.Select(static count => (long)count)]);
         }
 
+        /// <summary>The scalar <see cref="Metrics"/> by name.</summary>
+        public static Dictionary<string, long> ReadScalars() =>
+            ScalarProperties.ToDictionary(static property => property.Name, static property => (long)property.GetValue(null)!);
+
+        /// <summary><see cref="Metrics.ActivePooledResource"/>, as <c>category resource type</c>.</summary>
+        public static Dictionary<string, long> ReadLivePooled() =>
+            Metrics.ActivePooledResource.ToDictionary(static resource => $"{resource.Key.Category} {resource.Key.ResourceType}", static resource => resource.Value);
+
+        /// <summary>The change of each of <paramref name="values"/> since <paramref name="before"/>, but the value of the <see cref="SetGauges"/>.</summary>
+        public static Dictionary<string, long> Since(Dictionary<string, long> values, Dictionary<string, long> before) =>
+            values.ToDictionary(static value => value.Key, value => SetGauges.Contains(value.Key) ? value.Value : value.Value - before.GetValueOrDefault(value.Key));
+
         /// <summary>The change since <paramref name="before"/>, but the value of the <see cref="SetGauges"/>; the histograms were cleared at it.</summary>
         public Observed Since(Observed before) => new(
-            Scalars.ToDictionary(static scalar => scalar.Key, scalar => SetGauges.Contains(scalar.Key) ? scalar.Value : scalar.Value - before.Scalars[scalar.Key]),
+            Since(Scalars, before.Scalars),
+            Since(Active, before.Active),
             Histograms,
             TotalReads - before.TotalReads,
             LoadedFromDb - before.LoadedFromDb,
@@ -353,6 +463,88 @@ public class MetricsParityTests
             byte[] rlp = new byte[1 + random.Next(64)];
             random.NextBytes(rlp);
             return rlp;
+        }
+
+        private T Pick<T>(T[] items) => items[random.Next(items.Length)];
+    }
+
+    /// <summary>The scopes of <see cref="RunScopes"/>: random account and slot writes with storage clears, reads and hints, over a few accounts.</summary>
+    private sealed class ScopeWorkload(Random random)
+    {
+        private readonly Address[] _addresses = [.. Enumerable.Range(1, 6).Select(static index => new Address($"0xbbbbbbbb{index:x32}"))];
+        private readonly UInt256[] _slots = [1, 2, 3, 255, UInt256.MaxValue];
+
+        /// <summary>Processes block <paramref name="number"/> on <paramref name="parent"/>, which a second commit of nothing sometimes follows.</summary>
+        public BlockHeader Block(IWorldStateScopeProvider provider, BlockHeader? parent, ulong number)
+        {
+            using IWorldStateScopeProvider.IScope scope = Begin(provider, parent);
+            Read(scope);
+            scope.HintGet(Pick(_addresses), random.Next(2) == 0 ? null : new Account((ulong)random.Next(4), (UInt256)random.Next(1000)));
+            Write(scope);
+            Commit(scope, number);
+            if (random.Next(3) == 0) Commit(scope, number);
+            Read(scope);
+            return Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
+        }
+
+        /// <summary>Reads, writes and commits the block after <paramref name="head"/>, which a read-only scope keeps to itself.</summary>
+        public void ReadOnly(IWorldStateScopeProvider provider, BlockHeader head)
+        {
+            using IWorldStateScopeProvider.IScope scope = Begin(provider, head);
+            Read(scope);
+            Write(scope);
+            Commit(scope, head.Number + 1);
+            Read(scope);
+        }
+
+        public void Query(IWorldStateScopeProvider provider, BlockHeader head)
+        {
+            using IWorldStateScopeProvider.IScope scope = Begin(provider, head);
+            Read(scope);
+        }
+
+        /// <summary>Commits two blocks on <paramref name="head"/>, the second on the first.</summary>
+        public void Overridable(IWorldStateScopeProvider provider, BlockHeader head)
+        {
+            BlockHeader parent = head;
+            for (ulong number = head.Number + 1; number <= head.Number + 2; number++)
+            {
+                using IWorldStateScopeProvider.IScope scope = Begin(provider, parent);
+                Write(scope);
+                Commit(scope, number);
+                Read(scope);
+                parent = Build.A.BlockHeader.WithNumber(number).WithStateRoot(scope.RootHash).TestObject;
+            }
+        }
+
+        private static IWorldStateScopeProvider.IScope Begin(IWorldStateScopeProvider provider, BlockHeader? parent)
+        {
+            Assert.That(provider.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True, $"scope at {parent?.Number}");
+            return scope!;
+        }
+
+        private static void Commit(IWorldStateScopeProvider.IScope scope, ulong number)
+        {
+            scope.UpdateRootHash();
+            scope.Commit(number);
+        }
+
+        private void Write(IWorldStateScopeProvider.IScope scope)
+        {
+            Address[] written = [.. _addresses.OrderBy(_ => random.Next()).Take(random.Next(1, 4))];
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(written.Length);
+            foreach (Address address in written)
+            {
+                (UInt256 Slot, UInt256 Value)[] slots = [.. _slots.Where(_ => random.Next(3) == 0).Select(slot => (slot, (UInt256)random.Next(3)))];
+                WorldStateNode.Write(address, new Account((ulong)random.Next(4), (UInt256)random.Next(1, 1000)), random.Next(6) == 0, slots)(batch);
+            }
+        }
+
+        private void Read(IWorldStateScopeProvider.IScope scope)
+        {
+            Address address = Pick(_addresses);
+            scope.Get(address);
+            scope.CreateStorageTree(address).Get(Pick(_slots), out _);
         }
 
         private T Pick<T>(T[] items) => items[random.Next(items.Length)];

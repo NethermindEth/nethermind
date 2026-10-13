@@ -232,7 +232,7 @@ public class ForkDriftTests
     }
 
     /// <summary>What <paramref name="user"/> names, by the member naming it: base types, field types, signatures, locals and IL operands.</summary>
-    private static IEnumerable<(string Site, MemberInfo Member)> References(Type user)
+    internal static IEnumerable<(string Site, MemberInfo Member)> References(Type user)
     {
         const BindingFlags declared = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
 

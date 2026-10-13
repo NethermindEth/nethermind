@@ -11,8 +11,10 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
@@ -42,7 +44,7 @@ public class AuRaMergeBlockProducerWiringTests
         };
 
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider(new MiningConfig { Enabled = true }), chainSpec))
+            .AddModule(new TestNethermindModule(new ConfigProvider(new MiningConfig { Enabled = true }, TestStateBackend.ApplyFlatBackend(new FlatDbConfig())), chainSpec))
             .AddModule(new AuRaModule(chainSpec))
             .AddModule(new AuRaMergeModule())
             .AddSingleton<NethermindApi.Dependencies>()

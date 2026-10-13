@@ -9,8 +9,10 @@ using System.Runtime.CompilerServices;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
@@ -43,7 +45,7 @@ public class NetworkModuleTest
     public void Protocol_handlers_are_not_retained_by_container_after_dispose()
     {
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddModule(new TestNethermindModule(new ConfigProvider(TestStateBackend.ApplyFlatBackend(new FlatDbConfig()))))
             .Build();
 
         IReadOnlyList<IProtocolHandlerFactory> factories = container.Resolve<IReadOnlyList<IProtocolHandlerFactory>>();
@@ -113,7 +115,7 @@ public class NetworkModuleTest
     public void Registers_eth71_protocol_handler_factory()
     {
         using IContainer cont = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddModule(new TestNethermindModule(new ConfigProvider(TestStateBackend.ApplyFlatBackend(new FlatDbConfig()))))
             .Build();
 
         ISession session = Substitute.For<ISession>();
