@@ -30,6 +30,8 @@ namespace Nethermind.Evm.Test;
 [NonParallelizable]
 public class SimpleTransferFastPathDifferentialTests
 {
+    private static readonly UInt256 SenderInitialBalance = 1.Ether;
+
     public enum RecipientKind
     {
         Existing,
@@ -252,7 +254,7 @@ public class SimpleTransferFastPathDifferentialTests
             _ => throw new ArgumentOutOfRangeException(nameof(recipientKind))
         };
 
-        state.CreateAccount(TestItem.AddressA, 1.Ether);
+        state.CreateAccount(TestItem.AddressA, SenderInitialBalance);
         switch (recipientKind)
         {
             case RecipientKind.Existing:
@@ -400,12 +402,14 @@ public class SimpleTransferFastPathDifferentialTests
         AssertEquivalent(fast, slow, recipientKind);
 
         // EIP-7928: a net-zero balance change is not recorded, any other records the post-tx balance. The base
-        // fee is zero, so a zero-value tx from the coinbase pays its whole fee back to the sender.
+        // fee is zero, so a tx from the coinbase that sends no value elsewhere pays its whole fee back to the sender.
+        bool senderIsCoinbase = coinbase is Coinbase.Sender || (coinbase is Coinbase.Recipient && recipientKind is RecipientKind.Self);
+        bool senderNetZero = senderIsCoinbase && (value == 0 || recipientKind is RecipientKind.Self);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fast.SenderBalanceInBal, Is.EqualTo(fast.SenderBalance == 1.Ether ? (UInt256?)null : fast.SenderBalance), "sender BAL balance change");
-            if (coinbase is Coinbase.Sender && value == 0)
-                Assert.That(fast.SenderBalance, Is.EqualTo(1.Ether), "sender coinbase net-zero");
+            Assert.That(fast.SenderBalanceInBal, Is.EqualTo(fast.SenderBalance == SenderInitialBalance ? (UInt256?)null : fast.SenderBalance), "sender BAL balance change");
+            if (senderNetZero)
+                Assert.That(fast.SenderBalance, Is.EqualTo(SenderInitialBalance), "sender coinbase net-zero");
         }
     }
 
