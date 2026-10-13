@@ -1794,20 +1794,23 @@ public class BlockTreeTests
     {
         BlockStore blockStore = new(new MemDb());
         MemDb blockInfosDb = new();
-        BlockTree tree = Build.A.BlockTree()
+        BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
             .WithBlockInfoDb(blockInfosDb)
-            .WithBlockStore(blockStore)
-            .TestObject;
+            .WithBlockStore(blockStore);
+        BlockTree tree = builder.TestObject;
+        IBlockAccessListStore balStore = builder.BlockAccessListStore;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
 
         tree.SuggestBlock(block0);
-        tree.SuggestBlock(block1);
-        tree.SuggestBlock(block2);
-        tree.SuggestBlock(block3);
+        foreach (Block block in new[] { block1, block2, block3 })
+        {
+            block.EncodedBlockAccessList = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+            tree.SuggestBlock(block);
+        }
 
         tree.TryUpdateMainChain(block0.Header, true, preloadedBlocks: new[] { block0 });
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
@@ -1822,6 +1825,10 @@ public class BlockTreeTests
             Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Not.Null, "block 1");
             Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
             Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
+
+            Assert.That(balStore.Exists(block1.Number, block1.Hash!), Is.True, "bal 1");
+            Assert.That(balStore.Exists(block2.Number, block2.Hash!), Is.False, "bal 2");
+            Assert.That(balStore.Exists(block3.Number, block3.Hash!), Is.False, "bal 3");
 
             Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
             Assert.That(blockInfosDb.Get(2), Is.Null, "level 2");
