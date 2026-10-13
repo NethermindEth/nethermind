@@ -67,7 +67,7 @@ public sealed class PbtCodeReassembly : IDisposable
     }
 
     /// <summary>Takes the next code chunk of the ascending code section, refusing one no added code accounts for.</summary>
-    public void AddChunk(in PbtVariableTreeKey key, in ValueHash256 leaf)
+    public void AddChunk(in PbtPath key, in ValueHash256 leaf)
     {
         if (leaf == default) throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
         _chunkWriter ??= MapStems();

@@ -43,7 +43,7 @@ public static class PbtLeafStaging
             if (key[0] == Eip8297KeyDerivation.CodeZone)
             {
                 FlushAccount();
-                codes.AddChunk(entry.Key, entry.Leaf);
+                codes.AddChunk((PbtPath)entry.Key, entry.Leaf);
                 continue;
             }
             if (key[0] == Eip8297KeyDerivation.AccountZone)
