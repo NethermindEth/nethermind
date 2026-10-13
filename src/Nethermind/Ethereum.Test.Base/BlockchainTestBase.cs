@@ -151,8 +151,11 @@ public abstract class BlockchainTestBase
         // cache on the large object heap per test.
         flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
-        blocksConfig.PreWarmStateConcurrency = 0;
-        blocksConfig.PreWarming = PreWarmMode.None;
+        // Bench harness, not for merge: the blocks are processed with block prewarming on.
+        blocksConfig.PreWarmStateConcurrency = 4;
+        blocksConfig.PreWarming = PreWarmMode.Block;
+        blocksConfig.PreWarmInFlightReadAhead = true;
+        blocksConfig.PreWarmInFlightReadAheadColdReads = 0;
         if (ParallelExecutionOverride.HasValue)
         {
             blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
