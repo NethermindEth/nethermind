@@ -30,7 +30,7 @@ public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
 {
     private Task<BasicTestBlockchain> CreateChain()
     {
-        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = eip7708Enabled };
+        OverridableReleaseSpec spec = new(amsterdam ? Amsterdam.Instance : Prague.Instance) { IsEip7708Enabled = eip7708Enabled };
         return BasicTestBlockchain.Create(b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(spec)));
     }
 
@@ -101,7 +101,7 @@ public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
             .WithTo(TestItem.AddressB)
             .WithValue(transferValue)
             .WithNonce(nonce)
-            .WithGasLimit(amsterdam ? 1_000_000ul : 21000)
+            .WithGasLimit(1_000_000)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
 
@@ -337,7 +337,7 @@ public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
     }
 
     [Test]
-    public async Task SameTx_SelfDestruct_ToSelf_Emits_OpcodeTime_SelfDestructLog()
+    public async Task SameTx_SelfDestruct_ToSelf_EmitsLogs()
     {
         // Inline path (7708 without 8037): same-tx self-burn emits the legacy SelfDestruct log at opcode time.
         // On Amsterdam EIP-8246 burns nothing, so there is no log to emit at either point.
@@ -363,13 +363,17 @@ public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
 
         (Block block, _) = await DeployAndCall(chain, factoryCode, 10.Ether, 0, gasLimit: 2_000_000);
 
-        // SELFDESTRUCT zeroes the balance as it logs, so the end-of-tx destroy pass sees zero and adds nothing:
-        // an end-of-tx-only implementation would place the self-destruct log after the factory's log, not before.
+        // Pre-Amsterdam, SELFDESTRUCT zeroes the balance as it logs, so the end-of-tx destroy pass sees zero and adds
+        // nothing: an end-of-tx-only implementation would place the self-destruct log after the factory's log, not before.
         (chain.ReceiptStorage.Get(block)[0].Logs ?? []).AssertEquivalentTo(!eip7708Enabled
             ? [ContractLog(factory)]
             : amsterdam
                 ? [ExpectedTransferLog(factory, child, endowment), ContractLog(factory)]
                 : [ExpectedTransferLog(factory, child, endowment), ExpectedSelfDestructLog(child, endowment), ContractLog(factory)]);
+        if (amsterdam)
+        {
+            Assert.That(chain.StateReader.GetBalance(block.Header, child), Is.EqualTo((UInt256)endowment), "EIP-8246 keeps the balance");
+        }
     }
 
     [Test]
