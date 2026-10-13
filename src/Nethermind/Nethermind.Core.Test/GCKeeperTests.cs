@@ -615,6 +615,8 @@ public class GCKeeperTests
         }
     }
 
+    private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
+    {
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         using (keeper.TryStartNoGCRegion()) { }
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
