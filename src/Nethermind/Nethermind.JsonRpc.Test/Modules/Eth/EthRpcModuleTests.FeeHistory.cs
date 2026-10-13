@@ -17,6 +17,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -65,6 +66,29 @@ public partial class EthRpcModuleTests
 
         Assert.That(result.ErrorCode, Is.Zero);
         return (result.Data.BaseFeePerBlobGas.ToArray(), result.Data.BlobGasUsedRatio.ToArray());
+    }
+
+    [Test]
+    public void Eth_feeHistory_next_base_fee_uses_timestamp_activated_eip8198()
+    {
+        const ulong forkTimestamp = 1_000;
+        Block block = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp).WithBaseFeePerGas(1_000_000_000)
+            .WithGasLimit(30_000_000).WithGasUsed(30_000_000).TestObject;
+
+        IBlockTree blockFinder = Substitute.For<IBlockTree>();
+        blockFinder.Head.Returns(block);
+        blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>()).Returns(block);
+        blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block);
+
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }));
+        FeeHistoryOracle oracle = new(blockFinder, Substitute.For<IReceiptStorage>(), specProvider);
+
+        using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
+
+        Assert.That(result.ErrorCode, Is.Zero);
+        Assert.That(result.Data.BaseFeePerGas.ToArray(), Is.EqualTo(new UInt256[] { 1_000_000_000, 1_104_166_666 }));
     }
 
     public static IEnumerable<TestCaseData> FeeHistoryBlobTestCases

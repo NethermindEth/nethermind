@@ -150,7 +150,7 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(head.Number + 1);
+        IEip1559Spec specFor1559 = _specProvider.GetSpec(head.Number + 1, head.Timestamp);
         if (!specFor1559.IsEip1559Enabled)
         {
             return ResultWrapper<UInt256?>.Success(null);
@@ -536,7 +536,7 @@ public partial class EthRpcModule(
         {
             GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
             MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
-            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpecFor1559(head.Number + 1)),
+            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpec(head.Number + 1, head.Timestamp)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,
         };

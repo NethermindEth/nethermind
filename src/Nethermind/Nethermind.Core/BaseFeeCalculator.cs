@@ -27,11 +27,15 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             if (isForkBlockNumber)
                 parentGasTarget = parent.GasLimit;
 
+            // EIP-8198 replaces the 1/denominator maximum change with 5/48, multiplying before dividing.
+            bool isEip8198 = specFor1559.IsEip8198Enabled;
+            UInt256 maxChangeDenominator = isEip8198 ? Eip8198Constants.BaseFeeMaxChangeDenominator : specFor1559.BaseFeeMaxChangeDenominator;
+
             if (parent.GasUsed == parentGasTarget)
             {
                 expectedBaseFee = parent.BaseFeePerGas;
             }
-            else if (parentGasTarget == 0 || specFor1559.BaseFeeMaxChangeDenominator.IsZero)
+            else if (parentGasTarget == 0 || maxChangeDenominator.IsZero)
             {
                 expectedBaseFee = parentBaseFee;
             }
@@ -39,14 +43,14 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             {
                 ulong gasDelta = parent.GasUsed - parentGasTarget;
                 UInt256 feeDelta = UInt256.Max(
-                    parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
+                    MaxChange(parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget, maxChangeDenominator, isEip8198),
                     UInt256.One);
                 expectedBaseFee = parentBaseFee + feeDelta;
             }
             else
             {
                 ulong gasDelta = parentGasTarget - parent.GasUsed;
-                UInt256 feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
+                UInt256 feeDelta = MaxChange(parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget, maxChangeDenominator, isEip8198);
                 expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
             }
 
@@ -63,6 +67,11 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 
         return expectedBaseFee;
     }
+
+    private static UInt256 MaxChange(in UInt256 targetFeeGasDelta, in UInt256 denominator, bool isEip8198) =>
+        isEip8198
+            ? targetFeeGasDelta * Eip8198Constants.BaseFeeMaxChangeNumerator / denominator
+            : targetFeeGasDelta / denominator;
 }
 
 public static class BaseFeeCalculator

@@ -116,6 +116,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual UInt256 BaseFeeMaxChangeDenominator => spec.BaseFeeMaxChangeDenominator;
     public virtual ulong ElasticityMultiplier => spec.ElasticityMultiplier;
     public virtual IBaseFeeCalculator BaseFeeCalculator => spec.BaseFeeCalculator;
+    public virtual bool IsEip8198Enabled => spec.IsEip8198Enabled;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     bool IReleaseSpec.IsPrecompile(Address address) => spec.IsPrecompile(address);
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
