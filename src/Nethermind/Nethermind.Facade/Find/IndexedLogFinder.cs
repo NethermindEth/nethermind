@@ -59,7 +59,7 @@ public class IndexedLogFinder(
             .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
+        foreach (FilterLog log in FilterIndexedLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken))
         {
             yield return log;
         }

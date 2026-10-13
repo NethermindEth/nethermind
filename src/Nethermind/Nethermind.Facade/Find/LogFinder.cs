@@ -107,6 +107,10 @@ namespace Nethermind.Facade.Find
             RunParallel(blockNumbers,
                 number => FindLogsInBlock(filter, FindHeaderOrLogError(number, cancellationToken), cancellationToken), tryParallel, cancellationToken);
 
+        protected IEnumerable<FilterLog> FilterIndexedLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, CancellationToken cancellationToken = default) =>
+            RunParallel(blockNumbers,
+                number => FindLogsInBlock(filter, _blockFinder.FindBlockHash(number), number, 0, cancellationToken), true, cancellationToken);
+
         private IEnumerable<FilterLog> RunParallel<T>(IEnumerable<T> source, Func<T, IEnumerable<FilterLog>> worker, bool tryParallel, CancellationToken cancellationToken)
         {
             if (!tryParallel)
