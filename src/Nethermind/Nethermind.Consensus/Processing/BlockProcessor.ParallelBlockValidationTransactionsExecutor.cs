@@ -222,6 +222,14 @@ public partial class BlockProcessor
                                     return state;
                                 }
 
+                                if (state.executedGas.Failure is { } failure)
+                                {
+                                    // The validator throws at or before the failed slot, so the rest cannot change the
+                                    // outcome. Reusing the failure keeps a BAL failure retryable sequentially.
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, failure));
+                                    return state;
+                                }
+
                                 try
                                 {
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
@@ -252,6 +260,7 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
+                                    state.executedGas.Fail(ex);
                                     state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
                                 }
                                 catch
@@ -529,11 +538,13 @@ public partial class BlockProcessor
             }
         }
 
-        /// <summary>Block gas used by the transactions executed so far, in whatever order they ran.</summary>
+        /// <summary>Block gas used by the transactions executed so far, in whatever order they ran, and the first
+        /// transaction failure among them.</summary>
         /// <remarks>
         /// A transaction executed against the block access list uses the gas it uses canonically unless the list is
         /// wrong, so once the executed transactions alone exceed the gas limit in either EIP-8037 dimension the block
-        /// is invalid. Stopping there bounds the work an invalid block gets out of the workers while the in-order
+        /// is invalid. A failed transaction spends no block gas, yet the in-order validator throws once it reaches
+        /// that slot. Stopping at either bounds the work an invalid block gets out of the workers while the in-order
         /// validator waits on a transaction scheduled last.
         /// </remarks>
         private sealed class ExecutedGasTally
@@ -541,15 +552,21 @@ public partial class BlockProcessor
             private ulong _executionGas;
             private ulong _stateGas;
             private volatile bool _exceedsLimit;
+            private InvalidBlockException? _failure;
 
             public bool ExceedsLimit => _exceedsLimit;
+
+            public InvalidBlockException? Failure => Volatile.Read(ref _failure);
 
             public void Reset()
             {
                 _executionGas = 0;
                 _stateGas = 0;
                 _exceedsLimit = false;
+                _failure = null;
             }
+
+            public void Fail(InvalidBlockException exception) => Interlocked.CompareExchange(ref _failure, exception, null);
 
             public void Add(ulong executionGas, ulong stateGas, ulong gasLimit)
             {

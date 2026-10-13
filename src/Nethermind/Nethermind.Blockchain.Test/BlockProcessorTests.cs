@@ -3380,11 +3380,53 @@ public partial class BlockProcessorTests
     public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit([Values] bool stateGas)
     {
         const ulong gasUsed = 1_000_000;
-        const int heavyCount = 4096;
         const int heavyCountUnderLimit = 64;
         int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
-        // The lowest gas limit after the canonical prefix is scheduled last, holding the in-order validator
-        // there while the heavy tail runs; the prefix and that tx alone stay under the block gas limit.
+
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
+        InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, (ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed, transactionProcessor);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex.Message, Does.Contain("Block gas limit exceeded"));
+            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
+            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
+        });
+    }
+
+    [Test]
+    public void Parallel_validation_stops_executing_once_a_transaction_fails([Values] bool balFailure)
+    {
+        const ulong gasUsed = 1_000_000;
+        int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
+
+        // Each heavy tx spins before failing, as one reading undeclared state mid-execution would; a failed tx
+        // spends no block gas, so only the failure itself can stop the tail.
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(lead, gasUsed, validationFinished, outcome: tx =>
+            (int)tx.Nonce <= lead ? TransactionResult.Ok
+            : balFailure ? throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(Build.A.BlockHeader.TestObject, "undeclared storage")
+            : TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted"));
+        InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, ulong.MaxValue, transactionProcessor);
+
+        Assert.Multiple(() =>
+        {
+            // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
+            Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
+            Assert.That(ex.InnerException, balFailure
+                ? Is.InstanceOf<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>()
+                : Is.InstanceOf<InvalidTransactionException>());
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + 1 + 2 * Environment.ProcessorCount));
+        });
+    }
+
+    /// <summary>Runs the canonical prefix, a 21k-gas tx scheduled last to hold the in-order validator, then a
+    /// heavy tail, and returns the block rejection.</summary>
+    private static InvalidBlockException ExecuteHeavyTail(int lead, ulong gasUsed, ulong blockGasLimit, ITransactionProcessorAdapter transactionProcessor)
+    {
+        const int heavyCount = 4096;
         Transaction[] transactions = CreateParallelValidationTransactions(lead + 1 + heavyCount, gasUsed);
         transactions[lead].GasLimit = 21_000;
 
@@ -3393,13 +3435,11 @@ public partial class BlockProcessorTests
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit((ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed)
+            .WithGasLimit(blockGasLimit)
             .WithTransactions(transactions)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        using ManualResetEventSlim validationFinished = new(true);
-        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -3407,19 +3447,11 @@ public partial class BlockProcessorTests
             new ParallelTestBlockAccessListManager(transactionProcessor) { IncrementalValidationAction = ReplayGasLimitChecks },
             LimboLogs.Instance);
 
-        InvalidBlockException? ex = Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
+        return Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
             block,
             ProcessingOptions.None,
             new BlockReceiptsTracer(),
-            CancellationToken.None));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
-            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
-            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
-            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
-        });
+            CancellationToken.None))!;
     }
 
     [Test]
@@ -4119,7 +4151,8 @@ public partial class BlockProcessorTests
         int decisiveIndex,
         ulong gasUsed,
         ManualResetEventSlim validationFinished,
-        bool stateGas = false) : ITransactionProcessorAdapter
+        bool stateGas = false,
+        Func<Transaction, TransactionResult>? outcome = null) : ITransactionProcessorAdapter
     {
         private int _executedCount;
 
@@ -4136,6 +4169,9 @@ public partial class BlockProcessorTests
             }
 
             Interlocked.Increment(ref _executedCount);
+            TransactionResult result = outcome?.Invoke(transaction) ?? TransactionResult.Ok;
+            if (!result) return result;
+
             // BlockGasUsed reads back as GasLimit when zero, so the state-gas case charges 1 execution gas.
             transaction.BlockGasUsed = stateGas ? 1 : gasUsed;
             txTracer.MarkAsSuccess(Address.Zero, stateGas ? new GasConsumed(gasUsed, gasUsed, BlockGas: 1, BlockStateGas: gasUsed) : gasUsed, [], []);
