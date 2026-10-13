@@ -53,6 +53,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
     private bool _disposed;
+    private bool _inPool;
+    private bool _retired;
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
 
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
@@ -270,12 +272,13 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed || _inPool) return;
 
-        if (_release is not null)
+        if (_release is not null && !_retired)
         {
             CommitBatch();
             Reset();
+            _inPool = true;
             _release(this);
             return;
         }
@@ -288,6 +291,21 @@ public sealed class CommitmentEmitter : IDisposable
         ChildVector.Return(_children);
         ChildVector.Return(_merged);
         ChildVector.Return(_latest);
+    }
+
+    /// <summary>Takes an emitter its release callback was handed back out for the next use.</summary>
+    internal CommitmentEmitter Reuse()
+    {
+        _inPool = false;
+        return this;
+    }
+
+    /// <summary>Releases the buffers of an emitter that hands itself back on dispose, for good.</summary>
+    internal void Retire()
+    {
+        _retired = true;
+        _inPool = false;
+        Dispose();
     }
 
     private void Reset()

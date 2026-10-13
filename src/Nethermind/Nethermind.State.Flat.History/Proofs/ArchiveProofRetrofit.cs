@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -16,9 +15,6 @@ public sealed class ArchiveProofRetrofit(
     ILogManager logManager) : ICommitmentEmitterSource
 {
     private readonly ILogger _logger = logManager.GetClassLogger<ArchiveProofRetrofit>();
-    // A disposed emitter comes back here reset, and the bag hands each worker the one it returned last.
-    private readonly ConcurrentBag<CommitmentEmitter> _spareEmitters = [];
-    private Action<CommitmentEmitter>? _releaseEmitter;
 
     public bool Enabled => settings.RetrofitEnabled;
 
@@ -28,10 +24,8 @@ public sealed class ArchiveProofRetrofit(
 
     public ulong WindowGranularity => policy.Interval;
 
-    public CommitmentEmitter CreateEmitter() =>
-        _spareEmitters.TryTake(out CommitmentEmitter? spare)
-            ? spare
-            : CommitmentEmitter.ForWalk(history, policy, metadata, deepStorageSnapshots: settings.RecentEpochs > 0, _releaseEmitter ??= _spareEmitters.Add);
+    public CommitmentEmitter CreateEmitter(Action<CommitmentEmitter>? release = null) =>
+        CommitmentEmitter.ForWalk(history, policy, metadata, deepStorageSnapshots: settings.RecentEpochs > 0, release);
 
     public void Prepare()
     {

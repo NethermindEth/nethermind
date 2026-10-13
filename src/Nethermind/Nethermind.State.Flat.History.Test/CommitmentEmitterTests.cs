@@ -666,7 +666,7 @@ public class CommitmentEmitterTests
                 EmitPartition(fresh, partition);
             }
 
-            using (reused)
+            using (partition == 0 ? reused : reused.Reuse())
             {
                 EmitPartition(reused, partition);
             }
@@ -682,6 +682,28 @@ public class CommitmentEmitterTests
                     static (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)),
                     $"{column}: nothing a partition remembered may reach the next one, the same branch included");
             }
+        }
+    }
+
+    [Test]
+    public void A_walk_emitter_disposed_twice_is_handed_back_once_and_a_retired_one_never()
+    {
+        List<CommitmentEmitter> released = [];
+        CommitmentEmitter emitter = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata, release: released.Add);
+
+        emitter.Dispose();
+        emitter.Dispose();
+        int afterTwoDisposes = released.Count;
+        emitter.Reuse().Dispose();
+        int afterReuse = released.Count;
+        emitter.Retire();
+        emitter.Reuse().Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterTwoDisposes, Is.EqualTo(1), "a second dispose must not put the emitter in the pool twice, where two workers could take it");
+            Assert.That(afterReuse, Is.EqualTo(2), "taken back out, it is handed back again on its next dispose");
+            Assert.That(released, Has.Count.EqualTo(2), "a retired emitter released its buffers and is never handed back");
         }
     }
 
