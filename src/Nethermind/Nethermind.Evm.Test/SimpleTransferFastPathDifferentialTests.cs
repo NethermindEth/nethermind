@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -21,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -73,7 +75,8 @@ public class SimpleTransferFastPathDifferentialTests
         long FastPathEngaged,
         string[] AccessReports,
         long[] Refunds,
-        string[] TracerEvents);
+        string[] TracerEvents,
+        string Bal = "");
 
     private static IEnumerable<TestCaseData> Scenarios()
     {
@@ -126,6 +129,7 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
             Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
             Assert.That(fast.Refunds, Is.EqualTo(slow.Refunds), "refund reports");
+            Assert.That(fast.Bal, Is.EqualTo(slow.Bal), "bal");
             Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
             Assert.That(StateReportedAddresses(fast.TracerEvents), Is.EquivalentTo(StateReportedAddresses(slow.TracerEvents)), "state-reported address set");
             Assert.That(fast.FastPathEngaged, Is.EqualTo(fastPathExpectedToEngage ? 1 : 0), "fast path engaged");
@@ -171,6 +175,7 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
             Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
             Assert.That(fast.Refunds, Is.EqualTo(slow.Refunds), "refund reports");
+            Assert.That(fast.Bal, Is.EqualTo(slow.Bal), "bal");
             Assert.That(fast.AccessReports, Is.EqualTo(expectedAccessReports), "fast access reports");
             Assert.That(slow.AccessReports, Is.EqualTo(expectedAccessReports), "EVM access reports");
             Assert.That(fast.FastPathEngaged, Is.EqualTo(1), "fast path engaged");
@@ -205,12 +210,14 @@ public class SimpleTransferFastPathDifferentialTests
         TracerShape tracerShape,
         Mode mode,
         bool eip8037 = false,
-        ulong? availableGas = null)
+        ulong? availableGas = null,
+        ulong? gasLimit = null,
+        bool recipientIsCoinbase = false)
     {
         IReleaseSpec fork = eip8037 ? Amsterdam.Instance : Prague.Instance;
         OverridableReleaseSpec spec = new(fork) { IsEip7708Enabled = eip7708 };
         TestSpecProvider specProvider = new(spec);
-        IWorldState state = TestWorldStateFactory.CreateForTest();
+        TracedAccessWorldState state = new(TestWorldStateFactory.CreateForTest(), parallel: false);
         using IDisposable worldScope = state.BeginScope(IWorldState.PreGenesis);
 
         Address recipient = recipientKind switch
@@ -258,6 +265,7 @@ public class SimpleTransferFastPathDifferentialTests
             .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
+        if (gasLimit is not null) tx.GasLimit = gasLimit.Value;
         if (availableGas is not null)
         {
             tx.GasLimit = IntrinsicGasCalculator.Calculate(tx, spec).Standard + availableGas.Value;
@@ -267,7 +275,8 @@ public class SimpleTransferFastPathDifferentialTests
             .WithNumber(1)
             .WithTimestamp(eip8037 ? MainnetSpecProvider.AmsterdamBlockTimestamp : MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
-            .WithGasLimit(10_000_000)
+            .WithGasLimit(100_000_000)
+            .WithBeneficiary(recipientIsCoinbase ? recipient : Address.Zero)
             .TestObject;
 
         bool forceDisabledBefore = TransactionProcessorBase.ForceSimpleTransferDisabled;
@@ -278,6 +287,8 @@ public class SimpleTransferFastPathDifferentialTests
             ITxTracer tracer = recordingTracer is not null ? recordingTracer : NullTxTracer.Instance;
             BlockExecutionContext ctx = new(block.Header, specProvider.GetSpec(block.Header));
 
+            BlockAccessListAtIndex bal = new() { Index = 1 };
+            state.SetGeneratingBlockAccessList(bal);
             long emptyCallsBefore = Metrics.EmptyCalls;
             TransactionResult result = mode switch
             {
@@ -306,11 +317,69 @@ public class SimpleTransferFastPathDifferentialTests
                 FastPathEngaged: fastPathEngaged,
                 AccessReports: recordingTracer?.AccessReports.ToArray() ?? [],
                 Refunds: recordingTracer?.Refunds.ToArray() ?? [],
-                TracerEvents: recordingTracer?.Events.ToArray() ?? []);
+                TracerEvents: recordingTracer?.Events.ToArray() ?? [],
+                Bal: DescribeBal(bal));
         }
         finally
         {
             TransactionProcessorBase.ForceSimpleTransferDisabled = forceDisabledBefore;
+        }
+    }
+
+    private static string DescribeBal(BlockAccessListAtIndex bal) =>
+        string.Join(';', bal.AccountChanges
+            .Select(static a => $"{a.Address}:{a.BalanceChange}:{a.NonceChange}:{a.CodeChange}:{a.StorageChangeCount}:{a.StorageReads.Count}")
+            .OrderBy(static a => a, StringComparer.Ordinal));
+
+    private static IEnumerable<TestCaseData> AmsterdamEdgeCases()
+    {
+        // Gas above the EIP-7825 cap fills the EIP-8037 reservoir; null keeps the default limit with no reservoir.
+        ulong cap = Eip7825Constants.DefaultTxGasLimitCap;
+        (string Name, ulong? GasLimit)[] limits =
+        [
+            ("no_reservoir", null),
+            ("reservoir_one_short", cap + (ulong)GasCostOf.NewAccountState - 1),
+            ("reservoir_split", cap + (ulong)GasCostOf.NewAccountState / 2),
+            ("reservoir_exact", cap + (ulong)GasCostOf.NewAccountState),
+            ("reservoir_surplus", cap + (ulong)GasCostOf.NewAccountState + 100_000),
+        ];
+
+        foreach (RecipientKind kind in Enum.GetValues<RecipientKind>())
+        {
+            foreach (ulong value in (ulong[])[1_000_000, 0])
+            {
+                foreach (bool coinbase in (bool[])[false, true])
+                {
+                    foreach ((string name, ulong? gasLimit) in limits)
+                    {
+                        yield return new TestCaseData(value, kind, coinbase, gasLimit)
+                            .SetName($"Amsterdam_{kind}_value{value}_coinbase{coinbase}_{name}");
+                    }
+                }
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(AmsterdamEdgeCases))]
+    public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, bool coinbase, ulong? gasLimit)
+    {
+        foreach (TracerShape shape in (TracerShape[])[TracerShape.AllOn, TracerShape.None])
+        {
+            ExecutionCapture fast = Run(false, value, recipientKind, true, 0, shape, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
+            ExecutionCapture slow = Run(true, value, recipientKind, true, 0, shape, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(fast.Executed, Is.EqualTo(slow.Executed), "executed");
+                Assert.That(fast.EvmExceptionType, Is.EqualTo(slow.EvmExceptionType), "EVM exception");
+                Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
+                Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
+                Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
+                Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
+                Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
+                Assert.That(fast.Bal, Is.EqualTo(slow.Bal), "bal");
+                Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
+                Assert.That(fast.FastPathEngaged, Is.EqualTo(recipientKind is RecipientKind.Delegated or RecipientKind.Precompile ? 0 : 1), "fast path engaged");
+            }
         }
     }
 
