@@ -307,12 +307,12 @@ namespace Nethermind.Facade
         /// <summary>Whether the request left the blob fee cap to be filled, and the blob base fee override it carried.</summary>
         private readonly record struct BlobFeeCapFill(bool IsFilled, UInt256? BlobBaseFeeOverride);
 
+        private SlotSchedule? _slots;
+
         /// <summary>
         /// A failure without standard text names the gas the next block's rules fund, run with the blob fee cap
         /// filled from the next block's blob base fee when the request left it out.
         /// </summary>
-        private SlotSchedule? _slots;
-
         private FundedRunContext CreateFundedRunContext(BlockHeader header, BlobFeeCapFill blobFeeCapFill)
         {
             ulong nextTimestamp = (_slots ??= specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot)).GetNextSlotTimestamp(header.Timestamp);
