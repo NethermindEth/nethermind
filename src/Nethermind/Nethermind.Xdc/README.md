@@ -492,9 +492,11 @@ The methods are named `XDPoS_*`, but the module is registered as `Xdc` — that 
 | `XDPoS_calculateBlockInfoByV1EpochNum(epoch)` | Epoch-switch block for a V1 epoch |
 | `XDPoS_getBlockInfoByEpochNum(epoch)` | Epoch-switch block, V1 or V2 |
 
-On XDC chains every block parameter also accepts the `committed` tag, an alias for `finalized`: the latest block
-committed by the three-chain rule. Of the methods above, `XDPoS_getMasternodesByNumber`, `XDPoS_getV2BlockByNumber` and
-`XDPoS_getMissedRoundsInEpochByBlockNum` resolve it, as in the reference client.
+On XDC chains a block number argument given as a plain string also accepts the `committed` tag, an alias for
+`finalized`: the latest block committed by the three-chain rule. Of the methods above, `XDPoS_getMasternodesByNumber`,
+`XDPoS_getV2BlockByNumber` and `XDPoS_getMissedRoundsInEpochByBlockNum` resolve it, as in the reference client. The tag
+is not accepted by the log filter bounds of `eth_getLogs` and `eth_newFilter`, by `trace_filter`, or inside the
+`{"blockNumber": ...}` object form.
 
 ### `eth` extensions — [`IXdcExtendedEthRpcModule`](RPC/IXdcExtendedEthRpcModule.cs)
 
