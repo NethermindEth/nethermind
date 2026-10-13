@@ -53,6 +53,8 @@ public class EezDevReplayTests
     private IBlockTree _chain = null!;
     private EezFollower _follower = null!;
     private Hash256[] _expected = null!;
+    private WitnessGeneratingBlockProcessingEnvFactory _witnessFactory = null!;
+    private readonly Dictionary<ulong, Witness> _witnesses = [];
 
     [SetUp]
     public async Task SetUp()
@@ -68,7 +70,7 @@ public class EezDevReplayTests
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(
-                new FlatDbConfig { Enabled = TestStateBackend.UseFlatDb, HistoryEnabled = TestStateBackend.UseFlatDb },
+                new FlatDbConfig { Enabled = TestStateBackend.UseFlatDb },
                 new PruningConfig { Mode = PruningMode.None }), chainSpec, useTestSpecProvider: false))
             .AddModule(new EezModule(new EezConfig(), rules))
             .Build();
@@ -76,6 +78,8 @@ public class EezDevReplayTests
         processing.BlockProcessingQueue.Start();
         processing.GenesisLoader.Load();
         _chain = _container.Resolve<IBlockTree>();
+        _witnessFactory = new WitnessGeneratingBlockProcessingEnvFactory(_container, _container.Resolve<IWorldStateManager>(),
+            _container.Resolve<IBlockValidationModule[]>(), _container.Resolve<ISpecProvider>(), LimboLogs.Instance);
 
         using JsonDocument replay = JsonDocument.Parse(File.ReadAllText(StatelessFixtures.PathOf(Fixture, "replay-0-2250.json")));
         RecordedL1 l1 = new(replay.RootElement, rules.Schedule!.L1Reference);
@@ -87,6 +91,12 @@ public class EezDevReplayTests
     public async Task TearDown()
     {
         await _container.Resolve<IMainProcessingContext>().BlockProcessingQueue.StopAsync();
+        _witnessFactory.Dispose();
+        foreach (Witness witness in _witnesses.Values)
+        {
+            witness.Dispose();
+        }
+        _witnesses.Clear();
         _container.Dispose();
     }
 
@@ -114,15 +124,12 @@ public class EezDevReplayTests
         Assert.That(_follower.Heads.Safe.Number, Is.EqualTo((ulong)_expected.Length - 1), "the last batch's endpoint is safe");
         EezChainRules rules = EezChainRules.FromGenesisFile(StatelessFixtures.PathOf(Fixture, "genesis.json"));
         ISpecProvider spec = _container.Resolve<ISpecProvider>();
-        using WitnessGeneratingBlockProcessingEnvFactory witnesses = new(_container, _container.Resolve<IWorldStateManager>(),
-            _container.Resolve<IBlockValidationModule[]>(), spec, LimboLogs.Instance);
         EezStatelessExecutor stateless = new(spec, rules, LimboLogs.Instance);
+        Assert.That(_witnesses.Count, Is.EqualTo(4), "each selected block was captured while its parent was retained");
         foreach (ulong number in new ulong[] { 1, 1950, 1968, 1969 })
         {
             Block block = _chain.FindBlock(number, BlockTreeLookupOptions.RequireCanonical)!;
-            BlockHeader parent = _chain.FindHeader(number - 1, BlockTreeLookupOptions.RequireCanonical)!;
-            using IWitnessGeneratingBlockProcessingEnvScope scope = witnesses.CreateScope();
-            using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+            Witness witness = _witnesses[number];
             EezStatelessBlockResult result = stateless.Execute([new EezStatelessBlock(Rlp.Encode(block).Bytes, witness)], [EezTransactionCheckpoint.PreExecution])[0];
             Assert.That(result.Hash, Is.EqualTo(_expected[number]), $"stateless RollupX block {number} matches the independent testnet hash");
             Assert.That(result.Checkpoints[0].TransactionIndex, Is.EqualTo(EezTransactionCheckpoint.PreExecution));
@@ -136,12 +143,30 @@ public class EezDevReplayTests
         }
     }
 
+    private void CaptureWitness(Block block)
+    {
+        if (block.Number is not (1 or 1950 or 1968 or 1969))
+        {
+            return;
+        }
+
+        BlockHeader parent = _chain.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
+        using IWitnessGeneratingBlockProcessingEnvScope scope = _witnessFactory.CreateScope();
+        Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+        if (_witnesses.Remove(block.Number, out Witness? previous))
+        {
+            previous.Dispose();
+        }
+
+        _witnesses[block.Number] = witness;
+    }
+
     private EezFollower Follower(EezChainRules rules, RecordedL1 l1)
     {
         ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
         EezSettlementContext context = new(RollupId, specProvider.ChainId, Address.Zero, default, 1);
         RollupXHeaderRules headerRules = new(specProvider, rules);
-        ProcessingEngine engine = new(_chain, _container.Resolve<IMainProcessingContext>().BlockProcessingQueue);
+        ProcessingEngine engine = new(_chain, _container.Resolve<IMainProcessingContext>().BlockProcessingQueue, CaptureWitness);
         DerivedBlockExecutor executor = new(_container, _container.Resolve<IWorldStateManager>(), new DerivedBlockBuilder(specProvider, headerRules));
         BatchReconciler reconciler = new(_chain, _container.Resolve<IStateReader>(), executor, engine, new RollupXBatchDerivation(context, rules), headerRules,
             context, LimboLogs.Instance);
@@ -265,7 +290,7 @@ public class EezDevReplayTests
     }
 
     /// <summary>The node's engine: a block it is given is processed by the main processor and becomes the head.</summary>
-    private sealed class ProcessingEngine(IBlockTree chain, IBlockProcessingQueue queue) : IEezL2Engine
+    private sealed class ProcessingEngine(IBlockTree chain, IBlockProcessingQueue queue, Action<Block> onProcessed) : IEezL2Engine
     {
         public async Task Insert(Block block)
         {
@@ -292,6 +317,7 @@ public class EezDevReplayTests
             {
                 chain.SuggestBlock(block, BlockTreeSuggestOptions.ShouldProcess);
                 await processed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                onProcessed(block);
             }
             finally
             {
