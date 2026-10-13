@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Security.Cryptography;
 using System.Text;
 using Nethermind.State.Flat.Rust.Fork;
@@ -42,8 +43,19 @@ public class ForkDriftTests
             $"namespace Nethermind.State.Flat{string.Concat(Path.GetDirectoryName(Origin)!.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries).Select(static part => $".{part}"))};";
     }
 
-    private const string ForkNamespaceLine = "namespace Nethermind.State.Flat.Rust.Fork;";
+    private const string ForkNamespace = "Nethermind.State.Flat.Rust.Fork";
+    private const string ForkNamespaceLine = $"namespace {ForkNamespace};";
     private const string ScopeProvider = "Nethermind.State.Flat.ScopeProvider";
+
+    /// <summary>The origin lines of the patched SnapshotBundle.cs that its copy keeps verbatim: the warmer and prewarm paths.</summary>
+    /// <remarks>Line 243 is left out: its copy calls <see cref="ForkInternals.MarkWarmerOwned"/>.</remarks>
+    private static readonly (int First, int Last)[] PatchedUnchangedLines = [(206, 242), (244, 288), (338, 384), (565, 586), (665, 668)];
+
+    /// <summary>Types of Nethermind.State.Flat the fork replaces without sharing a name with a fork type.</summary>
+    private static readonly string[] ReplacedOriginals = ["Nethermind.State.Flat.SnapshotContent", "Nethermind.State.Flat.FlatDbManager"];
+
+    /// <summary>Methods of Nethermind.State.Flat's resource pool that rent the C# content the fork replaces.</summary>
+    private static readonly string[] ReplacedPoolMethods = ["GetSnapshotContent", "CreateSnapshot"];
 
     private static readonly ForkFile[] Manifest =
     [
@@ -101,7 +113,58 @@ public class ForkDriftTests
                 Assert.That(Diff(origin, ToOrigin(file)), Is.Empty,
                     $"{file.Fork} differs from {file.Origin} beyond the namespace, the added or dropped using and the substitutions; rerun {nameof(Regenerate_verbatim_copies)}.");
             }
+
+            if (file.Kind == ForkKind.Patched)
+            {
+                string[] originLines = origin.Split('\n');
+                string fork = $"\n{ReadText(ForkPath(file))}\n";
+                foreach ((int first, int last) in PatchedUnchangedLines)
+                {
+                    Assert.That(fork, Does.Contain($"\n{string.Join('\n', originLines[(first - 1)..last])}\n"),
+                        $"origin lines {first}-{last} of {file.Origin} are no longer verbatim in {file.Fork}");
+                }
+            }
         }
+    }
+
+    /// <summary>
+    /// A fork type that names an original Nethermind.State.Flat type the fork replaces, in its signatures, locals or IL,
+    /// would silently run the C# code path: a simple name the fork lacks resolves to the original.
+    /// </summary>
+    [Test]
+    public void Fork_binds_to_no_original_it_replaces()
+    {
+        Assembly flatAssembly = typeof(StateId).Assembly;
+        Type[] forkTypes = [.. typeof(ForkInternals).Assembly.GetTypes().Where(static type => type.Namespace == ForkNamespace)];
+        HashSet<string> forkNames = [.. forkTypes.Select(RelativeName)];
+
+        bool IsReplaced(Type type) => type.Assembly == flatAssembly && !type.IsGenericParameter &&
+            (forkNames.Contains(RelativeName(type)) || ReplacedOriginals.Contains(type.FullName));
+
+        bool IsReplacedPoolMethod(MemberInfo member) => member is MethodBase method && ReplacedPoolMethods.Contains(method.Name) &&
+            method.DeclaringType is { } pool && (pool == typeof(ResourcePool) || pool == typeof(IResourcePool));
+
+        // The wrapper builds the original verifier and runs its core; nothing else may name the original, and only the
+        // original's own members may bring in what their signatures name.
+        static bool IsAllowed(Type user, string site, MemberInfo member, Type referenced) =>
+            (referenced == typeof(Nethermind.State.Flat.FlatTrieVerifier) || member.DeclaringType == typeof(Nethermind.State.Flat.FlatTrieVerifier)) &&
+            (Outermost(user) == typeof(Fork.FlatTrieVerifier) || (user == typeof(ForkInternals) && site.StartsWith($"{nameof(ForkInternals.VerifyCore)}(", StringComparison.Ordinal)));
+
+        List<string> misbindings = [];
+        foreach (Type user in forkTypes)
+        {
+            foreach ((string site, MemberInfo member) in References(user))
+            {
+                if (IsReplacedPoolMethod(member)) misbindings.Add($"{user.FullName} {site}: {member.DeclaringType!.FullName}.{member.Name}");
+
+                foreach (Type referenced in TypesOf(member).SelectMany(Expand).Where(IsReplaced).Distinct())
+                {
+                    if (!IsAllowed(user, site, member, referenced)) misbindings.Add($"{user.FullName} {site}: {referenced.FullName}");
+                }
+            }
+        }
+
+        Assert.That(misbindings, Is.Empty);
     }
 
     [Test]
@@ -165,6 +228,96 @@ public class ForkDriftTests
             string.CompareOrdinal(line[..^1], usingLine[..^1]) > 0);
         lines.Insert(firstLater >= 0 ? firstLater : lastUsing + 1, usingLine);
     }
+
+    /// <summary>What <paramref name="user"/> names, by the member naming it: base types, field types, signatures, locals and IL operands.</summary>
+    private static IEnumerable<(string Site, MemberInfo Member)> References(Type user)
+    {
+        const BindingFlags declared = BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+
+        if (user.BaseType is { } baseType) yield return ("base type", baseType);
+        foreach (Type implemented in user.GetInterfaces()) yield return ("interface", implemented);
+        foreach (FieldInfo field in user.GetFields(declared)) yield return (field.Name, field.FieldType);
+        foreach (MethodBase method in user.GetMethods(declared).Concat<MethodBase>(user.GetConstructors(declared)))
+        {
+            string site = $"{method.Name}({string.Join(", ", method.GetParameters().Select(static parameter => parameter.ParameterType.Name))})";
+            yield return (site, method);
+            if (method.GetMethodBody() is not { } body) continue;
+
+            foreach (LocalVariableInfo local in body.LocalVariables) yield return (site, local.LocalType);
+            foreach (MemberInfo operand in IlOperands(method, body.GetILAsByteArray()!)) yield return (site, operand);
+        }
+    }
+
+    /// <summary>The fields, methods and types the IL of <paramref name="method"/> references.</summary>
+    private static IEnumerable<MemberInfo> IlOperands(MethodBase method, byte[] il)
+    {
+        Type[]? typeArguments = method.DeclaringType is { IsGenericType: true } declaringType ? declaringType.GetGenericArguments() : null;
+        Type[]? methodArguments = method.IsGenericMethod ? method.GetGenericArguments() : null;
+        for (int position = 0; position < il.Length;)
+        {
+            OpCode opCode = il[position] == 0xFE ? OpCodeTables.TwoByte[il[position + 1]] : OpCodeTables.OneByte[il[position]];
+            if (opCode.Size == 0) throw new InvalidOperationException($"Unknown opcode at IL offset {position} of {method.DeclaringType}.{method.Name}");
+
+            position += opCode.Size;
+            if (opCode.OperandType is OperandType.InlineField or OperandType.InlineMethod or OperandType.InlineType or OperandType.InlineTok)
+            {
+                yield return method.Module.ResolveMember(BitConverter.ToInt32(il, position), typeArguments, methodArguments)!;
+            }
+
+            position += opCode.OperandType switch
+            {
+                OperandType.InlineNone => 0,
+                OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                OperandType.InlineVar => 2,
+                OperandType.InlineI8 or OperandType.InlineR => 8,
+                OperandType.InlineSwitch => 4 + 4 * BitConverter.ToInt32(il, position),
+                _ => 4,
+            };
+        }
+    }
+
+    private static readonly (OpCode[] OneByte, OpCode[] TwoByte) OpCodeTables = BuildOpCodeTables();
+
+    private static (OpCode[] OneByte, OpCode[] TwoByte) BuildOpCodeTables()
+    {
+        OpCode[] oneByte = new OpCode[0x100];
+        OpCode[] twoByte = new OpCode[0x100];
+        foreach (FieldInfo field in typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static))
+        {
+            OpCode opCode = (OpCode)field.GetValue(null)!;
+            ushort value = (ushort)opCode.Value;
+            if (opCode.Size == 1) oneByte[value] = opCode;
+            else twoByte[value & 0xFF] = opCode;
+        }
+
+        return (oneByte, twoByte);
+    }
+
+    /// <summary>The types a referenced member names: itself, or its declaring type and signature.</summary>
+    private static IEnumerable<Type> TypesOf(MemberInfo member)
+    {
+        IEnumerable<Type?> types = member switch
+        {
+            Type type => [type],
+            FieldInfo field => [field.DeclaringType, field.FieldType],
+            MethodInfo method => [method.DeclaringType, method.ReturnType, .. method.GetParameters().Select(static parameter => parameter.ParameterType),
+                .. method.IsGenericMethod ? method.GetGenericArguments() : []],
+            ConstructorInfo constructor => [constructor.DeclaringType, .. constructor.GetParameters().Select(static parameter => parameter.ParameterType)],
+            _ => [],
+        };
+        return types.OfType<Type>();
+    }
+
+    /// <summary><paramref name="type"/> with the element types and generic arguments it is built from.</summary>
+    private static IEnumerable<Type> Expand(Type type) =>
+        [type,
+            .. type.HasElementType ? Expand(type.GetElementType()!) : [],
+            .. type.IsGenericType && !type.IsGenericTypeDefinition ? type.GetGenericArguments().SelectMany(Expand) : []];
+
+    /// <summary>The name of <paramref name="type"/> with those of the types it is nested in, without the namespace.</summary>
+    private static string RelativeName(Type type) => type.DeclaringType is null ? type.Name : $"{RelativeName(type.DeclaringType)}+{type.Name}";
+
+    private static Type Outermost(Type type) => type.DeclaringType is null ? type : Outermost(type.DeclaringType);
 
     private static string Substitute(string line, bool toFork) =>
         Substitutions.Aggregate(line, (text, substitution) => toFork

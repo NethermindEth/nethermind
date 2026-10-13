@@ -264,6 +264,20 @@ internal unsafe struct FfiAccount
     public fixed byte CodeHash[32];
     public uint Flags;
 
+    public FfiAccount(Account account)
+    {
+        Nonce = account.Nonce;
+        UInt256 balance = account.Balance;
+        Balance[0] = balance.u0;
+        Balance[1] = balance.u1;
+        Balance[2] = balance.u2;
+        Balance[3] = balance.u3;
+        account.StorageRoot.Bytes.CopyTo(MemoryMarshal.CreateSpan(ref StorageRoot[0], Hash256.Size));
+        account.CodeHash.Bytes.CopyTo(MemoryMarshal.CreateSpan(ref CodeHash[0], Hash256.Size));
+        Flags = (account.StorageRoot == Keccak.EmptyTreeHash ? EmptyStorageRoot : 0)
+            | (account.CodeHash == Keccak.OfAnEmptyString ? EmptyCodeHash : 0);
+    }
+
     /// <summary>The account as <c>AccountDecoder</c> decodes it.</summary>
     public readonly Account ToAccount()
     {
@@ -472,6 +486,16 @@ internal unsafe struct FfiNodeRecord
     public uint RlpLength;
     public ulong RlpOffset;
     public fixed byte Hash[32];
+
+    /// <param name="hash">The node's hash; null for an inline node.</param>
+    public FfiNodeRecord(in TreePath path, Hash256? hash, int rlpLength, int rlpOffset)
+    {
+        path.Path.Bytes.CopyTo(MemoryMarshal.CreateSpan(ref Path[0], ValueHash256.MemorySize));
+        PathLength = (byte)path.Length;
+        RlpLength = (uint)rlpLength;
+        RlpOffset = (ulong)rlpOffset;
+        hash?.Bytes.CopyTo(MemoryMarshal.CreateSpan(ref Hash[0], ValueHash256.MemorySize));
+    }
 }
 
 /// <summary>Where a read of a native bundle or scope was served from.</summary>

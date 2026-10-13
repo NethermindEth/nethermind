@@ -22,6 +22,9 @@ internal abstract class StoreChildHandle : SafeHandle
         SetHandle(handle);
     }
 
+    /// <summary>The store the handle was created from.</summary>
+    public RustFlatStore Store => _store;
+
     public override bool IsInvalid => handle == 0;
 
     protected sealed override bool ReleaseHandle()
@@ -66,6 +69,9 @@ internal sealed class BundleHandle(RustFlatStore store, ManagerHandle manager, n
 /// <param name="handle">The native bundle or scope.</param>
 internal abstract class BundleBaseHandle(RustFlatStore store, ManagerHandle manager, nint handle) : StoreChildHandle(store, handle)
 {
+    /// <summary>The manager the bundle was gathered from.</summary>
+    public ManagerHandle Manager => manager;
+
     /// <summary>Leases the native bundle for one call; dispose the lease when the call returns.</summary>
     /// <exception cref="ObjectDisposedException">The handle is disposed.</exception>
     public abstract Call Enter();
