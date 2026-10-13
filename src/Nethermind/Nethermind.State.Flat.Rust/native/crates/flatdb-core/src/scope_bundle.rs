@@ -18,6 +18,7 @@ use arc_swap::ArcSwap;
 use crate::bundle::{NodeLoadError, ReadOnlySnapshotBundle, ReadSource, hash_mismatch};
 use crate::kv::ReadFlags;
 use crate::persistence::{PersistenceReader, PersistenceResult};
+use crate::seam::BundleRead;
 use crate::snapshot::Snapshot;
 use crate::snapshot::content::TrieNodeRlp;
 use crate::snapshot::mutable::{MutableContent, NodeRecord, Usage};
@@ -101,6 +102,7 @@ impl<R: PersistenceReader> ScopeBundle<R> {
     /// read from below the current content is cached in it, as `FlatWorldStateScope.Get` promotes one.
     pub fn get_account(&self, address: &Address, promote: bool) -> PersistenceResult<(Option<Account>, ReadSource)> {
         if let Some(account) = self.current().and_then(|current| current.account(address)) {
+            BundleRead::AccountCurrent.count();
             return Ok((account, ReadSource::Current));
         }
         let (account, source) = self.account_below_current(address)?;
@@ -146,6 +148,7 @@ impl<R: PersistenceReader> ScopeBundle<R> {
         self_destruct_snapshot_idx: i32,
     ) -> PersistenceResult<(Option<U256>, ReadSource)> {
         if let Some(value) = self.current().and_then(|current| current.slot(address, slot)) {
+            BundleRead::StorageCurrent.count();
             return Ok((value, ReadSource::Current));
         }
 
@@ -158,6 +161,7 @@ impl<R: PersistenceReader> ScopeBundle<R> {
         let own_cleared = cleared - chain_count;
         for (index, snapshot) in own.iter().enumerate().rev() {
             if let Some(value) = snapshot.try_get_storage(address, slot) {
+                BundleRead::StorageOwn.count();
                 return Ok((value, ReadSource::Own));
             }
             if index as i64 <= own_cleared {
@@ -216,7 +220,10 @@ impl<R: PersistenceReader> ScopeBundle<R> {
         };
         let read = read.take();
         match probed {
-            Some((Probe::Found(value), source)) => Ok((Some(value), source)),
+            Some((Probe::Found(value), source)) => {
+                count_node(source, BundleRead::StateNodeCurrent, BundleRead::StateNodeOwn);
+                Ok((Some(value), source))
+            }
             Some((Probe::Placeholder, _)) => Ok(self.chain.load_persisted_state_rlp(path, flags, unread(read))?),
             None => self.chain.load_state_rlp_checked(path, hash, flags, unread(read)),
         }
@@ -248,7 +255,10 @@ impl<R: PersistenceReader> ScopeBundle<R> {
         };
         let read = read.take();
         match probed {
-            Some((Probe::Found(value), source)) => Ok((Some(value), source)),
+            Some((Probe::Found(value), source)) => {
+                count_node(source, BundleRead::StorageNodeCurrent, BundleRead::StorageNodeOwn);
+                Ok((Some(value), source))
+            }
             Some((Probe::Placeholder, _)) => {
                 Ok(self
                     .chain
@@ -318,6 +328,7 @@ impl<R: PersistenceReader> ScopeBundle<R> {
             .rev()
             .find_map(|snapshot| snapshot.try_get_account(address))
         {
+            BundleRead::AccountOwn.count();
             return Ok((account, ReadSource::Own));
         }
         self.chain.get_account(address)
@@ -339,6 +350,14 @@ fn probe<T>(
     }
     let read = read.take().expect("an in-memory node is read once");
     Ok(Probe::Found(read(node.rlp)))
+}
+
+/// Counts a node a scope's own layers served.
+fn count_node(source: ReadSource, current: BundleRead, own: BundleRead) {
+    match source {
+        ReadSource::Current => current.count(),
+        _ => own.count(),
+    }
 }
 
 /// The reader of a load whose in-memory probe did not read.

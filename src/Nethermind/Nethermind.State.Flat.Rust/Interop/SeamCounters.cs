@@ -54,6 +54,36 @@ internal static unsafe class SeamCounters
         return (calls, nanoseconds);
     }
 
+    /// <summary>The counters of every thread that counted, by the OS id <c>/proc/&lt;pid&gt;/task/&lt;id&gt;</c> names it by.</summary>
+    /// <remarks>
+    /// Only while timing is on does every thread starting to count get counters of its own; a thread that started
+    /// before shares them with the threads that counted into them before it.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Timing is off.</exception>
+    public static IReadOnlyList<(ulong OsThreadId, ulong[] Calls, ulong[] Nanoseconds)> ReadByThread()
+    {
+        uint capacity = 0;
+        while (true)
+        {
+            ulong[] osThreadIds = new ulong[capacity];
+            ulong[] calls = new ulong[capacity * Count];
+            ulong[] nanoseconds = new ulong[capacity * Count];
+            uint threads;
+            fixed (ulong* idsPointer = osThreadIds, callsPointer = calls, nanosecondsPointer = nanoseconds)
+            {
+                StatusMap.ThrowIfFailed(NativeMethods.fdb_seam_counters_by_thread(idsPointer, callsPointer, nanosecondsPointer, capacity, (uint)Count, &threads));
+            }
+
+            if (threads <= capacity)
+            {
+                return [.. Enumerable.Range(0, (int)threads).Select(row => (osThreadIds[row], calls[(row * Count)..((row + 1) * Count)], nanoseconds[(row * Count)..((row + 1) * Count)]))];
+            }
+
+            // Threads that start counting meanwhile get room too.
+            capacity = threads + 16;
+        }
+    }
+
     /// <summary>Copies the counters to <see cref="Metrics"/>.</summary>
     public static void Publish()
     {

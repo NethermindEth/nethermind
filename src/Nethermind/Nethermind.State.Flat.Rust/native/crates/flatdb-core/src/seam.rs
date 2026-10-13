@@ -3,7 +3,8 @@
 //!
 //! The counters are process-wide sums of per-thread blocks: a thread counts into a block of its own with plain loads
 //! and stores, so the hot reads of many threads never share a cache line, and [`totals`] sums every block. A block
-//! outlives its thread, which hands it to the next thread to start counting, so nothing counted is lost.
+//! outlives its thread, which hands it to the next thread to start counting, so nothing counted is lost. While timing
+//! is on, a block is never handed on, so [`by_thread`] tells apart every thread that started counting since.
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -14,8 +15,9 @@ use parking_lot::Mutex;
 /// The number of counters; [`BundleRead`] takes the first ones, the exports of the C ABI the ones after them.
 pub const CAPACITY: usize = 96;
 
-/// Where a read of a [`crate::bundle::ReadOnlySnapshotBundle`] was served from, after the read-time labels of
-/// `ReadOnlySnapshotBundle.cs` (`Metrics.ReadOnlySnapshotBundleTimes`).
+/// Where a read of a [`crate::bundle::ReadOnlySnapshotBundle`] or a [`crate::scope_bundle::ScopeBundle`] was served
+/// from, after the read-time labels of `ReadOnlySnapshotBundle.cs` (`Metrics.ReadOnlySnapshotBundleTimes`), then the
+/// layers only a scope has.
 ///
 /// The C# bundle of the Rust backend has no snapshots of its own, so it labels every read the native bundle serves as
 /// a persistence read and counts every trie node as loaded from the database; these counters tell the snapshot hits
@@ -45,10 +47,20 @@ pub enum BundleRead {
     StorageNodeSnapshot,
     /// `storage_rlp`.
     StorageNodePersistence,
+    /// An account in the content a scope is writing.
+    AccountCurrent,
+    /// An account in a snapshot a scope committed, or one of its seed.
+    AccountOwn,
+    StorageCurrent,
+    StorageOwn,
+    StateNodeCurrent,
+    StateNodeOwn,
+    StorageNodeCurrent,
+    StorageNodeOwn,
 }
 
 impl BundleRead {
-    pub const COUNT: usize = 11;
+    pub const COUNT: usize = 19;
     pub const NAMES: [&str; Self::COUNT] = [
         "bundle_account_snapshot",
         "bundle_account_persistence",
@@ -61,6 +73,14 @@ impl BundleRead {
         "bundle_state_node_persistence",
         "bundle_storage_node_snapshot",
         "bundle_storage_node_persistence",
+        "bundle_account_current",
+        "bundle_account_own",
+        "bundle_storage_current",
+        "bundle_storage_own",
+        "bundle_state_node_current",
+        "bundle_state_node_own",
+        "bundle_storage_node_current",
+        "bundle_storage_node_own",
     ];
 
     pub fn count(self) {
@@ -70,8 +90,17 @@ impl BundleRead {
 
 /// One thread's counters, written by that thread only.
 struct Block {
+    /// The OS id of the thread counting into the block, 0 when unknown.
+    os_thread_id: AtomicU64,
     counts: [AtomicU64; CAPACITY],
     nanos: [AtomicU64; CAPACITY],
+}
+
+/// The counters of one thread, as [`by_thread`] reports them.
+pub struct ThreadCounters {
+    pub os_thread_id: u64,
+    pub counts: [u64; CAPACITY],
+    pub nanos: [u64; CAPACITY],
 }
 
 /// Every block ever handed out, for [`totals`].
@@ -124,14 +153,18 @@ fn bump(counter: &AtomicU64, delta: u64) {
 
 #[cold]
 fn acquire() -> &'static Block {
-    let block = FREE.lock().pop().unwrap_or_else(|| {
+    // A block handed on would mix two threads in `by_thread`, so with timing on every thread gets a new one.
+    let recycled = if timing_enabled() { None } else { FREE.lock().pop() };
+    let block = recycled.unwrap_or_else(|| {
         let block: &'static Block = Box::leak(Box::new(Block {
+            os_thread_id: AtomicU64::new(0),
             counts: [const { AtomicU64::new(0) }; CAPACITY],
             nanos: [const { AtomicU64::new(0) }; CAPACITY],
         }));
         BLOCKS.lock().push(block);
         block
     });
+    block.os_thread_id.store(os_thread_id(), Ordering::Relaxed);
     BLOCK.with(|current| current.set(Some(block)));
     // Touching it registers its destructor, which returns the block when the thread exits. A thread counting while it
     // exits keeps the block, which then stays out of reuse.
@@ -152,6 +185,29 @@ pub fn totals() -> ([u64; CAPACITY], [u64; CAPACITY]) {
     (counts, nanos)
 }
 
+/// The counters of every block, by the OS id of the thread that counts into it, or counted into it last. A thread
+/// that started counting while timing was on has a block of its own; a block handed on before holds the counts of the
+/// threads before too.
+pub fn by_thread() -> Vec<ThreadCounters> {
+    BLOCKS
+        .lock()
+        .iter()
+        .map(|block| ThreadCounters {
+            os_thread_id: block.os_thread_id.load(Ordering::Relaxed),
+            counts: std::array::from_fn(|index| block.counts[index].load(Ordering::Relaxed)),
+            nanos: std::array::from_fn(|index| block.nanos[index].load(Ordering::Relaxed)),
+        })
+        .collect()
+}
+
+/// The id `/proc/<pid>/task/<id>` names the calling thread by, 0 where `/proc/thread-self` is missing.
+fn os_thread_id() -> u64 {
+    std::fs::read_link("/proc/thread-self")
+        .ok()
+        .and_then(|link| link.file_name()?.to_str()?.parse().ok())
+        .unwrap_or(0)
+}
+
 /// The counts the calling thread's block holds, which only this thread moves, for tests to count exactly.
 pub fn this_thread() -> [u64; CAPACITY] {
     let block = BLOCK.with(|block| block.get()).unwrap_or_else(acquire);
@@ -163,7 +219,7 @@ mod tests {
     use std::thread;
     use std::time::Instant;
 
-    use super::{BundleRead, CAPACITY, record, totals};
+    use super::{BundleRead, CAPACITY, by_thread, os_thread_id, record, set_timing, totals};
 
     #[test]
     fn counts_of_every_thread_add_up_and_outlive_it() {
@@ -189,5 +245,32 @@ mod tests {
         assert_eq!(after[timed] - before[timed], 4);
         assert_eq!(after_nanos[counted], before_nanos[counted], "untimed calls add no time");
         assert!(after[BundleRead::StateNodeSnapshot as usize] > before[BundleRead::StateNodeSnapshot as usize]);
+    }
+
+    #[test]
+    fn with_timing_on_every_thread_counts_into_a_block_of_its_own() {
+        // A counter no other test of this binary touches.
+        let counted = CAPACITY - 3;
+        set_timing(true);
+        let ids: Vec<u64> = (0..3)
+            .map(|_| {
+                thread::spawn(move || {
+                    record(counted, None);
+                    record(counted, None);
+                    os_thread_id()
+                })
+                .join()
+                .unwrap()
+            })
+            .collect();
+        set_timing(false);
+
+        let threads = by_thread();
+        for id in &ids {
+            let mine: Vec<_> = threads.iter().filter(|thread| thread.os_thread_id == *id).collect();
+            assert_eq!(mine.len(), 1, "one block of thread {id}");
+            assert_eq!(mine[0].counts[counted], 2, "the counts of thread {id} alone");
+        }
+        assert!(ids.iter().all(|id| *id != 0) && ids[0] != ids[1] && ids[1] != ids[2]);
     }
 }

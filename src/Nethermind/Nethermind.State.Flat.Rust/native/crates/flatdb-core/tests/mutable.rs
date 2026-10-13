@@ -224,7 +224,7 @@ fn a_content_counts_live_from_its_first_write_until_its_snapshot_drops(
     let stats = Arc::new(FlatStats::default());
     let gauges = || {
         let index = usage as usize;
-        let content = &stats.content;
+        let content = &stats.counters.content;
         (
             content.active[index].load(Ordering::Relaxed),
             content.created[index].load(Ordering::Relaxed),

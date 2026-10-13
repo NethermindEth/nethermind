@@ -281,7 +281,7 @@ fn a_compacted_content_counts_under_its_compact_usage(#[case] block_number: u64,
         empty_snapshot(zero_state(block_number - 2), zero_state(block_number - 1)),
         empty_snapshot(zero_state(block_number - 1), zero_state(block_number)),
     ];
-    let content = &repository.stats().content;
+    let content = &repository.stats().counters.content;
     let gauges = || {
         (
             content.sorted_active[usage].load(Ordering::Relaxed),

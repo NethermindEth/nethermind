@@ -38,6 +38,7 @@ internal static unsafe class StatusMap
         FdbStatus.InvalidConfiguration => new InvalidConfigurationException(message, -1),
         FdbStatus.Cancelled => new OperationCanceledException(message),
         FdbStatus.ShutDown => new ObjectDisposedException(null, message),
+        FdbStatus.HashMismatch => new NodeHashMismatchException(message),
         _ => new RustFlatDbException(status, message),
     };
 

@@ -146,7 +146,7 @@ impl From<PersistedNodes> for PersistedEvent {
     }
 }
 
-/// A snapshot being built, handed to C# as an opaque pointer until `fdb_add_snapshot` consumes it.
+/// A snapshot being built, handed to C# as an opaque pointer until `fdb_bld_add_snapshot` consumes it.
 pub struct FdbBuilder {
     pub from: StateId,
     pub to: StateId,

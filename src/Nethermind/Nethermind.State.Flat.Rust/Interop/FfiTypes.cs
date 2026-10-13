@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Rust.Interop;
 internal static class FfiAbi
 {
     /// <summary>The ABI version this adapter speaks; must equal <c>fdb_abi_version()</c>.</summary>
-    public const uint Version = 5;
+    public const uint Version = 6;
 }
 
 /// <summary>Status code of a native call.</summary>
@@ -39,6 +39,7 @@ internal enum FdbStatus
     Rlp = 15,
     InvalidConfiguration = 16,
     ManagedCallback = 17,
+    HashMismatch = 18,
 }
 
 /// <summary>Index of each type in the sizes <c>fdb_struct_sizes</c> reports.</summary>
@@ -58,6 +59,9 @@ internal enum FfiStruct
     Observation,
     PersistedNode,
     PersistedEvent,
+    RobInfo,
+    ScopeFlags,
+    NodeRecord,
 }
 
 internal enum FdbKvKind : uint
@@ -126,6 +130,14 @@ internal enum SeamCounter
     BundleStateNodePersistence,
     BundleStorageNodeSnapshot,
     BundleStorageNodePersistence,
+    BundleAccountCurrent,
+    BundleAccountOwn,
+    BundleStorageCurrent,
+    BundleStorageOwn,
+    BundleStateNodeCurrent,
+    BundleStateNodeOwn,
+    BundleStorageNodeCurrent,
+    BundleStorageNodeOwn,
     StoreCreate,
     StoreDestroy,
     StoreTakeStats,
@@ -172,6 +184,31 @@ internal enum SeamCounter
     DropUnreachable,
     TakeFatalError,
     ClearBundleCache,
+    RobGather,
+    RobRelease,
+    RobGetAccount,
+    RobSelfDestructIdx,
+    RobGetSlot,
+    RobLoadStateRlp,
+    RobLoadStorageRlp,
+    ScopeOpen,
+    ScopeCreate,
+    ScopeRelease,
+    ScopeGetAccount,
+    ScopePromoteAccount,
+    ScopeSetAccount,
+    ScopeSelfDestructIdx,
+    ScopeGetSlot,
+    ScopeSetSlot,
+    ScopeClearStorage,
+    ScopeLoadStateRlp,
+    ScopeLoadStorageRlp,
+    ScopeSetStateNode,
+    ScopeSetStorageNode,
+    ScopePutStateNodes,
+    ScopePutStorageNodes,
+    ScopeCommit,
+    SnapshotRelease,
     Other,
 }
 
@@ -313,10 +350,18 @@ internal struct FdbHost
     public nint FlushDeferred;
 }
 
-/// <summary>The counters of a native manager, one <c>long</c> per <see cref="Nethermind.State.Flat.Metrics"/> property, updated atomically in place.</summary>
+/// <summary>
+/// The counters of a native manager, one <c>long</c> per <see cref="Nethermind.State.Flat.Metrics"/> property, then the
+/// pooled-resource gauges of its native contents, updated atomically in place.
+/// </summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct FdbCounters
+internal unsafe struct FdbCounters
 {
+    /// <summary>The <see cref="ResourcePool.Usage"/> values a block's content is written under.</summary>
+    public const int ContentUsages = 3;
+    /// <summary>The <see cref="ResourcePool.Usage"/> values a compacted content is built under, from <c>Compact2</c>.</summary>
+    public const int SortedContentUsages = 11;
+
     public long SnapshotCount;
     public long CompactedSnapshotCount;
     public long SnapshotMemory;
@@ -329,6 +374,12 @@ internal struct FdbCounters
     public long InMemorySlotFilterBuilds;
     public long InMemorySlotFilterBuildFailures;
     public long ObservationsDropped;
+    /// <summary>Live block contents, by usage, counted as <c>ActivePooledResource</c> of <c>SnapshotContent</c>.</summary>
+    public fixed long ContentActive[ContentUsages];
+    public fixed long ContentCreated[ContentUsages];
+    /// <summary>Live compacted contents, by usage from <c>Compact2</c>, counted as <c>ActivePooledResource</c> of <c>SortedSnapshotContent</c>.</summary>
+    public fixed long SortedContentActive[SortedContentUsages];
+    public fixed long SortedContentCreated[SortedContentUsages];
 }
 
 /// <summary>A histogram observation of a native manager.</summary>
@@ -370,4 +421,69 @@ internal unsafe struct FdbPersistedEvent
     public FfiPersistedNode* Nodes;
     public nuint NodeCount;
     public nint Owner;
+}
+
+/// <summary>What a native read-only bundle or scope was opened over, cached by its handle so that no call is needed to learn it.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct FfiRobInfo
+{
+    /// <summary>The persisted state the bundle reads below its snapshots.</summary>
+    public FfiStateId ReaderState;
+    /// <summary>The in-memory snapshots of the bundle, which number its self-destruct indexes from 0.</summary>
+    public uint SnapshotCount;
+    /// <summary>The snapshots a scope was seeded with, numbered after the bundle's; 0 for a read-only bundle.</summary>
+    public uint OwnCount;
+    /// <summary>The persisted snapshots of the bundle; 0 until the persisted-snapshot tier exists.</summary>
+    public uint PersistedCount;
+    public byte MayFilterSlots;
+    /// <summary>Whether a snapshot of the bundle, or of a scope's seed, clears a storage.</summary>
+    public byte HasSelfDestructs;
+    public byte IsHistorical;
+    public byte Pad;
+}
+
+/// <summary>How a native scope reads and sizes its content.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FfiScopeFlags
+{
+    /// <summary>Slot reads that reach the scope's bundle go through its negative slot filter.</summary>
+    public byte FilterInMemorySlotReads;
+    /// <summary><see cref="ResourcePool.Usage.MainBlockProcessing"/>, <see cref="ResourcePool.Usage.PostMainBlockProcessing"/> or <see cref="ResourcePool.Usage.ReadOnlyProcessingEnv"/>.</summary>
+    public byte Usage;
+    public fixed byte Pad[2];
+
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="usage"/> is not one a block's content is written under.</exception>
+    public FfiScopeFlags(bool filterInMemorySlotReads, ResourcePool.Usage usage)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((int)usage, (int)ResourcePool.Usage.ReadOnlyProcessingEnv, nameof(usage));
+        FilterInMemorySlotReads = filterInMemorySlotReads ? (byte)1 : (byte)0;
+        Usage = (byte)usage;
+    }
+}
+
+/// <summary>A trie node of a batch of node writes: its path, its hash (zero for an inline node) and where its RLP lies in the batch's blob.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FfiNodeRecord
+{
+    public fixed byte Path[32];
+    public byte PathLength;
+    public fixed byte Pad[3];
+    /// <summary>0 for a hash-only placeholder.</summary>
+    public uint RlpLength;
+    public ulong RlpOffset;
+    public fixed byte Hash[32];
+}
+
+/// <summary>Where a read of a native bundle or scope was served from.</summary>
+internal enum ReadSource : byte
+{
+    /// <summary>The content the scope is writing.</summary>
+    Current = 1,
+    /// <summary>A snapshot the scope committed, or one of its seed.</summary>
+    Own = 2,
+    /// <summary>An in-memory snapshot of the bundle.</summary>
+    Snapshot = 3,
+    Persistence = 4,
+    /// <summary>Nothing: a self-destruct cut the slot off.</summary>
+    SelfDestructed = 5,
 }

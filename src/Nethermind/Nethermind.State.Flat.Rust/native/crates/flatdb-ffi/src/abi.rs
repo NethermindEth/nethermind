@@ -3,6 +3,7 @@
 use std::ffi::c_void;
 use std::mem::offset_of;
 
+use flatdb_core::bundle::NodeLoadError;
 use flatdb_core::host::{HostCallbacks, HostError};
 use flatdb_core::kv::KvError;
 use flatdb_core::kv::managed::ManagedKvVTable;
@@ -10,8 +11,10 @@ use flatdb_core::kv::rocks_api::RocksApi;
 use flatdb_core::manager::ManagerError;
 use flatdb_core::persistence::PersistenceError;
 use flatdb_core::persistence_manager::PersistError;
+use flatdb_core::scope_bundle::ScopeFlags;
+use flatdb_core::snapshot::mutable::{NodeRecord, Usage};
 use flatdb_core::stats::{FlatCounters, Observation};
-use flatdb_core::types::{Account, EMPTY_TREE_HASH, Hash256, KECCAK_OF_EMPTY_STRING, StateId, U256};
+use flatdb_core::types::{Account, EMPTY_TREE_HASH, Hash256, KECCAK_OF_EMPTY_STRING, StateId, TreePath, U256};
 
 /// Status code returned by every fallible export.
 #[repr(i32)]
@@ -39,6 +42,8 @@ pub enum FdbStatus {
     InvalidConfiguration = 16,
     /// A callback of the managed key-value backend failed; C# keeps the exception it threw.
     ManagedCallback = 17,
+    /// The first in-memory node at the path of a checked load has another hash (`NodeHashMismatchException`).
+    HashMismatch = 18,
 }
 
 /// A failed export: the status it returns and the message `fdb_last_error` reports.
@@ -103,6 +108,18 @@ impl From<ManagerError> for FfiError {
         Self {
             status,
             message: error.to_string(),
+        }
+    }
+}
+
+impl From<NodeLoadError> for FfiError {
+    fn from(error: NodeLoadError) -> Self {
+        match error {
+            NodeLoadError::Persistence(error) => error.into(),
+            NodeLoadError::HashMismatch { .. } => Self {
+                status: FdbStatus::HashMismatch,
+                message: error.to_string(),
+            },
         }
     }
 }
@@ -366,8 +383,91 @@ pub struct FdbPersistedEvent {
     pub owner: *mut c_void,
 }
 
+/// What a read-only bundle or a scope was opened over, cached by its C# handle so that no call is needed to learn it.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FfiRobInfo {
+    /// The persisted state the bundle reads below its snapshots.
+    pub reader_state: FfiStateId,
+    /// The in-memory snapshots of the bundle, which number its self-destruct indexes from 0.
+    pub snapshot_count: u32,
+    /// The snapshots a scope was seeded with, numbered after the bundle's; 0 for a read-only bundle.
+    pub own_count: u32,
+    /// The persisted snapshots of the bundle; 0 until the persisted-snapshot tier exists.
+    pub persisted_count: u32,
+    /// Whether filtered slot reads can build the bundle's negative slot filter.
+    pub may_filter_slots: u8,
+    /// Whether a snapshot of the bundle, or of a scope's seed, clears a storage.
+    pub has_self_destructs: u8,
+    /// Always 0: history is not served by this backend.
+    pub is_historical: u8,
+    pub pad: u8,
+}
+
+/// How a scope reads and sizes its content ([`ScopeFlags`]).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FfiScopeFlags {
+    /// Slot reads that reach the bundle go through its negative slot filter.
+    pub filter_in_memory_slot_reads: u8,
+    /// A [`Usage`]: 0 main block processing, 1 post-main block processing, 2 read-only processing.
+    pub usage: u8,
+    pub pad: [u8; 2],
+}
+
+impl TryFrom<&FfiScopeFlags> for ScopeFlags {
+    type Error = FfiError;
+
+    fn try_from(flags: &FfiScopeFlags) -> Result<Self, FfiError> {
+        let usage = match flags.usage {
+            0 => Usage::MainBlockProcessing,
+            1 => Usage::PostMainBlockProcessing,
+            2 => Usage::ReadOnlyProcessingEnv,
+            usage => return Err(FfiError::invalid_argument(format!("unknown content usage {usage}"))),
+        };
+        Ok(ScopeFlags {
+            filter_in_memory_slot_reads: flags.filter_in_memory_slot_reads != 0,
+            usage,
+        })
+    }
+}
+
+/// A trie node of a batch: its path, its hash (zero for an inline node) and where its RLP lies in the batch's blob.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FfiNodeRecord {
+    pub path: Hash256,
+    pub path_len: u8,
+    pub pad: [u8; 3],
+    /// 0 for a hash-only placeholder.
+    pub rlp_len: u32,
+    pub rlp_offset: u64,
+    pub hash: Hash256,
+}
+
+impl FfiNodeRecord {
+    /// The record, checked to name a path and RLP inside a blob of `blob_len` bytes.
+    pub fn to_node_record(&self, blob_len: usize) -> Result<NodeRecord, FfiError> {
+        if self.path_len > TreePath::MAX_LENGTH {
+            return Err(FfiError::invalid_argument(format!("path length {}", self.path_len)));
+        }
+        let (rlp_offset, rlp_len) = (self.rlp_offset as usize, self.rlp_len as usize);
+        if rlp_offset.checked_add(rlp_len).is_none_or(|end| end > blob_len) {
+            return Err(FfiError::invalid_argument(format!(
+                "node RLP at {rlp_offset} of {rlp_len} bytes outside a blob of {blob_len} bytes"
+            )));
+        }
+        Ok(NodeRecord {
+            path: TreePath::new(self.path, self.path_len),
+            hash: self.hash,
+            rlp_offset,
+            rlp_len,
+        })
+    }
+}
+
 /// Size of every `repr(C)` type, in the order `fdb_struct_sizes` reports them.
-pub const STRUCT_SIZES: [u32; 14] = [
+pub const STRUCT_SIZES: [u32; 17] = [
     size_of::<FdbStoreCfg>() as u32,
     size_of::<FdbKvDesc>() as u32,
     size_of::<RocksApi>() as u32,
@@ -382,11 +482,14 @@ pub const STRUCT_SIZES: [u32; 14] = [
     size_of::<Observation>() as u32,
     size_of::<FfiPersistedNode>() as u32,
     size_of::<FdbPersistedEvent>() as u32,
+    size_of::<FfiRobInfo>() as u32,
+    size_of::<FfiScopeFlags>() as u32,
+    size_of::<FfiNodeRecord>() as u32,
 ];
 
 /// Offset of every field of the `repr(C)` types with several fields, in declaration order, as `fdb_struct_offsets`
 /// reports them. With [`STRUCT_SIZES`] it pins the layouts the C# mirrors must match.
-pub const FIELD_OFFSETS: [u32; 86] = [
+pub const FIELD_OFFSETS: [u32; 107] = [
     offset_of!(FdbStoreCfg, abi_version) as u32,
     offset_of!(FdbStoreCfg, layout) as u32,
     offset_of!(FdbStoreCfg, write_buffer_floor) as u32,
@@ -460,6 +563,10 @@ pub const FIELD_OFFSETS: [u32; 86] = [
     offset_of!(FlatCounters, in_memory_slot_filter_builds) as u32,
     offset_of!(FlatCounters, in_memory_slot_filter_build_failures) as u32,
     offset_of!(FlatCounters, observations_dropped) as u32,
+    offset_of!(FlatCounters, content.active) as u32,
+    offset_of!(FlatCounters, content.created) as u32,
+    offset_of!(FlatCounters, content.sorted_active) as u32,
+    offset_of!(FlatCounters, content.sorted_created) as u32,
     offset_of!(Observation, metric) as u32,
     offset_of!(Observation, label) as u32,
     offset_of!(Observation, value) as u32,
@@ -473,4 +580,24 @@ pub const FIELD_OFFSETS: [u32; 86] = [
     offset_of!(FdbPersistedEvent, nodes) as u32,
     offset_of!(FdbPersistedEvent, node_count) as u32,
     offset_of!(FdbPersistedEvent, owner) as u32,
+    offset_of!(FfiRobInfo, reader_state) as u32,
+    offset_of!(FfiRobInfo, snapshot_count) as u32,
+    offset_of!(FfiRobInfo, own_count) as u32,
+    offset_of!(FfiRobInfo, persisted_count) as u32,
+    offset_of!(FfiRobInfo, may_filter_slots) as u32,
+    offset_of!(FfiRobInfo, has_self_destructs) as u32,
+    offset_of!(FfiRobInfo, is_historical) as u32,
+    offset_of!(FfiRobInfo, pad) as u32,
+    offset_of!(FfiScopeFlags, filter_in_memory_slot_reads) as u32,
+    offset_of!(FfiScopeFlags, usage) as u32,
+    offset_of!(FfiScopeFlags, pad) as u32,
+    offset_of!(FfiNodeRecord, path) as u32,
+    offset_of!(FfiNodeRecord, path_len) as u32,
+    offset_of!(FfiNodeRecord, pad) as u32,
+    offset_of!(FfiNodeRecord, rlp_len) as u32,
+    offset_of!(FfiNodeRecord, rlp_offset) as u32,
+    offset_of!(FfiNodeRecord, hash) as u32,
 ];
+
+const _: () =
+    assert!(size_of::<FfiRobInfo>() == 56 && size_of::<FfiScopeFlags>() == 4 && size_of::<FfiNodeRecord>() == 80);

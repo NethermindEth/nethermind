@@ -184,7 +184,7 @@ impl<'a> Reader<'a> {
 }
 
 /// Encodes op streams as C# does, for the tests.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-api"))]
 pub mod writer {
     use flatdb_core::types::{Account, Address, Hash256, TreePath, U256};
 

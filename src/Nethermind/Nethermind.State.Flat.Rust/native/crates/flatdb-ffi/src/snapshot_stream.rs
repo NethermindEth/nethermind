@@ -2,12 +2,19 @@
 //! `Nethermind.State.Flat.Rust/SnapshotSerializer.cs` and handed over a chunk at a time.
 //!
 //! Each record is a tag byte followed by its fields, encoded as in [`crate::op_stream`]; a later record of a key
-//! replaces the earlier one, as a write to the C# dictionaries does.
+//! replaces the earlier one, as a write to the C# dictionaries does. Tests also get a snapshot's content back as
+//! records ([`dump`]).
 
+#[cfg(any(test, feature = "test-api"))]
+use flatdb_core::snapshot::Snapshot;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
+#[cfg(any(test, feature = "test-api"))]
+use flatdb_core::snapshot::keys::SnapshotKey;
 
 use crate::abi::FfiError;
 use crate::op_stream::Reader;
+#[cfg(any(test, feature = "test-api"))]
+use crate::op_stream::writer::OpWriter;
 
 /// `Accounts[address] = account`: address, account.
 pub const SET_ACCOUNT: u8 = 0;
@@ -70,4 +77,45 @@ fn append_one(builder: &mut SnapshotContentBuilder, reader: &mut Reader<'_>) -> 
         tag => return Err(FfiError::invalid_argument(format!("unknown record tag {tag}"))),
     }
     Ok(())
+}
+
+/// Every entry of `snapshot` as records: its accounts, clears, slots, state trie nodes, then storage trie nodes, each
+/// kind sorted as the C# comparers sort its keys, so equal contents dump to equal bytes.
+#[cfg(any(test, feature = "test-api"))]
+pub fn dump(snapshot: &Snapshot) -> Vec<u8> {
+    let mut writer = OpWriter::default();
+    for (address, account) in sorted(snapshot.accounts()) {
+        match account {
+            Some(account) => writer.op(SET_ACCOUNT).address(address).account(account),
+            None => writer.op(DELETE_ACCOUNT).address(address),
+        };
+    }
+    for (address, is_new_account) in sorted(snapshot.self_destructed_storage_addresses()) {
+        writer.op(SELF_DESTRUCT).address(address).byte(is_new_account.into());
+    }
+    for (key, value) in sorted(snapshot.storages()) {
+        match value {
+            Some(value) => writer.op(SET_SLOT).address(&key.address).u256(&key.slot).u256(value),
+            None => writer.op(DELETE_SLOT).address(&key.address).u256(&key.slot),
+        };
+    }
+    for (path, node) in sorted(snapshot.state_nodes()) {
+        writer.op(STATE_NODE).path(path).hash(node.hash).bytes(node.rlp);
+    }
+    for (key, node) in sorted(snapshot.storage_nodes()) {
+        writer
+            .op(STORAGE_NODE)
+            .hash(&key.address_hash)
+            .path(&key.path)
+            .hash(node.hash)
+            .bytes(node.rlp);
+    }
+    writer.0
+}
+
+#[cfg(any(test, feature = "test-api"))]
+fn sorted<'a, K: SnapshotKey, V>(entries: impl Iterator<Item = (&'a K, V)>) -> Vec<(&'a K, V)> {
+    let mut entries: Vec<_> = entries.collect();
+    entries.sort_unstable_by(|left, right| left.0.compare(right.0));
+    entries
 }

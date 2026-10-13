@@ -493,7 +493,7 @@ fn commits_append_kept_or_not_and_a_kept_main_commit_moves_to_post_main(
     };
     assert_eq!(bundle.usage(), next_usage);
     bundle.set_account(&a, None);
-    let active = |usage: Usage| stats.content.active[usage as usize].load(Ordering::Relaxed);
+    let active = |usage: Usage| stats.counters.content.active[usage as usize].load(Ordering::Relaxed);
     assert_eq!(
         (active(usage), active(next_usage)),
         if usage == next_usage { (3, 3) } else { (2, 1) },

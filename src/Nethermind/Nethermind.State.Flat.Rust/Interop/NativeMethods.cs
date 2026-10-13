@@ -10,7 +10,8 @@ namespace Nethermind.State.Flat.Rust.Interop;
 
 /// <summary>Exports of <c>libnethermind_flatdb</c>, built from <c>native/</c> (see native/crates/flatdb-ffi/src/lib.rs).</summary>
 /// <remarks>
-/// Handles C# owns are passed as their <see cref="SafeHandle"/>, so a call keeps them alive; reads copy into caller
+/// Handles C# owns are passed as their <see cref="SafeHandle"/>, so a call keeps them alive, except a read-only bundle
+/// or scope, passed as the pointer of a <see cref="BundleBaseHandle.Call"/> lease, which does; reads copy into caller
 /// buffers and report the length, -1 for an absent value, or <see cref="FdbStatus.BufferTooSmall"/> with the length
 /// needed.
 /// </remarks>
@@ -98,6 +99,9 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibraryName)]
     public static partial nuint fdb_seam_counters(ulong* counts, ulong* nanoseconds, nuint capacity);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_seam_counters_by_thread(ulong* osThreadIds, ulong* counts, ulong* nanoseconds, uint threadCapacity, uint counterCapacity, uint* threads);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_seam_counter_name(uint index, byte** name, nuint* nameLength);
@@ -199,7 +203,7 @@ internal static unsafe partial class NativeMethods
     public static partial FdbStatus fdb_bld_release(nint builder);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_add_snapshot(ManagerHandle manager, nint builder);
+    public static partial FdbStatus fdb_bld_add_snapshot(ManagerHandle manager, nint builder);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_queue_compaction(ManagerHandle manager, FfiStateId* to, long* stallNs);
@@ -230,4 +234,82 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_clear_bundle_cache(ManagerHandle manager);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_gather(ManagerHandle manager, FfiStateId* baseBlock, uint readerFlags, nint* rob, FfiRobInfo* info);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_release(nint rob);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_get_account(nint rob, byte* address, FfiAccount* account, byte* found, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_self_destruct_idx(nint rob, byte* address, int* index);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_get_slot(nint rob, byte* address, ulong* slot, int selfDestructIndex, byte filtered, ulong* value, byte* found, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_load_state_rlp(nint rob, byte* path, byte pathLength, byte* hash, uint readFlags, byte* buffer, nuint capacity, long* length, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_rob_load_storage_rlp(nint rob, byte* addressHash, byte* path, byte pathLength, byte* hash, uint readFlags, byte* buffer, nuint capacity, long* length, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_open(ManagerHandle manager, FfiStateId* baseBlock, uint readerFlags, FfiScopeFlags* flags, nint* scope, FfiRobInfo* info);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_create(nint rob, nint* own, uint ownCount, FfiScopeFlags* flags, nint* scope, FfiRobInfo* info);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_release(nint scope);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_get_account(nint scope, byte* address, byte promote, FfiAccount* account, byte* found, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_promote_account(nint scope, byte* address, FfiAccount* account);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_set_account(nint scope, byte* address, FfiAccount* account);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_self_destruct_idx(nint scope, byte* address, int* index);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_get_slot(nint scope, byte* address, ulong* slot, int selfDestructIndex, ulong* value, byte* found, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_set_slot(nint scope, byte* address, ulong* slot, ulong* value);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_clear_storage(nint scope, byte* address, byte* addressHash);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_load_state_rlp(nint scope, byte* path, byte pathLength, byte* hash, uint readFlags, byte* buffer, nuint capacity, long* length, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_load_storage_rlp(nint scope, byte* addressHash, byte* path, byte pathLength, byte* hash, uint readFlags, byte* buffer, nuint capacity, long* length, ReadSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_set_state_node(nint scope, byte* path, byte pathLength, byte* hash, byte* rlp, uint rlpLength);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_set_storage_node(nint scope, byte* addressHash, byte* path, byte pathLength, byte* hash, byte* rlp, uint rlpLength);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_put_state_nodes(nint scope, FfiNodeRecord* records, uint count, byte* blob, nuint blobLength);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_put_storage_nodes(nint scope, byte* addressHash, FfiNodeRecord* records, uint count, byte* blob, nuint blobLength);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_scope_commit(nint scope, FfiStateId* from, FfiStateId* to, byte keep, nint* snapshot);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_snapshot_release(nint snapshot);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_add_snapshot(ManagerHandle manager, SnapshotHandle snapshot);
 }

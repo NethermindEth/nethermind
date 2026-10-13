@@ -421,7 +421,7 @@ impl LiveContent {
     }
 
     fn counters(stats: &FlatStats, kind: LiveKind) -> (&AtomicI64, &AtomicI64) {
-        let counters = &stats.content;
+        let counters = &stats.counters.content;
         match kind {
             LiveKind::Block(usage) => (&counters.active[usage], &counters.created[usage]),
             LiveKind::Sorted(usage) => (&counters.sorted_active[usage], &counters.sorted_created[usage]),

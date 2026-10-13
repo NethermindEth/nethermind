@@ -164,6 +164,14 @@ fn reads_count_where_they_were_served_from(#[values(false, true)] filtered: bool
             2, // state_rlp: the placeholder and the node only persistence holds
             1, // storage_node_snapshot
             1, // storage_rlp
+            0, // account_current: the layers of a scope, which a read-only bundle has none of
+            0, // account_own
+            0, // storage_current
+            0, // storage_own
+            0, // state_node_current
+            0, // state_node_own
+            0, // storage_node_current
+            0, // storage_node_own
         ]
     );
 }

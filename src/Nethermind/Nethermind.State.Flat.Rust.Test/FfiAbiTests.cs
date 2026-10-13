@@ -35,13 +35,17 @@ public class FfiAbiTests
             [FfiStruct.Observation] = sizeof(FdbObservation),
             [FfiStruct.PersistedNode] = sizeof(FfiPersistedNode),
             [FfiStruct.PersistedEvent] = sizeof(FdbPersistedEvent),
+            [FfiStruct.RobInfo] = sizeof(FfiRobInfo),
+            [FfiStruct.ScopeFlags] = sizeof(FfiScopeFlags),
+            [FfiStruct.NodeRecord] = sizeof(FfiNodeRecord),
         };
         uint[] expectedOffsets =
         [
             .. FieldOffsets<FdbStoreCfg>(), .. FieldOffsets<FdbKvDesc>(), .. FieldOffsets<ManagedKvVTable>(), .. FieldOffsets<FdbStoreInfo>(),
             .. FieldOffsets<FdbStats>(), .. FieldOffsets<FfiStateId>(), .. FieldOffsets<FfiAccount>(),
             .. FieldOffsets<FdbMgrCfg>(), .. FieldOffsets<FdbHost>(), .. FieldOffsets<FdbCounters>(), .. FieldOffsets<FdbObservation>(),
-            .. FieldOffsets<FfiPersistedNode>(), .. FieldOffsets<FdbPersistedEvent>(),
+            .. FieldOffsets<FfiPersistedNode>(), .. FieldOffsets<FdbPersistedEvent>(), .. FieldOffsets<FfiRobInfo>(),
+            .. FieldOffsets<FfiScopeFlags>(), .. FieldOffsets<FfiNodeRecord>(),
         ];
         uint* sizes = stackalloc uint[32];
         uint count = NativeMethods.fdb_struct_sizes(sizes, 32);
@@ -65,6 +69,7 @@ public class FfiAbiTests
     [TestCase((int)FdbStatus.WrongBaseState, typeof(InvalidOperationException))]
     [TestCase((int)FdbStatus.Cancelled, typeof(OperationCanceledException))]
     [TestCase((int)FdbStatus.ShutDown, typeof(ObjectDisposedException))]
+    [TestCase((int)FdbStatus.HashMismatch, typeof(NodeHashMismatchException))]
     public void Statuses_throw_the_exceptions_of_the_csharp_backend(int status, Type expected) =>
         Assert.That(StatusMap.ToException((FdbStatus)status, "failed"), Is.TypeOf(expected));
 

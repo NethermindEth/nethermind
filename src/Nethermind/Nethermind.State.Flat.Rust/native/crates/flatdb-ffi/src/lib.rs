@@ -15,6 +15,7 @@ pub mod manager;
 pub mod manager_exports;
 pub mod op_stream;
 pub mod persistence;
+pub mod scope_exports;
 pub mod snapshot_stream;
 pub mod store;
 
@@ -266,6 +267,55 @@ pub unsafe extern "C" fn fdb_seam_counters(counts: *mut u64, nanos: *mut u64, ca
         }
     }
     calls::COUNTER_COUNT
+}
+
+/// The seam counters of every thread that counted, as [`fdb_seam_counters`] sums them: for thread `i` below
+/// `thread_capacity`, its OS id (`/proc/<pid>/task/<id>`) in `os_thread_ids[i]` and up to `counter_capacity` counters
+/// at `counts[i * counter_capacity]` and `nanos[i * counter_capacity]`. Stores how many threads there are in `threads`.
+/// Only while timing is on ([`fdb_seam_timing`]) does every thread starting to count get counters of its own;
+/// [`FdbStatus::InvalidOperation`] otherwise.
+///
+/// # Safety
+/// `os_thread_ids` must be valid for writes of `thread_capacity` values, `counts` and `nanos` of `thread_capacity *
+/// counter_capacity`, unless `thread_capacity` is 0, and `threads` valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_seam_counters_by_thread(
+    os_thread_ids: *mut u64,
+    counts: *mut u64,
+    nanos: *mut u64,
+    thread_capacity: u32,
+    counter_capacity: u32,
+    threads: *mut u32,
+) -> i32 {
+    ffi_guard(Export::Other, || {
+        // SAFETY: the caller passes a valid out-pointer.
+        let threads = unsafe { out(threads)? };
+        if !seam::timing_enabled() {
+            return Err(FfiError {
+                status: FdbStatus::InvalidOperation,
+                message: "the seam counters are kept by thread only while timing is on".to_owned(),
+            });
+        }
+        let (thread_capacity, counter_capacity) = (thread_capacity as usize, counter_capacity as usize);
+        let total = thread_capacity * counter_capacity;
+        // SAFETY: the caller guarantees room for `thread_capacity` ids and `total` counters of each kind.
+        let (os_thread_ids, counts, nanos) = unsafe {
+            (
+                values_mut(os_thread_ids, thread_capacity)?,
+                values_mut(counts, total)?,
+                values_mut(nanos, total)?,
+            )
+        };
+        let by_thread = seam::by_thread();
+        let copied = calls::COUNTER_COUNT.min(counter_capacity);
+        for (index, thread) in by_thread.iter().take(thread_capacity).enumerate() {
+            os_thread_ids[index] = thread.os_thread_id;
+            counts[index * counter_capacity..][..copied].copy_from_slice(&thread.counts[..copied]);
+            nanos[index * counter_capacity..][..copied].copy_from_slice(&thread.nanos[..copied]);
+        }
+        *threads = by_thread.len() as u32;
+        Ok(())
+    })
 }
 
 /// Points `name` at the ASCII name of seam counter `index`, which stays valid for the life of the process.
@@ -884,7 +934,7 @@ pub unsafe extern "C" fn fdb_test_inject_fault(
 
 /// Stores the length of a read in `len`, -1 when absent; a read that did not fit fails with
 /// [`FdbStatus::BufferTooSmall`] and its length in `len`.
-fn report_len(read: GetInto, capacity: usize, len: &mut i64) -> Result<(), FfiError> {
+pub(crate) fn report_len(read: GetInto, capacity: usize, len: &mut i64) -> Result<(), FfiError> {
     match read {
         GetInto::NotFound => *len = -1,
         GetInto::Found(found) => *len = found as i64,
@@ -903,7 +953,7 @@ fn report_len(read: GetInto, capacity: usize, len: &mut i64) -> Result<(), FfiEr
 ///
 /// # Safety
 /// `value` must be valid for writes of four limbs.
-unsafe fn write_found_u256(read: Option<U256>, value: *mut u64, found: &mut u8) -> Result<(), FfiError> {
+pub(crate) unsafe fn write_found_u256(read: Option<U256>, value: *mut u64, found: &mut u8) -> Result<(), FfiError> {
     if value.is_null() {
         return Err(FfiError::invalid_argument("null out-pointer"));
     }
@@ -917,7 +967,7 @@ unsafe fn write_found_u256(read: Option<U256>, value: *mut u64, found: &mut u8) 
 
 /// # Safety
 /// `slot` must be valid for reads of four limbs.
-unsafe fn read_u256(slot: *const u64) -> Result<U256, FfiError> {
+pub(crate) unsafe fn read_u256(slot: *const u64) -> Result<U256, FfiError> {
     if slot.is_null() {
         return Err(FfiError::invalid_argument("null slot"));
     }
@@ -927,7 +977,7 @@ unsafe fn read_u256(slot: *const u64) -> Result<U256, FfiError> {
 
 /// # Safety
 /// `path` must be valid for reads of 32 bytes.
-unsafe fn tree_path(path: *const u8, length: u8) -> Result<TreePath, FfiError> {
+pub(crate) unsafe fn tree_path(path: *const u8, length: u8) -> Result<TreePath, FfiError> {
     if length > TreePath::MAX_LENGTH {
         return Err(FfiError::invalid_argument(format!("path length {length}")));
     }
@@ -937,7 +987,7 @@ unsafe fn tree_path(path: *const u8, length: u8) -> Result<TreePath, FfiError> {
 
 /// # Safety
 /// `data` must be null or valid for reads of `N` bytes.
-unsafe fn array<'a, const N: usize>(data: *const u8) -> Result<&'a [u8; N], FfiError> {
+pub(crate) unsafe fn array<'a, const N: usize>(data: *const u8) -> Result<&'a [u8; N], FfiError> {
     // SAFETY: the caller guarantees `N` readable bytes; a byte array needs no alignment.
     unsafe { data.cast::<[u8; N]>().as_ref() }.ok_or_else(|| FfiError::invalid_argument("null pointer"))
 }
@@ -982,6 +1032,17 @@ pub(crate) unsafe fn bytes<'a>(data: *const u8, len: usize) -> Result<&'a [u8], 
 }
 
 /// # Safety
+/// `data` must be valid for writes of `len` values unless `len` is 0.
+unsafe fn values_mut<'a>(data: *mut u64, len: usize) -> Result<&'a mut [u64], FfiError> {
+    match (data.is_null(), len) {
+        (_, 0) => Ok(&mut []),
+        (true, _) => Err(FfiError::invalid_argument("null pointer with a non-zero length")),
+        // SAFETY: the caller guarantees `len` writable values.
+        (false, _) => Ok(unsafe { slice::from_raw_parts_mut(data, len) }),
+    }
+}
+
+/// # Safety
 /// `data` must be valid for writes of `len` bytes unless `len` is 0.
 pub(crate) unsafe fn bytes_mut<'a>(data: *mut u8, len: usize) -> Result<&'a mut [u8], FfiError> {
     match (data.is_null(), len) {
@@ -1013,6 +1074,11 @@ mod tests {
     use log::Level;
     use rstest::rstest;
     use std::ffi::c_void;
+    use std::sync::Mutex;
+    use std::thread;
+
+    /// Held by the tests that turn seam timing on, which is process-wide.
+    static TIMING: Mutex<()> = Mutex::new(());
 
     fn desc(kind: FdbKvKind) -> FdbKvDesc {
         FdbKvDesc {
@@ -1582,8 +1648,8 @@ mod tests {
 
     #[test]
     fn struct_sizes_and_symbols_are_reported() {
-        let mut sizes = [0u32; 16];
-        // SAFETY: the buffer holds 16 values.
+        let mut sizes = [0u32; 32];
+        // SAFETY: the buffer holds 32 values.
         let count = unsafe { fdb_struct_sizes(sizes.as_mut_ptr(), sizes.len() as u32) };
         assert_eq!(&sizes[..count as usize], &STRUCT_SIZES);
         let mut offsets = [0u32; 128];
@@ -1612,6 +1678,7 @@ mod tests {
     /// on; the counters are summed over every thread.
     #[test]
     fn exports_count_their_calls_and_time() {
+        let _timing = TIMING.lock().unwrap();
         let store = mem_store(FlatLayout::Flat);
         let (mut reader, mut current, mut account, mut found) =
             (ptr::null_mut(), FfiStateId::default(), FfiAccount::default(), 0u8);
@@ -1670,6 +1737,68 @@ mod tests {
                 None
             ]
         );
+    }
+
+    /// While timing is on, every thread starting to count gets counters of its own, reported under its OS id; off, the
+    /// counters are not kept by thread.
+    #[test]
+    fn seam_counters_are_reported_by_thread_while_timing_is_on() {
+        let _timing = TIMING.lock().unwrap();
+        const THREADS: usize = 4096;
+        // Rows wider than the counters, which leave the rest of each row alone.
+        let width = calls::COUNTER_COUNT + 3;
+        let other = Export::Other.counter();
+        let by_thread = || {
+            let (mut ids, mut counts, mut nanos, mut threads) = (
+                vec![0u64; THREADS],
+                vec![0u64; THREADS * width],
+                vec![0u64; THREADS * width],
+                0u32,
+            );
+            // SAFETY: the buffers hold `THREADS` threads of `width` counters.
+            let status = unsafe {
+                fdb_seam_counters_by_thread(
+                    ids.as_mut_ptr(),
+                    counts.as_mut_ptr(),
+                    nanos.as_mut_ptr(),
+                    THREADS as u32,
+                    width as u32,
+                    &mut threads,
+                )
+            };
+            let rows: Vec<(u64, u64)> = (0..(threads as usize).min(THREADS))
+                .map(|row| (ids[row], counts[row * width + other]))
+                .collect();
+            (status, rows)
+        };
+        let count_on_a_new_thread = || {
+            thread::spawn(|| {
+                let mut name = (ptr::null(), 0usize);
+                for _ in 0..3 {
+                    // SAFETY: the out-pointers are valid.
+                    unsafe { fdb_seam_counter_name(0, &mut name.0, &mut name.1) };
+                }
+                let link = std::fs::read_link("/proc/thread-self").unwrap();
+                link.file_name().unwrap().to_str().unwrap().parse::<u64>().unwrap()
+            })
+            .join()
+            .unwrap()
+        };
+
+        assert_eq!(by_thread().0, FdbStatus::InvalidOperation as i32);
+        fdb_seam_timing(1);
+        let ids = [count_on_a_new_thread(), count_on_a_new_thread()];
+        let (status, rows) = by_thread();
+        fdb_seam_timing(0);
+
+        assert_eq!(status, FdbStatus::Ok as i32);
+        for id in ids {
+            assert_eq!(
+                rows.iter().filter(|row| row.0 == id).collect::<Vec<_>>(),
+                [&(id, 3)],
+                "thread {id} counts alone"
+            );
+        }
     }
 
     #[test]

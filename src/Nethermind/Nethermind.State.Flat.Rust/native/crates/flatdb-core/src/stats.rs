@@ -38,6 +38,8 @@ pub struct FlatCounters {
     pub in_memory_slot_filter_build_failures: AtomicI64,
     /// Histogram observations dropped because the queue was full (no C# counterpart).
     pub observations_dropped: AtomicI64,
+    /// The pooled-resource gauges of the native contents.
+    pub content: ContentCounters,
 }
 
 /// The number of `ResourcePool.Usage` values a block's content is written under: `MainBlockProcessing`,
@@ -138,7 +140,6 @@ pub struct Observation {
 /// The metrics of one manager and the components under it.
 pub struct FlatStats {
     pub counters: FlatCounters,
-    pub content: ContentCounters,
     pub(crate) content_hints: ContentHints,
     /// `None` when histograms are off, as the C# observers of detailed metrics are no-ops then.
     observations: Option<(Sender<Observation>, Receiver<Observation>)>,
@@ -156,7 +157,6 @@ impl FlatStats {
     pub fn new(observation_capacity: usize) -> Self {
         Self {
             counters: FlatCounters::default(),
-            content: ContentCounters::default(),
             content_hints: ContentHints::default(),
             observations: (observation_capacity > 0).then(|| crossbeam_channel::bounded(observation_capacity)),
         }

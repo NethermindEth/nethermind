@@ -149,7 +149,7 @@ internal sealed class NativeFlatManager : IDisposable
     /// <returns><see cref="FdbStatus.Ok"/>, <see cref="FdbStatus.Rejected"/> or <see cref="FdbStatus.Duplicate"/>.</returns>
     public FdbStatus AddSnapshot(nint builder)
     {
-        FdbStatus status = NativeMethods.fdb_add_snapshot(_handle, builder);
+        FdbStatus status = NativeMethods.fdb_bld_add_snapshot(_handle, builder);
         if (status is not (FdbStatus.Ok or FdbStatus.Rejected or FdbStatus.Duplicate)) ThrowIfFailed(status);
         return status;
     }
