@@ -185,14 +185,35 @@ public class DebugModuleTests
         _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
     }
 
-    [Test]
-    public async Task DebugGetRawReceipts_WhenHistoryPruned_ReturnsPrunedHistoryError()
+    public enum RawReceiptsLookupFailure { Pruned, NotCanonical, BodyMissing }
+
+    [TestCase(RawReceiptsLookupFailure.Pruned, ErrorCodes.PrunedHistoryUnavailable, ErrorMessages.PrunedHistoryUnavailable)]
+    [TestCase(RawReceiptsLookupFailure.NotCanonical, ErrorCodes.InvalidInput, "block is not canonical")]
+    [TestCase(RawReceiptsLookupFailure.BodyMissing, ErrorCodes.ResourceNotFound, "block body not found")]
+    public async Task DebugGetRawReceipts_WhenBlockUnavailable_ReturnsError(RawReceiptsLookupFailure failure, int expectedCode, string expectedMessage)
     {
-        _blockFinder.LowestServedBlock.Returns(2UL);
+        object parameter = "0x1";
+        if (failure == RawReceiptsLookupFailure.Pruned)
+        {
+            _blockFinder.LowestServedBlock.Returns(2UL);
+        }
+        else
+        {
+            BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+            _blockFinder.FindHeader(header.Hash!).Returns(header);
+            _blockFinder.IsMainChain(header).Returns(failure == RawReceiptsLookupFailure.BodyMissing);
+            parameter = new { blockHash = header.Hash, requireCanonical = true };
+        }
 
-        using JsonRpcResponse response = await Request("debug_getRawReceipts", "0x1");
+        using JsonRpcResponse response = await Request("debug_getRawReceipts", parameter);
 
-        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(expectedCode));
+            Assert.That(error.Message, Does.Contain(expectedMessage));
+        }
+        _debugBridge.DidNotReceiveWithAnyArgs().GetReceiptsForBlock(default!);
     }
 
     private Block BlockAtNumberOne()

@@ -619,19 +619,16 @@ public class DebugRpcModule(
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter, allowNulls: true);
+        SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<RawReceiptsResult>.Fail(searchResult);
+            // Unknown blocks yield null; pruned, non-canonical and body-missing failures keep their error.
+            return searchResult.Error == BlockFinderExtensions.HeaderNotFound
+                ? ResultWrapper<RawReceiptsResult>.Success(null)
+                : ResultWrapper<RawReceiptsResult>.Fail(searchResult);
         }
 
-        // An unknown block yields null, as eth_getBlockReceipts does.
-        if (searchResult.Object is null)
-        {
-            return ResultWrapper<RawReceiptsResult>.Success(null);
-        }
-
-        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(searchResult.Object);
+        TxReceipt[] receipts = debugBridge.GetReceiptsForBlock(searchResult.Object!);
         if (receipts.Length == 0)
         {
             return ResultWrapper<RawReceiptsResult>.Success(new RawReceiptsResult(ArrayPoolList<ArrayPoolList<byte>>.Empty()));
