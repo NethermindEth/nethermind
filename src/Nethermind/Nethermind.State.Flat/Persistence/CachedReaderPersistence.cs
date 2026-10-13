@@ -33,8 +33,9 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         _logger = logManager.GetClassLogger<CachedReaderPersistence>();
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
-        // Start the background cache clearing task
-        _clearTimerTask = Task.Run(async () =>
+        // Start the background cache clearing task, unless a deterministic benchmark keeps the clock out of the read
+        // path; writes still clear the cache.
+        _clearTimerTask = DeterministicBenchmark.Enabled ? Task.CompletedTask : Task.Run(async () =>
         {
             using PeriodicTimer timer = new(TimeSpan.FromSeconds(5));
 
