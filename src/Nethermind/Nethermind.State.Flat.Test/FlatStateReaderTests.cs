@@ -51,6 +51,15 @@ public class FlatStateReaderTests
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
+    [Test]
+    public void RunTreeVisitor_WhenStateTurnsHistoricalAfterTheRoutingCheck_ThrowsMissingTrieNodeException()
+    {
+        FlatStateReader reader = CreateReader(new LateHistoricalFlatDbManager());
+
+        MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
+        Assert.That(exception!.Message, Does.Contain("historical"));
+    }
+
     [TestCase(true, false, 0, TestName = "RunTreeVisitor_Proof_ServesRootsFromTrieNodeCache")]
     [TestCase(false, false, 1, TestName = "RunTreeVisitor_Proof_LoadsRootsFromBundleOnTrieNodeCacheMiss")]
     [TestCase(true, true, 1, TestName = "RunTreeVisitor_FullScan_BypassesTrieNodeCache")]
@@ -165,6 +174,20 @@ public class FlatStateReaderTests
 
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
             throw new InvalidOperationException("A historical proof must not gather a snapshot bundle.");
+
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
+        public void FlushCache(CancellationToken cancellationToken) { }
+        public void DropStateNotReachableFrom(in StateId head) { }
+        public bool HasStateForBlock(in StateId stateId) => true;
+        public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
+    }
+
+    private class LateHistoricalFlatDbManager : IFlatDbManager
+    {
+        public bool IsHistoricalState(in StateId stateId) => false;
+
+        public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
+            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), isHistorical: true);
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
