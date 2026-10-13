@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
@@ -50,11 +51,17 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
         IlEvmSettings.OpcodeThreshold = config.OpcodeThreshold > 0 ? config.OpcodeThreshold : int.MaxValue;
         IlEvmSettings.HotOpcodesPerSecond = Math.Max(0, config.HotOpcodesPerSecond);
         IlEvmSettings.CompileSynchronously = config.CompileSynchronously;
+        IlEvmSettings.Profile = config.Profile;
+        IlEvmSettings.BlockRuntimeCompile = config.BlockRuntimeCompile;
+        IlEvmSettings.BlockSelfCheck = config.BlockSelfCheck;
 
+        // Block processing and everything else get the block runner; the read-only query environments get their own,
+        // which compiles at run time, so calls keep doing so whatever block processing does.
         if (config.Scope == IlEvmScope.All)
-            builder.RegisterInstance(IlEvmFrameRunner.Instance).As<FrameCodeRunner<EthereumGasPolicy>>();
-        else if (config.Surfaces != ReadOnlyQueryKind.None)
+            builder.RegisterInstance(IlEvmFrameRunner.Block).As<FrameCodeRunner<EthereumGasPolicy>>();
+        if (config.Surfaces != ReadOnlyQueryKind.None)
             builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(config.Surfaces));
+        builder.AddStep(typeof(IlEvmStartupStep));
     }
 }
 

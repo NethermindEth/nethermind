@@ -1,0 +1,3 @@
+# Contracts IL-EVM compiles at startup, before blocks or calls run: one keccak code hash per line, busiest first.
+# Anything after the hash on a line is ignored (the profile's counts are kept there for reference).
+# Generated from a profile run (NETHERMIND_ILEVMCONFIG_PROFILE=true); empty until one is taken.

@@ -12,6 +12,11 @@
     <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
   </ItemGroup>
 
+  <!-- The contracts compiled at startup: code hashes, busiest first. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Precompile.txt" LogicalName="Nethermind.IlEvm.Precompile.txt" />
+  </ItemGroup>
+
   <!--
     Compiled against these, never copied: the node that loads the plugin provides them. With NethermindBin set to a
     published node's folder, the plugin is built against that node's own assemblies, as for a release; otherwise
@@ -23,6 +28,7 @@
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Core/Nethermind.Core.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Logging/Nethermind.Logging.csproj" Private="false" />
+    <ProjectReference Include="$(NethermindSrc)/Nethermind.Init/Nethermind.Init.csproj" Private="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(NethermindBin)' != ''">
     <Reference Include="$(NethermindBin)Nethermind.*.dll" Private="false" />

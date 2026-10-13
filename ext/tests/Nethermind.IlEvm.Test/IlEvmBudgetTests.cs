@@ -63,9 +63,12 @@ public partial class IlEvmDifferentialTests
         double savedRatio = IlEvmSettings.SelfCheckKeepRatio;
         int savedRecheck = IlEvmSettings.SelfCheckRecheckMs;
         int savedDelay = IlEvmSettings.SelfCheckDelayMs;
+        int savedWarmUp = IlEvmSettings.SelfCheckWarmUpMs;
         try
         {
             IlEvmSettings.SelfCheckDelayMs = 0;
+            // Past the start-up window, where a second loss releases the code.
+            IlEvmSettings.SelfCheckWarmUpMs = 0;
             IlEvmSettings.SelfCheck = true;
             // No compiled code is fast enough to keep at this ratio; the probation ends at once.
             IlEvmSettings.SelfCheckKeepRatio = 1e-6;
@@ -96,6 +99,50 @@ public partial class IlEvmDifferentialTests
             IlEvmSettings.SelfCheckKeepRatio = savedRatio;
             IlEvmSettings.SelfCheckRecheckMs = savedRecheck;
             IlEvmSettings.SelfCheckDelayMs = savedDelay;
+            IlEvmSettings.SelfCheckWarmUpMs = savedWarmUp;
+        }
+    }
+
+    /// <summary>While the process starts up, a contract that loses its self-check is re-checked soon and keeps its code.</summary>
+    [Test]
+    public void During_start_up_a_lost_self_check_never_releases_the_code()
+    {
+        bool savedSelfCheck = IlEvmSettings.SelfCheck;
+        double savedRatio = IlEvmSettings.SelfCheckKeepRatio;
+        int savedEarly = IlEvmSettings.SelfCheckEarlyRecheckMs;
+        int savedDelay = IlEvmSettings.SelfCheckDelayMs;
+        int savedWarmUp = IlEvmSettings.SelfCheckWarmUpMs;
+        try
+        {
+            IlEvmSettings.SelfCheckDelayMs = 0;
+            IlEvmSettings.SelfCheckWarmUpMs = int.MaxValue;
+            IlEvmSettings.SelfCheckEarlyRecheckMs = 0;
+            IlEvmSettings.SelfCheck = true;
+            IlEvmSettings.SelfCheckKeepRatio = 1e-6;
+            CodeInfo codeInfo = new(Filler(50, 78));
+            Outcome expected = Run(codeInfo, [], 100_000, compiledCode: false);
+            Run(codeInfo, [], 100_000, compiledCode: true);
+            int probations = 0;
+            string? last = null;
+            for (int frame = 0; frame < 40_000; frame++)
+            {
+                Assert.That(Run(codeInfo, [], 100_000, compiledCode: true), Is.EqualTo(expected));
+                string? verdict = IlEvm.SelfCheckOf(codeInfo)?.Verdict;
+                if (verdict == "probation" && last != "probation")
+                    probations++;
+                last = verdict;
+                Assert.That(verdict, Is.Not.EqualTo("interpreted"), "nothing is released during start-up");
+            }
+
+            Assert.That(probations, Is.GreaterThan(1), "a loss during start-up is checked again soon, and again");
+        }
+        finally
+        {
+            IlEvmSettings.SelfCheck = savedSelfCheck;
+            IlEvmSettings.SelfCheckKeepRatio = savedRatio;
+            IlEvmSettings.SelfCheckEarlyRecheckMs = savedEarly;
+            IlEvmSettings.SelfCheckDelayMs = savedDelay;
+            IlEvmSettings.SelfCheckWarmUpMs = savedWarmUp;
         }
     }
 }

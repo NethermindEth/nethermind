@@ -18,9 +18,18 @@ namespace Nethermind.IlEvm;
 /// </remarks>
 public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 {
-    public static IlEvmFrameRunner Instance { get; } = new();
+    /// <summary>The runner for read-only queries: compiles hot code at run time and self-checks it.</summary>
+    public static IlEvmFrameRunner Instance { get; } = new(block: false);
 
-    private IlEvmFrameRunner() { }
+    /// <summary>
+    /// The runner for block processing (Scope=All): runs precompiled contracts, and compiles or self-checks at run time
+    /// only as <see cref="IlEvmSettings.BlockRuntimeCompile"/> and <see cref="IlEvmSettings.BlockSelfCheck"/> say.
+    /// </summary>
+    public static IlEvmFrameRunner Block { get; } = new(block: true);
+
+    private readonly bool _block;
+
+    private IlEvmFrameRunner(bool block) => _block = block;
 
     /// <summary>The timing of the frame the interpreter is running for diagnostics, and whether compiled code handed it back.</summary>
     [ThreadStatic] private static long _interpretedSince;
@@ -45,17 +54,36 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
         if (!IlEvmSettings.Enabled)
             return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : Declined;
 
-        IlEvm.IlContract? contract = IlEvm.Find(codeInfo, bodies, out _);
+        if (IlEvmSettings.Profile)
+        {
+            IlEvmProfile.Frame(codeInfo);
+            return DeclinedReportingOpcodes;
+        }
+
+        IlEvm.IlContract? contract;
+        bool count = false;
+        if (_block && !IlEvmSettings.BlockRuntimeCompile)
+            contract = IlEvm.FindPrecompiledOnly(codeInfo, bodies);
+        else
+            contract = IlEvm.Find(codeInfo, bodies, out _, out count);
         if (contract is null)
-            return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : DeclinedReportingOpcodes;
+            return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : count ? DeclinedReportingOpcodes : Declined;
 
         bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
         int verdict = Volatile.Read(ref contract.Check.Verdict);
-        if (verdict >= IlSelfCheck.Interpreted && IlEvmSettings.SelfCheck && (verdict == IlSelfCheck.Interpreted || !contract.Check.TryRecheck()))
+        if (IlEvmSettings.SelfCheck && (!_block || IlEvmSettings.BlockSelfCheck))
+        {
+            if (verdict >= IlSelfCheck.Interpreted && (verdict == IlSelfCheck.Interpreted || !contract.Check.TryRecheck()))
+                return Declined;
+            if (verdict == IlSelfCheck.Undecided && !IlEvmDiagnostics.Enabled &&
+                Environment.TickCount64 - contract.CompiledAt >= IlEvmSettings.SelfCheckDelayMs)
+                return RunChecked(codeInfo, contract, vm, ref stack, ref gas, ref programCounter, cancelable);
+        }
+        else if (verdict == IlSelfCheck.Interpreted)
+        {
+            // The other runner's self-check gave the contract back and released its code.
             return Declined;
-        if (verdict == IlSelfCheck.Undecided && IlEvmSettings.SelfCheck && !IlEvmDiagnostics.Enabled &&
-            Environment.TickCount64 - contract.CompiledAt >= IlEvmSettings.SelfCheckDelayMs)
-            return RunChecked(codeInfo, contract, vm, ref stack, ref gas, ref programCounter, cancelable);
+        }
         if (!IlEvmDiagnostics.Enabled)
             return contract.Run(vm, ref stack, ref gas, ref programCounter, cancelable);
 
@@ -96,6 +124,14 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
             _sampleInterpreted = true;
             _sampleStart = Stopwatch.GetTimestamp();
             return DeclinedReportingOpcodes;
+        }
+
+        // Compiled frames are timed one in TimeCompiledEvery: two timestamps and the shared buckets on every frame cost
+        // more than many frames run, and more still with threads running the same contract.
+        if ((random >> 16) % IlSelfCheck.TimeCompiledEvery != 0)
+        {
+            EvmExceptionType untimed = contract.Run(vm, ref stack, ref gas, ref programCounter, cancelable);
+            return untimed;
         }
 
         int chunkEvents = Volatile.Read(ref contract.ChunkEvents);
@@ -149,6 +185,12 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     protected override void OnInterpreted(CodeInfo codeInfo, int opCodes)
     {
+        if (IlEvmSettings.Profile)
+        {
+            IlEvmProfile.Ops(codeInfo, opCodes);
+            return;
+        }
+
         if (_sampleCheck is not null)
         {
             if (ReferenceEquals(_sampleCode, codeInfo))
@@ -231,6 +273,8 @@ internal sealed class IlSelfCheck
 
     /// <summary>One frame in this many, on average, runs on the interpreter until the verdict.</summary>
     public const int SampleEvery = 16;
+    /// <summary>Of the frames compiled code runs until the verdict, one in this many is timed.</summary>
+    public const int TimeCompiledEvery = 4;
     /// <summary>The fewest opcodes a sample pools.</summary>
     public const int BucketOps = 1_024;
     private const int Pairs = 31;
@@ -350,11 +394,13 @@ internal sealed class IlSelfCheck
                     Interlocked.Increment(ref _keptCount);
                     Volatile.Write(ref Verdict, Compiled);
                 }
-                else if (!_second)
+                else if (!_second || IlEvmSettings.InWarmUp)
                 {
-                    // Slower once: interpreted for a while, then checked again before the code is let go.
+                    // Slower once: interpreted for a while, then checked again before the code is let go. While the
+                    // process starts up a loss mostly measures start-up, so it is re-checked soon and never releases.
                     Interlocked.Increment(ref _probationCount);
-                    Volatile.Write(ref _recheckAt, Environment.TickCount64 + IlEvmSettings.SelfCheckRecheckMs);
+                    int recheck = IlEvmSettings.InWarmUp ? IlEvmSettings.SelfCheckEarlyRecheckMs : IlEvmSettings.SelfCheckRecheckMs;
+                    Volatile.Write(ref _recheckAt, Environment.TickCount64 + recheck);
                     Volatile.Write(ref Verdict, Probation);
                 }
                 else
