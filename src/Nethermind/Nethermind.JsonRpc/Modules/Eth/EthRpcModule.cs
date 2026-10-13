@@ -99,6 +99,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    private SlotSchedule? _slots;
     private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
 
     /// <summary>In-flight <c>eth_sendRawTransactionSync</c> calls on this instance.</summary>
@@ -161,7 +162,7 @@ public partial class EthRpcModule(
 
     /// <summary>The spec of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
     private IReleaseSpec GetNextBlockSpec(BlockHeader head) =>
-        _specProvider.GetSpec(head.Number + 1, _specProvider.GetSlotSchedule(_secondsPerSlot).GetNextSlotTimestamp(head.Timestamp));
+        _specProvider.GetSpec(head.Number + 1, (_slots ??= _specProvider.GetSlotSchedule(_secondsPerSlot)).GetNextSlotTimestamp(head.Timestamp));
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {

@@ -311,9 +311,11 @@ namespace Nethermind.Facade
         /// A failure without standard text names the gas the next block's rules fund, run with the blob fee cap
         /// filled from the next block's blob base fee when the request left it out.
         /// </summary>
+        private SlotSchedule? _slots;
+
         private FundedRunContext CreateFundedRunContext(BlockHeader header, BlobFeeCapFill blobFeeCapFill)
         {
-            ulong nextTimestamp = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot).GetNextSlotTimestamp(header.Timestamp);
+            ulong nextTimestamp = (_slots ??= specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot)).GetNextSlotTimestamp(header.Timestamp);
             IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, nextTimestamp);
             if (!blobFeeCapFill.IsFilled)
                 return new FundedRunContext(fundingSpec, null);

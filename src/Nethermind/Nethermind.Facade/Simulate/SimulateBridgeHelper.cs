@@ -25,6 +25,11 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
+    // Rebuilt only when a request brings a different spec provider.
+    private SlotScheduleCache? _slots;
+
+    private sealed record SlotScheduleCache(ISpecProvider SpecProvider, SlotSchedule Slots);
+
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
@@ -359,7 +364,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             return fallbackSlot;
         }
 
-        SlotSchedule slots = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot);
+        SlotScheduleCache? cache = _slots;
+        if (cache is null || !ReferenceEquals(cache.SpecProvider, specProvider))
+        {
+            _slots = cache = new SlotScheduleCache(specProvider, specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot));
+        }
+
+        SlotSchedule slots = cache.Slots;
         if (!slots.TryGetSlot(parent.Timestamp, out ulong parentGridSlot) || !slots.TryGetSlot(timestamp, out ulong slot))
         {
             return fallbackSlot;
