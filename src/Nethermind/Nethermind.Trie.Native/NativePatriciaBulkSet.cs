@@ -30,7 +30,7 @@ public static unsafe partial class NativePatriciaBulkSet
     /// writing every new node referenced by hash, and returns the new root hash.
     /// </summary>
     /// <remarks>
-    /// <paramref name="entries"/> is sorted in place and its keys must be unique. Hashing and node writes run in parallel on the native
+    /// <paramref name="entries"/> is reordered in place and its keys must be unique. Hashing and node writes run in parallel on the native
     /// thread pool. Nodes that become unreachable are not removed, except the root when the trie becomes empty.
     /// </remarks>
     public static Hash256 BulkSet(INativeNodeStore store, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)

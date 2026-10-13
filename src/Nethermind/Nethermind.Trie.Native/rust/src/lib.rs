@@ -107,7 +107,7 @@ impl NodeStore for CallbackStore {
 }
 
 /// Applies `entries` to the trie whose root is stored at the empty path and writes the root hash to `root_out`.
-/// `entries` is sorted in place. Returns 0 on success, -1 on panic, or an [`Error::code`].
+/// `entries` is reordered in place. Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
 /// `entries`, `values` and `root_out` must be valid for the given lengths (32 bytes for `root_out`),

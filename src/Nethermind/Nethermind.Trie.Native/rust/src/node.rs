@@ -29,17 +29,46 @@ impl TreePath {
         self.length as usize
     }
 
+    pub fn push(&mut self, value: u8) {
+        let index = self.length as usize;
+        if index % 2 == 0 {
+            self.path[index / 2] = value << 4;
+        } else {
+            self.path[index / 2] |= value;
+        }
+        self.length += 1;
+    }
+
+    pub fn push_all(&mut self, nibbles: &[u8]) {
+        for &value in nibbles {
+            self.push(value);
+        }
+    }
+
+    pub fn set_last(&mut self, value: u8) {
+        let index = self.length as usize - 1;
+        if index % 2 == 0 {
+            self.path[index / 2] = value << 4;
+        } else {
+            self.path[index / 2] = (self.path[index / 2] & 0xf0) | value;
+        }
+    }
+
+    /// Shortens the path to `length` nibbles, zeroing the dropped ones to keep it canonical.
+    pub fn truncate(&mut self, length: usize) {
+        for index in length..self.length as usize {
+            if index % 2 == 0 {
+                self.path[index / 2] = 0;
+            } else {
+                self.path[index / 2] &= 0xf0;
+            }
+        }
+        self.length = length as i32;
+    }
+
     pub fn append(&self, nibbles: &[u8]) -> TreePath {
         let mut result = *self;
-        for &value in nibbles {
-            let index = result.length as usize;
-            if index % 2 == 0 {
-                result.path[index / 2] = value << 4;
-            } else {
-                result.path[index / 2] |= value;
-            }
-            result.length += 1;
-        }
+        result.push_all(nibbles);
         result
     }
 }
@@ -169,12 +198,10 @@ impl Node {
             Node::Leaf { .. } => unreachable!("a leaf has no children"),
         }
     }
+}
 
-    pub fn empty_branch() -> Node {
-        Node::Branch {
-            children: Box::new(std::array::from_fn(|_| ChildRef::Empty)),
-        }
-    }
+pub fn empty_children() -> Box<[ChildRef; 16]> {
+    Box::new(std::array::from_fn(|_| ChildRef::Empty))
 }
 
 /// Appends the stored form of `node` to `out` and returns the offset where its RLP starts.
@@ -249,7 +276,7 @@ pub fn decode_stored(stored: &[u8]) -> Result<Node, Error> {
     let bitset = u16::from_le_bytes([stored[1], stored[2]]);
     let (list, _) = next_item(rlp)?;
     let mut payload = list.payload;
-    let mut children: Box<[ChildRef; 16]> = Box::new(std::array::from_fn(|_| ChildRef::Empty));
+    let mut children: Box<[ChildRef; 16]> = empty_children();
     for (index, child) in children.iter_mut().enumerate() {
         if bitset & (1 << index) == 0 {
             payload = payload.get(1..).ok_or(Error::CorruptNode)?;
@@ -271,7 +298,7 @@ pub fn decode_rlp(rlp: &[u8]) -> Result<Node, Error> {
     let (second, rest) = next_item(rest)?;
 
     if !rest.is_empty() {
-        let mut children: Box<[ChildRef; 16]> = Box::new(std::array::from_fn(|_| ChildRef::Empty));
+        let mut children: Box<[ChildRef; 16]> = empty_children();
         let mut remaining = list.payload;
         for child in children.iter_mut() {
             let (item, rest) = next_item(remaining)?;
