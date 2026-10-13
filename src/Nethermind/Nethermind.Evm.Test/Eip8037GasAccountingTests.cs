@@ -427,6 +427,15 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
                 WithAuthorization: true);
 
             yield return new Scenario(
+                $"existing_authority_auth_then_top_revert_{gasLimit}",
+                gasLimit,
+                Prepare.EvmCode.Revert(0, 0).Done,
+                [],
+                ExpectedSuccess: false, ExpectedSpentGas: 73_012, ExpectedBlockExecutionGas: 37_822, ExpectedBlockStateGas: 35_190,
+                WithAuthorization: true,
+                AuthorityExists: true);
+
+            yield return new Scenario(
                 $"existing_authority_auth_then_sstore_top_revert_{gasLimit}",
                 gasLimit,
                 SstoreSetThenRevert(),
