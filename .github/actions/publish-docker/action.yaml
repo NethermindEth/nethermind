@@ -17,11 +17,11 @@ inputs:
     description: "Build configuration (release or debug)"
     required: true
     default: "release"
-  docker-hub-username:
-    description: "Docker Hub username"
+  docker-hub-organization:
+    description: "Docker Hub organization to log in as"
     required: true
-  docker-hub-password:
-    description: "Docker Hub password or token"
+  docker-hub-oidc-connection-id:
+    description: "Docker Hub OIDC connection ID; the calling job needs id-token: write"
     required: true
   platforms:
     description: "Comma-separated list of platforms (e.g., linux/amd64,linux/arm64)"
@@ -47,10 +47,13 @@ runs:
       uses: docker/setup-buildx-action@v4
 
     - name: Log in to Docker Hub
-      uses: docker/login-action@v4
+      uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      env:
+        DOCKERHUB_OIDC_CONNECTIONID: ${{ inputs.docker-hub-oidc-connection-id }}
+        # The token must outlive the multi-platform build, as buildx only pushes at the end
+        DOCKERHUB_OIDC_EXPIREIN: 3600
       with:
-        username: ${{ inputs.docker-hub-username }}
-        password: ${{ inputs.docker-hub-password }}
+        username: ${{ inputs.docker-hub-organization }}
 
     - name: Build and push image to Docker Hub
       id: build-image
