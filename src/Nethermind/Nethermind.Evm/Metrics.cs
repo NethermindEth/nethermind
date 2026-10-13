@@ -10,7 +10,6 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
-[assembly: InternalsVisibleTo("Nethermind.LightClient.Verifier")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]

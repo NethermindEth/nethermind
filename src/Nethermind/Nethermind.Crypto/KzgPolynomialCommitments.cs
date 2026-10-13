@@ -86,7 +86,7 @@ public static partial class KzgPolynomialCommitments
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
 
-        Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, OperatingSystem.IsBrowser() ? 0 : 8));
+        Volatile.Write(ref _ckzgSetup, Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8));
 
         if (_ckzgSetup == nint.Zero)
             throw new InvalidOperationException("Failed to load trusted setup");

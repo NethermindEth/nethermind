@@ -5,6 +5,27 @@ namespace Nethermind.LightClient;
 
 internal static class LightClientHost
 {
+    internal static void ConfigureRequestPolicy(WebApplication app, string rpcUrls)
+    {
+        bool loopbackOnly = rpcUrls.Split(';').All(static value => Uri.TryCreate(value, UriKind.Absolute, out Uri? url) && url.IsLoopback);
+        app.Use(async (context, next) =>
+        {
+            if (loopbackOnly && (!Uri.TryCreate($"{context.Request.Scheme}://{context.Request.Host}", UriKind.Absolute, out Uri? host) || !host.IsLoopback))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+            string requestOrigin = context.Request.Headers.Origin.ToString();
+            if (!string.IsNullOrEmpty(requestOrigin) &&
+                !string.Equals(requestOrigin, $"{context.Request.Scheme}://{context.Request.Host}", StringComparison.OrdinalIgnoreCase))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+            await next(context);
+        });
+    }
+
     internal static async Task RunAsync(WebApplication app, Func<CancellationToken, Task> synchronize, ILogger? logger = null)
     {
         IHostApplicationLifetime lifetime = app.Lifetime;

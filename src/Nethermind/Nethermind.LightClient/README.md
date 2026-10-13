@@ -46,6 +46,8 @@ selection and before a cross-check.
 
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
+Loopback listeners reject non-loopback Host headers, and requests with a
+foreign Origin are rejected. Public listeners require an authenticated gateway.
 The root must be a recent **finalized beacon block root**. It is not an execution
 block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
@@ -151,13 +153,13 @@ Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated
 head. Gossip advances it between recovery polls; it is not restricted to the
 older finalized block. Use `"finalized"` explicitly when finality is required.
 Historical state selectors are limited to 32 ancestors of either the finalized
-head or the authenticated optimistic head. A browser or wallet's pinned prior
+head or the authenticated optimistic head. A wallet's pinned prior
 optimistic hash remains usable when the native head advances, provided it is
 still an ancestor in that window; orphan hashes fail canonical validation.
 availability within that range still depends on a SNAP peer retaining the state root.
 At most two historical state requests run concurrently; excess requests fail promptly,
 leaving SNAP and HTTP capacity for current-head reads.
-Block and receipt selectors, relay execution headers, and single-block log hash
+Block and receipt selectors and single-block log hash
 selectors retain a separate 256-ancestor window anchored to either head.
 Multi-block log ranges remain limited to finalized history.
 `pending`, `safe` and `earliest` return an explicit unavailable error (`-32001`):
@@ -349,40 +351,12 @@ SNAP peer retaining the selected state root.
 
 ## Browser and mobile
 
-[Nethermind.LightClient.Browser](../Nethermind.LightClient.Browser/README.md)
-builds the shared consensus processor, SSZ, trie/code verification and local
-EVM into .NET WebAssembly. A Worker runs verification with a pinned native
-blst backend; an EIP-1193 bridge exposes the provider and IndexedDB retains a
-journal that is reverified on restart. The browser run guide defines its
-supported methods, native precompile requirements and resource bounds.
-
-Build the browser host as described there, then add
-`--browser-dir <published-browser-wwwroot>` to the native run command. Open
-`http://127.0.0.1:8545/browser/` and enter an independently trusted recent
-checkpoint. The native host supplies bounded raw P2P records and proof data;
-the browser verifies them locally. Browser sockets cannot directly use the
-existing beacon TCP/QUIC and execution TCP/UDP transports, so this host uses
-untrusted proof relays with verification on the device. A relay can censor
-data; it cannot supply an accepted forged signature, header or state proof.
-Native QUIC improves the relay's beacon connection. Direct browser P2P would
-also require a browser-capable libp2p transport such as
-[WebTransport](https://github.com/libp2p/specs/blob/master/webtransport/README.md),
-its HTTP/3 endpoint, certificate authentication and compatible peers; a normal
-libp2p QUIC listener does not provide that transport. Execution RLPx/SNAP would
-still need a bridge or a separate browser-capable protocol.
-
-Browser requests are restricted to the server's origin by default. Use
-`--browser-origin https://your-wallet.example` to permit one additional exact
-HTTPS origin (loopback HTTP is allowed for development). Wildcards and URLs
-with paths are rejected. A loopback listener rejects non-loopback Host headers
-to prevent DNS rebinding. These browser boundaries do not authenticate an RPC
-caller: use an authenticated gateway for a publicly exposed listener.
-
-Mobile remains separate work: package iOS/Android native crypto and an embedded
-host, then validate AOT, ARM64, suspend/resume, background networking, storage
-recovery and battery use. The shared verifier and test vectors can be reused.
-See Microsoft's [WASM native dependencies](https://learn.microsoft.com/en-us/aspnet/core/blazor/webassembly-native-dependencies?view=aspnetcore-10.0)
-and [Native AOT restrictions](https://learn.microsoft.com/en-us/dotnet/core/deploying/native-aot/).
+Browser and mobile clients are future work. Direct browser P2P needs compatible
+discovery and data transports, such as
+[WebTransport](https://github.com/libp2p/specs/blob/master/webtransport/README.md);
+the existing beacon QUIC and execution RLPx/SNAP listeners do not provide them.
+Mobile packaging needs native crypto, AOT and ARM64 validation, suspend/resume,
+background networking, storage recovery and battery-use checks.
 
 ## Validation
 

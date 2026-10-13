@@ -20,22 +20,6 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
     private readonly VerifiedExecutionData? _data = specProvider is null ? null : new(execution, specProvider, chainId);
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
 
-    internal async Task<byte[]> GetAuthenticatedHeaderRlpAsync(Hash256 hash, CancellationToken cancellationToken)
-    {
-        VerifiedHead finalized = getHead();
-        VerifiedHead? latest = getLatestHead?.Invoke();
-        if (hash == finalized.BlockHash || hash == latest?.BlockHash)
-            return Rlp.Encode(await execution.GetHeaderAsync(hash == finalized.BlockHash ? finalized : latest!, cancellationToken)).Bytes;
-        await AcquireHistoricalStateAsync(cancellationToken);
-        try
-        {
-            BlockHeader header = await ResolveDataHeaderAsync(JsonSerializer.SerializeToElement(hash.ToString()), true,
-                cancellationToken, finalized, pinnedLatest: latest);
-            return Rlp.Encode(header).Bytes;
-        }
-        finally { _historicalStateRequests.Release(); }
-    }
-
     internal async Task<object> InvokeAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
     {
         bool data = method is "eth_getBlockByNumber" or "eth_getBlockByHash" or "eth_getBlockTransactionCountByNumber"

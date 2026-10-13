@@ -24,7 +24,6 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "          --checkpoint-check-url <independent trusted HTTPS Beacon API>\n" +
         "Optional: --network mainnet|hoodi|sepolia (default mainnet) --urls http://127.0.0.1:8545\n" +
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
-        "          --browser-dir <published browser wwwroot> --browser-origin <allowed origin>\n" +
         "Mainnet needs --checkpoint or --checkpoint-url; Hoodi and Sepolia use EF-operated defaults.\n" +
         "See README.md for verified RPC selectors and checkpoint trust requirements.");
     return;
@@ -199,8 +198,7 @@ using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
 using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead);
 await using VerifiedSubscriptions subscriptions = new(execution, execution.SpecProvider, spec.ChainId, rpc, logger);
 app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc, logger));
-LightClientRelay.Map(app, beacon, execution, rpc, spec, logger);
-BrowserHost.Configure(app, builder.Configuration["browser-dir"], builder.Configuration["browser-origin"], rpcUrl);
+LightClientHost.ConfigureRequestPolicy(app, rpcUrl);
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
 app.MapGet("/ws", (HttpContext context) => subscriptions.HandleAsync(context));
 beacon.StartGossip(ProcessFinalityAsync, ProcessOptimisticAsync, app.Lifetime.ApplicationStopping);

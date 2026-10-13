@@ -417,20 +417,17 @@ public class VerifiedRpcTests
     }
 
     [Test]
-    public async Task Pinned_optimistic_block_and_relay_header_are_anchored_to_native_latest([Values] bool byHash)
+    public async Task Pinned_optimistic_block_is_anchored_to_native_latest([Values] bool byHash)
     {
         using Provider provider = OptimisticProvider();
         Hash256 hash = provider.HistoricalHeader!.Hash!;
         JsonElement block = (JsonElement)await provider.Rpc.InvokeAsync(byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber",
             Parameters(byHash ? hash.ToString() : $"0x{provider.HistoricalHeader.Number:x}", false), CancellationToken.None);
-        byte[] header = await provider.Rpc.GetAuthenticatedHeaderRlpAsync(hash, CancellationToken.None);
         Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(hash.ToString()));
-        Assert.That(Keccak.Compute(header), Is.EqualTo(hash));
         Assert.That(provider.LastCanonicalAnchor, Is.EqualTo(provider.LatestHead));
 
         provider.ReorgOptimisticAncestor();
         AssertRpcError(provider, "eth_getBlockByHash", Parameters(hash.ToString(), false), -32001);
-        Assert.That(Assert.ThrowsAsync<RpcException>(async () => await provider.Rpc.GetAuthenticatedHeaderRlpAsync(hash, CancellationToken.None))!.Code, Is.EqualTo(-32001));
     }
 
     [Test]

@@ -9,39 +9,16 @@ namespace Nethermind.LightClient.Test;
 
 public class HostTests
 {
-    [Test]
-    public async Task Browser_entry_paths_serve_the_index_without_redirect_loops(
-        [Values("/browser", "/browser/", "/browser/index.html")] string path)
-    {
-        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
-            "NethermindLightClientBrowserHostTests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        try
-        {
-            await File.WriteAllTextAsync(Path.Combine(directory, "index.html"), "Nethermind browser");
-            await using WebApplication app = CreateApp("http://127.0.0.1:0");
-            BrowserHost.Configure(app, directory, null, "http://127.0.0.1:0");
-            await app.StartAsync();
-            using HttpClient client = new();
-            using HttpResponseMessage response = await client.GetAsync(app.Urls.Single() + path);
-
-            Assert.That(response.IsSuccessStatusCode, Is.True);
-            Assert.That(await response.Content.ReadAsStringAsync(), Is.EqualTo("Nethermind browser"));
-            Assert.That(response.Headers.GetValues("Content-Security-Policy").Single(), Does.Contain("wasm-unsafe-eval"));
-        }
-        finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    [TestCase(null, null, null, 200)]
-    [TestCase(null, "local", null, 200)]
-    [TestCase(null, "https://wallet.example", null, 403)]
-    [TestCase("https://wallet.example", "https://wallet.example", null, 200)]
-    [TestCase(null, "http://attacker.example", "attacker.example", 403)]
-    public async Task Browser_origin_and_host_policy_rejects_cross_site_and_rebinding_requests(
-        string? allowedOrigin, string? requestOrigin, string? requestHost, int expectedStatus)
+    [TestCase(null, null, 200)]
+    [TestCase("local", null, 200)]
+    [TestCase("https://wallet.example", null, 403)]
+    [TestCase(null, "attacker.example", 403)]
+    [TestCase("http://attacker.example", "attacker.example", 403)]
+    public async Task Rpc_origin_and_host_policy_rejects_cross_site_and_rebinding_requests(
+        string? requestOrigin, string? requestHost, int expectedStatus)
     {
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
-        BrowserHost.Configure(app, null, allowedOrigin, "http://127.0.0.1:0");
+        LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
         app.MapGet("/", () => "ok");
         await app.StartAsync();
         using HttpClient client = new();
@@ -51,16 +28,6 @@ public class HostTests
         using HttpResponseMessage response = await client.SendAsync(request);
 
         Assert.That((int)response.StatusCode, Is.EqualTo(expectedStatus));
-        if (expectedStatus == 200 && requestOrigin is not null)
-            Assert.That(response.Headers.GetValues("Access-Control-Allow-Origin").Single(),
-                Is.EqualTo(requestOrigin == "local" ? app.Urls.Single() : requestOrigin));
-    }
-
-    [Test]
-    public void Browser_origin_requires_an_exact_secure_origin([Values("*", "http://wallet.example", "https://wallet.example/path", "https://wallet.example/?q=x")] string origin)
-    {
-        using WebApplication app = CreateApp("http://127.0.0.1:0");
-        Assert.That(() => BrowserHost.Configure(app, null, origin, "http://127.0.0.1:0"), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

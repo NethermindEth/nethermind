@@ -128,6 +128,7 @@ namespace Nethermind.Serialization.Json
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
+                    new JavaScriptObjectConverter(),
                     new PublicKeyHashedConverter(),
                     new PublicKeyConverter(),
                     new SignatureConverter(),
@@ -141,7 +142,6 @@ namespace Nethermind.Serialization.Json
                 }
             };
 
-            if (!OperatingSystem.IsBrowser()) result.Converters.Add(new JavaScriptObjectConverter());
             result.Converters.AddRange(additionalConverters);
             result.Converters.AddRange(instanceConverters ?? Array.Empty<JsonConverter>());
             return result;
