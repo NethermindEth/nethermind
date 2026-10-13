@@ -41,11 +41,11 @@ public class NativePatriciaBulkSetTests
 
         ConcurrentDictionary<TreePath, byte[]> nodes = new();
         DictionaryNodeStore store = new(nodes, nodes);
-        BulkSet(store, existingItems);
-        Assert.That(BulkSet(store, items), Is.EqualTo(tree.RootHash));
+        Hash256 existingRoot = BulkSet(store, Keccak.EmptyTreeHash, existingItems);
+        Assert.That(BulkSet(store, existingRoot, items), Is.EqualTo(tree.RootHash));
     }
 
-    private static Hash256 BulkSet(INativeNodeStore store, List<(Hash256 key, byte[] value)> items)
+    private static Hash256 BulkSet(INativeNodeStore store, Hash256 root, List<(Hash256 key, byte[] value)> items)
     {
         NativeBulkSetEntry[] entries = new NativeBulkSetEntry[items.Count];
         int offset = 0;
@@ -56,6 +56,6 @@ public class NativePatriciaBulkSetTests
             offset += length;
         }
 
-        return NativePatriciaBulkSet.BulkSet(store, entries, items.SelectMany(item => item.value ?? []).ToArray());
+        return NativePatriciaBulkSet.BulkSet(store, root.ValueHash256, entries, items.SelectMany(item => item.value ?? []).ToArray());
     }
 }

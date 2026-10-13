@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -26,30 +27,31 @@ public static unsafe partial class NativePatriciaBulkSet
     public static bool IsAvailable { get; } = NativeLibrary.TryLoad(LibraryName, typeof(NativePatriciaBulkSet).Assembly, null, out _);
 
     /// <summary>
-    /// Applies <paramref name="entries"/> to the trie whose root is stored at <see cref="TreePath.Empty"/> in <paramref name="store"/>,
+    /// Applies <paramref name="entries"/> to the trie in <paramref name="store"/> whose root hash is <paramref name="root"/>,
     /// writing every new node referenced by hash, and returns the new root hash.
     /// </summary>
     /// <remarks>
     /// <paramref name="entries"/> is reordered in place and its keys must be unique. Hashing and node writes run in parallel on the native
-    /// thread pool. Nodes that become unreachable are not removed, except the root when the trie becomes empty.
+    /// thread pool. Nodes that become unreachable are not removed.
     /// </remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
+    public static Hash256 BulkSet(INativeNodeStore store, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
     {
         CallState state = new(store);
         GCHandle handle = GCHandle.Alloc(state);
         try
         {
-            ValueHash256 root = default;
+            ValueHash256 newRoot = default;
             int status;
             fixed (NativeBulkSetEntry* entriesPointer = entries)
             fixed (byte* valuesPointer = values)
+            fixed (ValueHash256* rootPointer = &root)
             {
-                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, &Fetch, &Write, (void*)GCHandle.ToIntPtr(handle), &root);
+                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, &Fetch, &Write, (void*)GCHandle.ToIntPtr(handle), &newRoot);
             }
 
             if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
             if (status != 0) throw new InvalidOperationException($"Native bulk set failed with status {status}");
-            return new Hash256(root);
+            return new Hash256(newRoot);
         }
         finally
         {
@@ -57,13 +59,42 @@ public static unsafe partial class NativePatriciaBulkSet
         }
     }
 
+    /// <inheritdoc cref="BulkSet(INativeNodeStore, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <remarks>A null or empty <see cref="PatriciaTree.BulkSetEntry.Value"/> deletes the key. Keys must be unique.</remarks>
+    public static Hash256 BulkSet(INativeNodeStore store, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    {
+        int valuesLength = 0;
+        foreach (PatriciaTree.BulkSetEntry entry in entries) valuesLength += entry.Value?.Length ?? 0;
+
+        NativeBulkSetEntry[] nativeEntries = ArrayPool<NativeBulkSetEntry>.Shared.Rent(entries.Length);
+        byte[] values = ArrayPool<byte>.Shared.Rent(valuesLength);
+        try
+        {
+            int offset = 0;
+            for (int i = 0; i < entries.Length; i++)
+            {
+                ReadOnlySpan<byte> value = entries[i].Value;
+                value.CopyTo(values.AsSpan(offset));
+                nativeEntries[i] = new NativeBulkSetEntry(in entries[i].Path, offset, value.Length);
+                offset += value.Length;
+            }
+
+            return BulkSet(store, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
+        }
+        finally
+        {
+            ArrayPool<NativeBulkSetEntry>.Shared.Return(nativeEntries);
+            ArrayPool<byte>.Shared.Return(values);
+        }
+    }
+
     [UnmanagedCallersOnly]
-    private static int Fetch(void* context, TreePath* path, byte* buffer, int bufferLength)
+    private static int Fetch(void* context, TreePath* path, ValueHash256* hash, byte* buffer, int bufferLength)
     {
         CallState state = CallState.From(context);
         try
         {
-            return state.Store.Fetch(in *path, new Span<byte>(buffer, bufferLength));
+            return state.Store.Fetch(in *path, in *hash, new Span<byte>(buffer, bufferLength));
         }
         catch (Exception e)
         {
@@ -73,12 +104,12 @@ public static unsafe partial class NativePatriciaBulkSet
     }
 
     [UnmanagedCallersOnly]
-    private static void Write(void* context, TreePath* path, byte* data, int length)
+    private static void Write(void* context, TreePath* path, ValueHash256* hash, byte* rlp, int length)
     {
         CallState state = CallState.From(context);
         try
         {
-            state.Store.Write(in *path, new ReadOnlySpan<byte>(data, length));
+            state.Store.Write(in *path, in *hash, new ReadOnlySpan<byte>(rlp, length));
         }
         catch (Exception e)
         {
@@ -92,8 +123,9 @@ public static unsafe partial class NativePatriciaBulkSet
         int entryCount,
         byte* values,
         int valuesLength,
-        delegate* unmanaged<void*, TreePath*, byte*, int, int> fetch,
-        delegate* unmanaged<void*, TreePath*, byte*, int, void> write,
+        ValueHash256* root,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, byte*, int, int> fetch,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, byte*, int, void> write,
         void* context,
         ValueHash256* rootOut);
 

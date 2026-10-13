@@ -3,7 +3,7 @@
 
 //! Patricia trie bulk set over a path-keyed node store, exposed to Nethermind via FFI.
 //!
-//! Every node referenced by hash is stored at its `TreePath` as `<tag>[<bitset>]<rlp>`, see [`node`].
+//! Every node referenced by hash is stored at its `TreePath` as its RLP.
 
 mod bulk_set;
 mod keccak;
@@ -49,24 +49,30 @@ impl Error {
 }
 
 pub trait NodeStore: Sync {
-    /// Replaces `buffer` with the node stored at `path`. Returns `false` when there is none.
-    fn fetch(&self, path: &TreePath, buffer: &mut Vec<u8>) -> Result<bool, Error>;
+    /// Replaces `buffer` with the RLP of the node at `path` whose hash is `hash`. Returns `false` when there is none.
+    fn fetch(&self, path: &TreePath, hash: &[u8; 32], buffer: &mut Vec<u8>) -> Result<bool, Error>;
 
-    /// Stores `data` at `path`. Empty `data` removes the node.
-    fn write(&self, path: &TreePath, data: &[u8]);
+    /// Stores `rlp`, the node whose hash is `hash`, at `path`.
+    fn write(&self, path: &TreePath, hash: &[u8; 32], rlp: &[u8]);
 }
 
-/// Returns the length of the node at `path`, 0 when missing, or a negative value on failure.
+/// Returns the length of the node at `path` with hash `hash`, 0 when missing, or a negative value on failure.
 /// A length greater than `buffer_length` means nothing was copied and the buffer must grow.
 pub type FetchFn = unsafe extern "C" fn(
     context: *mut c_void,
     path: *const TreePath,
+    hash: *const [u8; 32],
     buffer: *mut u8,
     buffer_length: i32,
 ) -> i32;
 
-pub type WriteFn =
-    unsafe extern "C" fn(context: *mut c_void, path: *const TreePath, data: *const u8, length: i32);
+pub type WriteFn = unsafe extern "C" fn(
+    context: *mut c_void,
+    path: *const TreePath,
+    hash: *const [u8; 32],
+    rlp: *const u8,
+    length: i32,
+);
 
 struct CallbackStore {
     fetch: FetchFn,
@@ -78,13 +84,20 @@ struct CallbackStore {
 unsafe impl Sync for CallbackStore {}
 
 impl NodeStore for CallbackStore {
-    fn fetch(&self, path: &TreePath, buffer: &mut Vec<u8>) -> Result<bool, Error> {
+    fn fetch(&self, path: &TreePath, hash: &[u8; 32], buffer: &mut Vec<u8>) -> Result<bool, Error> {
         buffer.clear();
         buffer.reserve(1024);
         loop {
             let capacity = buffer.capacity();
-            let length =
-                unsafe { (self.fetch)(self.context, path, buffer.as_mut_ptr(), capacity as i32) };
+            let length = unsafe {
+                (self.fetch)(
+                    self.context,
+                    path,
+                    hash,
+                    buffer.as_mut_ptr(),
+                    capacity as i32,
+                )
+            };
             if length < 0 {
                 return Err(Error::Callback);
             }
@@ -99,34 +112,30 @@ impl NodeStore for CallbackStore {
         }
     }
 
-    fn write(&self, path: &TreePath, data: &[u8]) {
-        let data_pointer = if data.is_empty() {
-            std::ptr::null()
-        } else {
-            data.as_ptr()
-        };
-        unsafe { (self.write)(self.context, path, data_pointer, data.len() as i32) }
+    fn write(&self, path: &TreePath, hash: &[u8; 32], rlp: &[u8]) {
+        unsafe { (self.write)(self.context, path, hash, rlp.as_ptr(), rlp.len() as i32) }
     }
 }
 
-/// Applies `entries` to the trie whose root is stored at the empty path and writes the root hash to `root_out`.
+/// Applies `entries` to the trie whose root hash is `root` and writes the new root hash to `root_out`.
 /// `entries` is reordered in place. Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
-/// `entries`, `values` and `root_out` must be valid for the given lengths (32 bytes for `root_out`),
-/// and `fetch` / `write` must be callable concurrently with `context`.
+/// `entries`, `values`, `root` and `root_out` must be valid for the given lengths (32 bytes for `root` and
+/// `root_out`), and `fetch` / `write` must be callable concurrently with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_bulk_set(
     entries: *mut Entry,
     entry_count: i32,
     values: *const u8,
     values_length: i32,
+    root: *const [u8; 32],
     fetch: FetchFn,
     write: WriteFn,
     context: *mut c_void,
     root_out: *mut u8,
 ) -> i32 {
-    if entry_count < 0 || values_length < 0 || root_out.is_null() {
+    if entry_count < 0 || values_length < 0 || root.is_null() || root_out.is_null() {
         return Error::InvalidArgument.code();
     }
 
@@ -147,6 +156,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
                 write,
                 context,
             },
+            &*root,
             entries,
             values,
         )

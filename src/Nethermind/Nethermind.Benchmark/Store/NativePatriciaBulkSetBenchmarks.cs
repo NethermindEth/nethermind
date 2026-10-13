@@ -59,7 +59,7 @@ public class NativePatriciaBulkSetBenchmarks
             preloadTree.Commit();
             _preloadedRootHash = preloadTree.RootHash;
 
-            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes, preloadedNodes), nativePreload, preloadValues);
+            Hash256 nativeRoot = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(preloadedNodes, preloadedNodes), Keccak.EmptyTreeHash.ValueHash256, nativePreload, preloadValues);
             if (nativeRoot != _preloadedRootHash) throw new InvalidOperationException($"Native root {nativeRoot} differs from {_preloadedRootHash}");
         }
 
@@ -87,7 +87,7 @@ public class NativePatriciaBulkSetBenchmarks
         _nativeEntries.CopyTo(_nativeBatches, 0);
         for (int start = 0; start < EntryCount; start += BatchSize)
         {
-            NativePatriciaBulkSet.BulkSet(_nativeStore, _nativeBatches.AsSpan(start, BatchSize), _values);
+            NativePatriciaBulkSet.BulkSet(_nativeStore, _preloadedRootHash.ValueHash256, _nativeBatches.AsSpan(start, BatchSize), _values);
         }
     }
 
