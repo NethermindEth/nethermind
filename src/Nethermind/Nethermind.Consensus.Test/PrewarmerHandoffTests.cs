@@ -35,9 +35,11 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -317,6 +319,29 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Initialize(handoff: false);
 
         Assert.That(Handoff(ThreeIndependentTransactions()).Tally, Is.EqualTo((0, 0, 0)));
+    }
+
+    [Test]
+    public void A_world_state_decorated_outside_the_recorder_still_hands_off()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true);
+        PrewarmerTxAdapter adapter = new(
+            new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
+            preWarmer,
+            new PrewarmerState(caches, isPrewarmer: false),
+            ProcessingScope.Resolve<IWorldState>(),
+            LimboLogs.Instance);
+
+        Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
     }
 
     [Test]
@@ -1440,11 +1465,13 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
 
     /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
-    protected Run Handoff(Block block, IBlockTracer? otherTracer = null)
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
+
+    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
     {
         Run executed = Process(block, adapter: null);
-        RunPreWarmCaches(PreWarmer, block);
-        Run run = Process(block, ProductionAdapter, otherTracer: otherTracer);
+        RunPreWarmCaches(preWarmer, block);
+        Run run = Process(block, adapter, otherTracer: otherTracer);
 
         using (Assert.EnterMultipleScope())
         {
