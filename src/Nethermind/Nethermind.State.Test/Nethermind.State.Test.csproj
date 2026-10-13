@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+    <ProjectReference Include="..\Nethermind.Trie.Native\Nethermind.Trie.Native.csproj" />
   </ItemGroup>
 </Project>

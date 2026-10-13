@@ -170,6 +170,7 @@
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
   <Project Path="Nethermind.Synchronization/Nethermind.Synchronization.csproj" />
   <Project Path="Nethermind.Taiko/Nethermind.Taiko.csproj" />
+  <Project Path="Nethermind.Trie.Native/Nethermind.Trie.Native.csproj" />
   <Project Path="Nethermind.Trie/Nethermind.Trie.csproj" />
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
