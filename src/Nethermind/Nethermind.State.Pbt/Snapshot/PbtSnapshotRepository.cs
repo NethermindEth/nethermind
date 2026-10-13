@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -161,8 +162,8 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     /// </remarks>
     public bool TryLeaseCompactionWindow(in StateId head, long minBlockNumber, PbtSnapshotPooledList chain)
     {
-        using PbtAssembledSnapshotResult leased = Walk(head, MemoryPriority, edge =>
-            Height(edge.From) < minBlockNumber ? Step.Skip : Height(edge.From) == minBlockNumber ? Step.Stop : Step.Traverse);
+        using PbtAssembledSnapshotResult leased = Walk(head, MemoryPriority, (_, from, _) =>
+            Height(from) < minBlockNumber ? Step.Skip : Height(from) == minBlockNumber ? Step.Stop : Step.Traverse);
         if (leased.SnapshotCount == 0) return false;
         foreach (PbtSnapshot snapshot in leased.InMemory)
         {
@@ -236,8 +237,8 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     {
         if (head == target) return true;
         StateId wanted = target;
-        using PbtAssembledSnapshotResult assembled = Walk(head, ReadPriority, edge =>
-            edge.From == wanted ? Step.Stop : Height(edge.From) > Height(wanted) ? Step.Traverse : Step.Skip);
+        using PbtAssembledSnapshotResult assembled = Walk(head, ReadPriority, (_, from, _) =>
+            from == wanted ? Step.Stop : Height(from) > Height(wanted) ? Step.Traverse : Step.Skip);
         return assembled.SnapshotCount > 0;
     }
 
@@ -347,49 +348,51 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
     {
         if (target == readerFloor) return Empty();
         StateId floor = readerFloor;
-        return Walk(target, ReadPriority, (edge) => Height(edge.From) < Height(floor)
-            ? edge.Persisted is not null ? Step.Stop : Step.Skip
-            : edge.From == floor ? Step.Stop : edge.From.BlockNumber == floor.BlockNumber ? Step.Skip : Step.Traverse);
+        return Walk(target, ReadPriority, (_, from, tier) => Height(from) < Height(floor)
+            ? tier.IsPersisted() ? Step.Stop : Step.Skip
+            : from == floor ? Step.Stop : from.BlockNumber == floor.BlockNumber ? Step.Skip : Step.Traverse);
     }
 
     public PbtAssembledSnapshotResult TryLeasePersistedChain(in StateId target, ulong minimumBlockNumber)
     {
         long best = long.MaxValue;
-        return Walk(target, PersistedPriority, edge =>
+        return Walk(target, PersistedPriority, (_, from, _) =>
         {
-            if (Height(edge.From) < (long)minimumBlockNumber) return Step.Skip;
-            if (edge.From.BlockNumber == minimumBlockNumber) return Step.Stop;
-            if (Height(edge.From) < best) { best = Height(edge.From); return Step.Win; }
+            if (Height(from) < (long)minimumBlockNumber) return Step.Skip;
+            if (from.BlockNumber == minimumBlockNumber) return Step.Stop;
+            if (Height(from) < best) { best = Height(from); return Step.Win; }
             return Step.Traverse;
         });
     }
 
-    public PbtSnapshotLease? FindCandidateToPersist(in StateId seed, in StateId baseState, ulong compactSize,
+    /// <summary>Leases the next snapshot to persist, the one extending <paramref name="baseState"/>; at most one of the pair is set.</summary>
+    public (PbtPersistedSnapshot? Persisted, PbtSnapshot? InMemory) FindCandidateToPersist(in StateId seed, in StateId baseState, ulong compactSize,
         Func<StateId, bool> acceptsFinalizedRoot)
     {
         StateId floor = baseState;
-        using PbtAssembledSnapshotResult assembled = Walk(seed, PersistPriority, edge =>
-            edge.From == floor ? unchecked(edge.To.BlockNumber - edge.From.BlockNumber) <= compactSize && acceptsFinalizedRoot(edge.To) ? Step.Stop : Step.Skip
-            : Height(edge.From) > Height(floor) ? Step.Traverse : Step.Skip);
+        using PbtAssembledSnapshotResult assembled = Walk(seed, PersistPriority, (to, from, _) =>
+            from == floor ? unchecked(to.BlockNumber - from.BlockNumber) <= compactSize && acceptsFinalizedRoot(to) ? Step.Stop : Step.Skip
+            : Height(from) > Height(floor) ? Step.Traverse : Step.Skip);
         // The candidate is the oldest layer, and persisted layers are always older than in-memory ones.
         if (assembled.Persisted.Count > 0)
         {
             PbtPersistedSnapshot persisted = assembled.Persisted[0];
             if (!persisted.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-            return new(persisted);
+            return (persisted, null);
         }
         if (assembled.InMemory.Count > 0)
         {
             PbtSnapshot memory = assembled.InMemory[0];
             if (!memory.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-            return new(memory);
+            return (null, memory);
         }
-        return null;
+        return (null, null);
     }
 
-    private PbtAssembledSnapshotResult Walk(in StateId start, SnapshotTier[] priority, Func<PbtSnapshotLease, Step> decide)
+    /// <param name="decide">Judges an edge from its <c>To</c> state, its <c>From</c> state and its tier.</param>
+    private PbtAssembledSnapshotResult Walk(in StateId start, SnapshotTier[] priority, Func<StateId, StateId, SnapshotTier, Step> decide)
     {
-        List<(PbtSnapshotLease Edge, int Parent)> visited = [];
+        List<(IDisposable Snapshot, int Parent)> visited = [];
         Queue<(StateId State, bool Persisted, int Parent)> queue = new();
         HashSet<StateId> seen = [start];
         queue.Enqueue((start, false, -1));
@@ -401,59 +404,70 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalo
                 foreach (SnapshotTier tier in priority)
                 {
                     if (node.Persisted && !tier.IsPersisted()) continue;
-                    PbtSnapshotLease? edge = LeaseEdge(node.State, tier);
-                    if (edge is null) continue;
+                    if (!TryLeaseEdge(node.State, tier, out IDisposable? edge, out StateId from)) continue;
                     Step step;
-                    try { step = decide(edge); }
+                    try { step = decide(node.State, from, tier); }
                     catch { edge.Dispose(); throw; }
-                    if (step == Step.Skip || !seen.Add(edge.From)) { edge.Dispose(); continue; }
+                    if (step == Step.Skip || !seen.Add(from)) { edge.Dispose(); continue; }
                     int index = visited.Count;
                     visited.Add((edge, node.Parent));
                     if (step is Step.Win or Step.Stop) winner = index;
                     if (step == Step.Stop) return Gather(visited, winner);
-                    queue.Enqueue((edge.From, tier.IsPersisted(), index));
+                    queue.Enqueue((from, tier.IsPersisted(), index));
                 }
             }
             return winner < 0 ? Empty() : Gather(visited, winner);
         }
-        finally { foreach ((PbtSnapshotLease edge, _) in visited) edge.Dispose(); }
+        finally { foreach ((IDisposable edge, _) in visited) edge.Dispose(); }
     }
 
-    private PbtSnapshotLease? LeaseEdge(in StateId state, SnapshotTier tier)
+    private bool TryLeaseEdge(in StateId state, SnapshotTier tier, [NotNullWhen(true)] out IDisposable? edge, out StateId from)
     {
         lock (_lock)
         {
             if (!tier.IsPersisted())
             {
                 Dictionary<StateId, PbtSnapshot> source = tier == SnapshotTier.InMemoryBase ? _snapshots : _compactedSnapshots;
-                return source.TryGetValue(state, out PbtSnapshot? snapshot) && snapshot.TryLease() ? new(snapshot) : null;
+                if (source.TryGetValue(state, out PbtSnapshot? snapshot) && snapshot.TryLease())
+                {
+                    (edge, from) = (snapshot, snapshot.From);
+                    return true;
+                }
             }
-            if (!_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges)) return null;
-            PbtPersistedSnapshot? widest = null;
-            foreach (PbtPersistedSnapshot snapshot in edges.Values) widest = snapshot;
-            return widest is not null && widest.TryLease() ? new(widest) : null;
+            else if (_persisted.TryGetEdges(state, tier, out SortedDictionary<long, PbtPersistedSnapshot>? edges))
+            {
+                PbtPersistedSnapshot? widest = null;
+                foreach (PbtPersistedSnapshot snapshot in edges.Values) widest = snapshot;
+                if (widest is not null && widest.TryLease())
+                {
+                    (edge, from) = (widest, widest.From);
+                    return true;
+                }
+            }
+            (edge, from) = (null, default);
+            return false;
         }
     }
 
     private static PbtAssembledSnapshotResult Empty() => new(new PbtSnapshotPooledList(0), new PbtPersistedSnapshotList(0));
 
-    private static PbtAssembledSnapshotResult Gather(List<(PbtSnapshotLease Edge, int Parent)> visited, int winner)
+    private static PbtAssembledSnapshotResult Gather(List<(IDisposable Snapshot, int Parent)> visited, int winner)
     {
         PbtAssembledSnapshotResult assembled = Empty();
         try
         {
             for (int i = winner; i >= 0; i = visited[i].Parent)
             {
-                PbtSnapshotLease edge = visited[i].Edge;
-                if (edge.Memory is { } memory)
+                switch (visited[i].Snapshot)
                 {
-                    if (!memory.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-                    assembled.InMemory.Add(memory);
-                }
-                else
-                {
-                    if (!edge.Persisted!.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
-                    assembled.Persisted.Add(edge.Persisted);
+                    case PbtSnapshot memory:
+                        if (!memory.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
+                        assembled.InMemory.Add(memory);
+                        break;
+                    case PbtPersistedSnapshot persisted:
+                        if (!persisted.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
+                        assembled.Persisted.Add(persisted);
+                        break;
                 }
             }
             return assembled;

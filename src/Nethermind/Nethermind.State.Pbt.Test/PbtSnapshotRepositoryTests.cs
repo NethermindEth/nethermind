@@ -211,10 +211,13 @@ public class PbtSnapshotRepositoryTests
         Add(State(1), State(2));
         using PbtPersistedSnapshot edge = Persisted(store, State(0), State(2), SnapshotTier.PersistedLargeCompacted);
         _repository.TryAddPersisted(edge);
-        using PbtSnapshotLease? candidate = _repository.FindCandidateToPersist(State(2), State(0), 1, state => state == State(1));
-        Assert.That(candidate!.To, Is.EqualTo(State(1)));
-        using PbtSnapshotLease? rejected = _repository.FindCandidateToPersist(State(2), State(0), 32, static _ => false);
-        Assert.That(rejected, Is.Null);
+        (PbtPersistedSnapshot? persistedCandidate, PbtSnapshot? candidate) = _repository.FindCandidateToPersist(State(2), State(0), 1, state => state == State(1));
+        using (candidate)
+        {
+            Assert.That(persistedCandidate, Is.Null);
+            Assert.That(candidate!.To, Is.EqualTo(State(1)));
+        }
+        Assert.That(_repository.FindCandidateToPersist(State(2), State(0), 32, static _ => false), Is.EqualTo(((PbtPersistedSnapshot?)null, (PbtSnapshot?)null)));
         _repository.Dispose();
     }
 
@@ -256,13 +259,13 @@ public class PbtSnapshotRepositoryTests
     public void Finality_callback_runs_outside_index_lock()
     {
         Add(State(0), State(1));
-        using PbtSnapshotLease? lease = _repository.FindCandidateToPersist(State(1), State(0), 32, _ =>
+        (_, PbtSnapshot? candidate) = _repository.FindCandidateToPersist(State(1), State(0), 32, _ =>
         {
             Task<int> query = Task.Run(() => _repository.Count);
             Assert.That(query.Wait(TimeSpan.FromSeconds(5)), Is.True);
             return true;
         });
-        Assert.That(lease, Is.Not.Null);
+        using (candidate) Assert.That(candidate, Is.Not.Null);
     }
 
     [Test]

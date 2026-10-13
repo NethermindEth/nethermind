@@ -18,8 +18,9 @@ internal static class PbtSnapshotTestExtensions
     /// <summary>Leases the next memory snapshot extending <paramref name="persistedState"/> towards <paramref name="seed"/>.</summary>
     internal static PbtSnapshot? FindSnapshotToPersist(this PbtSnapshotRepository repository, in StateId seed, in StateId persistedState, ulong compactSize)
     {
-        using PbtSnapshotLease? lease = repository.FindCandidateToPersist(seed, persistedState, compactSize, static _ => true);
-        return lease?.Memory is { } snapshot && snapshot.TryLease() ? snapshot : null;
+        (PbtPersistedSnapshot? persisted, PbtSnapshot? snapshot) = repository.FindCandidateToPersist(seed, persistedState, compactSize, static _ => true);
+        persisted?.Dispose();
+        return snapshot;
     }
 
     /// <summary>Whether the repository indexes this exact persisted instance.</summary>
