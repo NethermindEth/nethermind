@@ -58,10 +58,12 @@ internal static class DirtyNodeHasher
         private Vector256<byte> _element0;
     }
 
-    private readonly struct PendingNode(TrieNode node, in TreePath path)
+    private readonly struct PendingNode(TrieNode node, in TreePath path, TrieNode? parent, int childIndex)
     {
         public readonly TrieNode Node = node;
         public readonly TreePath Path = path;
+        public readonly TrieNode? Parent = parent;
+        public readonly int ChildIndex = childIndex;
     }
 
     /// <summary>Hashes every dirty node below <paramref name="root" />, leaving the root itself alone.</summary>
@@ -73,14 +75,29 @@ internal static class DirtyNodeHasher
     /// <param name="maxCollectedNodes">Collection budget for one subtree; only tests pass anything else.</param>
     internal static bool HashBelowRoot(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, bool canBeParallel,
         int maxCollectedNodes = MaxCollectedNodes)
+        => HashDirtyNodes(root, resolver, pool, canBeParallel, committer: null, maxCollectedNodes);
+
+    /// <summary>Hashes every dirty node below <paramref name="root" /> as <see cref="HashBelowRoot(TrieNode, ITrieNodeResolver, ICappedArrayPool?, bool, int)" />
+    /// does, and seals and commits each one once its level is hashed.</summary>
+    /// <remarks>A committed node is sealed, so the caller's commit walk skips it and commits only what this
+    /// left, the root included. A node is committed only when all of its dirty children were too, so dirty
+    /// nodes an earlier hashing already left hashed are collected as well, to be committed rather than hashed.
+    /// Children commit before their parents, and a parent takes the node the committer hands back before it
+    /// is encoded.</remarks>
+    internal static void HashAndCommitBelowRoot(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, bool canBeParallel,
+        ICommitter committer)
+        => HashDirtyNodes(root, resolver, pool, canBeParallel, committer, MaxCollectedNodes);
+
+    private static bool HashDirtyNodes(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, bool canBeParallel,
+        ICommitter? committer, int maxCollectedNodes)
     {
         if (!Avx2.IsSupported || !root.IsDirty || root.Keccak is not null) return false;
 
         if (!canBeParallel || RuntimeInformation.IsSingleProcessor || !root.IsBranch
-            || !TryHashSubtreesInParallel(root, resolver, pool, maxCollectedNodes))
+            || !TryHashSubtreesInParallel(root, resolver, pool, committer, maxCollectedNodes))
         {
             TreePath rootPath = TreePath.Empty;
-            HashSubtree(root, in rootPath, resolver, pool, maxCollectedNodes);
+            HashSubtree(root, in rootPath, parent: null, childIndex: 0, resolver, pool, committer, maxCollectedNodes);
         }
 
         return AllChildrenHashed(root);
@@ -99,18 +116,20 @@ internal static class DirtyNodeHasher
     }
 
     /// <returns>Whether there were enough subtrees to be worth spreading; one is cheaper in place.</returns>
-    private static bool TryHashSubtreesInParallel(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
+    private static bool TryHashSubtreesInParallel(TrieNode root, ITrieNodeResolver resolver, ICappedArrayPool? pool, ICommitter? committer,
+        int maxCollectedNodes)
     {
         const int MinimumSubtrees = 2;
         uint dirtyChildren = 0;
         for (int i = 0; i < BranchChildCount; i++)
         {
-            if (root.TryGetDirtyChild(i, out TrieNode? child) && child.Keccak is null) dirtyChildren |= 1u << i;
+            if (root.TryGetDirtyChild(i, out TrieNode? child) && IsCollected(child, committer)) dirtyChildren |= 1u << i;
         }
 
         // Counted before anything is allocated, so declining costs nothing on the common storage commit.
         int count = BitOperations.PopCount(dirtyChildren);
         if (count < MinimumSubtrees) return false;
+        if (committer is not null && !committer.TryEnableParallelCommit()) return false;
 
         int[] childIndexes = new int[count];
         for (int i = 0; i < count; i++)
@@ -121,26 +140,27 @@ internal static class DirtyNodeHasher
 
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(RuntimeInformation.ProcessorCount);
         ParallelUnbalancedWork.For(0, count, RuntimeInformation.ParallelOptionsLogicalCores,
-            (childIndexes, root, resolver, pool, maxCollectedNodes),
+            (childIndexes, root, resolver, pool, committer, maxCollectedNodes),
             static (i, state) =>
             {
                 int childIndex = state.childIndexes[i];
                 state.root.TryGetDirtyChild(childIndex, out TrieNode? child);
                 TreePath childPath = TreePath.Empty;
                 childPath.AppendMut(childIndex);
-                HashSubtree(child!, in childPath, state.resolver, state.pool, state.maxCollectedNodes);
+                HashSubtree(child!, in childPath, state.root, childIndex, state.resolver, state.pool, state.committer, state.maxCollectedNodes);
                 return state;
             });
 
         return true;
     }
 
-    private static void HashSubtree(TrieNode subtreeRoot, in TreePath subtreeRootPath, ITrieNodeResolver resolver, ICappedArrayPool? pool, int maxCollectedNodes)
+    private static void HashSubtree(TrieNode subtreeRoot, in TreePath subtreeRootPath, TrieNode? parent, int childIndex,
+        ITrieNodeResolver resolver, ICappedArrayPool? pool, ICommitter? committer, int maxCollectedNodes)
     {
         using ArrayPoolList<PendingNode> pending = new(64);
         TreePath path = subtreeRootPath;
         // A collection the budget cut short is still hashable: Collect adds a node only after all its dirty children.
-        Collect(subtreeRoot, ref path, pending, maxCollectedNodes);
+        Collect(subtreeRoot, parent, childIndex, ref path, pending, committer, maxCollectedNodes);
         if (pending.Count < MinimumDirtyNodes) return;
 
         Span<PendingNode> nodes = pending.AsSpan();
@@ -159,19 +179,25 @@ internal static class DirtyNodeHasher
         // Path length 0 is the trie's own root, which the caller hashes.
         int shallowest = Math.Max(subtreeRootPath.Length, 1);
         int currentPathLength = -1;
-        foreach (int index in orderSpan)
+        int levelStart = 0;
+        int position = 0;
+        for (; position < orderSpan.Length; position++)
         {
-            ref readonly PendingNode pendingNode = ref nodes[index];
+            ref readonly PendingNode pendingNode = ref nodes[orderSpan[position]];
             int pathLength = pendingNode.Path.Length;
             if (pathLength < shallowest) break;
             if (pathLength != currentPathLength)
             {
                 // A level's leftovers cannot wait for the next one, whose nodes are their parents.
                 HashRemainingGroups(byClass, classCount, storage);
+                if (committer is not null) CommitLevel(nodes, orderSpan[levelStart..position], committer);
+                levelStart = position;
                 currentPathLength = pathLength;
             }
 
             TrieNode node = pendingNode.Node;
+            // Only a commit collects a node an earlier hashing left hashed, and it is left to be committed.
+            if (node.Keccak is not null) continue;
             TreePath nodePath = pendingNode.Path;
             CappedArray<byte> rlp = node.PrepareRlp(resolver, ref nodePath, pool, canBeParallel: false);
             if (rlp.Length < Hash256.Size || rlp.Length >= KeccakHash.MaxBatchablePaddedLength)
@@ -192,6 +218,23 @@ internal static class DirtyNodeHasher
         }
 
         HashRemainingGroups(byClass, classCount, storage);
+        if (committer is not null) CommitLevel(nodes, orderSpan[levelStart..position], committer);
+    }
+
+    private static void CommitLevel(ReadOnlySpan<PendingNode> nodes, ReadOnlySpan<int> level, ICommitter committer)
+    {
+        foreach (int index in level)
+        {
+            ref readonly PendingNode pendingNode = ref nodes[index];
+            TrieNode node = pendingNode.Node;
+            node.Seal();
+            // Below a hash the node is embedded in its parent, so there is nothing to store.
+            if (node.FullRlp.Length < Hash256.Size) continue;
+
+            TreePath path = pendingNode.Path;
+            TrieNode committed = committer.CommitNode(ref path, node);
+            if (!ReferenceEquals(committed, node)) pendingNode.Parent![pendingNode.ChildIndex] = committed;
+        }
     }
 
     private static void HashRemainingGroups(TrieNode[] byClass, Span<int> classCount, Span<byte> storage)
@@ -242,7 +285,7 @@ internal static class DirtyNodeHasher
     {
         using ArrayPoolList<PendingNode> pending = new(64);
         TreePath path = TreePath.Empty;
-        Collect(subtreeRoot, ref path, pending, MaxCollectedNodes);
+        Collect(subtreeRoot, parent: null, childIndex: 0, ref path, pending, committer: null, MaxCollectedNodes);
 
         Span<PendingNode> nodes = pending.AsSpan();
         int[] order = new int[nodes.Length];
@@ -261,7 +304,8 @@ internal static class DirtyNodeHasher
     private static int PaddedClass(int length) => length / KeccakHash.RateBlockLength + 1;
 
     /// <returns>Whether the subtree fit within the collection budget.</returns>
-    private static bool Collect(TrieNode node, ref TreePath path, ArrayPoolList<PendingNode> into, int maxCollectedNodes)
+    private static bool Collect(TrieNode node, TrieNode? parent, int childIndex, ref TreePath path, ArrayPoolList<PendingNode> into,
+        ICommitter? committer, int maxCollectedNodes)
     {
         if (into.Count >= maxCollectedNodes) return false;
 
@@ -270,25 +314,28 @@ internal static class DirtyNodeHasher
             path.AppendMut(0);
             for (int i = 0; i < BranchChildCount; i++)
             {
-                if (node.TryGetDirtyChild(i, out TrieNode? child) && child.Keccak is null)
+                if (node.TryGetDirtyChild(i, out TrieNode? child) && IsCollected(child, committer))
                 {
                     path.SetLast(i);
-                    if (!Collect(child, ref path, into, maxCollectedNodes)) return false;
+                    if (!Collect(child, node, i, ref path, into, committer, maxCollectedNodes)) return false;
                 }
             }
 
             path.TruncateOne();
         }
-        else if (node.IsExtension && node.TryGetDirtyChild(0, out TrieNode? extensionChild) && extensionChild.Keccak is null)
+        else if (node.IsExtension && node.TryGetDirtyChild(0, out TrieNode? extensionChild) && IsCollected(extensionChild, committer))
         {
             int previousLength = node.AppendChildPath(ref path, 0);
-            if (!Collect(extensionChild, ref path, into, maxCollectedNodes)) return false;
+            if (!Collect(extensionChild, node, 0, ref path, into, committer, maxCollectedNodes)) return false;
             path.TruncateMut(previousLength);
         }
 
-        into.Add(new PendingNode(node, in path));
+        into.Add(new PendingNode(node, in path, parent, childIndex));
         return true;
     }
+
+    /// <summary>Whether a dirty child is collected: one still to hash, or, for a commit, any dirty one.</summary>
+    private static bool IsCollected(TrieNode dirtyChild, ICommitter? committer) => committer is not null || dirtyChild.Keccak is null;
 
     /// <summary>Hashes nodes that share a padded length, or hashes a lone one on its own.</summary>
     private static void HashGroup(Span<TrieNode> group, int paddedClass, Span<byte> storage)

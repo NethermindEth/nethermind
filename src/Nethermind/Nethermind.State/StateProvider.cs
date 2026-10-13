@@ -1174,12 +1174,10 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         void Trace() => _logger.Trace("Clearing state provider caches");
     }
 
-    public void UpdateStateRootIfNeeded()
+    internal void UpdateRootHashAndCommit(ulong blockNumber)
     {
-        if (_needsStateRootUpdate)
-        {
-            RecalculateStateRoot();
-        }
+        Tree.UpdateRootHashAndCommit(blockNumber);
+        _needsStateRootUpdate = false;
     }
 
     // used in EthereumTests

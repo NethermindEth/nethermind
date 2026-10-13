@@ -111,6 +111,13 @@ public interface IWorldStateScopeProvider
         void Commit(ulong blockNumber);
 
         /// <summary>
+        /// Updates the root hash and commits, with the same outcome as <see cref="UpdateRootHash"/> followed by
+        /// <see cref="Commit"/>.
+        /// </summary>
+        /// <remarks>Lets a trie backend hash and commit its dirty nodes in a single walk.</remarks>
+        void UpdateRootHashAndCommit(ulong blockNumber);
+
+        /// <summary>
         /// Called by the world state right after <see cref="Commit"/>. A scope that caches the state it reads takes a
         /// snapshot of the block's final values, brings its cache forward to the committed state with it, and disposes
         /// it; a scope without such a cache takes none, so the snapshot costs nothing.

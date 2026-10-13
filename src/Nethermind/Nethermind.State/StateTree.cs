@@ -150,5 +150,7 @@ namespace Nethermind.State
         public void UpdateRootHash() => UpdateRootHash(true);
 
         public void Commit() => Commit(false, WriteFlags.None);
+
+        public void UpdateRootHashAndCommit() => UpdateRootHashAndCommit(true, WriteFlags.None);
     }
 }

@@ -27,6 +27,7 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
     public PrewarmerGetTimeLabel Commit { get; } = new("commit", isPrewarmer);
     public PrewarmerGetTimeLabel WriteBatchToScopeDisposeTime { get; } = new("write_batch_to_dispose", isPrewarmer);
     public PrewarmerGetTimeLabel UpdateRootHash { get; } = new("update_root_hash", isPrewarmer);
+    public PrewarmerGetTimeLabel UpdateRootHashAndCommit { get; } = new("update_root_hash_and_commit", isPrewarmer);
     public PrewarmerGetTimeLabel AddressHit { get; } = new("address_hit", isPrewarmer);
     public PrewarmerGetTimeLabel AddressMiss { get; } = new("address_miss", isPrewarmer);
     public PrewarmerGetTimeLabel SlotGetHit { get; } = new("slot_get_hit", isPrewarmer);
@@ -228,6 +229,19 @@ public class PrewarmerScopeProvider(
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+        }
+
+        public void UpdateRootHashAndCommit(ulong blockNumber)
+        {
+            if (!_measureMetric)
+            {
+                baseScope.UpdateRootHashAndCommit(blockNumber);
+                return;
+            }
+
+            long sw = Stopwatch.GetTimestamp();
+            baseScope.UpdateRootHashAndCommit(blockNumber);
+            _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.UpdateRootHashAndCommit);
         }
 
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.

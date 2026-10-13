@@ -82,6 +82,14 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
 
+        public void UpdateRootHashAndCommit(ulong blockNumber)
+        {
+            long start = Stopwatch.GetTimestamp();
+            baseScope.UpdateRootHashAndCommit(blockNumber);
+            parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            parent._updateMetrics(parent._stateMerkleizationTime);
+        }
+
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => baseScope.WriteBackCommittedState(takeSnapshot);
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)

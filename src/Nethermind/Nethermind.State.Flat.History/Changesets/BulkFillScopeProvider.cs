@@ -99,6 +99,7 @@ public sealed class BulkFillScopeProvider(
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => inner.StartWriteBatch(estimatedAccountNum);
         public void UpdateRootHash() => inner.UpdateRootHash();
         public void Commit(ulong blockNumber) => inner.Commit(blockNumber);
+        public void UpdateRootHashAndCommit(ulong blockNumber) => inner.UpdateRootHashAndCommit(blockNumber);
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => session.StageFinalState(takeSnapshot);
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
         // Bulk fill stages final state only from the world state's block-change snapshot, which a BAL apply bypasses.

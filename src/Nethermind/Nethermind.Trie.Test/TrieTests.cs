@@ -1361,16 +1361,57 @@ namespace Nethermind.Trie.Test
 
             // The tree must keep the committer's sealed replacements, not the nodes it handed over.
             // Commit reloads RootRef from the store, so walk the children of the root held before it.
+            Assert.That(CountKeptReplacements(actual, root, parallel), Is.EqualTo(parallel.Replacements.Count - (skipRoot ? 0 : 1)));
+        }
+
+        [Test]
+        public void UpdateRootHashAndCommit_matches_serial_commit(
+            [Values(4, 16, 128, 1200)] int count,
+            [Values(0, 4)] int sharedPrefix,
+            [Values] bool parallelCommit,
+            [Values] bool canBeParallel,
+            [Values] bool partlyHashed)
+        {
+            CommitRecorder serial = new(parallel: false);
+            CommitRecorder recorder = new(parallelCommit);
+            PatriciaTree expected = CreateCommitTree(serial, count, sharedPrefix);
+            PatriciaTree actual = CreateCommitTree(recorder, count, sharedPrefix);
+            // Hashed but uncommitted nodes stay dirty, and must still be committed under the path the new key re-dirties.
+            if (partlyHashed) actual.UpdateRootHash();
+            byte[] extraKey = Bytes.FromHexString("0x00000000ab000000000000000000000000000000000000000000000000000001");
+            expected.Set(extraKey, extraKey);
+            actual.Set(extraKey, extraKey);
+            TrieNode root = actual.RootRef!;
+            expected.Commit();
+            actual.UpdateRootHashAndCommit(canBeParallel, WriteFlags.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.RootHash, Is.EqualTo(expected.RootHash));
+                Assert.That(recorder.Nodes.Count, Is.EqualTo(serial.Nodes.Count));
+                foreach ((TreePath path, byte[] rlp) in serial.Nodes)
+                    Assert.That(recorder.Nodes.GetValueOrDefault(path), Is.EqualTo(rlp), $"Node at {path}");
+                Assert.That(recorder.DuplicateWrites, Is.Zero);
+                Assert.That(recorder.ActiveAtDispose, Is.Zero);
+                Assert.That(recorder.Disposed, Is.True);
+                if (!parallelCommit) Assert.That(recorder.Threads.Count, Is.EqualTo(1));
+                Assert.That(CountKeptReplacements(actual, root, recorder), Is.EqualTo(parallelCommit ? recorder.Replacements.Count - 1 : 0));
+            }
+        }
+
+        /// <summary>Asserts no committed original is still reachable below <paramref name="root" /> and counts the replacements that are.</summary>
+        private static int CountKeptReplacements(PatriciaTree tree, TrieNode root, CommitRecorder recorder)
+        {
             int reachable = 0;
             AssertKeepsReplacements(root, TreePath.Empty);
-            Assert.That(reachable, Is.EqualTo(parallel.Replacements.Count - (skipRoot ? 0 : 1)));
+            return reachable;
 
             void AssertKeepsReplacements(TrieNode node, TreePath path)
             {
                 if (path.Length > 0)
                 {
-                    if (parallel.Replacements.ContainsKey(node)) reachable++;
-                    Assert.That(parallel.Originals.ContainsKey(node), Is.False, $"Committed original kept at {path}");
+                    if (recorder.Replacements.ContainsKey(node)) reachable++;
+                    Assert.That(recorder.Originals.ContainsKey(node), Is.False, $"Committed original kept at {path}");
                 }
 
                 int children = node.IsBranch ? 16 : node.NodeType == NodeType.Extension ? 1 : 0;
@@ -1378,7 +1419,7 @@ namespace Nethermind.Trie.Test
                 {
                     TreePath childPath = path;
                     node.AppendChildPath(ref childPath, i);
-                    if (node.GetChildWithChildPath(actual.TrieStore, ref childPath, i, keepChildRef: true) is { } child)
+                    if (node.GetChildWithChildPath(tree.TrieStore, ref childPath, i, keepChildRef: true) is { } child)
                         AssertKeepsReplacements(child, childPath);
                 }
             }

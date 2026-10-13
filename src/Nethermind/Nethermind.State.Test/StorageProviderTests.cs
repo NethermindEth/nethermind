@@ -2833,6 +2833,7 @@ public partial class StorageProviderTests(bool useFlat)
             public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
 
             public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
+            public void UpdateRootHashAndCommit(ulong blockNumber) => baseScope.UpdateRootHashAndCommit(blockNumber);
         }
 
         private class WriteBatchDecorator(

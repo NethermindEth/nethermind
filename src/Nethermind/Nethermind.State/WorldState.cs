@@ -280,8 +280,7 @@ namespace Nethermind.State
         public void CommitTree(ulong blockNumber)
         {
             GuardInScope();
-            _stateProvider.UpdateStateRootIfNeeded();
-            _currentScope.Commit(blockNumber);
+            _stateProvider.UpdateRootHashAndCommit(blockNumber);
             // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
             _currentScope.WriteBackCommittedState(_takeBlockChangeSnapshot);
             _stateProvider.ClearRemovedAccounts();

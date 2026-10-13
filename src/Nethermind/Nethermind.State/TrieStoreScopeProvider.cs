@@ -275,7 +275,11 @@ public partial class TrieStoreScopeProvider(
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
         }
 
-        public void Commit(ulong blockNumber)
+        public void Commit(ulong blockNumber) => Commit(blockNumber, updateRootHash: false);
+
+        public void UpdateRootHashAndCommit(ulong blockNumber) => Commit(blockNumber, updateRootHash: true);
+
+        private void Commit(ulong blockNumber, bool updateRootHash)
         {
             using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
             using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
@@ -299,7 +303,8 @@ public partial class TrieStoreScopeProvider(
                     });
             }
 
-            _backingStateTree.Commit();
+            if (updateRootHash) _backingStateTree.UpdateRootHashAndCommit();
+            else _backingStateTree.Commit();
             _storages.Clear();
         }
 

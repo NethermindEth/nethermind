@@ -131,7 +131,16 @@ namespace Nethermind.Trie
             _bufferPool = bufferPool;
         }
 
-        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None)
+        public void Commit(bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None) =>
+            Commit(skipRoot, writeFlags, hashInBatches: false, canBeParallel: false);
+
+        /// <summary>Hashes and commits the dirty nodes, with the same outcome as <see cref="UpdateRootHash" /> followed by <see cref="Commit(bool, WriteFlags)" />.</summary>
+        /// <remarks>Each node is committed as soon as the batched hashing of <see cref="UpdateRootHash" /> has hashed it,
+        /// so the dirty nodes are walked once; the commit walk then commits only what that left, the root included.</remarks>
+        public void UpdateRootHashAndCommit(bool canBeParallel, WriteFlags writeFlags) =>
+            Commit(skipRoot: false, writeFlags, hashInBatches: true, canBeParallel);
+
+        private void Commit(bool skipRoot, WriteFlags writeFlags, bool hashInBatches, bool canBeParallel)
         {
             if (!_allowCommits)
             {
@@ -153,6 +162,8 @@ namespace Nethermind.Trie
             {
                 if (RootRef is not null && RootRef.IsDirty)
                 {
+                    if (hashInBatches) DirtyNodeHasher.HashAndCommitBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel, committer);
+
                     TreePath path = TreePath.Empty;
                     if (maxLevelForConcurrentCommit >= 0 && !Core.Cpu.RuntimeInformation.IsSingleProcessor)
                     {

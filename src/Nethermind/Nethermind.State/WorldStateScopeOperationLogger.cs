@@ -98,6 +98,12 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void Commit(ulong blockNumber) => innerScope.Commit(blockNumber);
 
+        public void UpdateRootHashAndCommit(ulong blockNumber)
+        {
+            innerScope.UpdateRootHashAndCommit(blockNumber);
+            logger.Trace($"{scopeId}: Update root hash and commit");
+        }
+
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) =>
             innerScope.WriteBackCommittedState(() => new SnapshotWrapper(takeSnapshot(), scopeId, logger));
     }

@@ -84,6 +84,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => inner.StartWriteBatch(estimatedAccountNum);
 
         public void Commit(ulong blockNumber) => inner.Commit(blockNumber);
+        public void UpdateRootHashAndCommit(ulong blockNumber) => inner.UpdateRootHashAndCommit(blockNumber);
 
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot) => inner.WriteBackCommittedState(takeSnapshot);
 

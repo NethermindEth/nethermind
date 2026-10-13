@@ -529,7 +529,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
-    public void Commit(ulong blockNumber)
+    public void Commit(ulong blockNumber) => Commit(blockNumber, updateRootHash: false);
+
+    public void UpdateRootHashAndCommit(ulong blockNumber) => Commit(blockNumber, updateRootHash: true);
+
+    private void Commit(ulong blockNumber, bool updateRootHash)
     {
         _pausePrewarmer = true;
 
@@ -539,7 +543,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            Volatile.Read(ref _stateTree)?.Commit();
+            StateTree? stateTree = Volatile.Read(ref _stateTree);
+            if (updateRootHash) stateTree?.UpdateRootHashAndCommit();
+            else stateTree?.Commit();
         }
 
         _storages.Clear();
