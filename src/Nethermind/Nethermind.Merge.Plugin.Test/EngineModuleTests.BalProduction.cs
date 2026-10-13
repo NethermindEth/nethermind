@@ -6,11 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -40,9 +38,9 @@ public partial class EngineModuleTests
     /// included transactions and the post-execution withdrawal must keep contiguous indices; the node's own
     /// newPayload re-executes the block in validation mode, so a stale or misindexed entry fails the payload.
     /// </summary>
-    [TestCase(true, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded first)")]
-    [TestCase(false, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded last)")]
-    public async Task GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(bool discardedFirst)
+    [TestCase(true, null, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded first)")]
+    [TestCase(false, null, TestName = "GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(discarded last)")]
+    public virtual async Task GetPayloadV6_purges_transaction_discarded_after_execution_from_BAL(bool discardedFirst, string? customWithdrawalContractAddress)
     {
         Transaction? discarded = null;
         DiscardingTransactionProcessorFactory factory = new(tx => tx.Hash == discarded?.Hash);
@@ -86,8 +84,18 @@ public partial class EngineModuleTests
             ReadOnlyAccountChanges discardedSender = bal.GetAccountChanges(TestItem.AddressC)!;
             Assert.That(discardedSender.NonceChanges, Is.Empty);
             Assert.That(discardedSender.BalanceChanges.Select(static c => c.Index), Is.EqualTo(new[] { (uint)included.Length }));
-            Assert.That(bal.GetAccountChanges(TestItem.AddressF)!.BalanceChanges.Select(static c => c.Index), Is.EqualTo(new[] { postExecutionIndex }));
-            Assert.That(ChangeIndices(bal).Max(), Is.EqualTo(postExecutionIndex));
+            if (customWithdrawalContractAddress is null)
+            {
+                Assert.That(bal.GetAccountChanges(TestItem.AddressF)!.BalanceChanges.Select(static c => c.Index), Is.EqualTo(new[] { postExecutionIndex }));
+                Assert.That(ChangeIndices(bal).Max(), Is.EqualTo(postExecutionIndex));
+            }
+            else
+            {
+                // AuRa pays withdrawals through a system call to the withdrawal contract, which has no code in tests.
+                Assert.That(bal.GetAccountChanges(new Address(customWithdrawalContractAddress)), Is.Not.Null);
+                Assert.That(bal.GetAccountChanges(TestItem.AddressF), Is.Null);
+                Assert.That(ChangeIndices(bal).Max(), Is.EqualTo((uint)included.Length));
+            }
         }
 
         await AssertProducedPayloadValidates(chain, result);
