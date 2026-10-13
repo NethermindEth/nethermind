@@ -80,6 +80,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// The halting reason; <c>None</c>, <c>Stop</c> and <c>Revert</c> are normal halts, while <c>Suspend</c>
     /// indicates a yielded child frame.
     /// </returns>
+    /// <remarks>The guest never consults a frame code runner, so a frame always runs on the dispatch chain.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private EvmExceptionType RunFrameCode<TTracingInst, TCancelable>(
+        scoped ref EvmStack stack,
+        scoped ref TGasPolicy gas,
+        ref nint programCounter)
+        where TTracingInst : struct, IFlag
+        where TCancelable : struct, IFlag =>
+        RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
+
     /// <remarks>
     /// The guest cannot be cancelled (<see cref="DispatchFlags.ConstCancelable"/>), so a cancelable table runs the
     /// chain to its end like any other.
