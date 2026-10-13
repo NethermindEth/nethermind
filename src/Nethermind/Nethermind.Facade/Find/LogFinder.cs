@@ -207,20 +207,19 @@ namespace Nethermind.Facade.Find
             if (blockHash is not null)
             {
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, cancellationToken)
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockHash, blockNumber, blockTimestamp, cancellationToken)
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, cancellationToken);
             }
 
             return Array.Empty<FilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, CancellationToken cancellationToken)
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
             try
             {
                 long logIndexInBlock = 0;
-                Hash256? blockHash = null;
                 while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -249,9 +248,9 @@ namespace Nethermind.Facade.Find
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
-                                    receipt.BlockNumber,
+                                    blockNumber,
                                     blockTimestamp,
-                                    blockHash ??= receipt.BlockHash.ToCommitment(),
+                                    blockHash,
                                     receipt.Index,
                                     txHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
