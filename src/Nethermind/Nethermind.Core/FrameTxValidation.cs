@@ -307,9 +307,9 @@ public static class FrameTxValidation
     /// which its width charge scales, saturating at <see cref="ulong.MaxValue"/>.
     /// </summary>
     /// <remarks>
-    /// The transaction's intrinsic gas, which prices its data, signature verification and EIP-8272 recent-root
-    /// references, plus the validation prefix's declared execution limits through payment approval and one cold
-    /// <c>SLOAD</c> per EIP-8250 nonce key read. Reading declared limits rather than a first simulation, it also covers
+    /// The transaction's intrinsic gas, which prices its data, signature verification, EIP-8250 nonce key access and
+    /// EIP-8272 recent-root references, plus the validation prefix's declared execution limits through payment
+    /// approval. Reading declared limits rather than a first simulation, it also covers
     /// a later revalidation that runs more work. Application execution past the prefix and the separately bounded state
     /// gas are excluded. A transaction whose gas budget cannot be computed is charged the maximum.
     /// </remarks>
@@ -321,18 +321,7 @@ public static class FrameTxValidation
         }
 
         ulong prefixExecutionGas = ValidationWorkGas(transaction) - SignatureVerificationWorkGas(transaction);
-        return intrinsicGas.SaturatingAdd(prefixExecutionGas).SaturatingAdd(KeyedNonceReadGas(transaction.NonceKeys));
-    }
-
-    private static ulong KeyedNonceReadGas(UInt256[]? nonceKeys)
-    {
-        ulong gas = 0;
-        foreach (UInt256 key in nonceKeys ?? [])
-        {
-            if (!key.IsZero) gas += GasCostOf.ColdSLoad;
-        }
-
-        return gas;
+        return intrinsicGas.SaturatingAdd(prefixExecutionGas);
     }
 
     /// <summary>
@@ -748,17 +737,23 @@ public static class FrameTxValidation
             }
         }
 
-        if (transaction.NonceKeys is not null && spec.IsEip8250Enabled)
+        ulong keyedNonceAccessCost = 0;
+        if (transaction.NonceKeys is { } nonceKeys && spec.IsEip8250Enabled)
         {
             (int zeroBytes, int nonZeroBytes) = transaction.FrameCalldataStats;
             tokens += (ulong)zeroBytes + (ulong)nonZeroBytes * spec.GasCosts.TxDataNonZeroMultiplier;
             dataLength += (ulong)(zeroBytes + nonZeroBytes);
+            if (nonceKeys is not [{ IsZero: true }])
+            {
+                keyedNonceAccessCost = (ulong)nonceKeys.Length * Eip8250Constants.KeyedNonceAccessCost;
+            }
         }
 
         ulong mandatoryGas = (ulong)Eip8141Constants.IntrinsicGasCost
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
-                             + valueTransferCost;
+                             + valueTransferCost
+                             + keyedNonceAccessCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
         intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
