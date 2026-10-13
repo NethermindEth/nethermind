@@ -78,10 +78,15 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
-        TryGetHeaderAndCheckState(blockHash!, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetHeader(blockHash, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
             return headerError;
+        }
+
+        if (CheckTraceBaseState<GethLikeTxTrace>(header) is { } stateError)
+        {
+            return stateError;
         }
 
         if (CanStreamStructLogs(options))
@@ -456,6 +461,8 @@ public class DebugRpcModule(
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
+
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
 
         if (CanStreamStructLogs(options))
         {

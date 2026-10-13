@@ -34,7 +34,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
-#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethStyleTracer(
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IBlockTree blockTree,
@@ -348,6 +347,8 @@ public class GethStyleTracer(
         {
             { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(
                 logIndex is null ? options : options with { LogIndex = logIndex(b, tx) }, b, tx, worldState, specProvider.GetSpec(b.Header))),
+            { Tracer.Length: > 0, CaptureJavaScriptErrors: true } => new RecoveringJavaScriptBlockTracer(
+                () => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options), options.TxHash),
             { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(worldState, specProvider.GetSpec(block), options),
             _ => new GethLikeBlockMemoryTracer(options, (long)specProvider.GetSpec(block).GasCosts.DestroyRefund),
         };

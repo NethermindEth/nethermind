@@ -3481,6 +3481,27 @@ public class BlockTreeTests
         Assert.That(events, Is.EqualTo(new[] { (chain[3].Hash, false), (chain[2].Hash, false), (chain[1].Hash, false), (chain[0].Hash, true) }));
     }
 
+    /// <summary>A head moved back to its parent is reported once, by its removal; the sibling that later takes its
+    /// level replaces nothing, so subscribers must not rely on <see cref="BlockReplacementEventArgs.PreviousBlock"/> alone.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void TryUpdateMainChain_WhenHeadMovesBackToParentThenSiblingAdded_ReportsOldHeadOnlyAsRemoved()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis();
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 2);
+        blockTree.TryUpdateMainChain(chain[1].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        Block sibling = Build.A.Block.WithParent(chain[0]).WithExtraData([1]).TestObject;
+        blockTree.SuggestBlock(sibling);
+
+        List<(Hash256?, Hash256? Previous, bool Added)> events = [];
+        blockTree.BlockRemovedFromMain += (_, e) => events.Add((e.Header.Hash, null, false));
+        blockTree.BlockAddedToMain += (_, e) => events.Add((e.Block.Hash, e.PreviousBlock?.Hash, true));
+
+        blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.TryUpdateMainChain(sibling.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Assert.That(events, Is.EqualTo(new[] { (chain[1].Hash, (Hash256?)null, false), (chain[0].Hash, null, true), (sibling.Hash, null, true) }));
+    }
+
     [TestCase(1, TestName = "SingleStaleLevel")]
     [TestCase(3, TestName = "MultipleStaleLevel")]
     [MaxTime(Timeout.MaxTestTime)]
