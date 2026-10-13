@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,7 +41,16 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                    (pivotHeader.BlockAccessListHash is null || _blockAccessListStore.Exists(pivotNumber, pivotHash));
         };
 
+    /// <summary>How many different peers must report an access list unavailable before the height is left as a gap.</summary>
+    /// <remarks>
+    /// Peers keep access lists only for their own retention window, which can be shorter than this node's, so an old
+    /// height may be unavailable everywhere. Leaving it out keeps the feed from stalling; the store then reports it
+    /// missing, as it would a pruned one.
+    /// </remarks>
+    internal const int MaxUnavailableResponses = 8;
+
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
+    private readonly ConcurrentDictionary<ulong, (int Count, ISyncPeer? LastPeer)> _unavailable = new();
 
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -320,6 +330,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 {
                     _blockAccessListStore.Insert(blockInfo.BlockNumber, blockInfo.BlockHash, accessListRlp);
                     _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                    _unavailable.TryRemove(blockInfo.BlockNumber, out _);
                     validResponsesCount++;
                 }
                 else
@@ -341,9 +352,14 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                     _syncStatusList.MarkPending(blockInfo);
                 }
             }
-            else
+            else if (blockInfo is not null)
             {
-                if (blockInfo is not null)
+                if (hasAccessListResponse && IsUnavailableEverywhere(blockInfo.BlockNumber, batch.ResponseSourcePeer?.SyncPeer))
+                {
+                    _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                    if (_logger.IsDebug) _logger.Debug($"Block access list of {blockInfo.BlockNumber} is unavailable from {MaxUnavailableResponses} peers, leaving it out.");
+                }
+                else
                 {
                     _syncStatusList.MarkPending(blockInfo);
                 }
@@ -353,6 +369,21 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         UpdateSyncReport();
         LogPostProcessingBatchInfo(batch, validResponsesCount);
         return validResponsesCount;
+    }
+
+    /// <summary>Counts an unavailable response, once per peer in a row, and reports when the height should be given up.</summary>
+    private bool IsUnavailableEverywhere(ulong blockNumber, ISyncPeer? peer)
+    {
+        (int count, _) = _unavailable.AddOrUpdate(
+            blockNumber,
+            static (_, p) => (1, p),
+            static (_, current, p) => p is not null && ReferenceEquals(current.LastPeer, p) ? current : (current.Count + 1, p),
+            peer);
+
+        if (count < MaxUnavailableResponses) return false;
+
+        _unavailable.TryRemove(blockNumber, out _);
+        return true;
     }
 
     private void LogPostProcessingBatchInfo(BlockAccessListsSyncBatch batch, int validResponsesCount)

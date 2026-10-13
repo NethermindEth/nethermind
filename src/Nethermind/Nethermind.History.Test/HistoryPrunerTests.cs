@@ -145,19 +145,22 @@ public class HistoryPrunerTests
         }
     }
 
-    [TestCase(null, PruningMode.Hybrid, true, 9_968UL)]
-    [TestCase(true, PruningMode.Hybrid, true, 9_968UL)]
-    [TestCase(false, PruningMode.Hybrid, true, null)]
+    private const ulong BalOnlyHead = 500_000;
+
+    // Head 500_000: the 14299-epoch default keeps 457_568 blocks, a one-epoch retention keeps 32.
+    [TestCase(null, PruningMode.Hybrid, true, 42_432UL)]
+    [TestCase(1u, PruningMode.Hybrid, true, 499_968UL)]
+    [TestCase(uint.MaxValue, PruningMode.Hybrid, true, 0UL)] // keeps them all
     [TestCase(null, PruningMode.None, true, null)] // archive keeps them by default
-    [TestCase(true, PruningMode.None, true, 9_968UL)]
+    [TestCase(1u, PruningMode.None, true, 499_968UL)]
     [TestCase(null, PruningMode.Hybrid, false, null)]
-    public void Bals_are_pruned_when_history_pruning_is_disabled(bool? balPruning, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
+    public void Bals_are_pruned_when_history_pruning_is_disabled(uint? balRetentionEpochs, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
     {
         TestMemDb metadataDb = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balPruning, stateMode, chainHasAccessLists);
+        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balRetentionEpochs, stateMode, chainHasAccessLists);
 
         pruner.TryPruneHistory(CancellationToken.None);
 
@@ -165,7 +168,7 @@ public class HistoryPrunerTests
         {
             Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
             Assert.That(pruner.CutoffBlockNumber, Is.Null);
-            if (expectedCutoff is { } cutoff)
+            if (expectedCutoff is > 1 and { } cutoff)
             {
                 balStore.Received(1).DeleteRange(1, cutoff);
                 Assert.That(pruner.BalsDeletePointer, Is.EqualTo(cutoff));
@@ -186,14 +189,28 @@ public class HistoryPrunerTests
     public void Bal_only_pruning_resumes_from_persisted_pointer()
     {
         TestMemDb metadataDb = new();
-        metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(9_000UL).Bytes);
+        metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(30_000UL).Bytes);
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
         HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
 
         pruner.TryPruneHistory(CancellationToken.None);
 
-        balStore.Received(1).DeleteRange(9_000, 9_968);
-        balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 9_000), Arg.Any<ulong>());
+        balStore.Received(1).DeleteRange(30_000, 42_432);
+        balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 30_000), Arg.Any<ulong>());
+    }
+
+    [Test]
+    public void Bal_only_pruning_stops_at_the_sync_pivot()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), blockTree, Substitute.For<IReceiptStorage>(), balStore, balRetentionEpochs: 1);
+        blockTree.SyncPivot.Returns((400_000UL, Keccak.Zero));
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        balStore.Received(1).DeleteRange(1, 400_000);
+        Assert.That(pruner.BalsDeletePointer, Is.EqualTo(400_000UL));
     }
 
     [Test]
@@ -208,7 +225,7 @@ public class HistoryPrunerTests
         pruner.SchedulePruneHistory();
 
         await deleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        balStore.Received(1).DeleteRange(1, 9_968);
+        balStore.Received(1).DeleteRange(1, 42_432);
     }
 
     private static HistoryPruner CreateBalOnlyPruner(
@@ -216,13 +233,13 @@ public class HistoryPrunerTests
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         IBlockAccessListStore balStore,
-        bool? balPruning = null,
+        uint? balRetentionEpochs = null,
         PruningMode stateMode = PruningMode.Hybrid,
         bool chainHasAccessLists = true,
         IBackgroundTaskScheduler scheduler = null)
     {
-        blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
-        blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
+        blockTree.SyncPivot.Returns((BalOnlyHead, Keccak.Zero));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(BalOnlyHead).TestObject);
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(metadataDb);
         dbProvider.BlocksDb.Returns(new TestMemDb());
@@ -236,7 +253,7 @@ public class HistoryPrunerTests
             Substitute.For<IChainLevelInfoRepository>(),
             Substitute.For<IHeaderStore>(),
             dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = 1, BalPruning = balPruning, PruningInterval = 0 },
+            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = balRetentionEpochs, PruningInterval = 0 },
             new PruningConfig { Mode = stateMode },
             BlocksConfig,
             SyncConfig,
@@ -418,7 +435,9 @@ public class HistoryPrunerTests
     [TestCase(100UL, 10u, 0UL, 3533u, true)]      // block retention below min
     [TestCase(0UL, 100000u, 3533UL, 3000u, true)] // BAL retention below min
     [TestCase(0UL, 100000u, 3533UL, 3533u, false)] // BAL retention exactly at min
-    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
+    [TestCase(0UL, 100000u, 14299UL, null, false)] // unset BAL retention defaults to the chain floor
+    [TestCase(0UL, 100000u, 20000UL, null, false)]
+    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint? balRetentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {

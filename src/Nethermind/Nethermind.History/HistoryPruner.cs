@@ -63,6 +63,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
+    private readonly ulong _balRetentionEpochs;
     private readonly ulong _ancientBarrier;
     private readonly ulong _ancientReceiptsBarrier;
     private readonly bool _fastSync;
@@ -133,13 +134,14 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        // An archive node keeps its access lists unless told otherwise.
+        // An archive node keeps its access lists unless given a retention.
         _balPruningOnly = !_enabled
-            && (historyConfig.BalPruning ?? pruningConfig.Mode != PruningMode.None)
+            && (historyConfig.BalRetentionEpochs is not null || pruningConfig.Mode != PruningMode.None)
             && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
+        _balRetentionEpochs = historyConfig.BalRetentionEpochs ?? ulong.Max(HistoryRetentionConstants.HistoryPruneEpochs, _minBalRetentionEpochs);
         _ancientReceiptsBarrier = syncConfig.AncientReceiptsBarrierCalc;
         _fastSync = syncConfig.FastSync;
         _syncConfig = syncConfig;
@@ -187,7 +189,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
+    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_balRetentionEpochs) : null;
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
@@ -229,7 +231,7 @@ public class HistoryPruner : IHistoryPruner
     public ulong OldestUnreclaimedBlockNumber =>
         _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
-    private ulong? CalculateRollingCutoff(uint retentionEpochs)
+    private ulong? CalculateRollingCutoff(ulong retentionEpochs)
     {
         ulong? head = _blockTree.Head?.Number;
         if (head is null)
@@ -571,7 +573,7 @@ public class HistoryPruner : IHistoryPruner
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }
-        if (_historyConfig.BalRetentionEpochs < _minBalRetentionEpochs)
+        if (_balRetentionEpochs < _minBalRetentionEpochs)
         {
             throw new HistoryPrunerException($"BalRetentionEpochs must be at least {_minBalRetentionEpochs}.");
         }

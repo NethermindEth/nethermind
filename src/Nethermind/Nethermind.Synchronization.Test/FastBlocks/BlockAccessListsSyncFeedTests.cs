@@ -348,6 +348,38 @@ public class BlockAccessListsSyncFeedTests
     }
 
     [Test]
+    public async Task Leaves_out_block_access_lists_no_peer_has([Values] bool distinctPeers)
+    {
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot: 2, activation: 1, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+        PeerInfo samePeer = new(Substitute.For<ISyncPeer>());
+
+        for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
+        {
+            using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
+            Assert.That(batch, Is.Not.Null);
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
+            batch.ResponseSourcePeer = distinctPeers ? new PeerInfo(Substitute.For<ISyncPeer>()) : samePeer;
+            Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        }
+
+        using BlockAccessListsSyncBatch? next = await _feed.PrepareRequest();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next, distinctPeers ? Is.Null : Is.Not.Null, "only different peers count towards giving up");
+            Assert.That(_feed.IsFinished, Is.EqualTo(distinctPeers));
+            _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
+            _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test]
     public void Keeps_configured_barrier_when_headers_below_pivot_are_missing([Values] bool infoEnabled)
     {
         const ulong pivot = 40;
