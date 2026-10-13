@@ -621,9 +621,9 @@ public class FrameTxValidationTests
     }
 
     [TestCase(new ulong[] { 0 }, 0ul)]
-    [TestCase(new ulong[] { 1 }, 1ul)]
-    [TestCase(new ulong[] { 1, 2 }, 2ul)]
-    public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong chargedKeys)
+    [TestCase(new ulong[] { 1 }, 12_100ul)]
+    [TestCase(new ulong[] { 1, 2 }, 24_200ul)]
+    public void TryCalculateGasBudget_ChargesKeyedNonceAccessInIntrinsicGasAndTheCalldataFloor(ulong[] nonceKeys, ulong accessCost)
     {
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7623Enabled.Returns(true);
@@ -634,7 +634,6 @@ public class FrameTxValidationTests
         Assert.That(FrameTxValidation.TryCalculateGasBudget(keyless, spec, out ulong keylessIntrinsic, out ulong keylessFloor, out _), Is.True);
         Assert.That(FrameTxValidation.TryCalculateGasBudget(keyed, spec, out ulong intrinsic, out ulong floor, out _), Is.True);
 
-        ulong accessCost = chargedKeys * Eip8250Constants.KeyedNonceAccessCost;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(intrinsic, Is.EqualTo(keylessIntrinsic + accessCost));
