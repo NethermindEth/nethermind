@@ -29,18 +29,24 @@ using NUnit.Framework;
 namespace Nethermind.Runner.Test.Ethereum.Steps;
 
 [TestFixture]
-public class StartupPortInUseTests
+public class StartupListenerBindTests
 {
+    // 192.0.2.1 is an RFC 5737 documentation address, never assigned to a local interface.
+    private const string UnassignedIp = "192.0.2.1";
+
     [Test]
-    public void InitializeNetwork_fails_when_a_p2p_port_is_in_use([Values] bool discovery)
+    public void InitializeNetwork_fails_when_a_p2p_listener_cannot_bind([Values] bool discovery, [Values] bool portInUse)
     {
         IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-        Task portInUse = Task.FromException(new PortInUseException(new SocketException((int)SocketError.AddressAlreadyInUse), 30303));
+        ListenerBindException bindFailure = portInUse
+            ? new PortInUseException(new SocketException((int)SocketError.AddressAlreadyInUse), 30303)
+            : new ListenerBindException(new SocketException((int)SocketError.AddressNotAvailable), 30303);
+        Task failedBind = Task.FromException(bindFailure);
         if (discovery)
-            discoveryApp.StartAsync().Returns(portInUse);
+            discoveryApp.StartAsync().Returns(failedBind);
         else
-            rlpxHost.Init().Returns(portInUse);
+            rlpxHost.Init().Returns(failedBind);
 
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new SyncConfig { NetworkingEnabled = false }))
@@ -55,17 +61,17 @@ public class StartupPortInUseTests
 
         InitializeNetwork step = container.Resolve<InitializeNetwork>();
 
-        Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf<PortInUseException>());
+        Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf(bindFailure.GetType()));
     }
 
     [Test]
-    public void StartRpc_fails_when_the_rpc_port_is_in_use()
+    public void StartRpc_fails_when_the_rpc_listener_cannot_bind([Values] bool portInUse)
     {
         using TcpListener occupied = new(IPAddress.Loopback, 0);
         occupied.Start();
         int port = ((IPEndPoint)occupied.LocalEndpoint).Port;
 
-        JsonRpcConfig jsonRpcConfig = new() { Enabled = true, Host = "127.0.0.1", Port = port, JwtSecretFile = "unused" };
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = true, Host = portInUse ? "127.0.0.1" : UnassignedIp, Port = port, JwtSecretFile = "unused" };
         InitConfig initConfig = new() { PipelineWarmupEnabled = false, WebSocketsEnabled = false };
         ConfigProvider configProvider = new(jsonRpcConfig, initConfig);
 
@@ -81,6 +87,7 @@ public class StartupPortInUseTests
         StartRpc step = new(api, [], new WebSocketsManager(), Substitute.For<IJsonRpcLocalStats>(), gcKeeper,
             new Lazy<FlatStateActivationPolicy>(() => throw new AssertionException("pipeline warmup is disabled")));
 
-        Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf<PortInUseException>());
+        Assert.That(() => step.Execute(CancellationToken.None),
+            Throws.TypeOf(portInUse ? typeof(PortInUseException) : typeof(ListenerBindException)));
     }
 }

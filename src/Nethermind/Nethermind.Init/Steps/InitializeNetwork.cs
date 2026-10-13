@@ -151,7 +151,7 @@ public class InitializeNetwork : IStep
         {
             await InitPeer();
         }
-        catch (Exception e) when (e is not PortInUseException)
+        catch (Exception e) when (e is not ListenerBindException)
         {
             _logger.Error("Unable to init the peer manager.", e);
         }
@@ -178,7 +178,7 @@ public class InitializeNetwork : IStep
         {
             await StartDiscovery();
         }
-        catch (Exception e) when (e is not PortInUseException)
+        catch (Exception e) when (e is not ListenerBindException)
         {
             _logger.Error("Unable to start the discovery protocol.", e);
         }

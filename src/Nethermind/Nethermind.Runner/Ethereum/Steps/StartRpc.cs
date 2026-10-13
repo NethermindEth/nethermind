@@ -127,7 +127,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
         {
             await jsonRpcRunner.Start(cancellationToken);
         }
-        catch (Exception e) when (e is not PortInUseException && authentication is null && logger.IsError)
+        catch (Exception e) when (e is not ListenerBindException && authentication is null && logger.IsError)
         {
             if (logger.IsError) logger.Error("Error during jsonRpc runner start", e);
         }
