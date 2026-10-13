@@ -607,7 +607,8 @@ public static class FrameTxValidation
     /// The result is memoized on <see cref="Transaction.IntrinsicGasMemo"/>, which a frame transaction otherwise
     /// leaves unused. The key carries the calldata statistics as well as the spec: a transaction built field by
     /// field is priced before they are measured, and a memo keyed on the spec alone would then answer a later
-    /// caller from the unmeasured reading.
+    /// caller from the unmeasured reading. The EIP-8250 nonce keys are covered by the same statistics: their measured
+    /// calldata is never empty, so a transaction that gains keys never matches a memo taken without them.
     /// </remarks>
     /// <param name="transaction">The frame transaction to price.</param>
     /// <param name="spec">The release spec the pricing is taken at; it also keys the memo.</param>
