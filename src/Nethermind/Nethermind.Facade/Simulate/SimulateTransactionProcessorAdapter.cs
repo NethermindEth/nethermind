@@ -27,6 +27,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     private int _currentTxIndex = 0;
     private ulong _maxTotalGasLimit = ulong.MaxValue;
     private BlockHeader? _header;
+    private bool _isEip8037Enabled;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
@@ -60,6 +61,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         _currentTxIndex = 0;
         _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
         _header = blockExecutionContext.Header;
+        _isEip8037Enabled = blockExecutionContext.Spec.IsEip8037Enabled;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -69,9 +71,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         simulateRequestState.BlockStateGasLeft = stateGasAvailable;
 
         // The per-dimension budgets shrink as the block is processed.
-        // EIP-8037 inclusion requires tx.gas <= remaining state budget whatever state gas the tx uses,
-        // so a defaulted limit clamps to it even for a state-free call.
-        ulong blockGasAvailable = Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable);
+        ulong blockGasAvailable = GetBlockGasAvailable(stateGasAvailable);
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
             transaction.GasLimit = Math.Min(blockGasAvailable, Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
@@ -87,5 +87,19 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         {
             transaction.GasLimit = simulateRequestState.TotalGasLeft;
         }
+    }
+
+    /// <summary>The largest gas limit the block can still include.</summary>
+    /// <remarks>
+    /// EIP-8037 inclusion requires tx.gas &lt;= remaining state budget whatever state gas the tx uses, and reserves at most
+    /// TX_MAX_GAS_LIMIT of execution gas, so with validation the execution budget stops binding once it holds a full cap.
+    /// Without validation the execution gas is not capped, so the whole gas limit must fit the execution budget too.
+    /// </remarks>
+    private ulong GetBlockGasAvailable(ulong stateGasAvailable)
+    {
+        ulong executionGasAvailable = simulateRequestState.BlockGasLeft;
+        return _isEip8037Enabled && simulateRequestState.Validate && executionGasAvailable >= Eip7825Constants.DefaultTxGasLimitCap
+            ? stateGasAvailable
+            : Math.Min(executionGasAvailable, stateGasAvailable);
     }
 }

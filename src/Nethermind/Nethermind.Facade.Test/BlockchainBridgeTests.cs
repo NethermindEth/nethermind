@@ -1416,6 +1416,29 @@ public class BlockchainBridgeTests
         Assert.That(exception.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
     }
 
+    // With validation, EIP-8037 reserves at most TX_MAX_GAS_LIMIT of execution gas, so a full cap left in the execution
+    // budget no longer binds the default; without validation the whole gas limit is execution gas.
+    [TestCase(20_000_000ul, true, 40_000_000ul, TestName = "Simulate adapter defaults strict gas to the state budget past a full execution cap")]
+    [TestCase(20_000_000ul, false, 20_000_000ul, TestName = "Simulate adapter defaults non-strict gas to the smaller budget")]
+    [TestCase(10_000_000ul, true, 10_000_000ul, TestName = "Simulate adapter defaults strict gas to the smaller budget below a full execution cap")]
+    public void Simulate_adapter_defaults_omitted_gas_to_block_gas_available(ulong blockGasLeft, bool validate, ulong expectedGasLimit)
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 100_000_000,
+            BlockGasLeft = blockGasLeft,
+            Validate = validate,
+        };
+        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = false, Transaction = new Transaction() }]);
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Amsterdam.Instance, UInt256.Zero));
+        Transaction omittedGas = new();
+        adapter.PrepareForInclusionCheck(omittedGas, 40_000_000);
+
+        Assert.That(omittedGas.GasLimit, Is.EqualTo(expectedGasLimit));
+    }
+
     private static IEnumerable<TestCaseData> OverrideRoutingCases()
     {
         foreach (OverrideCall call in Enum.GetValues<OverrideCall>())
