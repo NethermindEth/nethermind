@@ -90,6 +90,8 @@ public abstract class StreamingResultBase(CancellationTokenSource timeoutCts, IL
 public abstract class JsonStreamingResultBase(CancellationTokenSource timeoutCts, ILogger logger)
     : StreamingResultBase(timeoutCts, logger), IDeferredExecutionResult
 {
+    internal Exception? CommittedFailure { get; set; }
+
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
         => WriteJsonToAsync(TimeoutToken, Logger, writer, EmitContent, cancellationToken);
 

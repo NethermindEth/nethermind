@@ -27,6 +27,11 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
@@ -62,13 +67,16 @@ public class StartupTests
         IRpcAuthentication? rpcAuthentication = null,
         IEngineRpcModule? engineModule = null,
         JsonRpcConfig? rpcConfig = null,
-        IJsonRpcLocalStats? jsonRpcLocalStats = null)
+        IJsonRpcLocalStats? jsonRpcLocalStats = null,
+        IDebugRpcModule? debugModule = null)
     {
         rpcConfig ??= new JsonRpcConfig { EnabledModules = [ModuleType.Engine] };
         engineModule ??= CreateEngineModule();
 
         RpcModuleProvider moduleProvider = new(new RealFileSystem(), rpcConfig, new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(engineModule), true));
+        if (debugModule is not null)
+            moduleProvider.Register(new SingletonModulePool<IDebugRpcModule>(new SingletonFactory<IDebugRpcModule>(debugModule), true));
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
@@ -686,6 +694,58 @@ public class StartupTests
             Assert.That(fixture.Context.Response.ContentLength, expectedContentLength ? Is.EqualTo(bytesWritten) : Is.Null);
             Assert.That(fixture.ResponseBody.Length, Is.EqualTo(bytesWritten));
         }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ProcessJsonRpcRequest_ByNumberDeadline_respects_commitment(
+        [Values] bool bufferResponse, [Values] bool largeTrace, [Values] bool batch, [Values] bool ownedDeadline)
+    {
+        using GethLikeTxTraceStreamingBlockResult trace = JsonRpcResponseWriterStreamingIdTests.CreateByNumberStreamingFailure(largeTrace, ownedDeadline);
+        IDebugRpcModule debugModule = Substitute.For<IDebugRpcModule>();
+        debugModule.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>())
+            .Returns(ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(trace));
+        IJsonRpcLocalStats stats = Substitute.For<IJsonRpcLocalStats>();
+        stats.IsEnabled.Returns(true);
+        Startup startup = CreateStartup(rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine, ModuleType.Debug],
+            BufferResponses = bufferResponse
+        }, jsonRpcLocalStats: stats, debugModule: debugModule);
+        const string call = "{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceBlockByNumber\",\"params\":[\"0x1\"],\"id\":7}";
+        string request = batch ? "[" + CreateJsonRpcRequest() + "," + call + "]" : call;
+        long successes = JsonRpcMetrics.JsonRpcSuccesses;
+        long errors = JsonRpcMetrics.JsonRpcErrors;
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine, ModuleType.Debug]);
+        await using KestrelJsonRpcHost host = await KestrelJsonRpcHost.StartAsync(startup, url);
+        string response = await host.PostAsync(request, CancellationToken.None);
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+        bool partial = !ownedDeadline || largeTrace && !bufferResponse;
+        Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.EqualTo(partial), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(7));
+            if (partial)
+            {
+                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                Assert.That(traces[0].GetProperty("txHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+                Assert.That(traces[0].GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                Assert.That(traces[0].GetProperty("result").GetProperty("structLogs").GetArrayLength(), Is.EqualTo(1));
+                Assert.That(traces[1].GetProperty("errorCode").GetInt32(), Is.EqualTo(ownedDeadline ? -32000 : ErrorCodes.InternalError));
+                Assert.That(traces[1].GetProperty("error").GetString(), ownedDeadline ? Is.EqualTo("execution timeout") : Does.Contain("sentinel control"));
+            }
+            else
+            {
+                Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32000));
+                Assert.That(envelope.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+            }
+            if (batch) Assert.That(document.RootElement[0].TryGetProperty("result", out _), Is.True);
+            Assert.That(JsonRpcMetrics.JsonRpcSuccesses - successes, Is.EqualTo((batch ? 1 : 0) + (ownedDeadline ? 0 : 1)));
+            Assert.That(JsonRpcMetrics.JsonRpcErrors - errors, Is.EqualTo(ownedDeadline ? 1 : 0));
+        }
+        stats.Received(1).ReportCall(Arg.Is<RpcReport>(report => report.Method == "debug_traceBlockByNumber" && report.Success == !ownedDeadline), Arg.Any<long>(), Arg.Any<long?>());
     }
 
     [Test]

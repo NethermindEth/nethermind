@@ -20,6 +20,7 @@ internal sealed class GethLikeBlockDeadlineTracer(
 {
     private CancellationToken _external = external;
     private GethTraceDeadline? _deadline;
+    private GethLikeTxDirectStreamingTracer? _streamingTracer;
     private bool _transferred;
     private bool _disposed;
 
@@ -58,6 +59,11 @@ internal sealed class GethLikeBlockDeadlineTracer(
             _deadline = new(_external, options.DeadlineClock);
             _deadline.Start(duration);
             CheckDeadline();
+            if (current is GethLikeTxDirectStreamingTracer streaming)
+            {
+                _streamingTracer = streaming;
+                streaming.ExecutionDeadline = _deadline;
+            }
             return current.WithCancellation(_deadline.Token);
         }
         catch (Exception exception)
@@ -115,7 +121,15 @@ internal sealed class GethLikeBlockDeadlineTracer(
         return result;
     }
 
-    private void ReleaseDeadline() => DisposableExtensions.DisposeAndNull(ref _deadline);
+    private void ReleaseDeadline()
+    {
+        if (_streamingTracer is not null)
+        {
+            _streamingTracer.ExecutionDeadline = null;
+            _streamingTracer = null;
+        }
+        DisposableExtensions.DisposeAndNull(ref _deadline);
+    }
 
     internal void HandleFailure(Exception exception)
     {

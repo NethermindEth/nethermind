@@ -151,6 +151,11 @@ public static class JsonRpcResponseWriter
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();
+        if (streamable is JsonStreamingResultBase { CommittedFailure: { } failure })
+        {
+            using JsonRpcErrorResponse error = response.Streaming!.MapException(failure);
+            return JsonRpcResponseWriteOutcome.Of(error);
+        }
         return null;
     }
 

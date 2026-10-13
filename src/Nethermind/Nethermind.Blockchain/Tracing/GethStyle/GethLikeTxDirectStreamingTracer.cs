@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Collections.Pooled;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -73,6 +74,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private long _flushedBytes;
     private bool _disposed;
 
+    internal GethTraceDeadline? ExecutionDeadline { get; set; }
+
     public GethLikeTxDirectStreamingTracer(
         Transaction? transaction,
         GethTraceOptions options,
@@ -101,6 +104,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     internal void ResetForNextTx(Transaction? transaction)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ExecutionDeadline = null;
         _transaction = transaction;
         _hasPendingOpcode = false;
         _pendingPc = 0;
@@ -253,6 +257,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     internal void ReleaseResources()
     {
         if (_disposed) return;
+        ExecutionDeadline = null;
         ReturnPooledBuffers();
         _disposed = true;
     }
@@ -375,7 +380,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     {
         if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < _flushThresholdBytes) return;
         _writer.Flush();
-        _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
+        ValueTask<FlushResult> flush = _pipeWriter.FlushAsync(_cancellationToken);
+        GethTraceDeadline? deadline = flush.IsCompleted ? null : ExecutionDeadline;
+        deadline?.Pause();
+        try { flush.SafeWait(); }
+        finally { deadline?.Resume(); }
         _flushedBytes = _writer.BytesCommitted;
     }
 

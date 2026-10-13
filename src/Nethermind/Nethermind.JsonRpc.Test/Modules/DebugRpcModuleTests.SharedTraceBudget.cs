@@ -8,6 +8,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Microsoft.IO;
+using Nethermind.Core.Resettables;
+using Nethermind.Serialization.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -63,12 +66,8 @@ public partial class DebugRpcModuleTests
                 .AddDecorator<IParallelBlockTracer>((_, inner) => new DeadlineParallelTracer(inner, probe))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
-        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
-                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Block block = await chain.AddBlock(transactions);
+        Block block = await AddDeadlineTransactions(chain);
+        ulong nonce = block.Transactions[0].Nonce;
         if (indexed) IndexThroughTheCapture(chain, index, block, parent);
         clock.Enabled = true;
         clock.Target = nonce + (filtered ? 2UL : 1UL);
@@ -116,6 +115,67 @@ public partial class DebugRpcModuleTests
                 Assert.That(clock.Calls, indexed && !filtered ? Is.InRange(2, 3) : Is.EqualTo(filtered ? indexed ? 1 : 3 : 2),
                     "indexed workers may acquire the execution permit out of transaction order");
             }
+            Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+        }
+    }
+
+    private static async Task<Block> AddDeadlineTransactions(TestRpcBlockchain chain)
+    {
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return await chain.AddBlock(transactions);
+    }
+
+    [Test]
+    public async Task Streaming_deadline_runs_through_real_ByNumber_execution(
+        [Values("full", "selected", "unmatched", "empty")] string selection,
+        [Values("reset", "before", "after", "external")] string expiry)
+    {
+        DeadlineExecution clock = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true })
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Block block = selection == "empty" ? await chain.AddBlock() : await AddDeadlineTransactions(chain);
+        ulong nonce = block.Transactions.Length == 0 ? 0 : block.Transactions[0].Nonce;
+        using CancellationTokenSource external = new();
+        clock.Enabled = true;
+        clock.Target = nonce + (selection == "selected" ? 2UL : 1UL);
+        clock.Prefix = selection == "selected";
+        clock.Expiry = expiry;
+        clock.Cancel = external.Cancel;
+        GethTraceOptions options = new()
+        {
+            Timeout = TimeSpan.FromSeconds(1),
+            DeadlineClock = clock,
+            TxHash = selection == "selected" ? block.Transactions[2].Hash : selection == "unmatched" ? TestItem.KeccakH : null
+        };
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = chain.DebugRpcModule.debug_traceBlockByNumber(new BlockParameter(block.Number), options);
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(response.Data, Is.InstanceOf<IStreamableResult>());
+        using RecyclableMemoryStream output = RecyclableStream.GetStream("deadline-route");
+        RewindableStreamPipeWriter writer = new(output);
+        bool cancelled = expiry == "external" && selection != "empty";
+        bool expired = expiry is "before" or "after" && selection is "full" or "selected";
+        try
+        {
+            async Task Write() => await ((IStreamableResult)response.Data).WriteToAsync(writer, external.Token);
+            if (cancelled) await Assert.CatchAsync<OperationCanceledException>(Write);
+            else if (expired) await Assert.ThrowsAsync<GethTraceDeadlineException>(Write);
+            else
+            {
+                await Write();
+                using JsonDocument document = JsonDocument.Parse(output.ToArray());
+                Assert.That(document.RootElement.GetArrayLength(), Is.EqualTo(selection == "full" ? 3 : selection == "selected" ? 1 : 0));
+            }
+        }
+        finally { await writer.CompleteAsync(); }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.Calls, Is.EqualTo(selection == "empty" ? 0 : (cancelled || expired) && selection != "selected" ? 2 : 3));
+            Assert.That(clock.Timers.Count, selection is "unmatched" or "empty" ? Is.Zero : Is.GreaterThan(0));
             Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
         }
     }

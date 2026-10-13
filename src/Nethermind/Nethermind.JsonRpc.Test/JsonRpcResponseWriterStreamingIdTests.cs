@@ -11,9 +11,11 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.IO;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -37,9 +39,9 @@ public class JsonRpcResponseWriterStreamingIdTests
     [OneTimeTearDown]
     public void DisposeKeeper() => _keeper.Dispose();
 
-    private JsonRpcService.StreamingContext CreateStreamingContext() => new(
+    private JsonRpcService.StreamingContext CreateStreamingContext(string methodName = "trace_call") => new(
         new JsonRpcService(NullModuleProvider.Instance, NullLogManager.Instance, new JsonRpcConfig(), _keeper),
-        new JsonRpcRequest { Id = new JsonRpcId(42L), Method = "trace_call" }, "trace_call");
+        new JsonRpcRequest { Id = new JsonRpcId(42L), Method = methodName }, methodName);
 
     private sealed class StubStreamable : IStreamableResult
     {
@@ -138,6 +140,83 @@ public class JsonRpcResponseWriterStreamingIdTests
             Assert.That(transport.WrittenCount, Is.EqualTo(initialWrittenCount + stream.Length));
         }
     }
+
+    [Test]
+    [NonParallelizable]
+    public async Task ByNumber_streamed_deadline_respects_commitment(
+        [Values] bool bufferResponse, [Values] bool largeTrace, [Values] bool batch, [Values] bool ownedDeadline)
+    {
+        const string controlError = "sentinel control";
+        GethLikeTxTraceStreamingBlockResult result = CreateByNumberStreamingFailure(largeTrace, ownedDeadline);
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = 42,
+            Result = result,
+            Streaming = CreateStreamingContext("debug_traceBlockByNumber")
+        };
+        response.Streaming.ReportCompletion = true;
+        long errors = Metrics.JsonRpcErrors;
+        long successes = Metrics.JsonRpcSuccesses;
+        using RecyclableMemoryStream stream = RecyclableStream.GetStream("test");
+        PipeWriter transport = bufferResponse
+            ? new RewindableStreamPipeWriter(stream)
+            : PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true));
+        try
+        {
+            if (batch) transport.Write("[{\"jsonrpc\":\"2.0\",\"result\":\"previous\",\"id\":41},"u8);
+            await JsonRpcResponseWriter.WriteAsync(transport, response, EthereumJsonSerializer.JsonOptions, batch, CancellationToken.None);
+            if (batch) transport.Write("]"u8);
+            await transport.FlushAsync();
+        }
+        finally
+        {
+            await transport.CompleteAsync();
+        }
+
+        using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+        JsonElement envelope = batch ? document.RootElement[1] : document.RootElement;
+        bool partial = !ownedDeadline || largeTrace && !bufferResponse;
+        Assert.That(envelope.TryGetProperty("result", out JsonElement traces), Is.EqualTo(partial));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(envelope.GetProperty("id").GetInt32(), Is.EqualTo(42));
+            if (batch) Assert.That(document.RootElement[0].GetProperty("result").GetString(), Is.EqualTo("previous"));
+            if (partial)
+            {
+                Assert.That(traces.GetArrayLength(), Is.EqualTo(2));
+                Assert.That(traces[0].GetProperty("txHash").GetString(), Is.EqualTo(TestItem.KeccakA.ToString()));
+                Assert.That(traces[0].GetProperty("result").GetProperty("failed").GetBoolean(), Is.True);
+                Assert.That(traces[0].GetProperty("result").GetProperty("structLogs").GetArrayLength(), Is.EqualTo(1));
+                Assert.That(traces[1].GetProperty("errorCode").GetInt32(), Is.EqualTo(ownedDeadline ? ErrorCodes.InvalidInput : ErrorCodes.InternalError));
+                Assert.That(traces[1].GetProperty("error").GetString(), ownedDeadline ? Is.EqualTo("execution timeout") : Does.Contain(controlError));
+            }
+            else
+            {
+                Assert.That(envelope.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput));
+                Assert.That(envelope.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("execution timeout"));
+            }
+            if (ownedDeadline)
+            {
+                Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
+                Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+            }
+        }
+    }
+
+    /// <summary>Creates a block trace that fails after one streamed log entry for response-writer and HTTP tests.</summary>
+    public static GethLikeTxTraceStreamingBlockResult CreateByNumberStreamingFailure(bool largeTrace, bool ownedDeadline) => new((writer, pipe, token) =>
+    {
+        using GethLikeBlockEnvelopeStreamingTracer tracer = new(GethTraceOptions.Default, writer, pipe, token);
+        using (((Nethermind.Evm.Tracing.IBlockTracer)tracer).StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("memory", new string('a', largeTrace ? 32 * 1024 : 1));
+            writer.WriteEndObject();
+            writer.Flush();
+            pipe!.FlushAsync(token).GetAwaiter().GetResult();
+            throw ownedDeadline ? new GethTraceDeadlineException() : new InvalidOperationException("sentinel control");
+        }
+    }, new CancellationTokenSource(), LimboLogs.Instance.GetClassLogger<JsonRpcResponseWriterStreamingIdTests>());
 
     [Test]
     public async Task Pre_cancelled_direct_write_is_cancelled_without_output()
@@ -290,6 +369,59 @@ public class JsonRpcResponseWriterStreamingIdTests
         {
             Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
             Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Non_debug_committed_failure_maps_original_exception_without_wire_status()
+    {
+        Exceptions.LimitExceededException failure = new("streamed query limit");
+        CommittedFailureResult result = new(failure);
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = 42,
+            Result = result,
+            Streaming = CreateStreamingContext("eth_test")
+        };
+        response.Streaming.ReportCompletion = true;
+        long errors = Metrics.JsonRpcErrors;
+        long successes = Metrics.JsonRpcSuccesses;
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        try
+        {
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+            await pipe.Writer.CompleteAsync();
+            ReadResult read = await pipe.Reader.ReadAsync();
+            using JsonDocument document = JsonDocument.Parse(read.Buffer);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.CommittedFailure, Is.SameAs(failure));
+                Assert.That(response.Streaming.Replacement?.Success, Is.False);
+                Assert.That(response.Streaming.Replacement?.IsResourceUnavailable, Is.True);
+                Assert.That(document.RootElement.GetProperty("result").GetString(), Has.Length.EqualTo(32 * 1024));
+                Assert.That(document.RootElement.TryGetProperty("_streamStatus", out _), Is.False);
+                Assert.That(document.RootElement.TryGetProperty("error", out _), Is.False);
+                Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
+                Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+            }
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    private sealed class CommittedFailureResult(Exception failure)
+        : JsonStreamingResultBase(new CancellationTokenSource(), NullLogManager.Instance.GetClassLogger<CommittedFailureResult>())
+    {
+        protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        {
+            writer.WriteStringValue(new string('a', 32 * 1024));
+            writer.Flush();
+            pipeWriter!.FlushAsync(cancellationToken).GetAwaiter().GetResult();
+            CommittedFailure = failure;
         }
     }
 

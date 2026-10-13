@@ -401,7 +401,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider, (_, _) => sharedLogIndex)
             : new GethLikeBlockEnvelopeStreamingTracer(options, writer, pipeWriter, cancellationToken, destroyRefund);
-        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken);
+        tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = keptTxHash ?? options.TxHash }, cancellationToken);
 
         try
         {
