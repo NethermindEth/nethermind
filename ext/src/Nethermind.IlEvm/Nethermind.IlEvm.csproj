@@ -12,12 +12,20 @@
     <InternalsVisibleTo Include="Nethermind.IlEvm.Test" />
   </ItemGroup>
 
-  <!-- Compiled against these, never copied: the node that loads the plugin provides them. -->
-  <ItemGroup>
+  <!--
+    Compiled against these, never copied: the node that loads the plugin provides them. With NethermindBin set to a
+    published node's folder, the plugin is built against that node's own assemblies, as for a release; otherwise
+    against the sources.
+  -->
+  <ItemGroup Condition="'$(NethermindBin)' == ''">
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Api/Nethermind.Api.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Config/Nethermind.Config.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Core/Nethermind.Core.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Evm/Nethermind.Evm.csproj" Private="false" />
     <ProjectReference Include="$(NethermindSrc)/Nethermind.Logging/Nethermind.Logging.csproj" Private="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NethermindBin)' != ''">
+    <Reference Include="$(NethermindBin)Nethermind.*.dll" Private="false" />
+    <Reference Include="$(NethermindBin)Autofac.dll" Private="false" />
   </ItemGroup>
 </Project>

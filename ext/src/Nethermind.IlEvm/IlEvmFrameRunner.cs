@@ -260,6 +260,12 @@ internal sealed class IlSelfCheck
 
     private static int _keptCount, _probationCount, _givenBackCount;
 
+    /// <summary>Print each verdict with its pairs to the console, with <c>NETHERMIND_ILEVM_SELF_CHECK_TRACE=1</c>.</summary>
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_SELF_CHECK_TRACE") == "1";
+
+    /// <summary>The compiled contract's name, for the trace.</summary>
+    public string? Name;
+
     /// <summary>Verdicts so far in the process: kept compiled, put on probation, given back to the interpreter.</summary>
     public static (int Kept, int Probation, int GivenBack) Verdicts => (Volatile.Read(ref _keptCount), Volatile.Read(ref _probationCount), Volatile.Read(ref _givenBackCount));
 
@@ -314,6 +320,8 @@ internal sealed class IlSelfCheck
                 return;
 
             double perOp = Math.Max(pooled, 1) / (double)ops;
+            if (Trace)
+                Console.WriteLine($"il-evm self-check {Name}: {(interpreted ? "interpreted" : "compiled")} sample {perOp * 1e9 / Stopwatch.Frequency:F2} ns/op over {ops} ops, {InterpretedSamples} pairs so far");
             if (!interpreted)
             {
                 _lastCompiled = perOp;
@@ -335,6 +343,8 @@ internal sealed class IlSelfCheck
                 double[] sorted = _ratios[..pairs];
                 Array.Sort(sorted);
                 Ratio = sorted[pairs / 2];
+                if (Trace)
+                    Console.WriteLine($"il-evm self-check {Name}: ratio {Ratio:F2} after {pairs} pairs{(_second ? " (second check)" : "")}, interpreted/compiled ns per opcode: {Describe()}");
                 if (Ratio <= IlEvmSettings.SelfCheckKeepRatio)
                 {
                     Interlocked.Increment(ref _keptCount);

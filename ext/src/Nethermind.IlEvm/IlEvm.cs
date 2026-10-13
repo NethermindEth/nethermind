@@ -787,6 +787,7 @@ public static unsafe partial class IlEvm
             contract.MarkLive();
             // A contract the self-check gives back keeps its verdict, not its code.
             contract.Check.OnGivenBack = contract.Release;
+            contract.Check.Name = contract.Name;
             state.Contract = contract;
             IlCache(new IlContractKey(state.ContentHash, codeInfo.CodeSpan.Length, fork), contract);
             IlEvmSettings.CountCompiled();
