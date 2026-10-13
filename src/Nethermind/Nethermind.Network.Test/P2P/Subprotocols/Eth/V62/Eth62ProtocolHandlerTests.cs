@@ -903,7 +903,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Queued_headers_request_is_cancelled_on_dispose()
+        public async Task Queued_headers_request_is_cancelled_on_dispose()
         {
             HandleIncomingStatusMessage();
 
@@ -913,8 +913,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _handler.Dispose();
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request1);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await request2);
         }
 
         [Test]

@@ -84,6 +84,21 @@ public partial class FrameTxProcessorTests
     [TearDown]
     public void TearDown() => _worldStateCloser?.Dispose();
 
+    /// <summary>Rebases the fixture on Bogota with only EIP-8360 and the frame-transaction EIPs this fixture runs on.</summary>
+    private void UseBogotaWithEip8360()
+    {
+        _spec = new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8250Enabled = true,
+            IsEip8272Enabled = true,
+            IsEip7906Enabled = true,
+            IsEip8360Enabled = true
+        };
+        _specProvider = new TestSpecProvider(_spec);
+        _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
+    }
+
     [Test]
     public void Execute_SimulateReportsGasBeforeRefunds([Values] bool clearStorage, [Values] bool postTxReverts)
     {
@@ -508,6 +523,84 @@ public partial class FrameTxProcessorTests
             Assert.That(result.TransactionExecuted, Is.True, "frame tx creating and self-destructing a contract still executes");
             Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo((UInt256)1 + endowment), "the endowed child was created and its self-destruct transferred the balance, so a vacuous pass where the CREATE2 never ran is ruled out");
             Assert.That(_stateProvider.AccountExists(child), Is.False, "a contract created and self-destructed in the same frame tx must be finalized and deleted per EIP-6780, not left in state");
+        }
+    }
+
+    [Test]
+    public void Execute_FrameTcreatesContract_KeepsOnlyItsBalanceAfterTheFrameTx()
+    {
+        UseBogotaWithEip8360();
+        byte[] runtime = [(byte)Instruction.PUSH0];
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 2).Op(Instruction.POP).Op(Instruction.STOP).Done, 10);
+
+        TransactionResult result = Process(FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetBalance(Observer), Is.EqualTo((UInt256)8), "the TCREATE ran and moved its endowment");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)2), "EIP-8360 keeps the balance");
+            Assert.That(_stateProvider.GetNonce(tcreated), Is.EqualTo(0UL), "EIP-8360 resets the nonce at the end of the frame tx");
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False, "EIP-8360 drops the code at the end of the frame tx");
+        }
+    }
+
+    [Test]
+    public void Execute_LaterFrameFundsATcreateAccount_ChargesTheEip8360StateGas([Values] bool creatingFrameReverts)
+    {
+        // A reverted TCREATE leaves an ordinary new account, which pays the same state gas once, not twice.
+        UseBogotaWithEip8360();
+        byte[] init = Prepare.EvmCode.ForInitOf([(byte)Instruction.PUSH0]).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Prepare observer = Prepare.EvmCode.TCreate(init, salt, 0).Op(Instruction.POP);
+        DeployContract(Observer, (creatingFrameReverts ? observer.Revert(0, 0) : observer.Op(Instruction.STOP)).Done);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Sender, target: tcreated, value: 3)), tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(creatingFrameReverts ? TxFrameReceipt.StatusFailure : TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState), "the account's first balance pays new-account state gas once");
+            Assert.That(_stateProvider.GetBalance(tcreated), Is.EqualTo((UInt256)3));
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False);
+        }
+    }
+
+    [Test]
+    public void Execute_LaterFrameRunsTheCodeOfATcreateAccount()
+    {
+        // Transient storage is discarded between frames, but a TCREATE account and its code last the whole transaction.
+        UseBogotaWithEip8360();
+        byte[] runtime = Prepare.EvmCode.Revert(0, 0).Done;
+        byte[] init = Prepare.EvmCode.ForInitOf(runtime).Done;
+        byte[] salt = new byte[32];
+        Address tcreated = ContractAddress.FromTransientCreate(Observer, salt, init);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.TCreate(init, salt, 0).Op(Instruction.POP).Op(Instruction.STOP).Done);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Sender, target: tcreated)), tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure), "the later frame ran the reverting code");
+            Assert.That(_stateProvider.IsContract(tcreated), Is.False);
         }
     }
 
@@ -3840,7 +3933,7 @@ public partial class FrameTxProcessorTests
         ValueHash256 salt = TestItem.KeccakA.ValueHash256;
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
 
         Transaction write = FrameTx(nonce: 0, SelfVerifyFrame(),
             Frame(FrameMode.Sender, target: Eip8272Constants.RecentRootAddress, data: [.. salt.Bytes, .. root.Bytes]));
@@ -3857,7 +3950,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_RecentRootVerifyFrame_RecordsThePredeploySlotInBal()
+    public void Execute_RecentRootVerifyFrame_RecordsTheContractSlotInBal()
     {
         const ulong committedSlot = 1_000;
         const ulong headSlot = 1_001;
@@ -3879,10 +3972,10 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? predeploy = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
-        Assert.That(predeploy, Is.Not.Null, "the recent-root predeploy is accessed and recorded in the BAL");
+        AccountChangesAtIndex? recentRoot = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
+        Assert.That(recentRoot, Is.Not.Null, "the recent root contract is accessed and recorded in the BAL");
         UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
-        Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
+        Assert.That(recentRoot.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
     [Test]
@@ -4389,6 +4482,55 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    public enum StorageWipe { WipeOnly, WriteOtherKey, WriteSameKeyThenRevert, RewritePrestate }
+
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, false, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange")]
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate_Parallel")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, true, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate_Parallel")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate_Parallel")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange_Parallel")]
+    public void Execute_TxDiff_StorageWipe_ReadsTheTruePrestate(StorageWipe wipe, ulong afterA, ulong afterB, int slotsChanged, bool parallel)
+    {
+        UInt256 keyA = 0xa1;
+        UInt256 keyB = 0xb2;
+        byte[] initCode = wipe switch
+        {
+            StorageWipe.WipeOnly => Prepare.EvmCode.Op(Instruction.STOP).Done,
+            StorageWipe.WriteOtherKey => Prepare.EvmCode.PushData(7).PushData(keyA).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            StorageWipe.WriteSameKeyThenRevert => Prepare.EvmCode.PushData(7).PushData(keyA).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+            _ => Prepare.EvmCode.PushData(5).PushData(keyA).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+        };
+        byte[] salt = new byte[32];
+        Address created = ContractAddress.From(Observer, salt, initCode);
+
+        _stateProvider.CreateAccount(created, 1);
+        _stateProvider.Set(new StorageCell(created, keyA), 5);
+        _stateProvider.Set(new StorageCell(created, keyB), 9);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        List<(byte[] producer, byte[] expected32)> asserts =
+        [
+            (Txdiff(0x00, created, keyB), To32(9)),
+            (Txdiff(0x01, created, keyB), To32(afterB)),
+            (Txdiff(0x00, created, keyA), To32(5)),
+            (Txdiff(0x01, created, keyA), To32(afterA)),
+            (Txtrace(0x01, 0), To32((UInt256)slotsChanged)),
+        ];
+        if (slotsChanged == 1) asserts.Add((Txtrace(0x08, 0), To32(5)));
+        DeployContract(Recipient, PostTxAssertAll([.. asserts]));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient)), parallel);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
     // Payer and max cost come from the frame context rather than the diff, so they are read back
     // against TXPARAM, which exposes the same two values to the body.
     [Test]
@@ -4676,7 +4818,38 @@ public partial class FrameTxProcessorTests
     private static TxFrame RecentRootVerifyFrame(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
         FrameTxTestFrames.RecentRootVerify(RecentRootFrameGas, tuples);
 
-    private void InstallRecentRootPredeploy()
+    [Test]
+    public void Execute_Eip8272DeploymentTransaction_CreatesRecentRootCodeAtItsAddress()
+    {
+        Address deployer = new("0x14bf16d4c9842bf1EbF396e553477C66EB0a8A82");
+        Transaction tx = new()
+        {
+            Type = TxType.Legacy,
+            Nonce = 0,
+            To = null,
+            GasLimit = 0x13d620,
+            GasPrice = 0xe8d4a51000,
+            Data = Bytes.Concat(Bytes.FromHexString("0x61014080600a5f395ff3"), Eip8272Constants.RecentRootCode.Span),
+            Signature = new Signature(new UInt256(0x539), new UInt256(0xfadf66b1e192785c), 27),
+        };
+        tx.Hash = tx.CalculateHash();
+        tx.SenderAddress = new EthereumEcdsa(_specProvider.ChainId).RecoverAddress(tx);
+        _stateProvider.CreateAccount(deployer, 2.Ether);
+        _stateProvider.Commit(Spec);
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Hash, Is.EqualTo(new Hash256("0x56c2adbbfa3ba5dfe47adf48828f6c581134e39e14c3b80e06214de5e5875272")));
+            Assert.That(tx.SenderAddress, Is.EqualTo(deployer));
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetCodeHash(Eip8272Constants.RecentRootAddress), Is.EqualTo(Eip8272Constants.RecentRootCodeHash));
+            Assert.That(_stateProvider.GetNonce(Eip8272Constants.RecentRootAddress), Is.EqualTo(1UL));
+        }
+    }
+
+    private void DeployRecentRootContract()
     {
         if (_stateProvider.AccountExists(Eip8272Constants.RecentRootAddress))
         {
@@ -4690,7 +4863,7 @@ public partial class FrameTxProcessorTests
 
     private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitReference(ulong slot)
     {
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
@@ -4706,12 +4879,13 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
     [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
     [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
-    [TestCase(Instruction.TXTRACE, (byte)0xB7, TestName = "RegistryByte_TXTRACE_0xB7")]
-    [TestCase(Instruction.TXDIFF, (byte)0xB8, TestName = "RegistryByte_TXDIFF_0xB8")]
-    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB9, TestName = "RegistryByte_EVENTDATACOPY_0xB9")]
+    [TestCase(Instruction.TXTRACE, (byte)0xB6, TestName = "RegistryByte_TXTRACE_0xB6")]
+    [TestCase(Instruction.TXDIFF, (byte)0xB7, TestName = "RegistryByte_TXDIFF_0xB7")]
+    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB8, TestName = "RegistryByte_EVENTDATACOPY_0xB8")]
     public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
         => Assert.That((byte)opcode, Is.EqualTo(registryByte));
 
+    [TestCase((byte)0xB9, TestName = "UnallocatedFrameOpcode_0xB9_Halts")]
     [TestCase((byte)0xBA, TestName = "UnallocatedFrameOpcode_0xBA_Halts")]
     [TestCase((byte)0xBB, TestName = "UnallocatedFrameOpcode_0xBB_Halts")]
     [TestCase((byte)0xBC, TestName = "UnallocatedFrameOpcode_0xBC_Halts")]

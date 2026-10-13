@@ -94,7 +94,7 @@ public class PrewarmerScopeProvider(
         {
             try
             {
-                // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
+                // Opening stops any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
