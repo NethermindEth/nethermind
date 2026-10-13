@@ -29,6 +29,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 
             // EIP-8198 replaces the 1/denominator maximum change with 5/48, multiplying before dividing.
             bool isEip8198 = specFor1559.IsEip8198Enabled;
+            UInt256 maxChangeNumerator = isEip8198 ? Eip8198Constants.BaseFeeMaxChangeNumerator : UInt256.One;
             UInt256 maxChangeDenominator = isEip8198 ? Eip8198Constants.BaseFeeMaxChangeDenominator : specFor1559.BaseFeeMaxChangeDenominator;
 
             if (parent.GasUsed == parentGasTarget)
@@ -43,14 +44,14 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             {
                 ulong gasDelta = parent.GasUsed - parentGasTarget;
                 UInt256 feeDelta = UInt256.Max(
-                    MaxChange(parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget, maxChangeDenominator, isEip8198),
+                    parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget * maxChangeNumerator / maxChangeDenominator,
                     UInt256.One);
                 expectedBaseFee = parentBaseFee + feeDelta;
             }
             else
             {
                 ulong gasDelta = parentGasTarget - parent.GasUsed;
-                UInt256 feeDelta = MaxChange(parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget, maxChangeDenominator, isEip8198);
+                UInt256 feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget * maxChangeNumerator / maxChangeDenominator;
                 expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
             }
 
@@ -67,11 +68,6 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
 
         return expectedBaseFee;
     }
-
-    private static UInt256 MaxChange(in UInt256 targetFeeGasDelta, in UInt256 denominator, bool isEip8198) =>
-        isEip8198
-            ? targetFeeGasDelta * Eip8198Constants.BaseFeeMaxChangeNumerator / denominator
-            : targetFeeGasDelta / denominator;
 }
 
 public static class BaseFeeCalculator

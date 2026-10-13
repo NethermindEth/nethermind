@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private readonly record struct BlockFeeHistorySearchInfo(
             ulong BlockNumber,
+            Hash256 BlockHash,
             UInt256 BlockBaseFeePerGas,
             UInt256 BaseFeePerGasEst,
             UInt256 BaseFeePerBlobGas,
@@ -135,6 +136,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
                 return new(
                     b.Number,
+                    b.Hash!,
                     b.BaseFeePerGas,
                     BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpec(b.Number + 1, b.Timestamp)),
                     feePerBlobGas == UInt256.MaxValue ? UInt256.Zero : feePerBlobGas,
@@ -199,7 +201,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 : null;
 
             ulong oldestBlockNumber = info.BlockNumber;
-            baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
+            baseFeePerGas[effectiveBlockCount] = GetNextBaseFee(info);
             baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGasEst;
 
             while (historyInfo is not null && effectiveBlockCount-- > 0)
@@ -235,6 +237,19 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TryRunCleanup();
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas, gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        /// <summary>
+        /// The cached estimate picks the next block's spec from the block's own timestamp, so it is one block
+        /// off at a timestamp fork. When the canonical child already exists, its timestamp picks the spec.
+        /// </summary>
+        private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
+        {
+            BlockHeader? child = _blockTree.FindHeader(info.BlockNumber + 1, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (child is null || child.ParentHash != info.BlockHash) return info.BaseFeePerGasEst;
+
+            BlockHeader? header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, info.BlockNumber);
+            return header is null ? info.BaseFeePerGasEst : BaseFeeCalculator.Calculate(header, _specProvider.GetSpec(child));
         }
 
         private static void DropLeading<T>(ArrayPoolList<T> list, int count)
