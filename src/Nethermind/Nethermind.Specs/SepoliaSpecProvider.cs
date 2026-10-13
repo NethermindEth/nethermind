@@ -8,7 +8,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public partial class SepoliaSpecProvider : ForkScheduleSpecProvider
+public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
@@ -49,4 +49,7 @@ public partial class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Sepolia;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
+
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    public static SepoliaSpecProvider Instance => field ??= new();
 }

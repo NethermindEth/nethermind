@@ -11,9 +11,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.BeaconBlockRoot;
 
-public partial class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
+public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const ulong LegacyGasLimit = 30_000_000UL;
+
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    private static AccessList BeaconRootsOnlyAccessList => field ??= BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;

@@ -12,12 +12,18 @@ namespace Nethermind.Serialization.Rlp;
 /// is specified. Retained blocks must opt out; pooled transactions require an exclusive owner and a return path.
 /// </remarks>
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
-public sealed partial class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
+public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
     public static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
         checked((int)(RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1)),
         nameof(BlockBody.Transactions)
     );
+
+    public static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
+
+    // Actual consensus-level max is 16, see MAX_WITHDRAWALS_PER_PAYLOAD at https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md
+    // Increased here for compatibility with execution spec tests and benchmarks
+    public static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(64_000, nameof(BlockBody.Withdrawals));
 
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();

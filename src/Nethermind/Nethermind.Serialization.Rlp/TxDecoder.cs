@@ -3,13 +3,14 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public sealed partial class TxDecoder : TxDecoder<Transaction>
+public sealed class TxDecoder : TxDecoder<Transaction>
 {
     /// <summary>Locates the signed payload inside a transaction's canonical encoding.</summary>
     /// <param name="encoded">The encoding, typed transactions left unwrapped (<see cref="RlpBehaviors.SkipTypedWrapping"/>).</param>
@@ -64,6 +65,13 @@ public sealed partial class TxDecoder : TxDecoder<Transaction>
     }
 
     private const int MaxRetainedTransactions = 2_048;
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
+    // PoolPolicy clears payload references before retaining a transaction.
+    public static ObjectPool<Transaction> TxObjectPool => field ??= new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
+
+    public static TxDecoder Instance => field ??= new TxDecoder(static () => TxObjectPool.Get());
+
     private TxDecoder(Func<Transaction> transactionFactory) : base(transactionFactory) { }
 
     /// <summary>

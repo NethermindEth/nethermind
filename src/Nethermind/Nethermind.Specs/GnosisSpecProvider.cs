@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -9,7 +10,7 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
-public partial class GnosisSpecProvider : ForkScheduleSpecProvider
+public class GnosisSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong ConstantinopleBlockNumber = 1_604_400;
     public const ulong ConstantinopleFixBlockNumber = 2_508_800;
@@ -23,6 +24,9 @@ public partial class GnosisSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public const ulong OsakaTimestamp = 0x69de2dbc;
+    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
+    // 0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92
+    public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x6b, 0xbe, 0x78, 0xee, 0x9e, 0x47, 0x48, 0x42, 0xdb, 0xd4, 0xab, 0x49, 0x87, 0xb3, 0xce, 0xfe, 0x88, 0x42, 0x6a, 0x92]);
 
     // Lazy because LondonGnosis.Apply → GnosisSpecProvider.FeeCollector → GnosisSpecProvider static
     // init → LondonGnosis.Instance (still building → null) is a circular init if Chiado or anything
@@ -64,4 +68,7 @@ public partial class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong? DaoBlockNumber => null;
     public string SealEngine => SealEngineType.AuRa;
+
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    public static GnosisSpecProvider Instance => field ??= new();
 }

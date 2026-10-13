@@ -11,8 +11,10 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(LogEntryDecoder))]
-    public sealed partial class LogEntryDecoder() : RlpDecoder<LogEntry?>
+    public sealed class LogEntryDecoder() : RlpDecoder<LogEntry?>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<LogEntry>((int)16.MB, nameof(LogEntry));
+
         /// <summary>Smallest RLP encoding of a non-null log entry.</summary>
         /// <remarks>
         /// <c>[address, [], ""]</c> - a 21-byte address, an empty topics list and empty data under a

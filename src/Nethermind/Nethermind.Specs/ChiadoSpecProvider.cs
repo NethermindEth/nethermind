@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -8,13 +9,17 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
-public partial class ChiadoSpecProvider : ForkScheduleSpecProvider
+public class ChiadoSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong BeaconChainGenesisTimestampConst = 0x6343ee4c;
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
     public const ulong PragueTimestamp = 0x67c96e4c;
     public const ulong OsakaTimestamp = 0x69b7ce4c;
+
+    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
+    // 0x1559000000000000000000000000000000000000
+    public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x15, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 
     private ChiadoSpecProvider() : this(new ForkSchedule
     {
@@ -38,4 +43,7 @@ public partial class ChiadoSpecProvider : ForkScheduleSpecProvider
     public override ulong ChainId => BlockchainIds.Chiado;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.AuRa;
+
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    public static ChiadoSpecProvider Instance => field ??= new();
 }

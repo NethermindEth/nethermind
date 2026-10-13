@@ -7,7 +7,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public partial class MordenSpecProvider : ForkScheduleSpecProvider
+public class MordenSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong HomesteadBlockNumber = 494_000;
     public const ulong SpuriousDragonBlockNumber = 1_885_000;
@@ -26,4 +26,7 @@ public partial class MordenSpecProvider : ForkScheduleSpecProvider
     public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public override ulong NetworkId => BlockchainIds.Morden;
     public override ulong? BeaconChainGenesisTimestamp => null;
+
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    public static MordenSpecProvider Instance => field ??= new();
 }

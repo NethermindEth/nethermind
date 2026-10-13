@@ -4,13 +4,17 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Receipts;
 
-public partial class ReceiptsRootCalculator : IReceiptsRootCalculator
+public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
+    // Not static readonly: the zkEVM guest would run a class constructor for this type.
+    private static IRlpDecoder<TxReceipt> _decoder => field ??= Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
+    private static ReceiptMessageDecoder _skipStateDecoder => field ??= new(skipStateAndStatus: true);
 
     public Hash256 GetReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
     {

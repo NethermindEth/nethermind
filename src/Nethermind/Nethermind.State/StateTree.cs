@@ -19,9 +19,12 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public partial class StateTree : PatriciaTree
+    public class StateTree : PatriciaTree
     {
         private static readonly AccountDecoder _decoder = new();
+
+        // Not static readonly: the zkEVM guest would run a class constructor for this type.
+        public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)

@@ -7,13 +7,16 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public sealed partial class IdentityPrecompile : IPrecompile<IdentityPrecompile>
+public sealed class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
     public static IdentityPrecompile Instance { get; } = new();
 
     private IdentityPrecompile()
     {
     }
+
+    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
+    public static Address Address { get; } = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04]);
 
     public string Name => "ID";
 
