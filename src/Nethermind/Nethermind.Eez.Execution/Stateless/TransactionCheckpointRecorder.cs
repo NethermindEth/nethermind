@@ -21,13 +21,19 @@ internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, 
     : BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
 {
     private int _next;
-
-    public IWorldState? WorldState { get; set; }
+    private IWorldState? _worldState;
 
     public Hash256[] StateRoots { get; } = new Hash256[positions.Length];
 
-    /// <summary>Wraps the block's transactions executor, so the empty prefix is recorded before the first transaction.</summary>
-    public IBlockProcessor.IBlockTransactionsExecutor Wrap(IBlockProcessor.IBlockTransactionsExecutor inner) => new PreExecutionRecorder(inner, this);
+    /// <summary>
+    /// Wraps the block's transactions executor over <paramref name="worldState"/>, so the empty prefix is recorded
+    /// before the first transaction.
+    /// </summary>
+    public IBlockProcessor.IBlockTransactionsExecutor Wrap(IBlockProcessor.IBlockTransactionsExecutor inner, IWorldState worldState)
+    {
+        _worldState = worldState;
+        return new PreExecutionRecorder(inner, this);
+    }
 
     public void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs) => Record(txProcessedEventArgs.Index, txProcessedEventArgs.BlockHeader);
 
@@ -38,7 +44,7 @@ internal sealed class TransactionCheckpointRecorder(ISpecProvider specProvider, 
             return;
         }
 
-        IWorldState worldState = WorldState!;
+        IWorldState worldState = _worldState!;
         worldState.Commit(specProvider.GetSpec(header), commitRoots: true);
         worldState.RecalculateStateRoot();
         StateRoots[_next++] = worldState.StateRoot;

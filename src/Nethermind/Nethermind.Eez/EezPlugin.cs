@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -15,12 +17,15 @@ using Nethermind.Eez.Proving;
 using Nethermind.Eez.Rpc;
 using Nethermind.Eez.Sequencer;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Eez;
 
-public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindPlugin
+public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig, IInitConfig initConfig) : INethermindPlugin
 {
+    private EezChainRules? _rules;
+
     public string Name => "Eez";
     public string Description => "EEZ rollup L2 execution rules";
     public string Author => "Nethermind";
@@ -29,13 +34,55 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
 
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
-        EnsureEezGenesis(chainSpec);
+        EnsureEezGenesis(chainSpec, Rules);
+        EnsureRolesSupported(eezConfig, Rules);
         EnsureFollowerConfig(eezConfig);
         EnsureSequencerConfig(eezConfig, api.Config<IKeyStoreConfig>());
         api.RegisterTxType<EezSystemTransactionForRpc>(EezTxType.CreateDecoder(), EezTxType.CreateValidator(api.SpecProvider!.ChainId));
     }
 
-    public IModule Module => new EezModule(eezConfig);
+    public IModule Module => new EezModule(eezConfig, Rules);
+
+    /// <summary>The genesis decides the rules: a <c>rollupX</c> section in its configuration makes the chain a RollupX chain.</summary>
+    private EezChainRules Rules => _rules ??= LoadRules(initConfig.ChainSpecPath.GetApplicationResourcePath());
+
+    internal static EezChainRules LoadRules(string genesisPath)
+    {
+        try
+        {
+            return EezChainRules.FromGenesisFile(genesisPath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{nameof(IEezConfig.Enabled)} needs a valid EEZ genesis at {genesisPath}: {e.Message}",
+                ExitCodes.ConflictingConfigurations);
+        }
+    }
+
+    /// <summary>
+    /// A RollupX chain follows L1 from its blobs on the L1 its genesis is pinned to; its sequencer is not built yet.
+    /// </summary>
+    internal static void EnsureRolesSupported(IEezConfig config, EezChainRules rules)
+    {
+        if (rules.Schedule is not { } schedule)
+        {
+            return;
+        }
+
+        string? refused = config switch
+        {
+            { SequencerEnabled: true } => $"{nameof(IEezConfig.SequencerEnabled)} is not supported on a RollupX chain yet",
+            { FollowerEnabled: true } when !Uri.TryCreate(config.L1BeaconUrl, UriKind.Absolute, out _) =>
+                $"{nameof(IEezConfig.FollowerEnabled)} on a RollupX chain requires a valid {nameof(IEezConfig.L1BeaconUrl)}, its batches being in blobs",
+            { FollowerEnabled: true } when config.L1ChainId != schedule.L1Reference.ChainId =>
+                $"{nameof(IEezConfig.L1ChainId)} must be {schedule.L1Reference.ChainId}, the L1 the genesis is pinned to",
+            _ => null,
+        };
+        if (refused is not null)
+        {
+            throw new InvalidConfigurationException($"{nameof(IEezConfig)}.{refused}.", ExitCodes.ConflictingConfigurations);
+        }
+    }
 
     internal static void EnsureFollowerConfig(IEezConfig config)
     {
@@ -47,7 +94,7 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
         string? missing = config switch
         {
             { L1RpcUrl: null or "" } => nameof(IEezConfig.L1RpcUrl),
-            { RegistryAddress: var registry } when !Address.TryParse(registry, out _) => nameof(IEezConfig.RegistryAddress),
+            _ when !Address.TryParse(config.RegistryAddress, out _) => nameof(IEezConfig.RegistryAddress),
             { RegistryDeployBlock: 0 } => nameof(IEezConfig.RegistryDeployBlock),
             { RollupId: 0 } => nameof(IEezConfig.RollupId),
             { L1ChainId: 0 } => nameof(IEezConfig.L1ChainId),
@@ -118,16 +165,16 @@ public class EezPlugin(ChainSpec chainSpec, IEezConfig eezConfig) : INethermindP
         return null;
     }
 
-    internal static void EnsureEezGenesis(ChainSpec chainSpec)
+    internal static void EnsureEezGenesis(ChainSpec chainSpec, EezChainRules rules)
     {
         ChainSpecAllocation? eezl2 = chainSpec.Allocations is { } allocations
-            && allocations.TryGetValue(EezConstants.Eezl2Address, out ChainSpecAllocation? allocation)
+            && allocations.TryGetValue(rules.Eezl2Address, out ChainSpecAllocation? allocation)
                 ? allocation
                 : null;
         if (eezl2?.Code is not { Length: > 0 })
         {
             throw new InvalidConfigurationException(
-                $"{nameof(IEezConfig)}.{nameof(IEezConfig.Enabled)} requires an EEZ genesis with the EEZL2 predeploy at {EezConstants.Eezl2Address}.",
+                $"{nameof(IEezConfig)}.{nameof(IEezConfig.Enabled)} requires an EEZ genesis with the EEZL2 predeploy at {rules.Eezl2Address}.",
                 ExitCodes.ConflictingConfigurations);
         }
     }

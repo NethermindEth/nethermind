@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -123,7 +124,7 @@ public class EezStatelessExecutorTests
     private static EezStatelessExecutor Executor(string fixture, string chainConfig)
     {
         ISpecProvider specProvider = StatelessFixtures.ReadSpecProvider(fixture, chainConfig);
-        return new EezStatelessExecutor(specProvider, LimboLogs.Instance);
+        return new EezStatelessExecutor(specProvider, EezChainRules.Rollup0, LimboLogs.Instance);
     }
 
     private static byte[] TamperStateRoot(byte[] rlp)

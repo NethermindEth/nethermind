@@ -39,7 +39,7 @@ public class EezSystemTxDecoderTests
         Transaction tx = Decode(CanonicalVector);
 
         Assert.That(tx.IsEezSystemTransaction(), Is.True, "the reserved type byte selects the system transaction codec");
-        Assert.That(tx.HasSystemTransactionFields(), Is.True, "decoding supplies the fixed sender, target, budget and price");
+        Assert.That(tx.HasSystemTransactionFields(EezChainRules.Rollup0), Is.True, "decoding supplies the fixed sender, target, budget and price");
         Assert.That(tx.Signature, Is.Null, "a system transaction is unsigned");
         Assert.That((tx.ChainId, tx.Nonce, tx.Value, tx.Data.ToArray()), Is.EqualTo((1UL, 0UL, UInt256.Zero, new byte[] { 1, 2, 3, 4 })),
             "the body fields are chain id, nonce, target, value and input in that order");

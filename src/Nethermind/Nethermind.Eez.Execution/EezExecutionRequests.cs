@@ -11,4 +11,13 @@ public static class EezExecutionRequests
     {
         CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests,
     };
+
+    public static ExecutionRequestsOptions WithoutRequests { get; } = new()
+    {
+        CodelessRequestContracts = CodelessRequestContractBehavior.ProduceNoRequests,
+        ReadsRequests = false,
+    };
+
+    /// <summary>rollup0 reads requests and treats absent predeploys as producing none; RollupX never reads them.</summary>
+    public static ExecutionRequestsOptions For(EezChainRules rules) => rules.ReadsExecutionRequests ? Options : WithoutRequests;
 }

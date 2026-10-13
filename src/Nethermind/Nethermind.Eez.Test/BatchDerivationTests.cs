@@ -18,9 +18,9 @@ namespace Nethermind.Eez.Test;
 
 public class BatchDerivationTests
 {
-    private const string Window = "captured-devnet-window-384";
-    private const int From = 379;
-    private const int To = 384;
+    private const string Window = "captured-devnet-window-468";
+    private const int From = 463;
+    private const int To = 468;
 
     private static readonly Lazy<ISpecProvider> Spec = new(static () => StatelessFixtures.ReadSpecProvider(Window, "chain-config.json"));
 
@@ -31,7 +31,7 @@ public class BatchDerivationTests
 
     /// <summary>
     /// The composer's recorded window, rebuilt from its batch alone:
-    /// 1. decode the DA of the <c>postAndVerifyBatch</c> L1 accepted, which settled its anchor and all three effects;
+    /// 1. decode the DA of the <c>postAndVerifyBatch</c> L1 accepted, which settled its anchor and recorded effects;
     /// 2. rebuild each block's transactions, the Sync block's system transactions included;
     /// 3. build each header on the previous recorded one and compare every field derivation fixes.
     /// </summary>
@@ -67,8 +67,8 @@ public class BatchDerivationTests
     public void Build_RecordedDevnetWindow_ReproducesEveryBlockHash()
     {
         (Block[] recorded, DerivedBlock[] derived, EezSettlementContext context) = RecordedWindow();
-        EezStatelessExecutor executor = new(Spec.Value, LimboLogs.Instance);
-        DerivedBlockBuilder builder = new(Spec.Value, context);
+        EezStatelessExecutor executor = new(Spec.Value, EezChainRules.Rollup0, LimboLogs.Instance);
+        DerivedBlockBuilder builder = new(Spec.Value, new Rollup0HeaderRules(Spec.Value, context));
 
         BlockHeader parent = WindowParent();
         for (int i = 0; i < recorded.Length; i++)
@@ -88,12 +88,12 @@ public class BatchDerivationTests
     {
         (Block[] recorded, DerivedBlock[] derived, EezSettlementContext context) = RecordedWindow();
         using Witness witness = StatelessFixtures.ReadWitness(Window, $"witness-{To}.json");
-        StatelessBlockProcessingEnv env = new EezStatelessExecutor(Spec.Value, LimboLogs.Instance).CreateEnvironment(witness);
+        StatelessBlockProcessingEnv env = new EezStatelessExecutor(Spec.Value, EezChainRules.Rollup0, LimboLogs.Instance).CreateEnvironment(witness);
         byte[] user = derived[^1].Transactions.First(static t => t[0] != (byte)EezConstants.SystemTxType);
         DerivedBlock replayed = derived[^1] with { Transactions = [.. derived[^1].Transactions, user] };
 
         EezSettlementException error = Assert.Throws<EezSettlementException>(() =>
-            new DerivedBlockBuilder(Spec.Value, context).Build(recorded[^2].Header, replayed, env.BlockProcessor, env.WorldState))!;
+            new DerivedBlockBuilder(Spec.Value, new Rollup0HeaderRules(Spec.Value, context)).Build(recorded[^2].Header, replayed, env.BlockProcessor, env.WorldState))!;
 
         Assert.That(error.Message, Does.Contain("does not execute"), "a replayed user transaction fails the block instead of being left out");
     }

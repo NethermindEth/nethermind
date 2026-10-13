@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
@@ -28,13 +29,13 @@ namespace Nethermind.Eez.Test;
 /// <summary>The attester over its gRPC wire, fed the recorded devnet windows as a composer streams them.</summary>
 public class AttesterTests
 {
-    private const string EffectWindow = "captured-devnet-window-384";
+    private const string EffectWindow = "captured-devnet-window-468";
     private const string AnchorWindow = StatelessFixtures.Window84;
 
     /// <summary>The recorded attester's key, a well-known public test key.</summary>
     private static readonly PrivateKey AttesterKey = AttesterServer.AttesterKey;
 
-    [TestCase(EffectWindow, 379, 384, TestName = "SettlingBlockWithEffects")]
+    [TestCase(EffectWindow, 463, 468, TestName = "SettlingBlockWithEffects")]
     [TestCase(AnchorWindow, 79, 84, TestName = "AnchorOnlyWindow")]
     public async Task Prove_RecordedWindow_ReturnsTheReferenceAttestation(string fixture, int from, int to)
     {
@@ -59,7 +60,7 @@ public class AttesterTests
     {
         await using AttesterServer server = await AttesterServer.Start(EffectWindow);
 
-        RpcException e = Assert.ThrowsAsync<RpcException>(() => server.Prove(mutate(Window(EffectWindow, 379, 384))))!;
+        RpcException e = (await Assert.ThrowsAsync<RpcException>(() => server.Prove(mutate(Window(EffectWindow, 463, 468)))))!;
 
         Assert.That(e.StatusCode, Is.EqualTo(code));
         Assert.That(e.Status.Detail, Does.StartWith(message));
@@ -69,16 +70,16 @@ public class AttesterTests
     public async Task Prove_WhileAnotherRequestIsActive_IsUnavailable()
     {
         await using AttesterServer server = await AttesterServer.Start(EffectWindow);
-        List<ProveChunk> window = Window(EffectWindow, 379, 384);
+        List<ProveChunk> window = Window(EffectWindow, 463, 468);
         using AsyncClientStreamingCall<ProveChunk, ProveResponse> first = server.Client.Prove();
         await first.RequestStream.WriteAsync(window[0]);
 
-        RpcException e = Assert.ThrowsAsync<RpcException>(async () =>
+        RpcException e = (await Assert.ThrowsAsync<RpcException>(async () =>
         {
             using AsyncClientStreamingCall<ProveChunk, ProveResponse> second = server.Client.Prove();
             await second.RequestStream.CompleteAsync();
             await second.ResponseAsync;
-        })!;
+        }))!;
 
         Assert.That((e.StatusCode, e.Status.Detail), Is.EqualTo((StatusCode.Unavailable, "another Prove request is already active")));
     }
@@ -88,9 +89,9 @@ public class AttesterTests
     {
         await using AttesterServer server = await AttesterServer.Start(EffectWindow, idleTimeout: TimeSpan.FromMilliseconds(300));
         using AsyncClientStreamingCall<ProveChunk, ProveResponse> call = server.Client.Prove();
-        await call.RequestStream.WriteAsync(Window(EffectWindow, 379, 384)[0]);
+        await call.RequestStream.WriteAsync(Window(EffectWindow, 463, 468)[0]);
 
-        RpcException e = Assert.ThrowsAsync<RpcException>(async () => await call.ResponseAsync)!;
+        RpcException e = (await Assert.ThrowsAsync<RpcException>(async () => await call.ResponseAsync))!;
 
         Assert.That((e.StatusCode, e.Status.Detail), Is.EqualTo((StatusCode.DeadlineExceeded, "Prove stream idle timeout")));
     }
@@ -135,7 +136,7 @@ public class AttesterTests
     [Test]
     public void CanonicalSize_KnownFields_IsTheProtobufSize()
     {
-        foreach (ProveChunk chunk in Window(EffectWindow, 379, 384))
+        foreach (ProveChunk chunk in Window(EffectWindow, 463, 468))
         {
             Assert.That(WindowAssembler.CanonicalSize(chunk), Is.EqualTo(chunk.CalculateSize()));
         }
@@ -182,6 +183,32 @@ public class AttesterTests
         }
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ChainConfigLoader_ConfiguredCollector_ReachesAttesterSpecs(bool fullGenesis)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"eez-collector-{Guid.NewGuid():N}.json");
+        JsonNode config = JsonNode.Parse(File.ReadAllText(StatelessFixtures.PathOf(EffectWindow, "chain-config.json")))!;
+        config["feeCollector"] = Nethermind.Core.Test.Builders.TestItem.AddressD.ToString();
+        JsonNode document = fullGenesis ? new JsonObject
+        {
+            ["config"] = config, ["alloc"] = new JsonObject(), ["gasLimit"] = "0x1c9c380", ["difficulty"] = "0x0",
+            ["nonce"] = "0x0", ["timestamp"] = "0x0", ["extraData"] = "0x",
+            ["coinbase"] = Address.Zero.ToString(), ["mixHash"] = Keccak.Zero.ToString(),
+        } : config;
+        File.WriteAllText(path, document.ToJsonString());
+        try
+        {
+            ISpecProvider provider = ChainConfigLoader.Load(path);
+            Assert.That(provider.GenesisSpec.FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
+            Assert.That(provider.GetSpec(new ForkActivation(1, 1)).FeeCollector, Is.EqualTo(Nethermind.Core.Test.Builders.TestItem.AddressD));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [TestCaseSource(nameof(InvalidSettings))]
     public void Parse_InvalidSetting_Throws(string[] args, string error)
     {
@@ -223,23 +250,23 @@ public class AttesterTests
     private static TestCaseData[] RejectedStreams() =>
     [
         Case(static w => [], StatusCode.InvalidArgument, "window: empty Prove stream", "EmptyStream"),
-        Case(static w => w[1..], StatusCode.InvalidArgument, "window: first chunk must be the window header, got block 379", "BlockBeforeHeader"),
+        Case(static w => w[1..], StatusCode.InvalidArgument, "window: first chunk must be the window header, got block 463", "BlockBeforeHeader"),
         Case(static w => [w[0], w[0]], StatusCode.InvalidArgument, "window: duplicate header chunk", "DuplicateHeader"),
         Case(static w => [WithHeader(w[0], static h => h.RollupId = 2), .. w[1..]], StatusCode.FailedPrecondition, "window rollup identity rejected", "OtherRollup"),
         Case(static w => [WithHeader(w[0], static h => h.PostBatch = null), .. w[1..]], StatusCode.InvalidArgument, "window: header carries no post_batch", "NoPostBatch"),
         Case(static w => [WithHeader(w[0], static h => h.PostBatch.L1BlockHash = ByteString.CopyFrom(new byte[32])), .. w[1..]], StatusCode.InvalidArgument,
             "window: header post_batch carries a 32-byte l1_block_hash; it must be empty", "BlockBoundBatch"),
-        Case(static w => [WithHeader(w[0], static h => h.FromBlock = 0), .. w[1..]], StatusCode.InvalidArgument, "window: invalid window bounds 0..=384", "ZeroFrom"),
-        Case(static w => [WithHeader(w[0], static h => h.ToBlock = 5000), .. w[1..]], StatusCode.ResourceExhausted, "window quota: window 379..=5000 spans 4622 blocks, limit is 512",
+        Case(static w => [WithHeader(w[0], static h => h.FromBlock = 0), .. w[1..]], StatusCode.InvalidArgument, "window: invalid window bounds 0..=468", "ZeroFrom"),
+        Case(static w => [WithHeader(w[0], static h => h.ToBlock = 5000), .. w[1..]], StatusCode.ResourceExhausted, "window quota: window 463..=5000 spans 4538 blocks, limit is 512",
             "SpanOverLimit"),
-        Case(static w => [w[0], w[2], .. w[3..]], StatusCode.InvalidArgument, "window: expected block 379 at block index 0, got 380", "GapInBlocks"),
+        Case(static w => [w[0], w[2], .. w[3..]], StatusCode.InvalidArgument, "window: expected block 463 at block index 0, got 464", "GapInBlocks"),
         Case(static w => [.. w, w[^1]], StatusCode.InvalidArgument, "window: window already carries its declared 6 blocks", "ExtraBlock"),
-        Case(static w => w[..^1], StatusCode.InvalidArgument, "window: window 379..=384 expects 6 blocks, stream ended after 5", "MissingBlock"),
+        Case(static w => w[..^1], StatusCode.InvalidArgument, "window: window 463..=468 expects 6 blocks, stream ended after 5", "MissingBlock"),
         Case(static w => [w[0], w[1], WithBlock(w[2], static b => b.ParentHash = ByteString.CopyFrom(new byte[32])), .. w[3..]], StatusCode.InvalidArgument,
-            "window: hash-chain break at block 380", "BrokenHashChain"),
+            "window: hash-chain break at block 464", "BrokenHashChain"),
         Case(static w => [w[0], WithBlock(w[1], static b => b.Hash = ByteString.CopyFrom(new byte[31])), .. w[2..]], StatusCode.InvalidArgument,
-            "window: block 379 has a 31-byte block hash", "ShortHash"),
-        Case(static w => [w[0], WithBlock(w[1], static b => b.Witness = null), .. w[2..]], StatusCode.InvalidArgument, "window: block 379 carries no execution witness",
+            "window: block 463 has a 31-byte block hash", "ShortHash"),
+        Case(static w => [w[0], WithBlock(w[1], static b => b.Witness = null), .. w[2..]], StatusCode.InvalidArgument, "window: block 463 carries no execution witness",
             "NoWitness"),
         Case(static w => [w[0], new ProveChunk(), .. w[1..]], StatusCode.InvalidArgument, "window: chunk at index 1 carries no kind", "ChunkWithoutKind"),
         Case(static w => [.. w[..^1], WithBlock(w[^1], static b => b.Hash = ByteString.CopyFrom(Keccak.OfAnEmptyString.Bytes))], StatusCode.FailedPrecondition,

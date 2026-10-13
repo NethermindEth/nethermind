@@ -12,10 +12,13 @@ namespace Nethermind.Eez.Follower;
 /// <param name="VerifiesOurRollup">The batch lists our rollup, so it clears our queue on L1 and ends the previous batch's window.</param>
 /// <param name="ClaimedCurrentState">The first state update's current state for our rollup, if the batch updates it.</param>
 /// <param name="ClaimedChain">Every new state the batch claims for our rollup, in entry order.</param>
+/// <param name="DaStream">The EEZ message stream the batch publishes its blocks in.</param>
 public sealed record L1Batch(ulong BlockNumber, Hash256 BlockHash, Hash256 TransactionHash, ulong TransactionIndex, bool VerifiesOurRollup,
-    ValueHash256? ClaimedCurrentState, ValueHash256[] ClaimedChain, ReadOnlyMemory<byte> CallData)
+    ValueHash256? ClaimedCurrentState, ValueHash256[] ClaimedChain, ReadOnlyMemory<byte> DaStream)
 {
-    public static L1Batch Of(PostBatch batch, ulong rollupId, ulong blockNumber, Hash256 blockHash, Hash256 transactionHash, ulong transactionIndex)
+    /// <param name="daStream">The stream the batch publishes: its calldata under rollup0, its unpacked blobs under RollupX.</param>
+    public static L1Batch Of(PostBatch batch, ReadOnlyMemory<byte> daStream, ulong rollupId, ulong blockNumber, Hash256 blockHash, Hash256 transactionHash,
+        ulong transactionIndex)
     {
         ValueHash256? current = null;
         List<ValueHash256> chain = [];
@@ -31,7 +34,7 @@ public sealed record L1Batch(ulong BlockNumber, Hash256 BlockHash, Hash256 Trans
             }
         }
 
-        return new L1Batch(blockNumber, blockHash, transactionHash, transactionIndex, Lists(batch, rollupId), current, [.. chain], batch.CallData);
+        return new L1Batch(blockNumber, blockHash, transactionHash, transactionIndex, Lists(batch, rollupId), current, [.. chain], daStream);
     }
 
     private static bool Lists(PostBatch batch, ulong rollupId)

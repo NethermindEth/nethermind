@@ -32,7 +32,7 @@ public class L1BatchScannerTests
     public void SetUp()
     {
         _l1 = Substitute.For<IEezL1Api>();
-        _recordedBatch = StatelessFixtures.ReadPostBatch("captured-devnet-window-384");
+        _recordedBatch = StatelessFixtures.ReadPostBatch("captured-devnet-window-468");
         Transaction(TransactionIndex, TransactionHash, _recordedBatch);
     }
 
@@ -88,12 +88,12 @@ public class L1BatchScannerTests
     }
 
     [Test]
-    public void FindSettlingBlocks_NodeRefusesOneBlock_Throws()
+    public async Task FindSettlingBlocks_NodeRefusesOneBlock_Throws()
     {
         _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, Arg.Any<Hash256?>(), BlockNumber, BlockNumber, Arg.Any<CancellationToken>())
             .Returns((EezL1Log[]?)null);
 
-        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
             "a block that cannot be served is retried later");
     }
 
@@ -111,22 +111,22 @@ public class L1BatchScannerTests
     }
 
     [Test]
-    public void FindSettlingBlocks_LogsFromTwoForksOfABlock_Throws()
+    public async Task FindSettlingBlocks_LogsFromTwoForksOfABlock_Throws()
     {
         Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash) with { BlockHash = Keccak.Compute("the other fork") });
         Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex, TransactionHash, 0, Keccak.Compute("root")));
 
-        Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => Scanner().FindSettlingBlocks(BlockNumber, BlockNumber, CancellationToken.None),
             "the two reads straddled an L1 reorganization");
     }
 
     [Test]
-    public void Scan_TransactionDiffersFromItsLog_Throws()
+    public async Task Scan_TransactionDiffersFromItsLog_Throws()
     {
         Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, Keccak.Compute("replaced by a reorg")));
         Logs(L1BatchScanner.L2ExecutionPerformedTopic, Settled(TransactionIndex, TransactionHash, 0, Keccak.Compute("root")));
 
-        Assert.ThrowsAsync<L1SourceIncompleteException>(() => ScanOnly(BlockNumber), "L1 reorganized between the log and the transaction read");
+        await Assert.ThrowsAsync<L1SourceIncompleteException>(() => ScanOnly(BlockNumber), "L1 reorganized between the log and the transaction read");
     }
 
     [Test]
@@ -186,7 +186,7 @@ public class L1BatchScannerTests
         L1BatchScanner scanner = Scanner();
         L1SettlingBlock[] blocks = await scanner.FindSettlingBlocks(block, block, CancellationToken.None);
         Assert.That(blocks, Has.Length.EqualTo(1), "precondition: the block settled our rollup");
-        return await scanner.Scan(blocks[0], CancellationToken.None);
+        return await scanner.Scan(blocks[0], new EezL1Block { Number = block, Hash = blocks[0].Hash }, CancellationToken.None);
     }
 
     private void Logs(Hash256 topic, params EezL1Log[] logs) =>
@@ -196,7 +196,7 @@ public class L1BatchScannerTests
         _l1.GetTransactionByBlockHashAndIndex(BlockHash, index, Arg.Any<CancellationToken>()).Returns(new EezL1Transaction { Hash = hash, Input = input });
 
     private static ValueHash256[] ClaimedChain(byte[] calldata) =>
-        L1Batch.Of(EezCalldata.DecodePostAndVerifyBatch(calldata), RollupId, BlockNumber, BlockHash, TransactionHash, TransactionIndex).ClaimedChain;
+        L1Batch.Of(EezCalldata.DecodePostAndVerifyBatch(calldata), ReadOnlyMemory<byte>.Empty, RollupId, BlockNumber, BlockHash, TransactionHash, TransactionIndex).ClaimedChain;
 
     private static EezL1Log BatchPosted(ulong index, Hash256 transaction, ulong block = BlockNumber) => new()
     {

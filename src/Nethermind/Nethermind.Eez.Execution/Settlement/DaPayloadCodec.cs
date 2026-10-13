@@ -28,7 +28,6 @@ public static class DaPayloadCodec
     private const byte ReturnSuccess = 6;
     private const byte ReturnFail = 7;
     private const byte Finish = 10;
-    private const int MaxVarintBytes = 5;
 
     /// <exception cref="EezSettlementException">The stream or its span is malformed.</exception>
     public static DaPayload Decode(ReadOnlyMemory<byte> payload)
@@ -38,7 +37,7 @@ public static class DaPayloadCodec
             throw Invalid("the payload is empty");
         }
 
-        Reader reader = new(payload);
+        DaReader reader = new(payload);
 
         if (reader.Byte("stream version") != StreamVersion)
         {
@@ -88,7 +87,7 @@ public static class DaPayloadCodec
         return stream.ToArray();
     }
 
-    private static DaAction DecodeAction(ref Reader reader)
+    private static DaAction DecodeAction(ref DaReader reader)
     {
         reader.Expect(Initiate);
         ulong sourceRollupId = reader.UInt64("initiate chain id");
@@ -113,7 +112,7 @@ public static class DaPayloadCodec
 
     private static DaSpan DecodeSpan(ReadOnlyMemory<byte> operations)
     {
-        Reader reader = new(operations);
+        DaReader reader = new(operations);
         if (operations.Length == 0 || reader.Byte("span version") != SpanVersion)
         {
             throw Invalid("unsupported span version");
@@ -134,8 +133,8 @@ public static class DaPayloadCodec
             totalTransactions += counts[i];
         }
 
-        Address[] beneficiaries = DecodeRuns(ref reader, blockCount, "beneficiary", static (ref Reader r) => new Address(r.Take("beneficiary", Address.Size).ToArray()));
-        ReadOnlyMemory<byte>[] extraData = DecodeRuns(ref reader, blockCount, "extra data", static (ref Reader r) =>
+        Address[] beneficiaries = DecodeRuns(ref reader, blockCount, "beneficiary", static (ref DaReader r) => new Address(r.Take("beneficiary", Address.Size).ToArray()));
+        ReadOnlyMemory<byte>[] extraData = DecodeRuns(ref reader, blockCount, "extra data", static (ref DaReader r) =>
         {
             int length = r.Byte("extra data length");
             return length > MaxExtraData ? throw Invalid($"extra data length {length} exceeds {MaxExtraData}") : r.Take("extra data", length);
@@ -169,9 +168,9 @@ public static class DaPayloadCodec
         return new DaSpan(counts, beneficiaries, extraData, transactions);
     }
 
-    private delegate T ReadValue<out T>(ref Reader reader);
+    private delegate T ReadValue<out T>(ref DaReader reader);
 
-    private static T[] DecodeRuns<T>(ref Reader reader, int blockCount, string field, ReadValue<T> read)
+    private static T[] DecodeRuns<T>(ref DaReader reader, int blockCount, string field, ReadValue<T> read)
     {
         T[] values = new T[blockCount];
         int filled = 0;
@@ -302,74 +301,5 @@ public static class DaPayloadCodec
         output.Add((byte)remaining);
     }
 
-    private static EezSettlementException Invalid(string reason) => new(EezSettlementFailure.InvalidDaPayload, $"Invalid DA payload: {reason}.");
-
-    private struct Reader(ReadOnlyMemory<byte> data)
-    {
-        private int _position;
-
-        public readonly int Remaining => data.Length - _position;
-
-        public ReadOnlyMemory<byte> Take(string field, int length)
-        {
-            if (length > Remaining)
-            {
-                throw Invalid($"truncated while reading {field}");
-            }
-
-            ReadOnlyMemory<byte> slice = data.Slice(_position, length);
-            _position += length;
-            return slice;
-        }
-
-        public byte Byte(string field) => Take(field, 1).Span[0];
-
-        public ulong UInt64(string field) => BinaryPrimitives.ReadUInt64LittleEndian(Take(field, sizeof(ulong)).Span);
-
-        public void Expect(byte message)
-        {
-            if (Byte("message type") != message)
-            {
-                throw Invalid($"expected message type {message}");
-            }
-        }
-
-        public ReadOnlyMemory<byte> Bytes(string field, bool padded) => Take(field, Varint(field, padded));
-
-        /// <summary>A <c>uint32</c> in one to five bytes; unless <paramref name="padded"/>, only its shortest form.</summary>
-        public int Varint(string field, bool padded)
-        {
-            ulong value = 0;
-            for (int i = 0; i < MaxVarintBytes; i++)
-            {
-                byte current = Byte(field);
-                ulong group = current & 0x7fu;
-                if (i == MaxVarintBytes - 1 && group > 0x0f)
-                {
-                    throw Invalid($"varint out of range while reading {field}");
-                }
-
-                value |= group << (7 * i);
-                if ((current & 0x80) == 0)
-                {
-                    if (!padded && i > 0 && group == 0)
-                    {
-                        throw Invalid($"padded varint while reading {field}");
-                    }
-
-                    return value <= int.MaxValue ? (int)value : throw Invalid($"{field} {value} is out of range");
-                }
-            }
-
-            throw Invalid($"varint too long while reading {field}");
-        }
-
-        public readonly void EnsurePlausible(string field, long count, int bytesPerElement)
-        {
-            if (count > Remaining / bytesPerElement)
-            {
-                throw Invalid($"{field} {count} exceeds what the {Remaining} remaining bytes can encode");
-            }
-        }
-    }
+    private static EezSettlementException Invalid(string reason) => DaReader.Invalid(reason);
 }

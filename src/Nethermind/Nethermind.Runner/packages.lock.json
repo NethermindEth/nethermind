@@ -767,23 +767,23 @@
       "nethermind.eez": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[2.1.0-preview, )",
-          "Nethermind.Eez.Execution": "[2.1.0-preview, )",
-          "Nethermind.Eez.Prove": "[2.1.0-preview, )",
-          "Nethermind.Init": "[2.1.0-preview, )",
-          "Nethermind.Merge.Plugin": "[2.1.0-preview, )"
+          "Nethermind.Api": "[2.2.0-preview, )",
+          "Nethermind.Eez.Execution": "[2.2.0-preview, )",
+          "Nethermind.Eez.Prove": "[2.2.0-preview, )",
+          "Nethermind.Init": "[2.2.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.2.0-preview, )"
         }
       },
       "nethermind.eez.execution": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Consensus": "[2.1.0-preview, )"
+          "Nethermind.Consensus": "[2.2.0-preview, )"
         }
       },
       "nethermind.eez.prove": {
         "type": "Project",
         "dependencies": {
-          "Google.Protobuf": "[3.35.1, )",
+          "Google.Protobuf": "[3.36.2, )",
           "Grpc.Net.Client": "[2.84.0, )"
         }
       },

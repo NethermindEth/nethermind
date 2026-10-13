@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
@@ -46,7 +47,7 @@ public class EezTransactionProcessorTests
         _state.CreateAccount(TestItem.AddressA, 10.Ether);
 
         EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
-        _processor = new EezTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _state, virtualMachine,
+        _processor = new EezTransactionProcessor(EezChainRules.Rollup0, BlobBaseFeeCalculator.Instance, _specProvider, _state, virtualMachine,
             new EthereumCodeInfoRepository(_state), LimboLogs.Instance);
 
         _block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).WithBaseFeePerGas(BaseFee)
@@ -158,6 +159,114 @@ public class EezTransactionProcessorTests
         Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary transfer executes");
         Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo(21_000 * tip), "the beneficiary still earns the priority fee of ordinary transactions");
     }
+
+    [TestCaseSource(nameof(FeeCollectorCalls))]
+    public void Execute_OrdinaryCall_CreditsFinalBaseFeeAndKeepsPriorityFee(byte[] code, bool success, bool refund)
+    {
+        ConfigureFeeCollector(TestItem.AddressD, Osaka.Instance);
+        DeployEezl2(code, 0);
+        _state.Set(new StorageCell(EezConstants.Eezl2Address, 0), UInt256.One);
+        _state.Commit(_specProvider.GetSpec(_block.Header));
+        const ulong tip = 3;
+        CallOutputTracer tracer = new();
+        TransactionResult result = _processor.Execute(OrdinaryTransaction(tip), tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True, "precondition: the call is included even if it reverts or halts");
+        Assert.That(tracer.StatusCode == StatusCode.Success, Is.EqualTo(success), "precondition: the fixture reaches the intended EVM outcome");
+        Assert.That(_block.Header.GasUsed < 26_000, Is.EqualTo(refund), "precondition: storage clear receives its real refund");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.GetBalance(TestItem.AddressD), Is.EqualTo(BaseFee * _block.Header.GasUsed), "base fees use final charged gas after refunds");
+            Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo((UInt256)tip * _block.Header.GasUsed), "priority fees stay with the header beneficiary");
+            Assert.That(_state.GetNonce(TestItem.AddressD), Is.EqualTo(0), "credit executes no code and increments no nonce");
+        }
+    }
+
+    [Test]
+    public void Execute_SharedFeeRecipient_ReceivesBaseFeeAndTip()
+    {
+        ConfigureFeeCollector(TestItem.AddressC, Osaka.Instance);
+        DeployEezl2(StopCode, 0);
+        const ulong tip = 3;
+        TransactionResult result = _processor.Execute(OrdinaryTransaction(tip), new CallOutputTracer());
+        Assert.That(result.TransactionExecuted, Is.True, "precondition: the ordinary call executes");
+        Assert.That(_state.GetBalance(TestItem.AddressC), Is.EqualTo((BaseFee + tip) * _block.Header.GasUsed), "base fee credit accumulates with the tip");
+    }
+
+    [Test]
+    public void Execute_NativeCall_WithCollector_PaysNoFee()
+    {
+        ConfigureFeeCollector(TestItem.AddressD, Osaka.Instance);
+        DeployEezl2(StopCode, 0);
+        TransactionResult result = _processor.Execute(SystemTransaction(0, UInt256.Zero), new CallOutputTracer());
+        Assert.That(result.TransactionExecuted, Is.True, "precondition: the native call executes despite a positive block base fee");
+        Assert.That(_state.GetBalance(TestItem.AddressD), Is.EqualTo(UInt256.Zero), "native transactions credit no base fee");
+    }
+
+    [TestCase(false, false, TestName = "BeforeEip6780CollectorIsDeleted")]
+    [TestCase(true, false, TestName = "Eip6780ExistingCollectorReceivesCredit")]
+    [TestCase(false, true, TestName = "StatelessRulesBeforeEip6780CollectorIsDeleted")]
+    [TestCase(true, true, TestName = "StatelessRulesEip6780CollectorReceivesCredit")]
+    public void Execute_CollectorSelfDestruct_PreservesForkAccountLifecycle(bool eip6780, bool staticRules)
+    {
+        ConfigureFeeCollector(EezConstants.Eezl2Address, eip6780 ? Osaka.Instance : London.Instance, staticRules);
+        DeployEezl2([(byte)Instruction.PUSH20, .. TestItem.AddressD.Bytes, (byte)Instruction.SELFDESTRUCT], 0);
+        TransactionResult result = _processor.Execute(OrdinaryTransaction(3), new CallOutputTracer());
+        Assert.That(result.TransactionExecuted, Is.True, "precondition: the collector contract executes SELFDESTRUCT");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.AccountExists(EezConstants.Eezl2Address), Is.EqualTo(eip6780), "fee credits do not undo deletion");
+            Assert.That(_state.GetBalance(EezConstants.Eezl2Address),
+                Is.EqualTo(eip6780 ? BaseFee * _block.Header.GasUsed : UInt256.Zero), "only a surviving account receives the credit");
+        }
+    }
+
+    [Test]
+    public void Execute_OuterRevertAfterCollectorSelfDestruct_StillCreditsSurvivingCollector()
+    {
+        ConfigureFeeCollector(EezConstants.Eezl2Address, London.Instance);
+        DeployEezl2([(byte)Instruction.PUSH20, .. TestItem.AddressD.Bytes, (byte)Instruction.SELFDESTRUCT], 0);
+        byte[] outer = [0x60, 0, 0x60, 0, 0x60, 0, 0x60, 0, 0x60, 0, 0x73, .. EezConstants.Eezl2Address.Bytes,
+            0x62, 0x01, 0x11, 0x70, 0xf1, 0x60, 0, 0x60, 0, 0xfd];
+        _state.CreateAccount(TestItem.AddressB, 0);
+        _state.InsertCode(TestItem.AddressB, outer, _specProvider.GetSpec(_block.Header));
+        _state.Commit(_specProvider.GetSpec(_block.Header));
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(0).WithGasPrice(BaseFee + 3).WithGasLimit(100_000)
+            .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
+        CallOutputTracer tracer = new();
+        TransactionResult result = _processor.Execute(tx, tracer);
+        Assert.That(result.TransactionExecuted, Is.True, "precondition: the reverted call is included");
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure), "precondition: outer frame reverts the nested SELFDESTRUCT");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_state.AccountExists(EezConstants.Eezl2Address), Is.True, "rollback restores the collector account");
+            Assert.That(_state.GetBalance(EezConstants.Eezl2Address), Is.EqualTo(BaseFee * _block.Header.GasUsed), "reverted calls still credit base fees");
+        }
+    }
+
+    private void ConfigureFeeCollector(Address collector, IReleaseSpec fork, bool staticRules = false)
+    {
+        using JsonDocument genesis = JsonDocument.Parse($"{{\"config\":{{\"feeCollector\":\"{collector}\"}}}}");
+        EezChainRules rules = EezChainRules.FromGenesis(genesis.RootElement);
+        _specProvider = new EezSpecProvider(new TestSpecProvider(fork), rules);
+        EthereumVirtualMachine vm = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _processor = new EezTransactionProcessor(staticRules ? EezChainRules.Rollup0 : rules, BlobBaseFeeCalculator.Instance, _specProvider, _state, vm,
+            new EthereumCodeInfoRepository(_state), LimboLogs.Instance);
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(_block.Header, _specProvider.GetSpec(_block.Header)));
+    }
+
+    private Transaction OrdinaryTransaction(ulong tip) => Build.A.Transaction.WithTo(EezConstants.Eezl2Address).WithValue(0)
+        .WithGasPrice(BaseFee + tip).WithGasLimit(100_000)
+        .SignedAndResolved(new EthereumEcdsa(_specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
+
+    private static TestCaseData[] FeeCollectorCalls() =>
+    [
+        new(new byte[] { (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE, (byte)Instruction.STOP }, true, true)
+            { TestName = "StorageClearCreditsAfterRefund" },
+        new(new byte[] { (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.SSTORE,
+            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.REVERT }, false, false) { TestName = "RevertedCallStillPays" },
+        new(InvalidCode, false, false) { TestName = "HaltedCallStillPays" },
+    ];
 
     private static TestCaseData[] FailingCalls() =>
     [

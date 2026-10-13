@@ -13,10 +13,10 @@ namespace Nethermind.Eez.Test;
 
 public class AnchorBatchTests
 {
-    private const string Window = "captured-devnet-anchor-43722";
+    private const string Window = "captured-devnet-anchor-402";
 
     /// <summary>
-    /// The reference composer settled blocks 43717..43722, the first carrying a pure L2 transfer, with an anchor-only
+    /// The reference composer settled blocks 397..402, carrying ordinary L2 transactions, with an anchor-only
     /// postBatch. Rebuilt from the same blocks and endpoints, with the mined proofs put back, it is the mined calldata.
     /// </summary>
     [Test]

@@ -59,8 +59,9 @@ internal static class StatelessFixtures
              "nonce":"0x0","timestamp":"0x0","extraData":"0x","mixHash":"0x0000000000000000000000000000000000000000000000000000000000000000",
              "coinbase":"0x0000000000000000000000000000000000000000"}
             """;
+        using JsonDocument document = JsonDocument.Parse(genesis);
         ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(new MemoryStream(Encoding.UTF8.GetBytes(genesis)));
-        return new EezSpecProvider(new ChainSpecBasedSpecProvider(chainSpec));
+        return new EezSpecProvider(new ChainSpecBasedSpecProvider(chainSpec), EezChainRules.FromGenesis(document.RootElement));
     }
 
     private static ArrayPoolList<byte[]> ReadHexList(JsonElement root, string property)

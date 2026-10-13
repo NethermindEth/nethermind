@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Logging;
@@ -19,11 +18,15 @@ namespace Nethermind.Eez.Follower;
 /// <summary>Brings the local chain in line with what L1 settled.</summary>
 public interface IBatchReconciler
 {
-    /// <param name="cursor">The last L2 block the previous settled batch ended at.</param>
-    /// <returns>The L2 block L1's commitment now names: the new cursor.</returns>
+    /// <param name="settling">The L1 block that settled <paramref name="scanned"/>.</param>
+    /// <param name="cursor">Where the previous settled batch ended.</param>
+    /// <returns>Where L1's commitment now stands: the new cursor.</returns>
     /// <exception cref="EezFollowerException">The local chain cannot be brought in line with what L1 settled.</exception>
-    Task<BlockHeader> Reconcile(ScannedBatch scanned, BlockHeader cursor, FollowerHeads heads);
+    Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads);
 }
+
+/// <summary>The L2 block a settlement ended at and the prevRandao it puts in effect for the blocks after it.</summary>
+public readonly record struct SettledHead(BlockHeader Endpoint, Hash256 Seed);
 
 /// <summary>
 /// Brings the local chain in line with one settled batch: rebuilds the blocks it settles from its DA, keeps the local
@@ -37,18 +40,32 @@ public sealed class BatchReconciler(
     IStateReader stateReader,
     IDerivedBlockExecutor executor,
     IEezL2Engine engine,
-    ISpecProvider specProvider,
+    IBatchDerivation derivation,
+    IDerivedHeaderRules headerRules,
     EezSettlementContext context,
     ILogManager logManager) : IBatchReconciler
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BatchReconciler>();
 
-    public async Task<BlockHeader> Reconcile(ScannedBatch scanned, BlockHeader cursor, FollowerHeads heads)
+    public async Task<SettledHead> Reconcile(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads)
+    {
+        BlockHeader endpoint = await Settle(scanned, settling, cursor, heads);
+        try
+        {
+            return new SettledHead(endpoint, headerRules.Seed(endpoint, settling, cursor.Seed));
+        }
+        catch (EezSettlementException e)
+        {
+            throw Diverged(endpoint.Number, e.Message);
+        }
+    }
+
+    private async Task<BlockHeader> Settle(ScannedBatch scanned, L1Anchor settling, SettledHead cursor, FollowerHeads heads)
     {
         L1Settlement settlement = scanned.Settlement;
-        DaPayload payload = Decode(scanned.Batch);
-        ulong blockCount = (ulong)payload.Span.BlockCount;
-        BlockHeader anchor = FindAnchor(cursor, blockCount, settlement.EntryState);
+        DecodedBatch batch = Decode(scanned.Batch);
+        ulong blockCount = batch.BlockCount;
+        BlockHeader anchor = FindAnchor(cursor.Endpoint, blockCount, settlement.EntryState);
         if (anchor.Hash! == settlement.FinalState)
         {
             return anchor;
@@ -62,7 +79,8 @@ public sealed class BatchReconciler(
         bool resumed = settlement.Start > 0;
         ulong from = resumed ? anchor.Number : anchor.Number + 1;
         BlockHeader parent = Canonical(from - 1);
-        DerivedBlock[] derived = Derive(payload, settlement, parent);
+        ulong candidateParent = resumed ? CandidateParentOfResumed(from, blockCount) : anchor.Number;
+        DerivedBlock[] derived = Derive(batch, settlement, parent, new DerivationInputs(0, SeedAt(from, cursor), Canonical(candidateParent), settling, resumed));
 
         Dictionary<ulong, Hash256> replayed = [];
         using (IDerivedBlockSession session = executor.BeginSession())
@@ -81,25 +99,16 @@ public sealed class BatchReconciler(
         return SettledEnd(anchor.Number, to, settlement.FinalState, replayed);
     }
 
-    private DaPayload Decode(L1Batch batch)
+    private DecodedBatch Decode(L1Batch batch)
     {
-        DaPayload payload;
         try
         {
-            payload = DaPayloadCodec.Decode(batch.CallData);
+            return derivation.Decode(batch.DaStream);
         }
         catch (EezSettlementException e)
         {
             throw new EezFollowerException($"Batch {batch.TransactionHash} settled rollup {context.RollupId} with DA that does not decode: {e.Message}", e);
         }
-
-        if (payload.RollupId != context.RollupId || payload.Span.BlockCount == 0)
-        {
-            throw new EezFollowerException($"Batch {batch.TransactionHash} settled rollup {context.RollupId} with DA for rollup {payload.RollupId} " +
-                $"covering {payload.Span.BlockCount} blocks.");
-        }
-
-        return payload;
     }
 
     /// <summary>
@@ -127,12 +136,23 @@ public sealed class BatchReconciler(
         return cursor;
     }
 
-    private DerivedBlock[] Derive(DaPayload payload, L1Settlement settlement, BlockHeader parent)
+    /// <summary>
+    /// The prevRandao of a block derived at <paramref name="number"/>: the cursor's seed above it, and at or below it the
+    /// seed the block there was accepted with, since a settled block carries the seed of the last endpoint before it.
+    /// </summary>
+    private Hash256 SeedAt(ulong number, SettledHead cursor) =>
+        number > cursor.Endpoint.Number ? cursor.Seed : Canonical(number).MixHash ?? throw Diverged(number, "it carries no prevRandao");
+
+    /// <summary>A resumed batch appends to its Sync block, but its whole range still started a block count below it.</summary>
+    private ulong CandidateParentOfResumed(ulong syncBlock, ulong blockCount) =>
+        syncBlock >= blockCount ? syncBlock - blockCount : throw Diverged(syncBlock, $"a resumed batch of {blockCount} blocks would start before genesis");
+
+    private DerivedBlock[] Derive(DecodedBatch batch, L1Settlement settlement, BlockHeader parent, DerivationInputs inputs)
     {
         ulong systemNonce = stateReader.TryGetAccount(parent, EezConstants.SystemAddress, out AccountStruct account) ? (ulong)account.Nonce : 0;
         try
         {
-            return BatchDerivation.Derive(payload, settlement.Effects, systemNonce, context.ChainId, context.RollupId);
+            return batch.Derive(settlement.Effects, inputs with { SystemNonce = systemNonce });
         }
         catch (EezSettlementException e)
         {
@@ -269,9 +289,9 @@ public sealed class BatchReconciler(
     /// <summary>Whether <paramref name="local"/> is the block derivation builds, so a sequencer block with any other header is replaced.</summary>
     private bool Matches(Block local, BlockHeader parent, DerivedBlock derived)
     {
-        if (local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData)
+        if (local.Beneficiary != derived.Beneficiary || !local.ExtraData.AsSpan().SequenceEqual(derived.ExtraData) || local.MixHash != derived.PrevRandao
             || local.Transactions.Length != derived.Transactions.Length
-            || DerivedHeader.Mismatch(local, parent, specProvider.GetSpec(local.Header), context) is not null)
+            || headerRules.Mismatch(local, parent) is not null)
         {
             return false;
         }

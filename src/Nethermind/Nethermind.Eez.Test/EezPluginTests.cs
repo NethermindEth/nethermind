@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.KeyStore.Config;
@@ -16,9 +18,12 @@ namespace Nethermind.Eez.Test;
 
 public class EezPluginTests
 {
+    private static readonly EezChainRules RollupX =
+        EezChainRules.RollupX(new RollupXSchedule(1, 5, new RollupXL1Reference(10200, 1, TestItem.KeccakA, 0, TestItem.KeccakB), 0));
+
     [TestCaseSource(nameof(GenesesWithoutEezl2Code))]
     public void EnsureEezGenesis_WithoutEezl2Code_RefusesToStart(ChainSpec chainSpec) =>
-        Assert.That(() => EezPlugin.EnsureEezGenesis(chainSpec), Throws.TypeOf<InvalidConfigurationException>(),
+        Assert.That(() => EezPlugin.EnsureEezGenesis(chainSpec, EezChainRules.Rollup0), Throws.TypeOf<InvalidConfigurationException>(),
             "enabling EEZ rules on a chain without the EEZL2 predeploy would silently change its consensus");
 
     [Test]
@@ -32,7 +37,43 @@ public class EezPluginTests
             },
         };
 
-        Assert.That(() => EezPlugin.EnsureEezGenesis(chainSpec), Throws.Nothing, "an EEZ genesis carries the EEZL2 runtime code");
+        Assert.That(() => EezPlugin.EnsureEezGenesis(chainSpec, EezChainRules.Rollup0), Throws.Nothing, "an EEZ genesis carries the EEZL2 runtime code");
+    }
+
+    [Test]
+    public void EnsureEezGenesis_RollupXChainWithoutItsProxy_RefusesToStart()
+    {
+        ChainSpec chainSpec = new()
+        {
+            Allocations = new Dictionary<Address, ChainSpecAllocation>
+            {
+                [EezConstants.Eezl2Address] = new() { Code = [0x00] },
+            },
+        };
+        Assert.That(() => EezPlugin.EnsureEezGenesis(chainSpec, RollupX), Throws.TypeOf<InvalidConfigurationException>(),
+            "a RollupX chain needs the manager proxy its system transactions target");
+    }
+
+    [TestCase("{\"config\":{\"rollupX\":{\"blockIntervalSeconds\":0}}}", TestName = "BrokenRollupXSection")]
+    [TestCase("not json", TestName = "NotJson")]
+    [TestCase(null, TestName = "MissingFile")]
+    public void LoadRules_UnusableGenesis_RefusesToStart(string? content)
+    {
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        if (content is not null)
+        {
+            File.WriteAllText(path, content);
+        }
+
+        try
+        {
+            Assert.That(() => EezPlugin.LoadRules(path), Throws.TypeOf<InvalidConfigurationException>(),
+                "the rules decide consensus, so a genesis they cannot be read from must stop the node");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [TestCaseSource(nameof(IncompleteFollowerConfigs))]
@@ -52,6 +93,21 @@ public class EezPluginTests
     public void EnsureSequencerConfig_FieldMissingOrInvalid_RefusesToStart(EezConfig config, KeyStoreConfig keyStoreConfig, string field) =>
         Assert.That(() => EezPlugin.EnsureSequencerConfig(config, keyStoreConfig), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains(field),
             "a sequencer that cannot confirm, prove or post its batches must not start");
+
+    [TestCase(true, false, TestName = "Follower")]
+    [TestCase(true, true, TestName = "Sequencer")]
+    public void EnsureRolesSupported_RollupXChain_RefusesTheRolesNotBuiltYet(bool follower, bool sequencer)
+    {
+        EezConfig config = new() { FollowerEnabled = follower, SequencerEnabled = sequencer };
+
+        Assert.That(() => EezPlugin.EnsureRolesSupported(config, RollupX), Throws.TypeOf<InvalidConfigurationException>(),
+            "the rollup0 derivation would follow a RollupX chain to the wrong blocks");
+        Assert.That(() => EezPlugin.EnsureRolesSupported(config, EezChainRules.Rollup0), Throws.Nothing);
+    }
+
+    [Test]
+    public void EnsureRolesSupported_RollupXExecutionOnly_Starts() =>
+        Assert.That(() => EezPlugin.EnsureRolesSupported(new EezConfig(), RollupX), Throws.Nothing, "a RollupX chain already executes");
 
     [Test]
     public void EnsureSequencerConfig_Complete_Starts() =>

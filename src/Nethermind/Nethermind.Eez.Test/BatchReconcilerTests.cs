@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Logging;
@@ -20,6 +21,7 @@ namespace Nethermind.Eez.Test;
 
 public class BatchReconcilerTests
 {
+    private static readonly L1Anchor Settling = new(1, TestItem.KeccakA, 0, Keccak.Zero);
     private const ulong RollupId = SyncSettlementFixture.RollupId;
     private static readonly Address Beneficiary = SyncSettlementFixture.Beneficiary;
 
@@ -36,7 +38,8 @@ public class BatchReconcilerTests
         _genesis = _chain.Genesis!;
         _engine = new ChainEngine(_chain);
         _heads = new FollowerHeads(_engine, _chain, _genesis);
-        _reconciler = new BatchReconciler(_chain, Substitute.For<IStateReader>(), new FakeExecutor(), _engine, DerivedChain.SpecProvider, DerivedChain.Context,
+        _reconciler = new BatchReconciler(_chain, Substitute.For<IStateReader>(), new FakeExecutor(), _engine,
+            new Rollup0BatchDerivation(DerivedChain.Context), new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), DerivedChain.Context,
             LimboLogs.Instance);
     }
 
@@ -46,7 +49,7 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0)];
         Hash256 settled = ExpectedHashes(_genesis, published)[^1];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
+        BlockHeader end = await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
         Assert.That((end.Number, end.Hash), Is.EqualTo((2UL, settled)), "the block L1's commitment names is the new cursor");
         Assert.That(_engine.Inserted, Has.Count.EqualTo(2), "both blocks enter the chain through the engine");
@@ -57,10 +60,10 @@ public class BatchReconcilerTests
     {
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0)];
         ScannedBatch batch = Batch(published, ExpectedHashes(_genesis, published)[^1], _genesis.Hash!);
-        await _reconciler.Reconcile(batch, _genesis, _heads);
+        await Reconcile(batch, _genesis);
         _engine.Inserted.Clear();
 
-        BlockHeader end = await _reconciler.Reconcile(batch, _genesis, _heads);
+        BlockHeader end = await Reconcile(batch, _genesis);
 
         Assert.That(end.Number, Is.EqualTo(2), "re-deriving a batch is idempotent");
         Assert.That(_engine.Inserted, Is.Empty, "blocks that already match stay as they are");
@@ -79,7 +82,7 @@ public class BatchReconcilerTests
         _engine.Inserted.Clear();
         Hash256 settled = ExpectedHashes(_genesis, published)[^1];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
+        BlockHeader end = await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
         Assert.That(end.Hash, Is.EqualTo(settled), "the replayed block is the one L1 settled");
         Assert.That(_engine.Inserted.Select(static b => b.Number), Is.EqualTo(new ulong[] { 2 }), "only the differing block is replayed");
@@ -91,29 +94,29 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0)];
         Hash256 first = ExpectedHashes(_genesis, published)[0];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch(published, first, _genesis.Hash!), _genesis, _heads);
+        BlockHeader end = await Reconcile(Batch(published, first, _genesis.Hash!), _genesis);
 
         Assert.That(end.Number, Is.EqualTo(1), "L1 settled the first block only");
         Assert.That(_chain.Head!.Number, Is.EqualTo(2), "the block above it stays as head, derived but not settled");
     }
 
     [Test]
-    public void Reconcile_SettledHashNotDerived_Throws()
+    public async Task Reconcile_SettledHashNotDerived_Throws()
     {
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0)];
 
-        EezFollowerException error = Assert.ThrowsAsync<EezFollowerException>(() =>
-            _reconciler.Reconcile(Batch(published, Keccak.Compute("another chain"), _genesis.Hash!), _genesis, _heads))!;
+        EezFollowerException error = (await Assert.ThrowsAsync<EezFollowerException>(() =>
+            Reconcile(Batch(published, Keccak.Compute("another chain"), _genesis.Hash!), _genesis)))!;
 
         Assert.That(error.Message, Does.Contain("diverges"), "a settlement the local chain cannot reproduce stops the follower");
     }
 
     [Test]
-    public void Reconcile_CursorIsNeitherEntryNorFinalState_Throws()
+    public async Task Reconcile_CursorIsNeitherEntryNorFinalState_Throws()
     {
         ScannedBatch batch = Batch([Published(TestItem.PrivateKeyA, 0)], Keccak.Compute("final"), Keccak.Compute("entry"));
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _reconciler.Reconcile(batch, _genesis, _heads), "a batch that does not start from the local chain is a divergence");
+        await Assert.ThrowsAsync<EezFollowerException>(() => Reconcile(batch, _genesis), "a batch that does not start from the local chain is a divergence");
     }
 
     [Test]
@@ -125,7 +128,7 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0)];
         Hash256 settled = ExpectedHashes(_genesis, published)[^1];
 
-        await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), _genesis, _heads);
+        await Reconcile(Batch(published, settled, _genesis.Hash!), _genesis);
 
         Assert.That(_engine.Forkchoices[0], Is.EqualTo((_genesis.Hash!, _genesis.Hash!, _genesis.Hash!)), "safe and the head move to the parent before the first replaced block");
         Assert.That(_heads.Safe.Hash, Is.EqualTo(_genesis.Hash), "safe stays at the parent until the follower settles the batch");
@@ -138,7 +141,7 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0), Published(TestItem.PrivateKeyB, 0), Published(TestItem.PrivateKeyC, 0)];
         Hash256[] expected = ExpectedHashes(_genesis, published);
 
-        await _reconciler.Reconcile(Batch(published, expected[^1], _genesis.Hash!), _genesis, _heads);
+        await Reconcile(Batch(published, expected[^1], _genesis.Hash!), _genesis);
 
         Assert.That(_engine.Forkchoices.Select(static f => f.Head), Is.EqualTo(expected),
             "a derived block's state is only readable once it is canonical, so each one is the head before the next is built");
@@ -158,7 +161,7 @@ public class BatchReconcilerTests
         await _heads.SetHead(forged.Header);
         Hash256 settled = ExpectedHashes(_genesis, [published])[0];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch([published], settled, _genesis.Hash!), _genesis, _heads);
+        BlockHeader end = await Reconcile(Batch([published], settled, _genesis.Hash!), _genesis);
 
         Assert.That(end.Hash, Is.EqualTo(settled), "the settled block replaces the forged one");
         Assert.That(_chain.Head!.Hash, Is.EqualTo(settled), "the forged block is no longer canonical");
@@ -176,7 +179,7 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0)];
         Hash256 settled = ExpectedHashes(_genesis, published)[0];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch(published, settled, _genesis.Hash!), local[0], _heads);
+        BlockHeader end = await Reconcile(Batch(published, settled, _genesis.Hash!), local[0]);
 
         Assert.That((end.Number, end.Hash), Is.EqualTo((1UL, settled)), "the batch replaces the cursor's block from the anchor below it");
     }
@@ -190,7 +193,7 @@ public class BatchReconcilerTests
         DaBlock[] published = [Published(TestItem.PrivateKeyA, 0)];
         ScannedBatch batch = Batch(published, ExpectedHashes(_genesis, published)[^1], _genesis.Hash!);
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _reconciler.Reconcile(batch, _genesis, _heads), "finalized never moves back");
+        await Assert.ThrowsAsync<EezFollowerException>(() => Reconcile(batch, _genesis), "finalized never moves back");
     }
 
     /// <summary>
@@ -207,9 +210,27 @@ public class BatchReconcilerTests
         DaBlock combined = ours with { Transactions = [.. competing.Transactions, .. ours.Transactions] };
         Hash256 settled = ExpectedHashes(_genesis, [combined])[0];
 
-        BlockHeader end = await _reconciler.Reconcile(Batch([ours], settled, local[0].Hash!, start: 1), local[0], _heads);
+        BlockHeader end = await Reconcile(Batch([ours], settled, local[0].Hash!, start: 1), local[0]);
 
         Assert.That((end.Number, end.Hash), Is.EqualTo((1UL, settled)), "the Sync block now carries both batches' transactions");
+    }
+
+    [Test]
+    public async Task Reconcile_LiveThenSameHeightCatchUp_KeepsTheAcceptedDescendantSeed()
+    {
+        RollupXSchedule schedule = new(1, 1, new RollupXL1Reference(10200, 1, TestItem.KeccakA, 1000, TestItem.KeccakA), 1000);
+        EezChainRules rules = EezChainRules.RollupX(schedule);
+        RollupXHeaderRules headers = new(DerivedChain.SpecProvider, rules);
+        BatchReconciler reconciler = new(_chain, Substitute.For<IStateReader>(), new FakeExecutor(), _engine,
+            new Rollup0BatchDerivation(DerivedChain.Context), headers, DerivedChain.Context, LimboLogs.Instance);
+        BlockHeader endpoint = (await Derive(_genesis, [Published(TestItem.PrivateKeyA, 0)]))[0];
+        ScannedBatch noOp = Batch([Published(TestItem.PrivateKeyA, 0)], endpoint.Hash!, endpoint.Hash!);
+        SettledHead cursor = new(endpoint, TestItem.KeccakA);
+
+        cursor = await reconciler.Reconcile(noOp, new L1Anchor(2, TestItem.KeccakC, 1001, TestItem.KeccakB), cursor, _heads);
+        Assert.That(cursor.Seed, Is.EqualTo(TestItem.KeccakB), "live acceptance refreshes the seed for descendants");
+        cursor = await reconciler.Reconcile(noOp, new L1Anchor(3, TestItem.KeccakD, 1002, TestItem.KeccakC), cursor, _heads);
+        Assert.That(cursor.Seed, Is.EqualTo(TestItem.KeccakB), "same-height catch-up keeps the accepted seed instead of reading the endpoint's older seed");
     }
 
     private async Task<BlockHeader[]> Derive(BlockHeader parent, DaBlock[] published)
@@ -241,6 +262,9 @@ public class BatchReconcilerTests
 
     private static DaBlock Published(PrivateKey sender, ulong nonce) =>
         new(Beneficiary, [], [SyncSettlementFixture.Encode(Build.A.Transaction.WithNonce(nonce).SignedAndResolved(sender).TestObject)]);
+
+    private async Task<BlockHeader> Reconcile(ScannedBatch batch, BlockHeader cursor) =>
+        (await _reconciler.Reconcile(batch, Settling, new SettledHead(cursor, Keccak.Zero), _heads)).Endpoint;
 
     private static ScannedBatch Batch(DaBlock[] published, Hash256 finalState, Hash256 entryState, int start = 0)
     {

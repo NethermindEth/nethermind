@@ -27,9 +27,10 @@ public interface IL1BatchScanner
     /// <exception cref="L1SourceIncompleteException">The reads disagree or the node cannot serve them yet; retry the range.</exception>
     Task<L1SettlingBlock[]> FindSettlingBlocks(ulong fromBlock, ulong toBlock, CancellationToken token);
 
+    /// <param name="header">The header of <paramref name="block"/>.</param>
     /// <returns>The batches of <paramref name="block"/> and what L1 settled of each, in L1 order.</returns>
     /// <exception cref="L1SourceIncompleteException">L1 reorganized the block or cannot serve its transactions yet.</exception>
-    Task<ScannedBatch[]> Scan(L1SettlingBlock block, CancellationToken token);
+    Task<ScannedBatch[]> Scan(L1SettlingBlock block, EezL1Block header, CancellationToken token);
 }
 
 /// <summary>
@@ -102,7 +103,7 @@ public sealed class L1BatchScanner(IEezL1Api l1, Address registry, ulong rollupI
         return [.. blocks];
     }
 
-    public async Task<ScannedBatch[]> Scan(L1SettlingBlock block, CancellationToken token)
+    public async Task<ScannedBatch[]> Scan(L1SettlingBlock block, EezL1Block header, CancellationToken token)
     {
         List<L1Batch> batches = new(block.BatchLogs.Length);
         foreach (EezL1Log log in block.BatchLogs)
@@ -154,7 +155,7 @@ public sealed class L1BatchScanner(IEezL1Api l1, Address registry, ulong rollupI
             return null;
         }
 
-        return L1Batch.Of(decoded, rollupId, log.BlockNumber, log.BlockHash, log.TransactionHash, log.TransactionIndex);
+        return L1Batch.Of(decoded, decoded.CallData, rollupId, log.BlockNumber, log.BlockHash, log.TransactionHash, log.TransactionIndex);
     }
 
     /// <exception cref="L1SourceIncompleteException">The logs of one block number come from two forks of it: the reads straddled a reorg.</exception>

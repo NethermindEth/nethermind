@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Posting;
@@ -25,15 +26,14 @@ public interface ILiveBlockProducer
 
 /// <summary>
 /// Produces a block from the transaction pool with the header derivation rebuilds: every field
-/// <see cref="DerivedHeader.Build"/> decides, an empty extra data and the configured beneficiary, both of which the
+/// <see cref="IDerivedHeaderRules"/> decides, an empty extra data and the configured beneficiary, both of which the
 /// batch's DA carries. The pool's own rules keep system and blob transactions out, and the production executor
 /// leaves out a transaction that does not execute instead of failing the block. The block's transactions stay within
 /// the DA budget per block, so no calldata a user sends can grow a slot past what one batch settles.
 /// </summary>
 public sealed class LiveBlockProducer(
     IBlockProducerEnvFactory envFactory,
-    ISpecProvider specProvider,
-    EezSettlementContext context,
+    IDerivedHeaderRules headerRules,
     Address beneficiary,
     int daBytesPerBlock) : ILiveBlockProducer
 {
@@ -41,9 +41,8 @@ public sealed class LiveBlockProducer(
 
     public Block? Produce(BlockHeader parent, CancellationToken token)
     {
-        IReleaseSpec spec = specProvider.GetSpec(parent.Number + 1, DerivedHeader.Timestamp(parent, context));
-        BlockHeader header = DerivedHeader.Build(parent, spec, context, beneficiary, []);
-        Withdrawal[]? withdrawals = DerivedHeader.Withdrawals(spec);
+        (BlockHeader header, IReleaseSpec spec) = headerRules.Build(parent, beneficiary, [], Keccak.Zero);
+        Withdrawal[]? withdrawals = headerRules.Withdrawals(spec);
         header.WithdrawalsRoot = withdrawals is null ? null : WithdrawalTrie.CalculateRoot(withdrawals);
         IEnumerable<Transaction> pool = _env.TxSource.GetTransactions(parent, header, header.GasLimit, null, filterSource: true);
         BlockToProduce block = new(header, WithinDa(pool, daBytesPerBlock), [], withdrawals);

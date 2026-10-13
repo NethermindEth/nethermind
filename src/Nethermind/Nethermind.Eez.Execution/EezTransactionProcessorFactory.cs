@@ -10,7 +10,7 @@ using Nethermind.Logging;
 namespace Nethermind.Eez.Execution;
 
 /// <summary>Builds <see cref="EezTransactionProcessor"/> for the processors that bypass the scoped registration.</summary>
-public sealed class EezTransactionProcessorFactory : ITransactionProcessorFactory
+public sealed class EezTransactionProcessorFactory(EezChainRules rules) : ITransactionProcessorFactory
 {
     public ITransactionProcessor Create(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
@@ -21,5 +21,5 @@ public sealed class EezTransactionProcessorFactory : ITransactionProcessorFactor
         ILogManager logManager,
         bool parallel)
         => new EezTransactionProcessor(
-            blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
+            rules, blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
 }

@@ -67,9 +67,13 @@ public partial class StatelessBlockProcessingEnv(
     public BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? TransactionProcessedEventHandler { get; init; }
 
     /// <summary>
-    /// Wraps the executor of a block's transactions, which starts once the pre-execution system calls are committed.
+    /// Wraps the executor of a block's transactions, which starts once the pre-execution system calls are committed,
+    /// over the environment's world state.
     /// </summary>
-    public Func<IBlockProcessor.IBlockTransactionsExecutor, IBlockProcessor.IBlockTransactionsExecutor>? TransactionsExecutorDecorator { get; init; }
+    public Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? TransactionsExecutorDecorator { get; init; }
+
+    /// <summary>Builds the EIP-4788 beacon roots handler; the default calls the beacon roots contract.</summary>
+    public Func<ITransactionProcessor, IWorldState, IBeaconBlockRootHandler>? BeaconBlockRootHandlerFactory { get; init; }
 
     public IBlockValidator BlockValidator => _blockValidator ??= CreateBlockValidator();
 
@@ -192,10 +196,10 @@ public partial class StatelessBlockProcessingEnv(
             specProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            TransactionsExecutorDecorator?.Invoke(txExecutor) ?? txExecutor,
+            TransactionsExecutorDecorator?.Invoke(txExecutor, WorldState) ?? txExecutor,
             WorldState,
             NullReceiptStorage.Instance,
-            new BeaconBlockRootHandler(txProcessor, WorldState),
+            BeaconBlockRootHandlerFactory?.Invoke(txProcessor, WorldState) ?? new BeaconBlockRootHandler(txProcessor, WorldState),
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),

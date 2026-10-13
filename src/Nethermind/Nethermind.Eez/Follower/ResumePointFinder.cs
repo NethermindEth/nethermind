@@ -7,11 +7,18 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement;
 
 namespace Nethermind.Eez.Follower;
 
 /// <summary>An L1 block that settled our rollup and the L2 block its settlement ended at.</summary>
-public sealed record SettledRecord(ulong L1Number, Hash256 L1Hash, BlockHeader L2End);
+public sealed record SettledRecord(L1Anchor L1, BlockHeader L2End, Hash256? DescendantSeed = null)
+{
+    public ulong L1Number => L1.Number;
+
+    public Hash256 L1Hash => L1.Hash;
+}
 
 /// <summary>
 /// Finds where the follower resumes without storing anything of its own: walking L1 back from its head, the first
@@ -19,7 +26,7 @@ public sealed record SettledRecord(ulong L1Number, Hash256 L1Hash, BlockHeader L
 /// that is the commitment L1 stores after the whole block, and a block can hold several batches for our rollup. The
 /// same search recovers from an L1 reorganization, which leaves the last surviving settlement just below it.
 /// </summary>
-public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Address registry, ulong rollupId, ulong deployBlock, ulong scanBlocks)
+public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Address registry, ulong rollupId, ulong deployBlock, ulong scanBlocks, RollupXSchedule? schedule = null)
 {
     private readonly Hash256 _rollupTopic = L1BatchScanner.RollupTopic(rollupId);
 
@@ -76,10 +83,72 @@ public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Addres
                 ?? throw new L1SourceIncompleteException(log.BlockNumber, $"L1 cannot serve block {log.BlockNumber}.");
             if (canonical.Hash == log.BlockHash)
             {
-                return new SettledRecord(log.BlockNumber, log.BlockHash, header);
+                Hash256? seed = schedule is null ? null : await DescendantSeed(header, canonical, token);
+                return new SettledRecord(canonical.ToAnchor(), header, seed);
             }
         }
 
         return null;
     }
+
+    private async Task<Hash256> DescendantSeed(BlockHeader endpoint, EezL1Block settling, CancellationToken token)
+    {
+        RollupXAnchorKind kind = schedule!.AnchorKind(endpoint.Number, settling.Timestamp)
+            ?? throw new EezFollowerException($"L2 block {endpoint.Number} cannot be settled in L1 block {settling.Number}.");
+        if (kind == RollupXAnchorKind.Live)
+        {
+            return settling.ToAnchor().MixHash;
+        }
+
+        Hash256 seed = endpoint.MixHash ?? throw new EezFollowerException($"L2 block {endpoint.Number} carries no prevRandao.");
+        ulong timestamp = schedule.Timestamp(endpoint.Number)!.Value;
+        ulong from = schedule.L1Reference.Number;
+        ulong to = settling.Number;
+        while (from < to)
+        {
+            ulong middle = from + (to - from) / 2;
+            EezL1Block block = await Block(middle, token);
+            if (block.Timestamp < timestamp)
+            {
+                from = middle + 1;
+            }
+            else
+            {
+                to = middle;
+            }
+        }
+
+        EezL1Block liveSlot = await Block(from, token);
+        if (liveSlot.Timestamp == timestamp && from >= deployBlock)
+        {
+            List<EezL1Log> logs = await l1.GetAllLogs(registry, L1BatchScanner.L2ExecutionPerformedTopic, _rollupTopic, from, from, token);
+            foreach (EezL1Log log in logs)
+            {
+                if (log.BlockHash != liveSlot.Hash)
+                {
+                    throw new L1SourceIncompleteException(from, $"L1 reorganized block {from} during seed recovery.");
+                }
+
+                if (L1BatchScanner.SettledRootOf(log) is not { } root || blockTree.FindHeader(new Hash256(root)) is not { } accepted)
+                {
+                    throw new L1SourceIncompleteException(from, $"The local chain does not hold an accepted endpoint from L1 block {from}; its descendant seed cannot be recovered.");
+                }
+
+                if (accepted.Number == endpoint.Number)
+                {
+                    seed = liveSlot.ToAnchor().MixHash;
+                }
+            }
+        }
+
+        if ((await Block(from, token)).Hash != liveSlot.Hash || (await Block(settling.Number, token)).Hash != settling.Hash)
+        {
+            throw new L1SourceIncompleteException(settling.Number, "L1 reorganized during descendant seed recovery.");
+        }
+
+        return seed;
+    }
+
+    private async Task<EezL1Block> Block(ulong number, CancellationToken token) =>
+        await l1.GetBlockByNumber(number, token) ?? throw new L1SourceIncompleteException(number, $"L1 cannot serve block {number}.");
 }

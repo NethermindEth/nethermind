@@ -13,9 +13,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
+using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Sequencer;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NSubstitute.Core;
 using NUnit.Framework;
@@ -49,20 +52,20 @@ public class EezFollowerTests
         _l1 = Substitute.For<IEezL1Api>();
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(L1ChainId);
         _l1.GetBlockByNumber(Arg.Any<ulong>(), Arg.Any<CancellationToken>())
-            .Returns(call => _l1Chain.TryGetValue(call.ArgAt<ulong>(0), out Hash256? hash) ? new EezL1Block { Number = call.ArgAt<ulong>(0), Hash = hash } : null);
+            .Returns(call => _l1Chain.TryGetValue(call.ArgAt<ulong>(0), out Hash256? hash) ? new EezL1Block { Number = call.ArgAt<ulong>(0), Hash = hash, MixHash = Keccak.Zero } : null);
         _l1.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(_ => L1Block(_l1Chain.Keys.Max()));
         GrowL1(to: 5, fork: "a");
 
         _scanner = Substitute.For<IL1BatchScanner>();
         _scanner.FindSettlingBlocks(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
             .Returns(call => call.ArgAt<ulong>(0) <= SettlingL1Block && SettlingL1Block <= call.ArgAt<ulong>(1) ? [Settling(SettlingL1Block)] : []);
-        _scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<CancellationToken>()).Returns(call => new[] { Batch(call.ArgAt<L1SettlingBlock>(0)) });
+        _scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<EezL1Block>(), Arg.Any<CancellationToken>()).Returns(call => new[] { Batch(call.ArgAt<L1SettlingBlock>(0)) });
         _reconciler = Substitute.For<IBatchReconciler>();
         SettleTo(2);
 
         _unsafeHead = Substitute.For<IUnsafeHeadSource>();
         ResumePointFinder resumePoints = new(_l1, _chain, Registry, RollupId, _config.RegistryDeployBlock, _config.L1LogScanBlocks);
-        _follower = new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, _chain, _engine, _config, LimboLogs.Instance);
+        _follower = new EezFollower(_l1, _scanner, _reconciler, resumePoints, _unsafeHead, new Rollup0HeaderRules(MainnetSpecProvider.Instance, DerivedChain.Context), EezChainRules.Rollup0, _chain, _engine, _config, LimboLogs.Instance);
     }
 
     [Test]
@@ -129,9 +132,9 @@ public class EezFollowerTests
     [Test]
     public async Task Poll_EngineBusyMidBlock_RetriesTheBlockFromItsCursor()
     {
-        _scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<CancellationToken>())
+        _scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<EezL1Block>(), Arg.Any<CancellationToken>())
             .Returns(call => new[] { Batch(call.ArgAt<L1SettlingBlock>(0)), Batch(call.ArgAt<L1SettlingBlock>(0)) });
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<BlockHeader>(), Arg.Any<FollowerHeads>())
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>())
             .Returns(call => Settled(call, 1), call => Busy(call), call => Settled(call, 1), call => Settled(call, 2));
         await _follower.Boot(CancellationToken.None);
 
@@ -146,24 +149,24 @@ public class EezFollowerTests
     [Test]
     public async Task Poll_DivergenceOnABlockL1Reorganized_IsRetried()
     {
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<BlockHeader>(), Arg.Any<FollowerHeads>()).Returns(_ =>
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(_ =>
         {
             GrowL1(to: 5, fork: "b", from: SettlingL1Block);
-            return Task.FromException<BlockHeader>(new EezFollowerException("diverges"));
+            return Task.FromException<SettledHead>(new EezFollowerException("diverges"));
         });
         await _follower.Boot(CancellationToken.None);
 
-        Assert.DoesNotThrowAsync(() => _follower.Poll(CancellationToken.None), "a batch L1 reorganized away while it was derived is not a divergence");
+        await Assert.DoesNotThrowAsync(() => _follower.Poll(CancellationToken.None), "a batch L1 reorganized away while it was derived is not a divergence");
     }
 
     [Test]
     public async Task Poll_DivergenceOnACanonicalBlock_Throws()
     {
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<BlockHeader>(), Arg.Any<FollowerHeads>())
-            .Returns(Task.FromException<BlockHeader>(new EezFollowerException("diverges")));
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>())
+            .Returns(Task.FromException<SettledHead>(new EezFollowerException("diverges")));
         await _follower.Boot(CancellationToken.None);
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _follower.Poll(CancellationToken.None), "a settlement L1 still holds that the chain cannot reproduce stops the follower");
+        await Assert.ThrowsAsync<EezFollowerException>(() => _follower.Poll(CancellationToken.None), "a settlement L1 still holds that the chain cannot reproduce stops the follower");
     }
 
     [Test]
@@ -204,8 +207,8 @@ public class EezFollowerTests
     }
 
     [Test]
-    public void Boot_L1OnAnotherChain_Throws() =>
-        Assert.ThrowsAsync<EezFollowerException>(() =>
+    public async Task Boot_L1OnAnotherChain_Throws() =>
+        await Assert.ThrowsAsync<EezFollowerException>(() =>
         {
             _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(L1ChainId + 1);
             return _follower.Boot(CancellationToken.None);
@@ -276,7 +279,7 @@ public class EezFollowerTests
         await using EezDriver driver = Driver(sequencer);
         await _follower.Boot(CancellationToken.None);
 
-        Assert.DoesNotThrowAsync(() => driver.Step(default, CancellationToken.None), "an L1 read that fails now is retried, not a reason to stop the node");
+        await Assert.DoesNotThrowAsync(() => driver.Step(default, CancellationToken.None), "an L1 read that fails now is retried, not a reason to stop the node");
     }
 
     [Test]
@@ -297,26 +300,26 @@ public class EezFollowerTests
         EezDriver driver = Driver(null);
         await driver.DisposeAsync();
 
-        Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
+        await Assert.DoesNotThrowAsync(async () => await driver.DisposeAsync(), "the stopper and the container may both release the driver");
     }
 
     private EezDriver Driver(IEezSequencer? sequencer, IProcessExitSource? processExit = null, ITimestamper? clock = null) =>
         new(_follower, sequencer, _config, clock ?? Timestamper.Default, processExit ?? Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
 
-    private Task<BlockHeader> Settled(CallInfo call, ulong l2Block)
+    private Task<SettledHead> Settled(CallInfo call, ulong l2Block)
     {
-        _cursors.Add(call.ArgAt<BlockHeader>(1));
-        return Task.FromResult(L2(l2Block));
+        _cursors.Add(call.ArgAt<SettledHead>(2).Endpoint);
+        return Task.FromResult(new SettledHead(L2(l2Block), Keccak.Zero));
     }
 
-    private Task<BlockHeader> Busy(CallInfo call)
+    private Task<SettledHead> Busy(CallInfo call)
     {
-        _cursors.Add(call.ArgAt<BlockHeader>(1));
-        return Task.FromException<BlockHeader>(new EezEngineUnavailableException("busy"));
+        _cursors.Add(call.ArgAt<SettledHead>(2).Endpoint);
+        return Task.FromException<SettledHead>(new EezEngineUnavailableException("busy"));
     }
 
     private void SettleTo(ulong l2Block) =>
-        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<BlockHeader>(), Arg.Any<FollowerHeads>()).Returns(call => Settled(call, l2Block));
+        _reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(call => Settled(call, l2Block));
 
     private void GrowL1(ulong to, string fork, ulong from = 0)
     {
@@ -326,7 +329,7 @@ public class EezFollowerTests
         }
     }
 
-    private EezL1Block L1Block(ulong number) => new() { Number = number, Hash = _l1Chain[number] };
+    private EezL1Block L1Block(ulong number) => new() { Number = number, Hash = _l1Chain[number], MixHash = Keccak.Zero };
 
     private BlockHeader L2(ulong number) => _chain.FindHeader(number, BlockTreeLookupOptions.None)!;
 

@@ -11,4 +11,10 @@ public sealed class ExecutionRequestsOptions
     public static ExecutionRequestsOptions Default { get; } = new();
 
     public CodelessRequestContractBehavior CodelessRequestContracts { get; init; } = CodelessRequestContractBehavior.RejectBlock;
+
+    /// <summary>
+    /// Whether deposit logs and the request predeploys are read. When <c>false</c>, every block where requests are
+    /// enabled carries none, and its requests hash is the hash of no requests.
+    /// </summary>
+    public bool ReadsRequests { get; init; } = true;
 }

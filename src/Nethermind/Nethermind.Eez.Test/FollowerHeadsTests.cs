@@ -64,7 +64,7 @@ public class FollowerHeadsTests
     {
         await _heads.AdvanceSafe(Block(3));
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _heads.SetHead(Block(2)), "the head cannot drop below what L1 settled");
+        await Assert.ThrowsAsync<EezFollowerException>(() => _heads.SetHead(Block(2)), "the head cannot drop below what L1 settled");
     }
 
     [Test]
@@ -73,7 +73,7 @@ public class FollowerHeadsTests
         await _heads.AdvanceSafe(Block(3));
         await _heads.AdvanceFinalized(Block(3));
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _heads.Reset(Block(2)), "finalized never moves back");
+        await Assert.ThrowsAsync<EezFollowerException>(() => _heads.Reset(Block(2)), "finalized never moves back");
     }
 
     [Test]
@@ -81,17 +81,17 @@ public class FollowerHeadsTests
     {
         await _heads.AdvanceSafe(Block(2));
 
-        Assert.ThrowsAsync<EezFollowerException>(() => _heads.AdvanceFinalized(Block(3)), "finalized cannot pass safe");
+        await Assert.ThrowsAsync<EezFollowerException>(() => _heads.AdvanceFinalized(Block(3)), "finalized cannot pass safe");
     }
 
     [Test]
-    public void AdvanceSafe_EngineDoesNotApplyIt_KeepsTheHeads()
+    public async Task AdvanceSafe_EngineDoesNotApplyIt_KeepsTheHeads()
     {
         IEezL2Engine busy = Substitute.For<IEezL2Engine>();
         busy.UpdateForkchoice(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<Hash256>()).Returns(Task.FromException(new EezEngineUnavailableException("busy")));
         FollowerHeads heads = new(busy, _chain, _chain.Genesis!);
 
-        Assert.ThrowsAsync<EezEngineUnavailableException>(() => heads.AdvanceSafe(Block(3)), "precondition: the engine refuses the move");
+        await Assert.ThrowsAsync<EezEngineUnavailableException>(() => heads.AdvanceSafe(Block(3)), "precondition: the engine refuses the move");
         Assert.That(heads.Safe.Number, Is.Zero, "a move the node did not take is not recorded, so the retry makes it again");
     }
 

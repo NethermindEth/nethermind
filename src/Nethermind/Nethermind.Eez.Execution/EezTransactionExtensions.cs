@@ -10,16 +10,16 @@ public static class EezTransactionExtensions
     public static bool IsEezSystemTransaction(this Transaction tx) => tx.Type == EezConstants.SystemTxType;
 
     /// <summary>
-    /// Whether the fields the system-transaction wire format leaves implicit hold their protocol values.
+    /// Whether the fields the system-transaction wire format leaves implicit hold the values <paramref name="rules"/> give them.
     /// </summary>
     /// <remarks>
     /// The decoder always produces them; a transaction built any other way (RPC, block production, tests)
     /// must not reach execution with a different sender, target, budget or price.
     /// </remarks>
-    public static bool HasSystemTransactionFields(this Transaction tx) =>
+    public static bool HasSystemTransactionFields(this Transaction tx, EezChainRules rules) =>
         tx.SenderAddress == EezConstants.SystemAddress
-        && tx.To == EezConstants.Eezl2Address
-        && tx.GasLimit == EezConstants.SystemTxGasLimit
+        && tx.To == rules.Eezl2Address
+        && rules.IsSystemTransactionGas(tx.GasLimit)
         && tx.GasPrice.IsZero
         && tx.DecodedMaxFeePerGas.IsZero
         && tx.AccessList is null

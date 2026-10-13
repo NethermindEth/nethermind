@@ -3,6 +3,7 @@
 
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
@@ -11,12 +12,20 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Eez.Attester;
 
-/// <summary>Loads the L2 fork schedule from a genesis document, or from its bare chain configuration.</summary>
+/// <summary>
+/// Loads the L2 fork schedule from a genesis document, or from its bare chain configuration. The attester checks
+/// rollup0 settlement only, so a RollupX chain configuration is refused.
+/// </summary>
 internal static class ChainConfigLoader
 {
     public static ISpecProvider Load(string path)
     {
         JsonNode document = JsonNode.Parse(File.ReadAllText(path)) ?? throw new InvalidDataException($"{path} is empty");
+        if ((document["config"] ?? document)[RollupXGenesis.SectionName] is not null)
+        {
+            throw new InvalidDataException($"{path} configures a RollupX chain, which this attester does not attest yet");
+        }
+
         if (document["config"] is null)
         {
             document = new JsonObject
@@ -34,6 +43,6 @@ internal static class ChainConfigLoader
         }
 
         ChainSpec chainSpec = new GethGenesisLoader(new EthereumJsonSerializer()).Load(new MemoryStream(Encoding.UTF8.GetBytes(document.ToJsonString())));
-        return new EezSpecProvider(new ChainSpecBasedSpecProvider(chainSpec));
+        return new EezSpecProvider(new ChainSpecBasedSpecProvider(chainSpec), EezChainRules.FromGenesis(JsonSerializer.SerializeToElement(document)));
     }
 }

@@ -69,11 +69,11 @@ public class QuorumRegistrationReaderTests
     }
 
     [Test]
-    public void Read_RollupWithoutAManagerYet_IsRetriedNextSlot()
+    public async Task Read_RollupWithoutAManagerYet_IsRetriedNextSlot()
     {
         Returns(Registry, "rollups(uint64)", new byte[96]);
 
-        ProveException e = Assert.ThrowsAsync<ProveException>(() => Reader().Read([Attester(FirstSystem, TestItem.AddressA)], CancellationToken.None))!;
+        ProveException e = (await Assert.ThrowsAsync<ProveException>(() => Reader().Read([Attester(FirstSystem, TestItem.AddressA)], CancellationToken.None)))!;
 
         Assert.That(e.Kind, Is.EqualTo(ProveFailureKind.Retryable), "the node may start before its rollup is registered");
     }

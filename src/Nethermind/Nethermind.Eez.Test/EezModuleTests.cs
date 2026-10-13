@@ -44,7 +44,7 @@ public class EezModuleTests
     {
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
-            .AddModule(new EezModule(new EezConfig()))
+            .AddModule(new EezModule(new EezConfig(), EezChainRules.Rollup0))
             .Build();
         _codelessState = TestWorldStateFactory.CreateForTest();
         _scope = _container.BeginLifetimeScope(processingScope => processingScope.AddSingleton(_codelessState));
@@ -72,7 +72,7 @@ public class EezModuleTests
             .AddModule(new TestNethermindModule())
             .AddSingleton<IEezConfig>(config)
             .AddSingleton(Substitute.For<IEngineRpcModule>())
-            .AddModule(new EezModule(config))
+            .AddModule(new EezModule(config, EezChainRules.Rollup0))
             .Build();
 
         Assert.That(container.Resolve<EezFollower>(), Is.Not.Null, "the follower and everything it drives resolve");
@@ -126,7 +126,7 @@ public class EezModuleTests
             .AddSingleton<IEezConfig>(config)
             .AddSingleton(Substitute.For<IEngineRpcModule>())
             .AddSingleton(keyStore)
-            .AddModule(new EezModule(config))
+            .AddModule(new EezModule(config, EezChainRules.Rollup0))
             .Build();
     }
 

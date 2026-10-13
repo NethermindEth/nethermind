@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net.Http;
 using System.Security;
 using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -18,6 +21,7 @@ using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Follower.RollupX;
 using Nethermind.Eez.Posting;
 using Nethermind.Eez.Proving;
 using Nethermind.Eez.Sequencer;
@@ -31,24 +35,41 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Eez;
 
-public class EezModule(IEezConfig config) : Module
+public class EezModule(IEezConfig config, EezChainRules rules) : Module
 {
     private const string L1RpcClientKey = "Eez.L1";
     private const string SequencerRpcClientKey = "Eez.Sequencer";
     private const string BuilderRpcClientKey = "Eez.Builder";
+    private const string L1BeaconClientKey = "Eez.L1Beacon";
 
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
+            .AddSingleton(rules)
             .AddDecorator<ISpecProvider, EezSpecProvider>()
             .AddScoped<ITransactionProcessor, EezTransactionProcessor>()
             .AddSingleton<ITransactionProcessorFactory, EezTransactionProcessorFactory>()
-            .AddSingleton(EezExecutionRequests.Options)
+            .AddSingleton(EezExecutionRequests.For(rules))
             .AddSingleton<IBlockValidator, EezBlockValidator>()
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
                 static ctx => new EezSpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId));
+
+        if (!rules.CallsBeaconRootsContract)
+        {
+            builder.AddSingleton<IBeaconBlockRootHandler>(NoBeaconRootsCall.Instance);
+        }
+
+        if (rules.BurnedAtBlockStart.Length != 0)
+        {
+            builder.AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockStartBurn>();
+        }
+
+        if (rules.IsRollupX)
+        {
+            builder.AddDecorator<IHeaderValidator, RollupXHeaderValidator>();
+        }
 
         if (config.FollowerEnabled)
         {
@@ -70,10 +91,8 @@ public class EezModule(IEezConfig config) : Module
             .AddSingleton<DerivedBlockBuilder>()
             .AddSingleton<IDerivedBlockExecutor, DerivedBlockExecutor>()
             .AddSingleton<IEezL2Engine, EezL2Engine>()
-            .AddSingleton<IL1BatchScanner, IEezL1Api, ILogManager>((l1, logManager) =>
-                new L1BatchScanner(l1, new Address(config.RegistryAddress!), config.RollupId, logManager))
             .AddSingleton<ResumePointFinder, IEezL1Api, IBlockTree>((l1, blockTree) =>
-                new ResumePointFinder(l1, blockTree, new Address(config.RegistryAddress!), config.RollupId, config.RegistryDeployBlock, config.L1LogScanBlocks))
+                new ResumePointFinder(l1, blockTree, new Address(config.RegistryAddress!), config.RollupId, config.RegistryDeployBlock, config.L1LogScanBlocks, rules.Schedule))
             .AddSingleton<IBatchReconciler, BatchReconciler>()
             .AddSingleton<IUnsafeHeadSource>(NullUnsafeHeadSource.Instance)
             .AddSingleton<EezFollower>()
@@ -81,6 +100,19 @@ public class EezModule(IEezConfig config) : Module
                 ctx.Resolve<IEezConfig>().SequencerEnabled ? ctx.Resolve<IEezSequencer>() : null, ctx.Resolve<IEezConfig>(), ctx.Resolve<ITimestamper>(),
                 ctx.Resolve<IProcessExitSource>(), ctx.Resolve<ILogManager>()))
             .AddStep(typeof(StartEezDriver));
+
+        if (rules.IsRollupX)
+        {
+            LoadRollupXDerivation(builder);
+        }
+        else
+        {
+            builder
+                .AddSingleton<IDerivedHeaderRules, Rollup0HeaderRules>()
+                .AddSingleton<IBatchDerivation, Rollup0BatchDerivation>()
+                .AddSingleton<IL1BatchScanner, IEezL1Api, ILogManager>((l1, logManager) =>
+                    new L1BatchScanner(l1, new Address(config.RegistryAddress!), config.RollupId, logManager));
+        }
 
         if (config.SequencerEnabled)
         {
@@ -100,6 +132,19 @@ public class EezModule(IEezConfig config) : Module
         }
     }
 
+    /// <summary>RollupX derives from the blobs a beacon node serves, under its genesis-pinned grid and seeds.</summary>
+    private void LoadRollupXDerivation(ContainerBuilder builder) =>
+        builder
+            .AddSingleton<IDerivedHeaderRules, RollupXHeaderRules>()
+            .AddSingleton<IBatchDerivation, RollupXBatchDerivation>()
+            .AddKeyedSingleton<HttpClient>(L1BeaconClientKey, _ => new HttpClient { BaseAddress = BeaconBase(config.L1BeaconUrl!) })
+            .AddSingleton<IL1BlobSource>(static ctx => new BeaconBlobSource(ctx.ResolveKeyed<HttpClient>(L1BeaconClientKey)))
+            .AddSingleton<IL1BatchScanner, IEezL1Api, IL1BlobSource, ILogManager>((l1, blobs, logManager) =>
+                new RollupXBatchScanner(l1, blobs, new Address(config.RegistryAddress!), config.RollupId, logManager));
+
+    /// <summary>The beacon URL as a base that relative API paths extend rather than replace.</summary>
+    private static Uri BeaconBase(string url) => new(url.EndsWith('/') ? url : url + "/");
+
     private void LoadSequencer(ContainerBuilder builder)
     {
         RollupTiming timing = RollupTiming.From(config);
@@ -108,8 +153,8 @@ public class EezModule(IEezConfig config) : Module
             .AddDatabase(WitnessStore.DbName, WitnessStore.DbName, "eezWitnesses")
             .AddSingleton<IWitnessStore, WitnessStore>()
             .AddSingleton<IWitnessRecorder, WitnessRecorder>()
-            .AddSingleton<ILiveBlockProducer, IBlockProducerEnvFactory, ISpecProvider, EezSettlementContext>((envFactory, specProvider, context) =>
-                new LiveBlockProducer(envFactory, specProvider, context, beneficiary,
+            .AddSingleton<ILiveBlockProducer, IBlockProducerEnvFactory, IDerivedHeaderRules>((envFactory, headerRules) =>
+                new LiveBlockProducer(envFactory, headerRules, beneficiary,
                     PostBatchGas.DaBytesPerBlock(config.MaxPostBatchGas, config.RollupId, beneficiary, config.Provers.Length, timing.K)))
             .AddSingleton<ISequencedBlocks, ILiveBlockProducer, IDerivedBlockExecutor, IEezL2Engine, IWitnessRecorder, ILogManager>(
                 (live, derived, engine, witnesses, logManager) => new SequencedBlocks(live, derived, engine, witnesses, beneficiary, logManager))

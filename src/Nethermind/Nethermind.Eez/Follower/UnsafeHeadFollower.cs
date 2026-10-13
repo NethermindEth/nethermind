@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -43,8 +42,7 @@ public sealed class UnsafeHeadFollower(
     IEezSequencerApi sequencer,
     IBlockTree blockTree,
     IEezL2Engine engine,
-    ISpecProvider specProvider,
-    EezSettlementContext context,
+    IDerivedHeaderRules headerRules,
     ILogManager logManager) : IUnsafeHeadSource
 {
     /// <summary>
@@ -156,7 +154,7 @@ public sealed class UnsafeHeadFollower(
         for (int i = blocks.Count - 1; i >= 0; i--)
         {
             Block block = blocks[i];
-            if (DerivedHeader.Mismatch(block, parent, specProvider.GetSpec(block.Header), context) is { } field)
+            if (headerRules.Mismatch(block, parent) is { } field)
             {
                 return $"block {block.Number} has {field}";
             }

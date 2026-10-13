@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -34,7 +35,7 @@ public class UnsafeHeadFollowerTests
         _heads = new FollowerHeads(_engine, _chain, _chain.Genesis!);
         await _heads.AdvanceSafe(_chain.FindHeader(2UL)!);
         _engine.Forkchoices.Clear();
-        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, DerivedChain.SpecProvider, DerivedChain.Context, LimboLogs.Instance);
+        _follower = new UnsafeHeadFollower(_sequencer, _chain, _engine, new Rollup0HeaderRules(DerivedChain.SpecProvider, DerivedChain.Context), LimboLogs.Instance);
     }
 
     [Test]

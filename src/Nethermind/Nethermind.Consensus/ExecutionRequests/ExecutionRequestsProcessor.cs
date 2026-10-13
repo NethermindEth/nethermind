@@ -152,6 +152,13 @@ public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, I
         if (!spec.RequestsEnabled || block.IsGenesis)
             return;
 
+        if (!_options.ReadsRequests)
+        {
+            block.ExecutionRequests = ExecutionRequestExtensions.EmptyRequests;
+            block.Header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+            return;
+        }
+
         ArrayPoolListRef<byte[]> requests = new(ExecutionRequestExtensions.MaxRequestsCount);
         try
         {

@@ -4,11 +4,16 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Eez.Execution.Settlement;
 
 /// <summary>One L2 block as derivation rebuilds it from a batch's DA: its header inputs and its transactions.</summary>
-public sealed record DerivedBlock(Address Beneficiary, byte[] ExtraData, byte[][] Transactions);
+public sealed record DerivedBlock(Address Beneficiary, byte[] ExtraData, byte[][] Transactions)
+{
+    /// <summary>The seed L1 settlements put in effect for the block; zero on a rollup without one.</summary>
+    public Hash256 PrevRandao { get; init; } = Keccak.Zero;
+}
 
 /// <summary>
 /// Rebuilds the blocks a batch settles from its DA, the inverse of <see cref="DaVerification"/>. Blocks before the

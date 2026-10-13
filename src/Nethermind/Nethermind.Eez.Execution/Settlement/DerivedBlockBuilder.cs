@@ -19,17 +19,16 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// gas, the bloom and the hash. The processor must execute transactions strictly: a derived transaction that is
 /// invalid on the parent's state fails the block rather than being left out of it.
 /// </summary>
-public sealed class DerivedBlockBuilder(ISpecProvider specProvider, EezSettlementContext context)
+public sealed class DerivedBlockBuilder(ISpecProvider specProvider, IDerivedHeaderRules headerRules)
 {
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
 
     /// <exception cref="EezSettlementException">A transaction does not decode, has no sender, or does not execute on the parent's state.</exception>
     public (Block Block, TxReceipt[] Receipts) Build(BlockHeader parent, DerivedBlock derived, IBlockProcessor processor, IWorldState worldState)
     {
-        IReleaseSpec spec = specProvider.GetSpec(parent.Number + 1, DerivedHeader.Timestamp(parent, context));
-        BlockHeader header = DerivedHeader.Build(parent, spec, context, derived.Beneficiary, derived.ExtraData);
+        (BlockHeader header, IReleaseSpec spec) = headerRules.Build(parent, derived.Beneficiary, derived.ExtraData, derived.PrevRandao);
         Transaction[] transactions = Decode(derived.Transactions, header, spec);
-        Withdrawal[]? withdrawals = DerivedHeader.Withdrawals(spec);
+        Withdrawal[]? withdrawals = headerRules.Withdrawals(spec);
         header.TxRoot = TxTrie.CalculateRoot(transactions);
         header.WithdrawalsRoot = withdrawals is null ? null : WithdrawalTrie.CalculateRoot(withdrawals);
         Block block = new(header, transactions, [], withdrawals);

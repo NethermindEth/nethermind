@@ -18,7 +18,7 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// </summary>
 public sealed class SettlementCheck(ISpecProvider specProvider, EezSettlementContext context, ILogManager logManager)
 {
-    private readonly EezStatelessExecutor _executor = new(specProvider, logManager);
+    private readonly EezStatelessExecutor _executor = new(specProvider, EezChainRules.Rollup0, logManager);
 
     public EezSettlementContext Context => context;
 

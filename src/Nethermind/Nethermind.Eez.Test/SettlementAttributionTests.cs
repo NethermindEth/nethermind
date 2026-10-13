@@ -112,7 +112,7 @@ public class SettlementAttributionTests
         ];
         PostBatch batch = new([], entries, [], default, default, [], [new RollupProofSystems(rollup, [0])], [], [], [], 0, false);
 
-        L1Batch l1 = L1Batch.Of(batch, rollup, Block, BlockHash, Keccak.Compute("tx"), 4);
+        L1Batch l1 = L1Batch.Of(batch, batch.CallData, rollup, Block, BlockHash, Keccak.Compute("tx"), 4);
 
         Assert.That(l1.ClaimedCurrentState, Is.EqualTo(A), "the first update's current state");
         Assert.That(l1.ClaimedChain, Is.EqualTo(new[] { B, C }), "our rollup's new states only, in entry order");

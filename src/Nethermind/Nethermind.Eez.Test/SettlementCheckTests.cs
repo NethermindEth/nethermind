@@ -14,11 +14,11 @@ namespace Nethermind.Eez.Test;
 
 public class SettlementCheckTests
 {
-    private const string Window = "captured-devnet-anchor-43722";
+    private const string Window = "captured-devnet-anchor-402";
 
     /// <summary>
-    /// The devnet settles with two attesters, so the mined batch names two proof systems; each attester is sent the
-    /// batch naming only its own, which is what the reference signer signed and what the check is run on here.
+    /// The mined anchor batch carries the independent signer's proof. The local check runs the same window
+    /// and binds its result to the recorded public inputs hash.
     /// </summary>
     [Test]
     public void Run_RecordedAnchorWindow_ReturnsThePublicInputsHashTheReferenceSigned()

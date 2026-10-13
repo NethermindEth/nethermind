@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -18,15 +19,16 @@ using Nethermind.State.Proofs;
 namespace Nethermind.Eez.Execution.Stateless;
 
 /// <summary>
-/// Re-executes a window of consecutive EEZ L2 blocks, each over its own execution witness, and checks that the
-/// window chains: every block builds on the previous block's hash and post-state root.
+/// Re-executes a window of consecutive EEZ L2 blocks under the chain's <see cref="EezChainRules"/>, each over its own
+/// execution witness, and checks that the window chains: every block builds on the previous block's hash and
+/// post-state root.
 /// </summary>
-public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager logManager)
+public sealed class EezStatelessExecutor(ISpecProvider specProvider, EezChainRules rules, ILogManager logManager)
 {
     private static readonly IRlpDecoder<TxReceipt> ReceiptTrieDecoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
 
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
-    private readonly EezTransactionProcessorFactory _transactionProcessorFactory = new();
+    private readonly EezTransactionProcessorFactory _transactionProcessorFactory = new(rules);
 
     /// <param name="window">The blocks, oldest first.</param>
     /// <param name="lastBlockCheckpoints">
@@ -63,11 +65,6 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
 
         TransactionCheckpointRecorder? recorder = checkpoints.Length > 0 ? new TransactionCheckpointRecorder(specProvider, checkpoints) : null;
         StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder, recorder is not null ? recorder.Wrap : null);
-        if (recorder is not null)
-        {
-            recorder.WorldState = env.WorldState;
-        }
-
         StatelessBlockProcessingResult result = env.Process(block);
         if (!result.IsValid)
         {
@@ -80,20 +77,29 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
         return new EezStatelessBlockResult(result.ProcessedBlock!, result.Parent!, result.Receipts, transactionCheckpoints);
     }
 
-    /// <summary>An environment that executes blocks under the EEZ rules over <paramref name="witness"/>.</summary>
+    /// <summary>An environment that executes blocks under the chain's EEZ rules over <paramref name="witness"/>.</summary>
+    /// <param name="transactionsExecutorDecorator">Wraps the transactions executor inside the chain's block-start burn.</param>
     public StatelessBlockProcessingEnv CreateEnvironment(Witness witness,
         BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
-        Func<IBlockProcessor.IBlockTransactionsExecutor, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator = null) =>
+        Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator = null) =>
         new(witness, specProvider, Always.Valid, logManager)
         {
             TransactionProcessorFactory = _transactionProcessorFactory,
             TxValidator = CreateTxValidator(),
-            BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) =>
-                new EezBlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager),
-            ExecutionRequestsOptions = EezExecutionRequests.Options,
+            BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) => new EezBlockValidator(txValidator,
+                rules.IsRollupX ? new RollupXHeaderValidator(headerValidator, rules) : headerValidator, unclesValidator, specProvider, logManager),
+            ExecutionRequestsOptions = EezExecutionRequests.For(rules),
             TransactionProcessedEventHandler = transactionProcessed,
-            TransactionsExecutorDecorator = transactionsExecutorDecorator,
+            TransactionsExecutorDecorator = (inner, worldState) => Decorate(inner, worldState, transactionsExecutorDecorator),
+            BeaconBlockRootHandlerFactory = rules.CallsBeaconRootsContract ? null : static (_, _) => NoBeaconRootsCall.Instance,
         };
+
+    private IBlockProcessor.IBlockTransactionsExecutor Decorate(IBlockProcessor.IBlockTransactionsExecutor inner, IWorldState worldState,
+        Func<IBlockProcessor.IBlockTransactionsExecutor, IWorldState, IBlockProcessor.IBlockTransactionsExecutor>? decorator)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor decorated = decorator?.Invoke(inner, worldState) ?? inner;
+        return rules.BurnedAtBlockStart.Length == 0 ? decorated : new BlockStartBurn(decorated, worldState, specProvider, rules);
+    }
 
     private static Block Decode(byte[] rlp)
     {

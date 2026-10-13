@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Int256;
 
 namespace Nethermind.Eez.Follower;
@@ -72,8 +73,15 @@ public readonly struct EezL1Block
     public ulong Timestamp { get; init; }
     public UInt256? BaseFeePerGas { get; init; }
 
+    /// <summary>The block's prevRandao, which seeds the L2 blocks a RollupX batch it settles live goes on to.</summary>
+    public Hash256? MixHash { get; init; }
+
     /// <summary>The hashes of the block's transactions.</summary>
     public Hash256[]? Transactions { get; init; }
+
+    /// <exception cref="L1SourceIncompleteException">The node did not report the block's prevRandao.</exception>
+    public L1Anchor ToAnchor() =>
+        new(Number, Hash, Timestamp, MixHash ?? throw new L1SourceIncompleteException(Number, $"L1 does not report the prevRandao of block {Number}."));
 }
 
 public readonly struct EezL1Log
@@ -92,4 +100,7 @@ public readonly struct EezL1Transaction
 {
     public Hash256 Hash { get; init; }
     public byte[] Input { get; init; }
+
+    /// <summary>The versioned hashes of the blobs the transaction carries; none for a transaction without blobs.</summary>
+    public Hash256[]? BlobVersionedHashes { get; init; }
 }

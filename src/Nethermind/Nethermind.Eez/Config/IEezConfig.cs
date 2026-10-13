@@ -25,6 +25,10 @@ public interface IEezConfig : IConfig
     [ConfigItem(Description = "The chain ID the L1 execution client must report. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "0")]
     ulong L1ChainId { get; set; }
 
+    [ConfigItem(Description = "The beacon API URL of the L1 consensus client the follower reads batch blobs from. Required when `Eez.FollowerEnabled` " +
+        "is set on a RollupX chain; the node must serve blobs as long as the follower may need to derive them.", DefaultValue = "null")]
+    string? L1BeaconUrl { get; set; }
+
     [ConfigItem(Description = "The address of the EEZ registry contract on L1. Required when `Eez.FollowerEnabled` is set.", DefaultValue = "null")]
     string? RegistryAddress { get; set; }
 

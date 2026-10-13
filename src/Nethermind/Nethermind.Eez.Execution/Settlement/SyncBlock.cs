@@ -22,7 +22,12 @@ public static class SyncBlock
     /// <param name="inbound">The inbound entries, as their DA sidecars carry them.</param>
     /// <exception cref="EezSettlementException">An entry cannot be lowered, or the nonces overflow.</exception>
     public static byte[][] BuildTransactions(IReadOnlyList<(ExecutionEntry Entry, byte[] UserTransaction)> outbound, IReadOnlyList<ExecutionEntry> inbound,
-        ulong chainId, ulong rollupId, ulong startingNonce)
+        ulong chainId, ulong rollupId, ulong startingNonce) =>
+        BuildTransactions(outbound, inbound, chainId, rollupId, startingNonce, EezConstants.Eezl2Address);
+
+    /// <param name="eezl2">The EEZL2 manager the system transactions call.</param>
+    public static byte[][] BuildTransactions(IReadOnlyList<(ExecutionEntry Entry, byte[] UserTransaction)> outbound, IReadOnlyList<ExecutionEntry> inbound,
+        ulong chainId, ulong rollupId, ulong startingNonce, Address eezl2)
     {
         foreach (ExecutionEntry entry in inbound)
         {
@@ -46,7 +51,7 @@ public static class SyncBlock
             ValueHash256 proxy = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, EezConstants.L1RollupId,
                 call.Value, 0, call.Data);
             L2ExecutionEntry table = new(proxy, [], [], RollingHash.SeedL2(proxy), true, entry.ReturnData);
-            transactions.Add(Encode(chainId, NextNonce(ref nonce), UInt256.Zero, EezCalldata.EncodeLoadExecutionTable(new ExecutionTable([table], []))));
+            transactions.Add(Encode(chainId, NextNonce(ref nonce), UInt256.Zero, EezCalldata.EncodeLoadExecutionTable(new ExecutionTable([table], [])), eezl2));
             transactions.Add(userTransaction);
         }
 
@@ -59,21 +64,25 @@ public static class SyncBlock
             CrossChainCall incoming = new(0, false, 0, outer.SourceAddress, outer.SourceRollupId, outer.TargetAddress, outer.Value, outer.Data);
             L2ExecutionEntry delivery = new(callHash, [incoming], [], rollingHash, true, entry.ReturnData);
             IncomingCrossChainCall call = new([delivery], []);
-            transactions.Add(Encode(chainId, NextNonce(ref nonce), outer.Value, EezCalldata.EncodeExecuteIncomingCrossChainCall(call)));
+            transactions.Add(Encode(chainId, NextNonce(ref nonce), outer.Value, EezCalldata.EncodeExecuteIncomingCrossChainCall(call), eezl2));
         }
 
         return transactions.ToArray();
     }
 
     /// <summary>The unsigned native system transaction every role reconstructs identically.</summary>
-    public static byte[] Encode(ulong chainId, ulong nonce, in UInt256 value, byte[] calldata)
+    public static byte[] Encode(ulong chainId, ulong nonce, in UInt256 value, byte[] calldata) =>
+        Encode(chainId, nonce, value, calldata, EezConstants.Eezl2Address);
+
+    /// <param name="eezl2">The EEZL2 manager the transaction calls.</param>
+    public static byte[] Encode(ulong chainId, ulong nonce, in UInt256 value, byte[] calldata, Address eezl2)
     {
         Transaction transaction = new()
         {
             Type = EezConstants.SystemTxType,
             ChainId = chainId,
             Nonce = nonce,
-            To = EezConstants.Eezl2Address,
+            To = eezl2,
             Value = value,
             Data = calldata,
         };

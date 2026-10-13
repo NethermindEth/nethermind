@@ -108,12 +108,12 @@ public class PostBatchPosterTests
     }
 
     [Test]
-    public void Submit_BuilderRefusesTheBundle_Throws()
+    public async Task Submit_BuilderRefusesTheBundle_Throws()
     {
         _posting.SendBundle(Arg.Any<IReadOnlyList<byte[]>>(), Arg.Any<ulong>(), Arg.Any<BundleTarget>(), Arg.Any<CancellationToken>())
             .Returns(new RpcAnswer<object>(null, -32000, "bundle rejected"));
 
-        Assert.ThrowsAsync<PostException>(() => Poster().Submit([[0x01]], new BundleTarget(11, 1_000), CancellationToken.None),
+        await Assert.ThrowsAsync<PostException>(() => Poster().Submit([[0x01]], new BundleTarget(11, 1_000), CancellationToken.None),
             "a refusal other than an unknown method is the batch's failure, not a reason to leave the builder");
     }
 

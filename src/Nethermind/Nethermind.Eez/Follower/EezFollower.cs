@@ -11,6 +11,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Eez.Config;
+using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -29,6 +31,8 @@ public sealed class EezFollower(
     IBatchReconciler reconciler,
     ResumePointFinder resumePoints,
     IUnsafeHeadSource unsafeHead,
+    IDerivedHeaderRules headerRules,
+    EezChainRules rules,
     IBlockTree blockTree,
     IEezL2Engine engine,
     IEezConfig config,
@@ -47,7 +51,7 @@ public sealed class EezFollower(
     private readonly Queue<SettledRecord> _settled = new();
 
     private FollowerHeads _heads = null!;
-    private BlockHeader _cursor = null!;
+    private SettledHead _cursor;
     private EezL1Block _lastScanned;
     private Hash256? _followedLatest;
     private ulong _nextL1;
@@ -69,9 +73,26 @@ public sealed class EezFollower(
             throw new EezFollowerException($"L1 reports chain {chainId}, not the configured chain {config.L1ChainId}.");
         }
 
+        await EnsureL1Reference(token);
         BlockHeader genesis = blockTree.Genesis ?? throw new EezFollowerException("The L2 chain has no genesis.");
         _heads = new FollowerHeads(engine, blockTree, Header(blockTree.FinalizedHash) ?? genesis);
         await Resume(await Latest(token), fromGenesis: Header(blockTree.SafeHash) is not { } safe || safe.Number == 0, token);
+    }
+
+    /// <summary>A RollupX genesis is pinned to an L1 block; following any other L1 would derive another chain.</summary>
+    private async Task EnsureL1Reference(CancellationToken token)
+    {
+        if (rules.Schedule?.L1Reference is not { } reference)
+        {
+            return;
+        }
+
+        EezL1Block block = await Block(reference.Number, token);
+        if (block.Hash != reference.Hash || block.Timestamp != reference.Timestamp || block.MixHash != reference.PrevRandao)
+        {
+            throw new EezFollowerException(
+                $"L1 block {reference.Number} is {block.Hash} at {block.Timestamp}, not the genesis reference {reference.Hash} at {reference.Timestamp} with its prevRandao.");
+        }
     }
 
     /// <summary>One poll: what L1 settled since the last one, then the sequencer's head.</summary>
@@ -153,15 +174,22 @@ public sealed class EezFollower(
     /// </summary>
     private async Task Settle(L1SettlingBlock block, CancellationToken token)
     {
-        ScannedBatch[] batches = await scanner.Scan(block, token);
-        BlockHeader cursor = _cursor;
+        EezL1Block header = await Block(block.Number, token);
+        if (header.Hash != block.Hash)
+        {
+            throw new L1SourceIncompleteException(block.Number, $"L1 reorganized block {block.Number} during the scan.");
+        }
+
+        L1Anchor anchor = header.ToAnchor();
+        ScannedBatch[] batches = await scanner.Scan(block, header, token);
+        SettledHead cursor = _cursor;
         try
         {
             foreach (ScannedBatch scanned in batches)
             {
                 if (!scanned.Settlement.IsEmpty)
                 {
-                    cursor = await reconciler.Reconcile(scanned, cursor, _heads);
+                    cursor = await reconciler.Reconcile(scanned, anchor, cursor, _heads);
                 }
             }
         }
@@ -175,11 +203,12 @@ public sealed class EezFollower(
             throw new L1SourceIncompleteException(block.Number, $"L1 reorganized block {block.Number} while it was derived: {e.Message}");
         }
 
-        if (cursor.Number > _heads.Safe.Number)
+        BlockHeader endpoint = cursor.Endpoint;
+        if (endpoint.Number > _heads.Safe.Number)
         {
-            await _heads.AdvanceSafe(cursor);
-            Remember(new SettledRecord(block.Number, block.Hash, cursor));
-            if (_logger.IsInfo) _logger.Info($"L2 safe head {cursor.ToString(BlockHeader.Format.Short)}, settled in L1 block {block.Number}.");
+            await _heads.AdvanceSafe(endpoint);
+            Remember(new SettledRecord(anchor, endpoint));
+            if (_logger.IsInfo) _logger.Info($"L2 safe head {endpoint.ToString(BlockHeader.Format.Short)}, settled in L1 block {block.Number}.");
         }
 
         _cursor = cursor;
@@ -219,10 +248,10 @@ public sealed class EezFollower(
     private async Task Resume(EezL1Block latest, bool fromGenesis, CancellationToken token)
     {
         SettledRecord? record = fromGenesis ? null : await resumePoints.Find(latest.Number, token);
-        BlockHeader cursor = record?.L2End ?? blockTree.Genesis!;
+        BlockHeader endpoint = record?.L2End ?? blockTree.Genesis!;
         ulong next = record is null ? config.RegistryDeployBlock : record.L1Number + 1;
         EezL1Block lastScanned = await Block(next - 1, token);
-        await _heads.Reset(cursor);
+        await _heads.Reset(endpoint);
 
         _settled.Clear();
         if (record is not null)
@@ -230,11 +259,11 @@ public sealed class EezFollower(
             _settled.Enqueue(record);
         }
 
-        _cursor = cursor;
+        _cursor = new SettledHead(endpoint, record?.DescendantSeed ?? headerRules.Seed(endpoint, record?.L1));
         _nextL1 = next;
         _lastScanned = lastScanned;
         _followedLatest = null;
-        if (_logger.IsInfo) _logger.Info($"EEZ follower resumes from L2 block {cursor.ToString(BlockHeader.Format.Short)} at L1 block {next}.");
+        if (_logger.IsInfo) _logger.Info($"EEZ follower resumes from L2 block {endpoint.ToString(BlockHeader.Format.Short)} at L1 block {next}.");
     }
 
     /// <summary>Takes the sequencer's blocks as the unsafe head; its failures never hold back what L1 settled.</summary>

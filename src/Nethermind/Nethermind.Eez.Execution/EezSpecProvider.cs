@@ -8,8 +8,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.Eez.Execution;
 
-/// <summary>Serves a release spec as an <see cref="EezReleaseSpec"/> where it names no deposit contract, and unchanged otherwise.</summary>
-public sealed class EezSpecProvider(ISpecProvider inner) : IForkAwareSpecProvider
+/// <summary>Serves a release spec as an <see cref="EezReleaseSpec"/> where the chain's rules change it, and unchanged otherwise.</summary>
+public sealed class EezSpecProvider(ISpecProvider inner, EezChainRules rules) : IForkAwareSpecProvider
 {
     private readonly ConcurrentDictionary<IReleaseSpec, IReleaseSpec> _wrapped = new(ReferenceEqualityComparer.Instance);
 
@@ -44,5 +44,5 @@ public sealed class EezSpecProvider(ISpecProvider inner) : IForkAwareSpecProvide
     }
 
     private IReleaseSpec Wrap(IReleaseSpec spec) =>
-        _wrapped.GetOrAdd(spec, static s => EezReleaseSpec.NeedsDepositContractDefault(s) ? new EezReleaseSpec(s) : s);
+        _wrapped.GetOrAdd(spec, static (s, r) => EezReleaseSpec.Changes(s, r) ? new EezReleaseSpec(s, r) : s, rules);
 }

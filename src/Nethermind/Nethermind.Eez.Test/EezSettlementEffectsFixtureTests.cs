@@ -25,9 +25,9 @@ namespace Nethermind.Eez.Test;
 /// </summary>
 public class EezSettlementEffectsFixtureTests
 {
-    private const string Window = "captured-devnet-window-384";
-    private const int From = 379;
-    private const int To = 384;
+    private const string Window = "captured-devnet-window-468";
+    private const int From = 463;
+    private const int To = 468;
 
     /// <summary>The recorded attester's key, a well-known public test key.</summary>
     private static readonly PrivateKey AttesterKey = new("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
@@ -83,7 +83,7 @@ public class EezSettlementEffectsFixtureTests
         EezStatelessBlock[] window = Enumerable.Range(From, To - From + 1)
             .Select(static n => StatelessFixtures.ReadBlock(Window, $"block-{n}.rlp.hex", $"witness-{n}.json")).ToArray();
         int[] checkpoints = SettlingBlock.CheckpointsOf(Rlp.Decode<Block>(window[^1].Rlp)!);
-        return new EezStatelessExecutor(Spec.Value, LimboLogs.Instance).Execute(window, checkpoints);
+        return new EezStatelessExecutor(Spec.Value, EezChainRules.Rollup0, LimboLogs.Instance).Execute(window, checkpoints);
     }
 
     private static DaBlock[] Blocks(DaSpan span)

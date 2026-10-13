@@ -14,6 +14,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Config;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Follower;
 using Nethermind.Eez.Posting;
@@ -39,7 +40,7 @@ public class LiveBlockProducerTests
     {
         _chain = await BasicTestBlockchain.Create(static builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-            .AddModule(new EezModule(new EezConfig())));
+            .AddModule(new EezModule(new EezConfig(), EezChainRules.Rollup0)));
         _context = new EezSettlementContext(1, _chain.SpecProvider.ChainId, Address.Zero, default, 2, _chain.BlockTree.Head!.GasLimit);
         _producer = Producer(int.MaxValue);
     }
@@ -94,7 +95,7 @@ public class LiveBlockProducerTests
     public void Execute_DerivedBlock_KeepsTheTotalDifficultyALiveBlockOnItNeeds()
     {
         BlockHeader parent = _chain.BlockTree.Head!.Header;
-        DerivedBlockExecutor executor = new(_chain.Container, _chain.Container.Resolve<IWorldStateManager>(), new DerivedBlockBuilder(_chain.SpecProvider, _context));
+        DerivedBlockExecutor executor = new(_chain.Container, _chain.Container.Resolve<IWorldStateManager>(), new DerivedBlockBuilder(_chain.SpecProvider, new Rollup0HeaderRules(_chain.SpecProvider, _context)));
         Block derived;
         using (IDerivedBlockSession session = executor.BeginSession())
         {
@@ -105,7 +106,7 @@ public class LiveBlockProducerTests
     }
 
     private LiveBlockProducer Producer(int daBytesPerBlock) =>
-        new(_chain.Container.Resolve<IBlockProducerEnvFactory>(), _chain.SpecProvider, _context, Beneficiary, daBytesPerBlock);
+        new(_chain.Container.Resolve<IBlockProducerEnvFactory>(), new Rollup0HeaderRules(_chain.SpecProvider, _context), Beneficiary, daBytesPerBlock);
 
     private static Transaction Transfer(ulong nonce) =>
         Build.A.Transaction.WithTo(TestItem.AddressC).WithValue(1).WithNonce(nonce).WithGasLimit(21_000).WithMaxFeePerGas(20.GWei)

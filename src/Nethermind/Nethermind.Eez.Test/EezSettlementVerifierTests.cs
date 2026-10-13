@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Eez.Attester;
+using Nethermind.Eez.Execution;
 using Nethermind.Eez.Execution.Settlement;
 using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Logging;
@@ -206,7 +207,7 @@ public class EezSettlementVerifierTests
     }
 
     private static EezStatelessBlockResult[] Execute() =>
-        new EezStatelessExecutor(Spec.Value, LimboLogs.Instance).Execute(
+        new EezStatelessExecutor(Spec.Value, EezChainRules.Rollup0, LimboLogs.Instance).Execute(
             Enumerable.Range(79, 6).Select(static n => StatelessFixtures.ReadBlock(Window84, $"block-{n}.rlp.hex", $"witness-{n}.json")).ToArray(), []);
 
     private static JsonElement Oracle() => StatelessFixtures.ReadJson(Window84, "oracle.json");

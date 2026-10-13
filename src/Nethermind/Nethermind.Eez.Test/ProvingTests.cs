@@ -27,7 +27,7 @@ namespace Nethermind.Eez.Test;
 
 public class ProvingTests
 {
-    private const string Window = "captured-devnet-anchor-43722";
+    private const string Window = "captured-devnet-anchor-402";
     private static readonly RollupTiming Timing = new(12_000, 2_000, 5_000, 100);
 
     /// <summary>For attesters that fail until the budget ends, so the retries end quickly.</summary>
@@ -56,8 +56,8 @@ public class ProvingTests
         JsonElement oracle = StatelessFixtures.ReadJson(Window, "oracle.json");
         using RemoteAttester attester = new(server.Channel, new Address(oracle.GetProperty("proof_system").GetString()!), AttesterServer.AttesterKey.Address);
 
-        ProveException e = Assert.ThrowsAsync<ProveException>(() => Quorum(attester).Attest(RecordedRequest(),
-            new QuorumRegistration(1, [Keccak.Compute("another key").ValueHash256]), BundleTarget.NextBlock, CancellationToken.None))!;
+        ProveException e = (await Assert.ThrowsAsync<ProveException>(() => Quorum(attester).Attest(RecordedRequest(),
+            new QuorumRegistration(1, [Keccak.Compute("another key").ValueHash256]), BundleTarget.NextBlock, CancellationToken.None)))!;
 
         Assert.That(e.Kind, Is.EqualTo(ProveFailureKind.Backend), "a proof over another key's public inputs would revert the batch on L1, so it never counts");
     }
@@ -76,38 +76,38 @@ public class ProvingTests
     }
 
     [Test]
-    public void Attest_BlockingSetRefusesOneEffect_ReportsItAsActionable()
+    public async Task Attest_BlockingSetRefusesOneEffect_ReportsItAsActionable()
     {
         RefusedEffect effect = new(true, 3, Keccak.Compute("outbound").ValueHash256);
         IAttester[] attesters = [Refusing(1, effect), Refusing(2, effect), Signing(3, TestItem.PrivateKeyA)];
 
-        ProveException e = Assert.ThrowsAsync<ProveException>(() => Quorum(attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2), BundleTarget.NextBlock,
-            CancellationToken.None))!;
+        ProveException e = (await Assert.ThrowsAsync<ProveException>(() => Quorum(attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2), BundleTarget.NextBlock,
+            CancellationToken.None)))!;
 
         Assert.That((e.Kind, e.Refused), Is.EqualTo((ProveFailureKind.Actionable, (RefusedEffect?)effect)),
             "two refusals of three with a threshold of two block the quorum, so the effect is dropped");
     }
 
     [Test]
-    public void Attest_OneRefusalBelowTheBlockingSet_IsNotActionable()
+    public async Task Attest_OneRefusalBelowTheBlockingSet_IsNotActionable()
     {
         RefusedEffect effect = new(true, 3, Keccak.Compute("outbound").ValueHash256);
         IAttester[] attesters = [Refusing(1, effect), Failing(2, ProveFailureKind.Retryable), Signing(3, TestItem.PrivateKeyA)];
 
-        ProveException e = Assert.ThrowsAsync<ProveException>(() => Quorum(ShortProofTime, attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2),
-            BundleTarget.NextBlock, CancellationToken.None))!;
+        ProveException e = (await Assert.ThrowsAsync<ProveException>(() => Quorum(ShortProofTime, attesters).Attest(SyntheticRequest(), Keys(3, threshold: 2),
+            BundleTarget.NextBlock, CancellationToken.None)))!;
 
         Assert.That(e.Kind, Is.EqualTo(ProveFailureKind.Backend), "one attester alone cannot evict an effect the others did not refuse");
     }
 
     [Test]
-    public void Attest_ThresholdAboveTheRegisteredAttesters_IsRefusedBeforeAsking()
+    public async Task Attest_ThresholdAboveTheRegisteredAttesters_IsRefusedBeforeAsking()
     {
         IAttester attester = Signing(1, TestItem.PrivateKeyA);
 
-        Assert.ThrowsAsync<ProveException>(() => Quorum(attester).Attest(SyntheticRequest(), Keys(1, threshold: 2), BundleTarget.NextBlock, CancellationToken.None),
+        await Assert.ThrowsAsync<ProveException>(() => Quorum(attester).Attest(SyntheticRequest(), Keys(1, threshold: 2), BundleTarget.NextBlock, CancellationToken.None),
             "a threshold the registered attesters cannot meet fails fast");
-        attester.DidNotReceiveWithAnyArgs().Prove(default!, default);
+        await attester.DidNotReceiveWithAnyArgs().Prove(default!, default);
     }
 
     [Test]

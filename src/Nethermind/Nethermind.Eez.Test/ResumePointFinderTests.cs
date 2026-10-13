@@ -8,6 +8,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Eez.Follower;
+using Nethermind.Eez.Execution;
+using Nethermind.Eez.Execution.Settlement;
+using Nethermind.Eez.Config;
+using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,7 +34,7 @@ public class ResumePointFinderTests
         _l2 = Build.A.BlockTree().OfChainLength(10).TestObject;
         for (ulong number = DeployBlock; number <= 100; number++)
         {
-            _l1.GetBlockByNumber(number, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = number, Hash = L1Hash(number) });
+            _l1.GetBlockByNumber(number, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = number, Hash = L1Hash(number), MixHash = Keccak.Zero });
         }
     }
 
@@ -97,6 +102,67 @@ public class ResumePointFinderTests
         Settlements();
 
         Assert.That(await Finder(scanBlocks: 100).Find(100, CancellationToken.None), Is.Null, "with no settlement the follower starts from genesis");
+    }
+
+    [TestCase(false, TestName = "CatchUpAfterLiveKeepsAcceptedSeed")]
+    [TestCase(true, TestName = "ReorganizedLiveDoesNotRefreshSeed")]
+    public async Task Find_CatchUpEndpoint_RecoversCanonicalLiveSeedWithoutRetreating(bool reorganized)
+    {
+        RollupXSchedule schedule = new(1, 2, new RollupXL1Reference(10200, 3, L1Hash(3), 1000, TestItem.KeccakA), 1000);
+        for (ulong number = DeployBlock; number <= 100; number++)
+        {
+            _l1.GetBlockByNumber(number, Arg.Any<CancellationToken>()).Returns(new EezL1Block
+            {
+                Number = number, Hash = L1Hash(number), Timestamp = 1000 + number - DeployBlock, MixHash = TestItem.KeccakB,
+            });
+        }
+        BlockHeader endpoint = _l2.FindHeader(4)!;
+        endpoint.MixHash = TestItem.KeccakA;
+        EezL1Log live = Settled(7, 0, 0, 4);
+        if (reorganized)
+        {
+            live = live with { BlockHash = TestItem.KeccakC };
+        }
+        EezL1Log catchUp = Settled(9, 0, 0, 4);
+        _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId), Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.ArgAt<ulong>(3) == 7 && call.ArgAt<ulong>(4) == 7 ? reorganized ? [] : [live] : [catchUp]);
+
+        SettledRecord? record = await new ResumePointFinder(_l1, _l2, Registry, RollupId, DeployBlock, 100, schedule).Find(100, CancellationToken.None);
+
+        Assert.That(record?.L2End, Is.SameAs(endpoint), "the held catch-up endpoint remains the resume point even when finalized");
+        Assert.That(record?.L1Number, Is.EqualTo(9));
+        Assert.That(record?.DescendantSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB));
+        _l2.ForkChoiceUpdated(endpoint.Hash, endpoint.Hash);
+        _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
+        _l1.GetBlockByNumber(3, Arg.Any<CancellationToken>()).Returns(new EezL1Block
+        {
+            Number = 3, Hash = L1Hash(3), Timestamp = 1000, MixHash = TestItem.KeccakA,
+        });
+        _l1.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 9, Hash = L1Hash(9), Timestamp = 1006, MixHash = TestItem.KeccakC });
+        _l1.GetBlockByNumber(10, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 10, Hash = L1Hash(10), Timestamp = 1007, MixHash = TestItem.KeccakC });
+        _l1.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 10, Hash = L1Hash(10), Timestamp = 1007, MixHash = TestItem.KeccakC });
+        IL1BatchScanner scanner = Substitute.For<IL1BatchScanner>();
+        L1SettlingBlock next = new(10, L1Hash(10), [], []);
+        scanner.FindSettlingBlocks(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>()).Returns([next]);
+        L1Batch batch = new(10, L1Hash(10), TestItem.KeccakD, 1, true, endpoint.Hash!, [endpoint.Hash!], default);
+        scanner.Scan(Arg.Any<L1SettlingBlock>(), Arg.Any<EezL1Block>(), Arg.Any<CancellationToken>())
+            .Returns([new ScannedBatch(batch, new L1Settlement(0, 1, endpoint.Hash!, endpoint.Hash!))]);
+        IBatchReconciler reconciler = Substitute.For<IBatchReconciler>();
+        Hash256? seenSeed = null;
+        reconciler.Reconcile(Arg.Any<ScannedBatch>(), Arg.Any<L1Anchor>(), Arg.Any<SettledHead>(), Arg.Any<FollowerHeads>()).Returns(call =>
+        {
+            SettledHead cursor = call.ArgAt<SettledHead>(2);
+            seenSeed = cursor.Seed;
+            return Task.FromResult(cursor);
+        });
+        EezChainRules rules = EezChainRules.RollupX(schedule);
+        EezConfig config = new() { L1ChainId = 10200, RegistryDeployBlock = DeployBlock, L1LogScanBlocks = 100 };
+        EezFollower follower = new(_l1, scanner, reconciler, new ResumePointFinder(_l1, _l2, Registry, RollupId, DeployBlock, 100, schedule),
+            NullUnsafeHeadSource.Instance, new RollupXHeaderRules(MainnetSpecProvider.Instance, rules), rules, _l2, new ChainEngine(_l2), config, LimboLogs.Instance);
+        await follower.Boot(CancellationToken.None);
+        await follower.Poll(CancellationToken.None);
+        Assert.That(follower.Heads.Finalized.Hash, Is.EqualTo(endpoint.Hash), "restart preserves the finalized catch-up endpoint");
+        Assert.That(seenSeed, Is.EqualTo(reorganized ? TestItem.KeccakA : TestItem.KeccakB), "the follower forwards the recovered seed into the next reconciliation");
     }
 
     private ResumePointFinder Finder(ulong scanBlocks) => new(_l1, _l2, Registry, RollupId, DeployBlock, scanBlocks);

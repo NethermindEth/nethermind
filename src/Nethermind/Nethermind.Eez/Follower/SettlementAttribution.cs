@@ -84,7 +84,7 @@ public static class SettlementAttribution
     }
 
     /// <summary>The transaction index of the next batch in the same block that lists our rollup.</summary>
-    private static ulong WindowEnd(IReadOnlyList<L1Batch> batches, L1Batch batch)
+    internal static ulong WindowEnd(IReadOnlyList<L1Batch> batches, L1Batch batch)
     {
         ulong end = ulong.MaxValue;
         foreach (L1Batch other in batches)
