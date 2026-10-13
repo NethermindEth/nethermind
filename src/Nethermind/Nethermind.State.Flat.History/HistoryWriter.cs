@@ -198,11 +198,13 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         }
         finally
         {
+            // First, so a publish that throws below cannot hand this walk's touches to the retry; the resolve that
+            // needed them has already run.
+            pending?.Clear();
             // Disposing writes, and a refusal disables capture, so nothing would rewrite a half-published walk.
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
             if (!complete) _commitments?.Discard();
-            pending?.Clear();
         }
 
         if (connected)
