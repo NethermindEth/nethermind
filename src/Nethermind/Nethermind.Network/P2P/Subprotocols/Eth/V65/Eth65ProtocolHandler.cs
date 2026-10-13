@@ -98,7 +98,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage, pooledResponse: true))
+                            return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg);
                     }
@@ -250,8 +251,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>
         {
             ReportPooledTransactionRequest(hashes.AsSpan());
-            Send(TMessage.New(hashes));
+            TMessage message = TMessage.New(hashes);
+            TrackPooledTransactionRequest(message);
+            Send(message);
         }
+
+        private protected virtual void TrackPooledTransactionRequest(P2PMessage message) { }
 
         protected void RequestPooledTransactions<TMessage>(IOwnedReadOnlyList<Hash256> hashes, bool registerForRetry = true)
             where TMessage : P2PMessage, INew<IOwnedReadOnlyList<ValueHash256>, TMessage>

@@ -86,7 +86,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetCallType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
         ExecutionType.DELEGATECALL => "delegatecall",
         ExecutionType.STATICCALL => "staticcall",
@@ -96,7 +96,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private static string GetActionType(ExecutionType executionType) => executionType switch
     {
-        ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
+        ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.TCREATE => "create",
         _ => "call"
     };
 
@@ -119,6 +119,8 @@ public partial class ParityLikeTxTracer : TxTracer
         EvmExceptionType.NotEnoughBalance => "Insufficient balance for transfer",
         EvmExceptionType.InvalidCode => "Invalid code",
         EvmExceptionType.CallDepthExceeded => "Max call depth exceeded",
+        EvmExceptionType.ReturnStackOverflow => "Return stack overflow",
+        EvmExceptionType.ReturnStackUnderflow => "Return stack underflow",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",
     };
@@ -545,6 +547,7 @@ public partial class ParityLikeTxTracer : TxTracer
     {
         ExecutionType.CREATE => "create",
         ExecutionType.CREATE2 => "create2",
+        ExecutionType.TCREATE => "tcreate",
         _ => null
     };
 

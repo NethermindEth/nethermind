@@ -22,6 +22,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -439,6 +440,23 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
         // second should be from cache
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
+    }
+
+    [Test]
+    public void Get_serves_zero_length_blooms_after_eip7668([Values] bool eip7668)
+    {
+        _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        // The storage reads whether the chain ever schedules EIP-7668 on construction.
+        CreateStorage();
+        (Block block, _) = PrepareBlock();
+        // A receipt synced without a bloom would compute one lazily on read.
+        TxReceipt receipt = Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA])).TestObject;
+        receipt.Bloom = null;
+
+        _storage.Insert(block, [receipt]);
+        _storage.ClearCache();
+
+        Assert.That(_storage.Get(block).Select(static r => r.Bloom.IsZeroLength), Is.All.EqualTo(eip7668));
     }
 
     [Test]

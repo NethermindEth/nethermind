@@ -539,9 +539,9 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    public async Task Test_eth_simulate_log_index_increments_across_transactions([Values] bool eip8116Enabled)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
 
         Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
         Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
@@ -591,12 +591,16 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
-        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
-        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+            Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        }
 
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
-        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+        // EIP-8116 counts logIndex within the receipt.
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(eip8116Enabled ? 0ul : 2ul));
     }
 
     [Test]
@@ -674,6 +678,51 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
         Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
+    }
+
+    // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
+    private static readonly byte[] CreateAndReturnAddress = [0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0xf0, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
+
+    /// <remarks>On Mainnet 0x8398…8462 was created by 0x9ca2…9f79 at nonce 0, so a factory placed there collides with it
+    /// exactly when EIP-8253 has bumped its nonce: in the simulated fork block, and not in the block after.</remarks>
+    [Test]
+    public async Task eth_simulateV1_applies_the_eip8253_bump_only_in_the_simulated_fork_block()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[5];
+        Address creator = new("0x9ca228250f9d8f86c23690074c2b96d5f5479f79");
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            ForkOnBlockNumber = ulong.MaxValue,
+            ChainId = BlockchainIds.Mainnet,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        specProvider.ForkOnBlockNumber = chain.BlockTree.Head!.Number + 1;
+
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = [CreateAtTarget(), CreateAtTarget()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
+        byte[] expected = new byte[32];
+        target.Bytes.CopyTo(expected.AsSpan(12));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data[0].Number, Is.EqualTo(specProvider.ForkOnBlockNumber), "precondition: the first simulated block is the fork block");
+            Assert.That(result.Data[0].Calls.Single().ReturnData, Is.EqualTo(new byte[32]), "the fork block bumps the target, so CREATE collides");
+            Assert.That(result.Data[1].Calls.Single().ReturnData, Is.EqualTo(expected), "the next block does not bump again");
+        }
+
+        BlockStateCall<TransactionForRpc> CreateAtTarget() => new()
+        {
+            StateOverrides = new Dictionary<Address, AccountOverride>
+            {
+                { creator, new AccountOverride { Code = CreateAndReturnAddress, Nonce = 0 } },
+                { target, new AccountOverride { Nonce = 0, Balance = 1.Ether } },
+                { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+            },
+            Calls = [new LegacyTransactionForRpc { From = TestItem.AddressA, To = creator, Gas = 1_000_000 }],
+        };
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN

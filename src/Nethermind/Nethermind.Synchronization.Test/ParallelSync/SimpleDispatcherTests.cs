@@ -123,7 +123,10 @@ public class SimpleDispatcherTests
 
         // Run must not return while dispatches are in flight, and despite free peers no dispatch
         // beyond the cap may start.
-        Assert.That(async () => await runTask.WaitAsync(TimeSpan.FromMilliseconds(200)), Throws.TypeOf<TimeoutException>());
+        Task first = await Task.WhenAny(runTask, Task.Delay(200, cancellationToken));
+        // Surfaces Run's exception in the failure if it faulted early.
+        if (first == runTask) await runTask;
+        Assert.That(first, Is.Not.SameAs(runTask));
         Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
 
         downloader.ReleaseAll();
@@ -435,7 +438,7 @@ public class SimpleDispatcherTests
             feed.ReleaseHandleResponse.TrySetResult();
         }
 
-        Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<TaskCanceledException>(() => runTask.WaitAsync(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(await completedWhenRunReturned, Is.EqualTo(1), "Run must wait for in-flight HandleResponse");

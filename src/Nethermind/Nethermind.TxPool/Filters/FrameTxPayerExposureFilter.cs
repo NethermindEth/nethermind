@@ -113,6 +113,7 @@ internal sealed class FrameTxPayerExposureFilter(
 
         // Recorded for the restart-time restore; the ledger owns what a removal releases.
         tx.PayerExposure = cost;
+        state.PayerExposureReserved = !cost.IsZero;
         return AcceptTxResult.Accepted;
     }
 

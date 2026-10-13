@@ -5,11 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -28,20 +31,23 @@ public class Eip8037StateGasInvariantTests : VirtualMachineTestsBase
 
     private static IEnumerable<TestCaseData> RefundGuards()
     {
-        yield return new TestCaseData("RefundOnFail", new EthereumGasPolicy { StateGasUsed = -1 }, new object[] { 0UL })
+        yield return new TestCaseData("RefundOnFail", new EthereumGasPolicy { StateGasUsed = -1 }, new object[] { 0UL }, false)
             .SetName("RefundOnFail_flags_negative_block_state_gas");
-        yield return new TestCaseData("RefundOnContractCollision", new EthereumGasPolicy { StateGasUsed = -1 }, new object[] { 0UL })
+        yield return new TestCaseData("RefundOnContractCollision", new EthereumGasPolicy { StateGasUsed = -1 }, new object[] { 0UL }, false)
             .SetName("RefundOnContractCollision_flags_negative_block_state_gas");
-        yield return new TestCaseData("RefundOnTopLevelHalt", new EthereumGasPolicy { StateReservoir = (long)GasLimit + 1 }, new object[] { 0UL, 0UL })
+        yield return new TestCaseData("RefundOnTopLevelHalt", new EthereumGasPolicy { StateReservoir = (long)GasLimit + 1 }, new object[] { 0UL, 0UL }, false)
             .SetName("RefundOnTopLevelHalt_flags_reservoir_exceeding_gas_limit");
-        yield return new TestCaseData("RefundOnTopLevelHalt", new EthereumGasPolicy { StateGasUsed = (long)GasLimit + 1 }, new object[] { 0UL, 0UL })
+        yield return new TestCaseData("RefundOnTopLevelHalt", new EthereumGasPolicy { StateGasUsed = (long)GasLimit + 1 }, new object[] { 0UL, 0UL }, false)
             .SetName("RefundOnTopLevelHalt_flags_state_gas_exceeding_pre_refund_gas");
+        yield return new TestCaseData("RefundOnTopLevelHalt", default(EthereumGasPolicy), new object[] { 0UL, GasLimit + 1 }, true)
+            .SetName("RefundOnTopLevelHalt_flags_refund_exceeding_pre_refund_gas");
     }
 
     [TestCaseSource(nameof(RefundGuards))]
-    public void Refund_path_flags_state_gas_invariant(string method, EthereumGasPolicy corrupted, object[] tail)
+    public void Refund_path_flags_state_gas_invariant(string method, EthereumGasPolicy corrupted, object[] tail, bool eip3298)
     {
-        object[] args = [Tx(), Spec, ExecutionOptions.Commit, corrupted, UInt256.Zero, default(EthereumGasPolicy), .. tail];
+        IReleaseSpec spec = eip3298 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip3298Enabled = true } : Spec;
+        object[] args = [Tx(), spec, ExecutionOptions.Commit, corrupted, UInt256.Zero, default(EthereumGasPolicy), .. tail];
         RefundResult result = Invoke<RefundResult>(method, args);
         Assert.That(result.Result.Error, Is.EqualTo(TransactionResult.ErrorType.StateGasInvariantViolated));
     }

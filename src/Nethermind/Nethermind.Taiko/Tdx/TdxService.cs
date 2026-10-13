@@ -138,7 +138,7 @@ public class TdxService : ITdxService
         try
         {
             string json = File.ReadAllText(path);
-            _guestInfo = JsonSerializer.Deserialize<TdxGuestInfo>(json);
+            _guestInfo = JsonSerializer.Deserialize(json, TdxJsonContext.Default.TdxGuestInfo);
 
             byte[] keyBytes = File.ReadAllBytes(keyPath);
             _privateKey = new PrivateKey(keyBytes);
@@ -170,7 +170,7 @@ public class TdxService : ITdxService
 
         // Save bootstrap data
         string path = GetBootstrapPath();
-        File.WriteAllText(path, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(path, JsonSerializer.Serialize(data, TdxJsonContext.Default.TdxGuestInfo));
 
         // Save key with 0600 file permissions
         string keyPath = GetKeyPath();

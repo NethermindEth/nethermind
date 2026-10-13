@@ -3,7 +3,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -81,7 +80,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
         _frameTx = _isFrameTx ? tx : null;
         _frameTxSpec = _isFrameTx ? spec : null;
 
-        _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
+        _config = TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
         if (_config.WithLog)
         {
@@ -511,13 +510,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
 
     /// <summary>Records an EVM halt on a call frame, for the root frame and the nested ones alike.</summary>
     /// <remarks>
-    /// A CREATE or CREATE2 frame that halted deployed no contract, so its <c>to</c> is dropped —
+    /// A CREATE, CREATE2 or TCREATE frame that halted deployed no contract, so its <c>to</c> is dropped —
     /// the execution-apis <c>CallFrame</c> schema requires it to be omitted there.
     /// </remarks>
     private static void MarkFrameFailed(NativeCallTracerCallFrame callFrame, EvmExceptionType error)
     {
         callFrame.Error = error.GetEvmExceptionDescription();
-        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2 or Instruction.TCREATE)
         {
             callFrame.To = null;
         }
