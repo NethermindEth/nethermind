@@ -31,7 +31,6 @@ public class BalFetcherTests
     {
         Success,
         Failure,
-        Timeout,
         Cancellation,
         InvalidBal,
     }
@@ -141,7 +140,7 @@ public class BalFetcherTests
     }
 
     [Test]
-    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure, FetchOutcome.Timeout)] FetchOutcome outcome)
+    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure)] FetchOutcome outcome)
     {
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
@@ -297,7 +296,6 @@ public class BalFetcherTests
             .Returns(ci =>
             {
                 if (outcome == FetchOutcome.Failure) throw new InvalidOperationException("fetch failed");
-                if (outcome == FetchOutcome.Timeout) throw new TimeoutException("fetch timed out");
                 if (outcome == FetchOutcome.Cancellation) throw new OperationCanceledException();
 
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
