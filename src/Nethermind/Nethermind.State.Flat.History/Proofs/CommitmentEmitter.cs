@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -40,7 +41,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
     private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
-    // Per parent, the children this block recorded or marked dirty, so a parent learns which children changed in one lookup.
+    // Per parent, the children this block recorded or marked dirty.
     private readonly Dictionary<NodePathKey, ushort> _blockChangedChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
@@ -575,11 +576,19 @@ public sealed class CommitmentEmitter : IDisposable
 
         public NodePathKey Parent()
         {
+            Debug.Assert(Depth > 0, "a root has no parent within its scope");
             TreePath parent = new TreePath(_path, Depth).Truncate(Depth - 1);
             return new NodePathKey(Scope, parent.Path, (byte)parent.Length, IsStorage);
         }
 
-        public int LastNibble => new TreePath(_path, Depth)[Depth - 1];
+        public int LastNibble
+        {
+            get
+            {
+                Debug.Assert(Depth > 0, "a root has no last nibble");
+                return new TreePath(_path, Depth)[Depth - 1];
+            }
+        }
 
         public NodePathKey Descendant(ReadOnlySpan<byte> nibbles)
         {
