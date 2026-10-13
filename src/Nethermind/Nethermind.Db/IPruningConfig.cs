@@ -89,7 +89,7 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
     double PrunePersistedNodePortion { get; set; }
 
-    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "52428800")]
     long PrunePersistedNodeMinimumTarget { get; set; }
 
     [ConfigItem(Description = "Maximum number of blocks worth of unpersisted state in memory. Default is 300, which is about one hour of mainnet blocks.", DefaultValue = "300")]
