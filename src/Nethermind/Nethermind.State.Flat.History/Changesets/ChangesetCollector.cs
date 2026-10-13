@@ -15,8 +15,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 internal sealed class ChangesetCollector
 {
     private const int MaxRetainedEntries = 512;
-    // An account change is a struct of about 112 B kept inline, so fewer of them fit the memory 512 dictionary entries
-    // took before.
+    // An account change is a struct of about 112 B kept inline, so this keeps the retained list near 14 KB.
     private const int MaxRetainedAccounts = 128;
     private const int MaxRetainedPacked = 64 * 1024;
 
@@ -104,9 +103,14 @@ internal sealed class ChangesetCollector
     public void Reset()
     {
         _accountIndexes.Clear();
-        if (_accountIndexes.EnsureCapacity(0) > MaxRetainedAccounts) _accountIndexes.TrimExcess();
         _accounts.Clear();
-        if (_accounts.Capacity > MaxRetainedAccounts) _accounts.TrimExcess();
+        // One check for both: the index grows through primes and the list doubles, so separate checks would trim the
+        // index at an account count the list still keeps.
+        if (_accounts.Capacity > MaxRetainedAccounts)
+        {
+            _accountIndexes.TrimExcess();
+            _accounts.TrimExcess();
+        }
         _storage.Clear();
         if (_storage.EnsureCapacity(0) > MaxRetainedEntries) _storage.TrimExcess();
         if (_packed.Length <= MaxRetainedPacked) return;
