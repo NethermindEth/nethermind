@@ -31,7 +31,8 @@ public class OptimismPayloadPreparationService(
         blockImprovementContextFactory,
         timerFactory,
         logManager,
-        blocksConfig)
+        blocksConfig,
+        specProvider)
 {
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly ILogger _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
