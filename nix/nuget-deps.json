@@ -255,6 +255,11 @@
     "hash": "sha256-agRu8E7gSoDIJ12iCrO6nBXOEjH4LxjOljC12TW+U4U="
   },
   {
+    "pname": "Microsoft.ClearScript.V8.Native.win-arm64",
+    "version": "7.5.1.1",
+    "hash": "sha256-UCasWGsPZHicP8HsKyiBOyG2yBP/MNf3YLEXBTPsFB8="
+  },
+  {
     "pname": "Microsoft.ClearScript.V8.Native.win-x64",
     "version": "7.5.1.1",
     "hash": "sha256-eYRTBh1ehowsKWlD5PzfzlOuOXg/5UWaYwuegryiE30="
@@ -661,18 +666,18 @@
   },
   {
     "pname": "Nethermind.Crypto.Bls",
-    "version": "1.1.0",
-    "hash": "sha256-ENiyQ4qaQRK3hHUM5m7vx6TdvpRYkxcDzIbsWQxURAg="
+    "version": "0.3.17.15",
+    "hash": "sha256-xw0BGEyPo9WTDj70Rme4eD/ISp7yEmvWSrln2xN0S6Y="
   },
   {
     "pname": "Nethermind.Crypto.SecP256k1",
-    "version": "1.7.0",
-    "hash": "sha256-WHAnlQapZkCwo7Z4a9cY3Awkku/6LRZgKDA3JhcQ7j0="
+    "version": "0.8.0.42",
+    "hash": "sha256-vD2tgPHg0RTtHZrJE+IFmmkxekcdCIIjOUUEFg40ruM="
   },
   {
     "pname": "Nethermind.Crypto.SecP256r1",
-    "version": "1.1.0",
-    "hash": "sha256-uYoEClXc5fxeszUzafzeJim5noSqo120nIAlMZ8umHE="
+    "version": "1.2.0",
+    "hash": "sha256-QTFIwriwDfbXAWl5dJ6tOARzqzejkJb4jmEkce4z2C0="
   },
   {
     "pname": "Nethermind.DotNetty.Buffers",
@@ -701,8 +706,8 @@
   },
   {
     "pname": "Nethermind.GmpBindings",
-    "version": "2.0.0",
-    "hash": "sha256-jY+p+Pg3PcZqMBDHG691dvNBNX0K3GuUg7mvFtnmQn8="
+    "version": "6.3.0.195",
+    "hash": "sha256-R0q85Lhsjpjepk1Y7LUvYSUEBDpHc21Qs3R+aooORgw="
   },
   {
     "pname": "Nethermind.Libp2p",
@@ -781,8 +786,8 @@
   },
   {
     "pname": "Nethermind.MclBindings",
-    "version": "2.0.0",
-    "hash": "sha256-mx7Arbb8+XxUSDClBpLYYQOqRpGKtICB/zODuTD4DH4="
+    "version": "4.20.0.114",
+    "hash": "sha256-YrJzxpq2hXJLLfixNjvny+N/gt9B4/IkLxUSfZ9j9Aw="
   },
   {
     "pname": "Nethermind.Multiformats.Address",
@@ -811,8 +816,8 @@
   },
   {
     "pname": "Nethermind.TurboPForBindings",
-    "version": "1.0.0",
-    "hash": "sha256-KJ1nNy+YMl/prCqhjVmJ+oepDzm7iT6z455sev2JCMQ="
+    "version": "1.2.0",
+    "hash": "sha256-Ozqt33crSzEBHx8RZH2qcGJGl7b7901fHXnvkk1FLNY="
   },
   {
     "pname": "NETStandard.Library",
