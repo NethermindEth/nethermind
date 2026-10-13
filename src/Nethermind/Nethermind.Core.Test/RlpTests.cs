@@ -6,6 +6,8 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -1360,6 +1362,27 @@ namespace Nethermind.Core.Test
             // before all length bytes are present. The bounds check should catch this.
             Action act = () => new LiteRlpReader(truncatedData).PeekNextRlpLength(0);
             Assert.That(act, Throws.TypeOf<RlpException>());
+        }
+
+        [Test]
+        public void PeekLongPrefixAndContentLength_throws_on_truncated_length_ending_at_int_max([Values(0xB8, 0xF8)] byte prefix)
+        {
+            // The span's last byte is the prefix, so position + 1 + lengthOfLength wraps an int. The pinned
+            // backing array holds the byte one past the span's end, which an unchecked read would decode
+            // as a short non-canonical length instead of reporting truncation.
+            byte[] backing = GC.AllocateArray<byte>(2, pinned: true);
+            backing[0] = prefix;
+            backing[1] = 0x01;
+            const int position = int.MaxValue - 1;
+
+            Action act = () =>
+            {
+                ReadOnlySpan<byte> data = MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.Subtract(ref MemoryMarshal.GetArrayDataReference(backing), position), int.MaxValue);
+                new LiteRlpReader(data).PeekNextRlpLength(position);
+            };
+
+            Assert.That(act, Throws.TypeOf<RlpException>().With.Message.Contains("truncated"));
         }
     }
 }
