@@ -175,10 +175,10 @@ public sealed class NodeRecordProvider(
             discoveryAddress is not null ? networkConfig.DiscoveryPort : null,
             advertiseV6 ? ip.ExternalIpV6 : null,
             currentForkId,
-            // Stricter than the Hello capability, which a syncing node also offers: the entry means
-            // the node serves snap, and a server that cannot serve (hash db layout) disconnects requests.
+            // Unlike Hello, which also offers snap for snap sync alone, the entry needs snap serving;
+            // a server that cannot serve (hash db layout) disconnects requests.
             syncConfig.SnapServingEnabled == true && snapServer.CanServe,
-            // A synced node offers snap/2 under the same rule as SnapP2PCapabilityResolver.
+            // Static across sync: lists snap/2 when the final spec enables it, as SnapP2PCapabilityResolver does once synced.
             specProvider.GetFinalSpec().BlockLevelAccessListsEnabled);
     }
 
