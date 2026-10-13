@@ -35,6 +35,7 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
     private readonly bool _deepStorageSnapshots;
+    private readonly Action<CommitmentEmitter>? _release;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
@@ -64,9 +65,10 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots, Action<CommitmentEmitter>? release = null)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
+        _release = release;
         _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
         _maxExactBranches = exactBranchEntries;
         _extensionTargets = new ClockCache<NodePathKey, bool>(extensionTargetEntries);
@@ -80,8 +82,11 @@ public sealed class CommitmentEmitter : IDisposable
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), WalkExtensionTargetEntries, respectFloors: false, deepStorageSnapshots);
+    /// <param name="release">When set, disposing the emitter resets it to the state of a new one and hands it here
+    /// instead of releasing its buffers, so a walk that emits per partition and per contract builds each emitter once
+    /// per worker: a new one allocates about 420 KB, most of it the extension-target cache, on the large object heap.</param>
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false, Action<CommitmentEmitter>? release = null) =>
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), WalkExtensionTargetEntries, respectFloors: false, deepStorageSnapshots, release);
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
@@ -267,6 +272,14 @@ public sealed class CommitmentEmitter : IDisposable
     {
         if (_disposed) return;
 
+        if (_release is not null)
+        {
+            CommitBatch();
+            Reset();
+            _release(this);
+            return;
+        }
+
         _disposed = true;
         CommitBatch();
         _windows.Clear();
@@ -275,6 +288,26 @@ public sealed class CommitmentEmitter : IDisposable
         ChildVector.Return(_children);
         ChildVector.Return(_merged);
         ChildVector.Return(_latest);
+    }
+
+    private void Reset()
+    {
+        _windows.Clear();
+        _windowSlab.Reset();
+        _blockArena.Clear();
+        _blockNodes.Clear();
+        _blockChanged.Clear();
+        _blockDirtyChildren.Clear();
+        _blockStorageMaxDepth.Clear();
+        _blockTrieDepths.Clear();
+        _blockAdoptedTargets.Clear();
+        _exactBranches.Clear();
+        if (_extensionTargets.Count > 0) _extensionTargets.Clear();
+        _block = 0;
+        _haveBlock = false;
+        _floorsEpoch = ulong.MaxValue;
+        _retainedFloor = 0;
+        _fineFloor = 0;
     }
 
     private void Record(in NodePathKey key, ReadOnlySpan<byte> rlp, ushort? changed)
