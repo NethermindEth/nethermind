@@ -151,7 +151,8 @@ namespace Nethermind.Synchronization.SnapSync
                 return AddRangeResult.ExpiredRootHash;
             }
 
-            if (responses.Length > request.Accounts.Count)
+            // An empty storage batch has no account a proof could be for, so a proof-only reply to it is out of bounds too.
+            if (responses.Length > request.Accounts.Count || request.Accounts.Count == 0)
             {
                 if (_logger.IsTrace) _logger.Trace($"SNAP - GetStorageRange - got {responses.Length} slot lists for {request.Accounts.Count} accounts, RootHash:{request.RootHash}");
 

@@ -203,6 +203,30 @@ public class SnapProviderTests
         }
     }
 
+    // DequeStorageToRetrieveRequest builds a batch from whatever it dequeues, so a batch can carry no account. A
+    // proof-only reply to it is not a proof of absence for any account and must not be read as one for account 0.
+    [Test]
+    public void AddStorageRange_ProofOnlyReplyToABatchWithoutAccounts_IsOutOfBounds()
+    {
+        using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+            .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+            .Build();
+
+        SnapProvider snapProvider = container.Resolve<SnapProvider>();
+        ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+        DrainAccountRangePartition(progressTracker);
+
+        using StorageRange request = CreateStorageRange(0);
+        using SlotsAndProofs response = new()
+        {
+            PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(0),
+            Proofs = new ByteArrayListAdapter(new List<byte[]> { new byte[] { 0x0 } }.ToPooledList()),
+        };
+
+        Assert.That(snapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OutOfBounds));
+        Assert.That(progressTracker.IsSnapGetRangesFinished(), Is.True, "an empty batch queues nothing again");
+    }
+
     [Test]
     public void AddStorageRange_ResponseHasMoreSlotListsThanRequestedAccounts_KeepsRangePhaseCompletable()
     {
