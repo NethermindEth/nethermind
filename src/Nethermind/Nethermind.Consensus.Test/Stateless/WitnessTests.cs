@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -37,7 +36,7 @@ public class WitnessTests
         };
         if (breakChain && count > 1)
         {
-            Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<InvalidOperationException>());
+            Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<WitnessValidationException>());
         }
         else
         {

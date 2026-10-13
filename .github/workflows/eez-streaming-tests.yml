@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   tests:
-    name: Session runtime (${{ matrix.runner }})
+    name: Session execution (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
     strategy:
@@ -27,9 +27,13 @@ jobs:
         run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
       - name: Compile
         run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore
+      - name: Witness header tests
+        run: |
+          dotnet test --project src/Nethermind/Nethermind.Consensus.Test/Nethermind.Consensus.Test.csproj -c Release \
+            -- --filter 'FullyQualifiedName~Nethermind.Consensus.Test.Stateless.WitnessTests'
       - name: Test
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
-            --filter 'FullyQualifiedName~Nethermind.Eez.Test.Streaming' \
+            --filter 'FullyQualifiedName~Nethermind.Eez.Test.Streaming|FullyQualifiedName~Nethermind.Eez.Test.RollupX.EezDevReplay' \
             --hangdump --hangdump-timeout 5m --hangdump-type Mini \
             --crashdump --crashdump-type Mini

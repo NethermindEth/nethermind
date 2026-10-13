@@ -154,7 +154,7 @@ internal sealed class WindowAssembler
         return attempted <= limit ? attempted : throw Quota($"window payload reached {attempted} bytes, limit is {limit}");
     }
 
-    private static Witness ToWitness(ExecutionWitness witness) => new()
+    internal static Witness ToWitness(ExecutionWitness witness) => new()
     {
         State = ToList(witness.State),
         Codes = ToList(witness.Codes),

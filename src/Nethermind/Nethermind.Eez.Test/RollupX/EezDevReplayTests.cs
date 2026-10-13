@@ -133,6 +133,7 @@ public class EezDevReplayTests
             EezStatelessBlockResult result = stateless.Execute([new EezStatelessBlock(Rlp.Encode(block).Bytes, witness)], [EezTransactionCheckpoint.PreExecution])[0];
             Assert.That(result.Hash, Is.EqualTo(_expected[number]), $"stateless RollupX block {number} matches the independent testnet hash");
             Assert.That(result.Checkpoints[0].TransactionIndex, Is.EqualTo(EezTransactionCheckpoint.PreExecution));
+            StreamingBlockExecutorTests.AssertRecordedBlock(new EezStatelessBlock(Rlp.Encode(block).Bytes, witness), result, _expected[number], spec, rules);
             if (number == 1)
             {
                 Block wrongProfile = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
