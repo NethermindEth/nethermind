@@ -36,8 +36,8 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
     private static readonly Address X = TestItem.AddressF;
     private static readonly Address Dead = new("0x00000000000000000000000000000000dead0001");
 
-    // Fresh authority (not in pre-state) so SetCode scenarios carry NEW_ACCOUNT + per-auth
-    // intrinsic state gas that survives a top-level halt.
+    // Authority is fresh (not in pre-state) unless Scenario.AuthorityExists, so SetCode scenarios
+    // carry NEW_ACCOUNT + per-auth intrinsic state gas that survives a top-level halt.
     private static readonly PrivateKey AuthorityKey =
         new("0x0000000000000000000000000000000000000000000000000000000000000042");
 
