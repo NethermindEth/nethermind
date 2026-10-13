@@ -313,13 +313,14 @@ namespace Nethermind.Facade
         /// </summary>
         private FundedRunContext CreateFundedRunContext(BlockHeader header, BlobFeeCapFill blobFeeCapFill)
         {
-            IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+            ulong nextTimestamp = specProvider.GetSlotSchedule(blocksConfig.SecondsPerSlot).GetNextSlotTimestamp(header.Timestamp);
+            IReleaseSpec fundingSpec = specProvider.GetSpec(header.Number + 1, nextTimestamp);
             if (!blobFeeCapFill.IsFilled)
                 return new FundedRunContext(fundingSpec, null);
 
             BlockHeader nextHeader = header.Clone();
             nextHeader.Number += 1;
-            nextHeader.Timestamp = Math.Max(header.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds);
+            nextHeader.Timestamp = Math.Max(nextTimestamp, timestamper.UnixTime.Seconds);
             IReleaseSpec nextSpec = specProvider.GetSpec(nextHeader);
             if (!nextSpec.IsEip4844Enabled)
                 return new FundedRunContext(fundingSpec, null);

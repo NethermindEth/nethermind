@@ -150,7 +150,7 @@ public partial class EthRpcModule(
             return ResultWrapper<UInt256?>.Success(null);
         }
 
-        IEip1559Spec specFor1559 = _specProvider.GetSpec(head.Number + 1, head.Timestamp);
+        IEip1559Spec specFor1559 = GetNextBlockSpec(head);
         if (!specFor1559.IsEip1559Enabled)
         {
             return ResultWrapper<UInt256?>.Success(null);
@@ -158,6 +158,10 @@ public partial class EthRpcModule(
 
         return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.Calculate(head, specFor1559));
     }
+
+    /// <summary>The spec of the block after <paramref name="head"/>, assumed to land in the next slot.</summary>
+    private IReleaseSpec GetNextBlockSpec(BlockHeader head) =>
+        _specProvider.GetSpec(head.Number + 1, _specProvider.GetSlotSchedule(_secondsPerSlot).GetNextSlotTimestamp(head.Timestamp));
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
@@ -536,7 +540,7 @@ public partial class EthRpcModule(
         {
             GasPrice = await _gasPriceOracle.GetGasPriceEstimate(),
             MaxPriorityFeePerGas = _gasPriceOracle.GetMaxPriorityGasFeeEstimate(),
-            BaseFee = BaseFeeCalculator.Calculate(head, _specProvider.GetSpec(head.Number + 1, head.Timestamp)),
+            BaseFee = BaseFeeCalculator.Calculate(head, GetNextBlockSpec(head)),
             BlobBaseFee = blobBaseFee,
             Spec = spec,
         };

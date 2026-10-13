@@ -96,17 +96,19 @@ public partial class EthRpcModuleTests
         }
     }
 
-    // The EIP-8198 spec activates by timestamp, so the next block's spec must be looked up with one.
-    [TestCase(30_000_000UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_timestamp_fork_full_block")]
-    [TestCase(0UL, "0x356554f6", TestName = "Eth_baseFee_Eip8198_timestamp_fork_empty_block")]
-    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong gasUsed, string expected)
+    // The EIP-8198 spec activates by timestamp; the next block is taken to land one slot after the head.
+    [TestCase(0UL, 30_000_000UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_at_fork_full_block")]
+    [TestCase(0UL, 0UL, "0x356554f6", TestName = "Eth_baseFee_Eip8198_head_at_fork_empty_block")]
+    [TestCase(12UL, 30_000_000UL, "0x41d03f0a", TestName = "Eth_baseFee_Eip8198_head_one_slot_before_fork")]
+    [TestCase(13UL, 30_000_000UL, "0x430e2340", TestName = "Eth_baseFee_Eip8198_head_more_than_a_slot_before_fork")]
+    public async Task Eth_baseFee_uses_timestamp_activated_eip8198(ulong secondsBeforeFork, ulong gasUsed, string expected)
     {
         const ulong forkTimestamp = 1_000;
         ISpecProvider specProvider = new CustomSpecProvider(
             ((ForkActivation)0, London.Instance),
             (new ForkActivation(0, forkTimestamp), new OverridableReleaseSpec(London.Instance) { IsEip8198Enabled = true }));
         using Context ctx = await Context.Create(specProvider);
-        Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp).WithBaseFeePerGas(1_000_000_000)
+        Block head = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
             .WithGasLimit(30_000_000).WithGasUsed(gasUsed).TestObject;
         BlockTree blockTree = Build.A.BlockTree(head).WithBlocks(head).TestObject;
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
