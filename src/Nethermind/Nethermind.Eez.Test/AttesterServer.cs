@@ -10,6 +10,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -39,6 +40,8 @@ internal sealed class AttesterServer : IAsyncDisposable
     public Prover.ProverClient Client { get; }
 
     public GrpcChannel Channel => _channel;
+
+    internal BackendAdmission Admission => _app.Services.GetRequiredService<BackendAdmission>();
 
     public static async Task<AttesterServer> Start(string fixture, TimeSpan? idleTimeout = null)
     {

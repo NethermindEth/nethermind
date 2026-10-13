@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Eez.Prove.V2;
@@ -10,6 +11,7 @@ namespace Nethermind.Eez.Attester;
 
 internal sealed class StreamingConnection(StreamingSessionRegistry registry, string authenticatedOwner, ulong rollupId)
 {
+    private static readonly Task Unbound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
     private readonly object _lock = new();
     private readonly string _owner = ValidateOwner(authenticatedOwner);
     private readonly ulong _rollupId = rollupId != 0 ? rollupId : throw new ArgumentOutOfRangeException(nameof(rollupId));
@@ -117,6 +119,35 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         }
     }
 
+    internal Task AttachmentRevoked
+    {
+        get { lock (_lock) return _session?.AttachmentRevoked(_binding) ?? Unbound; }
+    }
+
+    internal bool CanComplete(SessionOperation operation)
+    {
+        lock (_lock)
+        {
+            if (_ended) throw Error(StatusCode.Aborted, "stream ended");
+            _session!.CheckCurrent(_binding);
+            return ReferenceEquals(_pending, operation) && operation.Binding == _binding;
+        }
+    }
+
+    internal void CheckResponse(ServerFrame response)
+    {
+        lock (_lock)
+        {
+            if (_ended) throw Error(StatusCode.Aborted, "stream ended");
+            if (_session is not null)
+            {
+                _session.CheckCurrent(_binding);
+                if (response.SessionId != _session.Id || response.Epoch != _binding.Epoch)
+                    throw Error(StatusCode.Aborted, "response outside current attachment");
+            }
+        }
+    }
+
     internal void Detach()
     {
         lock (_lock) _ended = true;
@@ -145,7 +176,10 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         ByteString hash = response.Ready?.ValidatedHash ?? ByteString.Empty;
         response.Rejected = new Rejected
         {
-            Code = (int)status.StatusCode, Message = status.Detail, ValidatedThrough = number, ValidatedHash = hash,
+            Code = (int)status.StatusCode,
+            Message = status.Detail,
+            ValidatedThrough = number,
+            ValidatedHash = hash,
         };
         return response;
     }

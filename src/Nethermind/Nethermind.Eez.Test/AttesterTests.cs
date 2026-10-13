@@ -85,6 +85,16 @@ public class AttesterTests
     }
 
     [Test]
+    public async Task Prove_SharedBackendAdmissionIsOccupied_IsUnavailable()
+    {
+        await using AttesterServer server = await AttesterServer.Start(EffectWindow);
+        using BackendAdmission.BackendLease slot = server.Admission.TryAcquire()!;
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => server.Prove([])))!;
+        Assert.That((exception.StatusCode, exception.Status.Detail), Is.EqualTo((StatusCode.Unavailable, "another Prove request is already active")),
+            "v1 observes the same backend gate used by v2 block execution");
+    }
+
+    [Test]
     public async Task Prove_StreamThatStalls_TimesOut()
     {
         await using AttesterServer server = await AttesterServer.Start(EffectWindow, idleTimeout: TimeSpan.FromMilliseconds(300));

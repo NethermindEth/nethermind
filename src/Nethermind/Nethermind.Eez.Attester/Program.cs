@@ -62,6 +62,7 @@ public static class Program
         });
         builder.Services.AddSingleton(pipeline);
         builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton<BackendAdmission>();
         builder.Services.AddSingleton<ProverService>();
 
         WebApplication app = builder.Build();

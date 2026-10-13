@@ -34,6 +34,5 @@ jobs:
       - name: Test
         run: |
           dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
-            --filter 'FullyQualifiedName~Nethermind.Eez.Test.Streaming|FullyQualifiedName~Nethermind.Eez.Test.RollupX.EezDevReplay' \
             --hangdump --hangdump-timeout 5m --hangdump-type Mini \
             --crashdump --crashdump-type Mini

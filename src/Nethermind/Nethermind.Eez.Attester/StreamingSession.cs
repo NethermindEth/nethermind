@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Eez.Prove;
@@ -23,6 +24,7 @@ internal sealed class StreamingSession
     private long _bytes;
     private long _witnessItems;
     private bool _cancelled;
+    private TaskCompletionSource _revoked = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal ulong RollupId { get; }
     internal ByteString Id { get; } = ByteString.CopyFrom(RandomNumberGenerator.GetBytes(32));
@@ -40,8 +42,10 @@ internal sealed class StreamingSession
         RollupId = begin.RollupId;
         _anchor = new Begin
         {
-            RollupId = begin.RollupId, AnchorNumber = begin.AnchorNumber,
-            AnchorHash = begin.AnchorHash, AnchorStateRoot = begin.AnchorStateRoot,
+            RollupId = begin.RollupId,
+            AnchorNumber = begin.AnchorNumber,
+            AnchorHash = begin.AnchorHash,
+            AnchorStateRoot = begin.AnchorStateRoot,
         };
         _limits = limits;
         _binding = new SessionBinding(Guid.NewGuid(), 1);
@@ -57,6 +61,15 @@ internal sealed class StreamingSession
         lock (_lock) CheckBinding(binding);
     }
 
+    internal Task AttachmentRevoked(SessionBinding binding)
+    {
+        lock (_lock)
+        {
+            CheckBinding(binding);
+            return _revoked.Task;
+        }
+    }
+
     internal bool CanRelease
     {
         get { lock (_lock) return _cancelled && _pending is null; }
@@ -67,6 +80,7 @@ internal sealed class StreamingSession
         lock (_lock)
         {
             _cancelled = true;
+            _revoked.TrySetResult();
             RemoveSuffix(0);
         }
     }
@@ -114,6 +128,7 @@ internal sealed class StreamingSession
             CheckBinding(binding);
             ServerFrame response = new() { SessionId = Id, RequestId = requestId, Epoch = binding.Epoch, Cancelled = new Cancelled() };
             _cancelled = true;
+            _revoked.TrySetResult();
             RemoveSuffix(0);
             return response;
         }
@@ -200,7 +215,9 @@ internal sealed class StreamingSession
             operation.Completed = true;
             return new ServerFrame
             {
-                SessionId = Id, RequestId = operation.RequestId, Epoch = operation.Binding.Epoch,
+                SessionId = Id,
+                RequestId = operation.RequestId,
+                Epoch = operation.Binding.Epoch,
                 Validated = new Validated { Number = block.Number, Hash = block.Hash, PostStateRoot = executed.PostStateRoot },
             };
         }
@@ -257,6 +274,8 @@ internal sealed class StreamingSession
     private void AdvanceEpoch()
     {
         if (_binding.Epoch == ulong.MaxValue) throw Error(StatusCode.ResourceExhausted, "session epoch exhausted");
+        _revoked.TrySetResult();
+        _revoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _binding = new SessionBinding(Guid.NewGuid(), _binding.Epoch + 1);
     }
 

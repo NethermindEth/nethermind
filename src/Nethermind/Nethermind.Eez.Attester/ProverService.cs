@@ -15,17 +15,36 @@ namespace Nethermind.Eez.Attester;
 /// timeouts, then attested by the pipeline. A request that outlives its deadline keeps the slot until its work
 /// reaches a checkpoint, so a retry cannot run concurrently with it.
 /// </summary>
-internal sealed class ProverService(AttestationPipeline pipeline, AttesterOptions options, ILogger<ProverService> logger) : Prover.ProverBase
+internal sealed class ProverService : Prover.ProverBase
 {
     private const string DeadlineExceeded = "Prove request deadline exceeded";
+    private readonly ulong _rollupId;
+    private readonly Func<AdmittedWindow, CancellationToken, Task<ProveResponse>> _execute;
+    private readonly AttesterOptions _options;
+    private readonly BackendAdmission _admission;
+    private readonly ILogger<ProverService> _logger;
 
-    private readonly SemaphoreSlim _slot = new(1, 1);
+    public ProverService(AttestationPipeline pipeline, AttesterOptions options, BackendAdmission admission, ILogger<ProverService> logger)
+        : this(pipeline.Context.RollupId, (window, cancellation) => Task.Run(() => pipeline.Run(window, cancellation), CancellationToken.None),
+            options, admission, logger)
+    { }
+
+    internal ProverService(ulong rollupId, Func<AdmittedWindow, CancellationToken, Task<ProveResponse>> execute,
+        AttesterOptions options, BackendAdmission admission, ILogger<ProverService> logger)
+    {
+        _rollupId = rollupId;
+        _execute = execute;
+        _options = options;
+        _admission = admission;
+        _logger = logger;
+    }
 
     public override async Task<ProveResponse> Prove(IAsyncStreamReader<ProveChunk> requestStream, ServerCallContext context)
     {
-        if (!_slot.Wait(0))
+        BackendAdmission.BackendLease? slot = _admission.TryAcquire();
+        if (slot is null)
         {
-            logger.LogWarning("Prove request rejected: another request is active");
+            _logger.LogWarning("Prove request rejected: another request is active");
             throw new RpcException(new Status(StatusCode.Unavailable, "another Prove request is already active"));
         }
 
@@ -33,21 +52,24 @@ internal sealed class ProverService(AttestationPipeline pipeline, AttesterOption
         long started = Environment.TickCount64;
         try
         {
-            using CancellationTokenSource deadline = new(options.RequestTimeout);
+            using CancellationTokenSource deadline = new(_options.RequestTimeout);
             AdmittedWindow window = await ReadWindow(requestStream, context.CancellationToken, deadline.Token);
-            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, deadline.Token);
-            Task<ProveResponse> work = Task.Run(() => pipeline.Run(window, cancellation.Token), CancellationToken.None);
+            CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, deadline.Token);
+            CancellationToken workerCancellation = cancellation.Token;
+            Task<ProveResponse> work;
+            try { work = _execute(window, workerCancellation); }
+            catch (Exception exception) { work = Task.FromException<ProveResponse>(exception); }
             slotHandedOff = true;
-            _ = work.ContinueWith(_ =>
+            _ = slot.ReleaseAfter(work, () =>
             {
                 window.Dispose();
-                _slot.Release();
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                cancellation.Dispose();
+            });
 
             ProveResponse response;
             try
             {
-                response = await work.WaitAsync(cancellation.Token);
+                response = await work.WaitAsync(workerCancellation);
             }
             catch (OperationCanceledException) when (deadline.IsCancellationRequested)
             {
@@ -59,45 +81,41 @@ internal sealed class ProverService(AttestationPipeline pipeline, AttesterOption
             }
             catch (Exception e) when (e is not RpcException)
             {
-                logger.LogError(e, "request pipeline worker failed");
+                _logger.LogError(e, "request pipeline worker failed");
                 throw new RpcException(new Status(StatusCode.Internal, "request pipeline worker failed"));
             }
 
-            logger.LogInformation("window validated and signed: blocks {From}..{To}, public inputs hash 0x{Hash}, {Elapsed} ms", window.FromBlock, window.ToBlock,
+            _logger.LogInformation("window validated and signed: blocks {From}..{To}, public inputs hash 0x{Hash}, {Elapsed} ms", window.FromBlock, window.ToBlock,
                 Convert.ToHexStringLower(response.PublicInputsHash.Span), Environment.TickCount64 - started);
             return response;
         }
         catch (RpcException e) when (e.StatusCode == StatusCode.Cancelled)
         {
-            logger.LogInformation("Prove request cancelled by the composer after {Elapsed} ms", Environment.TickCount64 - started);
+            _logger.LogInformation("Prove request cancelled by the composer after {Elapsed} ms", Environment.TickCount64 - started);
             throw;
         }
         catch (RpcException e)
         {
-            logger.LogWarning("Prove request failed: {Code} {Message} after {Elapsed} ms", e.StatusCode, e.Status.Detail, Environment.TickCount64 - started);
+            _logger.LogWarning("Prove request failed: {Code} {Message} after {Elapsed} ms", e.StatusCode, e.Status.Detail, Environment.TickCount64 - started);
             throw;
         }
         finally
         {
             if (!slotHandedOff)
             {
-                _slot.Release();
+                slot.Dispose();
             }
         }
     }
 
     /// <summary>Waits until no request holds the slot, so shutdown lets a running attestation finish.</summary>
-    public async Task WaitUntilIdle()
-    {
-        await _slot.WaitAsync();
-        _slot.Release();
-    }
+    public Task WaitUntilIdle() => _admission.WaitUntilIdle();
 
     private async Task<AdmittedWindow> ReadWindow(IAsyncStreamReader<ProveChunk> stream, CancellationToken aborted, CancellationToken deadline)
     {
         ProveChunk first = await Next(stream, aborted, deadline) ?? throw WindowAssembler.Invalid("empty Prove stream");
-        WindowAssembler assembler = WindowAssembler.Start(options.Limits, first);
-        if (assembler.RollupId != pipeline.Context.RollupId)
+        WindowAssembler assembler = WindowAssembler.Start(_options.Limits, first);
+        if (assembler.RollupId != _rollupId)
         {
             throw new RpcException(new Status(StatusCode.FailedPrecondition, "window rollup identity rejected"));
         }
@@ -121,7 +139,7 @@ internal sealed class ProverService(AttestationPipeline pipeline, AttesterOption
     private async Task<ProveChunk?> Next(IAsyncStreamReader<ProveChunk> stream, CancellationToken aborted, CancellationToken deadline)
     {
         using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(aborted, deadline);
-        idle.CancelAfter(options.StreamIdleTimeout);
+        idle.CancelAfter(_options.StreamIdleTimeout);
         try
         {
             return await stream.MoveNext(idle.Token) ? stream.Current : null;
