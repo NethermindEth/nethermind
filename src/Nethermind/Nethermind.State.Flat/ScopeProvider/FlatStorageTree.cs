@@ -219,7 +219,7 @@ public sealed class FlatStorageTree(
         // earlier write, but only a delete needs the branch sibling its leaf leaves behind.
         if (_scope.WarmsTries && (isDelete || _bundle.ShouldQueuePrewarm(_address, index)))
         {
-            // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
+            // For a non-delete, ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
             _scope.IncrementOutstandingWarmups();
             if (!_trieCacheWarmer.PushSlotJob(this, index, _scope.HintSequenceId, isDelete)
                 && !_trieCacheWarmer.PushSlotJobMpmc(this, index, _scope.HintSequenceId, isDelete))

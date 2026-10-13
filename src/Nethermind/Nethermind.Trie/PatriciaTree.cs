@@ -973,7 +973,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool forDelete = false)
+        private void DoWarmUpPath(Span<byte> remainingKey, ref TreePath path, TrieNode? node, bool forDelete)
         {
             int originalPathLength = path.Length;
             // The branch the current node hangs from, while the walk is still at that branch's child.
@@ -989,10 +989,8 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
                     // Best effort: a path-keyed store may hold another version of the node, which just ends the warm-up.
-                    if (!node.TryResolveNode(TrieStore, ref path)) return;
+                    if (!TryResolveForWarmUp(ref node, ref path)) return;
 
                     if (node.IsLeaf || node.IsExtension)
                     {
@@ -1040,7 +1038,12 @@ namespace Nethermind.Trie
         /// Resolves the child that <paramref name="branch"/> is left with once the leaf at the last nibble of
         /// <paramref name="leafPath"/> is deleted: the node <see cref="MaybeCombineNode"/> collapses the branch into.
         /// </summary>
-        /// <remarks>Nothing is resolved when the branch keeps two or more children, since it then stays a branch.</remarks>
+        /// <remarks>
+        /// Nothing is resolved when the branch keeps two or more children, since it then stays a branch. Each delete is
+        /// checked on its own against the trie before the block, so only a single delete per branch is covered: two
+        /// deletes under one three-child branch, or a branch left with no children (collapsing its parent), still read
+        /// in the commit.
+        /// </remarks>
         private void WarmUpDeleteSibling(TrieNode branch, ref TreePath leafPath)
         {
             int deletedNibble = leafPath[leafPath.Length - 1];
@@ -1052,9 +1055,17 @@ namespace Nethermind.Trie
             TrieNode? sibling = branch.GetChildWithChildPath(TrieStore, ref leafPath, siblingNibble, keepChildRef: true);
             if (sibling is null) return;
 
-            // Same lookup as the walk: an odd path is cached in the store rather than only under its parent.
-            if (sibling.IsSealed && sibling.Keccak is not null && leafPath.Length % 2 == 1) sibling = TrieStore.FindCachedOrUnknown(leafPath, sibling.Keccak);
-            sibling.TryResolveNode(TrieStore, ref leafPath);
+            TryResolveForWarmUp(ref sibling, ref leafPath);
+        }
+
+        /// <summary>
+        /// Resolves <paramref name="node"/> for a warm-up walk, first swapping it for the store's cached copy when
+        /// <paramref name="path"/> is odd, since an odd path is cached in the store rather than only under its parent.
+        /// </summary>
+        private bool TryResolveForWarmUp(ref TrieNode node, ref TreePath path)
+        {
+            if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node.Keccak);
+            return node.TryResolveNode(TrieStore, ref path);
         }
 
         /// <summary>

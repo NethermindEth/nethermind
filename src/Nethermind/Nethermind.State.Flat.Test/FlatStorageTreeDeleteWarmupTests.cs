@@ -40,13 +40,15 @@ public class FlatStorageTreeDeleteWarmupTests
     private static readonly Address Contract = TestItem.AddressA;
 
     [Test]
-    public void Deletes_hinted_by_the_block_cost_the_commit_no_more_reads_than_updates()
+    public void Deletes_hinted_by_the_block_cost_the_commit_no_more_reads_than_updates([Values] bool hintWithoutValueFirst)
     {
         using Fixture fixture = new();
         UInt256[] slots = fixture.PickSlots();
 
         long updateLoads = fixture.CommitLoads(slots, delete: false, passDeleteFlag: true, out _);
-        long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out Hash256 storageRoot);
+        // With hintWithoutValueFirst the prewarmer hints a slot before the block writes it, which marks the slot in
+        // the warm-up dedupe: the delete hint must still be queued.
+        long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out Hash256 storageRoot, hintWithoutValueFirst);
 
         Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads + CollisionAllowance), "the commit read collapse siblings the warm-up should have loaded");
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
@@ -66,26 +68,12 @@ public class FlatStorageTreeDeleteWarmupTests
         Assert.That(storageRoot, Is.EqualTo(fixture.ExpectedRootWithout(slots)));
     }
 
-    [Test]
-    public void A_delete_hint_is_queued_even_after_the_slot_was_hinted_without_a_value()
-    {
-        using Fixture fixture = new();
-        UInt256[] slots = fixture.PickSlots();
-
-        long updateLoads = fixture.CommitLoads(slots, delete: false, passDeleteFlag: true, out _);
-        // The prewarmer hints a slot before the block writes it, which marks the slot in the warm-up dedupe.
-        long deleteLoads = fixture.CommitLoads(slots, delete: true, passDeleteFlag: true, out _, hintWithoutValueFirst: true);
-
-        Assert.That(deleteLoads, Is.LessThanOrEqualTo(updateLoads + CollisionAllowance));
-    }
-
     private static UInt256 Slot(int index) => new(Keccak.Compute(BitConverter.GetBytes(index)).Bytes, isBigEndian: true);
 
     private static UInt256 ValueOf(int index) => (UInt256)(ulong)(index + 1);
 
     private sealed class Fixture : IDisposable
     {
-
         private readonly FlatDbConfig _config = new() { ApplyStorageWritesOnIdleThread = false };
         private readonly ResourcePool _resourcePool;
         private readonly RocksDbPersistence _persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
