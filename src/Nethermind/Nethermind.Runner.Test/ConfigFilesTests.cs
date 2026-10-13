@@ -26,6 +26,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.History;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -60,6 +61,13 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
+
+    [TestCase("mainnet_archive.json")]
+    [TestCase("sepolia_archive.json")]
+    [TestCase("hoodi_archive.json")]
+    [TestCase("gnosis_archive.json")]
+    [TestCase("chiado_archive.json")]
+    public void Archive_configs_keep_block_access_lists(string configWildcard) => Test<IHistoryConfig, bool>(configWildcard, static c => c.BalPruning, false);
 
     [Test]
     public void Fast_sync_without_snap_stays_on_patricia()

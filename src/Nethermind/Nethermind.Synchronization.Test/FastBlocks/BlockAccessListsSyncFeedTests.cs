@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -40,6 +41,7 @@ public class BlockAccessListsSyncFeedTests
     private ISyncPeerPool _syncPeerPool = null!;
     private IDb _metadataDb = null!;
     private MemorySyncPointers _syncPointers = null!;
+    private IHistoryPruner _historyPruner = null!;
     private BlockAccessListsSyncFeed _feed = null!;
 
     [SetUp]
@@ -50,6 +52,7 @@ public class BlockAccessListsSyncFeedTests
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _metadataDb = new TestMemDb();
         _syncPointers = new MemorySyncPointers();
+        _historyPruner = Substitute.For<IHistoryPruner>();
 
         _blockTree.SyncPivot.Returns((1UL, TestItem.KeccakA));
 
@@ -66,6 +69,7 @@ public class BlockAccessListsSyncFeedTests
             _syncPeerPool,
             new TestSyncConfig { FastSync = true, PivotNumber = 1 },
             syncReport ?? new NullSyncReport(),
+            _historyPruner,
             _metadataDb,
             logManager ?? LimboLogs.Instance);
 
@@ -314,6 +318,33 @@ public class BlockAccessListsSyncFeedTests
 
         using BlockAccessListsSyncFeed restarted = CreateFeed(specProvider);
         Assert.That(restarted.IsFinished, Is.True);
+    }
+
+    [Test]
+    public async Task Skips_block_access_lists_below_the_pruning_cutoff([Values] bool cutoffKnownAtStart)
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        const ulong cutoff = 30;
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation: false, headersAvailable: true, []);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        if (cutoffKnownAtStart) _historyPruner.BalCutoffBlockNumber.Returns(cutoff);
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+        _historyPruner.BalCutoffBlockNumber.Returns(cutoff);
+
+        List<ulong> requested = [];
+        for (int i = 0; i < 10; i++)
+        {
+            using BlockAccessListsSyncBatch? batch = await _feed.PrepareRequest();
+            if (batch is not null) requested.AddRange(batch.Infos.OfType<BlockInfo>().Select(static b => b.BlockNumber));
+        }
+
+        Assert.That(requested, Is.EquivalentTo(Enumerable.Range((int)cutoff, (int)(pivot - cutoff + 1)).Select(static n => (ulong)n)));
     }
 
     [Test]

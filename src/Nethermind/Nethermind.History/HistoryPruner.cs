@@ -59,6 +59,7 @@ public class HistoryPruner : IHistoryPruner
     private readonly IHistoryConfig _historyConfig;
     private readonly IPrunedReceiptRetention _receiptRetention;
     private readonly bool _enabled;
+    private readonly bool _balPruningOnly;
     private readonly ulong _pruningInterval;
     private readonly ulong _minHistoryRetentionEpochs;
     private readonly ulong _minBalRetentionEpochs;
@@ -91,6 +92,7 @@ public class HistoryPruner : IHistoryPruner
     // Read by JSON-RPC and the sync server while the pruner writes them under a lock it can hold for a whole reclaim.
     private volatile BlockHeader? _oldestBlockHeader;
     private volatile bool _hasLoadedDeletePointers;
+    private bool _hasLoadedBalsDeletePointer;
     private volatile bool _stampsValidated;
     // Consumed under _pruneLock after an eligible pass; the lock-free read only decides whether to enter the lock.
     private int _initialPruningPassPending = 1;
@@ -130,6 +132,7 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
+        _balPruningOnly = !_enabled && historyConfig.BalPruning && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;
@@ -158,6 +161,11 @@ public class HistoryPruner : IHistoryPruner
 
             blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
         }
+        else if (_balPruningOnly)
+        {
+            Metrics.BlockAccessListPruningCutoffBlocknumber = BalCutoffBlockNumber;
+            blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+        }
     }
 
     public ulong? CutoffBlockNumber
@@ -175,7 +183,7 @@ public class HistoryPruner : IHistoryPruner
         }
     }
 
-    public ulong? BalCutoffBlockNumber => _enabled ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
+    public ulong? BalCutoffBlockNumber => _enabled || _balPruningOnly ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
 
     internal ulong BalsDeletePointer => _balsDeletePointer;
 
@@ -285,6 +293,12 @@ public class HistoryPruner : IHistoryPruner
 
     internal void TryPruneHistory(CancellationToken cancellationToken)
     {
+        if (_balPruningOnly)
+        {
+            TryPruneBlockAccessListsOnly(cancellationToken);
+            return;
+        }
+
         // Trustworthy only once loaded: on in-memory defaults a collapsed cutoff would hide a persisted backlog.
         if (_blockTree.Head is null ||
             _blockTree.SyncPivot.BlockNumber == 0 ||
@@ -479,6 +493,47 @@ public class HistoryPruner : IHistoryPruner
         }
 
         return true;
+    }
+
+    /// <summary>Prunes block access lists outside the retention window on a node that keeps its blocks and receipts.</summary>
+    /// <remarks>
+    /// EIP-7928 requires BALs only for the weak subjectivity period, so they are pruned even with history pruning
+    /// disabled. Kept apart from the full pass, which would also move the block boundary and sweep the transaction index.
+    /// </remarks>
+    private void TryPruneBlockAccessListsOnly(CancellationToken cancellationToken)
+    {
+        if (_blockTree.Head is null || _blockTree.SyncPivot.BlockNumber == 0) return;
+
+        bool lockTaken = false;
+        Monitor.TryEnter(_pruneLock, LockWaitTimeoutMs, ref lockTaken);
+        if (!lockTaken) return;
+
+        try
+        {
+            if (Interlocked.Exchange(ref _initialPruningPassPending, 0) == 0 && !PruningIntervalHasElapsed()) return;
+
+            LoadBalsDeletePointer();
+            ulong? balCutoff = BalCutoffBlockNumber;
+            Metrics.BlockAccessListPruningCutoffBlocknumber = balCutoff;
+            if (balCutoff is not null) PruneBlockAccessLists(balCutoff.Value, cancellationToken);
+        }
+        finally
+        {
+            Monitor.Exit(_pruneLock);
+        }
+    }
+
+    private void LoadBalsDeletePointer()
+    {
+        if (_hasLoadedDeletePointers || _hasLoadedBalsDeletePointer) return;
+
+        byte[]? balsVal = _metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer);
+        _balsDeletePointer = balsVal is null
+            ? _minDeletableBlockNumber
+            : ulong.Max(new RlpReader(balsVal).DecodeULong(), _minDeletableBlockNumber);
+        _lastSavedBalsDeletePointer = _balsDeletePointer;
+        Metrics.OldestStoredBlockAccessListBlockNumber = _balsDeletePointer;
+        _hasLoadedBalsDeletePointer = true;
     }
 
     /// <summary>
@@ -1080,6 +1135,12 @@ public class HistoryPruner : IHistoryPruner
     {
         if (!_hasLoadedDeletePointers)
         {
+            if (_hasLoadedBalsDeletePointer && _balsDeletePointer != _lastSavedBalsDeletePointer)
+            {
+                _metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer).Bytes);
+                _lastSavedBalsDeletePointer = _balsDeletePointer;
+            }
+
             return;
         }
 

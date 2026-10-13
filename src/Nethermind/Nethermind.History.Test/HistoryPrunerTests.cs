@@ -145,6 +145,87 @@ public class HistoryPrunerTests
         }
     }
 
+    [TestCase(true, true, 9_968UL)]
+    [TestCase(false, true, null)]
+    [TestCase(true, false, null)]
+    public void Bals_are_pruned_when_history_pruning_is_disabled(bool balPruning, bool chainHasAccessLists, ulong? expectedCutoff)
+    {
+        TestMemDb metadataDb = new();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balPruning, chainHasAccessLists);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.BalCutoffBlockNumber, Is.EqualTo(expectedCutoff));
+            Assert.That(pruner.CutoffBlockNumber, Is.Null);
+            if (expectedCutoff is { } cutoff)
+            {
+                balStore.Received(1).DeleteRange(1, cutoff);
+                Assert.That(pruner.BalsDeletePointer, Is.EqualTo(cutoff));
+                Assert.That(new RlpReader(metadataDb.Get(MetadataDbKeys.BlockAccessListPruningDeletePointer)!).DecodeULong(), Is.EqualTo(cutoff));
+            }
+            else
+            {
+                balStore.DidNotReceive().DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            }
+
+            receiptStorage.DidNotReceive().RemoveReceiptsRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            blockTree.DidNotReceive().DeleteOldBlockRange(Arg.Any<ulong>(), Arg.Any<ulong>());
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.HistoryPruningDeletePointer), Is.False);
+        }
+    }
+
+    [Test]
+    public void Bal_only_pruning_resumes_from_persisted_pointer()
+    {
+        TestMemDb metadataDb = new();
+        metadataDb.Set(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(9_000UL).Bytes);
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore);
+
+        pruner.TryPruneHistory(CancellationToken.None);
+
+        balStore.Received(1).DeleteRange(9_000, 9_968);
+        balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 9_000), Arg.Any<ulong>());
+    }
+
+    private static HistoryPruner CreateBalOnlyPruner(
+        TestMemDb metadataDb,
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        IBlockAccessListStore balStore,
+        bool balPruning = true,
+        bool chainHasAccessLists = true)
+    {
+        blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
+        blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(metadataDb);
+        dbProvider.BlocksDb.Returns(new TestMemDb());
+        dbProvider.ReceiptsDb.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(new TestMemDb());
+
+        return new HistoryPruner(
+            blockTree,
+            receiptStorage,
+            balStore,
+            new TestSpecProvider(new ReleaseSpec { IsEip7928Enabled = chainHasAccessLists }),
+            Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IHeaderStore>(),
+            dbProvider,
+            new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = 1, BalPruning = balPruning, PruningInterval = 0 },
+            BlocksConfig,
+            SyncConfig,
+            new ProcessExitSource(new()),
+            Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            NullPrunedReceiptRetention.Instance,
+            LimboLogs.Instance);
+    }
+
     [TestCase(100UL, 1u, 68UL)]
     [TestCase(100UL, 4u, 0UL)] // negative pre-clamp
     [TestCase(100UL, 0u, 100UL)]

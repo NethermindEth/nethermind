@@ -25,6 +25,11 @@ public interface IHistoryConfig : IConfig
         HiddenFromDocs = true)]
     uint BalRetentionEpochs { get; set; }
 
+    [ConfigItem(
+        Description = "Whether to prune block access lists (BALs) older than the weak subjectivity period when `Pruning` is `Disabled`. The other pruning modes always prune them.",
+        DefaultValue = "true")]
+    bool BalPruning { get; set; }
+
     // Set to 0 to prune every slot
     [ConfigItem(
         Description = "Number of epochs to wait between each history pruning.",

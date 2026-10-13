@@ -35,6 +35,9 @@
   "Db": {
     "SkipCheckingSstFileSizesOnDbOpen": true
   },
+  "History": {
+    "BalPruning": false
+  },
   "FlatDb": {
     "Enabled": true,
     "HistoryEnabled": true,

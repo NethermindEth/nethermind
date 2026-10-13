@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -29,7 +30,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 {
     protected override ulong? LowestInsertedNumber => _syncPointers.LowestInsertedBlockAccessListBlockNumber;
     protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BlockAccessListsBarrierWhenStarted;
-    protected override ulong SyncConfigBarrierCalc => _syncConfig.AncientBlockAccessListsBarrierCalc;
+    protected override ulong SyncConfigBarrierCalc =>
+        ulong.Max(_syncConfig.AncientBlockAccessListsBarrierCalc, ulong.Min(_historyPruner.BalCutoffBlockNumber ?? 0, _blockTree.SyncPivot.BlockNumber));
     protected override Func<bool> HasPivot =>
         () =>
         {
@@ -46,6 +48,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly ISyncPointers _syncPointers;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IHistoryPruner _historyPruner;
     private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
     private readonly bool _blockAccessListsEverEnabled;
 
@@ -67,6 +70,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
         ISyncReport syncReport,
+        IHistoryPruner historyPruner,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         ILogManager logManager)
         : base(metadataDb, specProvider, logManager?.GetClassLogger<BlockAccessListsSyncFeed>() ?? default)
@@ -77,7 +81,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncConfig = syncConfig;
         _syncReport = syncReport;
         _blockTree = blockTree;
-        _blockAccessListDownloadStrategy = new(blockTree, syncReport);
+        _historyPruner = historyPruner;
+        _blockAccessListDownloadStrategy = new(blockTree, syncReport, historyPruner);
         _blockAccessListsEverEnabled = specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
 
         if (!_syncConfig.FastSync)
@@ -106,7 +111,8 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     }
 
     /// <summary>
-    /// Returns the configured barrier, raised to the last block before EIP-7928 activation when that is higher.
+    /// Returns the configured barrier, raised to the block access list pruning cutoff or to the last block before
+    /// EIP-7928 activation when either is higher.
     /// </summary>
     /// <remarks>
     /// No block below the activation has an access list, so the sync stops there instead of walking down to genesis.
@@ -115,7 +121,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     /// </remarks>
     private ulong ResolveBarrier(bool logFallback)
     {
-        ulong barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
+        ulong barrier = SyncConfigBarrierCalc;
         BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out _);
         if (pivotHeader is null || barrier >= pivotNumber || !_specProvider.GetSpec(pivotHeader).BlockLevelAccessListsEnabled)
         {
@@ -361,12 +367,19 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlockAccessLists.CurrentQueued = _syncStatusList.QueueSize;
     }
 
-    private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
+    private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport, IHistoryPruner historyPruner) : IBlockDownloadStrategy
     {
         private ulong _lowestQueriedBlockWithAccessLists = ulong.MaxValue;
 
         public bool ShouldDownloadBlock(BlockInfo info)
         {
+            // The pruner has moved past these heights already, so an access list stored here would never be deleted.
+            if (info.BlockNumber < ulong.Min(historyPruner.BalCutoffBlockNumber ?? 0, blockTree.SyncPivot.BlockNumber))
+            {
+                syncReport.FastBlockAccessLists.IncrementSkipped();
+                return false;
+            }
+
             if (info.BlockNumber > Interlocked.Read(ref _lowestQueriedBlockWithAccessLists))
             {
                 return true;
