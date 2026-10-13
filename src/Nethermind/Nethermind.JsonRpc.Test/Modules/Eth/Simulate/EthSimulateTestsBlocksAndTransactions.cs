@@ -1319,6 +1319,41 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// EIP-2681: a sender at the maximum nonce fails the request with or without validation, on the EIP-7928 path
+    /// (Amsterdam) and on the sequential one (Osaka), instead of wrapping the nonce to 0.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_sender_at_max_nonce([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = ulong.MaxValue } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InternalError));
+    }
+
+    /// <summary>
     /// Regression test for #12692: under EIP-7928 the block-access-list path must enforce the
     /// <c>JsonRpc.GasCap</c> budget across the calls of a request. The clamp to the running
     /// <c>TotalGasLeft</c> lives in the simulate adapter, so with a tight cap the second call is

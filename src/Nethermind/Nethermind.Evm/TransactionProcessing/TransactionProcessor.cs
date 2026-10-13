@@ -77,7 +77,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// the structural signature checks. Must be set before execution: parallel EIP-7928 workers read it
         /// without synchronisation, relying on the processor being fully configured before it is published.
         /// </summary>
-        /// <remarks>execution-apis#907: simulation exempts contract sender and signature checks even with <c>validation: true</c>.</remarks>
+        /// <remarks>
+        /// execution-apis#907: simulation exempts contract sender and signature checks even with <c>validation: true</c>.
+        /// With validation skipped, the processor still enforces the EIP-2681 nonce limit, as eth_simulateV1 requires.
+        /// </remarks>
         public bool SkipSenderChecks { get; set; }
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
@@ -1331,6 +1334,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
+            // EIP-2681: eth_simulateV1 keeps the nonce limit when it skips validation; other unvalidated calls wrap the nonce.
+            if (nonce == ulong.MaxValue && IsNonStrictSimulation(opts))
+            {
+                TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
+                return TransactionResult.NonceOverflow;
+            }
+
             ulong newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
             WorldState.SetNonce(senderAddress, newNonce);
 
@@ -1423,6 +1433,9 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected bool ShouldValidate(ExecutionOptions opts) => !opts.HasFlag(ExecutionOptions.SkipValidation);
+
+        /// <summary>Whether this is an eth_simulateV1 call with <c>validation: false</c>.</summary>
+        private bool IsNonStrictSimulation(ExecutionOptions opts) => SkipSenderChecks && !ShouldValidate(opts);
 
         private int ExecuteEvmCall<TTracingInst>(
             Transaction tx,
