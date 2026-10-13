@@ -44,10 +44,13 @@ public class WriteBatchBenchmark
     [Params(100, 1000, 3000)]
     public int StorageSlotsPerAccount { get; set; }
 
+    [Params(false, true)]
+    public bool UseNativeBulkSet { get; set; }
+
     [GlobalSetup]
     public void GlobalSetup()
     {
-        _config = new FlatDbConfig();
+        _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
         _resourcePool = new ResourcePool(_config);
         _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);

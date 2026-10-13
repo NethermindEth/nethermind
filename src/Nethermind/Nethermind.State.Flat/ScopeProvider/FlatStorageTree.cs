@@ -39,6 +39,10 @@ public sealed class FlatStorageTree(
     // The root warm-ups walk from, resolved by the first one on a warmer thread.
     private StrongBox<TrieRoot>? _preBlockRoot;
 
+    // With UseNativeBulkSet the native bulk set maintains the storage trie instead of the managed tree.
+    private NativeTrieNodeStore? _nativeStore;
+    private Hash256 _nativeRoot = storageRoot;
+
     private const int EarlyIdle = 0;
     private const int EarlyApplying = 1;
     private const int EarlyClaimed = 2;
@@ -81,6 +85,10 @@ public sealed class FlatStorageTree(
 
     private Hash256 AddressHash => _addressHash ??= _address.ToAccountPath.ToHash256();
 
+    private bool UsesNativeBulkSet => _config.UseNativeBulkSet && !_scope.Trieless;
+
+    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash);
+
     private LoggedTrie Trie => _trie ??= CreateTrie();
 
     private LoggedTrie CreateTrie()
@@ -98,7 +106,7 @@ public sealed class FlatStorageTree(
         return resolved;
     }
 
-    public Hash256 RootHash => _trie?.RootHash ?? _rootBeforeTrie;
+    public Hash256 RootHash => UsesNativeBulkSet ? _nativeRoot : _trie?.RootHash ?? _rootBeforeTrie;
 
     internal bool IsDisposed => _scope.IsDisposed;
 
@@ -282,15 +290,26 @@ public sealed class FlatStorageTree(
         AbandonEarlyTrie();
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
+        if (UsesNativeBulkSet)
+        {
+            _nativeRoot = Keccak.EmptyTreeHash;
+            _nativeStore?.Clear();
+            return;
+        }
+
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
         if (_trie is null) _rootBeforeTrie = Keccak.EmptyTreeHash;
         else _trie.Clear();
     }
 
-    public void CommitTree() => _trie?.Publish();
+    public void CommitTree()
+    {
+        if (UsesNativeBulkSet) _nativeStore?.Publish();
+        else _trie?.Publish();
+    }
 
     /// <summary>Whether the storage trie holds nodes written since its last commit.</summary>
-    internal bool HasUncommittedNodes => _trie is { HasUnpublishedNodes: true };
+    internal bool HasUncommittedNodes => UsesNativeBulkSet ? _nativeStore is { HasPending: true } : _trie is { HasUnpublishedNodes: true };
 
     /// <summary>Abandons private early updates once the scope no longer uses this tree.</summary>
     internal void ReleaseTrie() => AbandonEarlyTrie();
@@ -298,6 +317,7 @@ public sealed class FlatStorageTree(
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
+        if (UsesNativeBulkSet) return new NativeStorageWriteBatch(this, estimatedEntries, onRootUpdated);
         LoggedTrie trie = Trie;
         return new LoggedStorageWriteBatch(this, trie, estimatedEntries, onRootUpdated, AdoptEarlyTrie(trie));
     }
@@ -365,6 +385,43 @@ public sealed class FlatStorageTree(
             // Deferred, the scope commit publishes the nodes after the block is reported valid.
             if (!storageTree._config.DeferStorageTrieCommit) storageTree.CommitTree();
             if (entries.Count > 0 || _reused > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree.RootHash);
+        }
+    }
+
+    // UseNativeBulkSet: the native bulk set maintains the storage trie, like TrieStoreScopeProvider.StorageTreeBulkWriteBatch
+    // does the managed one, and values are mirrored into the flat overlay.
+    private sealed class NativeStorageWriteBatch(
+        FlatStorageTree storageTree,
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private readonly ArrayPoolList<PatriciaTree.BulkSetEntry> _entries = new(estimatedEntries);
+        private bool _hasSelfDestruct;
+
+        [SkipLocalsInit]
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            Unsafe.SkipInit(out EvmWord word);
+            bool isZero = value.IsZero;
+            ValueHash256 key = default;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+            _entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
+            storageTree.Set(index, value);
+        }
+
+        public void Clear()
+        {
+            if (_entries.Count > 0) throw new InvalidOperationException("Must call clear first in a storage write batch");
+            _hasSelfDestruct = true;
+            storageTree.ClearStorage();
+        }
+
+        public void Dispose()
+        {
+            using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = _entries;
+            if (entries.Count > 0) storageTree._nativeRoot = storageTree.NativeStore.BulkSet(storageTree._nativeRoot, entries.AsSpan());
+            if (!storageTree._config.DeferStorageTrieCommit) storageTree._nativeStore?.Publish();
+            if (entries.Count > 0 || _hasSelfDestruct) onRootUpdated(storageTree._address, storageTree._nativeRoot);
         }
     }
 

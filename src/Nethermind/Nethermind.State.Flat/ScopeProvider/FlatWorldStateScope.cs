@@ -38,6 +38,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly TrieRoot _initialTrieRoot;
     // Null in a trie-less scope.
     private readonly LoggedTrie? _stateTrie;
+    // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTrie.
+    private readonly NativeTrieNodeStore? _nativeStateStore;
+    private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
@@ -91,6 +94,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _commitTarget = commitTarget;
 
         _initialStateRoot = currentStateId.StateRoot.ToCommitment();
+        _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
         _warmReadPool = warmReadPool;
@@ -101,16 +105,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
-        if (!_trieless)
+        if (!_trieless && !configuration.UseNativeBulkSet)
         {
             TrieNodeLog log = snapshotBundle.TrieNodeLog!;
             _logRetain = log.RetainActive();
             _initialTrieRoot = LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256);
             _stateTrie = new LoggedTrie(snapshotBundle, log, null, _initialTrieRoot);
         }
+        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null);
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
-            && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
+            && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
@@ -217,10 +222,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (Interlocked.Decrement(ref _outstandingWarmups) == 0) Volatile.Read(ref _warmupsDrained)?.Set();
     }
 
-    public Hash256 RootHash => _stateTrie?.RootHash ?? _initialStateRoot;
+    public Hash256 RootHash => _nativeStateStore is not null ? _nativeStateRoot : _stateTrie?.RootHash ?? _initialStateRoot;
 
     /// <remarks>The root is current after every write batch.</remarks>
     public void UpdateRootHash() { }
+    private void SetAccountsNatively(Dictionary<AddressAsKey, Account?> accounts)
+    {
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
+        foreach ((AddressAsKey address, Account? account) in accounts)
+        {
+            KeccakCache.ComputeTo(address.Value.Bytes, out ValueHash256 key);
+            byte[]? encoded = account is null ? null
+                : account.IsTotallyEmpty ? StateTree.EmptyAccountRlp.Bytes
+                : AccountDecoder.Instance.EncodeAsBytes(account);
+            entries.Add(new PatriciaTree.BulkSetEntry(in key, encoded));
+        }
+
+        _nativeStateRoot = _nativeStateStore!.BulkSet(_nativeStateRoot, entries.AsSpan());
+    }
 
     public Account? Get(Address address)
     {
@@ -532,7 +551,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         if (!_trieless)
         {
             CommitStorageTrees();
-            _stateTrie!.Publish();
+            if (_nativeStateStore is not null) _nativeStateStore.Publish();
+            else _stateTrie!.Publish();
         }
 
         ReleaseStorageTrees();
@@ -685,8 +705,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(_dirtyAccounts);
-                    scope._stateTrie!.BulkSet(entries, canParallelize: true);
+                    if (scope._nativeStateStore is not null) scope.SetAccountsNatively(_dirtyAccounts);
+                    else
+                    {
+                        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = StateTree.CreateAccountEntries(_dirtyAccounts);
+                        scope._stateTrie!.BulkSet(entries, canParallelize: true);
+                    }
                 }
             }
             finally
