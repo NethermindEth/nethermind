@@ -14,9 +14,9 @@ internal sealed class AccountPartitionRows : IDisposable
 
     public readonly HashSet<ValueHash256> StreamedPaths = [];
 
-    public ArrayPoolList<AccountRowRef> Start { get; private set; } = new(InitialCapacity);
+    public ArrayPoolList<AccountRowRef> Start { get; private set; } = [with(InitialCapacity)];
 
-    public ArrayPoolList<AccountRowRef> Deltas { get; private set; } = new(InitialCapacity);
+    public ArrayPoolList<AccountRowRef> Deltas { get; private set; } = [with(InitialCapacity)];
 
     public RowArena Arena { get; private set; } = new();
 
@@ -25,8 +25,8 @@ internal sealed class AccountPartitionRows : IDisposable
     public void Reset()
     {
         Dispose();
-        Start = new ArrayPoolList<AccountRowRef>(InitialCapacity);
-        Deltas = new ArrayPoolList<AccountRowRef>(InitialCapacity);
+        Start = [with(InitialCapacity)];
+        Deltas = [with(InitialCapacity)];
         Arena = new RowArena();
     }
 

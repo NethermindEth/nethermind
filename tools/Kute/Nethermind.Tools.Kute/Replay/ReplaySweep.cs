@@ -54,7 +54,7 @@ public sealed class ReplaySweep(ReplayOptions options, TextWriter log)
         }
 
         IAuth? auth = ReplayAuth.TryCreate(_options.SecretPath);
-        List<LevelResult> results = new(_options.Concurrencies.Count);
+        List<LevelResult> results = [with(_options.Concurrencies.Count)];
 
         foreach (int concurrency in _options.Concurrencies)
         {

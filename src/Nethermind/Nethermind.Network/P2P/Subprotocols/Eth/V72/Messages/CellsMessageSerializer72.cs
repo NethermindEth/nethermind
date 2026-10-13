@@ -83,7 +83,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         }
 
         int cellsEnd = ctx.Position + cellsSequenceLength;
-        List<byte[][]> cellsByTx = new(hashes.Count);
+        List<byte[][]> cellsByTx = [with(hashes.Count)];
         while (ctx.Position < cellsEnd)
         {
             if (cellsByTx.Count >= hashes.Count)

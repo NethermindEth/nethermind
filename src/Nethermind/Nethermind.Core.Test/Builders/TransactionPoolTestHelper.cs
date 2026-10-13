@@ -12,7 +12,7 @@ public static class TransactionPoolTestHelper
     /// <summary>Refills the transaction pool and captures the identities retained for ownership assertions.</summary>
     public static HashSet<Transaction> Refill()
     {
-        HashSet<Transaction> pooled = new(ReferenceEqualityComparer.Instance);
+        HashSet<Transaction> pooled = [with(ReferenceEqualityComparer.Instance)];
         for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
         foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
         return pooled;

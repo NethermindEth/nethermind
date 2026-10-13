@@ -41,7 +41,7 @@ internal sealed class DiscoveredNodeStore
     {
         BootnodeOptionValidation.ValidatePositive(nameof(maxRetainedNodes), maxRetainedNodes);
         _maxRetainedNodes = maxRetainedNodes;
-        _nodes = new Dictionary<Hash256, TrackedNode>(maxRetainedNodes);
+        _nodes = [with(maxRetainedNodes)];
     }
 
     public void AddOrUpdate(Node node, string protocol, bool isActive)

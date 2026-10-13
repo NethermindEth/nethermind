@@ -257,7 +257,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             extension[2] = 0xa0; // bytes32 header
             extension[^1] = 0x01; // child hash, absent from the proof set and never resolved
 
-            ArrayPoolList<byte[]> proofList = new(2) { extension };
+            ArrayPoolList<byte[]> proofList = [with(2), extension];
             byte[] rootHash = Keccak.Compute(extension).BytesToArray();
 
             if (underBranch)

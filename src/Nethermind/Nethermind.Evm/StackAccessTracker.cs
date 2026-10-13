@@ -70,7 +70,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had at the start of the transaction.</summary>
     public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance) =>
-        (_trackingState.TransientCreates ??= new(AddressAsKey.EqualityComparer))[address] = originalBalance;
+        (_trackingState.TransientCreates ??= [with(AddressAsKey.EqualityComparer)])[address] = originalBalance;
 
     /// <summary>Returns whether <paramref name="address"/> is a live EIP-8360 <c>TCREATE</c> account.</summary>
     /// <remarks>
@@ -141,7 +141,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
-        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = [with(AddressAsKey.EqualityComparer)];
         public Dictionary<AddressAsKey, UInt256>? TransientCreates;
 
         private StorageCell _lastWarmCell;

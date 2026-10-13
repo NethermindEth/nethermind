@@ -475,7 +475,7 @@ public static class SszCodec
         int totalHashes = 0;
         foreach (Transaction tx in txs)
             if (tx.BlobVersionedHashes is { } h) totalHashes += h.Length;
-        List<Hash256> list = new(totalHashes);
+        List<Hash256> list = [with(totalHashes)];
         foreach (Transaction tx in txs)
         {
             byte[]?[]? hashes = tx.BlobVersionedHashes;

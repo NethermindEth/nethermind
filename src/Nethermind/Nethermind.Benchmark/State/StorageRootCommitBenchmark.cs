@@ -59,7 +59,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _baseSnapshots = new List<FlatSnapshot>(1);
+        _baseSnapshots = [with(1)];
         _address = DeriveAddress(1);
 
         StateId initialStateId = new(0, Keccak.EmptyTreeHash);

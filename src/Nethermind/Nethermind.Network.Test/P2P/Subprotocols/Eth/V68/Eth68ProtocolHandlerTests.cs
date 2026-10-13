@@ -872,7 +872,7 @@ public class Eth68ProtocolHandlerTests
                 return true;
             });
 
-        ArrayPoolList<ValueHash256> hashes = new(transactionCount);
+        ArrayPoolList<ValueHash256> hashes = [with(transactionCount)];
         for (int i = 0; i < transactionCount; i++)
         {
             hashes.Add(new Hash256(i.ToString("X64")));
@@ -1075,7 +1075,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
-        ArrayPoolList<Transaction> transactions = new(2);
+        ArrayPoolList<Transaction> transactions = [with(2)];
         using PooledTransactionsMessage response = new(1111, new(transactions));
         if (correlated)
         {
@@ -1126,10 +1126,10 @@ public class Eth68ProtocolHandlerTests
     private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs)
     {
         TxDecoder txDecoder = TxDecoder.Instance;
-        types = new(txCount);
-        sizes = new(txCount);
-        hashes = new(txCount);
-        txs = new(txCount);
+        types = [with(txCount)];
+        sizes = [with(txCount)];
+        hashes = [with(txCount)];
+        txs = [with(txCount)];
 
         for (int i = 0; i < txCount; ++i)
         {

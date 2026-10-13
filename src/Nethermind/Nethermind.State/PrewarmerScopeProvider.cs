@@ -347,7 +347,7 @@ public class PrewarmerScopeProvider(
 
         public void ApplyBal(ReadOnlyBlockAccessList bal)
         {
-            ArrayPoolList<AppliedAccount> accounts = new(bal.AccountChanges.Count);
+            ArrayPoolList<AppliedAccount> accounts = [with(bal.AccountChanges.Count)];
             try
             {
                 foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)

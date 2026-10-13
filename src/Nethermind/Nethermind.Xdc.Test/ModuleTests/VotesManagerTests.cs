@@ -51,7 +51,7 @@ public class VotesManagerTests
 
         // Wrong gap number generates different keys for the vote pool
         PrivateKey[] keysForVotes = keysForMasternodes.Take(14).ToArray();
-        List<Vote> votesWithDiffGap = new(capacity: keysForVotes.Length);
+        List<Vote> votesWithDiffGap = [with(capacity: keysForVotes.Length)];
         for (int i = 0; i < keysForVotes.Length - 3; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 450, keysForVotes[i]));
         for (int i = keysForVotes.Length - 3; i < keysForVotes.Length; i++) votesWithDiffGap.Add(XdcTestHelper.BuildSignedVote(info, 451, keysForVotes[i]));
         yield return new TestCaseData(masternodes, header, currentRound, votesWithDiffGap.ToArray(), info, 0)

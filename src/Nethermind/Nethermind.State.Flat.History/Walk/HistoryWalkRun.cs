@@ -200,7 +200,7 @@ internal sealed class HistoryWalkRun
     internal static ArrayPoolList<(ulong Anchor, ulong To)> RootFoldChunks(ulong from, ulong to, int workers, ulong interval)
     {
         ulong span = workers <= 1 ? 0 : Math.Max(interval, BitOperations.RoundUpToPowerOf2((to - from) / ((ulong)workers * RootFoldChunksPerWorker)));
-        ArrayPoolList<(ulong Anchor, ulong To)> chunks = new(Math.Max(1, workers) * (int)RootFoldChunksPerWorker + 1);
+        ArrayPoolList<(ulong Anchor, ulong To)> chunks = [with(Math.Max(1, workers) * (int)RootFoldChunksPerWorker + 1)];
         for (ulong anchor = from; ;)
         {
             ulong seam = span == 0 ? to : (anchor | (span - 1)) + 1;

@@ -89,7 +89,7 @@ internal sealed class XdcMasternodeEthModule(
             return ResultWrapper<XdcCandidatesResult>.Success(result);
         }
 
-        Dictionary<string, XdcCandidateInfo> statuses = new(candidates.Length);
+        Dictionary<string, XdcCandidateInfo> statuses = [with(candidates.Length)];
         foreach (CandidateStake candidate in candidates)
         {
             statuses[candidate.Address.ToString()] = new XdcCandidateInfo
@@ -447,7 +447,7 @@ internal sealed class XdcMasternodeEthModule(
         }
 
         HashSet<Address> pending = [.. masternodes];
-        List<Address> signers = new(masternodes.Length);
+        List<Address> signers = [with(masternodes.Length)];
         ulong headNumber = tree.Head?.Number ?? 0;
         ulong limit = Math.Min(signedHeader.Number + XdcConstants.LimitTimeFinality, headNumber);
 
@@ -572,7 +572,7 @@ internal sealed class XdcMasternodeEthModule(
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         Address[] candidates = masternodeVotingContract.GetCandidates(processor, stateHeader) ?? [];
-        List<CandidateStake> stakes = new(candidates.Length);
+        List<CandidateStake> stakes = [with(candidates.Length)];
         foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)

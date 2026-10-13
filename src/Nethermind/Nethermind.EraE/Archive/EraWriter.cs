@@ -45,17 +45,17 @@ public sealed class EraWriter : IDisposable
     private readonly SlotTime? _slotTime;
 
     // Buffered per-block RLP payloads. These are written in section order during Finalize().
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = new(MaxEraSize);
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = new(MaxEraSize);
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = [with(MaxEraSize)];
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = [with(MaxEraSize)];
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = [with(MaxEraSize)];
 
     // Per-block byte offsets recorded during Finalize() and written into the ComponentIndex.
     // Each stores the absolute file position of the entry's TLV header.
-    private readonly ArrayPoolList<long> _headerOffsets = new(MaxEraSize);
-    private readonly ArrayPoolList<long> _bodyOffsets = new(MaxEraSize);
-    private readonly ArrayPoolList<long> _receiptsOffsets = new(MaxEraSize);
+    private readonly ArrayPoolList<long> _headerOffsets = [with(MaxEraSize)];
+    private readonly ArrayPoolList<long> _bodyOffsets = [with(MaxEraSize)];
+    private readonly ArrayPoolList<long> _receiptsOffsets = [with(MaxEraSize)];
 
-    private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
+    private readonly ArrayPoolList<UInt256> _totalDifficulties = [with(MaxEraSize)];
 
     private ulong _startNumber;
     private bool _firstBlock = true;

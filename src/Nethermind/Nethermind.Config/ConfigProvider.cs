@@ -17,7 +17,7 @@ public class ConfigProvider : IConfigProvider
     private readonly ConcurrentDictionary<Type, IConfig> _instances = new();
 
     private readonly List<IConfigSource> _configSource = [];
-    private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
+    private Dictionary<string, object> Categories { get; set; } = [with(StringComparer.InvariantCultureIgnoreCase)];
 
     private readonly Dictionary<Type, Type> _implementations = [];
 

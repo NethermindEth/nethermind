@@ -36,7 +36,7 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls is not null)
         {
-            blockStateCalls = new List<BlockStateCall<TransactionWithSourceDetails>>(call.BlockStateCalls.Count);
+            blockStateCalls = [with(call.BlockStateCalls.Count)];
 
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {

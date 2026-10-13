@@ -61,7 +61,7 @@ internal sealed class SeriesReader(IColumnsDb<FlatHistoryColumns> history, Commi
 
         private readonly RowArena _arena = new();
         private readonly int _maxRows = Math.Max(MinRowsBuffered, maxRowsBuffered);
-        private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = new(Math.Min(Math.Max(MinRowsBuffered, maxRowsBuffered), 4096));
+        private readonly ArrayPoolList<(ulong Block, int Offset, int Length)> _window = [with(Math.Min(Math.Max(MinRowsBuffered, maxRowsBuffered), 4096))];
         private ulong _nextLow = fromExclusive + 1;
         private ulong _windowSize = Window;
         private int _position = -1;

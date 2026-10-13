@@ -76,7 +76,7 @@ public class ShareableOverridableEnvSourceTests
 
     private static List<Scope<Marker>> RentMany(ShareableOverridableEnvSource<Marker> source, int count)
     {
-        List<Scope<Marker>> rented = new(count);
+        List<Scope<Marker>> rented = [with(count)];
         for (int i = 0; i < count; i++) rented.Add(source.BuildAndOverride(null));
         return rented;
     }

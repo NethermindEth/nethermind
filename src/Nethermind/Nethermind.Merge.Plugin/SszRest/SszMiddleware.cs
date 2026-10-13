@@ -85,7 +85,7 @@ public sealed class SszMiddleware
         _postLookup = _postRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
         _getLookup = _getRoutes.GetAlternateLookup<ReadOnlySpan<char>>();
 
-        HashSet<string> multiSegment = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> multiSegment = [with(StringComparer.OrdinalIgnoreCase)];
         foreach (string resource in _postRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
         foreach (string resource in _getRoutes.Keys) if (resource.Contains('/')) multiSegment.Add(resource);
         _multiSegmentResources = multiSegment.ToFrozenSet(StringComparer.OrdinalIgnoreCase);

@@ -24,7 +24,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
+    internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = [with(Bytes.EqualityComparer)];
 
     /// <summary>
     /// Attempts to flush retained deletes before publishing a spec-change validation marker.
@@ -268,7 +268,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
             {
-                candidates = new(Math.Min(txHashes.Count, requestedMask.Count + 1));
+                candidates = [with(Math.Min(txHashes.Count, requestedMask.Count + 1))];
                 BlobCellMask capturedMask = BlobCellMask.Empty;
                 foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {

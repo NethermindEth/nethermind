@@ -145,10 +145,10 @@ public class FrameTxVerifyDosMeasurement
 
         for (int i = 0; i < Warmup; i++) Process(AttackTx(verifyGas));
 
-        List<double> medians = new(Repeats);
+        List<double> medians = [with(Repeats)];
         for (int repeat = 0; repeat < Repeats; repeat++)
         {
-            List<double> perTxMicros = new(Samples);
+            List<double> perTxMicros = [with(Samples)];
             for (int i = 0; i < Samples; i++)
             {
                 Transaction tx = AttackTx(verifyGas);

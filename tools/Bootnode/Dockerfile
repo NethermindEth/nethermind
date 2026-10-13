@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.400-resolute@sha256:e9d9e903cc6eb4049f3c07d8a86ffdccdd0511a91c3d459c4c4e68d1dab91adf AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100-rc.1-resolute@sha256:ab11199f8a0cded1d667111a0d4f0906567c3a17348a7181f9781d12cc5eb6f9 AS build
 
 ARG BUILD_CONFIG=release
 ARG CI=true
@@ -30,7 +30,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     -p:SaveDiskSpace=true \
     -p:SourceRevisionId=$COMMIT_HASH
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.11-resolute@sha256:655461545edac45015401bee7e52be93373caf15ceddeadd07f0dfe3e0aa9f19
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-rc.1-resolute@sha256:bd68c1b5bd48ce7da7ca762f149c3760984f9b9e91a44579d3591e36ac1c7701
 
 ARG COMMIT_HASH=unknown
 ARG VERSION=unknown

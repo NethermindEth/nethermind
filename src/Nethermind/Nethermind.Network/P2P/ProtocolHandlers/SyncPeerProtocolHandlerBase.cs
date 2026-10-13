@@ -250,7 +250,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            ArrayPoolList<Transaction> txsToSend = new(1024);
+            ArrayPoolList<Transaction> txsToSend = [with(1024)];
 
             foreach (Transaction tx in txs)
             {
@@ -259,7 +259,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (txSize > packetSizeLeft && txsToSend.Count > 0)
                 {
                     SendMessage(txsToSend);
-                    txsToSend = new(1024);
+                    txsToSend = [with(1024)];
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                 }
 
@@ -411,7 +411,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+            ArrayPoolList<TxReceipt[]> txReceipts = [with(Math.Min(hashes.Length, MaxReceiptsLookups))];
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
@@ -472,8 +472,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     return headers;
                 }
 
-                ArrayPoolList<BlockHeader> newList = new(toTake);
-                newList.AddRange(headersSpan[..toTake]);
+                ArrayPoolList<BlockHeader> newList = [with(headersSpan[..toTake])];
                 headers.Dispose();
                 return newList;
             }

@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// dispose it themselves, and must not read it afterwards — the buffers go back to the pool.</remarks>
 public sealed class InclusionListBytes(int capacity) : IReadOnlyList<ArrayPoolList<byte>>, IDisposable
 {
-    private readonly ArrayPoolList<ArrayPoolList<byte>> _items = new(capacity);
+    private readonly ArrayPoolList<ArrayPoolList<byte>> _items = [with(capacity)];
 
     public void Add(ArrayPoolList<byte> item) => _items.Add(item);
 

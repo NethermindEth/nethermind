@@ -60,7 +60,7 @@ internal static class InputExtractor
 
         int extracted = 0;
         int failed = 0;
-        HashSet<string> writtenFiles = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> writtenFiles = [with(StringComparer.OrdinalIgnoreCase)];
 
         await AnsiConsole
             .Status()

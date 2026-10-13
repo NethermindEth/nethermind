@@ -26,8 +26,8 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _modules = [with(StringComparer.OrdinalIgnoreCase)];
+        private readonly HashSet<string> _enabledModules = [with(StringComparer.OrdinalIgnoreCase)];
 
         private static readonly string[] HotMethodNames =
         [

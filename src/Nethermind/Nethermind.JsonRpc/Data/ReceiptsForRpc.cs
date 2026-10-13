@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Data;
 public sealed class ReceiptsForRpc<TReceipt>(int capacity) : IReadOnlyList<TReceipt>, IDisposable
     where TReceipt : ReceiptForRpc
 {
-    private readonly ArrayPoolList<TReceipt> _receipts = new(capacity);
+    private readonly ArrayPoolList<TReceipt> _receipts = [with(capacity)];
 
     public int Count => _receipts.Count;
 

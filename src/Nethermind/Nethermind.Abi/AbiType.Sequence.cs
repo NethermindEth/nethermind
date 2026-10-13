@@ -114,8 +114,8 @@ namespace Nethermind.Abi
 
         internal static byte[][] EncodeSequence(int length, IEnumerable<AbiType> types, IEnumerable<object?> sequence, bool packed, int offset = 0)
         {
-            List<byte[]> dynamicParts = new(length);
-            List<byte[]?> headerParts = new(length);
+            List<byte[]> dynamicParts = [with(length)];
+            List<byte[]?> headerParts = [with(length)];
             using IEnumerator<object?> sequenceEnumerator = sequence.GetEnumerator();
             using IEnumerator<AbiType> typesEnumerator = types.GetEnumerator();
             for (int i = 0; i < length; i++)

@@ -28,8 +28,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </remarks>
 public class GethGenesisConfigJson : IHasNamedForks
 {
-    private readonly Dictionary<string, ulong> _blocks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, ulong> _timestamps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ulong> _blocks = [with(StringComparer.OrdinalIgnoreCase)];
+    private readonly Dictionary<string, ulong> _timestamps = [with(StringComparer.OrdinalIgnoreCase)];
 
     public ulong ChainId { get; set; }
 

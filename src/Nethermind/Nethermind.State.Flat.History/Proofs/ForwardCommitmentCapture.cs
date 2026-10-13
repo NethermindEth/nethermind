@@ -253,8 +253,8 @@ public sealed class ForwardCommitmentCapture : IDisposable
     private sealed class CapturedBlock
     {
         public readonly RowArena Arena = new();
-        public readonly ArrayPoolList<NodeChange> Accounts = new(64);
-        public readonly ArrayPoolList<NodeChange> Storages = new(64);
+        public readonly ArrayPoolList<NodeChange> Accounts = [with(64)];
+        public readonly ArrayPoolList<NodeChange> Storages = [with(64)];
         public Dictionary<ValueHash256, int>? StorageDepths;
         public long Bytes;
 

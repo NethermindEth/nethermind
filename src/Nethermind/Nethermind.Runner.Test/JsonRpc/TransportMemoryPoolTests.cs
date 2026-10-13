@@ -783,7 +783,7 @@ public class TransportMemoryPoolTests
 
     private static List<IMemoryOwner<byte>> RentBlocks(MemoryPool<byte> pool, int count)
     {
-        List<IMemoryOwner<byte>> owners = new(count);
+        List<IMemoryOwner<byte>> owners = [with(count)];
         for (int i = 0; i < count; i++) owners.Add(pool.Rent());
         return owners;
     }

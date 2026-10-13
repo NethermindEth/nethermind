@@ -49,8 +49,9 @@ Option<TimeSpan?> reportAtOption = new("--report-at")
     Description = "UTC time of day at which to report execution statistics (e.g. 12:00:00)"
 };
 
-RootCommand rootCommand = new("Monitors a running node by periodically executing dynamic RPC tests against a reference node")
-{
+RootCommand rootCommand =
+[
+    with("Monitors a running node by periodically executing dynamic RPC tests against a reference node"),
     targetOption,
     referenceOption,
     testsOption,
@@ -58,7 +59,7 @@ RootCommand rootCommand = new("Monitors a running node by periodically executing
     parallelismOption,
     devOption,
     reportAtOption
-};
+];
 
 rootCommand.SetAction(async (parseResult, ct) =>
 {

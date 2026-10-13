@@ -16,7 +16,7 @@ namespace Nethermind.Evm;
 /// </remarks>
 internal sealed class GuestCodeCache(int capacity) : ICodeCache
 {
-    private readonly OptimizedDictionary<ValueHash256, CodeInfo> _codes = new(capacity);
+    private readonly OptimizedDictionary<ValueHash256, CodeInfo> _codes = [with(capacity)];
 
     public CodeInfo? Get(in ValueHash256 codeHash) => _codes.TryGetValue(in codeHash, out CodeInfo? codeInfo) ? codeInfo : null;
 

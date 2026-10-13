@@ -47,7 +47,7 @@ public class WriteBatchBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
-        _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
+        _baseSnapshots = [with(SnapshotCount)];
         _currentStateId = new StateId(0, Keccak.EmptyTreeHash);
 
         int totalAccountCount = 0;

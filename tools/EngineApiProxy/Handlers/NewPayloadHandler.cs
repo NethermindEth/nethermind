@@ -243,14 +243,14 @@ public class NewPayloadHandler(
 
         return new JsonRpcRequest(
             fcuMethod,
-            new JsonArray(
+            [with(
                 new JsonObject
                 {
                     [HeadBlockHashKey] = parentHash,
                     [FinalizedBlockHashKey] = ZeroHash,
                     [SafeBlockHashKey] = ZeroHash
                 }
-            ),
+            )],
             Guid.NewGuid().ToString()
         );
     }

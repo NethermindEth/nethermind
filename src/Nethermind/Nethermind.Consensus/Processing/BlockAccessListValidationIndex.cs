@@ -483,7 +483,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
     internal sealed class AddressIndex
     {
-        private readonly Dictionary<AddressAsKey, int> _ordinals = new(AddressAsKey.EqualityComparer);
+        private readonly Dictionary<AddressAsKey, int> _ordinals = [with(AddressAsKey.EqualityComparer)];
         // Reverse lookup for slow-path diagnostics that need to translate an ordinal back to an
         // Address (e.g. "incorrect changes for {addr} at index N"). Appended in GetOrAdd.
         private readonly List<Address> _addresses = [];

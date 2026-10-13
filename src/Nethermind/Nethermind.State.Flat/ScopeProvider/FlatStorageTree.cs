@@ -140,7 +140,7 @@ public sealed class FlatStorageTree(
             if (writes is null || writes.IsEmpty || !(leased = _bundle.TryLeaseReadOnlyBundle())) return;
 
             Dictionary<UInt256, UInt256> applied = _earlyApplied ??= [];
-            Dictionary<UInt256, UInt256> latest = new(writes.Count);
+            Dictionary<UInt256, UInt256> latest = [with(writes.Count)];
             while (writes.TryDequeue(out (UInt256 Slot, UInt256 Value) write)) latest[write.Slot] = write.Value;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(latest.Count);

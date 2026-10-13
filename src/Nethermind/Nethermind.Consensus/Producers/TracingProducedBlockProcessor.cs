@@ -95,7 +95,7 @@ internal sealed class TracingProducedBlockProcessor(
                 if ((_dumpOptions & ProducedBlockDumpOptions.RlpLog) != 0 && _logger.IsInfo) _logger.Info($"RLP dump of produced block {processed.Hash} is {rlp.ToHexString()}");
             }
 
-            Dictionary<Hash256, int> positions = new(processed.Transactions.Length);
+            Dictionary<Hash256, int> positions = [with(processed.Transactions.Length)];
             for (int i = 0; i < processed.Transactions.Length; i++)
             {
                 positions[processed.Transactions[i].Hash!] = i;
@@ -147,7 +147,7 @@ internal sealed class TracingProducedBlockProcessor(
     /// <summary>Keeps the traces of transactions included in the block, ordered by and tagged with their position.</summary>
     private static List<T> Included<T>(IEnumerable<T> traces, Dictionary<Hash256, int> positions, Func<T, Hash256?> getTxHash, Action<T, int> tag)
     {
-        List<T> included = new(positions.Count);
+        List<T> included = [with(positions.Count)];
         foreach (T trace in traces)
         {
             if (getTxHash(trace) is { } txHash && positions.TryGetValue(txHash, out int position))

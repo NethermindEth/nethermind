@@ -15,7 +15,7 @@ namespace Nethermind.Core.Collections
 
         public LinkedHashSet(int initialCapacity)
         {
-            _dict = new Dictionary<T, LinkedListNode<T>>(initialCapacity);
+            _dict = [with(initialCapacity)];
             _list = new LinkedList<T>();
         }
 
@@ -31,7 +31,7 @@ namespace Nethermind.Core.Collections
 
         public LinkedHashSet(IEqualityComparer<T> equalityComparer)
         {
-            _dict = new Dictionary<T, LinkedListNode<T>>(equalityComparer);
+            _dict = [with(equalityComparer)];
             _list = new LinkedList<T>();
         }
 

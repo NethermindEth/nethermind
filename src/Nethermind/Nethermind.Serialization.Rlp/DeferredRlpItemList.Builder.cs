@@ -17,8 +17,8 @@ public sealed partial class DeferredRlpItemList
 
         public Builder(int entryCapacity = 16, int valueCapacity = 256)
         {
-            _entries = new ArrayPoolList<Entry>(entryCapacity);
-            _valueBuffer = new ArrayPoolList<byte>(valueCapacity);
+            _entries = [with(entryCapacity)];
+            _valueBuffer = [with(valueCapacity)];
             // Entry[0] is the root container that tracks total RLP content length of the list.
             _entries.Add(new Entry { Length = 0, ValueOffset = 0, EntriesLength = 0 });
         }

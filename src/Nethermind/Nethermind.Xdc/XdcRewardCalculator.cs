@@ -168,7 +168,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                         // Exclude current masternodes and penalized nodes from the checkpoint header.
                         Address[] candidatesByStake = GetCandidatesByStakeForReward(epochHeader);
                         int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
-                        HashSet<Address> excludedCandidates = new(masternodes.Count + penaltiesCount);
+                        HashSet<Address> excludedCandidates = [with(masternodes.Count + penaltiesCount)];
                         excludedCandidates.UnionWith(masternodes);
                         if (h.PenaltiesAddress is not null)
                             excludedCandidates.UnionWith(h.PenaltiesAddress);
@@ -241,7 +241,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         if (candidates.Length == 0)
             return [];
 
-        List<CandidateStake> candidatesAndStake = new(candidates.Length);
+        List<CandidateStake> candidatesAndStake = [with(candidates.Length)];
         foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)

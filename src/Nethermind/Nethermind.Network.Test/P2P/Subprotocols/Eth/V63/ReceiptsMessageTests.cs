@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Accepts_nulls_inside()
         {
-            ArrayPoolList<TxReceipt[]> data = new(3) { new[] { new TxReceipt(), new TxReceipt() }, null };
+            ArrayPoolList<TxReceipt[]> data = [with(3), new[] { new TxReceipt(), new TxReceipt() }, null];
             using ReceiptsMessage message = new(data);
             Assert.That(message.TxReceipts, Is.SameAs(data));
         }

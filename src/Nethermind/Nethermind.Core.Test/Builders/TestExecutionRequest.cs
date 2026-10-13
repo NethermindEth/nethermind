@@ -31,7 +31,7 @@ public static class TestExecutionRequestExtensions
         TestExecutionRequest[] consolidationRequests
     )
     {
-        ArrayPoolList<byte[]> result = new(ExecutionRequestExtensions.MaxRequestsCount);
+        ArrayPoolList<byte[]> result = [with(ExecutionRequestExtensions.MaxRequestsCount)];
 
         if (depositRequests.Length > 0)
         {

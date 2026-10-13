@@ -67,7 +67,7 @@ public sealed class CommitmentEmitter : IDisposable
     private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
-        _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
+        _exactBranches = [with(Math.Min(exactBranchEntries, InitialExactBranchEntries))];
         _maxExactBranches = exactBranchEntries;
         _extensionTargets = new ClockCache<NodePathKey, bool>(extensionTargetEntries);
         _respectFloors = respectFloors;
