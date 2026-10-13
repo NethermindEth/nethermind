@@ -27,9 +27,12 @@ public class SlotScheduleTests
     [TestCase(1_160UL, 105UL)]
     public void Slot_at_time_switches_length_at_the_fork(ulong timestamp, ulong slot)
     {
-        Assert.That(Scheduled.TryGetSlot(timestamp, out ulong actual), Is.True);
-        Assert.That(actual, Is.EqualTo(slot));
-        Assert.That(Scheduled.GetSlotTimestamp(slot), Is.LessThanOrEqualTo(timestamp));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Scheduled.TryGetSlot(timestamp, out ulong actual), Is.True);
+            Assert.That(actual, Is.EqualTo(slot));
+            Assert.That(Scheduled.GetSlotTimestamp(slot), Is.LessThanOrEqualTo(timestamp));
+        }
     }
 
     [TestCase(4UL, 148UL)]

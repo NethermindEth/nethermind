@@ -93,8 +93,11 @@ public partial class EthRpcModuleTests
 
         using ResultWrapper<FeeHistoryResults> result = oracle.GetFeeHistory(1, new BlockParameter(0UL), []);
 
-        Assert.That(result.ErrorCode, Is.Zero);
-        Assert.That(result.Data.BaseFeePerGas.ToArray(), Is.EqualTo(new UInt256[] { 1_000_000_000, expectedNextBaseFee }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.Zero);
+            Assert.That(result.Data.BaseFeePerGas.ToArray(), Is.EqualTo(new UInt256[] { 1_000_000_000, expectedNextBaseFee }));
+        }
     }
 
     public static IEnumerable<TestCaseData> FeeHistoryBlobTestCases
