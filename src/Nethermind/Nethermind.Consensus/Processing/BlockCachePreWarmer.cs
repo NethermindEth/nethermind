@@ -229,6 +229,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
+            PrewarmTraceBlock? trace = PrewarmTrace.Enabled ? BeginTrace(suggestedBlock, speculativelyWarmed, discoveryCandidates) : null;
             session.Start(() =>
             {
                 if (seeded is not null) Seed(recorded!, suggestedBlock, spec, footprints!, seeded);
@@ -264,13 +265,65 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         blockState.JoinRefreshing();
                     }
                 }
-            }, addressWarmer, footprints is null ? null : footprints.StopWaitingForBlockProcessing);
+            }, trace is null ? addressWarmer : new TraceFlush(addressWarmer, trace, _logger),
+                footprints is null ? null : footprints.StopWaitingForBlockProcessing);
             return session;
         }
         catch
         {
             session.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>BENCH ONLY: starts the block's <see cref="PrewarmTrace"/>.</summary>
+    private static PrewarmTraceBlock BeginTrace(Block block, ISet<Hash256>? speculativelyWarmed, List<(int Index, Transaction Tx)>? upFront)
+    {
+        PrewarmTraceBlock trace = new(block.Number, block.Transactions.Length) { Carried = speculativelyWarmed is not null };
+        if (speculativelyWarmed is not null)
+        {
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                if (block.Transactions[i].Hash is Hash256 hash && speculativelyWarmed.Contains(hash)) trace.SetFlag(i, PrewarmTraceBlock.Speculative);
+            }
+        }
+
+        if (upFront is not null)
+        {
+            foreach ((int index, Transaction _) in upFront) trace.SetFlag(index, PrewarmTraceBlock.UpFront);
+        }
+
+        PrewarmTrace.Begin(trace);
+        return trace;
+    }
+
+    /// <summary>BENCH ONLY: releases the session's resources, then ends the block's trace and logs it off this thread.</summary>
+    private sealed class TraceFlush(IDisposable inner, PrewarmTraceBlock trace, ILogger logger) : IDisposable
+    {
+        public void Dispose()
+        {
+            try
+            {
+                inner.Dispose();
+            }
+            finally
+            {
+                PrewarmTrace.End(trace);
+                ThreadPool.UnsafeQueueUserWorkItem(static state =>
+                {
+                    try
+                    {
+                        foreach (string line in state.trace.Format())
+                        {
+                            if (state.logger.IsInfo) state.logger.Info(line);
+                        }
+                    }
+                    catch
+                    {
+                        // A diagnostic must not take anything down.
+                    }
+                }, (trace, logger), preferLocal: false);
+            }
         }
     }
 
@@ -324,6 +377,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         Interlocked.Increment(ref _discoveryHandOffs);
+        if (PrewarmTrace.Enabled) PrewarmTrace.Current?.SetFlag(txIndex, PrewarmTraceBlock.HandOff);
         Block block = blockState.Block;
         IReleaseSpec spec = blockState.Spec;
         StrongBox<int> cells = blockState.HandOffCells;
@@ -594,11 +648,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
     {
         // Already started by the main thread — warming it now is redundant and contends; skip.
-        if (MainThreadTxIndex >= candidate.Index) return;
+        if (MainThreadTxIndex >= candidate.Index)
+        {
+            if (PrewarmTrace.Enabled) PrewarmTrace.Current?.SetFlag(candidate.Index, PrewarmTraceBlock.DiscoverySkipped);
+            return;
+        }
 
         // The round admits only candidates whose sender has landed; see DeferUnrecovered.
         Transaction tx = candidate.Tx;
         IPrewarmerEnv env = _envPool.Get();
+        PrewarmTraceBlock? trace = PrewarmTrace.Enabled ? PrewarmTrace.Current : null;
+        trace?.OnDiscoveryStart(candidate.Index);
+        using PrewarmTrace.Scope traceScope = PrewarmTrace.Enter(PrewarmTrace.Kind.Capture, candidate.Index);
         try
         {
             // A packed slot read as 1 has every field but the lowest zero, which trips divide-by-zero checks and ends a
@@ -613,6 +674,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         finally
         {
             _envPool.Return(env);
+            trace?.OnDiscoveryEnd(candidate.Index, 0);
         }
     }
 
@@ -650,6 +712,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             failed = true;
         }
 
+        if (PrewarmTrace.Enabled) PrewarmTrace.Current?.OnDiscoveryEnd(candidate.Index, capture.Cells.Count);
         if (capture.Cells.Count == 0) return failed;
 
         using (round.CellsLock.EnterScope())
@@ -724,6 +787,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 int start = range * rangeSize;
                 int end = Math.Min(start + rangeSize, cellCount);
                 IPrewarmerEnv env = _envPool.Get();
+                using PrewarmTrace.Scope traceScope = PrewarmTrace.Enter(PrewarmTrace.Kind.DiscoveryRead, -1);
                 try
                 {
                     using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(target);
@@ -1034,7 +1098,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+        if (PrewarmTrace.Enabled) PrewarmTrace.OnMainTxStart(_mainThreadTxIndex);
+    }
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <param name="eligible">Whether the transaction can have one at all.</param>
@@ -1404,10 +1472,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         CancellationTxTracer tracer,
         CancellationToken cancellationToken)
     {
+        PrewarmTraceBlock? trace = PrewarmTrace.Enabled ? PrewarmTrace.Current : null;
+        using PrewarmTrace.Scope traceScope = PrewarmTrace.Enter(PrewarmTrace.Kind.Warm, txIndex);
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                trace?.SetFlag(txIndex, PrewarmTraceBlock.SkippedAtStart);
+                return;
+            }
+
+            trace?.OnWarmStart(txIndex);
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1442,6 +1518,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+            if (trace is not null && (uint)txIndex < (uint)trace.TxCount && (trace.Flags[txIndex] & PrewarmTraceBlock.Aborted) == 0)
+                trace.SetFlag(txIndex, PrewarmTraceBlock.Completed);
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
@@ -1454,6 +1532,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
+        }
+        finally
+        {
+            trace?.OnWarmEnd(txIndex);
         }
     }
 
@@ -1484,6 +1566,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             recorder.Discard();
+            if (PrewarmTrace.Enabled) PrewarmTrace.Current?.SetFlag(txIndex, PrewarmTraceBlock.Aborted);
             return TransactionResult.Ok;
         }
         finally
@@ -1571,6 +1654,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
         Transaction tx = invalidated.Transaction;
         BlockHeader header = blockState.Block.Header;
+        if (PrewarmTrace.Enabled) PrewarmTrace.Current?.SetFlag(position, PrewarmTraceBlock.Refreshed);
+        using PrewarmTrace.Scope traceScope = PrewarmTrace.Enter(PrewarmTrace.Kind.Refresh, position);
         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(header);
         scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, blockState.Spec));
         IWorldState state = scope.WorldState;
@@ -2657,7 +2742,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             BlockState blockState = _queue.BlockState;
             // Indices are ascending, so if the main thread has started the job's last tx it has started them all;
             // the per-tx guard would discard each one, so skip before building a scope.
-            if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex)
+            {
+                if (PrewarmTrace.Enabled && PrewarmTrace.Current is { } skipped)
+                {
+                    foreach ((int index, Transaction _) in transactions) skipped.SetFlag(index, PrewarmTraceBlock.JobSkipped);
+                }
+
+                return;
+            }
 
             CancellationToken token = _queue.Token;
             // Each job builds and disposes its own scope, so no speculative state crosses jobs.
