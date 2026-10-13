@@ -322,7 +322,7 @@ pub unsafe extern "C" fn fdb_queue_compaction(
 /// `GatherReadOnlySnapshotBundle(base, readerFlags)`: a reader of the state `base`, through the in-memory snapshots
 /// above the persisted state and then the persistence, read with the `fdb_reader_*` exports and released with
 /// `fdb_reader_release`. `filtered` serves slot reads through the bundle's negative slot filter. `reader_state` is the
-/// persisted state under the snapshots. `base` must not be `PreGenesis`, which C# serves without the manager.
+/// persisted state under the snapshots. `PreGenesis` reads an empty state; C# serves it without the manager.
 ///
 /// # Safety
 /// `mgr` must be a live manager, `base` valid and the out-pointers valid for writes.
@@ -343,7 +343,7 @@ pub unsafe extern "C" fn fdb_gather(
                 .manager
                 .gather_read_only_snapshot_bundle(&base, ReaderFlags::from_bits(reader_flags))?)
         })?;
-        *reader_state = flatdb_core::persistence::PersistenceReader::current_state(bundle.persistence_reader()).into();
+        *reader_state = bundle.reader_state().into();
         *rob = Box::into_raw(Box::new(FdbReader {
             reader: Box::new(BundleReader {
                 bundle,

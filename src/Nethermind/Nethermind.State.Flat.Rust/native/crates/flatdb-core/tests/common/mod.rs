@@ -7,6 +7,7 @@ pub mod loopback;
 pub mod manager;
 #[cfg(feature = "rocksdb-it")]
 pub mod rocks;
+pub mod scope_model;
 pub mod snapshots;
 
 use flatdb_core::kv::{Column, IterOptions, KvIterator, KvReader, KvStore};

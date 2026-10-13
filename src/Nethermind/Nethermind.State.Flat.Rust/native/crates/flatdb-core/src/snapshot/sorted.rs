@@ -3,7 +3,7 @@
 //! Each map is a [`SortedMergeMap`], so a compacted snapshot persists in key order. Its trie nodes are indexes into the
 //! arenas of the base snapshots it was merged from, which it holds by `Arc`: compaction copies no RLP.
 
-use super::content::{NodeArena, NodeRef, SnapshotContentCounts};
+use super::content::{LiveContent, NodeArena, NodeRef, SnapshotContentCounts};
 use super::keys::{StorageKey, StorageNodeKey};
 use super::sorted_merge::SortedMergeMap;
 use crate::types::{Account, Address, TreePath, U256};
@@ -16,6 +16,8 @@ pub struct SortedSnapshotContent {
     pub(crate) storage_nodes: SortedMergeMap<StorageNodeKey, NodeRef>,
     /// The arenas every node indexes into, the arenas of the merged sources in source order.
     pub(crate) arenas: Vec<NodeArena>,
+    /// Counts the content in the pooled-resource gauges until it drops.
+    pub(crate) _live: Option<LiveContent>,
 }
 
 impl SortedSnapshotContent {

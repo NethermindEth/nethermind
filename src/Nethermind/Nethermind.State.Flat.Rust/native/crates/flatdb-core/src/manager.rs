@@ -5,7 +5,7 @@
 //! `fdb-housekeeping`, which clears the bundle cache periodically and warns about slow jobs) over bounded crossbeam
 //! channels. Process exit and the manager's own cancellation are broadcast by dropping the sender of a channel nobody
 //! sends on. The trie node cache populator, `TrieNodeCache.Clear()` and the `TransientResource` leases stay in the C#
-//! shell, as does the `PreGenesis` bundle, which reads nothing.
+//! shell.
 //!
 //! The `ResourcePool.Usage` overloads of `HasStateForBlock` and `GatherSnapshotBundle` are default interface methods
 //! that `FlatDbManager` leaves alone, so they reduce to [`FlatDbManager::has_state_for_block`] and
@@ -91,9 +91,6 @@ pub enum ManagerError {
         attempts: u32,
         elapsed: Duration,
     },
-    /// `PreGenesis` has no snapshots and no persisted state; the caller serves it with an empty bundle.
-    #[error("PreGenesis is served without the manager")]
-    PreGenesis,
     /// The queue the operation needed was completed by shutdown, or its worker stopped.
     #[error("The flat DB manager is shut down")]
     ShutDown,
@@ -353,7 +350,8 @@ impl<P: Persistence> FlatDbManager<P> {
     ///
     /// Bundles with [`ReaderFlags::NONE`] are shared through the cache and get the slot filter; flagged ones hold
     /// specially configured readers and are never cached. A race with persistence, which leaves no chain to the
-    /// reader's state, is retried with a backoff for the give-up deadline.
+    /// reader's state, is retried with a backoff for the give-up deadline. `PreGenesis`, a sentinel no block
+    /// processing outlives, gets a new [`ReadOnlySnapshotBundle::empty`].
     pub fn gather_read_only_snapshot_bundle(
         &self,
         base_block: &StateId,
@@ -362,7 +360,7 @@ impl<P: Persistence> FlatDbManager<P> {
         let shared = &self.shared;
         log::trace!("Gathering {base_block}.");
         if *base_block == StateId::PRE_GENESIS {
-            return Err(ManagerError::PreGenesis);
+            return Ok(Arc::new(ReadOnlySnapshotBundle::empty()));
         }
 
         let shareable = reader_flags == ReaderFlags::NONE;

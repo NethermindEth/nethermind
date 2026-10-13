@@ -11,7 +11,7 @@ use flatdb_core::events::{PersistedNodeEvents, PersistedNodes};
 use flatdb_core::host::HostCallbacks;
 use flatdb_core::kv::ReadFlags;
 use flatdb_core::manager::{FlatDbManager, ManagerConfig};
-use flatdb_core::persistence::{PersistenceReader, PersistenceResult};
+use flatdb_core::persistence::{EmptyIterator, NoopPersistenceReader, PersistenceReader, PersistenceResult};
 use flatdb_core::persistence_manager::{PersistenceManager, PersistenceManagerConfig};
 use flatdb_core::repository::SnapshotRepository;
 use flatdb_core::schedule::CompactionSchedule;
@@ -165,7 +165,7 @@ impl PersistenceReader for BundleReader {
     type Iter = ErasedIter;
 
     fn get_account(&self, address: &Address) -> PersistenceResult<Option<Account>> {
-        self.bundle.get_account(address)
+        Ok(self.bundle.get_account(address)?.0)
     }
 
     fn try_get_slot(&self, address: &Address, slot: &U256) -> PersistenceResult<Option<U256>> {
@@ -173,7 +173,7 @@ impl PersistenceReader for BundleReader {
     }
 
     fn current_state(&self) -> StateId {
-        self.bundle.persistence_reader().current_state()
+        self.bundle.reader_state()
     }
 
     fn load_state_rlp<T>(
@@ -182,7 +182,7 @@ impl PersistenceReader for BundleReader {
         flags: ReadFlags,
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<Option<T>> {
-        self.bundle.load_state_rlp(path, flags, read)
+        Ok(self.bundle.load_state_rlp_unchecked(path, flags, read)?.0)
     }
 
     fn load_storage_rlp<T>(
@@ -192,23 +192,31 @@ impl PersistenceReader for BundleReader {
         flags: ReadFlags,
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<Option<T>> {
-        self.bundle.load_storage_rlp(address_hash, path, flags, read)
+        Ok(self
+            .bundle
+            .load_storage_rlp_unchecked(address_hash, path, flags, read)?
+            .0)
     }
 
     fn get_account_raw(&self, address_hash: &Hash256) -> PersistenceResult<Option<Vec<u8>>> {
-        self.bundle.persistence_reader().get_account_raw(address_hash)
+        match self.bundle.persistence_reader() {
+            Some(reader) => reader.get_account_raw(address_hash),
+            None => NoopPersistenceReader.get_account_raw(address_hash),
+        }
     }
 
     fn try_get_storage_raw(&self, address_hash: &Hash256, slot_hash: &Hash256) -> PersistenceResult<Option<U256>> {
-        self.bundle
-            .persistence_reader()
-            .try_get_storage_raw(address_hash, slot_hash)
+        match self.bundle.persistence_reader() {
+            Some(reader) => reader.try_get_storage_raw(address_hash, slot_hash),
+            None => NoopPersistenceReader.try_get_storage_raw(address_hash, slot_hash),
+        }
     }
 
     fn create_account_iterator(&self, start_key: &Hash256, end_key: &Hash256) -> PersistenceResult<ErasedIter> {
-        self.bundle
-            .persistence_reader()
-            .create_account_iterator(start_key, end_key)
+        match self.bundle.persistence_reader() {
+            Some(reader) => reader.create_account_iterator(start_key, end_key),
+            None => Ok(ErasedIter(Box::new(EmptyIterator))),
+        }
     }
 
     fn create_storage_iterator(
@@ -217,13 +225,16 @@ impl PersistenceReader for BundleReader {
         start_slot_key: &Hash256,
         end_slot_key: &Hash256,
     ) -> PersistenceResult<ErasedIter> {
-        self.bundle
-            .persistence_reader()
-            .create_storage_iterator(account_key, start_slot_key, end_slot_key)
+        match self.bundle.persistence_reader() {
+            Some(reader) => reader.create_storage_iterator(account_key, start_slot_key, end_slot_key),
+            None => Ok(ErasedIter(Box::new(EmptyIterator))),
+        }
     }
 
     fn is_preimage_mode(&self) -> bool {
-        self.bundle.persistence_reader().is_preimage_mode()
+        self.bundle
+            .persistence_reader()
+            .is_some_and(PersistenceReader::is_preimage_mode)
     }
 }
 

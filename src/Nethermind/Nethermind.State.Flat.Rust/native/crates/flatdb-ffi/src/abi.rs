@@ -97,7 +97,6 @@ impl From<ManagerError> for FfiError {
             ManagerError::Persist(error) => return error.clone().into(),
             ManagerError::StateNotRetained(_) => FdbStatus::StateNotRetained,
             ManagerError::GatherTimeout { .. } => FdbStatus::GatherTimeout,
-            ManagerError::PreGenesis => FdbStatus::InvalidArgument,
             ManagerError::ShutDown => FdbStatus::ShutDown,
             ManagerError::Cancelled => FdbStatus::Cancelled,
         };

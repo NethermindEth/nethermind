@@ -19,6 +19,7 @@ use std::time::{Duration, Instant};
 use common::any_kv::Backend;
 use common::manager::{BLOCK0, Fixture, PM_CONFIG, TestPersistence, account, logged_warnings, state};
 use common::snapshots::{address, snapshot};
+use flatdb_core::bundle::ReadSource;
 use flatdb_core::compactor::{Compactor, SnapshotCompactor};
 use flatdb_core::host::HostError;
 use flatdb_core::keccak::account_path;
@@ -28,7 +29,7 @@ use flatdb_core::persistence::{Persistence, PersistenceReader, ReaderFlags};
 use flatdb_core::persistence_manager::PersistenceManagerConfig;
 use flatdb_core::snapshot::SnapshotTier;
 use flatdb_core::stats::{Histogram, HistogramLabel};
-use flatdb_core::types::{Account, Address, Hash256, StateId, TreePath, U256};
+use flatdb_core::types::{Account, Address, EMPTY_TREE_HASH, Hash256, StateId, TreePath, U256};
 use parking_lot::{Mutex, RwLock};
 use rstest::rstest;
 
@@ -263,11 +264,17 @@ fn gather_fails_for_missing_states_and_gives_up_on_a_broken_chain() {
             .err(),
         Some(ManagerError::StateNotRetained(state("10r10")))
     );
+    let pre_genesis = manager
+        .gather_read_only_snapshot_bundle(&StateId::PRE_GENESIS, ReaderFlags::NONE)
+        .unwrap();
     assert_eq!(
-        manager
-            .gather_read_only_snapshot_bundle(&StateId::PRE_GENESIS, ReaderFlags::NONE)
-            .err(),
-        Some(ManagerError::PreGenesis)
+        (pre_genesis.snapshot_count(), pre_genesis.reader_state()),
+        (0, StateId::new(0, EMPTY_TREE_HASH)),
+        "PreGenesis reads an empty state"
+    );
+    assert_eq!(
+        pre_genesis.get_account(&address(0xA1)).unwrap(),
+        (None, ReadSource::Persistence)
     );
     match manager.gather_read_only_snapshot_bundle(&state("22"), ReaderFlags::NONE) {
         Err(ManagerError::GatherTimeout {
@@ -305,7 +312,7 @@ fn gather_after_a_persist_under_the_leased_reader_retries_with_a_fresh_one() {
         1,
         "the stale reader is released, the fresh one kept"
     );
-    assert_eq!(bundle.persistence_reader().current_state(), state("10r10"));
+    assert_eq!(bundle.reader_state(), state("10r10"));
 }
 
 /// `GatherReadOnlySnapshotBundle_RemainsReadableAfterSourceSnapshotRemoval`, with the bundle metrics.
@@ -320,14 +327,14 @@ fn gather_remains_readable_after_its_snapshots_are_removed() {
     let bundle = manager
         .gather_read_only_snapshot_bundle(&to, ReaderFlags::NONE)
         .unwrap();
-    assert_eq!(bundle.get_account(&address(0xA1)).unwrap(), Some(account(42)));
+    assert_eq!(bundle.get_account(&address(0xA1)).unwrap().0, Some(account(42)));
     assert!(
         fixture
             .repository
             .remove_and_release_in_memory_known_state(&to, SnapshotTier::InMemoryBase)
     );
 
-    assert_eq!(bundle.get_account(&address(0xA1)).unwrap(), Some(account(42)));
+    assert_eq!(bundle.get_account(&address(0xA1)).unwrap().0, Some(account(42)));
     let stats = fixture.repository.stats();
     assert_eq!(stats.counters.snapshot_bundle_size.load(Ordering::Relaxed), 1);
     let depths: Vec<(u16, f64)> = stats
@@ -633,7 +640,7 @@ fn drop_state_not_reachable_from_then_commit_on_the_reset_head(
     assert!(!manager.has_state_for_block(&abandoned1).unwrap());
     assert!(!manager.has_state_for_block(&abandoned2).unwrap());
     assert!(manager.has_state_for_block(&reprocessed1).unwrap());
-    assert_eq!(bundle.get_account(&address(0xA1)).unwrap(), Some(account(3)));
+    assert_eq!(bundle.get_account(&address(0xA1)).unwrap().0, Some(account(3)));
     assert_eq!(
         Arc::strong_count(&cached),
         1,
@@ -669,7 +676,7 @@ fn flush_cache_persists_to_the_head_and_clears_the_bundle_cache(
         .gather_read_only_snapshot_bundle(&state("2"), ReaderFlags::NONE)
         .unwrap();
     assert_eq!(Arc::ptr_eq(&cached, &again), cancelled);
-    assert_eq!(again.get_account(&address(0xA1)).unwrap(), Some(account(2)));
+    assert_eq!(again.get_account(&address(0xA1)).unwrap().0, Some(account(2)));
 }
 
 // ---- Stress ----
@@ -779,7 +786,7 @@ fn check_reads<R: PersistenceReader>(
 ) {
     for index in 0..ADDRESSES {
         let address = stress_address(index);
-        let account = bundle.get_account(&address).unwrap();
+        let (account, _) = bundle.get_account(&address).unwrap();
         assert_eq!(
             account,
             expected.accounts.get(&address).copied().flatten(),
@@ -796,12 +803,14 @@ fn check_reads<R: PersistenceReader>(
         }
     }
     for (path, rlp) in &expected.state_nodes {
-        let loaded = bundle.load_state_rlp(path, ReadFlags::NONE, <[u8]>::to_vec).unwrap();
+        let (loaded, _) = bundle
+            .load_state_rlp_unchecked(path, ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap();
         assert_eq!(loaded.as_ref(), Some(rlp), "state node at {state:?}");
     }
     for ((address_hash, path), rlp) in &expected.storage_nodes {
-        let loaded = bundle
-            .load_storage_rlp(address_hash, path, ReadFlags::NONE, <[u8]>::to_vec)
+        let (loaded, _) = bundle
+            .load_storage_rlp_unchecked(address_hash, path, ReadFlags::NONE, <[u8]>::to_vec)
             .unwrap();
         assert_eq!(loaded.as_ref(), Some(rlp), "storage node at {state:?}");
     }

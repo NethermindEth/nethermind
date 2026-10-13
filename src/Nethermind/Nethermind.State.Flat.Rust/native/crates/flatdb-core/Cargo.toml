@@ -10,6 +10,9 @@ publish.workspace = true
 [features]
 # Integration tests against the librocksdb.so shipped in the Nethermind.RocksDbBindings NuGet package.
 rocksdb-it = []
+# The fallback frozen layout: a frozen block keeps the 16 shard maps of its slots and storage nodes, so freezing moves
+# them instead of rehashing every key into one map.
+sharded-freeze = []
 
 [dependencies]
 thiserror.workspace = true
@@ -18,6 +21,7 @@ sha3.workspace = true
 log.workspace = true
 hashbrown.workspace = true
 crossbeam-channel.workspace = true
+arc-swap.workspace = true
 
 [dev-dependencies]
 libloading.workspace = true

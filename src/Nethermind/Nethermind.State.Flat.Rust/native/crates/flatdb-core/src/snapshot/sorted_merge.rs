@@ -140,6 +140,35 @@ pub fn sort_run<K: SnapshotKey, V>(entries: impl IntoIterator<Item = (K, V)>) ->
     run
 }
 
+/// Merges runs sorted by key, no key in more than one run, into one sorted run.
+#[cfg(feature = "sharded-freeze")]
+pub(crate) fn merge_disjoint_runs<K: SnapshotKey, V: Copy>(runs: &[Vec<(K, V)>]) -> Vec<(K, V)> {
+    let mut merged = Vec::with_capacity(runs.iter().map(Vec::len).sum());
+    let mut heads: BinaryHeap<Head<'_, K>> = runs
+        .iter()
+        .enumerate()
+        .filter_map(|(source, run)| {
+            run.first().map(|(key, _)| Head {
+                key,
+                source,
+                position: 0,
+            })
+        })
+        .collect();
+    while let Some(head) = heads.pop() {
+        let run = &runs[head.source];
+        merged.push(run[head.position]);
+        if let Some((key, _)) = run.get(head.position + 1) {
+            heads.push(Head {
+                key,
+                source: head.source,
+                position: head.position + 1,
+            });
+        }
+    }
+    merged
+}
+
 /// The head of a source in the merge; the heap pops the smallest key, ties by the lowest source.
 struct Head<'a, K> {
     key: &'a K,

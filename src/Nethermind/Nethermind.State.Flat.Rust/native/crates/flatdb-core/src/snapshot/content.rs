@@ -12,11 +12,26 @@
 
 use std::hash::Hash;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 
 use hashbrown::HashMap;
 
-use super::keys::{StorageKey, StorageNodeKey};
+use super::keys::{SnapshotKey, StorageKey, StorageNodeKey};
+use super::sorted_merge::sort_run;
+use crate::stats::FlatStats;
 use crate::types::{Account, Address, Hash256, TreePath, U256};
+
+/// The slots of a frozen content: one map, or with `sharded-freeze` the 16 shard maps it was written into.
+#[cfg(not(feature = "sharded-freeze"))]
+pub(crate) type StorageMap = HashMap<StorageKey, Option<U256>>;
+#[cfg(feature = "sharded-freeze")]
+pub(crate) type StorageMap = ShardedMap<StorageKey, Option<U256>>;
+
+/// The storage trie nodes of a frozen content, laid out as [`StorageMap`].
+#[cfg(not(feature = "sharded-freeze"))]
+pub(crate) type StorageNodeMap = HashMap<StorageNodeKey, NodeRef>;
+#[cfg(feature = "sharded-freeze")]
+pub(crate) type StorageNodeMap = ShardedMap<StorageNodeKey, NodeRef>;
 
 /// The most bytes one arena holds, so a node's offset and length fit in a `u32`.
 const MAX_ARENA_BYTES: usize = u32::MAX as usize;
@@ -194,13 +209,18 @@ impl SnapshotContentBuilder {
     }
 
     pub fn build(self) -> SnapshotContent {
+        #[cfg(not(feature = "sharded-freeze"))]
+        let (storages, storage_nodes) = (self.storages, self.storage_nodes);
+        #[cfg(feature = "sharded-freeze")]
+        let (storages, storage_nodes) = (self.storages.into(), self.storage_nodes.into());
         SnapshotContent {
             accounts: self.accounts,
-            storages: self.storages,
+            storages,
             self_destructed: self.self_destructed,
             state_nodes: self.state_nodes,
-            storage_nodes: self.storage_nodes,
+            storage_nodes,
             arenas: self.arenas.into_iter().map(Arc::new).collect(),
+            _live: None,
         }
     }
 
@@ -245,11 +265,13 @@ fn merge<K: Eq + Hash, V>(into: &mut HashMap<K, V>, from: HashMap<K, V>) {
 /// `AddressStorageNodeDictionary` presents.
 pub struct SnapshotContent {
     pub(crate) accounts: HashMap<Address, Option<Account>>,
-    pub(crate) storages: HashMap<StorageKey, Option<U256>>,
+    pub(crate) storages: StorageMap,
     pub(crate) self_destructed: HashMap<Address, bool>,
     pub(crate) state_nodes: HashMap<TreePath, NodeRef>,
-    pub(crate) storage_nodes: HashMap<StorageNodeKey, NodeRef>,
+    pub(crate) storage_nodes: StorageNodeMap,
     pub(crate) arenas: Vec<NodeArena>,
+    /// Counts the content in the pooled-resource gauges until it drops; `None` for a built one, which C# counts itself.
+    pub(crate) _live: Option<LiveContent>,
 }
 
 impl SnapshotContent {
@@ -267,5 +289,148 @@ impl SnapshotContent {
     /// The bytes of RLP the arenas hold, including any node a later write of its key replaced.
     pub fn rlp_bytes(&self) -> usize {
         self.arenas.iter().map(|arena| arena.len()).sum()
+    }
+}
+
+/// A map of snapshot content: read by key, iterated, and sorted for a merge.
+pub(crate) trait ContentMap<K: SnapshotKey, V> {
+    fn get(&self, key: &K) -> Option<&V>;
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a V)>
+    where
+        V: 'a;
+
+    /// The entries as a run sorted by key, `BuildRunFromUnsorted`.
+    fn sorted_run(&self) -> Vec<(K, V)>
+    where
+        V: Copy;
+}
+
+impl<K: SnapshotKey, V> ContentMap<K, V> for HashMap<K, V> {
+    fn get(&self, key: &K) -> Option<&V> {
+        HashMap::get(self, key)
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a V)>
+    where
+        V: 'a,
+    {
+        HashMap::iter(self)
+    }
+
+    fn sorted_run(&self) -> Vec<(K, V)>
+    where
+        V: Copy,
+    {
+        sort_run(HashMap::iter(self).map(|(key, value)| (*key, *value)))
+    }
+}
+
+/// The 16 shard maps a mutable content writes a keyed kind into, kept as they are by a freeze.
+#[cfg(feature = "sharded-freeze")]
+pub(crate) struct ShardedMap<K, V> {
+    shards: Box<[HashMap<K, V>; super::keys::SHARDS]>,
+    len: usize,
+}
+
+#[cfg(feature = "sharded-freeze")]
+impl<K: super::keys::ShardKey, V> ShardedMap<K, V> {
+    pub(crate) fn from_shards(shards: [HashMap<K, V>; super::keys::SHARDS]) -> Self {
+        let len = shards.iter().map(HashMap::len).sum();
+        Self {
+            shards: Box::new(shards),
+            len,
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+}
+
+#[cfg(feature = "sharded-freeze")]
+impl<K: super::keys::ShardKey, V> From<HashMap<K, V>> for ShardedMap<K, V> {
+    fn from(map: HashMap<K, V>) -> Self {
+        let mut shards: [HashMap<K, V>; super::keys::SHARDS] = Default::default();
+        for (key, value) in map {
+            shards[key.shard()].insert(key, value);
+        }
+        Self::from_shards(shards)
+    }
+}
+
+#[cfg(feature = "sharded-freeze")]
+impl<K: super::keys::ShardKey, V> ContentMap<K, V> for ShardedMap<K, V> {
+    fn get(&self, key: &K) -> Option<&V> {
+        self.shards[key.shard()].get(key)
+    }
+
+    fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a V)>
+    where
+        V: 'a,
+    {
+        self.shards.iter().flat_map(HashMap::iter)
+    }
+
+    /// Each shard sorted on its own, then merged: the shards hold disjoint keys.
+    fn sorted_run(&self) -> Vec<(K, V)>
+    where
+        V: Copy,
+    {
+        let runs: Vec<Vec<(K, V)>> = self.shards.iter().map(ContentMap::sorted_run).collect();
+        super::sorted_merge::merge_disjoint_runs(&runs)
+    }
+}
+
+/// Which pooled-resource gauge of [`crate::stats::ContentCounters`] a live content counts in, by usage index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LiveKind {
+    Block(usize),
+    Sorted(usize),
+}
+
+/// A content counted live in [`crate::stats::ContentCounters`] until dropped.
+pub(crate) struct LiveContent {
+    stats: Arc<FlatStats>,
+    kind: LiveKind,
+}
+
+impl LiveContent {
+    /// Counts a new content created and live.
+    pub(crate) fn create(stats: Arc<FlatStats>, kind: LiveKind) -> Self {
+        Self::count_created(&stats, kind);
+        Self::adopt(stats, kind)
+    }
+
+    /// Takes over a content [`LiveContent::count_created`] already counted.
+    pub(crate) fn adopt(stats: Arc<FlatStats>, kind: LiveKind) -> Self {
+        Self { stats, kind }
+    }
+
+    /// Counts a content created and live without a token yet, for [`LiveContent::adopt`] or [`LiveContent::release`] to
+    /// settle.
+    pub(crate) fn count_created(stats: &FlatStats, kind: LiveKind) {
+        let (active, created) = Self::counters(stats, kind);
+        FlatStats::add(active, 1);
+        FlatStats::add(created, 1);
+    }
+
+    /// Ends a content counted by [`LiveContent::count_created`] that never got a token.
+    pub(crate) fn release(stats: &FlatStats, kind: LiveKind) {
+        FlatStats::add(Self::counters(stats, kind).0, -1);
+    }
+
+    fn counters(stats: &FlatStats, kind: LiveKind) -> (&AtomicI64, &AtomicI64) {
+        let counters = &stats.content;
+        match kind {
+            LiveKind::Block(usage) => (&counters.active[usage], &counters.created[usage]),
+            LiveKind::Sorted(usage) => (&counters.sorted_active[usage], &counters.sorted_created[usage]),
+        }
+    }
+}
+
+impl Drop for LiveContent {
+    fn drop(&mut self) {
+        Self::release(&self.stats, self.kind);
     }
 }

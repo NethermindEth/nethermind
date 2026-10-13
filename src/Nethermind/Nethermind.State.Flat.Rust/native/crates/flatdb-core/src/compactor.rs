@@ -2,20 +2,23 @@
 //! snapshots ending at a block into one sorted snapshot spanning the block's compact size.
 //!
 //! The merged trie nodes keep pointing into the arenas of the base snapshots, which the compacted snapshot holds by
-//! `Arc`; only keys and node references are merged. C# runs the four map merges as tasks; here they run on scoped
-//! threads.
+//! `Arc`; only keys and node references are merged. C# runs the four map merges as tasks; here three run on worker
+//! threads the compactor keeps for its lifetime and the fourth on the compacting thread.
 
 use std::borrow::Cow;
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
+use crossbeam_channel::{Receiver, Sender};
 use hashbrown::HashMap;
 
 use crate::keccak::account_path;
+use crate::log_ring;
 use crate::repository::SnapshotRepository;
 use crate::schedule::CompactionSchedule;
-use crate::snapshot::content::{NodeArena, NodeRef};
+use crate::snapshot::content::{LiveContent, LiveKind, NodeArena, NodeRef};
 use crate::snapshot::keys::SnapshotKey;
 use crate::snapshot::sorted::SortedSnapshotContent;
 use crate::snapshot::sorted_merge::SortedMergeMap;
@@ -29,18 +32,25 @@ pub trait Compactor: Send + Sync + 'static {
     fn do_compact_snapshot(&self, state_id: &StateId) -> bool;
 }
 
+/// The merges a compaction hands to the workers.
+const MERGE_WORKERS: usize = 3;
+
 pub struct SnapshotCompactor {
     compact_size: u64,
     schedule: CompactionSchedule,
     repository: Arc<SnapshotRepository>,
+    workers: MergeWorkers,
 }
 
 impl SnapshotCompactor {
+    /// # Panics
+    /// When a merge worker thread cannot be started.
     pub fn new(schedule: CompactionSchedule, repository: Arc<SnapshotRepository>) -> Self {
         Self {
             compact_size: schedule.compact_size(),
             schedule,
             repository,
+            workers: MergeWorkers::start(),
         }
     }
 
@@ -138,6 +148,8 @@ impl SnapshotCompactor {
     pub fn compact_snapshot_bundle(&self, snapshots: &[Arc<Snapshot>]) -> Snapshot {
         let from = snapshots.first().expect("snapshots to compact").from();
         let to = snapshots.last().expect("snapshots to compact").to();
+        let usage = compact_usage(self.schedule.get_compact_size(to.block_number));
+        let live = LiveContent::create(Arc::clone(self.repository.stats()), LiveKind::Sorted(usage));
 
         // A slot or node written before the highest snapshot index that clears its address is dropped by the merge.
         let mut self_destruct_merged: HashMap<Address, bool> = HashMap::new();
@@ -163,57 +175,60 @@ impl SnapshotCompactor {
             arena_shifts.push(u32::try_from(arenas.len()).expect("arena count fits in u32"));
             arenas.extend(snapshot.arenas().iter().cloned());
         }
-        let shift_node = |source: usize, node: &NodeRef| node.shift_arena(arena_shifts[source]);
 
-        let (accounts, storages, state_nodes, storage_nodes) = thread::scope(|scope| {
-            let accounts = scope.spawn(|| {
+        let sources = Arc::new(snapshots.to_vec());
+        let arena_shifts = Arc::new(arena_shifts);
+        let accounts = {
+            let sources = Arc::clone(&sources);
+            self.workers.run(move || {
                 merge_into(
-                    snapshots,
+                    &sources,
                     |s| s.sorted_run(|c| &c.accounts, |c| &c.accounts),
                     |_, _| true,
                     |_, account| *account,
                 )
-            });
-            let storages = scope.spawn(|| {
+            })
+        };
+        let storages = {
+            let sources = Arc::clone(&sources);
+            self.workers.run(move || {
                 merge_into(
-                    snapshots,
+                    &sources,
                     |s| s.sorted_run(|c| &c.storages, |c| &c.storages),
                     |source, key| keep_after_boundary(&slot_clear_boundary, &key.address, source),
                     |_, value| *value,
                 )
-            });
-            let state_nodes = scope.spawn(|| {
+            })
+        };
+        let state_nodes = {
+            let (sources, arena_shifts) = (Arc::clone(&sources), Arc::clone(&arena_shifts));
+            self.workers.run(move || {
                 merge_into(
-                    snapshots,
+                    &sources,
                     |s| s.sorted_run(|c| &c.state_nodes, |c| &c.state_nodes),
                     |_, _| true,
-                    shift_node,
+                    |source, node| node.shift_arena(arena_shifts[source]),
                 )
-            });
-            let storage_nodes = merge_into(
-                snapshots,
-                |s| s.sorted_run(|c| &c.storage_nodes, |c| &c.storage_nodes),
-                |source, key| keep_after_boundary(&node_clear_boundary, &key.address_hash, source),
-                shift_node,
-            );
-            (
-                accounts.join().expect("account merge"),
-                storages.join().expect("storage merge"),
-                state_nodes.join().expect("state node merge"),
-                storage_nodes,
-            )
-        });
+            })
+        };
+        let storage_nodes = merge_into(
+            &sources,
+            |s| s.sorted_run(|c| &c.storage_nodes, |c| &c.storage_nodes),
+            |source, key| keep_after_boundary(&node_clear_boundary, &key.address_hash, source),
+            |source, node: &NodeRef| node.shift_arena(arena_shifts[source]),
+        );
 
         Snapshot::new_sorted(
             from,
             to,
             SortedSnapshotContent {
-                accounts,
-                storages,
+                accounts: join_merge(accounts),
+                storages: join_merge(storages),
                 self_destructed: SortedMergeMap::from_unsorted(self_destruct_merged),
-                state_nodes,
+                state_nodes: join_merge(state_nodes),
                 storage_nodes,
                 arenas,
+                _live: Some(live),
             },
         )
     }
@@ -222,6 +237,75 @@ impl SnapshotCompactor {
 impl Compactor for SnapshotCompactor {
     fn do_compact_snapshot(&self, state_id: &StateId) -> bool {
         SnapshotCompactor::do_compact_snapshot(self, state_id)
+    }
+}
+
+/// The index of `ResourcePool.CompactUsage` among the compact usages: `Compact2` for 2 or less, up to `Compact2048`.
+fn compact_usage(compact_size: u64) -> usize {
+    (compact_size.clamp(2, 2048).ilog2() - 1) as usize
+}
+
+type MergeJob = Box<dyn FnOnce() + Send>;
+
+/// The threads the merges of every compaction run on, started with the compactor and joined when it drops.
+struct MergeWorkers {
+    jobs: Option<Sender<MergeJob>>,
+    threads: Vec<JoinHandle<()>>,
+}
+
+impl MergeWorkers {
+    fn start() -> Self {
+        let (jobs, receiver) = crossbeam_channel::unbounded::<MergeJob>();
+        // The workers log where the thread starting them does.
+        let log_sink = log_ring::current();
+        let threads = (0..MERGE_WORKERS)
+            .map(|index| {
+                let receiver = receiver.clone();
+                thread::Builder::new()
+                    .name(format!("fdb-merge-{index}"))
+                    .spawn(move || {
+                        log_ring::enter(log_sink);
+                        for job in receiver {
+                            job();
+                        }
+                    })
+                    .expect("cannot start a compaction merge worker")
+            })
+            .collect();
+        Self {
+            jobs: Some(jobs),
+            threads,
+        }
+    }
+
+    /// Runs `merge` on a worker; [`join_merge`] waits for its result.
+    fn run<T: Send + 'static>(&self, merge: impl FnOnce() -> T + Send + 'static) -> Receiver<thread::Result<T>> {
+        let (result, receiver) = crossbeam_channel::bounded(1);
+        let job: MergeJob = Box::new(move || {
+            let _ = result.send(panic::catch_unwind(AssertUnwindSafe(merge)));
+        });
+        self.jobs
+            .as_ref()
+            .and_then(|jobs| jobs.send(job).ok())
+            .expect("the merge workers run while the compactor lives");
+        receiver
+    }
+}
+
+impl Drop for MergeWorkers {
+    fn drop(&mut self) {
+        drop(self.jobs.take());
+        for thread in self.threads.drain(..) {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// The result of a merge run on a worker; a panic of the merge resumes here.
+fn join_merge<T>(merge: Receiver<thread::Result<T>>) -> T {
+    match merge.recv().expect("a merge worker answers every job") {
+        Ok(merged) => merged,
+        Err(panic) => panic::resume_unwind(panic),
     }
 }
 
@@ -240,4 +324,33 @@ fn merge_into<'a, K: SnapshotKey, V: Copy + 'a>(
     let runs: Vec<Cow<'a, [(K, V)]>> = snapshots.iter().map(|snapshot| run(snapshot)).collect();
     let sources: Vec<&[(K, V)]> = runs.iter().map(|run| &**run).collect();
     SortedMergeMap::merge(&sources, keep, map)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+    use std::panic::{self, AssertUnwindSafe};
+    use std::thread;
+
+    use super::{MERGE_WORKERS, MergeWorkers, join_merge};
+
+    #[test]
+    fn merges_reuse_the_workers_and_a_panicking_one_resumes_in_the_caller() {
+        let workers = MergeWorkers::start();
+        let names: BTreeSet<String> = (0..12)
+            .map(|_| join_merge(workers.run(|| thread::current().name().unwrap_or_default().to_owned())))
+            .collect();
+        assert!(names.len() <= MERGE_WORKERS && names.iter().all(|name| name.starts_with("fdb-merge-")));
+
+        let panicked = panic::catch_unwind(AssertUnwindSafe(|| {
+            join_merge(workers.run(|| -> u32 { panic!("merge failed") }))
+        }));
+        assert!(panicked.is_err());
+        assert_eq!(
+            join_merge(workers.run(|| 7)),
+            7,
+            "the workers outlive a panicking merge"
+        );
+        drop(workers);
+    }
 }

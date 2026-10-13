@@ -16,13 +16,13 @@ use std::thread;
 use common::any_kv::Backend;
 use common::hex;
 use common::snapshots::{DictionaryReader, address, empty_snapshot, snapshot, state_id};
-use flatdb_core::bundle::ReadOnlySnapshotBundle;
+use flatdb_core::bundle::{ReadOnlySnapshotBundle, ReadSource};
 use flatdb_core::bundle_cache::BundleCache;
 use flatdb_core::compactor::SnapshotCompactor;
 use flatdb_core::keccak::{account_path, keccak256};
 use flatdb_core::kv::{ReadFlags, WriteFlags};
 use flatdb_core::persistence::layouts::KvPersistence;
-use flatdb_core::persistence::{Persistence, PersistenceReader, PersistenceWriteBatch, ReaderFlags};
+use flatdb_core::persistence::{Persistence, PersistenceWriteBatch, ReaderFlags};
 use flatdb_core::repository::SnapshotRepository;
 use flatdb_core::schedule::CompactionSchedule;
 use flatdb_core::seam::{self, BundleRead};
@@ -80,14 +80,23 @@ fn get_account_reads_the_newest_snapshot_then_persistence() {
         0.0,
     );
 
-    assert_eq!(bundle.get_account(&a).unwrap(), Some(Account::new(2, u256(2))));
-    assert_eq!(bundle.get_account(&b).unwrap(), Some(Account::new(8, u256(8))));
+    assert_eq!(
+        bundle.get_account(&a).unwrap(),
+        (Some(Account::new(2, u256(2))), ReadSource::Snapshot)
+    );
+    assert_eq!(
+        bundle.get_account(&b).unwrap(),
+        (Some(Account::new(8, u256(8))), ReadSource::Persistence)
+    );
     assert_eq!(
         bundle.get_account(&c).unwrap(),
-        None,
+        (None, ReadSource::Snapshot),
         "a deletion in a snapshot shadows persistence"
     );
-    assert_eq!(bundle.get_account(&address(0xD4)).unwrap(), None);
+    assert_eq!(
+        bundle.get_account(&address(0xD4)).unwrap(),
+        (None, ReadSource::Persistence)
+    );
     assert_eq!(bundle.snapshot_count(), 2);
 }
 
@@ -127,11 +136,13 @@ fn reads_count_where_they_were_served_from(#[values(false, true)] filtered: bool
         bundle.try_get_slot(&address, &u256(slot), filtered).unwrap();
     }
     for path in [root, placeholder, persisted] {
-        bundle.load_state_rlp(&path, ReadFlags::NONE, <[u8]>::to_vec).unwrap();
+        bundle
+            .load_state_rlp_unchecked(&path, ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap();
     }
     for path in [root, persisted] {
         bundle
-            .load_storage_rlp(&owner, &path, ReadFlags::NONE, <[u8]>::to_vec)
+            .load_storage_rlp_unchecked(&owner, &path, ReadFlags::NONE, <[u8]>::to_vec)
             .unwrap();
     }
 
@@ -170,8 +181,9 @@ fn determine_self_destruct_snapshot_idx_returns_the_newest_clear() {
         0.0,
     );
 
-    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&a), Some(1));
-    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&address(0xB2)), None);
+    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&a), 1);
+    assert_eq!(bundle.determine_self_destruct_snapshot_idx(&address(0xB2)), -1);
+    assert!(bundle.has_self_destructs());
 }
 
 #[rstest]
@@ -198,8 +210,11 @@ fn get_slot_overlay_presence_controls_fallback(
         0.0,
     );
 
-    assert_eq!(bundle.get_slot(None, &a, &index).unwrap(), expected.map(u256));
-    assert_eq!(bundle.persistence_reader().slot_reads(), 0);
+    assert_eq!(
+        bundle.get_slot(&a, &index, -1).unwrap(),
+        (expected.map(u256), ReadSource::Snapshot)
+    );
+    assert_eq!(bundle.persistence_reader().unwrap().slot_reads(), 0);
 }
 
 #[rstest]
@@ -218,17 +233,20 @@ fn get_slot_stops_at_the_clear_and_falls_back_to_persistence_otherwise(#[values(
         0.0,
     );
 
-    assert_eq!(bundle.get_slot(Some(1), &a, &u256(1)).unwrap(), None);
     assert_eq!(
-        bundle.persistence_reader().slot_reads(),
+        bundle.get_slot(&a, &u256(1), 1).unwrap(),
+        (None, ReadSource::SelfDestructed)
+    );
+    assert_eq!(
+        bundle.persistence_reader().unwrap().slot_reads(),
         0,
         "a clear in memory never reaches persistence"
     );
     assert_eq!(
-        bundle.get_slot(None, &a, &u256(1)).unwrap(),
-        found.then_some(U256::ZERO)
+        bundle.get_slot(&a, &u256(1), -1).unwrap(),
+        (found.then_some(U256::ZERO), ReadSource::Persistence)
     );
-    assert_eq!(bundle.persistence_reader().slot_reads(), 1);
+    assert_eq!(bundle.persistence_reader().unwrap().slot_reads(), 1);
 }
 
 #[test]
@@ -264,7 +282,7 @@ fn try_get_slot_applies_the_newest_clear_itself() {
             Some(u256(6))
         );
     }
-    assert_eq!(bundle.persistence_reader().slot_reads(), 0);
+    assert_eq!(bundle.persistence_reader().unwrap().slot_reads(), 0);
 }
 
 #[test]
@@ -298,9 +316,9 @@ fn trie_nodes_come_from_the_newest_snapshot_and_placeholders_fall_through_to_per
     assert!(found.find_state_node(&absent).is_none());
     assert_eq!(
         found
-            .load_state_rlp(&state_path, ReadFlags::NONE, <[u8]>::to_vec)
+            .load_state_rlp_unchecked(&state_path, ReadFlags::NONE, <[u8]>::to_vec)
             .unwrap(),
-        Some(hex("0xc101"))
+        (Some(hex("0xc101")), ReadSource::Snapshot)
     );
 
     let shadowed = bundle(vec![older, newer_placeholders], reader, 0.0);
@@ -312,20 +330,20 @@ fn trie_nodes_come_from_the_newest_snapshot_and_placeholders_fall_through_to_per
     );
     assert_eq!(
         shadowed
-            .load_state_rlp(&state_path, ReadFlags::NONE, <[u8]>::to_vec)
+            .load_state_rlp_unchecked(&state_path, ReadFlags::NONE, <[u8]>::to_vec)
             .unwrap(),
-        Some(hex("0xc1ff"))
+        (Some(hex("0xc1ff")), ReadSource::Persistence)
     );
-    let storage = shadowed.load_storage_rlp(&address_hash, &storage_path, ReadFlags::NONE, <[u8]>::to_vec);
-    assert_eq!(storage.unwrap(), Some(hex("0xc1ee")));
+    let storage = shadowed.load_storage_rlp_unchecked(&address_hash, &storage_path, ReadFlags::NONE, <[u8]>::to_vec);
+    assert_eq!(storage.unwrap(), (Some(hex("0xc1ee")), ReadSource::Persistence));
     assert_eq!(
         shadowed
-            .load_state_rlp(&absent, ReadFlags::NONE, <[u8]>::to_vec)
+            .load_state_rlp_unchecked(&absent, ReadFlags::NONE, <[u8]>::to_vec)
             .unwrap(),
-        Some(hex("0xc1fe"))
+        (Some(hex("0xc1fe")), ReadSource::Persistence)
     );
-    let missing = shadowed.load_storage_rlp(&address_hash, &absent, ReadFlags::NONE, <[u8]>::to_vec);
-    assert_eq!(missing.unwrap(), None);
+    let missing = shadowed.load_storage_rlp_unchecked(&address_hash, &absent, ReadFlags::NONE, <[u8]>::to_vec);
+    assert_eq!(missing.unwrap(), (None, ReadSource::Persistence));
 }
 
 #[rstest]
@@ -345,15 +363,18 @@ fn a_definite_miss_with_a_clear_in_memory_is_none_and_skips_persistence(
         bits_per_key,
     );
     let clear = bundle.determine_self_destruct_snapshot_idx(&a);
-    assert_eq!(clear, Some(1));
+    assert_eq!(clear, 1);
 
-    assert_eq!(bundle.get_slot_filtered(clear, &a, &u256(1)).unwrap(), None);
+    assert_eq!(
+        bundle.get_slot_filtered(&a, &u256(1), clear).unwrap(),
+        (None, ReadSource::SelfDestructed)
+    );
     if bundle.slot_filter_might_contain(&a, &u256(1)) == Some(false) {
-        assert_eq!(bundle.persistence_reader().slot_reads(), 0);
+        assert_eq!(bundle.persistence_reader().unwrap().slot_reads(), 0);
     }
 
     // Without the clear the same read reaches persistence.
-    assert_eq!(bundle.get_slot_filtered(None, &a, &u256(1)).unwrap(), Some(u256(11)));
+    assert_eq!(bundle.get_slot_filtered(&a, &u256(1), -1).unwrap().0, Some(u256(11)));
 }
 
 #[rstest]
@@ -381,7 +402,7 @@ fn the_filter_holds_every_key_of_unsorted_and_compacted_snapshots(#[values(false
     }
     let bundle = bundle(layers, DictionaryReader::default(), REAL_BITS_PER_KEY);
 
-    bundle.get_slot_filtered(None, &address(0), &u256(1)).unwrap();
+    bundle.get_slot_filtered(&address(0), &u256(1), -1).unwrap();
 
     assert!(
         written
@@ -405,10 +426,10 @@ fn the_filter_is_built_only_with_bits_per_key_and_two_snapshots(
         "nothing is built before the first filtered read"
     );
 
-    bundle.get_slot(None, &a, &u256(0)).unwrap();
+    bundle.get_slot(&a, &u256(0), -1).unwrap();
     assert!(bundle.slot_filter().is_none(), "the plain read never builds");
 
-    let value = bundle.get_slot_filtered(None, &a, &u256(0)).unwrap();
+    let (value, _) = bundle.get_slot_filtered(&a, &u256(0), -1).unwrap();
     let built = snapshots >= 2 && bits_per_key > 0.0;
     assert_eq!(value, (snapshots > 0).then_some(u256(1)));
     assert_eq!(bundle.slot_filter().is_some(), built);
@@ -429,7 +450,7 @@ fn snapshots_without_slots_get_a_filter_that_answers_every_read() {
         REAL_BITS_PER_KEY,
     );
 
-    assert_eq!(bundle.get_slot_filtered(None, &a, &u256(3)).unwrap(), Some(u256(33)));
+    assert_eq!(bundle.get_slot_filtered(&a, &u256(3), -1).unwrap().0, Some(u256(33)));
     assert_eq!(bundle.slot_filter().map(|filter| filter.data_bytes()), Some(64));
 }
 
@@ -448,8 +469,8 @@ fn a_filter_that_cannot_be_built_leaves_the_plain_loop_in_charge() {
     );
 
     assert!(bundle.may_filter_slots());
-    assert_eq!(bundle.get_slot_filtered(None, &a, &u256(1)).unwrap(), Some(u256(2)));
-    assert_eq!(bundle.get_slot_filtered(None, &a, &u256(2)).unwrap(), Some(u256(22)));
+    assert_eq!(bundle.get_slot_filtered(&a, &u256(1), -1).unwrap().0, Some(u256(2)));
+    assert_eq!(bundle.get_slot_filtered(&a, &u256(2), -1).unwrap().0, Some(u256(22)));
     assert!(bundle.slot_filter().is_none());
     assert!(!bundle.may_filter_slots(), "a failed build is not retried");
 }
@@ -600,9 +621,9 @@ fn bundles_read_through_a_real_persistence(
     let reader = persistence.create_reader(ReaderFlags::NONE).unwrap();
     let bundle = ReadOnlySnapshotBundle::new(snapshots, reader, REAL_BITS_PER_KEY);
 
-    assert_eq!(bundle.persistence_reader().current_state(), persisted);
-    assert_eq!(bundle.get_account(&a).unwrap(), Some(Account::new(1, u256(10))));
-    assert_eq!(bundle.get_account(&b).unwrap(), Some(Account::new(3, u256(30))));
+    assert_eq!(bundle.reader_state(), persisted);
+    assert_eq!(bundle.get_account(&a).unwrap().0, Some(Account::new(1, u256(10))));
+    assert_eq!(bundle.get_account(&b).unwrap().0, Some(Account::new(3, u256(30))));
     for filtered in [false, true] {
         assert_eq!(
             bundle.try_get_slot(&a, &u256(1), filtered).unwrap(),
@@ -613,14 +634,15 @@ fn bundles_read_through_a_real_persistence(
         assert_eq!(bundle.try_get_slot(&b, &u256(2), filtered).unwrap(), Some(u256(222)));
         assert_eq!(bundle.try_get_slot(&b, &u256(3), filtered).unwrap(), None);
     }
-    let state_rlp = bundle.load_state_rlp(&TreePath::from_hex("12"), ReadFlags::NONE, <[u8]>::to_vec);
+    let state_rlp = bundle.load_state_rlp_unchecked(&TreePath::from_hex("12"), ReadFlags::NONE, <[u8]>::to_vec);
     assert_eq!(
-        state_rlp.unwrap(),
+        state_rlp.unwrap().0,
         Some(hex("0xc2aaaa")),
         "the placeholder falls through to persistence"
     );
-    let storage_rlp = bundle.load_storage_rlp(&account_path(&b), &storage_path, ReadFlags::NONE, <[u8]>::to_vec);
-    assert_eq!(storage_rlp.unwrap(), Some(hex("0xc2cccc")));
+    let storage_rlp =
+        bundle.load_storage_rlp_unchecked(&account_path(&b), &storage_path, ReadFlags::NONE, <[u8]>::to_vec);
+    assert_eq!(storage_rlp.unwrap().0, Some(hex("0xc2cccc")));
 }
 
 /// One layer of the oracle: what it wrote and which addresses it cleared.
@@ -812,23 +834,26 @@ fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Re
 
         for a in 0u8..9 {
             let clear = oracle_clear(&layers, a);
-            prop_assert_eq!(bundle.determine_self_destruct_snapshot_idx(&address(a)), clear);
+            prop_assert_eq!(
+                bundle.determine_self_destruct_snapshot_idx(&address(a)),
+                clear.map_or(-1, |clear| clear as i32)
+            );
             let account = layers
                 .iter()
                 .rev()
                 .find_map(|layer| layer.accounts.get(&a).copied())
                 .unwrap_or_else(|| persistence.accounts.get(&a).copied());
             prop_assert_eq!(
-                bundle.get_account(&address(a)).unwrap().map(|account| account.nonce),
+                bundle.get_account(&address(a)).unwrap().0.map(|account| account.nonce),
                 account
             );
 
             for s in 1u8..10 {
                 let slot = u256(u64::from(s));
-                for d in std::iter::once(None).chain((0..=snapshots.len()).map(Some)) {
-                    let expected = oracle_slot(&layers, persistence, (a, s), d).map(u256);
-                    prop_assert_eq!(bundle.get_slot(d, &address(a), &slot).unwrap(), expected);
-                    prop_assert_eq!(bundle.get_slot_filtered(d, &address(a), &slot).unwrap(), expected);
+                for d in -1..=snapshots.len() as i32 {
+                    let expected = oracle_slot(&layers, persistence, (a, s), usize::try_from(d).ok()).map(u256);
+                    prop_assert_eq!(bundle.get_slot(&address(a), &slot, d).unwrap().0, expected);
+                    prop_assert_eq!(bundle.get_slot_filtered(&address(a), &slot, d).unwrap().0, expected);
                 }
                 let expected = oracle_slot(&layers, persistence, (a, s), clear).map(u256);
                 prop_assert_eq!(bundle.try_get_slot(&address(a), &slot, false).unwrap(), expected);
@@ -841,8 +866,8 @@ fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Re
                 Some(rlp) if !rlp.is_empty() => Some(rlp.clone()),
                 _ => persistence.state_nodes.get(&nibble).cloned(),
             };
-            let actual = bundle.load_state_rlp(&node_path(nibble), ReadFlags::NONE, <[u8]>::to_vec);
-            prop_assert_eq!(actual.unwrap(), expected);
+            let actual = bundle.load_state_rlp_unchecked(&node_path(nibble), ReadFlags::NONE, <[u8]>::to_vec);
+            prop_assert_eq!(actual.unwrap().0, expected);
         }
 
         prop_assert_eq!(

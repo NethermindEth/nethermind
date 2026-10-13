@@ -1,13 +1,14 @@
 //! The compactor and its schedule: ports of `SnapshotCompactorTests` and of the math and validation of
 //! `CompactionScheduleTests`, plus a proptest of compaction against a naive model of the merge.
 //!
-//! Not ported: the `ResourcePool.Usage` tier tests (Rust snapshots are not pooled) and the offset resolution tests,
-//! which stay in C# (the offset reaches Rust as a number).
+//! Not ported: the `ResourcePool.Usage` pool reuse tests (Rust contents are not pooled, only counted in its gauges) and
+//! the offset resolution tests, which stay in C# (the offset reaches Rust as a number).
 
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use common::hex;
 use common::snapshots::{FixedFinality, address, empty_snapshot, snapshot, state_id};
@@ -268,6 +269,30 @@ fn self_destruct_flags_merge(#[case] is_new_per_snapshot: &[bool], #[case] expec
         usize::from(slot_kept),
         "only a clear of an existing account drops slots"
     );
+}
+
+/// `CompactUsage`: a compacted content counts in the `SortedSnapshotContent` gauges of its window's compact size.
+#[rstest]
+#[case::partial_window(4, 1)]
+#[case::full_window(16, 3)]
+fn a_compacted_content_counts_under_its_compact_usage(#[case] block_number: u64, #[case] usage: usize) {
+    let (compactor, repository) = compactor();
+    let sources = [
+        empty_snapshot(zero_state(block_number - 2), zero_state(block_number - 1)),
+        empty_snapshot(zero_state(block_number - 1), zero_state(block_number)),
+    ];
+    let content = &repository.stats().content;
+    let gauges = || {
+        (
+            content.sorted_active[usage].load(Ordering::Relaxed),
+            content.sorted_created[usage].load(Ordering::Relaxed),
+        )
+    };
+
+    let compacted = compactor.compact_snapshot_bundle(&sources);
+    assert_eq!(gauges(), (1, 1));
+    drop(compacted);
+    assert_eq!(gauges(), (0, 1));
 }
 
 #[test]

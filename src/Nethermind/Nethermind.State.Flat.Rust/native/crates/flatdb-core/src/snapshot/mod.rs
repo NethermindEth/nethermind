@@ -8,18 +8,17 @@
 
 pub mod content;
 pub mod keys;
+pub mod mutable;
 pub mod sorted;
 pub mod sorted_merge;
 
 use std::borrow::Cow;
 use std::hash::BuildHasher;
 
-use hashbrown::HashMap;
-
-use self::content::{SnapshotContent, SnapshotContentCounts, TrieNodeRlp};
+use self::content::{ContentMap, SnapshotContent, SnapshotContentCounts, TrieNodeRlp};
 use self::keys::{SnapshotKey, StorageKey, StorageNodeKey};
 use self::sorted::SortedSnapshotContent;
-use self::sorted_merge::{SortedMergeMap, sort_run};
+use self::sorted_merge::SortedMergeMap;
 use crate::bloom::BloomFilter;
 use crate::types::{Account, Address, Hash256, StateId, TreePath, U256};
 
@@ -206,23 +205,21 @@ impl Snapshot {
 
     /// The entries of one map as a run sorted by key: borrowed from a sorted snapshot, sorted into a copy from an
     /// unsorted one (`BuildRunFromUnsorted`). Node values index into [`Snapshot::arenas`].
-    pub(crate) fn sorted_run<'a, K: SnapshotKey, V: Copy + 'a>(
+    pub(crate) fn sorted_run<'a, K: SnapshotKey, V: Copy + 'a, M: ContentMap<K, V> + 'a>(
         &'a self,
-        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a HashMap<K, V>,
+        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a M,
         sorted: impl FnOnce(&'a SortedSnapshotContent) -> &'a SortedMergeMap<K, V>,
     ) -> Cow<'a, [(K, V)]> {
         match &self.content {
-            Content::Unsorted(content) => {
-                Cow::Owned(sort_run(unsorted(content).iter().map(|(key, value)| (*key, *value))))
-            }
+            Content::Unsorted(content) => Cow::Owned(unsorted(content).sorted_run()),
             Content::Sorted(content) => Cow::Borrowed(sorted(content).entries()),
         }
     }
 
-    fn lookup<'a, K: SnapshotKey, V: 'a>(
+    fn lookup<'a, K: SnapshotKey, V: 'a, M: ContentMap<K, V> + 'a>(
         &'a self,
         key: &K,
-        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a HashMap<K, V>,
+        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a M,
         sorted: impl FnOnce(&'a SortedSnapshotContent) -> &'a SortedMergeMap<K, V>,
     ) -> Option<&'a V> {
         match &self.content {
@@ -231,9 +228,9 @@ impl Snapshot {
         }
     }
 
-    fn entries<'a, K: SnapshotKey, V: 'a>(
+    fn entries<'a, K: SnapshotKey, V: 'a, M: ContentMap<K, V> + 'a>(
         &'a self,
-        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a HashMap<K, V>,
+        unsorted: impl FnOnce(&'a SnapshotContent) -> &'a M,
         sorted: impl FnOnce(&'a SortedSnapshotContent) -> &'a SortedMergeMap<K, V>,
     ) -> impl Iterator<Item = (&'a K, &'a V)> {
         match &self.content {

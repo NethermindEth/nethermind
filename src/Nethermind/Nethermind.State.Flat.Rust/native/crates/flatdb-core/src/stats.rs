@@ -5,7 +5,7 @@
 //! Like the C# statics, the gauges are adjusted by deltas at every add and remove site, so every component of one
 //! manager shares one [`FlatStats`]. Times are observed in nanoseconds, which are `Stopwatch` ticks on Linux.
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, TrySendError};
@@ -38,6 +38,59 @@ pub struct FlatCounters {
     pub in_memory_slot_filter_build_failures: AtomicI64,
     /// Histogram observations dropped because the queue was full (no C# counterpart).
     pub observations_dropped: AtomicI64,
+}
+
+/// The number of `ResourcePool.Usage` values a block's content is written under: `MainBlockProcessing`,
+/// `PostMainBlockProcessing` and `ReadOnlyProcessingEnv`.
+pub const CONTENT_USAGES: usize = 3;
+/// The number of `ResourcePool.Usage` values a compacted content is built under: `Compact2` to `Compact2048`.
+pub const SORTED_CONTENT_USAGES: usize = 11;
+
+/// The pooled-resource gauges of `ResourcePool` (`Metrics.ActivePooledResource` and `Metrics.CreatedPooledResource`)
+/// for the native contents, indexed like `ResourcePool.Usage`.
+///
+/// A block's content is live from its first write, or from the commit freezing an unwritten one, until the last
+/// snapshot holding it drops: the C# rent-to-return lifetime of a pooled `SnapshotContent`. Nothing is pooled, so every
+/// live content was created.
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct ContentCounters {
+    /// `("<usage>", "SnapshotContent")`: live block contents.
+    pub active: [AtomicI64; CONTENT_USAGES],
+    pub created: [AtomicI64; CONTENT_USAGES],
+    /// `("Compact<N>", "SortedSnapshotContent")`: live compacted contents.
+    pub sorted_active: [AtomicI64; SORTED_CONTENT_USAGES],
+    pub sorted_created: [AtomicI64; SORTED_CONTENT_USAGES],
+}
+
+/// The entry counts of the last content frozen under each usage, which size the maps of the next one.
+#[derive(Debug, Default)]
+pub(crate) struct ContentHints {
+    last_frozen: [[AtomicUsize; ContentHint::COUNT]; CONTENT_USAGES],
+}
+
+/// What [`ContentHints`] records of a frozen content.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ContentHint {
+    Accounts,
+    SelfDestructs,
+    SlotAddresses,
+    StateNodes,
+    StorageNodeAddresses,
+}
+
+impl ContentHint {
+    const COUNT: usize = 5;
+}
+
+impl ContentHints {
+    pub(crate) fn get(&self, usage: usize, hint: ContentHint) -> usize {
+        self.last_frozen[usage][hint as usize].load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set(&self, usage: usize, hint: ContentHint, count: usize) {
+        self.last_frozen[usage][hint as usize].store(count, Ordering::Relaxed);
+    }
 }
 
 /// A histogram of `Metrics`, with the id C# maps back to the observer.
@@ -85,6 +138,8 @@ pub struct Observation {
 /// The metrics of one manager and the components under it.
 pub struct FlatStats {
     pub counters: FlatCounters,
+    pub content: ContentCounters,
+    pub(crate) content_hints: ContentHints,
     /// `None` when histograms are off, as the C# observers of detailed metrics are no-ops then.
     observations: Option<(Sender<Observation>, Receiver<Observation>)>,
 }
@@ -101,6 +156,8 @@ impl FlatStats {
     pub fn new(observation_capacity: usize) -> Self {
         Self {
             counters: FlatCounters::default(),
+            content: ContentCounters::default(),
+            content_hints: ContentHints::default(),
             observations: (observation_capacity > 0).then(|| crossbeam_channel::bounded(observation_capacity)),
         }
     }

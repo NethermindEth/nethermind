@@ -35,6 +35,33 @@ impl StorageNodeKey {
     }
 }
 
+/// The number of shards a mutable content splits its keyed maps into, each under its own lock.
+pub(crate) const SHARDS: usize = 16;
+
+/// The shard of a key: the low nibble of the first byte of the address, or of the account path for a storage node.
+#[cfg(feature = "sharded-freeze")]
+pub(crate) trait ShardKey: SnapshotKey {
+    fn shard(&self) -> usize;
+}
+
+pub(crate) const fn shard_of(first_byte: u8) -> usize {
+    (first_byte & 0x0F) as usize
+}
+
+#[cfg(feature = "sharded-freeze")]
+impl ShardKey for StorageKey {
+    fn shard(&self) -> usize {
+        shard_of(self.address[0])
+    }
+}
+
+#[cfg(feature = "sharded-freeze")]
+impl ShardKey for StorageNodeKey {
+    fn shard(&self) -> usize {
+        shard_of(self.address_hash[0])
+    }
+}
+
 /// A key of snapshot content with the sort order of its C# comparer.
 pub trait SnapshotKey: Copy + Eq + Hash + Send + Sync + 'static {
     fn compare(&self, other: &Self) -> Ordering;
