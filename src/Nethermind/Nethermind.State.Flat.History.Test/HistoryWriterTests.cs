@@ -1667,6 +1667,28 @@ public class HistoryWriterTests
         _repository.RemoveAndReleaseInMemoryKnownState(StateAt(block), SnapshotTier.InMemoryBase);
     }
 
+    [Test]
+    public void PendingV3Writes_AfterALongWalk_LetGoOfTheirCapacity_ButStayWarmForAShortOne()
+    {
+        HistoryWriter.PendingV3Writes pending = new(RlpWrapSlots);
+        for (int i = 0; i < 100_000; i++)
+        {
+            ValueHash256 key = Keccak.Compute(i.ToString()).ValueHash256;
+            pending.Storages[new HistoryWriter.PendingV3Writes.SlotKey(key, key)] = 1;
+        }
+
+        for (int i = 0; i < 1_000; i++) pending.Accounts[Keccak.Compute(i.ToString()).ValueHash256] = 1;
+
+        pending.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Storages, Is.Empty);
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.LessThan(100_000), "a walk far longer than a capture of a few blocks must not hold its memory for the life of the process");
+            Assert.That(pending.Accounts.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1_000), "what a capture of a few blocks tracks stays allocated for the next one");
+        }
+    }
+
     private void SeedGenesisFloor() => _writer.SeedGenesis([], StateAt(0).StateRoot);
 
     private (HistoryWriter Writer, HistoryReader Reader) CreateWindowedPair(ulong retentionBlocks) => CreatePair(new FlatDbConfig

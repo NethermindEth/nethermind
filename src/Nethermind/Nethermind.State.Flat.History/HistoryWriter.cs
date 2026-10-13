@@ -202,6 +202,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (!complete) walkBatch.Clear();
             walkBatch.Dispose();
             if (!complete) _commitments?.Discard();
+            pending?.Clear();
         }
 
         if (connected)
@@ -804,9 +805,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
     /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.
     /// Post-values are encoded only when a row is written: a key's first touch in the walk writes nothing.</summary>
-    private sealed class PendingV3Writes(bool rlpWrapSlots)
+    internal sealed class PendingV3Writes(bool rlpWrapSlots)
     {
         private const int AccountRlpBufferSize = 256;
+        // What a capture of a few blocks tracks. A longer walk, a catch-up after a restart, grows the maps far past it,
+        // and keeping that capacity would hold its memory for the life of the process.
+        private const int MaxRetainedEntries = 1 << 16;
 
         public readonly record struct SlotKey(ValueHash256 AddrPath, ValueHash256 SlotHash);
 
@@ -816,9 +820,15 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
 
         public void Clear()
         {
-            Accounts.Clear();
-            Storages.Clear();
-            Destructs.Clear();
+            Clear(Accounts);
+            Clear(Storages);
+            Clear(Destructs);
+        }
+
+        private static void Clear<TKey>(Dictionary<TKey, ulong> map) where TKey : notnull
+        {
+            map.Clear();
+            if (map.EnsureCapacity(0) > MaxRetainedEntries) map.TrimExcess();
         }
 
         /// <summary>Keeps the lowest destruct seen, for slots first written lower in this same walk.</summary>
