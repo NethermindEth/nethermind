@@ -1790,14 +1790,13 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_deleting_invalid_block_deletes_its_descendants([Values] bool deferBalWrites)
+    public async Task When_deleting_invalid_block_deletes_its_descendants([Values] bool deferBalWrites)
     {
         BlockStore blockStore = new(new MemDb());
         MemDb blockInfosDb = new();
-        List<Action> queuedBalWrites = [];
-        IDeferredBlockDataWriter deferredWriter = Substitute.For<IDeferredBlockDataWriter>();
-        deferredWriter.Enabled.Returns(deferBalWrites);
-        deferredWriter.When(static w => w.Enqueue(Arg.Any<Action>())).Do(c => queuedBalWrites.Add(c.Arg<Action>()));
+        await using DeferredBlockDataWriter deferredWriter = deferBalWrites
+            ? DeferredWriteTestHelpers.ManualWriter()
+            : DeferredWriteTestHelpers.DisabledWriter();
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead
             .WithBlockInfoDb(blockInfosDb)
@@ -1820,7 +1819,7 @@ public class BlockTreeTests
         tree.TryUpdateMainChain(block1.Header, true, preloadedBlocks: new[] { block1 });
         tree.DeleteInvalidBlock(block2);
         // Deferred writes still queued at deletion run afterwards and must not bring the access lists back.
-        queuedBalWrites.ForEach(static write => write());
+        deferredWriter.Pump();
 
         using (Assert.EnterMultipleScope())
         {
