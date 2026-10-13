@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -84,9 +85,9 @@ public static class VirtualMachineStatics
         255, 255, 255, 255, 255, 255, 255, 255
     };
 
-    internal static readonly Address Ripemd160Address = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
     public static PrecompileExecutionFailureException PrecompileExecutionFailureException => field ??= new();
     public static OutOfGasException PrecompileOutOfGasException => field ??= new();
+    internal static readonly Address Ripemd160Address = PrecompiledAddresses.Ripemd160;
     internal const string EcRecoverPrecompileName = "ECREC";
 
     /// <summary>

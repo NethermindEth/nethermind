@@ -9,7 +9,6 @@ public static class Eip6110Constants
 {
     public const string ContractAddressKey = "DEPOSIT_CONTRACT_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x00000000219ab540356cbb839cbe05303d7705fa
     public static readonly Address MainnetDepositContractAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x00, 0x00, 0x21, 0x9a, 0xb5, 0x40, 0x35, 0x6c, 0xbb, 0x83, 0x9c, 0xbe, 0x05, 0x30, 0x3d, 0x77, 0x05, 0xfa]);
     // 0x4242424242424242424242424242424242424242

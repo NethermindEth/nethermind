@@ -10,7 +10,6 @@ public static class Eip7251Constants
 {
     public const string ContractAddressKey = "CONSOLIDATION_REQUEST_PREDEPLOY_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x0000BBdDc7CE488642fb579F8B00f3a590007251
     public static readonly Address ConsolidationRequestPredeployAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0xbb, 0xdd, 0xc7, 0xce, 0x48, 0x86, 0x42, 0xfb, 0x57, 0x9f, 0x8b, 0x00, 0xf3, 0xa5, 0x90, 0x00, 0x72, 0x51]);
 

@@ -13,7 +13,6 @@ public static class Eip2935Constants
 {
     public const string ContractAddressKey = "HISTORY_STORAGE_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     /// <summary>
     /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>

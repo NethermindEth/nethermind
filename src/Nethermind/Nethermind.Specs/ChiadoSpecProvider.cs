@@ -17,7 +17,6 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x67c96e4c;
     public const ulong OsakaTimestamp = 0x69b7ce4c;
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x1559000000000000000000000000000000000000
     public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x15, 0x59, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 

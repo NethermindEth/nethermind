@@ -15,7 +15,6 @@ public static class Eip8282Constants
     public const string BuilderDepositContractAddressKey = "BUILDER_DEPOSIT_CONTRACT_ADDRESS";
     public const string BuilderExitContractAddressKey = "BUILDER_EXIT_CONTRACT_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x0000BFF46984E3725691FA540A8C7589300D8282
     public static readonly Address BuilderDepositRequestPredeployAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0xbf, 0xf4, 0x69, 0x84, 0xe3, 0x72, 0x56, 0x91, 0xfa, 0x54, 0x0a, 0x8c, 0x75, 0x89, 0x30, 0x0d, 0x82, 0x82]);
 

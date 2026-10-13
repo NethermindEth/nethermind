@@ -12,7 +12,6 @@ public static class Eip4788Constants
 {
     public const string ContractAddressKey = "BEACON_ROOTS_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     /// <summary>
     /// Gets the <c>BEACON_ROOTS_ADDRESS</c> parameter.
     /// </summary>

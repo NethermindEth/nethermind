@@ -10,7 +10,6 @@ public static class Eip7002Constants
 {
     public const string ContractAddressKey = "WITHDRAWAL_REQUEST_PREDEPLOY_ADDRESS";
 
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x00000961Ef480Eb55e80D19ad83579A64c007002
     public static readonly Address WithdrawalRequestPredeployAddress = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x09, 0x61, 0xef, 0x48, 0x0e, 0xb5, 0x5e, 0x80, 0xd1, 0x9a, 0xd8, 0x35, 0x79, 0xa6, 0x4c, 0x00, 0x70, 0x02]);
 

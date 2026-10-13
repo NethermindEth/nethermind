@@ -24,7 +24,6 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
     public const ulong OsakaTimestamp = 0x69de2dbc;
-    // Byte literals rather than hex parsing: lets ILC precompute this type, so the zkEVM guest runs no class constructor.
     // 0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92
     public static readonly Address FeeCollector = new((ReadOnlySpan<byte>)[0x6b, 0xbe, 0x78, 0xee, 0x9e, 0x47, 0x48, 0x42, 0xdb, 0xd4, 0xab, 0x49, 0x87, 0xb3, 0xce, 0xfe, 0x88, 0x42, 0x6a, 0x92]);
 
