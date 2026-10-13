@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -34,7 +35,7 @@ public class NativePatriciaBulkSetBenchmarks
     private NativeBulkSetEntry[] _nativeEntries;
     private NativeBulkSetEntry[] _nativeBatches;
     private byte[] _values;
-    private RawScopedTrieStore _trieStore;
+    private ParallelCommitTrieStore _trieStore;
     private Hash256 _preloadedRootHash;
     private DictionaryNodeStore _nativeStore;
 
@@ -45,7 +46,7 @@ public class NativePatriciaBulkSetBenchmarks
         (_entries, _nativeEntries, _values) = GenerateEntries(rng, EntryCount);
         _nativeBatches = new NativeBulkSetEntry[EntryCount];
 
-        _trieStore = new RawScopedTrieStore(new MemDb());
+        _trieStore = new ParallelCommitTrieStore(new RawScopedTrieStore(new MemDb()));
         _preloadedRootHash = Keccak.EmptyTreeHash;
         ConcurrentDictionary<TreePath, byte[]> preloadedNodes = new();
         if (PreloadedCount > 0)
@@ -66,7 +67,15 @@ public class NativePatriciaBulkSetBenchmarks
         _nativeStore = new DictionaryNodeStore(preloadedNodes, new ConcurrentDictionary<TreePath, byte[]>());
     }
 
+    /// <summary>The production flow: hash with the write batch, persist at the end of the block.</summary>
     [Benchmark(Baseline = true)]
+    public void BulkSetUpdateRootHashAndCommit() => DoBulkSet(static tree =>
+    {
+        tree.UpdateRootHash(canBeParallel: true);
+        tree.Commit();
+    });
+
+    [Benchmark]
     public void BulkSetAndCommit() => DoBulkSet(static tree => tree.Commit());
 
     [Benchmark]
@@ -111,5 +120,33 @@ public class NativePatriciaBulkSetBenchmarks
         }
 
         return (entries, nativeEntries, values);
+    }
+
+    /// <summary>
+    /// Lets <see cref="PatriciaTree.Commit"/> split across threads like the production committers do.
+    /// </summary>
+    /// <remarks>The <see cref="MemDb"/> batch writes straight to a concurrent dictionary, so concurrent commits are safe.</remarks>
+    private sealed class ParallelCommitTrieStore(IScopedTrieStore inner) : IScopedTrieStore
+    {
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(in path, hash);
+
+        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.LoadRlp(in path, hash, flags);
+
+        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.TryLoadRlp(in path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => inner.GetStorageTrieNodeResolver(address);
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+
+        public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => new Committer(inner.BeginCommit(root, writeFlags));
+
+        private sealed class Committer(ICommitter inner) : ICommitter
+        {
+            public TrieNode CommitNode(ref TreePath path, TrieNode node) => inner.CommitNode(ref path, node);
+
+            public bool TryEnableParallelCommit() => true;
+
+            public void Dispose() => inner.Dispose();
+        }
     }
 }
