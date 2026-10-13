@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 
@@ -27,9 +28,13 @@ public class FlatBalHealing(
     IPersistence persistence,
     ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
+    Lazy<ICodeRecovery> codeRecovery,
     ILogManager logManager) : IBalHealing
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatBalHealing>();
+
+    // EIP-8298: hashes of adopted code the code database lacked when the chunk adopting it was applied.
+    private readonly HashSet<ValueHash256> _missingCode = [];
 
     private const int BalsChunkSize = 16;
     private const int MaxInitialCapacity = 1024;
@@ -38,6 +43,8 @@ public class FlatBalHealing(
 
     public Hash256? Reassemble(IReadOnlyCollection<Hash256> updatedStorages, CancellationToken token)
     {
+        // A new healing run starts here; hashes from an abandoned run may no longer be referenced.
+        _missingCode.Clear();
         Hash256? reassembledRoot = trieReassembler.TryReassemble(updatedStorages, token);
         if (reassembledRoot is null)
         {
@@ -65,6 +72,24 @@ public class FlatBalHealing(
     }
 
     public void FinalizeSync(BlockHeader pivot) => store.FinalizeSync(pivot);
+
+    /// <inheritdoc/>
+    public async Task<bool> TryRecoverMissingCode(CancellationToken token)
+    {
+        foreach (ValueHash256 codeHash in _missingCode.ToArray())
+        {
+            if (!codeDb.KeyExists(codeHash.Bytes))
+            {
+                if (await codeRecovery.Value.Recover(codeHash, token) is not { } code) continue;
+                codeDb.Set(codeHash.Bytes, code);
+            }
+
+            _missingCode.Remove(codeHash);
+        }
+
+        if (_missingCode.Count > 0 && _logger.IsDebug) _logger.Debug($"BAL healing: {_missingCode.Count} adopted bytecodes still missing, retrying.");
+        return _missingCode.Count == 0;
+    }
 
     private bool TryCollectBals(BlockHeader from, BlockHeader to, ArrayPoolList<(ulong Number, Hash256 Hash)> toApply, CancellationToken token)
     {
@@ -138,6 +163,8 @@ public class FlatBalHealing(
         };
 
         Dictionary<AddressAsKey, AccountDelta> deltas = [];
+        // EIP-8298: bytecode the chunk deposits, for accounts that adopt it by hash.
+        Dictionary<ValueHash256, byte[]>? depositedCode = null;
         foreach ((ulong number, Hash256 hash) in chunk)
         {
             token.ThrowIfCancellationRequested();
@@ -157,6 +184,10 @@ public class FlatBalHealing(
                 ref AccountDelta? delta = ref CollectionsMarshal.GetValueRefOrAddDefault(deltas, acc.Address, out _);
                 delta ??= new AccountDelta(reader.GetAccount(acc.Address) ?? Account.TotallyEmpty);
                 delta.Apply(acc);
+                foreach (CodeChange codeChange in acc.CodeChanges)
+                {
+                    if (!codeChange.IsAdopted) (depositedCode ??= []).TryAdd(codeChange.CodeHash, codeChange.Code);
+                }
             }
         }
 
@@ -169,7 +200,16 @@ public class FlatBalHealing(
 
             Account account = delta.PostImage;
             if (delta.Code is { } codeChange)
-                codeDb.Set(codeChange.CodeHash.Bytes, codeChange.Code);
+            {
+                // Adopted code not deposited in the chunk predates it, but snap may not have fetched it: its source
+                // can have replaced its own code before being downloaded. A miss is recovered before the sync finalizes.
+                if (!codeChange.IsAdopted)
+                    codeDb.Set(codeChange.CodeHash.Bytes, codeChange.Code);
+                else if (depositedCode?.TryGetValue(codeChange.CodeHash, out byte[]? code) == true)
+                    codeDb.Set(codeChange.CodeHash.Bytes, code);
+                else if (!codeDb.KeyExists(codeChange.CodeHash.Bytes))
+                    _missingCode.Add(codeChange.CodeHash);
+            }
 
             // SelfDestruct scans the pre-batch snapshot; wipe before writing any revived account's slots.
             if (delta.WipeStorage || account.IsEmpty) batch.SelfDestruct(address);

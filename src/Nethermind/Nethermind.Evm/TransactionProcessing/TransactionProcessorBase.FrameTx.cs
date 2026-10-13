@@ -559,6 +559,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         UInt256 fees = premiumPerGas * (UInt256)spentGas;
         WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
 
+        if (accessTracker.TransientCreates is not null)
+        {
+            FinalizeTransientCreates(WorldState, in accessTracker, opts.HasFlag(ExecutionOptions.Commit) && !opts.HasFlag(ExecutionOptions.Restore));
+        }
+
         // EIP-6780: finalize committed frames' self-destructs.
         if (accessTracker.DestroyList.Count > 0)
         {
