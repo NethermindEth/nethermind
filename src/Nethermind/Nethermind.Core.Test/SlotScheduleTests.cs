@@ -1,0 +1,151 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test;
+
+[TestFixture]
+public class SlotScheduleTests
+{
+    private const ulong Genesis = 100;
+    private const ulong Fork = Genesis + 5 * 12; // slot 5
+
+    private static readonly SlotSchedule Scheduled = new(12, Genesis, Fork);
+    private static readonly SlotSchedule Unscheduled = new(12, Genesis);
+    private static readonly SlotSchedule NoGenesis = new(12, eip8198Timestamp: Fork);
+
+    [TestCase(100UL, 0UL)]
+    [TestCase(159UL, 4UL)]
+    [TestCase(160UL, 5UL)]
+    [TestCase(169UL, 5UL)]
+    [TestCase(170UL, 6UL)]
+    [TestCase(1_160UL, 105UL)]
+    public void Slot_at_time_switches_length_at_the_fork(ulong timestamp, ulong slot)
+    {
+        Assert.That(Scheduled.TryGetSlot(timestamp, out ulong actual), Is.True);
+        Assert.That(actual, Is.EqualTo(slot));
+        Assert.That(Scheduled.GetSlotTimestamp(slot), Is.LessThanOrEqualTo(timestamp));
+    }
+
+    [TestCase(4UL, 148UL)]
+    [TestCase(5UL, 160UL)]
+    [TestCase(6UL, 170UL)]
+    public void Time_at_slot_switches_length_at_the_fork(ulong slot, ulong timestamp) =>
+        Assert.That(Scheduled.GetSlotTimestamp(slot), Is.EqualTo(timestamp));
+
+    [Test]
+    public void Unscheduled_fork_keeps_the_configured_length()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unscheduled.TryGetSlot(170, out ulong slot), Is.True);
+            Assert.That(slot, Is.EqualTo(5UL));
+            Assert.That(Unscheduled.GetSlotTimestamp(6), Is.EqualTo(172UL));
+            Assert.That(Unscheduled.GetSecondsPerSlot(ulong.MaxValue), Is.EqualTo(12UL));
+            Assert.That(Unscheduled.AddSlots(148, 3), Is.EqualTo(184UL));
+            Assert.That(Unscheduled.AddSlotsUntil(148, 175), Is.EqualTo(184UL));
+        }
+    }
+
+    [Test]
+    public void Fork_off_the_grid_starts_at_the_next_boundary()
+    {
+        SlotSchedule schedule = new(12, Genesis, Fork + 5);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(schedule.TryGetSlot(171, out ulong before) && before == 5, Is.True);
+            Assert.That(schedule.TryGetSlot(172, out ulong first) && first == 6, Is.True);
+            Assert.That(schedule.TryGetSlot(182, out ulong second) && second == 7, Is.True);
+            Assert.That(schedule.GetSecondsPerSlot(171), Is.EqualTo(12UL));
+            Assert.That(schedule.GetSecondsPerSlot(172), Is.EqualTo(Eip8198Constants.SecondsPerSlot));
+        }
+    }
+
+    [Test]
+    public void Fork_before_genesis_applies_from_genesis()
+    {
+        SlotSchedule schedule = new(12, Genesis, Genesis - 50);
+        Assert.That(schedule.TryGetSlot(Genesis + 25, out ulong slot) && slot == 2, Is.True);
+    }
+
+    [TestCase(159UL, 12UL)]
+    [TestCase(160UL, 10UL)]
+    public void Seconds_per_slot_switches_at_the_fork(ulong timestamp, ulong expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Scheduled.GetSecondsPerSlot(timestamp), Is.EqualTo(expected));
+            Assert.That(NoGenesis.GetSecondsPerSlot(timestamp), Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase(148UL, 1UL, 160UL)]
+    [TestCase(148UL, 2UL, 170UL)]
+    [TestCase(136UL, 3UL, 170UL)]
+    [TestCase(160UL, 2UL, 180UL)]
+    [TestCase(150UL, 1UL, 162UL)]
+    [TestCase(150UL, 2UL, 172UL)]
+    public void Adding_slots_steps_by_the_length_each_step_starts_in(ulong timestamp, ulong slots, ulong expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Scheduled.AddSlots(timestamp, slots), Is.EqualTo(expected));
+            Assert.That(NoGenesis.AddSlots(timestamp, slots), Is.EqualTo(expected));
+        }
+    }
+
+    [TestCase(148UL, 0UL, 160UL)]
+    [TestCase(148UL, 160UL, 160UL)]
+    [TestCase(148UL, 161UL, 170UL)]
+    [TestCase(100UL, 150UL, 160UL)]
+    [TestCase(100UL, 165UL, 170UL)]
+    [TestCase(160UL, 185UL, 190UL)]
+    public void Adding_slots_until_a_target_takes_at_least_one_step(ulong timestamp, ulong target, ulong expected) =>
+        Assert.That(Scheduled.AddSlotsUntil(timestamp, target), Is.EqualTo(expected));
+
+    [TestCase(148UL, true)]
+    [TestCase(149UL, false)]
+    [TestCase(160UL, true)]
+    [TestCase(165UL, false)]
+    [TestCase(170UL, true)]
+    [TestCase(172UL, false)]
+    public void Slot_starts_follow_the_piecewise_grid(ulong timestamp, bool expected) =>
+        Assert.That(Scheduled.IsSlotStart(timestamp), Is.EqualTo(expected));
+
+    [Test]
+    public void Without_genesis_slot_numbers_are_unavailable()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(NoGenesis.TryGetSlot(Fork, out _), Is.False);
+            Assert.That(NoGenesis.GetSlotTimestamp(1), Is.Null);
+            Assert.That(NoGenesis.IsSlotStart(Fork), Is.False);
+        }
+    }
+
+    [Test]
+    public void Spec_provider_reports_the_eip8198_activation()
+    {
+        IReleaseSpec enabled = new OverridableReleaseSpec(Bogota.Instance) { IsEip8198Enabled = true };
+        CustomSpecProvider scheduled = new(
+            ((ForkActivation)0, London.Instance),
+            (new ForkActivation(0, 1_000), Bogota.Instance),
+            (new ForkActivation(0, 2_000), enabled));
+        CustomSpecProvider unscheduled = new(((ForkActivation)0, London.Instance), (new ForkActivation(0, 1_000), Bogota.Instance));
+        CustomSpecProvider atGenesis = new(((ForkActivation)0, enabled));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scheduled.GetEip8198Timestamp(), Is.EqualTo(2_000UL));
+            Assert.That(unscheduled.GetEip8198Timestamp(), Is.Null);
+            Assert.That(atGenesis.GetEip8198Timestamp(), Is.EqualTo(0UL));
+            Assert.That(scheduled.GetSlotSchedule(12).GetSecondsPerSlot(2_000), Is.EqualTo(Eip8198Constants.SecondsPerSlot));
+            Assert.That(unscheduled.GetSlotSchedule(12).GetSecondsPerSlot(2_000), Is.EqualTo(12UL));
+        }
+    }
+}
