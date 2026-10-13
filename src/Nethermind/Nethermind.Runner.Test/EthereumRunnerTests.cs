@@ -40,6 +40,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -72,6 +73,7 @@ using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization;
 using Nethermind.Taiko.TaikoSpec;
@@ -151,8 +153,10 @@ public class EthereumRunnerTests
             PipelineWarmupEnabled = scenario != WarmupScenario.Disabled,
             DiagnosticMode = scenario == WarmupScenario.Diagnostic ? DiagnosticMode.MemDb : DiagnosticMode.None
         };
+        ConfigProvider configProvider = new(new InitConfig { DiagnosticMode = DiagnosticMode.MemDb });
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new PseudoNethermindModule(spec, new ConfigProvider(new InitConfig { DiagnosticMode = DiagnosticMode.MemDb }), NullLogManager.Instance))
+            .AddModule(new PseudoNethermindModule(spec, configProvider, NullLogManager.Instance))
             .AddModule(new MergePluginModule())
             .Build();
         INethermindApi api = Substitute.For<INethermindApi>();
@@ -730,6 +734,25 @@ public class EthereumRunnerTests
             result.Add(("censorship-detector", configProvider));
         }
 
+        foreach ((_, ConfigProvider configProvider) in result)
+        {
+            // The Rust flat backends have no flat history.
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            if (!flatDbConfig.HistoryEnabled) TestStateBackend.ApplyFlatBackend(flatDbConfig);
+        }
+
+        if (NativeMethods.IsAvailable)
+        {
+            // The flat DB on the native Rust library, which needs long finality off.
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+            configProvider.Initialize();
+            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+            flatDbConfig.Backend = FlatDbBackend.Rust;
+            flatDbConfig.EnableLongFinality = false;
+            result.Add(("flat-rust", configProvider));
+        }
+
         return result;
     }
 
@@ -801,6 +824,7 @@ public class EthereumRunnerTests
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
         configProvider.Initialize();
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
 
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
@@ -832,6 +856,7 @@ public class EthereumRunnerTests
         ConfigProvider configProvider = new();
         configProvider.AddSource(new JsonConfigSource($"configs/{network}.json"));
         configProvider.Initialize();
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
         PluginLoader pluginLoader = new("plugins", new RealFileSystem(), NullLogger.Instance, NethermindPlugins.EmbeddedPlugins);
         pluginLoader.Load();
         ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);

@@ -12,6 +12,7 @@ use flatdb_core::codec::metadata::{LAYOUT_KEY, SLOT_ENCODING_KEY, SLOT_ENCODING_
 use flatdb_core::keccak::{account_path, keccak256, slot_path};
 use flatdb_core::kv::mem::MemKv;
 use flatdb_core::kv::{Column, KvError, KvStore, ReadFlags, WriteFlags};
+use flatdb_core::log_ring::{LogRecord, LogSink, LogSource};
 use flatdb_core::persistence::base::{LiveColumn, read_wiped_for_sync};
 use flatdb_core::persistence::cached_reader::{CachedReader, CachedReaderPersistence};
 use flatdb_core::persistence::carry_forward::CarryForwardCachingPersistence;
@@ -21,6 +22,7 @@ use flatdb_core::persistence::{
     FlatIterator, Persistence, PersistenceError, PersistenceReader, PersistenceWriteBatch, ReaderFlags,
 };
 use flatdb_core::types::{Account, Address, FlatLayout, Hash256, StateId, TreePath, U256};
+use log::{Level, LevelFilter};
 use rstest::rstest;
 
 const MEM: Backend = Backend::Mem;
@@ -925,9 +927,9 @@ fn batches_resize_memtables_and_flush_the_wal_unless_skipping_it() {
     );
 }
 
-/// `DbOnTheRocks.InnerFlush` only logs a RocksDB flush failure that is not fatal, so neither a flush nor the commit whose
-/// write-ahead log it syncs fails, and the commit still drops the cached reader and account. A fatal failure, or any
-/// failure of the managed backend, is reported.
+/// `DbOnTheRocks.InnerFlush` only logs a RocksDB flush failure that is not fatal, as `DbOnTheRocks` words it, so neither
+/// a flush nor the commit whose write-ahead log it syncs fails, and the commit still drops the cached reader and account.
+/// A fatal failure, or any failure of the managed backend, is reported.
 #[rstest]
 #[case::not_fatal(KvError::rocks("Busy: injected".to_owned()), false)]
 #[case::fatal(KvError::rocks("IO error: injected".to_owned()), true)]
@@ -954,8 +956,8 @@ fn only_a_fatal_or_managed_flush_failure_fails_a_flush_or_commit(#[case] failure
         .create_write_batch(&PRE_GENESIS, &block1, WriteFlags::NONE)
         .unwrap();
     batch.set_account(&address_a(), Some(&indexed_account(1))).unwrap();
-    let committed = batch.commit();
-    let flushed = persistence.flush();
+    let sink = LogSink::new(LevelFilter::Warn);
+    let (committed, flushed) = sink.scope(|| (batch.commit(), persistence.flush()));
 
     let expected = if reported {
         Err(PersistenceError::Kv(failure))
@@ -963,6 +965,21 @@ fn only_a_fatal_or_managed_flush_failure_fails_a_flush_or_commit(#[case] failure
         Ok(())
     };
     assert_eq!((committed, flushed), (expected.clone(), expected));
+    let warning = LogRecord {
+        level: Level::Warn,
+        source: LogSource::DbOnTheRocks,
+        message: "Failed to flush Flat DB: Busy: injected".to_owned(),
+    };
+    let logged = if reported {
+        vec![]
+    } else {
+        vec![warning.clone(), warning]
+    };
+    assert_eq!(
+        sink.ring().drain(10),
+        logged,
+        "the commit's write-ahead log flush and the flush"
+    );
     if !reported {
         let latest = reader(&persistence);
         assert_eq!(

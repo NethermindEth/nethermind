@@ -78,6 +78,33 @@ internal static unsafe partial class NativeMethods
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_store_take_stats(RustFlatStore store, FdbStats* stats);
 
+    /// <summary><c>fdb_store_take_stats</c> of a store being released, whose handle is already closed.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "fdb_store_take_stats")]
+    public static partial FdbStatus fdb_released_store_take_stats(nint store, FdbStats* stats);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_store_log_take(RustFlatStore store, NativeLogSource* source, NativeLogLevel* level, byte* buffer, nuint capacity, nuint* length, byte* has);
+
+    /// <summary><c>fdb_store_log_take</c> of the records logged outside any store.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "fdb_store_log_take")]
+    public static partial FdbStatus fdb_unrouted_log_take(nint noStore, NativeLogSource* source, NativeLogLevel* level, byte* buffer, nuint capacity, nuint* length, byte* has);
+
+    [LibraryImport(LibraryName)]
+    public static partial ulong fdb_store_log_dropped(RustFlatStore store);
+
+    /// <summary><c>fdb_store_log_dropped</c> of the records logged outside any store.</summary>
+    [LibraryImport(LibraryName, EntryPoint = "fdb_store_log_dropped")]
+    public static partial ulong fdb_unrouted_log_dropped(nint noStore);
+
+    [LibraryImport(LibraryName)]
+    public static partial nuint fdb_seam_counters(ulong* counts, ulong* nanoseconds, nuint capacity);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_seam_counter_name(uint index, byte** name, nuint* nameLength);
+
+    [LibraryImport(LibraryName)]
+    public static partial void fdb_seam_timing(byte enabled);
+
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_store_flush(RustFlatStore store);
 
@@ -148,10 +175,10 @@ internal static unsafe partial class NativeMethods
     public static partial FdbStatus fdb_destroy(nint manager);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbCounters* fdb_stats(ManagerHandle manager);
+    public static partial FdbCounters* fdb_stats(nint manager);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_drain_observations(ManagerHandle manager, FdbObservation* buffer, nuint capacity, nuint* count);
+    public static partial FdbStatus fdb_drain_observations(nint manager, FdbObservation* buffer, nuint capacity, nuint* count);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_take_persisted_event(ManagerHandle manager, FdbPersistedEvent* persistedEvent);
@@ -203,13 +230,4 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_clear_bundle_cache(ManagerHandle manager);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_log_install(uint level);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_log_take(uint* level, byte* buffer, nuint capacity, nuint* length, byte* has);
-
-    [LibraryImport(LibraryName)]
-    public static partial ulong fdb_log_dropped();
 }

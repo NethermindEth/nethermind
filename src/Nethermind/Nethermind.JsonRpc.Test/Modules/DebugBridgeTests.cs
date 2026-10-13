@@ -835,7 +835,7 @@ public class DebugBridgeTests
         logger.IsWarn.Returns(true);
         ObservedPersistenceManager? persistence = null;
         await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddModule(new TestNethermindModule(TestStateBackend.ApplyFlatBackend(new FlatDbConfig { Enabled = true })))
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .AddDecorator<IPersistenceManager>((_, inner) => persistence = new ObservedPersistenceManager(inner))
             .Build();

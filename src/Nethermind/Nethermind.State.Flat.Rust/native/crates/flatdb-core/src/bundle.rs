@@ -24,6 +24,7 @@ use hashbrown::{DefaultHashBuilder, HashMap};
 use crate::bloom::BloomFilter;
 use crate::kv::ReadFlags;
 use crate::persistence::{PersistenceReader, PersistenceResult};
+use crate::seam::BundleRead;
 use crate::snapshot::Snapshot;
 use crate::snapshot::content::TrieNodeRlp;
 use crate::snapshot::keys::StorageKey;
@@ -92,10 +93,16 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
     pub fn get_account(&self, address: &Address) -> PersistenceResult<Option<Account>> {
         for snapshot in self.snapshots.iter().rev() {
             if let Some(account) = snapshot.try_get_account(address) {
+                BundleRead::AccountSnapshot.count();
                 return Ok(account);
             }
         }
-        self.persistence_reader.get_account(address)
+        let account = self.persistence_reader.get_account(address)?;
+        match account {
+            Some(_) => BundleRead::AccountPersistence.count(),
+            None => BundleRead::AccountPersistenceNull.count(),
+        }
+        Ok(account)
     }
 
     /// The index of the newest snapshot that cleared the storage of `address`.
@@ -115,13 +122,24 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
     ) -> PersistenceResult<Option<U256>> {
         for (index, snapshot) in self.snapshots.iter().enumerate().rev() {
             if let Some(value) = snapshot.try_get_storage(address, slot) {
+                BundleRead::StorageSnapshot.count();
                 return Ok(value);
             }
             if self_destruct_snapshot_idx.is_some_and(|cleared| index <= cleared) {
+                BundleRead::StorageSelfDestructed.count();
                 return Ok(None);
             }
         }
-        self.persistence_reader.try_get_slot(address, slot)
+        self.persisted_slot(address, slot)
+    }
+
+    fn persisted_slot(&self, address: &Address, slot: &U256) -> PersistenceResult<Option<U256>> {
+        let value = self.persistence_reader.try_get_slot(address, slot)?;
+        match value {
+            Some(found) if found != U256::ZERO => BundleRead::StoragePersistence.count(),
+            _ => BundleRead::StoragePersistenceNull.count(),
+        }
+        Ok(value)
     }
 
     /// Exactly what [`ReadOnlySnapshotBundle::get_slot`] returns, but a negative filter over the snapshots' slot keys
@@ -149,9 +167,10 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
 
         // No snapshot holds the key, so only a clear in one of them could end the loop.
         if self_destruct_snapshot_idx.is_some() {
+            BundleRead::StorageSelfDestructed.count();
             return Ok(None);
         }
-        self.persistence_reader.try_get_slot(address, slot)
+        self.persisted_slot(address, slot)
     }
 
     /// The slot the bundle's state holds, the self-destruct cut-off applied: [`ReadOnlySnapshotBundle::get_slot`], or
@@ -191,8 +210,14 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<Option<T>> {
         match self.find_state_node(path) {
-            Some(node) if !node.is_hash_only_placeholder() => Ok(Some(read(node.rlp))),
-            _ => self.persistence_reader.load_state_rlp(path, flags, read),
+            Some(node) if !node.is_hash_only_placeholder() => {
+                BundleRead::StateNodeSnapshot.count();
+                Ok(Some(read(node.rlp)))
+            }
+            _ => {
+                BundleRead::StateNodePersistence.count();
+                self.persistence_reader.load_state_rlp(path, flags, read)
+            }
         }
     }
 
@@ -205,10 +230,15 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
         read: impl FnOnce(&[u8]) -> T,
     ) -> PersistenceResult<Option<T>> {
         match self.find_storage_node(address_hash, path) {
-            Some(node) if !node.is_hash_only_placeholder() => Ok(Some(read(node.rlp))),
-            _ => self
-                .persistence_reader
-                .load_storage_rlp(address_hash, path, flags, read),
+            Some(node) if !node.is_hash_only_placeholder() => {
+                BundleRead::StorageNodeSnapshot.count();
+                Ok(Some(read(node.rlp)))
+            }
+            _ => {
+                BundleRead::StorageNodePersistence.count();
+                self.persistence_reader
+                    .load_storage_rlp(address_hash, path, flags, read)
+            }
         }
     }
 
@@ -269,8 +299,7 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 }
                 Some(filter)
             }
-            Err(error) => {
-                log::debug!("The in-memory slot filter was not built: {error}");
+            Err(_) => {
                 self.slot_filter_state.store(SLOT_FILTER_SKIPPED, Ordering::Release);
                 if let Some(stats) = &self.stats {
                     FlatStats::add(&stats.counters.in_memory_slot_filter_build_failures, 1);

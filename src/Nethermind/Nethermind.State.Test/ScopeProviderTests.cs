@@ -260,7 +260,7 @@ public class ScopeProviderTests(bool useFlat)
     public void Account_write_batch_preserves_hashes_and_balances([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
     {
         ConfigProvider config = new();
-        config.GetConfig<IFlatDbConfig>().Enabled = useFlat;
+        TestStateBackend.ApplyFlatBackend(config.GetConfig<IFlatDbConfig>()).Enabled = useFlat;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
         IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);

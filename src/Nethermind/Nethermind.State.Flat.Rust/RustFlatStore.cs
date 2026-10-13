@@ -17,7 +17,8 @@ namespace Nethermind.State.Flat.Rust;
 /// <see cref="RocksApiTable"/>, and holds a native lease on it until the handle is released, so disposing the database
 /// waits for the store rather than closing under it. Any other database is reached through the
 /// <see cref="ManagedKvBridge"/>. Every reader, iterator and batch handle holds a reference on the store, so the native
-/// store, which refuses to be destroyed while one is open, is destroyed once the last of them is released.
+/// store, which refuses to be destroyed while one is open, is destroyed once the last of them is released. What the
+/// store logs goes through its <see cref="LogPump"/>.
 /// </remarks>
 internal sealed unsafe class RustFlatStore : SafeHandle
 {
@@ -25,14 +26,16 @@ internal sealed unsafe class RustFlatStore : SafeHandle
 
     private readonly ColumnsDb<FlatDbColumns>? _rocksDb;
     private readonly ManagedKvBridge? _bridge;
+    private readonly LogPump _logPump;
     private readonly bool _carryForward;
 
-    private RustFlatStore(nint store, in FdbStoreInfo info, ColumnsDb<FlatDbColumns>? rocksDb, ManagedKvBridge? bridge, bool carryForward)
+    private RustFlatStore(nint store, in FdbStoreInfo info, ColumnsDb<FlatDbColumns>? rocksDb, ManagedKvBridge? bridge, LogPump logPump, bool carryForward)
         : base(0, ownsHandle: true)
     {
         SetHandle(store);
         _rocksDb = rocksDb;
         _bridge = bridge;
+        _logPump = logPump;
         _carryForward = carryForward;
         RlpWrapSlots = info.RlpWrapSlots != 0;
         IsPreimage = info.Preimage != 0;
@@ -54,22 +57,35 @@ internal sealed unsafe class RustFlatStore : SafeHandle
     public static RustFlatStore Create(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
     {
         NativeMethods.EnsureAvailable();
+        SeamCounters.ApplyTimingVariable();
+        LogPump logPump = new(logManager, config.Layout);
         FdbStoreCfg cfg = new()
         {
             AbiVersion = FfiAbi.Version,
             Layout = (uint)config.Layout,
             WriteBufferFloor = config.PersistenceWriteBufferFloor,
             CarryForward = config.EnableCarryForwardCache ? (byte)1 : (byte)0,
+            LogLevel = logPump.Level,
         };
 
-        if (db is ColumnsDb<FlatDbColumns> rocksDb) return CreateOnRocksDb(rocksDb, cfg);
+        RustFlatStore store;
+        if (db is ColumnsDb<FlatDbColumns> rocksDb)
+        {
+            store = CreateOnRocksDb(rocksDb, cfg, logPump);
+        }
+        else
+        {
+            ILogger logger = logManager.GetClassLogger<RustFlatStore>();
+            if (logger.IsWarn) logger.Warn($"FlatDb.Backend={config.Backend} runs on {db.GetType().Name}, which is not RocksDB, through callbacks into C#: results are not valid for benchmarks.");
+            store = CreateOnManagedKv(db, cfg, logPump);
+        }
 
-        ILogger logger = logManager.GetClassLogger<RustFlatStore>();
-        if (logger.IsWarn) logger.Warn($"FlatDb.Backend={config.Backend} runs on {db.GetType().Name}, which is not RocksDB, through callbacks into C#: results are not valid for benchmarks.");
-        return CreateOnManagedKv(db, cfg);
+        // Resolving the slot encoding can warn.
+        store.PumpLogs();
+        return store;
     }
 
-    private static RustFlatStore CreateOnRocksDb(ColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg)
+    private static RustFlatStore CreateOnRocksDb(ColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg, LogPump logPump)
     {
         RocksApiTable api = RocksApiTable.Shared;
         db.AcquireNativeLease();
@@ -97,7 +113,7 @@ internal sealed unsafe class RustFlatStore : SafeHandle
             nint store;
             FdbStoreInfo info;
             ThrowIfFailed(NativeMethods.fdb_store_create(&cfg, &kv, &store, &info), db);
-            return new RustFlatStore(store, info, db, null, cfg.CarryForward != 0);
+            return new RustFlatStore(store, info, db, null, logPump, cfg.CarryForward != 0);
         }
         catch
         {
@@ -106,7 +122,7 @@ internal sealed unsafe class RustFlatStore : SafeHandle
         }
     }
 
-    private static RustFlatStore CreateOnManagedKv(IColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg)
+    private static RustFlatStore CreateOnManagedKv(IColumnsDb<FlatDbColumns> db, FdbStoreCfg cfg, LogPump logPump)
     {
         ManagedKvBridge bridge = new(db);
         try
@@ -117,7 +133,7 @@ internal sealed unsafe class RustFlatStore : SafeHandle
             nint store;
             FdbStoreInfo info;
             ThrowIfFailed(NativeMethods.fdb_store_create(&cfg, &kv, &store, &info), null);
-            return new RustFlatStore(store, info, null, bridge, cfg.CarryForward != 0);
+            return new RustFlatStore(store, info, null, bridge, logPump, cfg.CarryForward != 0);
         }
         catch
         {
@@ -128,6 +144,9 @@ internal sealed unsafe class RustFlatStore : SafeHandle
 
     protected override bool ReleaseHandle()
     {
+        // The reads of the handle released last, after the persistence was disposed, reach the metrics too.
+        FdbStats stats;
+        if (NativeMethods.fdb_released_store_take_stats(handle, &stats) == FdbStatus.Ok) Publish(stats);
         if (NativeMethods.fdb_store_destroy(handle) != FdbStatus.Ok) return false;
 
         _rocksDb?.ReleaseNativeLease();
@@ -169,6 +188,18 @@ internal sealed unsafe class RustFlatStore : SafeHandle
     /// <summary>Gives back a reference <see cref="AddChildReference"/> took for a handle that was never created.</summary>
     public void ReleaseChildReference() => DangerousRelease();
 
+    /// <summary>Logs what the store, and the workers of its manager, logged since the last call; nothing once released.</summary>
+    public void PumpLogs()
+    {
+        try
+        {
+            _logPump.Drain(this);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
     /// <summary>
     /// Adds the metrics the store gathered since the last call to their C# counterparts: the reads to the
     /// <c>TotalReads</c> metric of the database, and the carry-forward counters and gauges to
@@ -188,6 +219,11 @@ internal sealed unsafe class RustFlatStore : SafeHandle
             return;
         }
 
+        Publish(stats);
+    }
+
+    private void Publish(in FdbStats stats)
+    {
         if (stats.Reads != 0) _rocksDb?.UpdateReadMetrics((int)Math.Min(stats.Reads, int.MaxValue));
         if (!_carryForward) return;
 

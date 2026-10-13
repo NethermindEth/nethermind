@@ -329,6 +329,8 @@ impl Persistence for ErasedPersistence {
 
     fn create_write_batch(&self, from: &StateId, to: &StateId, flags: WriteFlags) -> PersistenceResult<ErasedBatch> {
         self.refuse_if_poisoned()?;
+        #[cfg(any(test, feature = "test-api"))]
+        self.poison.faults.panic_if_armed(crate::faults::Fault::PanicInPersist);
         Ok(ErasedBatch {
             batch: Some(self.persistence.create_write_batch(from, to, flags)?),
             poison: Arc::clone(&self.poison),

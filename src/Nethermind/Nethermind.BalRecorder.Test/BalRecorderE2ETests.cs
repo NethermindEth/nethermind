@@ -22,6 +22,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -97,6 +98,7 @@ public class BalRecorderE2ETests
     private static IContainer CreateNode(string balDir, bool recording, bool replay)
     {
         IConfigProvider configProvider = new ConfigProvider();
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
         ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
             .LoadEmbeddedOrFromFile("chainspec/foundation.json");
 

@@ -165,6 +165,17 @@ impl fmt::Debug for StateId {
     }
 }
 
+/// As C# formats the `StateId` record, for log lines that match the C# ones.
+impl fmt::Display for StateId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "StateId {{ BlockNumber = {}, StateRoot = 0x", self.block_number)?;
+        for byte in self.state_root {
+            write!(f, "{byte:02x}")?;
+        }
+        write!(f, " }}")
+    }
+}
+
 /// A trie node path of up to 64 nibbles, packed two per byte. Port of the parts of `TreePath.cs` the flat keys use.
 ///
 /// Like `TreePath`, it keeps whatever bytes the caller passed past `length`: the key encodings copy them, so a path
@@ -403,6 +414,14 @@ mod tests {
         assert!(StateId::new(1, [0xff; 32]) < StateId::new(2, [0; 32]));
         assert!(StateId::new(1, [0; 32]) < StateId::new(1, [1; 32]));
         assert!(StateId::SYNC < StateId::PRE_GENESIS);
+        assert_eq!(
+            StateId::new(
+                5,
+                hex32("0x0a00000000000000000000000000000000000000000000000000000000000001")
+            )
+            .to_string(),
+            "StateId { BlockNumber = 5, StateRoot = 0x0a00000000000000000000000000000000000000000000000000000000000001 }"
+        );
     }
 
     #[test]

@@ -279,9 +279,11 @@ fn determine_snapshot_action_below_the_persisted_block_does_not_underflow() {
         .unwrap();
 
     assert!(candidate.is_none());
-    assert!(logged_warnings().iter().any(|message| {
-        message.starts_with(&format!("Latest snapshot {:?} is below persisted state", state("50")))
-    }));
+    assert!(
+        logged_warnings().iter().any(|message| {
+            message.starts_with(&format!("Latest snapshot {} is below persisted state", state("50")))
+        })
+    );
 }
 
 /// `DetermineSnapshotAction_WhenBackstopHasNoCandidate_WarnsOnlyIfConversionAlsoFails` with conversion off: the stall
@@ -303,7 +305,7 @@ fn determine_snapshot_action_warns_once_when_the_backstop_finds_nothing() {
         logged_warnings()
             .iter()
             .filter(|message| {
-                message.contains("neither persistence nor conversion") && message.contains(&format!("{head:?}"))
+                message.contains("neither persistence nor conversion") && message.contains(&format!("{head}"))
             })
             .count()
     };

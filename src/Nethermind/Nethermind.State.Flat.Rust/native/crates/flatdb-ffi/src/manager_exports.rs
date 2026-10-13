@@ -1,5 +1,5 @@
 //! The exports of the snapshot manager (`IFlatDbManager` and `IPersistenceManager`), the snapshot builder, the persisted
-//! node events, the metrics and the log ring.
+//! node events and the metrics.
 //!
 //! A gathered bundle is handed out as an [`FdbReader`], so every `fdb_reader_*` export reads through it.
 
@@ -7,21 +7,20 @@ use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-use flatdb_core::log_ring;
 use flatdb_core::manager::AddSnapshotOutcome;
 use flatdb_core::persistence::ReaderFlags;
 use flatdb_core::snapshot::Snapshot;
 use flatdb_core::snapshot::content::{SnapshotContentBuilder, SnapshotContentCounts};
 use flatdb_core::stats::{FlatCounters, Observation};
 use flatdb_core::types::StateId;
-use log::LevelFilter;
 
 use crate::abi::{FdbHost, FdbMgrCfg, FdbPersistedEvent, FdbStatus, FfiError, FfiPersistedNode, FfiStateId};
+use crate::calls::Export;
 use crate::guard::ffi_guard;
 use crate::manager::{BundleReader, FdbBuilder, FdbManager, refused};
 use crate::snapshot_stream;
 use crate::store::{FdbReader, FdbStore};
-use crate::{bytes, bytes_mut, out, store_ref};
+use crate::{bytes, out, store_ref};
 
 /// Starts a snapshot manager over the persistence stack of `store`, calling `host` for finality and the deferred
 /// block-data flush. The manager holds a handle on the store, which therefore outlives it.
@@ -36,7 +35,7 @@ pub unsafe extern "C" fn fdb_mgr_create(
     host: *const FdbHost,
     mgr: *mut *mut FdbManager,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::MgrCreate, || {
         // SAFETY: the caller passes a live store and valid pointers.
         let (store, cfg, host, mgr) = unsafe { (store_ref(store)?, cfg.as_ref(), host.as_ref(), out(mgr)?) };
         let (Some(cfg), Some(host)) = (cfg, host) else {
@@ -54,7 +53,7 @@ pub unsafe extern "C" fn fdb_mgr_create(
 /// `mgr` must be a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_signal_exit(mgr: *const FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::SignalExit, || {
         // SAFETY: the caller passes a live manager.
         unsafe { mgr_ref(mgr)? }.manager.signal_exit();
         Ok(())
@@ -68,9 +67,10 @@ pub unsafe extern "C" fn fdb_signal_exit(mgr: *const FdbManager) -> i32 {
 /// `mgr` must be a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_shutdown(mgr: *const FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Shutdown, || {
         // SAFETY: the caller passes a live manager.
-        unsafe { mgr_ref(mgr)? }.manager.shutdown();
+        let mgr = unsafe { mgr_ref(mgr)? };
+        mgr.poison.log.scope(|| mgr.manager.shutdown());
         Ok(())
     })
 }
@@ -81,10 +81,13 @@ pub unsafe extern "C" fn fdb_shutdown(mgr: *const FdbManager) -> i32 {
 /// `mgr` must be null or a manager from [`fdb_mgr_create`] that is not used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_destroy(mgr: *mut FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Destroy, || {
         if !mgr.is_null() {
             // SAFETY: the caller hands back ownership of a manager from `fdb_mgr_create`.
-            drop(unsafe { Box::from_raw(mgr) });
+            let mgr = unsafe { Box::from_raw(mgr) };
+            // Dropping shuts the workers down, which can log.
+            let poison = Arc::clone(&mgr.poison);
+            poison.log.scope(|| drop(mgr));
         }
         Ok(())
     })
@@ -114,7 +117,7 @@ pub unsafe extern "C" fn fdb_drain_observations(
     capacity: usize,
     count: *mut usize,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::DrainObservations, || {
         // SAFETY: the caller passes a live manager and valid out-pointers.
         let (mgr, count) = unsafe { (mgr_ref(mgr)?, out(count)?) };
         if buffer.is_null() && capacity != 0 {
@@ -137,7 +140,7 @@ pub unsafe extern "C" fn fdb_drain_observations(
 /// `mgr` must be a live manager and `event` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_take_persisted_event(mgr: *const FdbManager, event: *mut FdbPersistedEvent) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::TakePersistedEvent, || {
         // SAFETY: the caller passes a live manager and a valid out-pointer.
         let (mgr, event) = unsafe { (mgr_ref(mgr)?, out(event)?) };
         *event = match mgr.take_persisted_event() {
@@ -169,7 +172,7 @@ pub unsafe extern "C" fn fdb_take_persisted_event(mgr: *const FdbManager, event:
 /// `owner` must be null or the owner of a taken event that is not used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_persisted_event_release(owner: *mut c_void) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::PersistedEventRelease, || {
         if !owner.is_null() {
             // SAFETY: the caller hands back the owner `fdb_take_persisted_event` created.
             drop(unsafe { Box::from_raw(owner.cast::<Vec<FfiPersistedNode>>()) });
@@ -193,7 +196,7 @@ pub unsafe extern "C" fn fdb_bld_new(
     storage_nodes: usize,
     bld: *mut *mut FdbBuilder,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BldNew, || {
         // SAFETY: the caller passes valid pointers.
         let (from, to, bld) = unsafe { (from.as_ref(), to.as_ref(), out(bld)?) };
         let (Some(from), Some(to)) = (from, to) else {
@@ -220,7 +223,7 @@ pub unsafe extern "C" fn fdb_bld_new(
 /// `bld` must be a live builder, used by one thread at a time, and `records` valid for `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_bld_append(bld: *mut FdbBuilder, records: *const u8, len: usize) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BldAppend, || {
         // SAFETY: the caller passes a live builder and a valid record stream.
         let (bld, records) = unsafe { (bld_mut(bld)?, bytes(records, len)?) };
         snapshot_stream::append(&mut bld.content, records)
@@ -235,7 +238,7 @@ pub unsafe extern "C" fn fdb_bld_append(bld: *mut FdbBuilder, records: *const u8
 /// another thread.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_bld_absorb(into: *mut FdbBuilder, from: *mut FdbBuilder) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BldAbsorb, || {
         if from.is_null() {
             return Err(FfiError::invalid_argument("null builder"));
         }
@@ -254,7 +257,7 @@ pub unsafe extern "C" fn fdb_bld_absorb(into: *mut FdbBuilder, from: *mut FdbBui
 /// `bld` must be null or a builder from [`fdb_bld_new`] that is not used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_bld_release(bld: *mut FdbBuilder) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BldRelease, || {
         if !bld.is_null() {
             // SAFETY: the caller hands back ownership of a builder.
             drop(unsafe { Box::from_raw(bld) });
@@ -271,7 +274,7 @@ pub unsafe extern "C" fn fdb_bld_release(bld: *mut FdbBuilder) -> i32 {
 /// `bld` must be a builder from [`fdb_bld_new`] that is not used afterwards and `mgr` a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_add_snapshot(mgr: *const FdbManager, bld: *mut FdbBuilder) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::AddSnapshot, || {
         if bld.is_null() {
             return Err(FfiError::invalid_argument("null builder"));
         }
@@ -305,7 +308,7 @@ pub unsafe extern "C" fn fdb_queue_compaction(
     to: *const FfiStateId,
     stall_ns: *mut i64,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::QueueCompaction, || {
         // SAFETY: the caller passes a live manager and valid pointers.
         let (mgr, to, stall_ns) = unsafe { (mgr_ref(mgr)?, state(to)?, out(stall_ns)?) };
         *stall_ns = -1;
@@ -332,7 +335,7 @@ pub unsafe extern "C" fn fdb_gather(
     rob: *mut *mut FdbReader,
     reader_state: *mut FfiStateId,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Gather, || {
         // SAFETY: the caller passes a live manager and valid pointers.
         let (mgr, base, rob, reader_state) = unsafe { (mgr_ref(mgr)?, state(base)?, out(rob)?, out(reader_state)?) };
         let bundle = mgr.poison.guard(|| {
@@ -358,7 +361,7 @@ pub unsafe extern "C" fn fdb_gather(
 /// `mgr` must be a live manager, `state` valid and `has` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_has_state(mgr: *const FdbManager, state_id: *const FfiStateId, has: *mut u8) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::HasState, || {
         // SAFETY: the caller passes a live manager and valid pointers.
         let (mgr, state_id, has) = unsafe { (mgr_ref(mgr)?, state(state_id)?, out(has)?) };
         *has = mgr
@@ -375,7 +378,7 @@ pub unsafe extern "C" fn fdb_has_state(mgr: *const FdbManager, state_id: *const 
 /// `mgr` must be a live manager and `persisted` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_persisted_state(mgr: *const FdbManager, persisted: *mut FfiStateId) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::PersistedState, || {
         // SAFETY: the caller passes a live manager and a valid out-pointer.
         let (mgr, persisted) = unsafe { (mgr_ref(mgr)?, out(persisted)?) };
         let current = mgr
@@ -392,7 +395,7 @@ pub unsafe extern "C" fn fdb_persisted_state(mgr: *const FdbManager, persisted: 
 /// `mgr` must be a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_reset_persisted(mgr: *const FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ResetPersisted, || {
         // SAFETY: the caller passes a live manager.
         let mgr = unsafe { mgr_ref(mgr)? };
         mgr.poison
@@ -406,7 +409,7 @@ pub unsafe extern "C" fn fdb_reset_persisted(mgr: *const FdbManager) -> i32 {
 /// `mgr` must be a live manager and `latest` valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_add_to_persistence(mgr: *const FdbManager, latest: *const FfiStateId) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::AddToPersistence, || {
         // SAFETY: the caller passes a live manager and a valid state.
         let (mgr, latest) = unsafe { (mgr_ref(mgr)?, state(latest)?) };
         mgr.poison
@@ -421,7 +424,7 @@ pub unsafe extern "C" fn fdb_add_to_persistence(mgr: *const FdbManager, latest: 
 /// `mgr` must be a live manager and `persisted` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_flush_to_persistence(mgr: *const FdbManager, persisted: *mut FfiStateId) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::FlushToPersistence, || {
         // SAFETY: the caller passes a live manager and a valid out-pointer.
         let (mgr, persisted) = unsafe { (mgr_ref(mgr)?, out(persisted)?) };
         let flushed = mgr
@@ -439,7 +442,7 @@ pub unsafe extern "C" fn fdb_flush_to_persistence(mgr: *const FdbManager, persis
 /// `mgr` must be a live manager and `head` valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_drop_unreachable(mgr: *const FdbManager, head: *const FfiStateId) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::DropUnreachable, || {
         // SAFETY: the caller passes a live manager and a valid state.
         let (mgr, head) = unsafe { (mgr_ref(mgr)?, state(head)?) };
         mgr.poison
@@ -454,7 +457,7 @@ pub unsafe extern "C" fn fdb_drop_unreachable(mgr: *const FdbManager, head: *con
 /// `mgr` must be a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_take_fatal_error(mgr: *const FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::TakeFatalError, || {
         // SAFETY: the caller passes a live manager.
         let fatal_error = unsafe { mgr_ref(mgr)? }
             .manager
@@ -470,68 +473,11 @@ pub unsafe extern "C" fn fdb_take_fatal_error(mgr: *const FdbManager) -> i32 {
 /// `mgr` must be a live manager.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_clear_bundle_cache(mgr: *const FdbManager) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ClearBundleCache, || {
         // SAFETY: the caller passes a live manager.
         unsafe { mgr_ref(mgr)? }.manager.clear_bundle_cache();
         Ok(())
     })
-}
-
-/// Routes the library's log records up to `level` (0 off, 1 error, 2 warn, 3 info, 4 debug, 5 trace) into the
-/// process-wide ring [`fdb_log_take`] drains.
-#[unsafe(no_mangle)]
-pub extern "C" fn fdb_log_install(level: u32) -> i32 {
-    ffi_guard(|| {
-        let level = match level {
-            0 => LevelFilter::Off,
-            1 => LevelFilter::Error,
-            2 => LevelFilter::Warn,
-            3 => LevelFilter::Info,
-            4 => LevelFilter::Debug,
-            5 => LevelFilter::Trace,
-            level => return Err(FfiError::invalid_argument(format!("unknown log level {level}"))),
-        };
-        if !log_ring::install(level) {
-            log::set_max_level(level);
-        }
-        Ok(())
-    })
-}
-
-/// Takes the oldest log record: stores whether there is one in `has`, its level (as [`fdb_log_install`] numbers them)
-/// in `level`, and its message, truncated to `capacity` bytes of UTF-8, in `buffer` with its full length in `len`.
-///
-/// # Safety
-/// `buffer` must be valid for writes of `capacity` bytes and the other pointers for writes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_log_take(
-    level: *mut u32,
-    buffer: *mut u8,
-    capacity: usize,
-    len: *mut usize,
-    has: *mut u8,
-) -> i32 {
-    ffi_guard(|| {
-        // SAFETY: the caller passes valid pointers.
-        let (level, buffer, len, has) = unsafe { (out(level)?, bytes_mut(buffer, capacity)?, out(len)?, out(has)?) };
-        let Some(record) = log_ring::global().drain(1).pop() else {
-            *has = 0;
-            return Ok(());
-        };
-        *has = 1;
-        *level = record.level as u32;
-        let message = record.message.as_bytes();
-        let copied = message.len().min(buffer.len());
-        buffer[..copied].copy_from_slice(&message[..copied]);
-        *len = message.len();
-        Ok(())
-    })
-}
-
-/// The log records dropped because the ring was full since the last call.
-#[unsafe(no_mangle)]
-pub extern "C" fn fdb_log_dropped() -> u64 {
-    log_ring::global().take_dropped()
 }
 
 /// # Safety
@@ -565,16 +511,20 @@ mod tests {
     use std::slice;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicI32, AtomicU64, AtomicUsize, Ordering};
+    use std::thread;
+    use std::time::{Duration, Instant};
 
     use flatdb_core::ABI_VERSION;
     use flatdb_core::kv::WriteFlags;
+    use flatdb_core::log_ring::LogSource;
     use flatdb_core::persistence::Persistence;
     use flatdb_core::stats::{FlatCounters, Histogram, Observation};
     use flatdb_core::types::{Account, FlatLayout, Hash256, StateId, TreePath, U256};
     use rstest::rstest;
 
     use super::*;
-    use crate::abi::{FdbKvDesc, FdbKvKind, FdbStoreCfg, FdbStoreInfo, PERSISTED_STORAGE_NODE};
+    use crate::abi::{FdbKvDesc, FdbKvKind, FdbStoreCfg, FdbStoreInfo, FfiAccount, PERSISTED_STORAGE_NODE};
+    use crate::faults::Fault;
     use crate::op_stream::writer::OpWriter;
     use crate::{
         fdb_last_error, fdb_reader_get_account, fdb_reader_get_slot, fdb_reader_load_state_rlp,
@@ -658,6 +608,7 @@ mod tests {
             layout: FlatLayout::Flat as u32,
             write_buffer_floor: 0,
             carry_forward: 1,
+            log_level: 2,
         };
         let desc = FdbKvDesc {
             kind: FdbKvKind::Mem as u32,
@@ -797,7 +748,7 @@ mod tests {
     }
 
     fn account_balance(rob: *mut FdbReader, address: &[u8; 20]) -> Option<U256> {
-        let (mut account, mut found) = (crate::abi::FfiAccount::default(), 0u8);
+        let (mut account, mut found) = (FfiAccount::default(), 0u8);
         // SAFETY: the reader is live and every pointer valid.
         let status = unsafe { fdb_reader_get_account(rob, address.as_ptr(), &mut account, &mut found) };
         assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
@@ -899,6 +850,35 @@ mod tests {
                 taken.push((event.from.into(), event.to.into(), nodes));
                 assert_eq!(fdb_persisted_event_release(event.owner), FdbStatus::Ok as i32);
             }
+        }
+    }
+
+    /// Every record the store logged, or with a null store every one logged outside any store: (source, level, text).
+    fn take_log(store: *const FdbStore) -> Vec<(u32, u8, String)> {
+        let mut records = Vec::new();
+        let (mut source, mut level, mut buffer, mut len, mut has) = (0u32, 0u8, [0u8; 256], 0usize, 1u8);
+        loop {
+            // SAFETY: every pointer is valid.
+            let status = unsafe {
+                crate::fdb_store_log_take(
+                    store,
+                    &mut source,
+                    &mut level,
+                    buffer.as_mut_ptr(),
+                    buffer.len(),
+                    &mut len,
+                    &mut has,
+                )
+            };
+            assert_eq!(status, FdbStatus::Ok as i32);
+            if has == 0 {
+                return records;
+            }
+            records.push((
+                source,
+                level,
+                String::from_utf8_lossy(&buffer[..len.min(256)]).into_owned(),
+            ));
         }
     }
 
@@ -1214,39 +1194,202 @@ mod tests {
         assert!(last_error().contains(message), "{}", last_error());
     }
 
+    /// Every store logs into a sink of its own, which its drain takes with the C# class of each line; nothing reaches
+    /// another store's sink or the global ring.
     #[test]
-    fn log_records_reach_the_ring() {
-        assert_eq!(fdb_log_install(2), FdbStatus::Ok as i32);
-        assert_eq!(fdb_log_install(9), FdbStatus::InvalidArgument as i32);
+    fn log_records_reach_the_sink_of_their_store() {
         let host = TestHost::default();
-        let store = mem_store();
+        let (store, other) = (mem_store(), mem_store());
         let (_, mgr) = create(store, CFG, &fdb_host(&host));
         add(mgr, parent(0), block(0), &records(0));
         add(mgr, parent(0), block(0), &records(0));
 
-        let mut messages = Vec::new();
-        let (mut level, mut buffer, mut len, mut has) = (0u32, [0u8; 256], 0usize, 1u8);
-        while has != 0 {
-            // SAFETY: every pointer is valid.
-            assert_eq!(
-                unsafe { fdb_log_take(&mut level, buffer.as_mut_ptr(), buffer.len(), &mut len, &mut has) },
-                FdbStatus::Ok as i32
-            );
-            if has != 0 {
-                messages.push((level, String::from_utf8_lossy(&buffer[..len.min(256)]).into_owned()));
-            }
-        }
-        assert!(
-            messages
-                .iter()
-                .any(|(level, message)| *level == 2 && message.contains("already added")),
-            "{messages:?}"
+        let duplicate = (
+            LogSource::FlatDbManager as u32,
+            2,
+            format!("State {} already added", block(0)),
         );
+        assert!(take_log(store).contains(&duplicate), "{:?}", take_log(store));
+        assert!(take_log(other).is_empty());
+        assert!(!take_log(ptr::null()).contains(&duplicate));
+        // SAFETY: the stores are live.
+        assert_eq!(unsafe { crate::fdb_store_log_dropped(store) }, 0);
 
         // SAFETY: the handles are released once.
         unsafe {
             fdb_destroy(mgr);
             fdb_store_destroy(store);
+            fdb_store_destroy(other);
+        }
+    }
+
+    fn inject(store: *const FdbStore, fault: Fault, message: &str) {
+        // SAFETY: the store is live and the message valid.
+        let status = unsafe { crate::fdb_test_inject_fault(store, fault as u32, message.as_ptr(), message.len()) };
+        assert_eq!(status, FdbStatus::Ok as i32);
+    }
+
+    /// A fatal RocksDB error writing a persist writes nothing and freezes the persisted state: every later persist
+    /// fails with it, and it is handed out once, for C# to shut the node down on. A store flush tolerates a flush error
+    /// that is not fatal, logging it as `DbOnTheRocks` does, and fails with a fatal one.
+    #[test]
+    fn injected_rocksdb_errors_freeze_the_persisted_state_or_are_tolerated() {
+        let host = TestHost::default();
+        let store = mem_store();
+        let (_, mgr) = create(store, CFG, &fdb_host(&host));
+        let mut persisted = FfiStateId::default();
+        for number in 0..=9 {
+            add(mgr, parent(number), block(number), &records(number));
+            if number == 5 {
+                // SAFETY: the manager is live and the out-pointer valid.
+                assert_eq!(
+                    unsafe { fdb_flush_to_persistence(mgr, &mut persisted) },
+                    FdbStatus::Ok as i32
+                );
+            }
+        }
+
+        inject(store, Fault::KvFlush, "Busy: injected");
+        // SAFETY: the store is live.
+        let tolerated = unsafe { crate::fdb_store_flush(store) };
+        inject(store, Fault::KvFlush, "IO error: injected flush");
+        // SAFETY: as above.
+        let fatal_flush = (unsafe { crate::fdb_store_flush(store) }, last_error());
+        inject(store, Fault::KvWrite, "IO error: injected write");
+        // SAFETY: the manager is live and the out-pointer valid.
+        let persists = [(); 2].map(|_| unsafe { (fdb_flush_to_persistence(mgr, &mut persisted), last_error()) });
+        // SAFETY: as above.
+        let reported = [(); 2].map(|_| unsafe { fdb_take_fatal_error(mgr) });
+        // SAFETY: the store is live.
+        let written = unsafe { &*store }
+            .persistence
+            .create_reader(ReaderFlags::NONE)
+            .unwrap()
+            .current_state();
+
+        assert_eq!(tolerated, FdbStatus::Ok as i32);
+        assert!(take_log(store).contains(&(
+            LogSource::DbOnTheRocks as u32,
+            2,
+            "Failed to flush Flat DB: Busy: injected".to_owned()
+        )));
+        assert_eq!(
+            fatal_flush,
+            (FdbStatus::RocksDb as i32, "IO error: injected flush".to_owned())
+        );
+        assert_eq!(
+            persists,
+            [(); 2].map(|_| (FdbStatus::RocksDb as i32, "IO error: injected write".to_owned())),
+            "the second persist fails with the first error, as nothing more may be written"
+        );
+        assert_eq!(reported, [FdbStatus::RocksDb as i32, FdbStatus::Ok as i32]);
+        assert_eq!((persisted_state(mgr), written), (block(5), block(5)));
+        // SAFETY: the handles are released once.
+        unsafe {
+            assert_eq!(fdb_destroy(mgr), FdbStatus::Ok as i32);
+            assert_eq!(fdb_store_destroy(store), FdbStatus::Ok as i32);
+        }
+    }
+
+    /// Where a panic strikes.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum PanicSite {
+        Export,
+        PersistWorker,
+        CompactorWorker,
+    }
+
+    /// A panic inside an export, or in a job of the manager's persistence or compaction worker, poisons the store:
+    /// every later call on it, its readers and its manager fails with Poisoned, while the releases still work.
+    #[rstest]
+    fn a_panic_anywhere_poisons_the_store_for_every_later_call(
+        #[values(PanicSite::Export, PanicSite::PersistWorker, PanicSite::CompactorWorker)] site: PanicSite,
+    ) {
+        let has_state = |mgr| {
+            let mut has = 0u8;
+            // SAFETY: the manager is live and every pointer valid.
+            unsafe { fdb_has_state(mgr, &block(0).into(), &mut has) }
+        };
+        // Block 4, the first boundary, is finalized, so the persistence worker persists once the head reaches block 6.
+        let host = TestHost::default();
+        host.finalized.store(8, Ordering::SeqCst);
+        host.roots.lock().unwrap().insert(4, block(4).state_root);
+        let store = mem_store();
+        let cfg = FdbMgrCfg {
+            inline_compaction: (site != PanicSite::CompactorWorker).into(),
+            ..CFG
+        };
+        let (_, mgr) = create(store, cfg, &fdb_host(&host));
+        add(mgr, parent(0), block(0), &records(0));
+        let (_, held, _) = gather(mgr, block(0), false);
+
+        let fault = match site {
+            PanicSite::Export => Fault::PanicInExport,
+            PanicSite::PersistWorker => Fault::PanicInPersist,
+            PanicSite::CompactorWorker => Fault::PanicInCompaction,
+        };
+        inject(store, fault, "injected");
+        let panicked = if site == PanicSite::Export {
+            (has_state(mgr), last_error())
+        } else {
+            for number in 1..=6 {
+                add(mgr, parent(number), block(number), &records(number));
+            }
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while has_state(mgr) != FdbStatus::Poisoned as i32 && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            (FdbStatus::Panic as i32, "panic: injected".to_owned())
+        };
+        let logged = take_log(store);
+
+        let (mut bld, mut reader, mut rob, mut current, mut account, mut found) = (
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            FfiStateId::default(),
+            FfiAccount::default(),
+            0u8,
+        );
+        // SAFETY: every handle is live and every pointer valid; the handles are released once.
+        unsafe {
+            fdb_bld_new(&block(6).into(), &block(7).into(), 0, 0, 0, 0, &mut bld);
+            let statuses = [
+                has_state(mgr),
+                fdb_add_snapshot(mgr, bld),
+                fdb_gather(mgr, &block(0).into(), 0, 0, &mut rob, &mut current),
+                fdb_flush_to_persistence(mgr, &mut current),
+                fdb_drop_unreachable(mgr, &block(0).into()),
+                crate::fdb_reader_open(store, 0, 0, &mut reader, &mut current),
+                crate::fdb_store_flush(store),
+                fdb_reader_get_account(held, A.as_ptr(), &mut account, &mut found),
+            ];
+            let released = [
+                fdb_reader_release(held),
+                fdb_shutdown(mgr),
+                fdb_destroy(mgr),
+                fdb_store_destroy(store),
+            ];
+
+            assert_eq!(panicked, (FdbStatus::Panic as i32, "panic: injected".to_owned()));
+            assert_eq!(statuses, [FdbStatus::Poisoned as i32; 8]);
+            assert_eq!(released, [FdbStatus::Ok as i32; 4]);
+        }
+        if site != PanicSite::Export {
+            let job = if site == PanicSite::PersistWorker {
+                "Persisting"
+            } else {
+                "Compacting"
+            };
+            assert!(
+                logged
+                    .iter()
+                    .any(|(source, level, message)| *source == LogSource::FlatDbManager as u32
+                        && *level == 1
+                        && message.starts_with(&format!("Error on {job} "))
+                        && message.ends_with(": injected")),
+                "{logged:?}"
+            );
         }
     }
 }

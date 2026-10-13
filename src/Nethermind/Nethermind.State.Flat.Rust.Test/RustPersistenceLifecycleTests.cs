@@ -104,6 +104,26 @@ public class RustPersistenceLifecycleTests
         Assert.That(committed.CurrentState, Is.EqualTo(Block2), "the batch committed after the persistence was disposed");
     }
 
+    /// <summary>The reads of the handle whose release releases the store, after the persistence was disposed, reach the read metric of the database.</summary>
+    [Test]
+    public void Reads_of_the_handle_releasing_the_store_reach_the_metrics()
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        using FlatTestDbs.TrackingColumnsDb db = new(path.Path);
+        RustPersistence persistence = new(db, new FlatDbConfig(), LimboLogs.Instance);
+        Write(persistence, StateId.PreGenesis, Block1, 1);
+        IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        persistence.PublishMetrics();
+        persistence.Dispose();
+        long totalReads = db.GatherMetric().TotalReads;
+
+        reader.GetAccount(Address);
+        reader.Dispose();
+
+        Assert.That(db.GatherMetric().TotalReads - totalReads, Is.EqualTo(1), "the account miss");
+    }
+
     [Test]
     [NonParallelizable]
     public void Reads_and_carry_forward_counts_reach_the_csharp_metrics()

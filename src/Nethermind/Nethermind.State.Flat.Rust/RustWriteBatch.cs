@@ -177,6 +177,8 @@ internal sealed unsafe class RustWriteBatch(RustFlatStore store, BatchHandle han
             handle.Dispose();
             ArrayPool<byte>.Shared.Return(_buffer);
             store.PublishMetrics();
+            // The commit's write-ahead log flush can warn.
+            store.PumpLogs();
         }
 
         applyFailure?.Throw();

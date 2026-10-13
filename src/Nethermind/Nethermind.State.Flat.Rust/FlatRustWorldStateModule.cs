@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
+using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 
@@ -21,6 +23,7 @@ namespace Nethermind.State.Flat.Rust;
 /// over the same flat columns, under the C# snapshot manager. <see cref="FlatDbBackend.Rust"/> also replaces
 /// <see cref="IFlatDbManager"/> and <see cref="IPersistenceManager"/> with the shells of the native snapshot manager,
 /// which runs over the same store. Disposal releases the manager before the store, and the store before the database.
+/// Both publish their metrics on every tick of the <see cref="IMonitoringService"/>, when there is one.
 /// </remarks>
 public class FlatRustWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 {
@@ -37,23 +40,33 @@ public class FlatRustWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
 
         builder
-            .AddSingleton<RustPersistence, IColumnsDb<FlatDbColumns>, IFlatDbConfig, ILogManager>(
-                static (db, config, logManager) => new RustPersistence(db, config, logManager))
+            .AddSingleton<RustPersistence>(static ctx =>
+            {
+                RustPersistence persistence = new(ctx.Resolve<IColumnsDb<FlatDbColumns>>(), ctx.Resolve<IFlatDbConfig>(), ctx.Resolve<ILogManager>());
+                ctx.ResolveOptional<IMonitoringService>()?.AddMetricsUpdateAction(persistence.PublishMetrics);
+                return persistence;
+            })
             .Bind<IPersistence, RustPersistence>();
 
         if (flatDbConfig.Backend != FlatDbBackend.Rust) return;
 
         builder
-            .AddSingleton<NativeFlatManager>(static ctx => new NativeFlatManager(
-                ctx.Resolve<RustPersistence>(),
-                ctx.Resolve<IFlatDbConfig>(),
-                ctx.Resolve<ICompactionSchedule>() as CompactionSchedule
-                    ?? throw new InvalidConfigurationException($"FlatDb.Backend={FlatDbBackend.Rust} needs the {nameof(CompactionSchedule)} of the flat DB.", -1),
-                ctx.Resolve<IBlocksConfig>(),
-                ctx.Resolve<IStateHeaderProvider>(),
-                ctx.Resolve<IStatePersistenceBarrier>(),
-                ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ILogManager>()))
+            .AddSingleton<NativeFlatManager>(static ctx =>
+            {
+                NativeFlatManager manager = new(
+                    ctx.Resolve<RustPersistence>(),
+                    ctx.Resolve<IFlatDbConfig>(),
+                    ctx.Resolve<ICompactionSchedule>() as CompactionSchedule
+                        ?? throw new InvalidConfigurationException($"FlatDb.Backend={FlatDbBackend.Rust} needs the {nameof(CompactionSchedule)} of the flat DB.", -1),
+                    ctx.Resolve<IBlocksConfig>(),
+                    ctx.Resolve<IStateHeaderProvider>(),
+                    ctx.Resolve<IStatePersistenceBarrier>(),
+                    ctx.Resolve<IProcessExitSource>(),
+                    ctx.Resolve<IMetricsConfig>(),
+                    ctx.Resolve<ILogManager>());
+                ctx.ResolveOptional<IMonitoringService>()?.AddMetricsUpdateAction(manager.PublishMetrics);
+                return manager;
+            })
             .AddSingleton<IPersistenceManager, RustPersistenceManager>()
             .AddSingleton<IFlatDbManager, RustFlatDbManager>();
     }

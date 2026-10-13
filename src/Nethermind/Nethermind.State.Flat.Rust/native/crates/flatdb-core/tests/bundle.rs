@@ -25,6 +25,7 @@ use flatdb_core::persistence::layouts::KvPersistence;
 use flatdb_core::persistence::{Persistence, PersistenceReader, PersistenceWriteBatch, ReaderFlags};
 use flatdb_core::repository::SnapshotRepository;
 use flatdb_core::schedule::CompactionSchedule;
+use flatdb_core::seam::{self, BundleRead};
 use flatdb_core::snapshot::Snapshot;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::types::{Account, FlatLayout, StateId, TreePath, U256};
@@ -88,6 +89,72 @@ fn get_account_reads_the_newest_snapshot_then_persistence() {
     );
     assert_eq!(bundle.get_account(&address(0xD4)).unwrap(), None);
     assert_eq!(bundle.snapshot_count(), 2);
+}
+
+/// Every read counts where it was served from, after the read-time labels of the C# bundle, so the snapshot hits the C#
+/// bundle of the Rust backend reports as persistence reads can be told apart.
+#[rstest]
+fn reads_count_where_they_were_served_from(#[values(false, true)] filtered: bool) {
+    let (a, b, c) = (address(0xA1), address(0xB2), address(0xC3));
+    let owner = keccak256(&[0x0C]);
+    let (root, placeholder, persisted) = (TreePath::from_hex(""), TreePath::from_hex("1"), TreePath::from_hex("2"));
+    let mut reader = DictionaryReader::default();
+    reader.accounts.insert(b, Account::new(8, u256(8)));
+    reader.slots.insert((b, u256(1)), u256(5));
+    reader.slots.insert((b, u256(2)), u256(0));
+    reader.state_nodes.insert(persisted, vec![0xC1, 0x02]);
+    let bundle = bundle(
+        vec![
+            layer(0, |s| s.set_state_node(placeholder, [0x11; 32], &[0xC1, 0x01])),
+            layer(1, |s| {
+                s.set_account(a, Some(Account::new(1, u256(1))));
+                s.set_storage(a, u256(1), Some(u256(7)));
+                s.set_self_destruct(c, false);
+                s.set_state_node(root, [0x22; 32], &[0xC0]);
+                s.set_state_node(placeholder, [0x33; 32], &[]);
+                s.set_storage_node(owner, root, [0x44; 32], &[0xC0]);
+            }),
+        ],
+        reader,
+        REAL_BITS_PER_KEY,
+    );
+    let before = seam::this_thread();
+
+    bundle.get_account(&a).unwrap();
+    bundle.get_account(&b).unwrap();
+    bundle.get_account(&c).unwrap();
+    for (address, slot) in [(a, 1), (b, 1), (b, 2), (b, 3), (c, 1)] {
+        bundle.try_get_slot(&address, &u256(slot), filtered).unwrap();
+    }
+    for path in [root, placeholder, persisted] {
+        bundle.load_state_rlp(&path, ReadFlags::NONE, <[u8]>::to_vec).unwrap();
+    }
+    for path in [root, persisted] {
+        bundle
+            .load_storage_rlp(&owner, &path, ReadFlags::NONE, <[u8]>::to_vec)
+            .unwrap();
+    }
+
+    let after = seam::this_thread();
+    let counted: Vec<u64> = (0..BundleRead::COUNT)
+        .map(|index| after[index] - before[index])
+        .collect();
+    assert_eq!(
+        counted,
+        [
+            1, // account_snapshot
+            1, // account_persistence
+            1, // account_persistence_null
+            1, // storage_snapshot
+            1, // the slot of c, cleared at block 1
+            1, // storage_persistence
+            2, // storage_persistence_null: zero and absent
+            1, // state_node_snapshot
+            2, // state_rlp: the placeholder and the node only persistence holds
+            1, // storage_node_snapshot
+            1, // storage_rlp
+        ]
+    );
 }
 
 #[test]

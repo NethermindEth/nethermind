@@ -62,28 +62,57 @@ public static class FlatTestDbs
     public static List<string> Dump(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
         [.. db.GetColumnDb(column).GetAll().Select(static entry => $"{entry.Key.ToHexString()}={entry.Value.ToHexString()}").Order(StringComparer.Ordinal)];
 
-    /// <summary>A flat DB that counts its native closes, to tell a close deferred to the last lease release from one done by dispose.</summary>
+    /// <summary>Every entry of every column, as <c>column key=value</c>.</summary>
+    public static List<string> DumpAll(IColumnsDb<FlatDbColumns> db) =>
+        [.. Enum.GetValues<FlatDbColumns>().SelectMany(column => Dump(db, column).Select(entry => $"{column} {entry}"))];
+
+    /// <summary>
+    /// A flat DB that counts its native closes, to tell a close deferred to the last lease release from one done by
+    /// dispose, and the fatal errors that would have shut the process down, which it only counts.
+    /// </summary>
     public sealed class TrackingColumnsDb : ColumnsDb<FlatDbColumns>
     {
         private int _nativeCloses;
+        private int _fatalShutdowns;
 
-        public TrackingColumnsDb(string basePath, TimeSpan? pinnedSliceDrainTimeout = null)
-            : this(basePath, new DbConfig()) =>
-            PinnedSliceDrainTimeout = pinnedSliceDrainTimeout ?? TimeSpan.FromSeconds(10);
+        public TrackingColumnsDb(string basePath)
+            : this(basePath, TimeSpan.FromSeconds(10), LimboLogs.Instance)
+        {
+        }
 
-        private TrackingColumnsDb(string basePath, DbConfig dbConfig)
+        public TrackingColumnsDb(string basePath, TimeSpan pinnedSliceDrainTimeout, ILogManager logManager)
+            : this(basePath, new DbConfig(), logManager) =>
+            PinnedSliceDrainTimeout = pinnedSliceDrainTimeout;
+
+        private TrackingColumnsDb(string basePath, DbConfig dbConfig, ILogManager logManager)
             : base(basePath, new DbSettings(nameof(DbNames.Flat), DbNames.Flat), dbConfig,
-                new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false),
-                LimboLogs.Instance, [])
+                new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), logManager, validateConfig: false),
+                logManager, [])
         {
         }
 
         public int NativeCloses => Volatile.Read(ref _nativeCloses);
 
+        /// <summary>How many fatal RocksDB errors <see cref="DbOnTheRocks.HandleFatalDbError"/> shut down on.</summary>
+        public int FatalShutdowns => Volatile.Read(ref _fatalShutdowns);
+
+        /// <summary>Runs as the native database closes.</summary>
+        public Action? NativeClosing { get; set; }
+
+        /// <summary>Runs as a fatal RocksDB error shuts down, before it is counted.</summary>
+        public Action? FatalShuttingDown { get; set; }
+
         protected override void ReleaseUnmanagedResources()
         {
             Interlocked.Increment(ref _nativeCloses);
+            NativeClosing?.Invoke();
             base.ReleaseUnmanagedResources();
+        }
+
+        protected override void FatalShutdown()
+        {
+            FatalShuttingDown?.Invoke();
+            Interlocked.Increment(ref _fatalShutdowns);
         }
     }
 }

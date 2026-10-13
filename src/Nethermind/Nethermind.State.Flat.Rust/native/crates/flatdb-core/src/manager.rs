@@ -27,6 +27,7 @@ use crate::bundle::ReadOnlySnapshotBundle;
 use crate::bundle_cache::BundleCache;
 use crate::compactor::Compactor;
 use crate::host::HostError;
+use crate::log_ring::{self, TimeSpan};
 use crate::persistence::{Persistence, PersistenceError, PersistenceReader, ReaderFlags};
 use crate::persistence_manager::{PersistError, PersistenceManager};
 use crate::repository::{AssembledSnapshots, SnapshotRepository};
@@ -117,6 +118,9 @@ pub type SharedBundle<P> = Arc<ReadOnlySnapshotBundle<<P as Persistence>::Reader
 /// The body of a worker thread.
 type Work = Box<dyn FnOnce() + Send>;
 
+/// Called with the name of a worker job that panicked.
+type PanicHook = Box<dyn Fn(&str) + Send + Sync>;
+
 pub struct FlatDbManager<P: Persistence> {
     shared: Arc<Shared<P>>,
     workers: Mutex<Option<Workers>>,
@@ -152,6 +156,7 @@ struct Shared<P: Persistence> {
     cancel: Signal,
     compactor_watch: SlowJobWatch,
     persistence_watch: SlowJobWatch,
+    on_job_panic: PanicHook,
 }
 
 impl<P: Persistence> FlatDbManager<P> {
@@ -165,15 +170,42 @@ impl<P: Persistence> FlatDbManager<P> {
         compactor: Arc<dyn Compactor>,
         persistence_manager: Arc<PersistenceManager<P>>,
     ) -> Self {
-        Self::start(config, compactor, persistence_manager, |name, work| {
-            thread::Builder::new().name(name.to_owned()).spawn(work)
-        })
+        Self::with_job_panic_hook(config, compactor, persistence_manager, |_| {})
+    }
+
+    /// As [`FlatDbManager::new`], calling `on_job_panic` with the name of every worker job that panics, once the
+    /// worker logged it and before it goes on, so the owner can stop trusting the state the job may have left
+    /// half-updated.
+    ///
+    /// # Panics
+    /// As [`FlatDbManager::new`].
+    pub fn with_job_panic_hook(
+        config: ManagerConfig,
+        compactor: Arc<dyn Compactor>,
+        persistence_manager: Arc<PersistenceManager<P>>,
+        on_job_panic: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Self {
+        // The workers log where the thread starting them does.
+        let log_sink = log_ring::current();
+        Self::start(
+            config,
+            compactor,
+            persistence_manager,
+            Box::new(on_job_panic),
+            move |name, work| {
+                thread::Builder::new().name(name.to_owned()).spawn(move || {
+                    log_ring::enter(log_sink);
+                    work();
+                })
+            },
+        )
     }
 
     fn start(
         config: ManagerConfig,
         compactor: Arc<dyn Compactor>,
         persistence_manager: Arc<PersistenceManager<P>>,
+        on_job_panic: PanicHook,
         spawn: impl Fn(&str, Work) -> io::Result<JoinHandle<()>>,
     ) -> Self {
         let repository = Arc::clone(persistence_manager.repository());
@@ -206,6 +238,7 @@ impl<P: Persistence> FlatDbManager<P> {
             cancel: Signal::new(),
             compactor_watch: SlowJobWatch::default(),
             persistence_watch: SlowJobWatch::default(),
+            on_job_panic,
         });
 
         let works: [(&str, Work); 3] = [
@@ -286,14 +319,14 @@ impl<P: Persistence> FlatDbManager<P> {
         if persisted_state_id != StateId::PRE_GENESIS && to.block_number <= persisted_state_id.block_number {
             log::warn!(
                 "Cannot register snapshot earlier than bigcache. Snapshot number {}, bigcache number: \
-                 {persisted_state_id:?}",
+                 {persisted_state_id}",
                 to.block_number
             );
             return Ok(AddSnapshotOutcome::Rejected);
         }
 
         if !shared.repository.try_add(snapshot, SnapshotTier::InMemoryBase) {
-            log::warn!("State {to:?} already added");
+            log::warn!("State {to} already added");
             return Ok(AddSnapshotOutcome::Duplicate);
         }
 
@@ -327,7 +360,7 @@ impl<P: Persistence> FlatDbManager<P> {
         reader_flags: ReaderFlags,
     ) -> Result<SharedBundle<P>, ManagerError> {
         let shared = &self.shared;
-        log::trace!("Gathering {base_block:?}.");
+        log::trace!("Gathering {base_block}.");
         if *base_block == StateId::PRE_GENESIS {
             return Err(ManagerError::PreGenesis);
         }
@@ -376,8 +409,13 @@ impl<P: Persistence> FlatDbManager<P> {
             }
 
             log::trace!(
-                "Gathered {base_block:?}. Got {} known states, 0 persisted, Reader state: {reader_state:?}.",
-                assembled.snapshot_count()
+                "Gathered {base_block}. Got {} known states, 0 persisted, Reader state: {reader_state}. Persistence \
+                 state: {}",
+                assembled.snapshot_count(),
+                shared
+                    .persistence_manager
+                    .get_current_persisted_state_id()
+                    .map_or_else(|error| error.to_string(), |persisted| persisted.to_string())
             );
             shared.report_bundle_metrics(&assembled);
 
@@ -417,7 +455,7 @@ impl<P: Persistence> FlatDbManager<P> {
         }
 
         self.shared.bundle_cache.clear();
-        log::info!("FlatDbManager FlushCache completed. Persisted to {persisted_state:?}.");
+        log::info!("FlatDbManager FlushCache completed. Persisted to {persisted_state}.");
         Ok(true)
     }
 
@@ -475,7 +513,7 @@ impl<P: Persistence> Shared<P> {
     /// Port of `RunCompactor`.
     fn run_compactor(&self, jobs: Receiver<StateId>, persistence_jobs: Sender<StateId>) {
         while let Some(state_id) = self.next_job(&jobs) {
-            let keep_running = self.run_job(&self.compactor_watch, format!("Compacting {state_id:?}"), || {
+            let keep_running = self.run_job(&self.compactor_watch, format!("Compacting {state_id}"), || {
                 self.run_compact_job(state_id, &persistence_jobs)
             });
             if !keep_running {
@@ -569,7 +607,7 @@ impl<P: Persistence> Shared<P> {
         // `_lastClearedPersistedStateId` and `_lastClearedRemovedBaseSnapshotCount`.
         let mut last_cleared = (StateId::PRE_GENESIS, 0i64);
         while let Some(state_id) = self.next_job(&jobs) {
-            let keep_running = self.run_job(&self.persistence_watch, format!("Persisting {state_id:?}"), || {
+            let keep_running = self.run_job(&self.persistence_watch, format!("Persisting {state_id}"), || {
                 self.persist_if_needed(&state_id, &mut last_cleared)
             });
             if !keep_running {
@@ -611,7 +649,8 @@ impl<P: Persistence> Shared<P> {
     }
 
     /// Port of `NotifyWhenSlow`: runs one job, which the housekeeping thread warns about while it is slow. A failed or
-    /// panicking job is logged and the worker goes on; a cancelled one stops the worker and cancels the others.
+    /// panicking job is logged, a panicking one then handed to the panic hook, and the worker goes on; a cancelled one
+    /// stops the worker and cancels the others.
     fn run_job(&self, watch: &SlowJobWatch, name: String, job: impl FnOnce() -> Result<(), JobError>) -> bool {
         let started = Instant::now();
         watch.start(&name, self.slow_job_threshold);
@@ -625,9 +664,12 @@ impl<P: Persistence> Shared<P> {
                 return false;
             }
             Ok(Err(JobError::Failed(error))) => log::error!("Error on {name}: {error}"),
-            Err(panic) => log::error!("Error on {name}: {}", panic_message(&*panic)),
+            Err(panic) => {
+                log::error!("Error on {name}: {}", panic_message(&*panic));
+                (self.on_job_panic)(&name);
+            }
         }
-        log::trace!("{name} took {:?}", started.elapsed());
+        log::trace!("{name} took {}", TimeSpan(started.elapsed()));
         true
     }
 
@@ -761,7 +803,7 @@ impl SlowJobWatch {
         if let Some(job) = self.job.lock().as_mut()
             && now >= job.next_warning
         {
-            log::warn!("Slow task \"{}\". Took {:?}", job.name, now - job.started);
+            log::warn!("Slow task \"{}\". Took {}", job.name, TimeSpan(now - job.started));
             job.next_warning = now + threshold;
         }
     }
@@ -791,11 +833,15 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    use log::LevelFilter;
+    use parking_lot::Mutex;
+
     use super::{JobError, SlowJobWatch};
     use crate::compactor::SnapshotCompactor;
     use crate::events::PersistedNodeEvents;
     use crate::host::{Host, HostError};
     use crate::kv::mem::MemKv;
+    use crate::log_ring::LogSink;
     use crate::manager::{FlatDbManager, ManagerConfig};
     use crate::persistence::layouts::KvPersistence;
     use crate::persistence_manager::{PersistenceManager, PersistenceManagerConfig};
@@ -846,9 +892,20 @@ mod tests {
         )
     }
 
-    fn manager() -> FlatDbManager<KvPersistence<MemKv>> {
+    /// The jobs that panicked, each with the lines the sink held by then.
+    type Panicked = Arc<Mutex<Vec<(String, Vec<String>)>>>;
+
+    /// A manager whose panic hook records the jobs that panicked, each with the lines `sink` held by then.
+    fn manager(sink: Arc<LogSink>) -> (FlatDbManager<KvPersistence<MemKv>>, Panicked) {
         let (compactor, persistence_manager) = components();
-        FlatDbManager::new(ManagerConfig::default(), compactor, persistence_manager)
+        let panicked = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&panicked);
+        let manager =
+            FlatDbManager::with_job_panic_hook(ManagerConfig::default(), compactor, persistence_manager, move |name| {
+                let logged = sink.ring().drain(usize::MAX).into_iter().map(|record| record.message);
+                recorded.lock().push((name.to_owned(), logged.collect()))
+            });
+        (manager, panicked)
     }
 
     #[test]
@@ -860,6 +917,7 @@ mod tests {
                 ManagerConfig::default(),
                 compactor,
                 Arc::clone(&persistence_manager),
+                Box::new(|_| {}),
                 |name, work| {
                     if spawned.fetch_add(1, Ordering::SeqCst) == 1 {
                         return Err(io::Error::other("no more threads"));
@@ -879,15 +937,24 @@ mod tests {
 
     #[test]
     fn a_failed_or_panicking_job_keeps_the_worker_and_a_cancelled_one_stops_all() {
-        let manager = manager();
+        let sink = Arc::new(LogSink::new(LevelFilter::Error));
+        let (manager, panicked) = manager(Arc::clone(&sink));
         let shared = &manager.shared;
         let watch = SlowJobWatch::default();
 
         assert!(shared.run_job(&watch, "ok".to_owned(), || Ok(())));
         assert!(shared.run_job(&watch, "failed".to_owned(), || Err(JobError::Failed("io".to_owned()))));
-        assert!(shared.run_job(&watch, "panicking".to_owned(), || panic!("compaction failed")));
+        assert!(sink.scope(|| shared.run_job(&watch, "panicking".to_owned(), || panic!("compaction failed"))));
         assert!(!shared.cancel.is_raised());
         assert!(watch.job.lock().is_none(), "a finished job is no longer watched");
+        assert_eq!(
+            *panicked.lock(),
+            [(
+                "panicking".to_owned(),
+                vec!["Error on panicking: compaction failed".to_owned()]
+            )],
+            "only the panic reaches the hook, once logged, so whoever the hook tells finds the line"
+        );
 
         assert!(!shared.run_job(&watch, "cancelled".to_owned(), || Err(JobError::Cancelled)));
         assert!(shared.cancel.is_raised(), "a stopped worker cancels the others");

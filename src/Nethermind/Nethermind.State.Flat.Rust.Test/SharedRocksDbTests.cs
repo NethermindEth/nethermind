@@ -62,7 +62,7 @@ public class SharedRocksDbTests
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        FlatTestDbs.TrackingColumnsDb db = new(path.Path, storeOutlivesDrainTimeout ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(10));
+        FlatTestDbs.TrackingColumnsDb db = new(path.Path, storeOutlivesDrainTimeout ? TimeSpan.FromMilliseconds(50) : TimeSpan.FromSeconds(10), LimboLogs.Instance);
         RustPersistence persistence = new(db, new FlatDbConfig(), LimboLogs.Instance);
         Write(persistence, StateId.PreGenesis, new StateId(1, Keccak.Compute("1")), 1, Bytes.FromHexString("0xc0"));
 

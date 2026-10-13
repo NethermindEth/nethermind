@@ -187,7 +187,7 @@ impl<P: Persistence> PersistenceManager<P> {
             && latest_snapshot.block_number < current_persisted_state.block_number
         {
             log::warn!(
-                "Latest snapshot {latest_snapshot:?} is below persisted state {current_persisted_state:?}; persisted \
+                "Latest snapshot {latest_snapshot} is below persisted state {current_persisted_state}; persisted \
                  base may be on an orphaned fork. Skipping persistence."
             );
         }
@@ -257,8 +257,8 @@ impl<P: Persistence> PersistenceManager<P> {
                 *last_warned_stall = Some(current_persisted_state);
                 log::warn!(
                     "In-memory state depth {snapshots_depth} exceeded the force-persist backstop {}, but neither \
-                     persistence nor conversion found a candidate (persisted {current_persisted_state:?}, latest \
-                     {latest_snapshot:?}, finalized block {finalized_block_number}).",
+                     persistence nor conversion found a candidate (persisted {current_persisted_state}, latest \
+                     {latest_snapshot}, finalized block {finalized_block_number}).",
                     self.backstop_reorg_depth
                 );
             }
@@ -402,7 +402,7 @@ impl<P: Persistence> PersistenceManager<P> {
     pub fn persist_snapshot(&self, snapshot: &Snapshot) -> Result<(), PersistError> {
         let (from, to) = (snapshot.from(), snapshot.to());
         if let Err(error) = self.host.flush_deferred() {
-            log::error!("Block-data flush failed before persisting state {to:?}; aborting this persist. {error}");
+            log::error!("Block-data flush failed before persisting state {to}; aborting this persist. {error}");
             return Err(error.into());
         }
 

@@ -2,10 +2,14 @@
 //!
 //! Every export is a thin wrapper: it validates its pointers, runs inside [`guard::ffi_guard`] so that no panic
 //! unwinds into C#, and returns an [`abi::FdbStatus`]. The message of a failure is kept per thread for
-//! [`fdb_last_error`]. A panic in a call on a store's state poisons the store (see [`guard::Poison`]).
+//! [`fdb_last_error`]. A panic in a call on a store's state, or in a job of the workers of its manager, poisons the
+//! store (see [`guard::Poison`]).
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod abi;
+pub mod calls;
+#[cfg(any(test, feature = "test-api"))]
+pub mod faults;
 pub mod guard;
 pub mod manager;
 pub mod manager_exports;
@@ -23,13 +27,16 @@ use flatdb_core::kv::rocks_api::ROCKS_API_SYMBOLS;
 #[cfg(any(test, feature = "test-api"))]
 use flatdb_core::kv::{Column, KvStore};
 use flatdb_core::kv::{GetInto, ReadFlags, WriteFlags};
+use flatdb_core::log_ring;
 use flatdb_core::persistence::{PersistenceError, ReaderFlags};
+use flatdb_core::seam;
 use flatdb_core::types::{TreePath, U256};
 
 use abi::{
     FIELD_OFFSETS, FdbKvDesc, FdbStats, FdbStatus, FdbStoreCfg, FdbStoreInfo, FfiAccount, FfiError, FfiStateId,
     STRUCT_SIZES,
 };
+use calls::Export;
 use guard::{copy_last_error, ffi_guard};
 use store::{FdbBatch, FdbIter, FdbReader, FdbStore};
 #[cfg(any(test, feature = "test-api"))]
@@ -103,7 +110,7 @@ pub extern "C" fn fdb_rocks_api_symbol_count() -> u32 {
 /// `name` and `name_len` must be valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_rocks_api_symbol(index: u32, name: *mut *const u8, name_len: *mut usize) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Other, || {
         let symbol = ROCKS_API_SYMBOLS
             .get(index as usize)
             .ok_or_else(|| FfiError::invalid_argument(format!("no RocksApi entry {index}")))?;
@@ -131,7 +138,7 @@ pub unsafe extern "C" fn fdb_store_create(
     store: *mut *mut FdbStore,
     info: *mut FdbStoreInfo,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::StoreCreate, || {
         // SAFETY: the caller passes valid pointers.
         let (cfg, kv, store, info) = unsafe { (cfg.as_ref(), kv.as_ref(), out(store)?, out(info)?) };
         let (Some(cfg), Some(kv)) = (cfg, kv) else {
@@ -152,7 +159,7 @@ pub unsafe extern "C" fn fdb_store_create(
 /// `store` must be null or a store from [`fdb_store_create`] that is not used after it is destroyed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_store_destroy(store: *mut FdbStore) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::StoreDestroy, || {
         if store.is_null() {
             return Ok(());
         }
@@ -174,12 +181,115 @@ pub unsafe extern "C" fn fdb_store_destroy(store: *mut FdbStore) -> i32 {
 /// `store` must be a live store and `stats` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_store_take_stats(store: *const FdbStore, stats: *mut FdbStats) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::StoreTakeStats, || {
         // SAFETY: the caller passes a live store and a valid out-pointer.
         let (store, stats) = unsafe { (store_ref(store)?, out(stats)?) };
         *stats = store.take_stats();
         Ok(())
     })
+}
+
+/// Takes the oldest record the store logged, or with a null `store` the oldest one logged outside any store: stores
+/// whether there is one in `has`, the C# class it is the log line of (`flatdb_core::log_ring::LogSource`) in `source`,
+/// its level (1 error, 2 warn, 3 info, 4 debug, 5 trace) in `level`, and its message, truncated to `capacity` bytes of
+/// UTF-8, in `buffer` with its full length in `len`.
+///
+/// # Safety
+/// `store` must be null or a live store, `buffer` valid for writes of `capacity` bytes and the other pointers for
+/// writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_store_log_take(
+    store: *const FdbStore,
+    source: *mut u32,
+    level: *mut u8,
+    buffer: *mut u8,
+    capacity: usize,
+    len: *mut usize,
+    has: *mut u8,
+) -> i32 {
+    ffi_guard(Export::StoreLogTake, || {
+        // SAFETY: the caller passes null or a live store and valid pointers.
+        let (store, source, level, buffer, len, has) = unsafe {
+            (
+                store.as_ref(),
+                out(source)?,
+                out(level)?,
+                bytes_mut(buffer, capacity)?,
+                out(len)?,
+                out(has)?,
+            )
+        };
+        let ring = store.map_or_else(log_ring::global, |store| store.poison.log.ring());
+        let Some(record) = ring.drain(1).pop() else {
+            *has = 0;
+            return Ok(());
+        };
+        *has = 1;
+        *source = record.source as u32;
+        *level = record.level as u8;
+        let message = record.message.as_bytes();
+        let copied = message.len().min(buffer.len());
+        buffer[..copied].copy_from_slice(&message[..copied]);
+        *len = message.len();
+        Ok(())
+    })
+}
+
+/// The records the store's log sink, or with a null `store` the ring of records logged outside any store, dropped
+/// because it was full, since the last call.
+///
+/// # Safety
+/// `store` must be null or a live store.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_store_log_dropped(store: *const FdbStore) -> u64 {
+    // SAFETY: the caller passes null or a live store.
+    match unsafe { store.as_ref() } {
+        Some(store) => store.poison.log.ring().take_dropped(),
+        None => log_ring::global().take_dropped(),
+    }
+}
+
+/// Copies the seam counters of the whole process, summed over its threads: how often each export was called and,
+/// while timing is on, the nanoseconds spent in it, after the reads of the read-only bundles by where they were served
+/// from. Copies up to `capacity` of each and returns how many counters there are; `fdb_seam_counter_name` names them.
+///
+/// # Safety
+/// `counts` and `nanos` must be null or valid for writes of `capacity` values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_seam_counters(counts: *mut u64, nanos: *mut u64, capacity: usize) -> usize {
+    let (all_counts, all_nanos) = seam::totals();
+    let copied = calls::COUNTER_COUNT.min(capacity);
+    for (values, target) in [(all_counts, counts), (all_nanos, nanos)] {
+        if !target.is_null() {
+            // SAFETY: the caller guarantees room for `capacity` values, and at most that many are copied.
+            unsafe { ptr::copy_nonoverlapping(values.as_ptr(), target, copied) };
+        }
+    }
+    calls::COUNTER_COUNT
+}
+
+/// Points `name` at the ASCII name of seam counter `index`, which stays valid for the life of the process.
+///
+/// # Safety
+/// `name` and `name_len` must be valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_seam_counter_name(index: u32, name: *mut *const u8, name_len: *mut usize) -> i32 {
+    ffi_guard(Export::Other, || {
+        let counter = calls::counter_name(index as usize)
+            .ok_or_else(|| FfiError::invalid_argument(format!("no seam counter {index}")))?;
+        // SAFETY: the caller passes valid out-pointers.
+        let (name, name_len) = unsafe { (out(name)?, out(name_len)?) };
+        *name = counter.as_ptr();
+        *name_len = counter.len();
+        Ok(())
+    })
+}
+
+/// Turns the timing of every guarded export on (`enabled` 1) or off, for the whole process; off by default, as it
+/// costs two clock reads per call.
+#[unsafe(no_mangle)]
+pub extern "C" fn fdb_seam_timing(enabled: u8) {
+    seam::set_timing(enabled != 0);
 }
 
 /// `IPersistence.Flush`.
@@ -188,7 +298,7 @@ pub unsafe extern "C" fn fdb_store_take_stats(store: *const FdbStore, stats: *mu
 /// `store` must be a live store.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_store_flush(store: *const FdbStore) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::StoreFlush, || {
         // SAFETY: the caller passes a live store.
         let store = unsafe { store_ref(store)? };
         store.poison.guard(|| Ok(store.persistence.flush()?))
@@ -201,7 +311,7 @@ pub unsafe extern "C" fn fdb_store_flush(store: *const FdbStore) -> i32 {
 /// `store` must be a live store.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_store_clear(store: *const FdbStore) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::StoreClear, || {
         // SAFETY: the caller passes a live store.
         let store = unsafe { store_ref(store)? };
         store.poison.guard(|| Ok(store.persistence.clear()?))
@@ -222,7 +332,7 @@ pub unsafe extern "C" fn fdb_reader_open(
     reader: *mut *mut FdbReader,
     current_state: *mut FfiStateId,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderOpen, || {
         // SAFETY: the caller passes a live store and valid out-pointers.
         let (store, reader, current_state) = unsafe { (store_ref(store)?, out(reader)?, out(current_state)?) };
         if let Some(metrics) = &store.carry_forward_metrics {
@@ -249,7 +359,7 @@ pub unsafe extern "C" fn fdb_reader_open(
 /// `reader` must be null or a reader from [`fdb_reader_open`] that is not used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_reader_release(reader: *mut FdbReader) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderRelease, || {
         if !reader.is_null() {
             // SAFETY: the caller hands back ownership of a reader from `fdb_reader_open`.
             drop(unsafe { Box::from_raw(reader) });
@@ -264,7 +374,7 @@ pub unsafe extern "C" fn fdb_reader_release(reader: *mut FdbReader) -> i32 {
 /// `reader` must be a live reader and `state` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_reader_current_state(reader: *const FdbReader, state: *mut FfiStateId) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderCurrentState, || {
         // SAFETY: the caller passes a live reader and a valid out-pointer.
         let (reader, state) = unsafe { (reader_ref(reader)?, out(state)?) };
         *state = reader.current_state().into();
@@ -278,7 +388,7 @@ pub unsafe extern "C" fn fdb_reader_current_state(reader: *const FdbReader, stat
 /// `reader` must be a live reader and `preimage` valid for writes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_reader_is_preimage_mode(reader: *const FdbReader, preimage: *mut u8) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderIsPreimageMode, || {
         // SAFETY: the caller passes a live reader and a valid out-pointer.
         let (reader, preimage) = unsafe { (reader_ref(reader)?, out(preimage)?) };
         *preimage = reader.is_preimage_mode().into();
@@ -298,7 +408,7 @@ pub unsafe extern "C" fn fdb_reader_get_account(
     account: *mut FfiAccount,
     found: *mut u8,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderGetAccount, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, address, account, found) =
             unsafe { (reader_ref(reader)?, array::<20>(address)?, out(account)?, out(found)?) };
@@ -325,7 +435,7 @@ pub unsafe extern "C" fn fdb_reader_get_slot(
     value: *mut u64,
     found: *mut u8,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderGetSlot, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, address, slot, found) = unsafe {
             (
@@ -357,7 +467,7 @@ pub unsafe extern "C" fn fdb_reader_load_state_rlp(
     capacity: usize,
     len: *mut i64,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderLoadStateRlp, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, path, buffer, len) = unsafe {
             (
@@ -390,7 +500,7 @@ pub unsafe extern "C" fn fdb_reader_load_storage_rlp(
     capacity: usize,
     len: *mut i64,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderLoadStorageRlp, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, address_hash, path, buffer, len) = unsafe {
             (
@@ -422,7 +532,7 @@ pub unsafe extern "C" fn fdb_reader_get_account_raw(
     capacity: usize,
     len: *mut i64,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderGetAccountRaw, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, address_hash, buffer, len) = unsafe {
             (
@@ -452,7 +562,7 @@ pub unsafe extern "C" fn fdb_reader_get_storage_raw(
     value: *mut u64,
     found: *mut u8,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderGetStorageRaw, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, address_hash, slot_hash, found) = unsafe {
             (
@@ -481,7 +591,7 @@ pub unsafe extern "C" fn fdb_reader_account_iter(
     end_key: *const u8,
     iter: *mut *mut FdbIter,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderAccountIter, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, start_key, end_key, iter) = unsafe {
             (
@@ -514,7 +624,7 @@ pub unsafe extern "C" fn fdb_reader_storage_iter(
     end_slot_key: *const u8,
     iter: *mut *mut FdbIter,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::ReaderStorageIter, || {
         // SAFETY: the caller passes a live reader and valid pointers.
         let (reader, account_key, start_slot_key, end_slot_key, iter) = unsafe {
             (
@@ -552,7 +662,7 @@ pub unsafe extern "C" fn fdb_iter_next(
     value_len: *mut usize,
     has_entry: *mut u8,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::IterNext, || {
         // SAFETY: the caller passes a live iterator and valid out-pointers.
         let (iter, key, value, value_len, has_entry) = unsafe {
             (
@@ -583,7 +693,7 @@ pub unsafe extern "C" fn fdb_iter_next(
 /// used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_iter_release(iter: *mut FdbIter) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::IterRelease, || {
         if !iter.is_null() {
             // SAFETY: the caller hands back ownership of an iterator.
             drop(unsafe { Box::from_raw(iter) });
@@ -606,7 +716,7 @@ pub unsafe extern "C" fn fdb_batch_open(
     batch: *mut *mut FdbBatch,
     current_state: *mut FfiStateId,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BatchOpen, || {
         // SAFETY: the caller passes a live store and valid pointers.
         let (store, from, to, batch, current_state) = unsafe {
             (
@@ -647,7 +757,7 @@ pub unsafe extern "C" fn fdb_batch_open(
 /// `batch` must be a live batch, used by one thread at a time, and `ops` valid for `len` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_batch_apply(batch: *mut FdbBatch, ops: *const u8, len: usize) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BatchApply, || {
         // SAFETY: the caller passes a live batch and a valid op stream.
         let (batch, ops) = unsafe { (batch_mut(batch)?, bytes(ops, len)?) };
         let open = batch
@@ -665,7 +775,7 @@ pub unsafe extern "C" fn fdb_batch_apply(batch: *mut FdbBatch, ops: *const u8, l
 /// `batch` must be a live batch, used by one thread at a time.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_batch_commit(batch: *mut FdbBatch) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BatchCommit, || {
         // SAFETY: the caller passes a live batch.
         let batch = unsafe { batch_mut(batch)? };
         let spent = batch
@@ -683,7 +793,7 @@ pub unsafe extern "C" fn fdb_batch_commit(batch: *mut FdbBatch) -> i32 {
 /// `batch` must be null or a batch from [`fdb_batch_open`] that is not used afterwards.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_batch_release(batch: *mut FdbBatch) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::BatchRelease, || {
         if !batch.is_null() {
             // SAFETY: the caller hands back ownership of a batch from `fdb_batch_open`.
             drop(unsafe { Box::from_raw(batch) });
@@ -706,7 +816,7 @@ pub unsafe extern "C" fn fdb_debug_put(
     value: *const u8,
     value_len: usize,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Other, || {
         // SAFETY: the caller passes a live store and valid slices.
         let (store, key, value) = unsafe { (store_ref(store)?, bytes(key, key_len)?, bytes(value, value_len)?) };
         let column = column_of(column)?;
@@ -730,7 +840,7 @@ pub unsafe extern "C" fn fdb_debug_get(
     capacity: usize,
     value_len: *mut i64,
 ) -> i32 {
-    ffi_guard(|| {
+    ffi_guard(Export::Other, || {
         // SAFETY: the caller passes a live store, valid slices and a valid out-pointer.
         let (store, key, buffer, value_len) = unsafe {
             (
@@ -743,6 +853,32 @@ pub unsafe extern "C" fn fdb_debug_get(
         let column = column_of(column)?;
         let read = with_kv!(store, kv => kv.get(column, key, buffer))?;
         report_len(read, capacity, value_len)
+    })
+}
+
+/// Arms `fault` (a [`faults::Fault`]) on the store, its persistence and its manager with `message`, the UTF-8 message
+/// of the RocksDB error or the panic, for the next pass through the fault's point to take.
+///
+/// # Safety
+/// `store` must be a live store and `message` valid for `len` bytes.
+#[cfg(any(test, feature = "test-api"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_test_inject_fault(
+    store: *const FdbStore,
+    fault: u32,
+    message: *const u8,
+    len: usize,
+) -> i32 {
+    ffi_guard(Export::Other, || {
+        // SAFETY: the caller passes a live store and a valid message.
+        let (store, message) = unsafe { (store_ref(store)?, bytes(message, len)?) };
+        let fault = faults::Fault::from_u32(fault)
+            .ok_or_else(|| FfiError::invalid_argument(format!("unknown fault {fault}")))?;
+        store
+            .poison
+            .faults
+            .arm(fault, String::from_utf8_lossy(message).into_owned());
+        Ok(())
     })
 }
 
@@ -870,9 +1006,11 @@ mod tests {
     use flatdb_core::kv::managed::ManagedKvVTable;
     use flatdb_core::kv::mem::MemKv;
     use flatdb_core::kv::{IterOptions, KvIterator, KvReader};
+    use flatdb_core::log_ring::LogSource;
     use flatdb_core::persistence::layouts::KvPersistence;
     use flatdb_core::persistence::{Persistence, PersistenceWriteBatch};
     use flatdb_core::types::{Account, EMPTY_TREE_HASH, FlatLayout, Hash256, StateId};
+    use log::Level;
     use rstest::rstest;
     use std::ffi::c_void;
 
@@ -938,6 +1076,7 @@ mod tests {
         layout: 0,
         write_buffer_floor: 0,
         carry_forward: 1,
+        log_level: 2,
     };
 
     const A: [u8; 20] = [0xAA; 20];
@@ -1370,9 +1509,11 @@ mod tests {
         }
     }
 
+    /// A panic poisons the store, and its message goes to the store's log sink, not to stderr.
     #[test]
     fn a_panic_poisons_the_store_and_its_handles_until_they_are_released() {
-        let store = mem_store(FlatLayout::Flat);
+        let (status, store) = create(FdbStoreCfg { log_level: 4, ..CFG }, desc(FdbKvKind::Mem));
+        assert_eq!(status, FdbStatus::Ok as i32);
         let (mut reader, mut other, mut batch, mut current) =
             (ptr::null_mut(), ptr::null_mut(), ptr::null_mut(), FfiStateId::default());
         let (mut account, mut found) = (FfiAccount::default(), 0u8);
@@ -1381,7 +1522,8 @@ mod tests {
         unsafe {
             fdb_reader_open(store, 0, 0, &mut reader, &mut current);
             fdb_batch_open(store, &sync, &sync, 0, &mut batch, &mut current);
-            let panicked = ffi_guard(|| (*store).poison.guard(|| panic!("injected")));
+            let panicked = ffi_guard(Export::Other, || (*store).poison.guard(|| panic!("injected")));
+            let logged = (&*store).poison.log.ring().drain(usize::MAX);
 
             let statuses = [
                 fdb_reader_open(store, 0, 0, &mut other, &mut current),
@@ -1397,6 +1539,14 @@ mod tests {
             ];
 
             assert_eq!(panicked, FdbStatus::Panic as i32);
+            assert!(
+                logged.iter().any(|record| record.level == Level::Debug
+                    && record.source == LogSource::Other
+                    && record.message.starts_with("thread '")
+                    && record.message.contains(" panicked at ")
+                    && record.message.ends_with("injected")),
+                "{logged:?}"
+            );
             assert_eq!(statuses, [FdbStatus::Poisoned as i32; 5]);
             assert_eq!(released, [FdbStatus::Ok as i32; 3]);
         }
@@ -1456,6 +1606,70 @@ mod tests {
         // SAFETY: as above.
         let past_end = unsafe { fdb_rocks_api_symbol(fdb_rocks_api_symbol_count(), &mut name, &mut name_len) };
         assert_eq!(past_end, FdbStatus::InvalidArgument as i32);
+    }
+
+    /// Every guarded export counts its calls, under its own name after the bundle reads, and its time while timing is
+    /// on; the counters are summed over every thread.
+    #[test]
+    fn exports_count_their_calls_and_time() {
+        let store = mem_store(FlatLayout::Flat);
+        let (mut reader, mut current, mut account, mut found) =
+            (ptr::null_mut(), FfiStateId::default(), FfiAccount::default(), 0u8);
+        let get_account = Export::ReaderGetAccount.counter();
+        let before = seam::this_thread();
+        let (_, nanos_before) = seam::totals();
+        // SAFETY: the store is live, every pointer is valid and every handle is released once.
+        unsafe {
+            fdb_reader_open(store, 0, 0, &mut reader, &mut current);
+            fdb_seam_timing(1);
+            for _ in 0..3 {
+                fdb_reader_get_account(reader, A.as_ptr(), &mut account, &mut found);
+            }
+            fdb_seam_timing(0);
+            fdb_reader_get_account(reader, ptr::null(), &mut account, &mut found);
+            fdb_reader_release(reader);
+            fdb_store_destroy(store);
+        }
+        let after = seam::this_thread();
+        let (_, nanos_after) = seam::totals();
+
+        let (mut counts, mut nanos) = ([0u64; 128], [0u64; 128]);
+        // SAFETY: the buffers hold 128 values.
+        let count = unsafe { fdb_seam_counters(counts.as_mut_ptr(), nanos.as_mut_ptr(), counts.len()) };
+        let name = |index: u32| {
+            let (mut name, mut name_len) = (ptr::null(), 0usize);
+            // SAFETY: the out-pointers are valid; the export points at a static name of `name_len` bytes.
+            unsafe {
+                let status = fdb_seam_counter_name(index, &mut name, &mut name_len);
+                (status == FdbStatus::Ok as i32).then(|| str::from_utf8(slice::from_raw_parts(name, name_len)).unwrap())
+            }
+        };
+
+        assert_eq!(after[get_account] - before[get_account], 4, "a failed call counts too");
+        assert_eq!(
+            after[Export::ReaderOpen.counter()] - before[Export::ReaderOpen.counter()],
+            1
+        );
+        assert!(
+            nanos_after[get_account] > nanos_before[get_account],
+            "the timed calls took time"
+        );
+        assert_eq!(count, calls::COUNTER_COUNT);
+        assert!(counts[get_account] >= 4);
+        assert_eq!(
+            [
+                name(0),
+                name(get_account as u32),
+                name(count as u32 - 1),
+                name(count as u32)
+            ],
+            [
+                Some("bundle_account_snapshot"),
+                Some("reader_get_account"),
+                Some("other"),
+                None
+            ]
+        );
     }
 
     #[test]
@@ -1519,6 +1733,7 @@ mod tests {
     #[rstest]
     #[case(FdbStoreCfg { abi_version: ABI_VERSION + 1, ..CFG }, desc(FdbKvKind::Mem), FdbStatus::InvalidArgument, "ABI version")]
     #[case(FdbStoreCfg { layout: 4, ..CFG }, desc(FdbKvKind::Mem), FdbStatus::InvalidArgument, "layout")]
+    #[case(FdbStoreCfg { log_level: 6, ..CFG }, desc(FdbKvKind::Mem), FdbStatus::InvalidArgument, "log level")]
     #[case(CFG, FdbKvDesc { kind: 9, ..desc(FdbKvKind::Mem) }, FdbStatus::InvalidArgument, "backend")]
     #[case(CFG, desc(FdbKvKind::Rocks), FdbStatus::InvalidArgument, "column family")]
     #[case(CFG, desc(FdbKvKind::Managed), FdbStatus::InvalidArgument, "managed")]

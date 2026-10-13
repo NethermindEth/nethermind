@@ -16,6 +16,8 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -87,6 +89,9 @@ public class MergePluginTests
 
     private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
     {
+        configProvider ??= new ConfigProvider(_mergeConfig, _jsonRpcConfig);
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
+
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
         // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
         ContainerBuilder builder = new ContainerBuilder()
@@ -94,7 +99,7 @@ public class MergePluginTests
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
-                configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
+                configProvider,
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 null,

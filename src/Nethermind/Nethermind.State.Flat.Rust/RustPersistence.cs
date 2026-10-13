@@ -20,23 +20,13 @@ namespace Nethermind.State.Flat.Rust;
 /// <remarks>
 /// Readers, iterators and batches keep the native store alive, so disposing the persistence while one is open defers
 /// the release of the store, and the lease on the database, until the last of them is disposed. The metrics the store
-/// gathers are published whenever a reader or batch is disposed.
+/// gathers are published whenever a reader or batch is disposed, on every metrics tick with
+/// <see cref="PublishMetrics"/>, and when the store is released.
 /// </remarks>
-internal sealed class RustPersistence : IPersistence, IDisposable, IAsyncDisposable
+internal sealed class RustPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
+    : IPersistence, IDisposable, IAsyncDisposable
 {
-    /// <summary>The warning of <c>BasePersistence.ResolveSlotEncoding</c>.</summary>
-    private const string RawSlotDeprecationMessage =
-        "Flat DB uses the legacy raw storage slot encoding, which is deprecated and will be removed in a future release. Please resync to adopt the RLP slot encoding.";
-
-    private readonly RustFlatStore _store;
-
-    public RustPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfig config, ILogManager logManager)
-    {
-        _store = RustFlatStore.Create(db, config, logManager);
-
-        ILogger logger = logManager.GetClassLogger<RustPersistence>();
-        if (!_store.RlpWrapSlots && logger.IsWarn) logger.Warn(RawSlotDeprecationMessage);
-    }
+    private readonly RustFlatStore _store = RustFlatStore.Create(db, config, logManager);
 
     internal RustFlatStore Store => _store;
 
@@ -83,11 +73,16 @@ internal sealed class RustPersistence : IPersistence, IDisposable, IAsyncDisposa
         }
     }
 
-    /// <summary>Wraps a native reader of the store, for which the caller took a reference on the store.</summary>
-    internal IPersistence.IPersistenceReader WrapReader(nint reader, in StateId currentState) =>
-        new Reader(_store, new ReaderHandle(_store, reader), currentState);
+    /// <summary>Wraps a native bundle gathered from <paramref name="manager"/>, for which the caller took a reference on the store and on the manager.</summary>
+    internal IPersistence.IPersistenceReader WrapBundle(nint bundle, in StateId currentState, ManagerHandle manager) =>
+        new Reader(_store, new BundleHandle(_store, manager, bundle), currentState);
 
-    public void Flush() => _store.ThrowIfFailed(NativeMethods.fdb_store_flush(_store));
+    public void Flush()
+    {
+        _store.ThrowIfFailed(NativeMethods.fdb_store_flush(_store));
+        // A flush failure that is not fatal only warns.
+        _store.PumpLogs();
+    }
 
     public void Clear()
     {
@@ -95,7 +90,18 @@ internal sealed class RustPersistence : IPersistence, IDisposable, IAsyncDisposa
         _store.PublishMetrics();
     }
 
-    public void Dispose() => _store.Dispose();
+    /// <summary>Publishes what the store gathered and the seam counters of the library; the metrics tick runs it.</summary>
+    public void PublishMetrics()
+    {
+        _store.PublishMetrics();
+        SeamCounters.Publish();
+    }
+
+    public void Dispose()
+    {
+        _store.PumpLogs();
+        _store.Dispose();
+    }
 
     public ValueTask DisposeAsync()
     {

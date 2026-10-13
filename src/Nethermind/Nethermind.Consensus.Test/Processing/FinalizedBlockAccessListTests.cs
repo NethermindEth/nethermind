@@ -19,6 +19,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -239,7 +240,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         {
             SyncConfig sync = new() { ReconstructFinalizedStateFromBlockAccessLists = enabled };
             Beacon.MergeTransitionFinished.Returns(true);
-            _container = new ContainerBuilder().AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = useFlatDb }))
+            _container = new ContainerBuilder().AddModule(new TestNethermindModule(TestStateBackend.ApplyFlatBackend(new FlatDbConfig { Enabled = useFlatDb })))
                 .AddSingleton<ISpecProvider>(new Nethermind.Specs.TestSpecProvider(Amsterdam.Instance))
                 .AddSingleton<ISyncConfig>(sync)
                 .AddSingleton<IReceiptConfig>(ReceiptConfig)

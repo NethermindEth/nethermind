@@ -136,6 +136,9 @@ pub struct FdbStoreCfg {
     pub write_buffer_floor: i64,
     /// `IFlatDbConfig.EnableCarryForwardCache`.
     pub carry_forward: u8,
+    /// The most verbose level the store's log sink keeps, numbered as `fdb_store_log_take` reports levels: 0 off,
+    /// 1 error, 2 warn, 3 info, 4 debug, 5 trace.
+    pub log_level: u8,
 }
 
 /// What a store resolved from its database when it was created.
@@ -384,11 +387,12 @@ pub const STRUCT_SIZES: [u32; 14] = [
 
 /// Offset of every field of the `repr(C)` types with several fields, in declaration order, as `fdb_struct_offsets`
 /// reports them. With [`STRUCT_SIZES`] it pins the layouts the C# mirrors must match.
-pub const FIELD_OFFSETS: [u32; 85] = [
+pub const FIELD_OFFSETS: [u32; 86] = [
     offset_of!(FdbStoreCfg, abi_version) as u32,
     offset_of!(FdbStoreCfg, layout) as u32,
     offset_of!(FdbStoreCfg, write_buffer_floor) as u32,
     offset_of!(FdbStoreCfg, carry_forward) as u32,
+    offset_of!(FdbStoreCfg, log_level) as u32,
     offset_of!(FdbKvDesc, kind) as u32,
     offset_of!(FdbKvDesc, column_count) as u32,
     offset_of!(FdbKvDesc, rocks_api) as u32,

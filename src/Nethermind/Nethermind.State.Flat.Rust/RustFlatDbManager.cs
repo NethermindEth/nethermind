@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Rust.Interop;
@@ -26,8 +28,10 @@ namespace Nethermind.State.Flat.Rust;
 /// A gathered bundle is a C# <see cref="ReadOnlySnapshotBundle"/> without snapshots whose persistence reader is the
 /// native bundle, which reads the snapshots and then the persistence and applies the self-destruct cut-off itself. The
 /// slot filter runs natively for the shared bundles of <see cref="GatherReadOnlySnapshotBundle(in StateId)"/> and for
-/// <see cref="GatherSnapshotBundle(in StateId, ResourcePool.Usage, bool)"/> when asked for. <c>PreGenesis</c> is served
-/// without the native manager, as <c>FlatDbManager</c> serves it.
+/// <see cref="GatherSnapshotBundle(in StateId, ResourcePool.Usage, bool)"/> when asked for. Which slot read of a C#
+/// bundle filters is decided by its caller, which the native bundle cannot tell, so a plain slot read through a shared
+/// bundle, as <c>FlatStateReader</c> reads, builds and probes the filter where <c>FlatDbManager</c> builds none.
+/// <c>PreGenesis</c> is served without the native manager, as <c>FlatDbManager</c> serves it.
 /// </para>
 /// <para>
 /// <see cref="FlushCache"/> and <see cref="DropStateNotReachableFrom"/> go through the injected
@@ -42,7 +46,7 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IResourcePool _resourcePool;
     private readonly ILogger _logger;
     private readonly bool _inlineCompaction;
-    private readonly bool _enableDetailedMetrics = Db.Metrics.DetailedMetricsEnabled;
+    private readonly bool _enableDetailedMetrics;
 
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
@@ -55,6 +59,7 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         IFlatDbConfig config,
+        IMetricsConfig metricsConfig,
         ILogManager logManager)
     {
         _native = native;
@@ -62,7 +67,9 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _inlineCompaction = config.InlineCompaction;
-        _logger = logManager.GetClassLogger<RustFlatDbManager>();
+        _enableDetailedMetrics = metricsConfig.EnableDetailedMetric;
+        // The lines this shell logs are those of FlatDbManager, as are the native manager's.
+        _logger = logManager.GetClassLogger<FlatDbManager>();
         _populateTrieNodeCacheTask = Task.Run(RunTrieCachePopulator);
     }
 
@@ -73,7 +80,6 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         bool queued = false;
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Registering {from.BlockNumber} to {to.BlockNumber}");
             nint builder = SnapshotSerializer.Build(snapshot, out ArrayPoolList<ShellNode> nodes);
 
             // Kept before the add, as the native persistence can persist the snapshot before the add returns.
@@ -93,6 +99,7 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
 
             if (_inlineCompaction)
             {
+                // A failure propagates before the compaction is queued, as from FlatDbManager.RunCompactJobSync.
                 queued = true;
                 PopulateTrieNodeCache(transientResource);
             }
@@ -188,7 +195,7 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
     {
         await foreach (TransientResource cachedResource in _populateTrieNodeCacheJobs.Reader.ReadAllAsync())
         {
-            PopulateTrieNodeCache(cachedResource);
+            await NotifyWhenSlow("Populating trie node cache", () => PopulateTrieNodeCache(cachedResource));
         }
     }
 
@@ -198,13 +205,50 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         {
             _trieNodeCache.Add(transientResource);
         }
-        catch (Exception exception)
-        {
-            if (_logger.IsError) _logger.Error("Error on Populating trie node cache", exception);
-        }
         finally
         {
             transientResource.ReleaseLease();
         }
+    }
+
+    /// <summary>
+    /// Port of <c>FlatDbManager.NotifyWhenSlow</c> for the one job the shell runs: logs the job's failure and the time it
+    /// took, and warns every two seconds while it runs.
+    /// </summary>
+    private async Task NotifyWhenSlow(string name, Action job)
+    {
+        TimeSpan slowTime = TimeSpan.FromSeconds(2);
+
+        Task jobTask = Task.Run(() =>
+        {
+            long sw = Stopwatch.GetTimestamp();
+            try
+            {
+                job();
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error on {name}", ex);
+            }
+            if (_logger.IsTrace) _logger.Trace($"{name} took {Stopwatch.GetElapsedTime(sw)}");
+        });
+
+        _ = Task.Run(async () =>
+        {
+            long sw = Stopwatch.GetTimestamp();
+            using CancellationTokenSource cts = new();
+            while (true)
+            {
+                Task delayTask = Task.Delay(slowTime, cts.Token);
+                if (await Task.WhenAny(jobTask, delayTask) == jobTask)
+                {
+                    await cts.CancelAsync();
+                    break;
+                }
+                if (_logger.IsWarn) _logger.Warn($"Slow task \"{name}\". Took {Stopwatch.GetElapsedTime(sw)}");
+            }
+        });
+
+        await jobTask;
     }
 }

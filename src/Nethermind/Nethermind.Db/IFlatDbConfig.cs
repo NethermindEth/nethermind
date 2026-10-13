@@ -7,7 +7,7 @@ namespace Nethermind.Db;
 
 public interface IFlatDbConfig : IConfig
 {
-    [ConfigItem(Description = "Implementation of the flat-state DB. `CSharp` is the default. `RustPersistence` runs the persistence layer in the native Rust library under the C# snapshot manager. `Rust` also runs the snapshot manager (snapshots, compaction, persistence and the read-only bundles) in the native library. Both need the native library next to the executable, `EnableLongFinality=false` and history disabled.", DefaultValue = "CSharp")]
+    [ConfigItem(Description = "Implementation of the flat-state DB. `CSharp` is the default. `RustPersistence` runs the persistence layer in the native Rust library under the C# snapshot manager. `Rust` also runs the snapshot manager (snapshots, compaction, persistence and the read-only bundles) in the native library. Both need the native library next to the executable, `EnableLongFinality=false` and history disabled. Metrics differ under `Rust` only in that the trie nodes and reads the native in-memory snapshots serve count as database reads (`LoadedFromDbNodesCount`, the `state_rlp`, `storage_rlp` and `*_persistence` labels of `ReadOnlySnapshotBundleTimes`, which also observes slots a self-destruct cut off), told apart by the `bundle_*` labels of `FlatRustSeamCalls`, in that plain slot reads through a shared read-only bundle, such as those of `eth_getStorageAt`, build and probe the in-memory slot filter (`InMemorySlotFilter*`), and in that the pooled-resource metrics count C# objects only.", DefaultValue = "CSharp")]
     FlatDbBackend Backend { get; set; }
 
     [ConfigItem(Description = "Block cache size budget", DefaultValue = "1073741824")]

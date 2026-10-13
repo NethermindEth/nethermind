@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
-using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 
@@ -20,24 +20,26 @@ namespace Nethermind.State.Flat.Rust;
 /// It calls back into the services <c>PersistenceManager</c> injects through <see cref="RustHostCallbacks"/>, and
 /// signals process exit to the native manager as <c>FlatDbManager</c> watches <see cref="IProcessExitSource.Token"/>.
 /// A background loop applies the persisted-node events to <see cref="Replay"/>, publishes the metrics, logs what the
-/// library logged and reports a fatal RocksDB error a native persist hit, as <see cref="RustFlatStore.ThrowIfFailed"/>
-/// reports one an export hit. Disposing it drains and stops the native workers, then frees the manager; the store and
-/// its database stay open until then, as the manager holds a reference on the store.
+/// store and the native workers logged and reports a fatal RocksDB error a native persist hit, as
+/// <see cref="RustFlatStore.ThrowIfFailed"/> reports one an export hit; the metrics are also published on every metrics
+/// tick with <see cref="PublishMetrics"/>. Disposing it drains and stops the native workers, then frees the manager once
+/// the last bundle gathered from it is released; the store and its database stay open until then, as the manager holds
+/// a reference on the store.
 /// </remarks>
 internal sealed class NativeFlatManager : IDisposable
 {
     private static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(100);
-    private const int LogBufferSize = 4096;
+    private static readonly TimeSpan FatalReportWait = TimeSpan.FromSeconds(5);
     private const uint DetailedObservationCapacity = 16 * 1024;
 
     private readonly RustPersistence _persistence;
     private readonly ManagerHandle _handle;
-    private readonly RustMetricsBridge _metrics;
     private readonly ILogger _logger;
     private readonly Lock _eventLock = new();
     private readonly CancellationTokenSource _stopPump = new();
     private readonly CancellationTokenRegistration _processExit;
     private readonly Task _pump;
+    private Task _fatalReport = Task.CompletedTask;
     private int _disposed;
 
     public unsafe NativeFlatManager(
@@ -48,6 +50,7 @@ internal sealed class NativeFlatManager : IDisposable
         IStateHeaderProvider stateHeaderProvider,
         IStatePersistenceBarrier persistenceBarrier,
         IProcessExitSource processExitSource,
+        IMetricsConfig metricsConfig,
         ILogManager logManager)
     {
         config.ValidateCompactSize();
@@ -55,8 +58,9 @@ internal sealed class NativeFlatManager : IDisposable
 
         _persistence = persistence;
         _logger = logManager.GetClassLogger<NativeFlatManager>();
-        InstallLogging(_logger);
 
+        // The histograms are observed only with detailed metrics, as the C# observers are no-ops otherwise; the
+        // carry-forward counters follow the flag the metrics controller sets, as the C# readers do.
         bool detailedMetrics = Db.Metrics.DetailedMetricsEnabled;
         FdbMgrCfg cfg = new()
         {
@@ -70,7 +74,7 @@ internal sealed class NativeFlatManager : IDisposable
             MaxInMemorySnapshotBytes = config.MaxInMemorySnapshotBytes,
             SecondsPerSlot = blocksConfig.SecondsPerSlot,
             InMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey,
-            ObservationCapacity = detailedMetrics ? DetailedObservationCapacity : 0,
+            ObservationCapacity = metricsConfig.EnableDetailedMetric ? DetailedObservationCapacity : 0,
             InlineCompaction = config.InlineCompaction ? (byte)1 : (byte)0,
             PersistedNodeEvents = 1,
             DetailedMetrics = detailedMetrics ? (byte)1 : (byte)0,
@@ -93,7 +97,6 @@ internal sealed class NativeFlatManager : IDisposable
             throw;
         }
 
-        _metrics = new RustMetricsBridge(_handle);
         _processExit = processExitSource.Token.Register(static state => ((NativeFlatManager)state!).SignalExit(), this);
         _pump = Task.Run(RunPump);
     }
@@ -105,17 +108,23 @@ internal sealed class NativeFlatManager : IDisposable
     /// <summary>The C# trie nodes of the added snapshots, marked persisted as the native manager persists them.</summary>
     public PersistedNodeReplay Replay { get; } = new();
 
+    /// <summary>Publishes the counters of the native manager and replays its histogram observations.</summary>
+    public void PublishMetrics() => _handle.PublishMetrics();
+
     /// <summary>Throws what the C# manager would for a failed native call.</summary>
     public void ThrowIfFailed(FdbStatus status) => _persistence.Store.ThrowIfFailed(status);
 
     /// <summary>A reader of <paramref name="baseBlock"/> through the in-memory snapshots, then the persistence.</summary>
+    /// <remarks>The reader keeps the native manager alive until it is disposed.</remarks>
     /// <exception cref="StateNotRetainedException">No snapshot ends at the state and it is not the persisted one.</exception>
     public unsafe IPersistence.IPersistenceReader Gather(in StateId baseBlock, ReaderFlags flags, bool filtered)
     {
         RustFlatStore store = _persistence.Store;
         store.AddChildReference();
+        bool managerAdded = false;
         try
         {
+            _handle.DangerousAddRef(ref managerAdded);
             FfiStateId nativeBase = new(baseBlock);
             nint reader;
             FfiStateId readerState;
@@ -126,10 +135,11 @@ internal sealed class NativeFlatManager : IDisposable
             }
 
             ThrowIfFailed(status);
-            return _persistence.WrapReader(reader, readerState.ToStateId());
+            return _persistence.WrapBundle(reader, readerState.ToStateId(), _handle);
         }
         catch
         {
+            if (managerAdded) _handle.DangerousRelease();
             store.ReleaseChildReference();
             throw;
         }
@@ -214,6 +224,9 @@ internal sealed class NativeFlatManager : IDisposable
             _stopPump.Cancel();
             _pump.GetAwaiter().GetResult();
             PumpOnce();
+            // As on the C# backend, a fatal error the last persists hit shuts the node down, writing the corruption
+            // marker, before the disposal ends; the wait is bounded, as that shutdown may itself wait for the disposal.
+            Task.WhenAny(_fatalReport, Task.Delay(FatalReportWait)).GetAwaiter().GetResult();
             _handle.Dispose();
             _stopPump.Dispose();
             Replay.Dispose();
@@ -248,8 +261,8 @@ internal sealed class NativeFlatManager : IDisposable
         try
         {
             ProcessPersistedEvents();
-            _metrics.Publish();
-            PumpLogs();
+            _handle.PublishMetrics();
+            _persistence.Store.PumpLogs();
             ReportFatalError();
         }
         catch (ObjectDisposedException)
@@ -268,39 +281,6 @@ internal sealed class NativeFlatManager : IDisposable
         string message = StatusMap.LastError();
         if (_logger.IsError) _logger.Error($"Persisting the flat DB failed fatally: {message}");
         // Off the pump, which disposal waits for, as shutting down on the error disposes the node.
-        _ = Task.Run(() => _persistence.Store.ReportFatal(message));
-    }
-
-    private static void InstallLogging(ILogger logger)
-    {
-        uint level = logger.IsTrace ? 5u : logger.IsDebug ? 4u : logger.IsInfo ? 3u : logger.IsWarn ? 2u : logger.IsError ? 1u : 0u;
-        StatusMap.ThrowIfFailed(NativeMethods.fdb_log_install(level));
-    }
-
-    /// <summary>Logs what the library logged, through this manager's logger: the ring is shared by the whole process.</summary>
-    private unsafe void PumpLogs()
-    {
-        byte* buffer = stackalloc byte[LogBufferSize];
-        while (true)
-        {
-            uint level;
-            nuint length;
-            byte has;
-            StatusMap.ThrowIfFailed(NativeMethods.fdb_log_take(&level, buffer, LogBufferSize, &length, &has));
-            if (has == 0) break;
-
-            string message = Encoding.UTF8.GetString(buffer, (int)Math.Min(length, LogBufferSize));
-            switch (level)
-            {
-                case 1: if (_logger.IsError) _logger.Error(message); break;
-                case 2: if (_logger.IsWarn) _logger.Warn(message); break;
-                case 3: if (_logger.IsInfo) _logger.Info(message); break;
-                case 4: if (_logger.IsDebug) _logger.Debug(message); break;
-                default: if (_logger.IsTrace) _logger.Trace(message); break;
-            }
-        }
-
-        ulong dropped = NativeMethods.fdb_log_dropped();
-        if (dropped != 0 && _logger.IsWarn) _logger.Warn($"{dropped} log records of the native flat DB were dropped: the log ring was full.");
+        _fatalReport = Task.Run(() => _persistence.Store.ReportFatal(message));
     }
 }

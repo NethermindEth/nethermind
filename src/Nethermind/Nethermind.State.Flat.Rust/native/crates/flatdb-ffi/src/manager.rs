@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 
 use flatdb_core::ABI_VERSION;
 use flatdb_core::bundle::ReadOnlySnapshotBundle;
-use flatdb_core::compactor::SnapshotCompactor;
+use flatdb_core::compactor::{Compactor, SnapshotCompactor};
 use flatdb_core::events::{PersistedNodeEvents, PersistedNodes};
 use flatdb_core::host::HostCallbacks;
 use flatdb_core::kv::ReadFlags;
@@ -80,8 +80,16 @@ impl FdbManager {
             Arc::clone(&repository),
             Arc::clone(&events),
         ));
-        let compactor = Arc::new(SnapshotCompactor::new(schedule, repository));
-        let manager = FlatDbManager::new(
+        let compactor: Arc<dyn Compactor> = Arc::new(SnapshotCompactor::new(schedule, repository));
+        #[cfg(any(test, feature = "test-api"))]
+        let compactor: Arc<dyn Compactor> = Arc::new(crate::faults::FaultyCompactor {
+            compactor,
+            faults: Arc::clone(&store.poison.faults),
+        });
+        // A worker job that panicked may have left the snapshots or the persistence half-updated, as a panic inside an
+        // export may, so it poisons the store too.
+        let poison = Arc::clone(&store.poison);
+        let manager = FlatDbManager::with_job_panic_hook(
             ManagerConfig {
                 max_in_flight_compact_job: cfg.max_in_flight_compact_job as usize,
                 inline_compaction: cfg.inline_compaction != 0,
@@ -91,6 +99,7 @@ impl FdbManager {
             },
             compactor,
             persistence_manager,
+            move |_| poison.set(),
         );
 
         Ok(Self {

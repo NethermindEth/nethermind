@@ -48,15 +48,17 @@ public static class TestStateBackend
     /// The Rust backends refuse the persisted-snapshot tier, so it is turned off for them, and the compaction offset
     /// is pinned so both implementations compact at the same blocks.
     /// </remarks>
-    public static void ApplyFlatBackend(IFlatDbConfig config)
+    /// <returns>The same config, for chaining.</returns>
+    public static T ApplyFlatBackend<T>(T config) where T : IFlatDbConfig
     {
-        if (FlatBackend is not { } backend) return;
+        if (FlatBackend is not { } backend) return config;
 
         config.Backend = backend;
-        if (backend == FlatDbBackend.CSharp) return;
+        if (backend == FlatDbBackend.CSharp) return config;
 
         config.EnableLongFinality = false;
         config.CompactionOffset = 0;
+        return config;
     }
 
     /// <summary>

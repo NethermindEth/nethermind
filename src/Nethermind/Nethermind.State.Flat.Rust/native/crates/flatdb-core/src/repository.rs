@@ -297,7 +297,7 @@ impl SnapshotRepository {
 
         if total_pruned > 0 {
             log::info!(
-                "Pruned {total_pruned} orphaned non-canonical snapshot(s) above persisted state {canonical_state_id:?}."
+                "Pruned {total_pruned} orphaned non-canonical snapshot(s) above persisted state {canonical_state_id}."
             );
         }
     }
@@ -309,7 +309,7 @@ impl SnapshotRepository {
     /// Returns the number of states removed from the in-memory tier.
     pub fn remove_unreachable_from(&self, head: &StateId, current_persisted_state: &StateId) -> usize {
         if head != current_persisted_state && !self.has_state(head) {
-            log::warn!("Cannot reset head to {head:?}: no snapshot holds its state.");
+            log::warn!("Cannot reset head to {head}: no snapshot holds its state.");
             return 0;
         }
 
@@ -325,7 +325,7 @@ impl SnapshotRepository {
         // The persisted store cannot be rewound to a head that does not descend from it.
         if *current_persisted_state != StateId::PRE_GENESIS && !reachable.contains(current_persisted_state) {
             log::warn!(
-                "Cannot reset head to {head:?}: it does not descend from persisted state {current_persisted_state:?}."
+                "Cannot reset head to {head}: it does not descend from persisted state {current_persisted_state}."
             );
             return 0;
         }
@@ -353,7 +353,7 @@ impl SnapshotRepository {
         self.set_last_committed_state_id(*head);
 
         if total_pruned > 0 {
-            log::info!("Pruned {total_pruned} snapshot(s) unreachable from head {head:?}.");
+            log::info!("Pruned {total_pruned} snapshot(s) unreachable from head {head}.");
         }
         total_pruned
     }

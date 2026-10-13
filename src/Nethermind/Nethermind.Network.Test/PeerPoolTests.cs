@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Config;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
@@ -130,6 +131,7 @@ public class PeerPoolTests
     public async Task PeerPool_ShouldIgnoreNodeRemoved_AfterStop()
     {
         ConfigProvider configProvider = new();
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
         ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
             .LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];

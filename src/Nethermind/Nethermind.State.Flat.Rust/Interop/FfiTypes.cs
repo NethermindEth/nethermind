@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Rust.Interop;
 internal static class FfiAbi
 {
     /// <summary>The ABI version this adapter speaks; must equal <c>fdb_abi_version()</c>.</summary>
-    public const uint Version = 4;
+    public const uint Version = 5;
 }
 
 /// <summary>Status code of a native call.</summary>
@@ -78,6 +78,101 @@ internal struct FdbStoreCfg
     public long WriteBufferFloor;
     /// <summary><see cref="Nethermind.Db.IFlatDbConfig.EnableCarryForwardCache"/>.</summary>
     public byte CarryForward;
+    /// <summary>The most verbose <see cref="NativeLogLevel"/> the store's log sink keeps.</summary>
+    public NativeLogLevel LogLevel;
+}
+
+/// <summary>A level of the native log records, as the library numbers them.</summary>
+internal enum NativeLogLevel : byte
+{
+    Off = 0,
+    Error = 1,
+    Warn = 2,
+    Info = 3,
+    Debug = 4,
+    Trace = 5,
+}
+
+/// <summary>The C# class whose log line a native record is, by the module that logged it (<c>log_ring::LogSource</c>).</summary>
+internal enum NativeLogSource : uint
+{
+    /// <summary>A module without a C# counterpart.</summary>
+    Other = 0,
+    FlatDbManager = 1,
+    PersistenceManager = 2,
+    SnapshotRepository = 3,
+    SnapshotCompactor = 4,
+    ReadOnlySnapshotBundle = 5,
+    /// <summary>The persistence class of the store's layout.</summary>
+    LayoutPersistence = 6,
+    DbOnTheRocks = 7,
+}
+
+/// <summary>
+/// The seam counters of the native library, in the order <c>fdb_seam_counters</c> reports them: the reads of its
+/// snapshot bundles by where they were served from (<c>seam::BundleRead</c>), then the calls of each export
+/// (<c>calls::Export</c>).
+/// </summary>
+internal enum SeamCounter
+{
+    BundleAccountSnapshot,
+    BundleAccountPersistence,
+    BundleAccountPersistenceNull,
+    BundleStorageSnapshot,
+    BundleStorageSelfDestructed,
+    BundleStoragePersistence,
+    BundleStoragePersistenceNull,
+    BundleStateNodeSnapshot,
+    BundleStateNodePersistence,
+    BundleStorageNodeSnapshot,
+    BundleStorageNodePersistence,
+    StoreCreate,
+    StoreDestroy,
+    StoreTakeStats,
+    StoreFlush,
+    StoreClear,
+    StoreLogTake,
+    ReaderOpen,
+    ReaderRelease,
+    ReaderCurrentState,
+    ReaderIsPreimageMode,
+    ReaderGetAccount,
+    ReaderGetSlot,
+    ReaderLoadStateRlp,
+    ReaderLoadStorageRlp,
+    ReaderGetAccountRaw,
+    ReaderGetStorageRaw,
+    ReaderAccountIter,
+    ReaderStorageIter,
+    IterNext,
+    IterRelease,
+    BatchOpen,
+    BatchApply,
+    BatchCommit,
+    BatchRelease,
+    MgrCreate,
+    SignalExit,
+    Shutdown,
+    Destroy,
+    DrainObservations,
+    TakePersistedEvent,
+    PersistedEventRelease,
+    BldNew,
+    BldAppend,
+    BldAbsorb,
+    BldRelease,
+    AddSnapshot,
+    QueueCompaction,
+    Gather,
+    HasState,
+    PersistedState,
+    ResetPersisted,
+    AddToPersistence,
+    FlushToPersistence,
+    DropUnreachable,
+    TakeFatalError,
+    ClearBundleCache,
+    Other,
 }
 
 /// <summary>What a store resolved from its database.</summary>

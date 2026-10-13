@@ -6,10 +6,31 @@
     <RootNamespace>Nethermind.State.Flat.Rust.Test</RootNamespace>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RustFlatNativeDir>$(MSBuildThisFileDirectory)../Nethermind.State.Flat.Rust/native/</RustFlatNativeDir>
+    <RustFlatTestApiLibrary>$(RustFlatNativeDir)target/test-api/release/libnethermind_flatdb.so</RustFlatTestApiLibrary>
+    <RustFlatReleaseLibrary>$(RustFlatNativeDir)target/release/libnethermind_flatdb.so</RustFlatReleaseLibrary>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.State.Flat.Rust\Nethermind.State.Flat.Rust.csproj" />
   </ItemGroup>
+
+  <!--
+    With -p:BuildRustFlat=true, also builds the library with its test-api feature (fault injection), into a target
+    directory of its own, so the production library never exports the test hooks; after the adapter, whose build makes
+    the production library, so the two cargo builds never run at once and the test-api library is the newer.
+  -->
+  <Target Name="CargoBuildRustFlatTestApi" AfterTargets="ResolveProjectReferences" Condition="'$(BuildRustFlat)' == 'true'">
+    <Exec Command="cargo build --release -p flatdb-ffi --features test-api --target-dir target/test-api" WorkingDirectory="$(RustFlatNativeDir)" />
+  </Target>
+
+  <!--
+    These tests run on the test-api library, in place of the production one the adapter copies, when this build made
+    it or it is no older than the production one, so they never run on native code older than the production library.
+  -->
+  <Target Name="CopyRustFlatTestApi" AfterTargets="CopyFilesToOutputDirectory"
+          Condition="Exists('$(RustFlatTestApiLibrary)') And ('$(BuildRustFlat)' == 'true' Or $([System.IO.File]::GetLastWriteTime('$(RustFlatTestApiLibrary)').Ticks) &gt;= $([System.IO.File]::GetLastWriteTime('$(RustFlatReleaseLibrary)').Ticks))">
+    <Copy SourceFiles="$(RustFlatTestApiLibrary)" DestinationFiles="$(OutDir)libnethermind_flatdb.so" />
+  </Target>
 </Project>

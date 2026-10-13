@@ -20,6 +20,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -292,6 +293,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             }
 
             IConfigProvider configProvider = new ConfigProvider(syncConfig, mergeConfig, pruningConfig);
+            TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
             ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)

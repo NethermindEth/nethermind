@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Rust;
 /// <see cref="Metrics.CompactorStallTime"/> is left out of the replay: <see cref="RustFlatDbManager.AddSnapshot"/>
 /// observes the stall it is handed back, on the block processing thread, as C# does.
 /// </remarks>
-internal sealed unsafe class RustMetricsBridge(ManagerHandle handle)
+internal sealed unsafe class RustMetricsBridge
 {
     private const int ObservationBatch = 256;
 
@@ -31,25 +31,13 @@ internal sealed unsafe class RustMetricsBridge(ManagerHandle handle)
     private readonly Lock _lock = new();
     private FdbCounters _published;
 
-    /// <summary>Publishes what changed since the last call; does nothing once the manager is released.</summary>
-    public void Publish()
+    /// <summary>Publishes what changed in the metrics of <paramref name="manager"/>, which the caller keeps alive, since the last call.</summary>
+    public void Publish(nint manager)
     {
-        bool added = false;
         lock (_lock)
         {
-            try
-            {
-                handle.DangerousAddRef(ref added);
-                PublishCounters(NativeMethods.fdb_stats(handle));
-                ReplayObservations();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            finally
-            {
-                if (added) handle.DangerousRelease();
-            }
+            PublishCounters(NativeMethods.fdb_stats(manager));
+            ReplayObservations(manager);
         }
     }
 
@@ -87,13 +75,13 @@ internal sealed unsafe class RustMetricsBridge(ManagerHandle handle)
         _published = current;
     }
 
-    private void ReplayObservations()
+    private static void ReplayObservations(nint manager)
     {
         FdbObservation* observations = stackalloc FdbObservation[ObservationBatch];
         nuint count;
         do
         {
-            StatusMap.ThrowIfFailed(NativeMethods.fdb_drain_observations(handle, observations, ObservationBatch, &count));
+            StatusMap.ThrowIfFailed(NativeMethods.fdb_drain_observations(manager, observations, ObservationBatch, &count));
             for (nuint i = 0; i < count; i++)
             {
                 FdbObservation observation = observations[i];

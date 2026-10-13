@@ -11,11 +11,14 @@ use flatdb_core::kv::managed::ManagedKv;
 use flatdb_core::kv::mem::MemKv;
 use flatdb_core::kv::rocks::{RocksDesc, RocksKv};
 use flatdb_core::kv::{Column, KvStore};
+use flatdb_core::log_ring::LogSink;
 use flatdb_core::persistence::FlatIterator;
 use flatdb_core::persistence::cached_reader::CachedReaderPersistence;
 use flatdb_core::persistence::carry_forward::{CarryForwardCachingPersistence, CarryForwardMetrics};
 use flatdb_core::persistence::layouts::KvPersistence;
 use flatdb_core::types::FlatLayout;
+
+use log::LevelFilter;
 
 use crate::abi::{FdbKvDesc, FdbKvKind, FdbStats, FdbStoreCfg, FdbStoreInfo, FfiError};
 use crate::guard::Poison;
@@ -62,7 +65,7 @@ pub struct FdbStore {
     pub persistence: Arc<dyn DynPersistence>,
     pub info: FdbStoreInfo,
     pub carry_forward_metrics: Option<Arc<CarryForwardMetrics>>,
-    /// The poison flag, cloned by every open reader, iterator and batch, which the store must outlive.
+    /// The poison flag and the log sink, cloned by every open reader, iterator and batch, which the store must outlive.
     pub poison: Arc<Poison>,
 }
 
@@ -81,7 +84,22 @@ impl FdbStore {
             .ok()
             .and_then(FlatLayout::from_u8)
             .ok_or_else(|| FfiError::invalid_argument(format!("unknown flat layout {}", cfg.layout)))?;
+        let poison = Arc::new(Poison::new(LogSink::new(level_filter(cfg.log_level)?)));
+        // Resolving the slot encoding of the database can warn already.
+        // SAFETY: as the caller vouches.
+        poison
+            .log
+            .scope(|| unsafe { Self::create_in(cfg, desc, layout, poison.clone()) })
+    }
 
+    /// # Safety
+    /// As [`FdbStore::create`].
+    unsafe fn create_in(
+        cfg: &FdbStoreCfg,
+        desc: &FdbKvDesc,
+        layout: FlatLayout,
+        poison: Arc<Poison>,
+    ) -> Result<Self, FfiError> {
         let kv = match desc.kind {
             // SAFETY: the caller vouches for the RocksDB handles of the descriptor.
             kind if kind == FdbKvKind::Rocks as u32 => AnyKv::Rocks(unsafe { create_rocks(desc) }?),
@@ -98,10 +116,10 @@ impl FdbStore {
         };
 
         let stack = match &kv {
-            AnyKv::Rocks(kv) => Stack::build(kv.clone(), layout, cfg)?,
+            AnyKv::Rocks(kv) => Stack::build(instrument(kv.clone(), &poison), layout, cfg)?,
             #[cfg(any(test, feature = "test-api"))]
-            AnyKv::Mem(kv) => Stack::build(kv.clone(), layout, cfg)?,
-            AnyKv::Managed(kv) => Stack::build(kv.clone(), layout, cfg)?,
+            AnyKv::Mem(kv) => Stack::build(instrument(kv.clone(), &poison), layout, cfg)?,
+            AnyKv::Managed(kv) => Stack::build(instrument(kv.clone(), &poison), layout, cfg)?,
         };
 
         Ok(Self {
@@ -112,7 +130,7 @@ impl FdbStore {
                 preimage: layout.is_preimage().into(),
             },
             carry_forward_metrics: stack.carry_forward_metrics,
-            poison: Arc::default(),
+            poison,
         })
     }
 
@@ -140,6 +158,31 @@ impl FdbStore {
         }
         stats
     }
+}
+
+/// The backend the persistence stack runs on: the store's own, which test builds route through its armed faults.
+#[cfg(any(test, feature = "test-api"))]
+fn instrument<K: KvStore>(kv: K, poison: &Poison) -> crate::faults::FaultyKv<K> {
+    crate::faults::FaultyKv::new(kv, Arc::clone(&poison.faults))
+}
+
+/// The backend the persistence stack runs on: the store's own, which test builds route through its armed faults.
+#[cfg(not(any(test, feature = "test-api")))]
+fn instrument<K: KvStore>(kv: K, _poison: &Poison) -> K {
+    kv
+}
+
+/// The level filter of a log level as the C ABI numbers it.
+pub fn level_filter(level: u8) -> Result<LevelFilter, FfiError> {
+    Ok(match level {
+        0 => LevelFilter::Off,
+        1 => LevelFilter::Error,
+        2 => LevelFilter::Warn,
+        3 => LevelFilter::Info,
+        4 => LevelFilter::Debug,
+        5 => LevelFilter::Trace,
+        level => return Err(FfiError::invalid_argument(format!("unknown log level {level}"))),
+    })
 }
 
 /// The persistence stack over one backend.

@@ -12,7 +12,8 @@ name = "nethermind_flatdb"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# The debug exports and the in-memory backend, for tests driving the library from outside; never in a production build.
+# The debug exports, the in-memory backend and fault injection (`fdb_test_inject_fault`), for tests driving the library
+# from outside; never in a production build. The C# tests build it into target/test-api, apart from the production one.
 test-api = []
 
 [dependencies]

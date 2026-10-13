@@ -70,7 +70,10 @@ public class PseudoNethermindModuleTests
     [Test]
     public async Task Test_blockchain_preserves_explicit_backend([Values] bool enabled, [Values] bool historyEnabled)
     {
-        using BackendTestBlockchain chain = new(new FlatDbConfig { Enabled = enabled, HistoryEnabled = historyEnabled });
+        FlatDbConfig flatDbConfig = new() { Enabled = enabled, HistoryEnabled = historyEnabled };
+        // The Rust backends have no flat history.
+        if (!historyEnabled) TestStateBackend.ApplyFlatBackend(flatDbConfig);
+        using BackendTestBlockchain chain = new(flatDbConfig);
         chain.UseFlatDb = !enabled;
         await chain.Initialize();
 

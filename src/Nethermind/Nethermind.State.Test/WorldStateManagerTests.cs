@@ -235,6 +235,7 @@ public class WorldStateManagerTests
     public void CreateReadOnlyTrieStore_can_resolve_state_root([Values] bool useFlat)
     {
         IConfigProvider configProvider = new ConfigProvider();
+        TestStateBackend.ApplyFlatBackend(configProvider.GetConfig<IFlatDbConfig>());
         if (useFlat)
         {
             configProvider.GetConfig<IFlatDbConfig>().Enabled = true;

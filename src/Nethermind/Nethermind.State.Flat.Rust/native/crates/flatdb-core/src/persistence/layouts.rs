@@ -17,6 +17,7 @@ use parking_lot::Mutex;
 use crate::codec::account::{decode_account, encode_account};
 use crate::keccak::{account_path, slot_path};
 use crate::kv::{Column, KvError, KvReader, KvResult, KvStore, ReadFlags, WriteBatch, WriteFlags};
+use crate::log_ring::LogSource;
 use crate::types::{Account, Address, FlatLayout, Hash256, StateId, TreePath, U256};
 
 use super::base::{
@@ -176,7 +177,7 @@ impl<K: KvStore> Persistence for KvPersistence<K> {
 fn tolerate_flush_error(flushed: KvResult<()>) -> KvResult<()> {
     match flushed {
         Err(KvError::RocksDb { message, fatal: false }) => {
-            log::warn!("Failed to flush the flat DB: {message}");
+            log::warn!(target: LogSource::DB_ON_THE_ROCKS, "Failed to flush Flat DB: {message}");
             Ok(())
         }
         flushed => flushed,

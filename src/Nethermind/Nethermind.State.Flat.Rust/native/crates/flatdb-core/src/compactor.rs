@@ -110,10 +110,11 @@ impl SnapshotCompactor {
             // Could happen at start, where the block may not be aligned.
             Some(first) if first.from().block_number != starting_block_number => {
                 log::debug!(
-                    "Skipping snapshot compaction at block {block_number}: got {} snapshots starting at {}, expected \
-                     start at {starting_block_number}.",
+                    "Skipping snapshot compaction at block {block_number}: got {} snapshots ({} -> {}), expected start \
+                     at {starting_block_number}.",
                     snapshots.len(),
-                    first.from().block_number
+                    first.from().block_number,
+                    snapshots.last().map_or(0, |last| last.to().block_number)
                 );
                 Vec::new()
             }
