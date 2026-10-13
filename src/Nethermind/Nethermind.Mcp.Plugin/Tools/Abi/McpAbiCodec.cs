@@ -45,6 +45,12 @@ public static class McpAbiCodec
     public static bool TryEncodeCall(McpAbiSignature function, IReadOnlyList<JsonElement>? args, int maxBytes, [NotNullWhen(true)] out byte[]? data, [NotNullWhen(false)] out string? error)
     {
         data = null;
+        if (maxBytes < function.Selector.Length)
+        {
+            error = $"the {function.Selector.Length}-byte selector alone exceeds the {maxBytes}-byte call data limit";
+            return false;
+        }
+
         if (!TryEncode(function.Inputs, args, maxBytes - function.Selector.Length, out byte[]? encoded, out error))
         {
             return false;

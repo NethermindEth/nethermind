@@ -294,6 +294,43 @@ public class McpActivityPagingTests
     }
 
     [Test]
+    public async Task Activity_descending_windows_stay_bounded_when_the_eth_module_has_no_log_limit()
+    {
+        ILogIndexStorage index = ActivityIndex();
+        await using McpTestNode node = await McpTestNode.Create(c => { c.MaxLogBlockRange = 2; c.MaxIndexedLogBlockRange = 1000; },
+            b => b.AddSingleton(index)
+                .AddDecorator<IRpcModuleProvider>(static (_, inner) => new McpPriceIsolationTests.PriceRpcProvider(inner))
+                .AddDecorator<IJsonRpcConfig>((_, rpc) =>
+                {
+                    rpc.EnableLogsStreamMode = false;
+                    rpc.MaxLogsPerResponse = 0;
+                    return rpc;
+                }));
+        // Busy older history behind empty recent windows, which would otherwise widen each read up to MaxIndexedLogBlockRange.
+        (McpTxScenario scenario, Block last, List<string> expected) = await Seed(node, [3, 3, .. new int[20]]);
+        index.MaxBlockNumber.Returns((int)last.Number);
+        expected.Reverse();
+        List<ulong> spans = [];
+        McpPriceIsolationTests.PriceRpcProvider provider = (McpPriceIsolationTests.PriceRpcProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
+        provider.BeforeCall = (method, args) =>
+        {
+            if (method != nameof(IEthRpcModule.eth_getLogs)) return;
+            Filter filter = (Filter)args[0]!;
+            lock (spans) spans.Add(filter.ToBlock.BlockNumber!.Value - filter.FromBlock.BlockNumber!.Value + 1);
+        };
+        await using McpClient client = await node.CreateClient();
+
+        List<string> actual = await ReadActivityHashes(client, Query(scenario, last, "desc"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(spans, Is.Not.Empty);
+            Assert.That(spans, Is.All.LessThanOrEqualTo(2UL), "without a log limit every eth_getLogs read stays within MaxLogBlockRange");
+        }
+    }
+
+    [Test]
     public async Task Activity_quiet_address_three_hundred_thousand_blocks_back_is_found_in_two_calls()
     {
         ILogIndexStorage index = ActivityIndex();

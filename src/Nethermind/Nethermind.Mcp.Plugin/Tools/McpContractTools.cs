@@ -423,7 +423,7 @@ internal sealed class McpContractTools(
                 for (int i = 0; i < assets.Length; i++) assets[i] = valuations[i].Asset;
                 Dictionary<string, McpPriceResult> prices = await priceReader.ReadOptionalBatchAsync(executor,
                     assets, pinned,
-                    McpPriceReader.OptionalBudget(config.ToolTimeout, stopwatch, executor.RemainingTime), cancellation,
+                    McpPriceReader.OptionalBudget(config.ToolTimeout, stopwatch.Elapsed, executor.RemainingTime), cancellation,
                     pinnedHead: blockParameter.Type == BlockParameterType.Latest);
                 foreach ((JsonObject target, string asset, UInt256 amount, int decimals) in valuations)
                 {

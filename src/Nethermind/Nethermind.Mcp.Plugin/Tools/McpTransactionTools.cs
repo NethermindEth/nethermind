@@ -246,7 +246,7 @@ internal sealed class McpTransactionTools(
             if (includeUsd && context.FeePaid is { } paid)
             {
                 (McpPriceQuote? quote, string reason) = await priceReader.ReadOptionalAsync(executor, "native", BlockParameter.Latest,
-                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock, executor.RemainingTime), token);
+                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock.Elapsed, executor.RemainingTime), token);
                 if (quote is { Stale: false })
                 {
                     JsonObject fees = (JsonObject)context.Json["fees"]!;
@@ -855,7 +855,14 @@ internal sealed class McpTransactionTools(
                     summary.Append(" (all gas used; likely out of gas)");
                 }
 
-                summary.Append(", so its effects were reverted (the fee was still paid).");
+                summary.Append(", so its execution effects were reverted (the fee was still paid)");
+                // EIP-7702 authorizations are processed before execution, so a failed call does not undo them.
+                if (tx is SetCodeTransactionForRpc)
+                {
+                    summary.Append("; its valid EIP-7702 authorizations still took effect (delegations set and authority nonces incremented)");
+                }
+
+                summary.Append('.');
                 break;
             default:
                 summary.Append("; included in ").Append(blockText).Append(" (outcome unknown).");

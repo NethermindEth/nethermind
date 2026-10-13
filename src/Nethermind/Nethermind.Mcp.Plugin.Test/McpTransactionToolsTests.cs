@@ -1892,6 +1892,50 @@ public class McpTransactionToolsLondonTests
     }
 }
 
+/// <summary>A failed EIP-7702 transaction on a Prague chain, whose authorizations outlive its reverted execution.</summary>
+[Parallelizable(ParallelScope.Self)]
+public class McpTransactionToolsSetCodeTests
+{
+    private static readonly UInt256 GasPrice = 100_000_000_000;
+
+    [Test]
+    public async Task Explain_failed_set_code_transaction_says_its_authorizations_took_effect()
+    {
+        await using McpTestNode node = await McpTestNode.Create(
+            c => c.MaxConcurrentToolCalls = 16,
+            b => b.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance)));
+        BasicTestBlockchain chain = node.Chain;
+        IStateReader state = chain.WorldStateManager.GlobalStateReader;
+        ulong nonce = state.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction deploy = Build.A.Transaction.WithChainId(chain.SpecProvider.ChainId).WithNonce(nonce).WithGasPrice(GasPrice)
+            .WithCode(Prepare.EvmCode.ForInitOf(McpTxScenario.RevertRuntimeCode).Done).WithGasLimit(300_000)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        Assert.That((await chain.AddBlock(deploy)).Transactions, Has.Length.EqualTo(1), "precondition: the reverting contract must be deployed");
+        Address reverter = ContractAddress.From(TestItem.AddressB, nonce);
+
+        ulong authorityNonce = state.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressC);
+        Transaction setCode = Build.A.Transaction.WithType(TxType.SetCode).WithChainId(chain.SpecProvider.ChainId).WithNonce(nonce + 1)
+            .WithMaxFeePerGas(GasPrice).WithMaxPriorityFeePerGas(GasPrice).WithGasLimit(100_000)
+            .WithAuthorizationCode(chain.EthereumEcdsa.Sign(TestItem.PrivateKeyC, chain.SpecProvider.ChainId, reverter, authorityNonce))
+            .WithTo(reverter)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(setCode);
+        Assert.That(block.Transactions, Has.Length.EqualTo(1), "precondition: the set-code transaction must be mined");
+        Assert.That(Eip7702Constants.IsDelegatedCode(state.GetCode(block.Header, TestItem.AddressC)), Is.True,
+            "precondition: the authorization survives the failed execution");
+        await using McpClient client = await node.CreateClient();
+
+        JsonElement result = McpAssert.Success(await McpToolCalls.Call(client, "explain_transaction", [("hash", setCode.Hash!.ToString())]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("failed"));
+            Assert.That(result.GetProperty("summary").GetString(), Does.Contain("execution effects were reverted")
+                .And.Contain("EIP-7702 authorizations still took effect"));
+        }
+    }
+}
+
 /// <summary>
 /// Deploys the test contracts and mines one block of calls to them from <see cref="TestItem.PrivateKeyB"/>:
 /// a 1.5 ETH transfer, a call reverting with <c>Error(string)</c>, an out-of-gas loop, an ERC-20-shaped <c>Transfer</c>

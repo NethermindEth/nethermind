@@ -58,10 +58,10 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
     private readonly ILogger _logger = logManager.GetClassLogger<McpPriceReader>();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
-    internal static TimeSpan OptionalBudget(int timeoutMilliseconds, Stopwatch clock, TimeSpan? remainingDeadline = null)
+    internal static TimeSpan OptionalBudget(int timeoutMilliseconds, TimeSpan elapsed, TimeSpan? remainingDeadline = null)
     {
         double margin = Math.Max(250, timeoutMilliseconds * 0.1);
-        double remaining = Math.Min(timeoutMilliseconds - clock.Elapsed.TotalMilliseconds, remainingDeadline?.TotalMilliseconds ?? timeoutMilliseconds);
+        double remaining = Math.Min(timeoutMilliseconds - elapsed.TotalMilliseconds, remainingDeadline?.TotalMilliseconds ?? timeoutMilliseconds);
         if (remaining < 2 * margin) return TimeSpan.Zero;
         return TimeSpan.FromMilliseconds(Math.Max(0, Math.Min(Math.Min(1000, timeoutMilliseconds * 0.25), remaining - margin)));
     }

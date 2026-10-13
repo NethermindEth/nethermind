@@ -118,6 +118,20 @@ public class McpPromptsTests
     }
 
     [Test]
+    public void Failure_prompt_does_not_equate_a_consumed_gas_limit_with_out_of_gas()
+    {
+        McpPrompts prompts = new(new McpChainProfile(new ChainSpec(), MainnetSpecProvider.Instance));
+
+        string text = ((TextContentBlock)prompts.WhyDidMyTransactionFail(TxHash).Content).Text;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(text, Does.Not.Contain("equal means out of gas"));
+            Assert.That(text, Does.Contain("only a clue").And.Contain("invalid opcode"));
+            Assert.That(text, Does.Contain("failing frame's `error`"), "the trace's actual error tells the halts apart");
+        }
+    }
+
+    [Test]
     public async Task Server_instructions_orient_the_agent()
     {
         await using McpTestNode node = await McpTestNode.Create();

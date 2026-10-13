@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -88,6 +87,9 @@ internal sealed class McpToolExecutor(
 
     internal Func<Task>? BeforeBodyStart { get; set; }
 
+    /// <summary>The clock behind <see cref="RemainingTime"/>.</summary>
+    internal TimeProvider Time { get; set; } = TimeProvider.System;
+
     /// <summary>How long a call waits for a free concurrency slot before failing with <c>resource_exhausted</c>.</summary>
     /// <remarks>Clients such as Claude Code issue several tool calls at once; a short wait queues them instead of failing them.</remarks>
     internal static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(2);
@@ -166,7 +168,7 @@ internal sealed class McpToolExecutor(
             _runningBodies++;
         }
 
-        long accepted = Stopwatch.GetTimestamp();
+        long accepted = Time.GetTimestamp();
         // Deliberately not passing the token to Task.Run: the delegate must run to release the slot.
         Task<CallToolResult> work = Task.Run(async () =>
         {
@@ -341,7 +343,7 @@ internal sealed class McpToolExecutor(
     private async Task<CallToolResult> RunAndReleaseAsync(SemaphoreSlim slots, Func<CancellationToken, Task<CallToolResult>> run,
         CancellationToken cancellationToken, long accepted)
     {
-        SlotHold hold = new(slots, accepted);
+        SlotHold hold = new(slots, Time, accepted);
         // Set inside this async method, so only this body (and work it starts) sees it.
         _currentHold.Value = hold;
         try
@@ -387,9 +389,9 @@ internal sealed class McpToolExecutor(
     }
 
     /// <summary>A body's concurrency slot, released once the body and all detached work it tracked have finished.</summary>
-    private sealed class SlotHold(SemaphoreSlim slots, long started)
+    private sealed class SlotHold(SemaphoreSlim slots, TimeProvider time, long started)
     {
-        public TimeSpan Elapsed => Stopwatch.GetElapsedTime(started);
+        public TimeSpan Elapsed => time.GetElapsedTime(started);
         private int _holders = 1;
 
         public void Retain() => Interlocked.Increment(ref _holders);

@@ -62,8 +62,8 @@ public sealed class McpPrompts(McpChainProfile profile)
             Find out why transaction {tx} on {Network} failed.
 
             1. Call `explain_transaction` with hash {tx}. Check the status; if it succeeded, tell the user it did not fail and stop.
-            2. Read the decoded revert reason (`Error(string)`, `Panic(uint256)` or a custom error). Compare gas used with the gas limit: equal means out of gas.
-            3. Call `trace_transaction` with hash {tx} to find the innermost call that reverted first and which contract it was.
+            2. Read the decoded revert reason (`Error(string)`, `Panic(uint256)` or a custom error). Gas used equal to the gas limit is only a clue: out of gas, an invalid opcode, an invalid jump and a stack underflow all consume the whole limit.
+            3. Call `trace_transaction` with hash {tx} to find the innermost call that reverted first and which contract it was. Tell out of gas from other exceptional halts by the failing frame's `error` (or `failure.reason` from `explain_transaction`); `failure.outOfGasInferred: true` means out of gas was only guessed from gas used. Recommend more gas only for out of gas.
             4. If a fix is plausible (more gas, a missing approval, a wrong amount), call `simulate_transaction` with the corrected parameters at `latest` to check it would now succeed. Say clearly that a simulation is not a guarantee.
             5. On `unavailable`, the node pruned that history: say so and suggest an archive node.
 

@@ -198,6 +198,21 @@ public class McpAbiTests
         Assert.That(error, Does.Contain("exceeds the"));
     }
 
+    [TestCase(1, false)]
+    [TestCase(3, false)]
+    [TestCase(4, true)]
+    public void Zero_argument_call_needs_room_for_the_selector(int maxBytes, bool fits)
+    {
+        bool encoded = McpAbiCodec.TryEncodeCall(McpAbiSignature.Parse("f()"), [], maxBytes, out byte[]? data, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded, Is.EqualTo(fits), error);
+            if (fits) Assert.That(data, Has.Length.EqualTo(4));
+            else Assert.That(error, Does.Contain("exceeds the"));
+        }
+    }
+
     [TestCase("", "the data is empty")]
     [TestCase("0x00", "too short")]
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000001000", "invalid offset")]

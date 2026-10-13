@@ -380,7 +380,7 @@ internal sealed partial class McpEthTools
                     movements.Where(item => item.Movement.IsFungible
                             && metadata.TryGetValue((item.Movement.Token, item.Log.BlockHash), out McpTokenInfo? info) && info.Decimals is not null)
                         .Select(static item => item.Movement.Token.ToString()), BlockParameter.Latest,
-                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock, _executor.RemainingTime), cancellation);
+                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock.Elapsed, _executor.RemainingTime), cancellation);
                 foreach ((string asset, McpPriceResult price) in prices)
                 {
                     quotes[new Address(asset)] = price.Quote;
@@ -548,7 +548,7 @@ internal sealed partial class McpEthTools
         {
             state.ScanTo = next;
             ulong span = state.Window;
-            if (!(logIndexStorage.Enabled && logIndexStorage.MinBlockNumber is { } min && min >= 0
+            if (LogsUnbounded || !(logIndexStorage.Enabled && logIndexStorage.MinBlockNumber is { } min && min >= 0
                 && logIndexStorage.MaxBlockNumber is { } max && max >= 0 && next >= (ulong)min && next <= (ulong)max))
                 span = Math.Min(span, _maxLogBlockRange);
             state.ScanFrom = Math.Max(state.From, next >= span - 1 ? next - span + 1 : 0);

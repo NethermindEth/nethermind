@@ -292,7 +292,7 @@ internal sealed class McpEthExtraTools(
             if (chainProfile.PriceFeed("native") is not null)
             {
                 (McpPriceQuote? quote, string reason) = await priceReader.ReadOptionalAsync(executor, "native", BlockParameter.Latest,
-                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock, executor.RemainingTime), _);
+                    McpPriceReader.OptionalBudget(config.ToolTimeout, clock.Elapsed, executor.RemainingTime), _);
                 report = report with { Price = quote?.Stale == false ? quote : null, PriceNote = quote?.Stale == true ? reason : quote is null ? reason : null };
             }
             return executor.Success(report, static (writer, state) =>

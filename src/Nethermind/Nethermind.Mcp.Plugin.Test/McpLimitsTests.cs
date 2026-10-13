@@ -247,19 +247,21 @@ public class McpLimitsTests
     public async Task Remaining_time_includes_time_waiting_for_the_body_to_start()
     {
         const int timeout = 1_000;
+        TimeSpan queued = TimeSpan.FromMilliseconds(250);
         await using McpTestNode node = await McpTestNode.Create(c => c.ToolTimeout = timeout, start: false);
         McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
-        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        executor.BeforeBodyStart = () => release.Task;
+        ManualTimeProvider time = new();
+        executor.Time = time;
+        executor.BeforeBodyStart = () =>
+        {
+            time.Advance(queued);
+            return Task.CompletedTask;
+        };
 
-        Task<CallToolResult> call = executor.ExecuteLocalAsync("test", _ =>
-            Task.FromResult(executor.Success(executor.RemainingTime.TotalMilliseconds)), CancellationToken.None);
-        await Task.Delay(250);
-        release.SetResult();
+        double remaining = McpAssert.Success(await executor.ExecuteLocalAsync("test", _ =>
+            Task.FromResult(executor.Success(executor.RemainingTime.TotalMilliseconds)), CancellationToken.None).WaitAsync(WaitLimit)).GetDouble();
 
-        double remaining = McpAssert.Success(await call.WaitAsync(WaitLimit)).GetDouble();
-
-        Assert.That(remaining, Is.LessThan(timeout - 150), "the accepted call's queue delay must consume its deadline");
+        Assert.That(remaining, Is.EqualTo(timeout - queued.TotalMilliseconds), "the accepted call's queue delay must consume its deadline");
     }
 
     [Test]

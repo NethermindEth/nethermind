@@ -250,6 +250,9 @@ internal sealed partial class McpEthTools
     /// <summary>The count at which the eth module silently stops a logs stream, or 0 when it returns every log or fails instead.</summary>
     private int StreamLogCap => rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse > 0 ? rpcConfig.MaxLogsPerResponse : 0;
 
+    /// <summary>Whether <c>eth_getLogs</c> materializes every match, with neither a stream nor a count cap, so scans must not widen past <see cref="IMcpConfig.MaxLogBlockRange"/>.</summary>
+    private bool LogsUnbounded => !rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse == 0;
+
     /// <summary>Returns an <c>unavailable</c> error for the first block in the range whose bloom matches the filter but whose receipts are missing.</summary>
     /// <remarks>The loop stops at <paramref name="to"/> without incrementing past it, so it terminates even at <see cref="ulong.MaxValue"/>.</remarks>
     private CallToolResult? FindMissingReceipts(ulong from, ulong to, LogFilter filter, CancellationToken token) =>
@@ -370,7 +373,7 @@ internal sealed partial class McpEthTools
         ulong plainEnd = Math.Min(end, McpEthHelpers.SaturatingAdd(start, _maxLogBlockRange - 1));
 
         // Without a module or stream cap, eth_getLogs materializes every match before this tool can apply its page limits.
-        if (!rpcConfig.EnableLogsStreamMode && rpcConfig.MaxLogsPerResponse == 0)
+        if (LogsUnbounded)
         {
             return (plainEnd, false);
         }

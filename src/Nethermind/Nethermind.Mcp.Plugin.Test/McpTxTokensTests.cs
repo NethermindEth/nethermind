@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -153,7 +152,7 @@ public class McpTxTokensTests
     [Test]
     public void Token_lookup_checks_the_deadline_before_every_metadata_call()
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         int calls = 0;
         bool expired = false;
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
@@ -179,7 +178,7 @@ public class McpTxTokensTests
     [Test]
     public void Token_lookup_resolves_all_cached_tokens_before_spending_budget([Values] bool interrupted)
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         McpTokenMetadata metadata = new();
         Address[] cached = [TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
         foreach (Address address in cached) Assert.That(metadata.Get(eth, address, BlockParameter.Latest), Is.Not.Null);
@@ -272,7 +271,7 @@ public class McpTxTokensTests
         McpTokenMetadata metadata = node.Chain.Container.Resolve<McpTokenMetadata>();
         if (!spent)
         {
-            IEthRpcModule missing = SlowToken(TimeSpan.Zero, out _);
+            IEthRpcModule missing = SlowToken(out _);
             missing.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
                 .Returns(_ => ResultWrapper<HexBytes>.Success(new HexBytes([])));
             Assert.That(metadata.Get(missing, weth, BlockParameter.Latest), Is.Not.Null);
@@ -310,7 +309,7 @@ public class McpTxTokensTests
             .AddScoped<IGenesisPostProcessor, FeedGenesis>()
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
         await McpPriceIsolationTests.Deposit(node);
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         eth.eth_getBalance(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(Task.FromResult(ResultWrapper<UInt256?>.Success(UInt256.Zero)));
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
             .Returns(call =>
@@ -333,7 +332,7 @@ public class McpTxTokensTests
     [Test]
     public void Token_metadata_treats_missing_trie_node_as_a_transient_failure()
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
             .Returns(ResultWrapper<HexBytes>.Fail("missing trie node 0xab", ErrorCodes.Default));
         bool transient = false;
@@ -352,7 +351,7 @@ public class McpTxTokensTests
     [Test]
     public void Token_metadata_serves_cached_entries_after_deadline_without_rpc([Values] bool cached)
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         McpTokenMetadata metadata = new();
         McpTokenInfo? expected = cached ? metadata.Get(eth, TestItem.AddressA, BlockParameter.Latest) : null;
         eth.ClearReceivedCalls();
@@ -370,7 +369,7 @@ public class McpTxTokensTests
     [Test]
     public void Token_metadata_uses_node_chain_id_without_an_rpc()
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule eth = SlowToken(out _);
         eth.eth_chainId().Returns(_ => throw new InvalidOperationException("unavailable"));
         McpTokenMetadata metadata = _node.Chain.Container.Resolve<McpTokenMetadata>();
 
@@ -765,21 +764,30 @@ public class McpTxTokensTests
     [Test]
     public void Detached_token_lookup_returns_at_the_deadline_while_a_call_is_in_flight()
     {
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        int finished = 0;
         IEthRpcModule caller = Substitute.For<IEthRpcModule>();
-        IEthRpcModule slow = SlowToken(TimeSpan.FromMilliseconds(1500), out Func<int> calls);
+        IEthRpcModule slow = SlowToken(out Func<int> calls, () =>
+        {
+            entered.Set();
+            // Bounded, so a lookup that wrongly waits for this call fails below instead of hanging.
+            release.Wait(TimeSpan.FromSeconds(30));
+            Interlocked.Increment(ref finished);
+        });
         IDisposable lease = Substitute.For<IDisposable>();
         List<Task> tracked = [];
         McpDetachedEth detached = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((slow, lease)), tracked.Add);
-        Stopwatch clock = Stopwatch.StartNew();
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), caller, [TestItem.AddressA, TestItem.AddressB], BlockParameter.Latest, 10, CancellationToken.None,
-            () => clock.Elapsed > TimeSpan.FromMilliseconds(100), detached);
-        TimeSpan returnedAfter = clock.Elapsed;
+            () => entered.IsSet, detached);
+        bool returnedWhileInFlight = Volatile.Read(ref finished) == 0;
+        release.Set();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(returnedAfter, Is.LessThan(TimeSpan.FromMilliseconds(1000)), "the caller stops waiting for the in-flight call");
+            Assert.That(returnedWhileInFlight, Is.True, "the caller stops waiting for the in-flight call");
             Assert.That(found, Is.Empty);
             Assert.That(skipped, Is.EqualTo(2));
             Assert.That(tracked, Has.Count.EqualTo(1), "the abandoned read is tracked");
@@ -797,7 +805,7 @@ public class McpTxTokensTests
     [Test]
     public void Detached_token_lookup_finishes_normally_and_falls_back_to_the_callers_module()
     {
-        IEthRpcModule fast = SlowToken(TimeSpan.Zero, out _);
+        IEthRpcModule fast = SlowToken(out _);
         McpDetachedEth unavailable = new(() => Task.FromResult<(IEthRpcModule?, IDisposable?)>((null, null)), static _ => Assert.Fail("nothing is abandoned"));
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
@@ -812,8 +820,8 @@ public class McpTxTokensTests
         }
     }
 
-    // A token whose every eth_call takes `delay`; `calls` counts the eth_calls made.
-    private static IEthRpcModule SlowToken(TimeSpan delay, out Func<int> calls)
+    // A token whose every eth_call runs `duringCall` first; `calls` counts the eth_calls made.
+    private static IEthRpcModule SlowToken(out Func<int> calls, Action? duringCall = null)
     {
         int count = 0;
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
@@ -823,7 +831,7 @@ public class McpTxTokensTests
             .Returns(_ =>
             {
                 Interlocked.Increment(ref count);
-                Thread.Sleep(delay);
+                duringCall?.Invoke();
                 return ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString("SLOW")));
             });
         calls = () => Volatile.Read(ref count);

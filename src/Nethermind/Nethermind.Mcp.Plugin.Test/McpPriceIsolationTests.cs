@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
@@ -226,16 +225,14 @@ public class McpPriceIsolationTests
         await McpToolCalls.AssertConformsToOutputSchema(client, "fee_estimate", call);
     }
 
-    [TestCase(1000, 600, 0)]
-    [TestCase(5000, 3900, 600)]
-    public void Optional_price_budget_reserves_margin_and_skips_short_windows(int timeout, int elapsed, int maximum)
-    {
-        Stopwatch clock = Stopwatch.StartNew();
-        Thread.Sleep(elapsed);
-        TimeSpan budget = McpPriceReader.OptionalBudget(timeout, clock);
-        Assert.That(budget.TotalMilliseconds, Is.LessThanOrEqualTo(maximum));
-        if (maximum > 0) Assert.That(budget, Is.GreaterThan(TimeSpan.Zero));
-    }
+    [TestCase(1000, 600, null, ExpectedResult = 0d)]
+    [TestCase(5000, 3900, null, ExpectedResult = 600d)]
+    [TestCase(5000, 0, null, ExpectedResult = 1000d)]
+    [TestCase(5000, 0, 1400, ExpectedResult = 900d)]
+    [TestCase(5000, 0, 900, ExpectedResult = 0d)]
+    public double Optional_price_budget_reserves_margin_and_skips_short_windows(int timeout, int elapsed, int? remainingDeadline) =>
+        McpPriceReader.OptionalBudget(timeout, TimeSpan.FromMilliseconds(elapsed),
+            remainingDeadline is { } deadline ? TimeSpan.FromMilliseconds(deadline) : null).TotalMilliseconds;
 
     [Test]
     public async Task Historical_price_batch_reads_its_header_once()
