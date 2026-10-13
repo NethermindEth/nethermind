@@ -55,6 +55,7 @@ internal sealed class StreamingTransport
         using CancellationTokenSource closed = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         StreamingWork? work = null;
         Task<bool>? read = null;
+        bool inputClosed = false;
         try
         {
             read = Read(input, closed.Token);
@@ -63,7 +64,8 @@ internal sealed class StreamingTransport
                 Task revoked = connection.AttachmentRevoked;
                 if (work is not null)
                 {
-                    await Task.WhenAny(read, work.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
+                    Task incoming = inputClosed ? work.Response : read;
+                    await Task.WhenAny(incoming, work.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
                     if (revoked.IsCompleted) throw Error(StatusCode.Aborted, "session attachment no longer current");
                     if (work.Response.IsCompleted)
                     {
@@ -77,13 +79,19 @@ internal sealed class StreamingTransport
                         work.Dispose();
                         work = null;
                         await Write(connection, output, response, closed.Token).ConfigureAwait(false);
+                        if (inputClosed) return;
                         continue;
                     }
                 }
 
                 await Task.WhenAny(read, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
                 if (revoked.IsCompleted) throw Error(StatusCode.Aborted, "session attachment no longer current");
-                if (!await read.ConfigureAwait(false)) return;
+                if (!await read.ConfigureAwait(false))
+                {
+                    if (work is null) return;
+                    inputClosed = true;
+                    continue;
+                }
                 ClientFrame frame = input.Current;
                 if (frame.CalculateSize() > _limits.MaxMessageBytes)
                     throw Error(StatusCode.ResourceExhausted, "stream message exceeds decoding limit");
@@ -107,7 +115,7 @@ internal sealed class StreamingTransport
                     }
                     else if (_admission.TryAcquire() is not { } slot)
                     {
-                        ServerFrame rejected = RejectUnstarted(connection, operation, new Status(StatusCode.Unavailable, "another Prove request is already active"));
+                        ServerFrame rejected = RejectUnstarted(connection, operation, new Status(StatusCode.ResourceExhausted, "another Prove request is already active"));
                         await Write(connection, output, rejected, closed.Token).ConfigureAwait(false);
                     }
                     else

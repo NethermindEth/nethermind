@@ -113,22 +113,36 @@ public class StreamingTransportTests
         Assert.That(resumed.Ready.ValidatedThrough, Is.EqualTo(11), "EOF retains only validated progress for the authenticated owner");
     }
 
-    [TestCase(false, TestName = "Run_Eof_DetachesBeforeWorkerDrain")]
-    [TestCase(true, TestName = "Run_Cancel_EndsBeforeWorkerDrain")]
-    public async Task Run_EndBeforeExecutionFinishes_HoldsBackendAndFencesResult(bool cancel)
+    [Test]
+    public async Task Run_ClientHalfCloses_DrainsAcceptedWorkerAndReturnsValidation()
     {
         _input.Add(BlockFrame);
-        if (cancel) _input.Add(() => Bound(3, new Cancel()));
+        Task stream = Run();
+        Assert.That((stream.IsCompleted, _workerCancellation.IsCancellationRequested), Is.EqualTo((false, false)),
+            "client half-close must wait for accepted execution rather than cancel it");
+        Assert.That(_admission.TryAcquire(), Is.Null, "the accepted backend worker keeps its slot while the client has half-closed");
+        _worker.SetResult(Executed());
+        await stream;
+        await _admission.WaitUntilIdle();
+        Assert.That((_output.Frames.Count, _output.Frames[1].RequestId, _output.Frames[1].Validated.Number), Is.EqualTo((2, 2UL, 11UL)),
+            "half-close drains and acknowledges accepted work without producing a proof");
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "fully validated progress survives a half-closed stream");
+    }
+
+    [Test]
+    public async Task Run_CancelBeforeExecutionFinishes_HoldsBackendAndFencesResult()
+    {
+        _input.Add(BlockFrame);
+        _input.Add(() => Bound(3, new Cancel()));
         await Run();
-        Assert.That(_workerCancellation.IsCancellationRequested, Is.True, "ending the attachment cancels its worker");
+        Assert.That(_workerCancellation.IsCancellationRequested, Is.True, "Cancel cancels its attachment worker");
         Assert.That(_admission.TryAcquire(), Is.Null, "the backend remains owned until the real worker drains");
-        Assert.That(_output.Frames.Count, Is.EqualTo(cancel ? 2 : 1), "no unfinished block is acknowledged");
+        Assert.That(_output.Frames.Count, Is.EqualTo(2), "no unfinished block is acknowledged");
         _worker.SetResult(Executed());
         await _admission.WaitUntilIdle();
         using BackendAdmission.BackendLease? retry = _admission.TryAcquire();
         Assert.That(retry, Is.Not.Null, "actual completion releases global admission");
-        if (!cancel) Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "a late result cannot advance detached progress");
-        else Assert.That(_output.Frames[^1].Cancelled, Is.Not.Null, "Cancel is the last response");
+        Assert.That(_output.Frames[^1].Cancelled, Is.Not.Null, "Cancel is the last response");
     }
 
     [Test]
@@ -193,7 +207,7 @@ public class StreamingTransportTests
         using BackendAdmission.BackendLease occupied = _admission.TryAcquire()!;
         _input.Add(BlockFrame);
         await Run();
-        Assert.That((_executions, _output.Frames[1].Rejected.Code), Is.EqualTo((0, (int)StatusCode.Unavailable)),
+        Assert.That((_executions, _output.Frames[1].Rejected.Code), Is.EqualTo((0, (int)StatusCode.ResourceExhausted)),
             "both protocol versions must use the same execution slot");
         occupied.Dispose();
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "global admission failure cannot acknowledge a block");
@@ -335,7 +349,7 @@ public class StreamingTransportTests
         StreamingConnection resumed = new(_registry, "composer", 1);
         ServerFrame newer = resumed.Dispatch(new ClientFrame { SessionId = ready.SessionId, Resume = new Resume() }).Response!;
         RpcException exception = Assert.Throws<RpcException>(() => StreamingTransport.RejectUnstarted(original, operation,
-            new Status(finalize ? StatusCode.Unimplemented : StatusCode.Unavailable, "rejected")))!;
+            new Status(finalize ? StatusCode.Unimplemented : StatusCode.ResourceExhausted, "rejected")))!;
         Assert.That((exception.StatusCode, operation.IsDisposed), Is.EqualTo((StatusCode.Aborted, true)), "a failed stale rejection must release the admitted operation");
         frame.Epoch = newer.Epoch;
         SessionOperation retry = resumed.Dispatch(frame).Operation!;
