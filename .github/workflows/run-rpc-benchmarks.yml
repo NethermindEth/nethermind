@@ -1054,6 +1054,25 @@ jobs:
             exit 1
           fi
 
+      - name: Build pinned master baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline_sha=5302886bf889ef9fc2cae976c8f0cba8a0d17d4e
+          baseline_image=nethermindeth/nethermind:master-5302886
+          revision="$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' 2>/dev/null || true)"
+          if [[ "$revision" != "$baseline_sha" ]]; then
+            git fetch --depth=1 origin "$baseline_sha"
+            baseline_context="$(mktemp -d "${RUNNER_TEMP}/master-baseline.XXXXXX")"
+            git archive "$baseline_sha" | tar -x -C "$baseline_context"
+            source_date_epoch="$(git log -1 --format=%ct "$baseline_sha")"
+            docker build "$baseline_context" -f "$baseline_context/Dockerfile" -t "$baseline_image" \
+              --build-arg BUILD_CONFIG=release --build-arg CI=true \
+              --build-arg COMMIT_HASH="$baseline_sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+          fi
+          docker image inspect "$baseline_image" --format '{{ .Id }} {{ index .Config.Labels "org.opencontainers.image.revision" }}'
+          [[ "$(docker image inspect "$baseline_image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$baseline_sha" ]]
+
       - name: Prepare Docker image
         env:
           IMAGE_MODE: ${{ needs.resolve.outputs.image_mode }}
@@ -1141,6 +1160,25 @@ jobs:
           DOTNET_DUMP: "false"
           NODE_MEMORY: ${{ needs.resolve.outputs.node_memory }}
         run: ./scripts/rpc-bench/start-node.sh
+
+      - name: Prepare covered log indexes
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench' && contains(needs.resolve.outputs.additional_flags, '--LogIndex.Enabled=true')
+        shell: bash
+        env:
+          COMPARISON: ${{ needs.resolve.outputs.comparison }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          REF_FLAGS: ${{ needs.resolve.outputs.ref_additional_flags }}
+          SNAPSHOT_BLOCK: ${{ inputs.snapshot_block }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TOOL_CONFIG" | jq -e '.compare_config == "config/compare/log-data-filtering.yaml" or .benchmark_config == "config/benchmark/log-data-filtering.yaml"' > /dev/null
+          bash scripts/rpc-bench/prepare-log-index.sh "$CONTAINER_NAME" http://localhost:8545 "$SNAPSHOT_BLOCK" \
+            25390001 25406300 "$OUT_DIR/index-preparation/primary"
+          if [[ "$COMPARISON" == "true" ]]; then
+            [[ "$REF_FLAGS" == *"--LogIndex.Enabled=true"* ]]
+            bash scripts/rpc-bench/prepare-log-index.sh "$REF_CONTAINER_NAME" "http://localhost:$REF_RPC_PORT" "$SNAPSHOT_BLOCK" \
+              25390001 25406300 "$OUT_DIR/index-preparation/reference"
+          fi
 
       - name: Run flood benchmark
         id: run-flood
