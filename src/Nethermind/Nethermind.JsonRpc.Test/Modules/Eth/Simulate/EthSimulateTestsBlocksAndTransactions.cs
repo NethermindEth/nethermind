@@ -1487,6 +1487,31 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// After EIP-8037, <c>validation: false</c> lifts the TX_MAX_GAS_LIMIT cap on execution gas, so the whole gas limit is
+    /// execution gas. With validation the protocol cap applies and the rest goes into the state gas reservoir.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_lifts_the_execution_gas_cap_only_without_validation([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
+        chain.RpcConfig.GasCap = Eip7825Constants.DefaultTxGasLimitCap * 4;
+
+        SimulatePayload<TransactionForRpc> payload = EthRpcSimulateTestsBase.CreateGasProbePayload();
+        payload.BlockStateCalls![0].BlockOverrides =
+            new BlockOverride { GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 2, BaseFeePerGas = 0 };
+        payload.Validation = validation;
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        UInt256 gasAvailable = new(result.Data.First().Calls.First().ReturnData!, isBigEndian: true);
+        Assert.That(gasAvailable, validation
+            ? Is.LessThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap)
+            : Is.GreaterThan((UInt256)Eip7825Constants.DefaultTxGasLimitCap));
+    }
+
+    /// <summary>
     /// #12692 (item 1): the no-gas default tracks the running budget, so multiple gas-less calls in one block all fit.
     /// </summary>
     [Test]
