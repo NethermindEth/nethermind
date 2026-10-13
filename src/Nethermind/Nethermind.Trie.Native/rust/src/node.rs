@@ -1,16 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-//! Node model and the stored format `<tag:u8>[<bitset:u16 LE> if branch]<rlp>`, where `rlp` is the
-//! standard Ethereum node RLP (so its keccak is the node hash) and bit `i` of the bitset is set when
-//! branch child `i` exists.
+//! Node model and its standard Ethereum node RLP, whose keccak is the node hash.
 
 use crate::Error;
-
-pub const TAG_BRANCH: u8 = 0;
-pub const TAG_BRANCH_WITH_INLINE: u8 = 1;
-pub const TAG_EXTENSION: u8 = 2;
-pub const TAG_LEAF: u8 = 3;
 
 const EMPTY_STRING: u8 = 0x80;
 const HASH_PREFIX: u8 = 0xa0;
@@ -204,44 +197,35 @@ pub fn empty_children() -> Box<[ChildRef; 16]> {
     Box::new([const { ChildRef::Empty }; 16])
 }
 
-/// Appends the stored form of `node` to `out` and returns the offset where its RLP starts.
-pub fn encode(node: &Node, out: &mut Vec<u8>) -> usize {
+/// Appends the RLP of `node` to `out`.
+pub fn encode(node: &Node, out: &mut Vec<u8>) {
     match node {
         Node::Leaf { key, value } => {
-            out.push(TAG_LEAF);
-            let start = out.len();
             write_list_header(
                 out,
                 hex_prefix_length(key.as_slice()) + string_length(value),
             );
             write_hex_prefix(out, key.as_slice(), true);
             write_string(out, value);
-            start
         }
         Node::Extension { key, child } => {
-            out.push(TAG_EXTENSION);
-            let start = out.len();
             write_list_header(
                 out,
                 hex_prefix_length(key.as_slice()) + child.encoded_length(),
             );
             write_hex_prefix(out, key.as_slice(), false);
             child.write(out);
-            start
         }
         Node::Branch { children } => {
             // Room for every child as a hash, the value, and a whole inline buffer past the end, so each child is a
             // fixed-size copy.
             let mut payload = [0u8; 16 * 33 + 1 + 31];
             let mut payload_length = 0;
-            let mut bitset = 0u16;
-            let mut has_inline = false;
-            for (index, child) in children.iter().enumerate() {
+            for child in children.iter() {
                 match child {
                     ChildRef::Empty => {
                         payload[payload_length] = EMPTY_STRING;
                         payload_length += 1;
-                        continue;
                     }
                     ChildRef::Hash(hash) => {
                         payload[payload_length] = HASH_PREFIX;
@@ -249,7 +233,6 @@ pub fn encode(node: &Node, out: &mut Vec<u8>) -> usize {
                         payload_length += 33;
                     }
                     ChildRef::Inline(rlp) => {
-                        has_inline = true;
                         payload[payload_length..payload_length + 31].copy_from_slice(&rlp.data);
                         payload_length += rlp.length as usize;
                     }
@@ -257,57 +240,14 @@ pub fn encode(node: &Node, out: &mut Vec<u8>) -> usize {
                         unreachable!("pending child must be committed before encoding")
                     }
                 }
-                bitset |= 1 << index;
             }
             payload[payload_length] = EMPTY_STRING;
             payload_length += 1;
 
-            out.push(if has_inline {
-                TAG_BRANCH_WITH_INLINE
-            } else {
-                TAG_BRANCH
-            });
-            out.extend_from_slice(&bitset.to_le_bytes());
-            let start = out.len();
             write_list_header(out, payload_length);
             out.extend_from_slice(&payload[..payload_length]);
-            start
         }
     }
-}
-
-/// Returns the RLP part of a stored node.
-pub fn stored_rlp(stored: &[u8]) -> Result<&[u8], Error> {
-    match stored.first() {
-        Some(&TAG_BRANCH) | Some(&TAG_BRANCH_WITH_INLINE) => {
-            stored.get(3..).ok_or(Error::CorruptNode)
-        }
-        Some(&TAG_EXTENSION) | Some(&TAG_LEAF) => Ok(&stored[1..]),
-        _ => Err(Error::CorruptNode),
-    }
-}
-
-pub fn decode_stored(stored: &[u8]) -> Result<Node, Error> {
-    let rlp = stored_rlp(stored)?;
-    if stored[0] != TAG_BRANCH {
-        return decode_rlp(rlp);
-    }
-
-    // Every child of a plain branch is a hash, so the bitset alone says where each one is.
-    let bitset = u16::from_le_bytes([stored[1], stored[2]]);
-    let (list, _) = next_item(rlp)?;
-    let mut payload = list.payload;
-    let mut children: Box<[ChildRef; 16]> = empty_children();
-    for (index, child) in children.iter_mut().enumerate() {
-        if bitset & (1 << index) == 0 {
-            payload = payload.get(1..).ok_or(Error::CorruptNode)?;
-            continue;
-        }
-        let hash = payload.get(1..33).ok_or(Error::CorruptNode)?;
-        *child = ChildRef::Hash(hash.try_into().unwrap());
-        payload = &payload[33..];
-    }
-    Ok(Node::Branch { children })
 }
 
 pub fn decode_rlp(rlp: &[u8]) -> Result<Node, Error> {

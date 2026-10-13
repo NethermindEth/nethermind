@@ -8,11 +8,8 @@ use std::cell::RefCell;
 
 use rayon::prelude::*;
 
-use crate::keccak::{keccak, keccak_many};
-use crate::node::{
-    decode_rlp, decode_stored, empty_children, encode, nibble, stored_rlp, ChildRef, Nibbles, Node,
-    TreePath,
-};
+use crate::keccak::keccak_many;
+use crate::node::{decode_rlp, empty_children, encode, nibble, ChildRef, Nibbles, Node, TreePath};
 use crate::{Entry, Error, NodeStore};
 
 /// Same as `PatriciaTree.MinEntriesToParallelizeThreshold`.
@@ -34,12 +31,13 @@ thread_local! {
     static COMMIT_SCRATCH: RefCell<CommitScratch> = RefCell::default();
 }
 
-/// Applies `entries` to the trie whose root is stored at the empty path, writing every new node referenced by hash
-/// at its path, and returns the new root hash. `entries` is reordered in place and its keys must be unique.
+/// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path,
+/// and returns the new root hash. `entries` is reordered in place and its keys must be unique.
 ///
-/// Nodes that become unreachable are not removed, except the root when the trie becomes empty.
+/// Nodes that become unreachable are not removed.
 pub fn bulk_set<S: NodeStore>(
     store: &S,
+    root: &[u8; 32],
     entries: &mut [Entry],
     values: &[u8],
 ) -> Result<[u8; 32], Error> {
@@ -53,22 +51,16 @@ pub fn bulk_set<S: NodeStore>(
     }
 
     let mut root_path = TreePath::default();
-    let mut stored_root = Vec::new();
-    let root = if store.fetch(&root_path, &mut stored_root)? {
-        Some(decode_stored(&stored_root)?)
-    } else {
-        None
-    };
-
     let context = Context { store, values };
+    let mut root_reference = match *root {
+        EMPTY_TREE_HASH => ChildRef::Empty,
+        hash => ChildRef::Hash(hash),
+    };
+    let root_node = context.load(&root_path, &mut root_reference)?;
     let mut sort_buffer = entries.to_vec();
-    match context.update(entries, &mut sort_buffer, &mut root_path, root)? {
-        (_, false) if stored_root.is_empty() => Ok(EMPTY_TREE_HASH),
-        (_, false) => Ok(keccak(stored_rlp(&stored_root)?)),
-        (None, true) => {
-            store.write(&root_path, &[]);
-            Ok(EMPTY_TREE_HASH)
-        }
+    match context.update(entries, &mut sort_buffer, &mut root_path, root_node)? {
+        (_, false) => Ok(*root),
+        (None, true) => Ok(EMPTY_TREE_HASH),
         (Some(root), true) => match context.commit_tree(root, root_path, true).0 {
             ChildRef::Hash(hash) => Ok(hash),
             _ => unreachable!("root is always hashed"),
@@ -116,8 +108,8 @@ struct PendingNode {
 struct CommitScratch {
     nodes: Vec<PendingNode>,
     order: Vec<u32>,
-    /// (index, stored start, RLP start, end) of every node in the level referenced by hash.
-    hashed: Vec<(u32, usize, usize, usize)>,
+    /// (index, RLP start, RLP end) of every node in the level referenced by hash.
+    hashed: Vec<(u32, usize, usize)>,
     hashes: Vec<[u8; 32]>,
 }
 
@@ -493,11 +485,11 @@ impl<S: NodeStore> Context<'_, S> {
                 _ => unreachable!(),
             },
             ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
-            ChildRef::Hash(_) => BUFFER.with_borrow_mut(|buffer| {
-                if !self.store.fetch(path, buffer)? {
+            ChildRef::Hash(hash) => BUFFER.with_borrow_mut(|buffer| {
+                if !self.store.fetch(path, hash, buffer)? {
                     return Err(Error::MissingNode);
                 }
-                decode_stored(buffer).map(Some)
+                decode_rlp(buffer).map(Some)
             }),
         }
     }
@@ -556,28 +548,30 @@ impl<S: NodeStore> Context<'_, S> {
                     buffer.clear();
                     hashed.clear();
                     for &index in &order[start..end] {
-                        let stored_start = buffer.len();
-                        let rlp_start = encode(&nodes[index as usize].node, buffer);
+                        let rlp_start = buffer.len();
+                        encode(&nodes[index as usize].node, buffer);
                         if buffer.len() - rlp_start < 32 && !(is_root && index == 0) {
                             resolve(nodes, index, ChildRef::inline(&buffer[rlp_start..]));
-                            buffer.truncate(stored_start);
+                            buffer.truncate(rlp_start);
                         } else {
-                            hashed.push((index, stored_start, rlp_start, buffer.len()));
+                            hashed.push((index, rlp_start, buffer.len()));
                         }
                     }
 
                     hashes.resize(hashed.len(), [0; 32]);
                     keccak_many(
                         |position| {
-                            let (_, _, rlp_start, end) = hashed[position];
-                            &buffer[rlp_start..end]
+                            let (_, rlp_start, rlp_end) = hashed[position];
+                            &buffer[rlp_start..rlp_end]
                         },
                         hashes,
                     );
-                    for (&(index, stored_start, _, end), &hash) in hashed.iter().zip(hashes.iter())
-                    {
-                        self.store
-                            .write(&nodes[index as usize].path, &buffer[stored_start..end]);
+                    for (&(index, rlp_start, rlp_end), &hash) in hashed.iter().zip(hashes.iter()) {
+                        self.store.write(
+                            &nodes[index as usize].path,
+                            &hash,
+                            &buffer[rlp_start..rlp_end],
+                        );
                         resolve(nodes, index, ChildRef::Hash(hash));
                     }
                     start = end;
@@ -839,31 +833,37 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::keccak::keccak;
 
     #[derive(Default)]
     struct MapStore(Mutex<HashMap<TreePath, Vec<u8>>>);
 
     impl NodeStore for MapStore {
-        fn fetch(&self, path: &TreePath, buffer: &mut Vec<u8>) -> Result<bool, Error> {
+        fn fetch(
+            &self,
+            path: &TreePath,
+            hash: &[u8; 32],
+            buffer: &mut Vec<u8>,
+        ) -> Result<bool, Error> {
             buffer.clear();
             let nodes = self.0.lock().unwrap();
-            let node = nodes.get(path);
-            buffer.extend_from_slice(node.map_or(&[], Vec::as_slice));
-            Ok(node.is_some())
+            let Some(node) = nodes.get(path) else {
+                return Ok(false);
+            };
+            assert_eq!(keccak(node), *hash, "fetched node hash");
+            buffer.extend_from_slice(node);
+            Ok(true)
         }
 
-        fn write(&self, path: &TreePath, data: &[u8]) {
-            let mut nodes = self.0.lock().unwrap();
-            match data {
-                [] => nodes.remove(path),
-                _ => nodes.insert(*path, data.to_vec()),
-            };
+        fn write(&self, path: &TreePath, hash: &[u8; 32], rlp: &[u8]) {
+            assert_eq!(keccak(rlp), *hash, "written node hash");
+            self.0.lock().unwrap().insert(*path, rlp.to_vec());
         }
     }
 
     type Item = ([u8; 32], Vec<u8>);
 
-    fn apply(store: &MapStore, items: &[Item]) -> Result<[u8; 32], Error> {
+    fn apply(store: &MapStore, root: [u8; 32], items: &[Item]) -> Result<[u8; 32], Error> {
         let mut values = Vec::new();
         let mut entries: Vec<Entry> = items
             .iter()
@@ -877,7 +877,7 @@ mod tests {
                 entry
             })
             .collect();
-        bulk_set(store, &mut entries, &values)
+        bulk_set(store, &root, &mut entries, &values)
     }
 
     /// Random keys plus keys sharing 62 nibbles, so leaves with 1-byte values are inlined into their branch.
@@ -908,7 +908,7 @@ mod tests {
     }
 
     fn root_of(items: &[Item]) -> [u8; 32] {
-        apply(&MapStore::default(), items).unwrap()
+        apply(&MapStore::default(), EMPTY_TREE_HASH, items).unwrap()
     }
 
     #[test]
@@ -916,17 +916,17 @@ mod tests {
         let items = generate_items(5000, 0x1234_5678);
 
         let store = MapStore::default();
-        assert_eq!(apply(&store, &[]), Ok(EMPTY_TREE_HASH));
-        let root = apply(&store, &items).unwrap();
+        assert_eq!(apply(&store, EMPTY_TREE_HASH, &[]), Ok(EMPTY_TREE_HASH));
+        let root = apply(&store, EMPTY_TREE_HASH, &items).unwrap();
         let stored_root = store.0.lock().unwrap()[&TreePath::default()].clone();
-        assert_eq!(keccak(stored_rlp(&stored_root).unwrap()), root);
-        assert_eq!(apply(&store, &[]), Ok(root));
+        assert_eq!(keccak(&stored_root), root);
+        assert_eq!(apply(&store, root, &[]), Ok(root));
 
         let batched = MapStore::default();
         let mut batched_root = EMPTY_TREE_HASH;
         let mut start = 0;
         for size in [1, 7, 300, items.len() - 308] {
-            batched_root = apply(&batched, &items[start..start + size]).unwrap();
+            batched_root = apply(&batched, batched_root, &items[start..start + size]).unwrap();
             start += size;
         }
         assert_eq!(batched_root, root);
@@ -940,14 +940,18 @@ mod tests {
         let mut expected: Vec<Item> = changes[..2500].to_vec();
         expected.extend_from_slice(&items[4000..5000]);
         expected.extend_from_slice(&items[5020..]);
-        assert_eq!(apply(&store, &changes), Ok(root_of(&expected)));
+        let changed_root = apply(&store, root, &changes).unwrap();
+        assert_eq!(changed_root, root_of(&expected));
 
         let deletes: Vec<Item> = expected.iter().map(|(key, _)| (*key, Vec::new())).collect();
-        assert_eq!(apply(&store, &deletes), Ok(EMPTY_TREE_HASH));
-        assert!(!store.0.lock().unwrap().contains_key(&TreePath::default()));
+        assert_eq!(apply(&store, changed_root, &deletes), Ok(EMPTY_TREE_HASH));
 
         assert_eq!(
-            apply(&store, &[items[0].clone(), items[0].clone()]),
+            apply(
+                &store,
+                EMPTY_TREE_HASH,
+                &[items[0].clone(), items[0].clone()]
+            ),
             Err(Error::DuplicateKey)
         );
     }
