@@ -53,6 +53,7 @@ using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
@@ -2103,7 +2104,7 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ProcessOne_wraps_parallel_bal_failure_for_sequential_retry()
+    public void ProcessOne_wraps_only_parallel_bal_failure_for_sequential_retry([Values] bool balFailure)
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -2124,20 +2125,33 @@ public partial class BlockProcessorTests
             balManager);
 
         Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(block.Header, "invalid BAL");
+        // A plain tx failure reproduces sequentially whenever the BAL is right, and a wrong BAL fails the hash
+        // check anyway, so only a BAL failure is worth a sequential retry.
+        InvalidBlockException failure = balFailure
+            ? new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(block.Header, "invalid BAL")
+            : new InvalidTransactionException(block.Header, "invalid tx", TransactionResult.ErrorType.MalformedTransaction);
+        BlockAccessListManager.ParallelExecutionException parallelFailure = new(failure);
         transactionsExecutor.ProcessTransactions(
                 Arg.Any<Block>(),
                 Arg.Any<ProcessingOptions>(),
                 Arg.Any<BlockReceiptsTracer>(),
                 Arg.Any<CancellationToken>())
-            .Returns(_ => throw new BlockAccessListManager.ParallelExecutionException(failure));
+            .Returns(_ => throw parallelFailure);
 
         using IDisposable scope = stateProvider.BeginScope(null);
 
-        BlockProcessor.BlockAccessListSequentialRetryException? exception = Assert.Throws<BlockProcessor.BlockAccessListSequentialRetryException>(
+        InvalidBlockException? exception = Assert.Catch<InvalidBlockException>(
             () => processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, HoodiSpecProvider.Instance.GetSpec(block.Header), CancellationToken.None));
 
-        Assert.That(exception!.InnerException, Is.SameAs(failure));
+        if (balFailure)
+        {
+            Assert.That(exception, Is.TypeOf<BlockProcessor.BlockAccessListSequentialRetryException>());
+            Assert.That(exception!.InnerException, Is.SameAs(failure));
+        }
+        else
+        {
+            Assert.That(exception, Is.SameAs(parallelFailure));
+        }
     }
 
     [Test]
@@ -3403,21 +3417,43 @@ public partial class BlockProcessorTests
         int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
 
         // Each heavy tx spins before failing, as one reading undeclared state mid-execution would; a failed tx
-        // spends no block gas, so only the failure itself can stop the tail.
+        // spends no block gas, so only the failure itself can stop the tail. The 21k tx at index lead is scheduled
+        // last, so its earlier canonical slot is filled with a copied failure, which must name the tx that failed.
+        bool leadExecuted = false;
+        ConcurrentDictionary<int, InvalidBlockException?> failures = new();
         using ManualResetEventSlim validationFinished = new(true);
         GatedTailTransactionProcessorAdapter transactionProcessor = new(lead, gasUsed, validationFinished, outcome: tx =>
-            (int)tx.Nonce <= lead ? TransactionResult.Ok
-            : balFailure ? throw new BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException(Build.A.BlockHeader.TestObject, "undeclared storage")
-            : TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted"));
+        {
+            int index = (int)tx.Nonce;
+            if (index == lead) Volatile.Write(ref leadExecuted, true);
+            if (index <= lead) return TransactionResult.Ok;
+            if (!balFailure)
+            {
+                failures[index] = null;
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
+            }
+
+            BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException failure = new(Build.A.BlockHeader.TestObject, "undeclared storage");
+            failures[index] = failure;
+            throw failure;
+        });
         InvalidBlockException ex = ExecuteHeavyTail(lead, gasUsed, ulong.MaxValue, transactionProcessor);
 
         Assert.Multiple(() =>
         {
             // The worker's own failure surfaces, so a BAL failure still reaches the sequential retry.
             Assert.That(ex, Is.InstanceOf<BlockAccessListManager.ParallelExecutionException>());
-            Assert.That(ex.InnerException, balFailure
-                ? Is.InstanceOf<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>()
-                : Is.InstanceOf<InvalidTransactionException>());
+            Assert.That(Volatile.Read(ref leadExecuted), Is.False);
+            if (balFailure)
+            {
+                Assert.That(failures.Any(failure => ReferenceEquals(failure.Value, ex.InnerException)), Is.True);
+            }
+            else
+            {
+                Assert.That(ex.InnerException, Is.InstanceOf<InvalidTransactionException>());
+                Match named = Regex.Match(ex.Message, @"at index (\d+) failed");
+                Assert.That(failures.ContainsKey(int.Parse(named.Groups[1].Value)), Is.True);
+            }
             Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + 1 + 2 * Environment.ProcessorCount));
         });
     }

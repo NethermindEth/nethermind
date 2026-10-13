@@ -214,6 +214,8 @@ public partial class BlockProcessor
 
                                 int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
+                                // These stops apply before a tx starts, so a worker already executing one finishes it:
+                                // up to one tx per worker, each at most 2^24 execution gas (EIP-7825), still runs.
                                 if (state.executedGas.ExceedsLimit)
                                 {
                                     // Unblock the in-order validator on this slot without executing the tx.
@@ -225,7 +227,8 @@ public partial class BlockProcessor
                                 if (state.executedGas.Failure is { } failure)
                                 {
                                     // The validator throws at or before the failed slot, so the rest cannot change the
-                                    // outcome. Reusing the failure keeps a BAL failure retryable sequentially.
+                                    // outcome. Reusing the failure keeps a BAL failure retryable sequentially, and the
+                                    // rejection names the failing tx even when this slot comes before it.
                                     state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, failure));
                                     return state;
                                 }
