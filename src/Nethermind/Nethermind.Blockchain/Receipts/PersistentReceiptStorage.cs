@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public partial class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
+    public class PersistentReceiptStorage : IReceiptStorage, IReceiptMigrationStore
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
@@ -583,6 +583,25 @@ namespace Nethermind.Blockchain.Receipts
             }
             iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
             return true;
+        }
+
+        private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)
+        {
+            Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = static () => null;
+            Func<IReceiptsRecovery.IRecoveryContext?>? logRecoveryContextFactory = null;
+            if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            {
+                recoveryContextFactory = () => _receiptsRecovery.CreateRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
+                logRecoveryContextFactory = () => _receiptsRecovery.CreateLogRecoveryContext(GetRecoveryBlock(blockNumber, blockHash));
+            }
+
+            return new ReceiptsIterator(receiptsData, _receiptsDb, recoveryContextFactory, refDecoder, logRecoveryContextFactory);
+        }
+
+        private readonly struct RecoveryBlockSource(PersistentReceiptStorage storage, ulong blockNumber, Hash256 blockHash)
+            : IReceiptsRecovery.IRecoveryBlockSource
+        {
+            public ReceiptRecoveryBlock GetBlock() => storage.GetRecoveryBlock(blockNumber, blockHash);
         }
 
         private ReceiptRecoveryBlock GetRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
