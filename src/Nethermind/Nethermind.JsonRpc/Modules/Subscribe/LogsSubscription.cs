@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private async Task PublishLogs(ReceiptsEventArgs e)
         {
-            foreach (FilterLog filterLog in GetFilterLogs(e.BlockHeader, e.TxReceipts, e.WasRemoved))
+            foreach (FilterLog filterLog in GetFilterLogs(e.BlockHeader, e.TxReceipts, e.WasRemoved, e.LogIndexPerReceipt))
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             return false;
         }
 
-        private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
+        private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed, bool logIndexPerReceipt)
         {
             if (_filter.Matches(blockHeader.Bloom!))
             {
@@ -131,6 +131,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = receipts[i];
+                    if (logIndexPerReceipt) logIndex = 0;
                     if (_filter.Matches(receipt.Bloom!))
                     {
                         for (int j = 0; j < receipt.Logs!.Length; j++)
