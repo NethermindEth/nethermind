@@ -209,8 +209,11 @@ public class HistoryPrunerTests
 
         pruner.TryPruneHistory(CancellationToken.None);
 
-        balStore.Received(1).DeleteRange(1, 400_000);
-        Assert.That(pruner.BalsDeletePointer, Is.EqualTo(400_000UL));
+        using (Assert.EnterMultipleScope())
+        {
+            balStore.Received(1).DeleteRange(1, 400_000);
+            Assert.That(pruner.BalsDeletePointer, Is.EqualTo(400_000UL));
+        }
     }
 
     [Test]
