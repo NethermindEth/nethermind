@@ -201,7 +201,7 @@ impl Node {
 }
 
 pub fn empty_children() -> Box<[ChildRef; 16]> {
-    Box::new(std::array::from_fn(|_| ChildRef::Empty))
+    Box::new([const { ChildRef::Empty }; 16])
 }
 
 /// Appends the stored form of `node` to `out` and returns the offset where its RLP starts.
@@ -209,35 +209,59 @@ pub fn encode(node: &Node, out: &mut Vec<u8>) -> usize {
     match node {
         Node::Leaf { key, value } => {
             out.push(TAG_LEAF);
-            let (hex_prefix, hex_prefix_length) = hex_prefix(key.as_slice(), true);
-            let hex_prefix = &hex_prefix[..hex_prefix_length];
             let start = out.len();
-            write_list_header(out, string_length(hex_prefix) + string_length(value));
-            write_string(out, hex_prefix);
+            write_list_header(
+                out,
+                hex_prefix_length(key.as_slice()) + string_length(value),
+            );
+            write_hex_prefix(out, key.as_slice(), true);
             write_string(out, value);
             start
         }
         Node::Extension { key, child } => {
             out.push(TAG_EXTENSION);
-            let (hex_prefix, hex_prefix_length) = hex_prefix(key.as_slice(), false);
-            let hex_prefix = &hex_prefix[..hex_prefix_length];
             let start = out.len();
-            write_list_header(out, string_length(hex_prefix) + child.encoded_length());
-            write_string(out, hex_prefix);
+            write_list_header(
+                out,
+                hex_prefix_length(key.as_slice()) + child.encoded_length(),
+            );
+            write_hex_prefix(out, key.as_slice(), false);
             child.write(out);
             start
         }
         Node::Branch { children } => {
+            // Room for every child as a hash, the value, and a whole inline buffer past the end, so each child is a
+            // fixed-size copy.
+            let mut payload = [0u8; 16 * 33 + 1 + 31];
+            let mut payload_length = 0;
             let mut bitset = 0u16;
             let mut has_inline = false;
-            let mut payload_length = 1;
             for (index, child) in children.iter().enumerate() {
-                if !matches!(child, ChildRef::Empty) {
-                    bitset |= 1 << index;
+                match child {
+                    ChildRef::Empty => {
+                        payload[payload_length] = EMPTY_STRING;
+                        payload_length += 1;
+                        continue;
+                    }
+                    ChildRef::Hash(hash) => {
+                        payload[payload_length] = HASH_PREFIX;
+                        payload[payload_length + 1..payload_length + 33].copy_from_slice(hash);
+                        payload_length += 33;
+                    }
+                    ChildRef::Inline(rlp) => {
+                        has_inline = true;
+                        payload[payload_length..payload_length + 31].copy_from_slice(&rlp.data);
+                        payload_length += rlp.length as usize;
+                    }
+                    ChildRef::Pending(_) => {
+                        unreachable!("pending child must be committed before encoding")
+                    }
                 }
-                has_inline |= matches!(child, ChildRef::Inline(_));
-                payload_length += child.encoded_length();
+                bitset |= 1 << index;
             }
+            payload[payload_length] = EMPTY_STRING;
+            payload_length += 1;
+
             out.push(if has_inline {
                 TAG_BRANCH_WITH_INLINE
             } else {
@@ -246,10 +270,7 @@ pub fn encode(node: &Node, out: &mut Vec<u8>) -> usize {
             out.extend_from_slice(&bitset.to_le_bytes());
             let start = out.len();
             write_list_header(out, payload_length);
-            for child in children.iter() {
-                child.write(out);
-            }
-            out.push(EMPTY_STRING);
+            out.extend_from_slice(&payload[..payload_length]);
             start
         }
     }
@@ -389,20 +410,30 @@ fn child_ref(item: &Item) -> Result<ChildRef, Error> {
     }
 }
 
-fn hex_prefix(nibbles: &[u8], is_leaf: bool) -> ([u8; 33], usize) {
-    let mut out = [0u8; 33];
+/// Length of the RLP string holding the hex-prefix encoding of `nibbles`. That encoding is at most 33 bytes and its
+/// first byte is below 0x80, so a single byte is its own string.
+fn hex_prefix_length(nibbles: &[u8]) -> usize {
+    match nibbles.len() / 2 + 1 {
+        1 => 1,
+        length => 1 + length,
+    }
+}
+
+/// Appends the RLP string holding the hex-prefix encoding of `nibbles`. Written straight to `out`, because building
+/// it in a buffer byte by byte and copying that stalls on store forwarding.
+fn write_hex_prefix(out: &mut Vec<u8>, nibbles: &[u8], is_leaf: bool) {
+    if nibbles.len() >= 2 {
+        out.push(0x80 + (nibbles.len() / 2 + 1) as u8);
+    }
     let flag = if is_leaf { 0x20 } else { 0x00 };
     let rest = if nibbles.len() % 2 == 1 {
-        out[0] = flag | 0x10 | nibbles[0];
+        out.push(flag | 0x10 | nibbles[0]);
         &nibbles[1..]
     } else {
-        out[0] = flag;
+        out.push(flag);
         nibbles
     };
-    for (index, pair) in rest.chunks_exact(2).enumerate() {
-        out[index + 1] = (pair[0] << 4) | pair[1];
-    }
-    (out, nibbles.len() / 2 + 1)
+    out.extend(rest.chunks_exact(2).map(|pair| (pair[0] << 4) | pair[1]));
 }
 
 fn decode_hex_prefix(bytes: &[u8]) -> Result<(Nibbles, bool), Error> {

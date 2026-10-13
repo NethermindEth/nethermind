@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 rayon = "1.10"
 sha3 = "0.10"
+mimalloc = { version = "0.1.52", default-features = false }
 
 [profile.release]
 lto = true
