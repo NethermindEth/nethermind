@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Rust;
+using Nethermind.State.Flat.Rust.Fork;
 using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
 

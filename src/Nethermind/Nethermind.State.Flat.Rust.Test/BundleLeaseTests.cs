@@ -75,7 +75,7 @@ public class BundleLeaseTests
     /// <summary>A read-only bundle, or a scope, of the empty state, holding its references on the store and the manager.</summary>
     private static unsafe BundleBaseHandle Open(FlatManagerContainer container, bool scope)
     {
-        NativeFlatManager native = container.Resolve<NativeFlatManager>();
+        Fork.NativeFlatManager native = container.Resolve<Fork.NativeFlatManager>();
         RustFlatStore store = container.Resolve<RustPersistence>().Store;
         ManagerHandle manager = native.Handle;
         store.AddChildReference();

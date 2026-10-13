@@ -58,6 +58,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
             .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
+            .AddDecorator<Nethermind.State.Flat.Rust.Fork.IFlatDbManager, ForkFlatDbManagerTestCompat>()
             .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {
                 // Dont want to make it very slow

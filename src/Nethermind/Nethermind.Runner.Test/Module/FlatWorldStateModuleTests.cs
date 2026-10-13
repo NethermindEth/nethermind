@@ -23,8 +23,12 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust;
 using Nethermind.State.Flat.Rust.Interop;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Sync.Snap;
+using NSubstitute;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
+using Fork = Nethermind.State.Flat.Rust.Fork;
 
 namespace Nethermind.Runner.Test.Module;
 
@@ -69,12 +73,13 @@ public class FlatWorldStateModuleTests
         Assert.That(() => new ContainerBuilder().AddModule(new FlatWorldStateModule(config)).Build().Dispose(), outcome);
     }
 
-    [TestCase(FlatDbBackend.RustPersistence, typeof(FlatDbManager), typeof(PersistenceManager))]
-    [TestCase(FlatDbBackend.Rust, typeof(RustFlatDbManager), typeof(RustPersistenceManager))]
-    public async Task Rust_backends_replace_their_components(FlatDbBackend backend, Type flatDbManager, Type persistenceManager)
+    [TestCase(FlatDbBackend.RustPersistence, typeof(FlatDbManager), typeof(PersistenceManager), 0)]
+    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 0)]
+    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 2)]
+    public async Task Rust_backends_replace_their_components(FlatDbBackend backend, Type flatDbManager, Type persistenceManager, int trieWarmerWorkers)
     {
         if (!NativeMethods.IsAvailable) Assert.Ignore("libnethermind_flatdb.so not built");
-        FlatDbConfig config = new() { Backend = backend, EnableLongFinality = false };
+        FlatDbConfig config = new() { Backend = backend, EnableLongFinality = false, TrieWarmerWorkerCount = trieWarmerWorkers };
         using TempPath basePath = TempPath.GetTempDirectory();
         await using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config))
@@ -82,12 +87,14 @@ public class FlatWorldStateModuleTests
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<IColumnsDb<FlatDbColumns>>(new SnapshotableMemColumnsDb<FlatDbColumns>())
             .AddKeyedSingleton<IDb>(DbNames.Metadata, new MemDb())
+            .AddKeyedSingleton<IDb>(DbNames.Code, new MemDb())
             .AddSingleton<IBlocksConfig>(new BlocksConfig())
             .AddSingleton<IInitConfig>(new InitConfig { BaseDbPath = basePath.Path })
             .AddSingleton<IMetricsConfig>(new MetricsConfig())
             .AddSingleton<IProcessExitSource>(new ProcessExitSource(CancellationToken.None))
             .AddSingleton<IStateHeaderProvider>(UnavailableStateHeaderProvider.Instance)
             .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance)
+            .AddSingleton(Substitute.For<IFlatStateRootIndex>())
             .Build();
 
         using (Assert.EnterMultipleScope())
@@ -95,6 +102,16 @@ public class FlatWorldStateModuleTests
             Assert.That(container.Resolve<IPersistence>(), Is.InstanceOf<RustPersistence>());
             Assert.That(container.Resolve<IPersistenceManager>(), Is.InstanceOf(persistenceManager));
             Assert.That(container.Resolve<IFlatDbManager>(), Is.InstanceOf(flatDbManager));
+            if (backend == FlatDbBackend.Rust)
+            {
+                IFlatDbManager guard = container.Resolve<IFlatDbManager>();
+                Assert.That(container.Resolve<Fork.IFlatDbManager>(), Is.SameAs(container.Resolve<Fork.RustFlatDbManager>()));
+                Assert.That(container.Resolve<Fork.FlatWorldStateManager>().GlobalStateReader, Is.InstanceOf<Fork.FlatStateReader>());
+                Assert.That(guard.HasStateForBlock(StateId.PreGenesis), Is.EqualTo(container.Resolve<Fork.IFlatDbManager>().HasStateForBlock(StateId.PreGenesis)));
+                Assert.That(() => guard.GatherReadOnlySnapshotBundle(StateId.PreGenesis), Throws.TypeOf<NotSupportedException>());
+                Assert.That(() => guard.GatherSnapshotBundle(StateId.PreGenesis, ResourcePool.Usage.ReadOnlyProcessingEnv), Throws.TypeOf<NotSupportedException>());
+                Assert.That(container.Resolve<ITrieWarmer>(), trieWarmerWorkers > 0 ? Is.InstanceOf<Fork.TrieWarmer>() : Is.InstanceOf<NoopTrieWarmer>());
+            }
         }
     }
 }

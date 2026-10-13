@@ -151,7 +151,7 @@ public partial class NativeLogAndSeamTests
             for (ulong number = 0; number <= 3; number++) container.AddBlock(number);
 
             BlockPlan.Empty.AddTo(container, Block(2), Block(3));
-            container.Manager.FlushCache(CancellationToken.None);
+            container.Arm.FlushCache(CancellationToken.None);
             BlockPlan.Empty.AddTo(container, Block(1), new StateId(2, Keccak.Compute("fork 2")));
             if (backend != FlatDbBackend.CSharp) container.Resolve<RustPersistence>().Store.PumpLogs();
         }

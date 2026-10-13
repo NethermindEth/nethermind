@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use flatdb_core::bundle::ReadOnlySnapshotBundle;
 use flatdb_core::kv::ReadFlags;
 use flatdb_core::persistence::{EmptyIterator, PersistenceReader, PersistenceResult};
 use flatdb_core::repository::StateHeaderProvider;
@@ -33,6 +34,23 @@ pub fn snapshot(from: StateId, to: StateId, fill: impl FnOnce(&mut SnapshotConte
     let mut builder = SnapshotContentBuilder::new();
     fill(&mut builder);
     Arc::new(Snapshot::new(from, to, builder.build()))
+}
+
+/// The slot a caller reads that passes the newest clear of `address` as its self-destruct index, as
+/// `FlatStateReader` does: through the bundle's slot filter when `filtered`.
+pub fn read_slot<R: PersistenceReader>(
+    bundle: &ReadOnlySnapshotBundle<R>,
+    address: &Address,
+    slot: &U256,
+    filtered: bool,
+) -> PersistenceResult<Option<U256>> {
+    let self_destruct_snapshot_idx = bundle.determine_self_destruct_snapshot_idx(address);
+    let (value, _) = if filtered {
+        bundle.get_slot_filtered(address, slot, self_destruct_snapshot_idx)?
+    } else {
+        bundle.get_slot(address, slot, self_destruct_snapshot_idx)?
+    };
+    Ok(value)
 }
 
 pub fn empty_snapshot(from: StateId, to: StateId) -> Arc<Snapshot> {

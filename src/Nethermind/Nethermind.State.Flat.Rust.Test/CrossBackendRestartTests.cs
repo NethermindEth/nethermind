@@ -66,21 +66,21 @@ public class CrossBackendRestartTests
         await using (FlatManagerContainer first = new(FlatManagerContainer.Config(writer, layout, carryForward: false), path.Path, finality))
         {
             for (ulong number = 0; number < FirstRunBlocks; number++) Add(first, finality, number);
-            if (flushBeforeShutdown) first.Manager.FlushCache(CancellationToken.None);
+            if (flushBeforeShutdown) first.Arm.FlushCache(CancellationToken.None);
             observed.Add($"persisted at shutdown {first.PersistenceManager.GetCurrentPersistedStateId()}");
         }
 
         await using FlatManagerContainer second = new(FlatManagerContainer.Config(reader, layout, carryForward: false), path.Path, finality);
         StateId persisted = second.PersistenceManager.GetCurrentPersistedStateId();
         observed.Add($"persisted after reopen {persisted}");
-        observed.Add($"head retained after reopen {second.Manager.HasStateForBlock(Block(FirstRunBlocks - 1))}");
+        observed.Add($"head retained after reopen {second.Arm.HasStateForBlock(Block(FirstRunBlocks - 1))}");
         observed.AddRange(Columns(second, "after reopen"));
         observed.AddRange(Reads(second, persisted));
 
         // The blocks above the persisted state are processed again, as the node does after a shutdown without a flush.
         for (ulong number = persisted.BlockNumber + 1; number < FirstRunBlocks + SecondRunBlocks; number++) Add(second, finality, number);
         observed.AddRange(Reads(second, Block(FirstRunBlocks + SecondRunBlocks - 1)));
-        second.Manager.FlushCache(CancellationToken.None);
+        second.Arm.FlushCache(CancellationToken.None);
         observed.Add($"persisted at the end {second.PersistenceManager.GetCurrentPersistedStateId()}");
         observed.AddRange(Columns(second, "at the end"));
         return observed;
@@ -112,7 +112,7 @@ public class CrossBackendRestartTests
     private static byte[] Rlp(ulong number, int length) => [.. Enumerable.Range(0, length).Select(i => (byte)(number + (ulong)i))];
 
     private static IEnumerable<string> Reads(FlatManagerContainer container, StateId state) =>
-        BundleReads.Read(container.Manager, state, Addresses, Slots, Paths, Owners).Select(read => $"at {state}: {read}");
+        BundleReads.Read(container.Arm, state, Addresses, Slots, Paths, Owners).Select(read => $"at {state}: {read}");
 
     private static IEnumerable<string> Columns(FlatManagerContainer container, string when) =>
         FlatTestDbs.DumpAll(container.Db).Select(entry => $"{when}: {entry}");

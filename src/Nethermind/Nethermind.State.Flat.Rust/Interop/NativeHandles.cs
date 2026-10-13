@@ -37,23 +37,9 @@ internal abstract class StoreChildHandle : SafeHandle
     protected abstract FdbStatus Release(nint handle);
 }
 
-internal class ReaderHandle(RustFlatStore store, nint handle) : StoreChildHandle(store, handle)
+internal sealed class ReaderHandle(RustFlatStore store, nint handle) : StoreChildHandle(store, handle)
 {
     protected override FdbStatus Release(nint handle) => NativeMethods.fdb_reader_release(handle);
-}
-
-/// <summary>A bundle gathered from a native manager, which it keeps alive, as it reads through the manager's snapshots.</summary>
-/// <param name="store">The store; its reference, taken before the native handle was created, passes to this handle.</param>
-/// <param name="manager">The manager; its reference, taken with the store's, passes to this handle too.</param>
-/// <param name="handle">The native bundle.</param>
-internal sealed class BundleHandle(RustFlatStore store, ManagerHandle manager, nint handle) : ReaderHandle(store, handle)
-{
-    protected override FdbStatus Release(nint handle)
-    {
-        FdbStatus status = base.Release(handle);
-        manager.DangerousRelease();
-        return status;
-    }
 }
 
 /// <summary>

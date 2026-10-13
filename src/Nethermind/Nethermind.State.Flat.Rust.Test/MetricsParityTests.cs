@@ -15,6 +15,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -35,14 +36,10 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// The metrics are statics, so the fixture runs alone, with detailed metrics on and every histogram recorded.
 /// </para>
 /// <para>
-/// Under <see cref="FlatDbBackend.Rust"/> the C# bundle wraps the native one, which serves the in-memory snapshots, so
-/// the C# bundle labels every read <c>*_persistence</c>, <c>state_rlp</c> or <c>storage_rlp</c> in
-/// <see cref="Metrics.ReadOnlySnapshotBundleTimes"/>, observes the slots a self-destruct cut off, which C# answers
-/// unobserved, and counts every trie node in <see cref="TriePruningMetrics.LoadedFromDbNodesCount"/>, none in
-/// <see cref="TriePruningMetrics.LoadedFromCacheNodesCount"/>; the native <see cref="SeamCounters"/> tell the snapshot
-/// hits apart, so the C# split is checked against them. The <see cref="Metrics.ActivePooledResource"/> family counts
-/// pooled C# objects, which the native snapshots do not use, so it is not compared. A plain slot read through a shared
-/// bundle builds the native slot filter, which C# builds for filtered reads only.
+/// Under <see cref="FlatDbBackend.Rust"/> the forked bundles label their reads by where the native bundle served them,
+/// as the C# bundles label theirs, but a trie node read finds no node object: a hash-only placeholder in a snapshot
+/// counts where the read ends, the database, where C# counts both its find in the snapshot and its load. The
+/// <see cref="Metrics.ActivePooledResource"/> family is not compared here.
 /// </para>
 /// </remarks>
 [NonParallelizable]
@@ -128,15 +125,9 @@ public class MetricsParityTests
         }
     }
 
-    /// <summary>
-    /// The documented difference of <see cref="FlatDbBackend.Rust"/>: a plain slot read through a shared bundle, as
-    /// <c>FlatStateReader</c> reads, builds the slot filter, as the native bundle cannot tell it from a filtered read.
-    /// </summary>
-    /// <returns>The slot filters built.</returns>
-    [TestCase(FlatDbBackend.CSharp, ExpectedResult = 0)]
-    [TestCase(FlatDbBackend.RustPersistence, ExpectedResult = 0)]
-    [TestCase(FlatDbBackend.Rust, ExpectedResult = 1)]
-    public async Task<long> A_plain_slot_read_through_a_shared_bundle_builds_the_slot_filter_only_on_rust(FlatDbBackend backend)
+    /// <summary>A plain slot read through a shared bundle, as <c>FlatStateReader</c> reads, builds no slot filter.</summary>
+    [Test]
+    public async Task A_plain_slot_read_through_a_shared_bundle_builds_no_slot_filter([Values] FlatDbBackend backend)
     {
         if (backend != FlatDbBackend.CSharp) RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
@@ -144,13 +135,13 @@ public class MetricsParityTests
         for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
         long builds = Metrics.InMemorySlotFilterBuilds;
 
-        using (ReadOnlySnapshotBundle bundle = container.Manager.GatherReadOnlySnapshotBundle(Block(2)))
+        using (IBundleView bundle = container.Arm.GatherReadOnly(Block(2), ReaderFlags.None))
         {
-            bundle.GetSlot(BlockAddress, 1, bundle.DetermineSelfDestructSnapshotIdx(BlockAddress), out _);
+            bundle.GetSlot(BlockAddress, 1, bundle.DetermineSelfDestructSnapshotIdx(BlockAddress));
         }
 
         Publish(container, backend);
-        return Metrics.InMemorySlotFilterBuilds - builds;
+        Assert.That(Metrics.InMemorySlotFilterBuilds - builds, Is.Zero);
     }
 
     /// <summary>A bundle disposed after its manager gives the memory of its slot filter back, as on the C# backend.</summary>
@@ -163,10 +154,10 @@ public class MetricsParityTests
         for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
         long memory = Metrics.InMemorySlotFilterMemory;
 
-        SnapshotBundle bundle = container.Manager.GatherSnapshotBundle(Block(2), ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true);
-        bundle.GetSlot(BlockAddress, 1, bundle.DetermineSelfDestructSnapshotIdx(BlockAddress), out _);
-        await ((IAsyncDisposable)container.Manager).DisposeAsync();
-        if (backend == FlatDbBackend.Rust) container.Resolve<NativeFlatManager>().Dispose();
+        IBundleView bundle = container.Arm.GatherScope(Block(2), ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true);
+        bundle.GetSlot(BlockAddress, 1, bundle.DetermineSelfDestructSnapshotIdx(BlockAddress));
+        await (backend == FlatDbBackend.Rust ? container.Resolve<Fork.RustFlatDbManager>() : (IAsyncDisposable)container.Resolve<IFlatDbManager>()).DisposeAsync();
+        if (backend == FlatDbBackend.Rust) container.Resolve<Fork.NativeFlatManager>().Dispose();
         long heldAfterTheManager = Metrics.InMemorySlotFilterMemory - memory;
         bundle.Dispose();
 
@@ -174,44 +165,28 @@ public class MetricsParityTests
         Assert.That(Metrics.InMemorySlotFilterMemory, Is.EqualTo(memory));
     }
 
-    /// <summary>The documented difference of the native bundles, reconciled through the seam counters.</summary>
+    /// <summary>
+    /// The reads of the forked bundles: labelled as the C# ones, but a hash-only placeholder found in a snapshot counts
+    /// once, where the read ends, so the node hits of the snapshots are fewer by the placeholders found.
+    /// </summary>
     private static void AssertNativeBundleReads(Observed csharp, Observed rust)
     {
+        string[] nodeHits = ["state_node_snapshot", "storage_node_snapshot"];
         long Seam(SeamCounter counter) => rust.Seam[(int)counter];
         long Times(Observed observed, string label) => observed.Histograms.GetValueOrDefault((ReadTimes, label)).Count;
+        string[] OtherReads(Observed observed) => [.. Only(observed.Histograms, ReadTimes).Where(read => !nodeHits.Any(hit => read.StartsWith($"{hit}:", StringComparison.Ordinal)))];
 
-        long stateNodeHits = Seam(SeamCounter.BundleStateNodeSnapshot);
-        long storageNodeHits = Seam(SeamCounter.BundleStorageNodeSnapshot);
-        long csharpAccounts = Times(csharp, "account_snapshot") + Times(csharp, "account_persistence") + Times(csharp, "account_persistence_null");
-        long csharpSlots = Times(csharp, "storage_snapshot") + Times(csharp, "storage_persistence") + Times(csharp, "storage_persistence_null");
-
-        Assert.That(Only(rust.Histograms, ReadTimes).Where(static label => label.Contains("_snapshot:", StringComparison.Ordinal)), Is.Empty,
-            "the C# bundle over the native one never hits a snapshot of its own");
+        Assert.That(OtherReads(rust), Is.EqualTo(OtherReads(csharp)), "every read but the node hits, by label");
+        Assert.That(nodeHits.Select(hit => Times(rust, hit)), Is.All.Positive, "the stream hits nodes in snapshots");
+        Assert.That(nodeHits.Select(hit => Times(csharp, hit) - Times(rust, hit)), Is.All.GreaterThanOrEqualTo(0), "C# also counts the placeholders it finds");
+        Assert.That(rust.LoadedFromDb, Is.EqualTo(csharp.LoadedFromDb), "trie nodes loaded from the database");
         Assert.That(
-            new[] { Seam(SeamCounter.BundleAccountSnapshot), Seam(SeamCounter.BundleAccountPersistence), Seam(SeamCounter.BundleAccountPersistenceNull) },
-            Is.EqualTo(new[] { Times(csharp, "account_snapshot"), Times(csharp, "account_persistence"), Times(csharp, "account_persistence_null") }),
-            "the native account reads split as the C# labels");
-        Assert.That(Times(rust, "account_persistence") + Times(rust, "account_persistence_null"), Is.EqualTo(csharpAccounts), "account reads");
+            new[] { rust.LoadedFromCache, csharp.LoadedFromCache },
+            Is.EqualTo(new[] { nodeHits.Sum(hit => Times(rust, hit)), nodeHits.Sum(hit => Times(csharp, hit)) }),
+            "trie nodes loaded from cache are the node hits of the snapshots");
         Assert.That(
-            new[] { Seam(SeamCounter.BundleStorageSnapshot), Seam(SeamCounter.BundleStoragePersistence), Seam(SeamCounter.BundleStoragePersistenceNull) },
-            Is.EqualTo(new[] { Times(csharp, "storage_snapshot"), Times(csharp, "storage_persistence"), Times(csharp, "storage_persistence_null") }),
-            "the native slot reads split as the C# labels");
-        Assert.That(Times(rust, "storage_persistence") + Times(rust, "storage_persistence_null"), Is.EqualTo(csharpSlots + Seam(SeamCounter.BundleStorageSelfDestructed)),
-            "slot reads, with the cut-off ones C# leaves unobserved");
-        Assert.That(
-            new[] { Seam(SeamCounter.BundleStateNodePersistence), Seam(SeamCounter.BundleStorageNodePersistence) },
-            Is.EqualTo(new[] { Times(csharp, "state_rlp"), Times(csharp, "storage_rlp") }),
-            "the native trie node reads from the database are the C# ones");
-        Assert.That(
-            new[] { Times(rust, "state_rlp"), Times(rust, "storage_rlp") },
-            Is.EqualTo(new[] { stateNodeHits + Seam(SeamCounter.BundleStateNodePersistence), storageNodeHits + Seam(SeamCounter.BundleStorageNodePersistence) }),
-            "every native trie node read is labelled a database read");
-        Assert.That(rust.LoadedFromDb - stateNodeHits - storageNodeHits, Is.EqualTo(csharp.LoadedFromDb), "trie nodes loaded from the database, less the native snapshot hits");
-        Assert.That((rust.LoadedFromCache, csharp.LoadedFromCache), Is.EqualTo((0L, Times(csharp, "state_node_snapshot") + Times(csharp, "storage_node_snapshot"))));
-        Assert.That(stateNodeHits, Is.GreaterThan(0).And.LessThanOrEqualTo(Times(csharp, "state_node_snapshot")), "the C# hits include the placeholders");
-        Assert.That(
-            Seam(SeamCounter.ReaderLoadStateRlp) + Seam(SeamCounter.ReaderLoadStorageRlp),
-            Is.EqualTo(Times(rust, "state_rlp") + Times(rust, "storage_rlp")),
+            Seam(SeamCounter.RobLoadStateRlp) + Seam(SeamCounter.RobLoadStorageRlp),
+            Is.EqualTo(Times(rust, "state_rlp") + Times(rust, "storage_rlp") + nodeHits.Sum(hit => Times(rust, hit))),
             "one call into the library per trie node read");
     }
 
@@ -240,7 +215,7 @@ public class MetricsParityTests
     private static void Publish(FlatManagerContainer container, FlatDbBackend backend)
     {
         if (backend != FlatDbBackend.CSharp) container.Resolve<RustPersistence>().PublishMetrics();
-        if (backend == FlatDbBackend.Rust) container.Resolve<NativeFlatManager>().PublishMetrics();
+        if (backend == FlatDbBackend.Rust) container.Resolve<Fork.NativeFlatManager>().PublishMetrics();
     }
 
     private static string[] Render(Dictionary<string, long> scalars) =>
@@ -354,14 +329,14 @@ public class MetricsParityTests
                 if (number >= FinalityLag && number % 2 == 0) finality.Finalize(number - FinalityLag, canonical => _canonical[(int)canonical]);
 
                 container.PersistUpTo(head);
-                BundleReads.Read(container.Manager, head, _addresses, _slots, _paths, owners);
+                BundleReads.Read(container.Arm, head, _addresses, _slots, _paths, owners);
             }
 
             StateId persisted = container.PersistenceManager.GetCurrentPersistedStateId();
             Plan(owners).AddTo(container, _canonical[^2], head);
             BlockPlan.Empty.AddTo(container, _canonical[(int)persisted.BlockNumber - 1], new StateId(persisted.BlockNumber, Keccak.Compute("rejected")));
             beforeFlush();
-            container.Manager.FlushCache(CancellationToken.None);
+            container.Arm.FlushCache(CancellationToken.None);
         }
 
         private BlockPlan Plan(Hash256[] owners) => new(

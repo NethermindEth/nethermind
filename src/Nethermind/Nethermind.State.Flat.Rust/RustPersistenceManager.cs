@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.Rust;
 /// hook is not supported, so the cancellation token of <see cref="FlushToPersistence"/>, which only that hook reads, is
 /// ignored.
 /// </remarks>
-internal sealed unsafe class RustPersistenceManager(NativeFlatManager manager) : IPersistenceManager
+internal sealed unsafe class RustPersistenceManager(Fork.NativeFlatManager manager) : IPersistenceManager
 {
     public IPersistence.IPersistenceReader LeaseReader(ReaderFlags flags = ReaderFlags.None) => manager.Persistence.CreateReader(flags);
 

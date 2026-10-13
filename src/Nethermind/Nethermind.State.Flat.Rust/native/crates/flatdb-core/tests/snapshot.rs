@@ -13,10 +13,10 @@ use std::collections::{BTreeMap, HashMap};
 use common::hex;
 use common::snapshots::{address, indexed_address, snapshot, state_id};
 use flatdb_core::keccak::keccak256;
-use flatdb_core::snapshot::content::{SnapshotContentBuilder, SnapshotContentCounts};
+use flatdb_core::snapshot::SnapshotTier;
+use flatdb_core::snapshot::content::SnapshotContentCounts;
 use flatdb_core::snapshot::keys::compare_tree_paths;
 use flatdb_core::snapshot::sorted_merge::{SortedMergeMap, sort_run};
-use flatdb_core::snapshot::{Snapshot, SnapshotTier};
 use flatdb_core::types::{Account, Address, StateId, TreePath, U256};
 use rstest::rstest;
 
@@ -91,49 +91,6 @@ fn lookups_tell_written_zero_and_deleted_from_unwritten() {
     assert_eq!(
         (snapshot.from(), snapshot.to(), snapshot.is_sorted()),
         (state_id(1, 0), state_id(2, 0), false)
-    );
-}
-
-/// The storage nodes of `second` move whole into the empty map of `first`, the state nodes and accounts merge key by key.
-#[test]
-fn absorb_moves_writes_and_remaps_node_arenas() {
-    let mut first = SnapshotContentBuilder::with_capacity(SnapshotContentCounts {
-        accounts: 1,
-        state_nodes: 1,
-        ..SnapshotContentCounts::default()
-    });
-    first.set_state_node(TreePath::from_hex("01"), [0x01; 32], &hex("0xc101"));
-    first.set_account(address(0xA1), None);
-    let mut second = SnapshotContentBuilder::new();
-    second.set_state_node(TreePath::from_hex("02"), [0x02; 32], &hex("0xc20202"));
-    second.set_storage_node([0x09; 32], TreePath::from_hex("03"), [0x03; 32], &hex("0xc3030303"));
-    second.set_storage_node([0x09; 32], TreePath::from_hex("04"), [0x04; 32], &[]);
-    second.set_account(address(0xA1), Some(Account::new(2, U256::ZERO)));
-    first.absorb(second);
-
-    let snapshot = Snapshot::new(state_id(0, 0), state_id(1, 0), first.build());
-
-    assert_eq!(
-        snapshot.try_get_state_node(&TreePath::from_hex("01")).unwrap().rlp,
-        &hex("0xc101")[..]
-    );
-    assert_eq!(
-        snapshot.try_get_state_node(&TreePath::from_hex("02")).unwrap().rlp,
-        &hex("0xc20202")[..]
-    );
-    let storage = snapshot
-        .try_get_storage_node(&[0x09; 32], &TreePath::from_hex("03"))
-        .unwrap();
-    assert_eq!(storage.rlp, &hex("0xc3030303")[..]);
-    assert!(
-        snapshot
-            .try_get_storage_node(&[0x09; 32], &TreePath::from_hex("04"))
-            .unwrap()
-            .is_hash_only_placeholder()
-    );
-    assert_eq!(
-        snapshot.try_get_account(&address(0xA1)),
-        Some(Some(Account::new(2, U256::ZERO)))
     );
 }
 

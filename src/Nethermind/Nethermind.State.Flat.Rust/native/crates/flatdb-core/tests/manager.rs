@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use common::any_kv::Backend;
 use common::manager::{BLOCK0, Fixture, PM_CONFIG, TestPersistence, account, logged_warnings, state};
-use common::snapshots::{address, snapshot};
+use common::snapshots::{address, read_slot, snapshot};
 use flatdb_core::bundle::ReadSource;
 use flatdb_core::compactor::{Compactor, SnapshotCompactor};
 use flatdb_core::host::HostError;
@@ -366,13 +366,13 @@ fn the_slot_filter_of_a_shared_bundle_is_counted_while_it_lives() {
     let full_scan = manager
         .gather_read_only_snapshot_bundle(&state("2"), ReaderFlags::FULL_SCAN)
         .unwrap();
-    assert_eq!(full_scan.try_get_slot(&address(0xA1), &slot, true).unwrap(), None);
+    assert_eq!(read_slot(&full_scan, &address(0xA1), &slot, true).unwrap(), None);
     assert_eq!(counters.in_memory_slot_filter_builds.load(Ordering::Relaxed), 0);
 
     let shared = manager
         .gather_read_only_snapshot_bundle(&state("2"), ReaderFlags::NONE)
         .unwrap();
-    assert_eq!(shared.try_get_slot(&address(0xA1), &slot, true).unwrap(), None);
+    assert_eq!(read_slot(&shared, &address(0xA1), &slot, true).unwrap(), None);
     assert_eq!(counters.in_memory_slot_filter_builds.load(Ordering::Relaxed), 1);
     assert!(counters.in_memory_slot_filter_memory.load(Ordering::Relaxed) > 0);
 
@@ -794,7 +794,7 @@ fn check_reads<R: PersistenceReader>(
         );
         for slot in 0..SLOTS {
             let slot = U256::from_u64(slot);
-            let value = bundle.try_get_slot(&address, &slot, rng.chance(50)).unwrap();
+            let value = read_slot(bundle, &address, &slot, rng.chance(50)).unwrap();
             assert_eq!(
                 value,
                 expected.slots.get(&(address, slot)).copied().flatten(),

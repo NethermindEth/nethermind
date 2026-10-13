@@ -16,6 +16,7 @@ pub mod manager_exports;
 pub mod op_stream;
 pub mod persistence;
 pub mod scope_exports;
+#[cfg(any(test, feature = "test-api"))]
 pub mod snapshot_stream;
 pub mod store;
 

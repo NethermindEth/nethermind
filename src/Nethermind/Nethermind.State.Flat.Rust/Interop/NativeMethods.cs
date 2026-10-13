@@ -191,25 +191,7 @@ internal static unsafe partial class NativeMethods
     public static partial FdbStatus fdb_persisted_event_release(nint owner);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_bld_new(FfiStateId* from, FfiStateId* to, nuint accounts, nuint storages, nuint stateNodes, nuint storageNodes, nint* builder);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_bld_append(nint builder, byte* records, nuint length);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_bld_absorb(nint into, nint from);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_bld_release(nint builder);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_bld_add_snapshot(ManagerHandle manager, nint builder);
-
-    [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_queue_compaction(ManagerHandle manager, FfiStateId* to, long* stallNs);
-
-    [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_gather(ManagerHandle manager, FfiStateId* baseBlock, uint readerFlags, byte filtered, nint* reader, FfiStateId* readerState);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_has_state(ManagerHandle manager, FfiStateId* stateId, byte* has);

@@ -10,9 +10,7 @@
 //! scope's adapters, whose `FindCachedOrUnknown` rejects a node of another hash.
 //!
 //! Every read reports where it was served from ([`ReadSource`]). Slot reads take the self-destruct index of the caller,
-//! as C# does. The ffi `BundleReader`, which wraps this bundle as the persistence reader of a C# bundle without
-//! snapshots, reads slots through [`ReadOnlySnapshotBundle::try_get_slot`] instead, which applies the newest clear
-//! itself from a lazily built index.
+//! as C# does.
 //!
 //! A bundle is shared as `Arc<ReadOnlySnapshotBundle>` (the C# `TryLease`/`Dispose`); dropping the last one drops the
 //! snapshot leases, the slot filter and the persistence reader.
@@ -22,7 +20,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
-use hashbrown::{DefaultHashBuilder, HashMap};
+use hashbrown::DefaultHashBuilder;
 use thiserror::Error;
 
 use crate::bloom::BloomFilter;
@@ -81,7 +79,6 @@ pub struct ReadOnlySnapshotBundle<R> {
     slot_filter_state: AtomicU8,
     slot_filter: OnceLock<BloomFilter>,
     slot_filter_hasher: DefaultHashBuilder,
-    self_destruct_index: OnceLock<HashMap<Address, usize>>,
     stats: Option<Arc<FlatStats>>,
 }
 
@@ -105,7 +102,6 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
             slot_filter_state: AtomicU8::new(slot_filter_state),
             slot_filter: OnceLock::new(),
             slot_filter_hasher: DefaultHashBuilder::default(),
-            self_destruct_index: OnceLock::new(),
             stats: None,
         }
     }
@@ -120,7 +116,6 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
             slot_filter_state: AtomicU8::new(SLOT_FILTER_SKIPPED),
             slot_filter: OnceLock::new(),
             slot_filter_hasher: DefaultHashBuilder::default(),
-            self_destruct_index: OnceLock::new(),
             stats: None,
         }
     }
@@ -251,22 +246,6 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
             return Ok((None, ReadSource::SelfDestructed));
         }
         self.persisted_slot(address, slot)
-    }
-
-    /// The slot the bundle's state holds, the self-destruct cut-off applied: [`ReadOnlySnapshotBundle::get_slot`], or
-    /// [`ReadOnlySnapshotBundle::get_slot_filtered`] when `filtered`, at the newest clear of `address`. For the ffi
-    /// `BundleReader`, whose C# bundle never passes an index.
-    pub fn try_get_slot(&self, address: &Address, slot: &U256, filtered: bool) -> PersistenceResult<Option<U256>> {
-        let self_destruct_snapshot_idx = self
-            .self_destruct_index()
-            .get(address)
-            .map_or(-1, |index| *index as i32);
-        let (value, _) = if filtered {
-            self.get_slot_filtered(address, slot, self_destruct_snapshot_idx)?
-        } else {
-            self.get_slot(address, slot, self_destruct_snapshot_idx)?
-        };
-        Ok(value)
     }
 
     /// Port of `TryFindStateNodes`: the newest snapshot's node at `path`, which can be a placeholder.
@@ -457,19 +436,6 @@ impl<R: PersistenceReader> ReadOnlySnapshotBundle<R> {
                 None
             }
         }
-    }
-
-    fn self_destruct_index(&self) -> &HashMap<Address, usize> {
-        self.self_destruct_index.get_or_init(|| {
-            let mut index = HashMap::new();
-            // Oldest first, so the newest clear of an address overwrites the older ones.
-            for (position, snapshot) in self.snapshots.iter().enumerate() {
-                for (address, _) in snapshot.self_destructed_storage_addresses() {
-                    index.insert(*address, position);
-                }
-            }
-            index
-        })
     }
 }
 

@@ -1,5 +1,4 @@
-//! The snapshot manager handle and its construction over a store, the snapshot builder handle, and the reader a
-//! gathered bundle is handed to C# as.
+//! The snapshot manager handle and its construction over a store.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -9,19 +8,16 @@ use flatdb_core::bundle::ReadOnlySnapshotBundle;
 use flatdb_core::compactor::{Compactor, SnapshotCompactor};
 use flatdb_core::events::{PersistedNodeEvents, PersistedNodes};
 use flatdb_core::host::HostCallbacks;
-use flatdb_core::kv::ReadFlags;
 use flatdb_core::manager::{FlatDbManager, ManagerConfig};
-use flatdb_core::persistence::{EmptyIterator, NoopPersistenceReader, PersistenceReader, PersistenceResult};
 use flatdb_core::persistence_manager::{PersistenceManager, PersistenceManagerConfig};
 use flatdb_core::repository::SnapshotRepository;
 use flatdb_core::schedule::CompactionSchedule;
-use flatdb_core::snapshot::content::SnapshotContentBuilder;
 use flatdb_core::stats::FlatStats;
-use flatdb_core::types::{Account, Address, Hash256, StateId, TreePath, U256};
+use flatdb_core::types::StateId;
 
 use crate::abi::{FdbHost, FdbMgrCfg, FdbStatus, FfiError, FfiPersistedNode, FfiStateId, PERSISTED_STORAGE_NODE};
 use crate::guard::Poison;
-use crate::persistence::{ErasedIter, ErasedPersistence, ErasedReader};
+use crate::persistence::{ErasedPersistence, ErasedReader};
 use crate::store::FdbStore;
 
 pub type Manager = FlatDbManager<ErasedPersistence>;
@@ -143,98 +139,6 @@ impl From<PersistedNodes> for PersistedEvent {
                 })
                 .collect(),
         }
-    }
-}
-
-/// A snapshot being built, handed to C# as an opaque pointer until `fdb_bld_add_snapshot` consumes it.
-pub struct FdbBuilder {
-    pub from: StateId,
-    pub to: StateId,
-    pub content: SnapshotContentBuilder,
-}
-
-/// A gathered bundle as a reader: the reads of `ReadOnlySnapshotBundle` over the snapshots, then the persistence; the
-/// raw reads and iterators, which the C# bundle never serves, from the persistence alone.
-pub struct BundleReader {
-    pub bundle: Arc<Bundle>,
-    /// Whether slot reads go through the bundle's negative slot filter (`GetSlotFiltered`).
-    pub filtered: bool,
-}
-
-impl PersistenceReader for BundleReader {
-    type Iter = ErasedIter;
-
-    fn get_account(&self, address: &Address) -> PersistenceResult<Option<Account>> {
-        Ok(self.bundle.get_account(address)?.0)
-    }
-
-    fn try_get_slot(&self, address: &Address, slot: &U256) -> PersistenceResult<Option<U256>> {
-        self.bundle.try_get_slot(address, slot, self.filtered)
-    }
-
-    fn current_state(&self) -> StateId {
-        self.bundle.reader_state()
-    }
-
-    fn load_state_rlp<T>(
-        &self,
-        path: &TreePath,
-        flags: ReadFlags,
-        read: impl FnOnce(&[u8]) -> T,
-    ) -> PersistenceResult<Option<T>> {
-        Ok(self.bundle.load_state_rlp_unchecked(path, flags, read)?.0)
-    }
-
-    fn load_storage_rlp<T>(
-        &self,
-        address_hash: &Hash256,
-        path: &TreePath,
-        flags: ReadFlags,
-        read: impl FnOnce(&[u8]) -> T,
-    ) -> PersistenceResult<Option<T>> {
-        Ok(self
-            .bundle
-            .load_storage_rlp_unchecked(address_hash, path, flags, read)?
-            .0)
-    }
-
-    fn get_account_raw(&self, address_hash: &Hash256) -> PersistenceResult<Option<Vec<u8>>> {
-        match self.bundle.persistence_reader() {
-            Some(reader) => reader.get_account_raw(address_hash),
-            None => NoopPersistenceReader.get_account_raw(address_hash),
-        }
-    }
-
-    fn try_get_storage_raw(&self, address_hash: &Hash256, slot_hash: &Hash256) -> PersistenceResult<Option<U256>> {
-        match self.bundle.persistence_reader() {
-            Some(reader) => reader.try_get_storage_raw(address_hash, slot_hash),
-            None => NoopPersistenceReader.try_get_storage_raw(address_hash, slot_hash),
-        }
-    }
-
-    fn create_account_iterator(&self, start_key: &Hash256, end_key: &Hash256) -> PersistenceResult<ErasedIter> {
-        match self.bundle.persistence_reader() {
-            Some(reader) => reader.create_account_iterator(start_key, end_key),
-            None => Ok(ErasedIter(Box::new(EmptyIterator))),
-        }
-    }
-
-    fn create_storage_iterator(
-        &self,
-        account_key: &Hash256,
-        start_slot_key: &Hash256,
-        end_slot_key: &Hash256,
-    ) -> PersistenceResult<ErasedIter> {
-        match self.bundle.persistence_reader() {
-            Some(reader) => reader.create_storage_iterator(account_key, start_slot_key, end_slot_key),
-            None => Ok(ErasedIter(Box::new(EmptyIterator))),
-        }
-    }
-
-    fn is_preimage_mode(&self) -> bool {
-        self.bundle
-            .persistence_reader()
-            .is_some_and(PersistenceReader::is_preimage_mode)
     }
 }
 

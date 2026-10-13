@@ -10,7 +10,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 
-namespace Nethermind.State.Flat.Rust;
+namespace Nethermind.State.Flat.Rust.Fork;
 
 /// <summary>
 /// The native snapshot manager — <c>FlatDbManager</c> and <c>PersistenceManager</c> in the Rust library — over the store
@@ -23,8 +23,8 @@ namespace Nethermind.State.Flat.Rust;
 /// store and the native workers logged and reports a fatal RocksDB error a native persist hit, as
 /// <see cref="RustFlatStore.ThrowIfFailed"/> reports one an export hit; the metrics are also published on every metrics
 /// tick with <see cref="PublishMetrics"/>. Disposing it drains and stops the native workers, then frees the manager once
-/// the last bundle gathered from it is released; the store and its database stay open until then, as the manager holds
-/// a reference on the store.
+/// the last bundle or scope gathered from it is released; the store and its database stay open until then, as the
+/// manager holds a reference on the store.
 /// </remarks>
 internal sealed class NativeFlatManager : IDisposable
 {
@@ -35,6 +35,7 @@ internal sealed class NativeFlatManager : IDisposable
     private readonly RustPersistence _persistence;
     private readonly ManagerHandle _handle;
     private readonly ILogger _logger;
+    private readonly bool _recordDetailedMetrics;
     private readonly Lock _eventLock = new();
     private readonly CancellationTokenSource _stopPump = new();
     private readonly CancellationTokenRegistration _processExit;
@@ -58,6 +59,7 @@ internal sealed class NativeFlatManager : IDisposable
 
         _persistence = persistence;
         _logger = logManager.GetClassLogger<NativeFlatManager>();
+        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
 
         // The histograms are observed only with detailed metrics, as the C# observers are no-ops otherwise; the
         // carry-forward counters follow the flag the metrics controller sets, as the C# readers do.
@@ -114,42 +116,26 @@ internal sealed class NativeFlatManager : IDisposable
     /// <summary>Throws what the C# manager would for a failed native call.</summary>
     public void ThrowIfFailed(FdbStatus status) => _persistence.Store.ThrowIfFailed(status);
 
-    /// <summary>A reader of <paramref name="baseBlock"/> through the in-memory snapshots, then the persistence.</summary>
-    /// <remarks>The reader keeps the native manager alive until it is disposed.</remarks>
+    /// <summary><c>GatherReadOnlySnapshotBundle</c>: the native read-only bundle of <paramref name="baseBlock"/>.</summary>
+    /// <remarks>The bundle keeps the native manager alive until it is disposed.</remarks>
     /// <exception cref="StateNotRetainedException">No snapshot ends at the state and it is not the persisted one.</exception>
-    public unsafe IPersistence.IPersistenceReader Gather(in StateId baseBlock, ReaderFlags flags, bool filtered)
-    {
-        RustFlatStore store = _persistence.Store;
-        store.AddChildReference();
-        bool managerAdded = false;
-        try
-        {
-            _handle.DangerousAddRef(ref managerAdded);
-            FfiStateId nativeBase = new(baseBlock);
-            nint reader;
-            FfiStateId readerState;
-            FdbStatus status = NativeMethods.fdb_gather(_handle, &nativeBase, (uint)flags, filtered ? (byte)1 : (byte)0, &reader, &readerState);
-            if (status == FdbStatus.StateNotRetained)
-            {
-                throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
-            }
+    public ReadOnlySnapshotBundle GatherReadOnly(in StateId baseBlock, ReaderFlags flags) =>
+        Open(baseBlock, flags, null);
 
-            ThrowIfFailed(status);
-            return _persistence.WrapBundle(reader, readerState.ToStateId(), _handle);
-        }
-        catch
-        {
-            if (managerAdded) _handle.DangerousRelease();
-            store.ReleaseChildReference();
-            throw;
-        }
-    }
+    /// <summary>
+    /// The read-only bundle of <paramref name="baseBlock"/> opened together with a native scope over it, which the
+    /// <see cref="SnapshotBundle"/> built over the bundle takes, in one call.
+    /// </summary>
+    /// <inheritdoc cref="GatherReadOnly" path="/remarks"/>
+    /// <inheritdoc cref="GatherReadOnly" path="/exception"/>
+    public ReadOnlySnapshotBundle OpenScope(in StateId baseBlock, ReaderFlags flags, FfiScopeFlags scopeFlags) =>
+        Open(baseBlock, flags, scopeFlags);
 
-    /// <summary>Adds the snapshot <paramref name="builder"/> holds, consuming the builder whatever the outcome.</summary>
+    /// <summary>Adds the snapshot a scope committed, which the native manager then shares with the caller.</summary>
     /// <returns><see cref="FdbStatus.Ok"/>, <see cref="FdbStatus.Rejected"/> or <see cref="FdbStatus.Duplicate"/>.</returns>
-    public FdbStatus AddSnapshot(nint builder)
+    public FdbStatus AddSnapshot(SnapshotHandle snapshot)
     {
-        FdbStatus status = NativeMethods.fdb_bld_add_snapshot(_handle, builder);
+        FdbStatus status = NativeMethods.fdb_add_snapshot(_handle, snapshot);
         if (status is not (FdbStatus.Ok or FdbStatus.Rejected or FdbStatus.Duplicate)) ThrowIfFailed(status);
         return status;
     }
@@ -231,6 +217,48 @@ internal sealed class NativeFlatManager : IDisposable
             _stopPump.Dispose();
             Replay.Dispose();
         }
+    }
+
+    /// <summary>A read-only bundle of <paramref name="baseBlock"/>, over a scope opened with it when <paramref name="scopeFlags"/> is given.</summary>
+    private unsafe ReadOnlySnapshotBundle Open(in StateId baseBlock, ReaderFlags flags, FfiScopeFlags? scopeFlags)
+    {
+        RustFlatStore store = _persistence.Store;
+        FfiRobInfo info;
+        BundleBaseHandle handle;
+        store.AddChildReference();
+        bool managerAdded = false;
+        try
+        {
+            _handle.DangerousAddRef(ref managerAdded);
+            FfiStateId nativeBase = new(baseBlock);
+            nint bundle;
+            FdbStatus status;
+            if (scopeFlags is { } openedScope)
+            {
+                status = NativeMethods.fdb_scope_open(_handle, &nativeBase, (uint)flags, &openedScope, &bundle, &info);
+            }
+            else
+            {
+                status = NativeMethods.fdb_rob_gather(_handle, &nativeBase, (uint)flags, &bundle, &info);
+            }
+
+            if (status == FdbStatus.StateNotRetained)
+            {
+                throw new StateNotRetainedException($"No state available for block {baseBlock.BlockNumber} with state root {baseBlock.StateRoot}");
+            }
+
+            ThrowIfFailed(status);
+            // The references on the store and the manager pass to the handle.
+            handle = scopeFlags is null ? new RobHandle(store, _handle, bundle) : new ScopeHandle(store, _handle, bundle);
+        }
+        catch
+        {
+            if (managerAdded) _handle.DangerousRelease();
+            store.ReleaseChildReference();
+            throw;
+        }
+
+        return new ReadOnlySnapshotBundle(handle, info, _recordDetailedMetrics);
     }
 
     private void SignalExit()

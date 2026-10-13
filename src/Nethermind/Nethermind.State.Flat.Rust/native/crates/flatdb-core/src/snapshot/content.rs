@@ -10,7 +10,6 @@
 //! written in place and its counts sealed on first observation; building first and freezing gives every reader, and
 //! both sides of the repository's memory ledger, the same counts by construction.
 
-use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 
@@ -151,18 +150,6 @@ impl SnapshotContentBuilder {
         Self::default()
     }
 
-    /// A builder with room for the writes `counts` expects, so filling it does not rehash.
-    pub fn with_capacity(counts: SnapshotContentCounts) -> Self {
-        Self {
-            accounts: HashMap::with_capacity(counts.accounts),
-            storages: HashMap::with_capacity(counts.storages),
-            self_destructed: HashMap::with_capacity(counts.self_destructed_storage_addresses),
-            state_nodes: HashMap::with_capacity(counts.state_nodes),
-            storage_nodes: HashMap::with_capacity(counts.storage_nodes),
-            arenas: Vec::new(),
-        }
-    }
-
     /// Sets the account; `None` deletes it.
     pub fn set_account(&mut self, address: Address, account: Option<Account>) {
         self.accounts.insert(address, account);
@@ -190,22 +177,6 @@ impl SnapshotContentBuilder {
     pub fn set_storage_node(&mut self, address_hash: Hash256, path: TreePath, hash: Hash256, rlp: &[u8]) {
         let node = self.store_rlp(hash, rlp);
         self.storage_nodes.insert(StorageNodeKey::new(address_hash, path), node);
-    }
-
-    /// Moves every write of `other` into this builder, replacing equal keys, so a block can be filled in parallel.
-    pub fn absorb(&mut self, mut other: Self) {
-        let shift = u32::try_from(self.arenas.len()).expect("arena count fits in u32");
-        if shift != 0 {
-            let shifted = |node: &mut NodeRef| *node = node.shift_arena(shift);
-            other.state_nodes.values_mut().for_each(shifted);
-            other.storage_nodes.values_mut().for_each(shifted);
-        }
-        self.arenas.extend(other.arenas);
-        merge(&mut self.accounts, other.accounts);
-        merge(&mut self.storages, other.storages);
-        merge(&mut self.self_destructed, other.self_destructed);
-        merge(&mut self.state_nodes, other.state_nodes);
-        merge(&mut self.storage_nodes, other.storage_nodes);
     }
 
     pub fn build(self) -> SnapshotContent {
@@ -248,16 +219,6 @@ impl SnapshotContentBuilder {
             offset: offset as u32,
             len: rlp.len() as u32,
         }
-    }
-}
-
-/// Moves the entries of `from` into `into`, replacing equal keys. An empty `into` takes the map of `from` as it is
-/// rather than rehashing every key, as the builders of a block filled in parallel each hold different maps.
-fn merge<K: Eq + Hash, V>(into: &mut HashMap<K, V>, from: HashMap<K, V>) {
-    if into.is_empty() {
-        *into = from;
-    } else {
-        into.extend(from);
     }
 }
 

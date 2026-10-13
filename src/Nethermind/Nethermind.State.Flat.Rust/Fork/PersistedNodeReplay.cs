@@ -6,7 +6,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
 
-namespace Nethermind.State.Flat.Rust;
+namespace Nethermind.State.Flat.Rust.Fork;
+
+/// <summary>A trie node handed to the native manager, which the <c>IsPersisted</c> replay marks once it is persisted.</summary>
+/// <param name="Address">The account path of a storage trie node; null for a state trie node.</param>
+internal readonly record struct ShellNode(Hash256? Address, TreePath Path, TrieNode Node);
 
 /// <summary>
 /// Replays on the C# <see cref="TrieNode"/>s what <c>PersistenceManager.PersistSnapshot</c> does to the nodes it
@@ -15,10 +19,12 @@ namespace Nethermind.State.Flat.Rust;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The nodes of each added snapshot are kept by state, as the C# repository keeps the snapshot. A persist of the native
-/// manager reports the nodes it wrote for a range of the chain; the newest kept node of each, walking the range back
+/// The nodes of each added snapshot are kept by state, as the C# repository keeps the snapshot, in the stripes the
+/// bundle captured them in, each in the order it set them. A persist of the native manager reports the nodes it wrote
+/// for a range of the chain; the newest kept node of each, walking the range back from its end and every stripe back
 /// from its end, is the one the C# compacted snapshot would hold and is marked when its hash matches. Every kept
-/// snapshot at or below the persisted block is then dropped, as the C# repository drops it.
+/// snapshot at or below the persisted block is then dropped, as the C# repository drops it. Dropping one prunes the
+/// persisted children of every node it kept, as returning a C# snapshot's content prunes those of its nodes.
 /// </para>
 /// <para>
 /// The lock only guards the bookkeeping: a snapshot taken out of it belongs to whoever took it, so marking and
@@ -30,6 +36,8 @@ internal sealed class PersistedNodeReplay : IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<StateId, KeptSnapshot> _snapshots = [];
     private readonly PriorityQueue<StateId, ulong> _byBlock = new();
+    // The nodes of the persist being applied, by key, kept at its capacity; only Apply uses it, one call at a time.
+    private readonly Dictionary<(bool, ValueHash256, TreePath), ValueHash256> _pending = [];
 
     /// <summary>The snapshots kept.</summary>
     public int Count
@@ -44,8 +52,8 @@ internal sealed class PersistedNodeReplay : IDisposable
     /// Keeps the trie nodes of the snapshot from <paramref name="from"/> to <paramref name="to"/> about to be added, in
     /// place of any kept for <paramref name="to"/> until <see cref="Settle"/> tells whether the add replaced them.
     /// </summary>
-    /// <param name="nodes">The nodes, which the replay disposes once it drops them.</param>
-    public Addition Record(in StateId from, in StateId to, ArrayPoolList<ShellNode> nodes)
+    /// <param name="nodes">The nodes, null for none, which the replay prunes and disposes once it drops them.</param>
+    public Addition Record(in StateId from, in StateId to, CapturedNodes? nodes)
     {
         KeptSnapshot kept = new(from, nodes);
         lock (_lock)
@@ -84,6 +92,7 @@ internal sealed class PersistedNodeReplay : IDisposable
     }
 
     /// <summary>Marks the nodes a persist from <paramref name="from"/> to <paramref name="to"/> wrote, then drops what it covered.</summary>
+    /// <remarks>The caller runs one call at a time.</remarks>
     public void Apply(in StateId from, in StateId to, ReadOnlySpan<FfiPersistedNode> persisted)
     {
         using ArrayPoolList<KeptSnapshot> covered = new(0);
@@ -104,24 +113,36 @@ internal sealed class PersistedNodeReplay : IDisposable
             }
         }
 
-        Dictionary<(bool, ValueHash256, TreePath), ValueHash256> pending = new(persisted.Length);
+        _pending.Clear();
         foreach (ref readonly FfiPersistedNode node in persisted)
         {
-            pending[node.Key] = node.NodeHash;
+            _pending[node.Key] = node.NodeHash;
         }
 
         foreach (KeptSnapshot snapshot in covered.AsSpan())
         {
-            if (pending.Count == 0) break;
-            foreach (ShellNode kept in snapshot.Nodes.AsSpan())
-            {
-                if (!pending.Remove((kept.Address is not null, kept.Address?.ValueHash256 ?? default, kept.Path), out ValueHash256 hash)) continue;
-                if ((kept.Node.Keccak?.ValueHash256 ?? default) != hash) continue;
+            if (_pending.Count == 0) break;
+            if (snapshot.Nodes is not { } nodes) continue;
 
-                kept.Node.IsPersisted = true;
-                kept.Node.PrunePersistedRecursively(1);
+            foreach (ArrayPoolList<ShellNode>? stripe in nodes.Stripes)
+            {
+                if (stripe is null) continue;
+
+                // Newest first: a node set again later replaced the earlier one in the C# content.
+                ReadOnlySpan<ShellNode> stripeNodes = stripe.AsSpan();
+                for (int i = stripeNodes.Length - 1; i >= 0; i--)
+                {
+                    ShellNode kept = stripeNodes[i];
+                    if (!_pending.Remove((kept.Address is not null, kept.Address?.ValueHash256 ?? default, kept.Path), out ValueHash256 hash)) continue;
+                    if ((kept.Node.Keccak?.ValueHash256 ?? default) != hash) continue;
+
+                    kept.Node.IsPersisted = true;
+                    kept.Node.PrunePersistedRecursively(1);
+                }
             }
         }
+
+        _pending.Clear();
 
         foreach (KeptSnapshot snapshot in covered.AsSpan()) snapshot.Dispose();
         foreach (KeptSnapshot snapshot in dropped.AsSpan()) snapshot.Dispose();
@@ -174,15 +195,16 @@ internal sealed class PersistedNodeReplay : IDisposable
     internal readonly record struct Addition(StateId To, KeptSnapshot Kept, KeptSnapshot? Displaced);
 
     /// <summary>The trie nodes of one added snapshot, and the state it was added on.</summary>
-    internal sealed class KeptSnapshot(StateId from, ArrayPoolList<ShellNode> nodes) : IDisposable
+    internal sealed class KeptSnapshot(StateId from, CapturedNodes? nodes) : IDisposable
     {
         public StateId From => from;
 
-        public ArrayPoolList<ShellNode> Nodes => nodes;
+        /// <summary>The nodes; null for none.</summary>
+        public CapturedNodes? Nodes => nodes;
 
         /// <summary>Whether the native manager answered its add; only then can it be checked against the native manager.</summary>
         public bool IsSettled { get; set; }
 
-        public void Dispose() => nodes.Dispose();
+        public void Dispose() => nodes?.PruneAndDispose();
     }
 }

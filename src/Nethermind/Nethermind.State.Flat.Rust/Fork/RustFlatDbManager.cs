@@ -3,15 +3,12 @@
 
 using System.Diagnostics;
 using System.Threading.Channels;
-using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Rust.Interop;
 
-namespace Nethermind.State.Flat.Rust;
+namespace Nethermind.State.Flat.Rust.Fork;
 
 /// <summary>
 /// <see cref="IFlatDbManager"/> of <see cref="FlatDbBackend.Rust"/>: the snapshots, their compaction and persistence,
@@ -19,19 +16,14 @@ namespace Nethermind.State.Flat.Rust;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="AddSnapshot"/> serializes the block's snapshot into the native manager and keeps the trie nodes it holds
-/// for the <c>IsPersisted</c> replay. The <see cref="TransientResource"/> goes to the trie node cache populator before
-/// the compaction is queued, which may stall, as in <c>FlatDbManager</c>; the C# snapshot is released at once, its
-/// writes now living natively.
+/// <see cref="AddSnapshot"/> adds the native snapshot the bundle committed, with no copy, and keeps the trie nodes it
+/// set for the <c>IsPersisted</c> replay. The <see cref="TransientResource"/> goes to the trie node cache populator
+/// before the compaction is queued, which may stall, as in <c>FlatDbManager</c>.
 /// </para>
 /// <para>
-/// A gathered bundle is a C# <see cref="ReadOnlySnapshotBundle"/> without snapshots whose persistence reader is the
-/// native bundle, which reads the snapshots and then the persistence and applies the self-destruct cut-off itself. The
-/// slot filter runs natively for the shared bundles of <see cref="GatherReadOnlySnapshotBundle(in StateId)"/> and for
-/// <see cref="GatherSnapshotBundle(in StateId, ResourcePool.Usage, bool)"/> when asked for. Which slot read of a C#
-/// bundle filters is decided by its caller, which the native bundle cannot tell, so a plain slot read through a shared
-/// bundle, as <c>FlatStateReader</c> reads, builds and probes the filter where <c>FlatDbManager</c> builds none.
-/// <c>PreGenesis</c> is served without the native manager, as <c>FlatDbManager</c> serves it.
+/// A gathered <see cref="SnapshotBundle"/> takes the native scope opened together with its read-only bundle, in one
+/// call; a gathered <see cref="ReadOnlySnapshotBundle"/> is the native one. Both read the in-memory snapshots, then
+/// the persistence, natively, <c>PreGenesis</c> as an empty state.
 /// </para>
 /// <para>
 /// <see cref="FlushCache"/> and <see cref="DropStateNotReachableFrom"/> go through the injected
@@ -46,7 +38,6 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IResourcePool _resourcePool;
     private readonly ILogger _logger;
     private readonly bool _inlineCompaction;
-    private readonly bool _enableDetailedMetrics;
 
     // The node cache is kinda important for performance, so we want it populated as quickly as possible.
     private readonly Channel<TransientResource> _populateTrieNodeCacheJobs = Channel.CreateBounded<TransientResource>(1);
@@ -59,7 +50,6 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         IFlatDbConfig config,
-        IMetricsConfig metricsConfig,
         ILogManager logManager)
     {
         _native = native;
@@ -67,9 +57,8 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _inlineCompaction = config.InlineCompaction;
-        _enableDetailedMetrics = metricsConfig.EnableDetailedMetric;
         // The lines this shell logs are those of FlatDbManager, as are the native manager's.
-        _logger = logManager.GetClassLogger<FlatDbManager>();
+        _logger = logManager.GetLogger(ForkInternals.FlatDbManagerLoggerName);
         _populateTrieNodeCacheTask = Task.Run(RunTrieCachePopulator);
     }
 
@@ -80,15 +69,13 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         bool queued = false;
         try
         {
-            nint builder = SnapshotSerializer.Build(snapshot, out ArrayPoolList<ShellNode> nodes);
-
             // Kept before the add, as the native persistence can persist the snapshot before the add returns.
-            PersistedNodeReplay.Addition addition = _native.Replay.Record(from, to, nodes);
+            PersistedNodeReplay.Addition addition = _native.Replay.Record(from, to, snapshot.TakeNodes());
             // A failed call leaves unknown whether the snapshot was added, so its nodes stay kept until persisted past.
             bool added = true;
             try
             {
-                added = _native.AddSnapshot(builder) == FdbStatus.Ok;
+                added = _native.AddSnapshot(snapshot.Handle) == FdbStatus.Ok;
             }
             finally
             {
@@ -125,30 +112,25 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
-        return new SnapshotBundle(
-            Gather(baseBlock, ReaderFlags.None, filterInMemorySlotReads),
-            _trieNodeCache,
-            _resourcePool,
-            usage: usage,
-            filterInMemorySlotReads: filterInMemorySlotReads);
+        ReadOnlySnapshotBundle view = _native.OpenScope(baseBlock, ReaderFlags.None, new FfiScopeFlags(filterInMemorySlotReads, usage));
+        try
+        {
+            return new SnapshotBundle(view, _trieNodeCache, _resourcePool, usage, filterInMemorySlotReads: filterInMemorySlotReads);
+        }
+        catch
+        {
+            view.Dispose();
+            throw;
+        }
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
         GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags) =>
-        Gather(baseBlock, readerFlags, filtered: readerFlags == ReaderFlags.None);
+        _native.GatherReadOnly(baseBlock, readerFlags);
 
-    private ReadOnlySnapshotBundle Gather(in StateId baseBlock, ReaderFlags readerFlags, bool filtered)
-    {
-        // PreGenesis is a sentinel; Nethermind always generates genesis, so this path is always transient.
-        IPersistence.IPersistenceReader reader = baseBlock == StateId.PreGenesis
-            ? new NoopPersistenceReader()
-            : _native.Gather(baseBlock, readerFlags, filtered);
-        return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), reader, _enableDetailedMetrics, PersistedSnapshotStack.Empty(_enableDetailedMetrics));
-    }
-
-    /// <inheritdoc cref="FlatDbManager.FlushCache"/>
+    /// <inheritdoc cref="Nethermind.State.Flat.FlatDbManager.FlushCache"/>
     public void FlushCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
@@ -174,7 +156,7 @@ internal sealed class RustFlatDbManager : IFlatDbManager, IAsyncDisposable
         _native.ClearBundleCache();
     }
 
-    /// <inheritdoc cref="FlatDbManager.DisposeAsync"/>
+    /// <inheritdoc cref="Nethermind.State.Flat.FlatDbManager.DisposeAsync"/>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _isDisposed, 1) == 1) return;

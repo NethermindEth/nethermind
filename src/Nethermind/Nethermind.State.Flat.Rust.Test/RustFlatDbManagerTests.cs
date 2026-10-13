@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using NUnit.Framework;
 using BlockPlan = Nethermind.State.Flat.Rust.Test.RustFlatDbManagerDifferentialTests.BlockPlan;
@@ -62,15 +63,15 @@ public class RustFlatDbManagerTests
             parent = block;
         }
 
-        csharp.Manager.FlushCache(CancellationToken.None);
-        rust.Manager.FlushCache(CancellationToken.None);
+        csharp.Arm.FlushCache(CancellationToken.None);
+        rust.Arm.FlushCache(CancellationToken.None);
 
         string[] persisted = ["0 state 1", "0 storage 1", "1 state 2", "4 state 1", "4 storage 1", "8 state 1", "8 storage 1"];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nodes.Where(static node => node.Value.CSharp.IsPersisted).Select(static node => node.Key), Is.EquivalentTo(persisted), "C#");
             Assert.That(nodes.Where(static node => node.Value.Rust.IsPersisted).Select(static node => node.Key), Is.EquivalentTo(persisted), "Rust");
-            Assert.That(rust.Manager.HasStateForBlock(fork), Is.False);
+            Assert.That(rust.Arm.HasStateForBlock(fork), Is.False);
         }
 
         static void Add(Dictionary<string, (TrieNode, TrieNode)> nodes, string name, StateId from, StateId to, FlatManagerContainer csharp, FlatManagerContainer rust)
@@ -112,14 +113,14 @@ public class RustFlatDbManagerTests
         StateId fork = new(2, Keccak.Compute("fork"));
         BlockPlan forkPlan = new([], [], [], [(Second, Hash("fork", 2), Rlp(9))], []);
         (TrieNode CSharp, TrieNode Rust) dropped = Add(forkPlan, Block(1), fork);
-        csharp.Manager.DropStateNotReachableFrom(Block(2));
-        rust.Manager.DropStateNotReachableFrom(Block(2));
-        int keptAfterDrop = rust.Resolve<NativeFlatManager>().Replay.Count;
+        csharp.Arm.DropStateNotReachableFrom(Block(2));
+        rust.Arm.DropStateNotReachableFrom(Block(2));
+        int keptAfterDrop = rust.Resolve<Fork.NativeFlatManager>().Replay.Count;
         (TrieNode CSharp, TrieNode Rust) readded = Add(forkPlan, Block(1), fork);
         BlockPlan.Empty.AddTo(csharp, fork, new StateId(3, Keccak.Compute("fork child")));
         BlockPlan.Empty.AddTo(rust, fork, new StateId(3, Keccak.Compute("fork child")));
-        csharp.Manager.FlushCache(CancellationToken.None);
-        rust.Manager.FlushCache(CancellationToken.None);
+        csharp.Arm.FlushCache(CancellationToken.None);
+        rust.Arm.FlushCache(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -145,7 +146,7 @@ public class RustFlatDbManagerTests
 
         new BlockPlan([], [], [], [(First, Keccak.Compute("0"), Rlp(0))], [(Owner, First, Keccak.Compute("0s"), Rlp(0))])
             .AddTo(container, StateId.PreGenesis, Block(0));
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
         new BlockPlan([], [], [], [(First, Keccak.Compute("1"), Rlp(1))], [(Owner, First, Keccak.Compute("1s"), Rlp(1))])
             .AddTo(container, Block(0), Block(1));
         new BlockPlan([], [], [], [(First, Keccak.Compute("2"), null)], [(Owner, First, Keccak.Compute("2s"), null)])
@@ -154,7 +155,7 @@ public class RustFlatDbManagerTests
 
         (string?, string?) beforeFlush = Nodes(container, Block(3));
         (string?, string?) atOne = Nodes(container, Block(1));
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -165,14 +166,8 @@ public class RustFlatDbManagerTests
 
         static (string?, string?) Nodes(FlatManagerContainer container, StateId state)
         {
-            using ReadOnlySnapshotBundle bundle = container.Manager.GatherReadOnlySnapshotBundle(state);
-            byte[]? stateNode = bundle.TryFindStateNodes(First, Keccak.Zero, out TrieNode? node) && !RustFlatDbManagerDifferentialTests.BundleReads.IsPlaceholder(node)
-                ? node.FullRlp.ToArray()
-                : bundle.TryLoadStateRlp(First, Keccak.Zero, ReadFlags.None);
-            byte[]? storageNode = bundle.TryFindStorageNodes(Owner, First, Keccak.Zero, out node) && !RustFlatDbManagerDifferentialTests.BundleReads.IsPlaceholder(node!)
-                ? node!.FullRlp.ToArray()
-                : bundle.TryLoadStorageRlp(Owner, First, Keccak.Zero, ReadFlags.None);
-            return (stateNode?.ToHexString(), storageNode?.ToHexString());
+            using IBundleView bundle = container.Arm.GatherReadOnly(state, ReaderFlags.None);
+            return (bundle.LoadStateRlp(First)?.ToHexString(), bundle.LoadStorageRlp(Owner, First)?.ToHexString());
         }
     }
 
@@ -193,8 +188,8 @@ public class RustFlatDbManagerTests
             parent = Block(number);
         }
 
-        IFlatDbManager manager = container.Manager;
-        ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(Block(2));
+        Fork.IFlatDbManager manager = container.Resolve<Fork.IFlatDbManager>();
+        Fork.ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(Block(2));
         Task disposal = Task.Run(async () => await container.DisposeAsync());
         bool disposedWithBundleOpen = disposal.Wait(TimeSpan.FromMilliseconds(500));
         int closesWithBundleOpen = container.Db.NativeCloses;
@@ -226,20 +221,106 @@ public class RustFlatDbManagerTests
         BlockPlan plan = new([(Address, new Account(1, 1))], [], [], [(First, Keccak.Compute("0"), Rlp(0))], []);
         plan.AddTo(container, StateId.PreGenesis, Block(0));
         plan.AddTo(container, Block(0), Block(1));
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         TrieNode[] rejected = new BlockPlan([], [], [], [(First, Keccak.Compute("r"), Rlp(9))], []).AddTo(container, Block(0), new StateId(1, Keccak.Compute("r")));
         TrieNode[] original = plan.AddTo(container, Block(1), Block(2));
         TrieNode[] duplicate = new BlockPlan([], [], [], [(First, Keccak.Compute("d"), Rlp(8))], []).AddTo(container, Block(1), Block(2));
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(container.Manager.HasStateForBlock(new StateId(1, Keccak.Compute("r"))), Is.False);
+            Assert.That(container.Arm.HasStateForBlock(new StateId(1, Keccak.Compute("r"))), Is.False);
             Assert.That(rejected[0].IsPersisted || duplicate[0].IsPersisted, Is.False, "refused snapshots are never persisted");
             Assert.That(original[0].IsPersisted, Is.True, "the duplicate left the nodes of the snapshot added first");
             Assert.That(container.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block(2)));
-            if (container.Manager is RustFlatDbManager) Assert.That(container.Resolve<NativeFlatManager>().Replay.Count, Is.Zero, "nothing is kept past the persisted block");
+            if (backend == FlatDbBackend.Rust) Assert.That(container.Resolve<Fork.NativeFlatManager>().Replay.Count, Is.Zero, "nothing is kept past the persisted block");
+        }
+    }
+
+    /// <summary>
+    /// A storage node set, its storage cleared and the node of its path set again, with the same hash or another, has
+    /// the node set last marked once persisted, as the C# content holds only that one.
+    /// </summary>
+    [Test]
+    public async Task A_node_set_again_after_its_storage_is_cleared_is_the_one_marked([Values] FlatDbBackend backend, [Values] bool sameHash)
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend), path.Path, new TestFinality());
+        TrieNode cleared = new(NodeType.Leaf, Hash("cleared", 1), Rlp(1));
+        TrieNode setAgain = new(NodeType.Leaf, sameHash ? cleared.Keccak! : Hash("set again", 1), Rlp(2));
+        Commit(container, StateId.PreGenesis, Block(0), (setNode, clearStorage) =>
+        {
+            setNode(cleared);
+            clearStorage();
+            setNode(setAgain);
+        });
+        container.Arm.FlushCache(CancellationToken.None);
+
+        Assert.That((cleared.IsPersisted, setAgain.IsPersisted), Is.EqualTo((false, true)));
+    }
+
+    /// <summary>
+    /// A snapshot the manager refuses, at or below the persisted block or of a state it holds, gives back its nodes,
+    /// pruning their persisted children, while the bundle that committed it still reads what it committed.
+    /// </summary>
+    [Test]
+    public async Task A_refused_snapshot_prunes_its_nodes_and_its_bundle_reads_on([Values] FlatDbBackend backend, [Values] bool duplicate)
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend), path.Path, new TestFinality());
+        new BlockPlan([(Address, new Account(1, 1))], [], [], [], []).AddTo(container, StateId.PreGenesis, Block(0));
+        container.Arm.FlushCache(CancellationToken.None);
+        new BlockPlan([(Address, new Account(2, 2))], [], [], [], []).AddTo(container, Block(0), Block(1));
+        TrieNode child = new(NodeType.Leaf, Hash("child", 0), Rlp(3)) { IsPersisted = true };
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, child);
+        branch.SetChild(1, new TrieNode(NodeType.Leaf, Hash("sibling", 0), Rlp(4)));
+        TreePath root = TreePath.Empty;
+        branch.ResolveKey(Nethermind.Trie.Pruning.NullTrieNodeResolver.Instance, ref root);
+        branch.Seal();
+
+        Account? readAfterRefusal = Commit(
+            container,
+            duplicate ? Block(0) : StateId.PreGenesis,
+            duplicate ? Block(1) : new StateId(0, Keccak.Compute("refused")),
+            (setNode, _) => setNode(branch));
+        root = TreePath.Empty;
+
+        Assert.That(
+            (ReferenceEquals(branch.GetChild(Nethermind.Trie.Pruning.NullTrieNodeResolver.Instance, ref root, 0), child), readAfterRefusal),
+            Is.EqualTo((false, new Account(7, 7))));
+    }
+
+    /// <summary>
+    /// Commits a bundle of the backend from <paramref name="from"/> to <paramref name="to"/> that sets <see cref="Address"/>
+    /// to an account of 7 and runs <paramref name="write"/>, with a setter of storage nodes of <see cref="Owner"/> at
+    /// <see cref="First"/> and a storage clear, and adds its snapshot.
+    /// </summary>
+    /// <returns>The account the bundle reads after the add.</returns>
+    private static Account? Commit(FlatManagerContainer container, StateId from, StateId to, Action<Action<TrieNode>, Action> write)
+    {
+        if (container.Arm is FlatArm.Rust)
+        {
+            Fork.IFlatDbManager manager = container.Resolve<Fork.IFlatDbManager>();
+            using Fork.SnapshotBundle bundle = manager.GatherSnapshotBundle(from, ResourcePool.Usage.MainBlockProcessing);
+            bundle.SetAccount(Address, new Account(7, 7));
+            write(node => bundle.SetStorageNode(Owner, First, node), () => bundle.ClearStorage(Address, Owner));
+            (Fork.Snapshot? snapshot, TransientResource? transient) = bundle.CollectAndApplySnapshot(from, to);
+            manager.AddSnapshot(snapshot!, transient!);
+            return bundle.GetAccount(Address);
+        }
+        else
+        {
+            IFlatDbManager manager = container.Resolve<IFlatDbManager>();
+            using SnapshotBundle bundle = manager.GatherSnapshotBundle(from, ResourcePool.Usage.MainBlockProcessing);
+            bundle.SetAccount(Address, new Account(7, 7));
+            write(node => bundle.SetStorageNode(Owner, First, node), () => TestInternals.ClearStorage(bundle, Address, Owner));
+            (Snapshot? snapshot, TransientResource? transient) = bundle.CollectAndApplySnapshot(from, to);
+            manager.AddSnapshot(snapshot!, transient!);
+            return bundle.GetAccount(Address);
         }
     }
 

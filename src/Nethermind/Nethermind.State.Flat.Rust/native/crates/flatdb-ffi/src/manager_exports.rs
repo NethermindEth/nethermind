@@ -1,26 +1,19 @@
-//! The exports of the snapshot manager (`IFlatDbManager` and `IPersistenceManager`), the snapshot builder, the persisted
-//! node events and the metrics.
-//!
-//! A gathered bundle is handed out as an [`FdbReader`], so every `fdb_reader_*` export reads through it.
+//! The exports of the snapshot manager (`IFlatDbManager` and `IPersistenceManager`), the persisted node events and the
+//! metrics. The bundles a manager gathers and the snapshots it adds are those of [`crate::scope_exports`].
 
 use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-use flatdb_core::manager::AddSnapshotOutcome;
-use flatdb_core::persistence::ReaderFlags;
-use flatdb_core::snapshot::Snapshot;
-use flatdb_core::snapshot::content::{SnapshotContentBuilder, SnapshotContentCounts};
 use flatdb_core::stats::{FlatCounters, Observation};
 use flatdb_core::types::StateId;
 
-use crate::abi::{FdbHost, FdbMgrCfg, FdbPersistedEvent, FdbStatus, FfiError, FfiPersistedNode, FfiStateId};
+use crate::abi::{FdbHost, FdbMgrCfg, FdbPersistedEvent, FfiError, FfiPersistedNode, FfiStateId};
 use crate::calls::Export;
 use crate::guard::ffi_guard;
-use crate::manager::{BundleReader, FdbBuilder, FdbManager, refused};
-use crate::snapshot_stream;
-use crate::store::{FdbReader, FdbStore};
-use crate::{bytes, out, store_ref};
+use crate::manager::FdbManager;
+use crate::store::FdbStore;
+use crate::{out, store_ref};
 
 /// Starts a snapshot manager over the persistence stack of `store`, calling `host` for finality and the deferred
 /// block-data flush. The manager holds a handle on the store, which therefore outlives it.
@@ -61,7 +54,7 @@ pub unsafe extern "C" fn fdb_signal_exit(mgr: *const FdbManager) -> i32 {
 }
 
 /// `DisposeAsync` of `FlatDbManager`: drains the compaction and persistence queues, then stops the workers. Idempotent;
-/// later adds fail with [`FdbStatus::ShutDown`].
+/// later adds fail with [`crate::abi::FdbStatus::ShutDown`].
 ///
 /// # Safety
 /// `mgr` must be a live manager.
@@ -181,125 +174,11 @@ pub unsafe extern "C" fn fdb_persisted_event_release(owner: *mut c_void) -> i32 
     })
 }
 
-/// Starts building the snapshot of the writes from `from` to `to`, with room for the accounts, slots, state trie nodes
-/// and storage trie nodes the caller is about to append.
-///
-/// # Safety
-/// `from` and `to` must be valid and `bld` valid for writes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_bld_new(
-    from: *const FfiStateId,
-    to: *const FfiStateId,
-    accounts: usize,
-    storages: usize,
-    state_nodes: usize,
-    storage_nodes: usize,
-    bld: *mut *mut FdbBuilder,
-) -> i32 {
-    ffi_guard(Export::BldNew, || {
-        // SAFETY: the caller passes valid pointers.
-        let (from, to, bld) = unsafe { (from.as_ref(), to.as_ref(), out(bld)?) };
-        let (Some(from), Some(to)) = (from, to) else {
-            return Err(FfiError::invalid_argument("null state"));
-        };
-        *bld = Box::into_raw(Box::new(FdbBuilder {
-            from: (*from).into(),
-            to: (*to).into(),
-            content: SnapshotContentBuilder::with_capacity(SnapshotContentCounts {
-                accounts,
-                storages,
-                self_destructed_storage_addresses: 0,
-                state_nodes,
-                storage_nodes,
-            }),
-        }));
-        Ok(())
-    })
-}
-
-/// Adds `len` bytes of snapshot records (see [`snapshot_stream`]) to the builder, stopping at the first malformed one.
-///
-/// # Safety
-/// `bld` must be a live builder, used by one thread at a time, and `records` valid for `len` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_bld_append(bld: *mut FdbBuilder, records: *const u8, len: usize) -> i32 {
-    ffi_guard(Export::BldAppend, || {
-        // SAFETY: the caller passes a live builder and a valid record stream.
-        let (bld, records) = unsafe { (bld_mut(bld)?, bytes(records, len)?) };
-        snapshot_stream::append(&mut bld.content, records)
-    })
-}
-
-/// Moves every record of `from`, which is freed, into `into`, so the content of one block can be serialized on
-/// several threads.
-///
-/// # Safety
-/// `into` must be a live builder and `from` a builder from [`fdb_bld_new`] that is not used afterwards, neither used by
-/// another thread.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_bld_absorb(into: *mut FdbBuilder, from: *mut FdbBuilder) -> i32 {
-    ffi_guard(Export::BldAbsorb, || {
-        if from.is_null() {
-            return Err(FfiError::invalid_argument("null builder"));
-        }
-        // SAFETY: the caller hands back ownership of `from`.
-        let from = unsafe { Box::from_raw(from) };
-        // SAFETY: the caller passes a live builder.
-        let into = unsafe { bld_mut(into)? };
-        into.content.absorb(from.content);
-        Ok(())
-    })
-}
-
-/// Frees a builder that was not added.
-///
-/// # Safety
-/// `bld` must be null or a builder from [`fdb_bld_new`] that is not used afterwards.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_bld_release(bld: *mut FdbBuilder) -> i32 {
-    ffi_guard(Export::BldRelease, || {
-        if !bld.is_null() {
-            // SAFETY: the caller hands back ownership of a builder.
-            drop(unsafe { Box::from_raw(bld) });
-        }
-        Ok(())
-    })
-}
-
-/// `AddSnapshot` up to its compaction: adds the built snapshot, which the call consumes whatever it returns, for
-/// [`fdb_queue_compaction`] to compact. [`FdbStatus::Rejected`] when its block is at or below the persisted block,
-/// [`FdbStatus::Duplicate`] when its state is already added.
-///
-/// # Safety
-/// `bld` must be a builder from [`fdb_bld_new`] that is not used afterwards and `mgr` a live manager.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_bld_add_snapshot(mgr: *const FdbManager, bld: *mut FdbBuilder) -> i32 {
-    ffi_guard(Export::AddSnapshot, || {
-        if bld.is_null() {
-            return Err(FfiError::invalid_argument("null builder"));
-        }
-        // SAFETY: the caller hands over ownership of the builder.
-        let bld = unsafe { Box::from_raw(bld) };
-        // SAFETY: the caller passes a live manager.
-        let mgr = unsafe { mgr_ref(mgr)? };
-        let FdbBuilder { from, to, content } = *bld;
-        let outcome = mgr.poison.guard(|| {
-            let snapshot = Arc::new(Snapshot::new(from, to, content.build()));
-            Ok(mgr.manager.register_snapshot(snapshot)?)
-        })?;
-        match outcome {
-            AddSnapshotOutcome::Added { .. } => Ok(()),
-            AddSnapshotOutcome::Rejected => Err(refused(FdbStatus::Rejected, &to)),
-            AddSnapshotOutcome::Duplicate => Err(refused(FdbStatus::Duplicate, &to)),
-        }
-    })
-}
-
-/// The rest of `AddSnapshot` for the snapshot ending at `to` that [`fdb_bld_add_snapshot`] or
-/// [`crate::scope_exports::fdb_add_snapshot`] added: compacts it on this thread with inline compaction, else queues its
-/// compaction, waiting for room while the queue is full. `stall_ns` is how long the call waited, or -1 when it did not.
-/// [`FdbStatus::Cancelled`] when process exit ends the wait, [`FdbStatus::ShutDown`] once the manager is shut down; the
-/// snapshot stays added either way.
+/// The rest of `AddSnapshot` for the snapshot ending at `to` that [`crate::scope_exports::fdb_add_snapshot`] added:
+/// compacts it on this thread with inline compaction, else queues its compaction, waiting for room while the queue is
+/// full. `stall_ns` is how long the call waited, or -1 when it did not. [`crate::abi::FdbStatus::Cancelled`] when
+/// process exit ends the wait, [`crate::abi::FdbStatus::ShutDown`] once the manager is shut down; the snapshot stays
+/// added either way.
 ///
 /// # Safety
 /// `mgr` must be a live manager, `to` valid and `stall_ns` valid for writes.
@@ -316,42 +195,6 @@ pub unsafe extern "C" fn fdb_queue_compaction(
         if let Some(stall) = mgr.poison.guard(|| Ok(mgr.manager.compact_registered(&to)?))? {
             *stall_ns = i64::try_from(stall.as_nanos()).unwrap_or(i64::MAX);
         }
-        Ok(())
-    })
-}
-
-/// `GatherReadOnlySnapshotBundle(base, readerFlags)`: a reader of the state `base`, through the in-memory snapshots
-/// above the persisted state and then the persistence, read with the `fdb_reader_*` exports and released with
-/// `fdb_reader_release`. `filtered` serves slot reads through the bundle's negative slot filter. `reader_state` is the
-/// persisted state under the snapshots. `PreGenesis` reads an empty state; C# serves it without the manager.
-///
-/// # Safety
-/// `mgr` must be a live manager, `base` valid and the out-pointers valid for writes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_gather(
-    mgr: *const FdbManager,
-    base: *const FfiStateId,
-    reader_flags: u32,
-    filtered: u8,
-    rob: *mut *mut FdbReader,
-    reader_state: *mut FfiStateId,
-) -> i32 {
-    ffi_guard(Export::Gather, || {
-        // SAFETY: the caller passes a live manager and valid pointers.
-        let (mgr, base, rob, reader_state) = unsafe { (mgr_ref(mgr)?, state(base)?, out(rob)?, out(reader_state)?) };
-        let bundle = mgr.poison.guard(|| {
-            Ok(mgr
-                .manager
-                .gather_read_only_snapshot_bundle(&base, ReaderFlags::from_bits(reader_flags))?)
-        })?;
-        *reader_state = bundle.reader_state().into();
-        *rob = Box::into_raw(Box::new(FdbReader {
-            reader: Box::new(BundleReader {
-                bundle,
-                filtered: filtered != 0,
-            }),
-            poison: Arc::clone(&mgr.poison),
-        }));
         Ok(())
     })
 }
@@ -489,13 +332,6 @@ pub(crate) unsafe fn mgr_ref<'a>(mgr: *const FdbManager) -> Result<&'a FdbManage
 }
 
 /// # Safety
-/// `bld` must be null or a live builder no other thread uses.
-unsafe fn bld_mut<'a>(bld: *mut FdbBuilder) -> Result<&'a mut FdbBuilder, FfiError> {
-    // SAFETY: the caller passes null or a live builder.
-    unsafe { bld.as_mut() }.ok_or_else(|| FfiError::invalid_argument("null builder"))
-}
-
-/// # Safety
 /// `state` must be null or valid.
 pub(crate) unsafe fn state(state: *const FfiStateId) -> Result<StateId, FfiError> {
     // SAFETY: the caller passes null or a valid state.
@@ -518,19 +354,23 @@ pub(crate) mod tests {
     use flatdb_core::ABI_VERSION;
     use flatdb_core::kv::WriteFlags;
     use flatdb_core::log_ring::LogSource;
-    use flatdb_core::persistence::Persistence;
+    use flatdb_core::persistence::{Persistence, ReaderFlags};
     use flatdb_core::stats::{FlatCounters, Histogram, Observation};
     use flatdb_core::types::{Account, FlatLayout, Hash256, StateId, TreePath, U256};
     use rstest::rstest;
 
     use super::*;
     use crate::abi::{FdbKvDesc, FdbKvKind, FdbStoreCfg, FdbStoreInfo, FfiAccount, PERSISTED_STORAGE_NODE};
+    use crate::abi::{FdbStatus, FfiRobInfo};
     use crate::faults::Fault;
     use crate::op_stream::writer::OpWriter;
-    use crate::{
-        fdb_last_error, fdb_reader_get_account, fdb_reader_get_slot, fdb_reader_load_state_rlp,
-        fdb_reader_load_storage_rlp, fdb_reader_release, fdb_store_create, fdb_store_destroy,
+    use crate::scope_exports::{
+        FdbRob, FdbSnapshot, fdb_add_snapshot, fdb_rob_gather, fdb_rob_get_account, fdb_rob_get_slot,
+        fdb_rob_load_state_rlp, fdb_rob_load_storage_rlp, fdb_rob_release, fdb_rob_self_destruct_idx,
+        fdb_snapshot_release, fdb_test_snapshot_from_records,
     };
+    use crate::snapshot_stream;
+    use crate::{fdb_last_error, fdb_store_create, fdb_store_destroy};
 
     /// The host of the tests: a finalized block, canonical roots by block, and a flush status.
     #[derive(Default)]
@@ -694,40 +534,15 @@ pub(crate) mod tests {
         writer.0
     }
 
-    /// Builds the snapshot of `records` from `from` to `to`, in two builders absorbed into one, adds it and queues its
-    /// compaction, returning the first status that is not Ok.
+    /// Adds the snapshot of `records` from `from` to `to` and queues its compaction, returning the first status that is
+    /// not Ok.
     fn add(mgr: *mut FdbManager, from: StateId, to: StateId, records: &[u8]) -> (i32, i64) {
-        let (mut first, mut second, mut stall) = (ptr::null_mut(), ptr::null_mut(), 0i64);
-        // SAFETY: the manager is live and every pointer valid; the builders are consumed once.
+        let snapshot = snapshot_of(from, to, records);
+        let mut stall = 0i64;
+        // SAFETY: the manager is live and every pointer valid; the snapshot is released once.
         unsafe {
-            assert_eq!(
-                fdb_bld_new(&from.into(), &to.into(), 1, 1, 1, 1, &mut first),
-                FdbStatus::Ok as i32
-            );
-            assert_eq!(
-                fdb_bld_new(&from.into(), &to.into(), 0, 0, 0, 0, &mut second),
-                FdbStatus::Ok as i32
-            );
-            let split = records.len() / 2;
-            let (head, tail) = if split == 0 {
-                (records, &[][..])
-            } else {
-                split_at_record(records)
-            };
-            assert_eq!(
-                fdb_bld_append(first, head.as_ptr(), head.len()),
-                FdbStatus::Ok as i32,
-                "{}",
-                last_error()
-            );
-            assert_eq!(
-                fdb_bld_append(second, tail.as_ptr(), tail.len()),
-                FdbStatus::Ok as i32,
-                "{}",
-                last_error()
-            );
-            assert_eq!(fdb_bld_absorb(first, second), FdbStatus::Ok as i32);
-            let added = fdb_bld_add_snapshot(mgr, first);
+            let added = fdb_add_snapshot(mgr, snapshot);
+            assert_eq!(fdb_snapshot_release(snapshot), FdbStatus::Ok as i32);
             if added != FdbStatus::Ok as i32 {
                 return (added, -1);
             }
@@ -735,69 +550,93 @@ pub(crate) mod tests {
         }
     }
 
-    /// The first record and the rest.
-    fn split_at_record(records: &[u8]) -> (&[u8], &[u8]) {
-        // SET_ACCOUNT: tag, address, nonce, balance, storage root, code hash.
-        records.split_at(1 + 20 + 8 + 32 + 32 + 32)
+    fn snapshot_of(from: StateId, to: StateId, records: &[u8]) -> *mut FdbSnapshot {
+        let mut snapshot = ptr::null_mut();
+        // SAFETY: every pointer is valid.
+        let status = unsafe {
+            fdb_test_snapshot_from_records(&from.into(), &to.into(), records.as_ptr(), records.len(), &mut snapshot)
+        };
+        assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
+        snapshot
     }
 
-    fn gather(mgr: *mut FdbManager, base: StateId, filtered: bool) -> (i32, *mut FdbReader, StateId) {
-        let (mut rob, mut reader_state) = (ptr::null_mut(), FfiStateId::default());
+    fn gather(mgr: *mut FdbManager, base: StateId) -> (i32, *mut FdbRob, StateId) {
+        let (mut rob, mut info) = (ptr::null_mut(), FfiRobInfo::default());
         // SAFETY: the manager is live and every pointer valid.
-        let status = unsafe { fdb_gather(mgr, &base.into(), 0, filtered.into(), &mut rob, &mut reader_state) };
-        (status, rob, reader_state.into())
+        let status = unsafe { fdb_rob_gather(mgr, &base.into(), 0, &mut rob, &mut info) };
+        (status, rob, info.reader_state.into())
     }
 
-    fn account_balance(rob: *mut FdbReader, address: &[u8; 20]) -> Option<U256> {
-        let (mut account, mut found) = (FfiAccount::default(), 0u8);
-        // SAFETY: the reader is live and every pointer valid.
-        let status = unsafe { fdb_reader_get_account(rob, address.as_ptr(), &mut account, &mut found) };
+    fn account_balance(rob: *mut FdbRob, address: &[u8; 20]) -> Option<U256> {
+        let (mut account, mut found, mut source) = (FfiAccount::default(), 0u8, 0u8);
+        // SAFETY: the bundle is live and every pointer valid.
+        let status = unsafe { fdb_rob_get_account(rob, address.as_ptr(), &mut account, &mut found, &mut source) };
         assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
         (found != 0).then_some(U256(account.balance))
     }
 
-    fn slot(rob: *mut FdbReader, address: &[u8; 20], slot: u64) -> Option<U256> {
-        let (mut value, mut found) = ([0u64; 4], 0u8);
+    /// The slot at the newest clear of `address`, as `FlatStateReader` reads it, through the slot filter when
+    /// `filtered`.
+    fn slot(rob: *mut FdbRob, address: &[u8; 20], slot: u64, filtered: bool) -> Option<U256> {
+        let (mut sd_idx, mut value, mut found, mut source) = (0i32, [0u64; 4], 0u8, 0u8);
         let slot = U256::from_u64(slot).0;
-        // SAFETY: the reader is live and every pointer valid.
-        let status =
-            unsafe { fdb_reader_get_slot(rob, address.as_ptr(), slot.as_ptr(), value.as_mut_ptr(), &mut found) };
+        // SAFETY: the bundle is live and every pointer valid.
+        let status = unsafe {
+            assert_eq!(
+                fdb_rob_self_destruct_idx(rob, address.as_ptr(), &mut sd_idx),
+                FdbStatus::Ok as i32
+            );
+            fdb_rob_get_slot(
+                rob,
+                address.as_ptr(),
+                slot.as_ptr(),
+                sd_idx,
+                filtered.into(),
+                value.as_mut_ptr(),
+                &mut found,
+                &mut source,
+            )
+        };
         assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
         (found != 0).then_some(U256(value))
     }
 
-    fn state_rlp(rob: *mut FdbReader, path: &str) -> Option<Vec<u8>> {
+    fn state_rlp(rob: *mut FdbRob, path: &str) -> Option<Vec<u8>> {
         let path = TreePath::from_hex(path);
-        let (mut buffer, mut len) = ([0u8; 64], 0i64);
-        // SAFETY: the reader is live and every pointer valid.
+        let (mut buffer, mut len, mut source) = ([0u8; 64], 0i64, 0u8);
+        // SAFETY: the bundle is live and every pointer valid.
         let status = unsafe {
-            fdb_reader_load_state_rlp(
+            fdb_rob_load_state_rlp(
                 rob,
                 path.path.as_ptr(),
                 path.length,
+                [0u8; 32].as_ptr(),
                 0,
                 buffer.as_mut_ptr(),
                 buffer.len(),
                 &mut len,
+                &mut source,
             )
         };
         assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
         (len >= 0).then(|| buffer[..len as usize].to_vec())
     }
 
-    fn storage_rlp(rob: *mut FdbReader) -> Option<Vec<u8>> {
-        let (mut buffer, mut len) = ([0u8; 64], 0i64);
-        // SAFETY: the reader is live and every pointer valid.
+    fn storage_rlp(rob: *mut FdbRob) -> Option<Vec<u8>> {
+        let (mut buffer, mut len, mut source) = ([0u8; 64], 0i64, 0u8);
+        // SAFETY: the bundle is live and every pointer valid.
         let status = unsafe {
-            fdb_reader_load_storage_rlp(
+            fdb_rob_load_storage_rlp(
                 rob,
                 OWNER.as_ptr(),
                 [0u8; 32].as_ptr(),
                 0,
+                [0u8; 32].as_ptr(),
                 0,
                 buffer.as_mut_ptr(),
                 64,
                 &mut len,
+                &mut source,
             )
         };
         assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
@@ -914,31 +753,31 @@ pub(crate) mod tests {
         assert!(has_state(mgr, block(9)) && has_state(mgr, block(0)) && !has_state(mgr, StateId::new(9, [0; 32])));
         assert!(counters(mgr).snapshot_count.load(Ordering::SeqCst) >= 10);
 
+        let (status, rob, reader_state) = gather(mgr, block(9));
+        assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
+        assert_eq!(reader_state, StateId::PRE_GENESIS, "nothing is persisted yet");
+        assert_eq!(account_balance(rob, &A), Some(U256::from_u64(9)));
+        assert_eq!(account_balance(rob, &[0x01; 20]), None, "deleted at block 5");
         for filtered in [false, true] {
-            let (status, rob, reader_state) = gather(mgr, block(9), filtered);
-            assert_eq!(status, FdbStatus::Ok as i32, "{}", last_error());
-            assert_eq!(reader_state, StateId::PRE_GENESIS, "nothing is persisted yet");
-            assert_eq!(account_balance(rob, &A), Some(U256::from_u64(9)));
-            assert_eq!(account_balance(rob, &[0x01; 20]), None, "deleted at block 5");
-            assert_eq!(slot(rob, &A, 1), Some(U256::from_u64(9)));
-            assert_eq!(slot(rob, &B, 2), Some(U256::from_u64(5)));
-            assert_eq!(slot(rob, &B, 3), None, "cleared at block 5");
-            assert_eq!(state_rlp(rob, ""), Some(vec![0xC1, 9]));
-            assert_eq!(
-                state_rlp(rob, "1"),
-                None,
-                "a placeholder falls through to the empty database"
-            );
-            assert_eq!(storage_rlp(rob), Some(vec![0xC2, 0x80, 9]));
-            // SAFETY: the reader is released once.
-            assert_eq!(unsafe { fdb_reader_release(rob) }, FdbStatus::Ok as i32);
+            assert_eq!(slot(rob, &A, 1, filtered), Some(U256::from_u64(9)));
+            assert_eq!(slot(rob, &B, 2, filtered), Some(U256::from_u64(5)));
+            assert_eq!(slot(rob, &B, 3, filtered), None, "cleared at block 5");
         }
+        assert_eq!(state_rlp(rob, ""), Some(vec![0xC1, 9]));
+        assert_eq!(
+            state_rlp(rob, "1"),
+            None,
+            "a placeholder falls through to the empty database"
+        );
+        assert_eq!(storage_rlp(rob), Some(vec![0xC2, 0x80, 9]));
+        // SAFETY: the bundle is released once.
+        assert_eq!(unsafe { fdb_rob_release(rob) }, FdbStatus::Ok as i32);
 
-        let (status, rob, _) = gather(mgr, StateId::new(3, [0; 32]), false);
+        let (status, rob, _) = gather(mgr, StateId::new(3, [0; 32]));
         assert_eq!((status, rob), (FdbStatus::StateNotRetained as i32, ptr::null_mut()));
 
-        // A reader held across the flush keeps the store alive and reads the snapshots it was gathered over.
-        let (_, held, _) = gather(mgr, block(4), false);
+        // A bundle held across the flush keeps the store alive and reads the snapshots it was gathered over.
+        let (_, held, _) = gather(mgr, block(4));
         let mut persisted = FfiStateId::default();
         // SAFETY: the manager is live and every pointer valid.
         assert_eq!(
@@ -968,9 +807,9 @@ pub(crate) mod tests {
 
         // SAFETY: the manager is live and the clear has no out-pointer.
         assert_eq!(unsafe { fdb_clear_bundle_cache(mgr) }, FdbStatus::Ok as i32);
-        let (_, rob, reader_state) = gather(mgr, block(9), false);
+        let (_, rob, reader_state) = gather(mgr, block(9));
         assert_eq!(reader_state, block(9));
-        assert_eq!(slot(rob, &B, 2), Some(U256::from_u64(5)), "persisted");
+        assert_eq!(slot(rob, &B, 2, false), Some(U256::from_u64(5)), "persisted");
         assert_eq!(account_balance(rob, &[0x01; 20]), None);
         assert_eq!(add(mgr, parent(9), block(9), &records(9)).0, FdbStatus::Rejected as i32);
 
@@ -1015,15 +854,15 @@ pub(crate) mod tests {
             assert_eq!(
                 account_balance(rob, &A),
                 Some(U256::from_u64(9)),
-                "a reader outlives its manager"
+                "a bundle outlives its manager"
             );
             assert_eq!(
                 fdb_store_destroy(store),
                 FdbStatus::InvalidArgument as i32,
-                "readers hold the store"
+                "bundles hold the store"
             );
-            fdb_reader_release(rob);
-            fdb_reader_release(held);
+            fdb_rob_release(rob);
+            fdb_rob_release(held);
             assert_eq!(fdb_store_destroy(store), FdbStatus::Ok as i32);
         }
     }
@@ -1181,17 +1020,19 @@ pub(crate) mod tests {
     #[case::truncated(vec![snapshot_stream::SELF_DESTRUCT, 0xAA], "truncated (record 0 at byte 0)")]
     #[case::unknown_tag(vec![9], "unknown record tag 9 (record 0 at byte 0)")]
     #[case::long_path([vec![snapshot_stream::STATE_NODE], vec![0; 32], vec![65]].concat(), "path length 65")]
-    fn malformed_records_fail_the_append(#[case] records: Vec<u8>, #[case] message: &str) {
-        let mut bld = ptr::null_mut();
-        // SAFETY: every pointer is valid and the builder released once.
-        unsafe {
-            fdb_bld_new(&block(0).into(), &block(1).into(), 0, 0, 0, 0, &mut bld);
-            assert_eq!(
-                fdb_bld_append(bld, records.as_ptr(), records.len()),
-                FdbStatus::InvalidArgument as i32
-            );
-            assert_eq!(fdb_bld_release(bld), FdbStatus::Ok as i32);
-        }
+    fn malformed_records_are_refused(#[case] records: Vec<u8>, #[case] message: &str) {
+        let mut snapshot = ptr::null_mut();
+        // SAFETY: every pointer is valid.
+        let status = unsafe {
+            fdb_test_snapshot_from_records(
+                &block(0).into(),
+                &block(1).into(),
+                records.as_ptr(),
+                records.len(),
+                &mut snapshot,
+            )
+        };
+        assert_eq!((status, snapshot), (FdbStatus::InvalidArgument as i32, ptr::null_mut()));
         assert!(last_error().contains(message), "{}", last_error());
     }
 
@@ -1322,7 +1163,7 @@ pub(crate) mod tests {
         };
         let (_, mgr) = create(store, cfg, &fdb_host(&host));
         add(mgr, parent(0), block(0), &records(0));
-        let (_, held, _) = gather(mgr, block(0), false);
+        let (_, held, _) = gather(mgr, block(0));
 
         let fault = match site {
             PanicSite::Export => Fault::PanicInExport,
@@ -1344,29 +1185,31 @@ pub(crate) mod tests {
         };
         let logged = take_log(store);
 
-        let (mut bld, mut reader, mut rob, mut current, mut account, mut found) = (
-            ptr::null_mut(),
+        let snapshot = snapshot_of(block(6), block(7), &[]);
+        let (mut reader, mut rob, mut current, mut info, mut account, mut found, mut source) = (
             ptr::null_mut(),
             ptr::null_mut(),
             FfiStateId::default(),
+            FfiRobInfo::default(),
             FfiAccount::default(),
+            0u8,
             0u8,
         );
         // SAFETY: every handle is live and every pointer valid; the handles are released once.
         unsafe {
-            fdb_bld_new(&block(6).into(), &block(7).into(), 0, 0, 0, 0, &mut bld);
             let statuses = [
                 has_state(mgr),
-                fdb_bld_add_snapshot(mgr, bld),
-                fdb_gather(mgr, &block(0).into(), 0, 0, &mut rob, &mut current),
+                fdb_add_snapshot(mgr, snapshot),
+                fdb_rob_gather(mgr, &block(0).into(), 0, &mut rob, &mut info),
                 fdb_flush_to_persistence(mgr, &mut current),
                 fdb_drop_unreachable(mgr, &block(0).into()),
                 crate::fdb_reader_open(store, 0, 0, &mut reader, &mut current),
                 crate::fdb_store_flush(store),
-                fdb_reader_get_account(held, A.as_ptr(), &mut account, &mut found),
+                fdb_rob_get_account(held, A.as_ptr(), &mut account, &mut found, &mut source),
             ];
             let released = [
-                fdb_reader_release(held),
+                fdb_rob_release(held),
+                fdb_snapshot_release(snapshot),
                 fdb_shutdown(mgr),
                 fdb_destroy(mgr),
                 fdb_store_destroy(store),
@@ -1374,7 +1217,7 @@ pub(crate) mod tests {
 
             assert_eq!(panicked, (FdbStatus::Panic as i32, "panic: injected".to_owned()));
             assert_eq!(statuses, [FdbStatus::Poisoned as i32; 8]);
-            assert_eq!(released, [FdbStatus::Ok as i32; 4]);
+            assert_eq!(released, [FdbStatus::Ok as i32; 5]);
         }
         if site != PanicSite::Export {
             let job = if site == PanicSite::PersistWorker {

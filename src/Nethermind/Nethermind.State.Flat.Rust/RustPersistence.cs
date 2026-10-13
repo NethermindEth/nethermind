@@ -73,10 +73,6 @@ internal sealed class RustPersistence(IColumnsDb<FlatDbColumns> db, IFlatDbConfi
         }
     }
 
-    /// <summary>Wraps a native bundle gathered from <paramref name="manager"/>, for which the caller took a reference on the store and on the manager.</summary>
-    internal IPersistence.IPersistenceReader WrapBundle(nint bundle, in StateId currentState, ManagerHandle manager) =>
-        new Reader(_store, new BundleHandle(_store, manager, bundle), currentState);
-
     public void Flush()
     {
         _store.ThrowIfFailed(NativeMethods.fdb_store_flush(_store));

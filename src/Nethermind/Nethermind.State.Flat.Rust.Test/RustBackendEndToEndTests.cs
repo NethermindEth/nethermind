@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -25,29 +26,33 @@ namespace Nethermind.State.Flat.Rust.Test;
 
 /// <summary>
 /// One seeded random block stream through the world state of a node on the C# backend and of one on the Rust backend:
-/// account and slot writes, self-destructs, resurrection of a destroyed address with new storage (CREATE2 after
-/// SELFDESTRUCT), code, empty blocks and reorgs deeper than the compact size. Every block must reach the same state
-/// root on both, after every flush their flat columns must be identical, and at the end the state reader, its proofs
-/// and an overridable world scope must read the same through both, before and after the last flush.
+/// a pre-Byzantium segment hashing the state after every transaction, account and slot writes, self-destructs,
+/// resurrection of a destroyed address with new storage (CREATE2 after SELFDESTRUCT), code, empty blocks, reorgs deeper
+/// than the compact size, a branch of 2 blocks left for the chain it forked from, and a branch of 65 blocks. Every
+/// block must reach the same state root on both, after every flush their flat columns must be identical, and at the
+/// end the state reader, its proofs and an overridable world scope must read the same through both, before and after
+/// the last flush.
 /// </summary>
 /// <remarks>
-/// Each node runs the whole production graph of <see cref="TestNethermindModule"/>, so the trie is hashed by the C#
-/// scope from nodes read through the Rust bundles and handed back to the Rust manager as snapshots.
+/// Each node runs the whole production graph of <see cref="TestNethermindModule"/>, with the trie warmer and the
+/// early storage apply on, so the trie is hashed by the scope from nodes read through the bundles of its backend; on
+/// the Rust backend those are the forked package's, whose snapshots are native.
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
 public class RustBackendEndToEndTests
 {
     private static readonly FlatLayout[] Layouts = GoldenVectorGenerator.Layouts;
+    private static readonly IReleaseSpec PreByzantium = Homestead.Instance;
     private static readonly IReleaseSpec Spec = Cancun.Instance;
 
     [Test]
-    public async Task World_state_matches_the_csharp_backend([ValueSource(nameof(Layouts))] FlatLayout layout, [Values] bool carryForward)
+    public async Task World_state_matches_the_csharp_backend([ValueSource(nameof(Layouts))] FlatLayout layout, [Values] bool carryForward, [Values] bool deferStorageTrieCommit)
     {
         RustNativeLibrary.Require();
-        await using Node csharp = new(FlatDbBackend.CSharp, layout, carryForward);
-        await using Node rust = new(FlatDbBackend.Rust, layout, carryForward);
+        await using Node csharp = new(FlatDbBackend.CSharp, layout, carryForward, deferStorageTrieCommit);
+        await using Node rust = new(FlatDbBackend.Rust, layout, carryForward, deferStorageTrieCommit);
 
-        int seed = 20261014 + (int)layout * 2 + (carryForward ? 1 : 0);
+        int seed = 20261014 + (int)layout * 4 + (carryForward ? 2 : 0) + (deferStorageTrieCommit ? 1 : 0);
         new BlockStream(new Random(seed), csharp, rust).Run();
     }
 
@@ -56,11 +61,22 @@ public class RustBackendEndToEndTests
     {
         private readonly IContainer _container;
 
-        public Node(FlatDbBackend backend, FlatLayout layout, bool carryForward)
+        public Node(FlatDbBackend backend, FlatLayout layout, bool carryForward, bool deferStorageTrieCommit)
         {
+            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward);
+            config.DeferStorageTrieCommit = deferStorageTrieCommit;
+            // The flat module picks the warmer registration from this count when it loads.
+            config.TrieWarmerWorkerCount = 2;
             _container = new ContainerBuilder()
-                .AddModule(new TestNethermindModule(FlatManagerContainer.Config(backend, layout, carryForward)))
+                .AddModule(new TestNethermindModule(config))
+                // The test module turns the trie warmer off; the stream runs with it, and with the early storage apply.
+                .Intercept<IFlatDbConfig>(static flatDbConfig =>
+                {
+                    flatDbConfig.TrieWarmerWorkerCount = 2;
+                    flatDbConfig.ApplyStorageWritesOnIdleThread = true;
+                })
                 .Build();
+            Assert.That(_container.Resolve<ITrieWarmer>(), backend == FlatDbBackend.Rust ? Is.TypeOf<Fork.TrieWarmer>() : Is.TypeOf<TrieWarmer>());
             WorldState = _container.Resolve<IMainProcessingContext>().WorldState;
             Manager = _container.Resolve<IFlatDbManager>();
             PersistenceManager = _container.Resolve<IPersistenceManager>();
@@ -75,16 +91,20 @@ public class RustBackendEndToEndTests
 
         public IColumnsDb<FlatDbColumns> Db { get; }
 
-        /// <summary>Runs <paramref name="transactions"/> on <paramref name="parent"/>, each committed apart, and commits block <paramref name="number"/>.</summary>
-        public Hash256 Commit(BlockHeader? parent, ulong number, IReadOnlyList<Action<IWorldState>> transactions)
+        /// <summary>
+        /// Runs <paramref name="transactions"/> on <paramref name="parent"/>, each committed apart, and commits block
+        /// <paramref name="number"/>; before Byzantium the state root is hashed after every transaction.
+        /// </summary>
+        public Hash256 Commit(BlockHeader? parent, ulong number, IReleaseSpec spec, IReadOnlyList<Action<IWorldState, IReleaseSpec>> transactions)
         {
             Hash256 root;
             using (WorldState.BeginScope(parent))
             {
-                foreach (Action<IWorldState> transaction in transactions)
+                foreach (Action<IWorldState, IReleaseSpec> transaction in transactions)
                 {
-                    transaction(WorldState);
-                    WorldState.Commit(Spec);
+                    transaction(WorldState, spec);
+                    WorldState.Commit(spec);
+                    if (!spec.IsEip658Enabled) WorldState.RecalculateStateRoot();
                 }
 
                 WorldState.CommitTree(number);
@@ -134,8 +154,10 @@ public class RustBackendEndToEndTests
 
     private sealed class BlockStream(Random random, Node csharp, Node rust)
     {
+        private const int PreByzantiumBlocks = 10;
         private const int BlockCount = 70;
         private const int CompactSize = 4;
+        private const int LongBranch = 65;
 
         private readonly Address[] _addresses = [.. Enumerable.Range(1, 8).Select(static i => new Address($"0x{i:x40}"))];
         private readonly UInt256[] _slots = [0, 1, 7, UInt256.MaxValue];
@@ -148,18 +170,45 @@ public class RustBackendEndToEndTests
             for (int block = 0; block < BlockCount; block++)
             {
                 int choice = random.Next(100);
-                bool reorged = choice is >= 10 and < 20 && TryReorg();
+                bool reorged = block >= PreByzantiumBlocks && choice is >= 10 and < 20 && TryReorg();
                 if (choice < 10) AddBlock(_chain.Count - 1, []);
                 else if (!reorged) AddBlock(_chain.Count - 1, RandomTransactions());
 
                 if (choice >= 92) Flush();
             }
 
+            // Blocks enough above the last flush for the branches below to fork within the reorg window.
+            for (int block = 0; block < 2 * CompactSize; block++) AddBlock(_chain.Count - 1, RandomTransactions());
+            ShortBranchLeftBehind();
+            LongBranchBecomesTheChain();
             CompareReaders(_chain[^1], _chain[^3]);
             Flush();
             // The flush persisted the head and pruned the states below it.
             CompareReaders(_chain[^1]);
             Assert.That(_reorgs, Is.GreaterThan(0), "the stream reorged deeper than the compact size");
+        }
+
+        /// <summary>A branch of 2 blocks on a block a few back, after which the chain it forked from goes on.</summary>
+        private void ShortBranchLeftBehind()
+        {
+            List<BlockHeader?> chain = [.. _chain];
+            int parentIndex = _chain.Count - 4;
+            AddBlock(parentIndex, RandomTransactions());
+            AddBlock(_chain.Count - 1, RandomTransactions());
+            CompareReaders(_chain[^1]);
+
+            _chain.Clear();
+            _chain.AddRange(chain);
+            AddBlock(_chain.Count - 1, RandomTransactions());
+        }
+
+        /// <summary>A branch of <see cref="LongBranch"/> blocks on a block deeper than the compact size, which becomes the chain.</summary>
+        private void LongBranchBecomesTheChain()
+        {
+            int parentIndex = _chain.Count - 1 - (CompactSize + 2);
+            _reorgs++;
+            AddBlock(parentIndex, RandomTransactions());
+            for (int block = 1; block < LongBranch; block++) AddBlock(_chain.Count - 1, RandomTransactions());
         }
 
         /// <summary>The state reader, its proofs and an overridable scope read the same at every one of <paramref name="headers"/>.</summary>
@@ -172,12 +221,13 @@ public class RustBackendEndToEndTests
         }
 
         /// <summary>Adds a block on <c>_chain[parentIndex]</c>, dropping the chain above it.</summary>
-        private void AddBlock(int parentIndex, IReadOnlyList<Action<IWorldState>> transactions)
+        private void AddBlock(int parentIndex, IReadOnlyList<Action<IWorldState, IReleaseSpec>> transactions)
         {
             BlockHeader? parent = _chain[parentIndex];
             ulong number = parent is null ? 0 : parent.Number + 1;
-            Hash256 expected = csharp.Commit(parent, number, transactions);
-            Hash256 actual = rust.Commit(parent, number, transactions);
+            IReleaseSpec spec = number < PreByzantiumBlocks ? PreByzantium : Spec;
+            Hash256 expected = csharp.Commit(parent, number, spec, transactions);
+            Hash256 actual = rust.Commit(parent, number, spec, transactions);
             Assert.That(actual, Is.EqualTo(expected), $"state root of block {number}");
 
             _chain.RemoveRange(parentIndex + 1, _chain.Count - parentIndex - 1);
@@ -212,10 +262,10 @@ public class RustBackendEndToEndTests
             }
         }
 
-        private List<Action<IWorldState>> RandomTransactions() =>
+        private List<Action<IWorldState, IReleaseSpec>> RandomTransactions() =>
             [.. Enumerable.Range(0, random.Next(1, 5)).Select(_ => RandomTransaction())];
 
-        private Action<IWorldState> RandomTransaction()
+        private Action<IWorldState, IReleaseSpec> RandomTransaction()
         {
             Address address = _addresses[random.Next(_addresses.Length)];
             UInt256 slot = _slots[random.Next(_slots.Length)];
@@ -224,21 +274,21 @@ public class RustBackendEndToEndTests
             byte[] code = [0x60, (byte)random.Next(256), 0x00];
             return random.Next(6) switch
             {
-                0 => state => state.AddToBalanceAndCreateIfNotExists(address, amount, Spec, out _),
+                0 => (state, spec) => state.AddToBalanceAndCreateIfNotExists(address, amount, spec, out _),
                 1 or 2 => SetSlot,
                 3 => SelfDestruct,
                 4 => Resurrect,
                 _ => DeployCode,
             };
 
-            void SetSlot(IWorldState state)
+            void SetSlot(IWorldState state, IReleaseSpec spec)
             {
                 state.CreateAccountIfNotExists(address, amount);
                 state.Set(new StorageCell(address, slot), value);
             }
 
             // SELFDESTRUCT of an account created in the same transaction (EIP-6780) clears it with its storage.
-            void SelfDestruct(IWorldState state)
+            void SelfDestruct(IWorldState state, IReleaseSpec spec)
             {
                 if (!state.AccountExists(address)) return;
                 state.ClearStorage(address);
@@ -246,23 +296,23 @@ public class RustBackendEndToEndTests
             }
 
             // CREATE2 at an address destroyed earlier: a fresh account with storage of its own.
-            void Resurrect(IWorldState state)
+            void Resurrect(IWorldState state, IReleaseSpec spec)
             {
                 if (state.AccountExists(address))
                 {
                     state.ClearStorage(address);
                     state.DeleteAccount(address);
-                    state.Commit(Spec);
+                    state.Commit(spec);
                 }
 
                 state.CreateAccount(address, amount);
                 state.Set(new StorageCell(address, slot), (UInt256)amount);
             }
 
-            void DeployCode(IWorldState state)
+            void DeployCode(IWorldState state, IReleaseSpec spec)
             {
                 state.CreateAccountIfNotExists(address, amount);
-                state.InsertCode(address, ValueKeccak.Compute(code), code, Spec);
+                state.InsertCode(address, ValueKeccak.Compute(code), code, spec);
             }
         }
     }

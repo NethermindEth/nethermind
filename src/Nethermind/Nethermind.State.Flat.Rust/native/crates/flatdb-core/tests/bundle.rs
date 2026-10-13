@@ -15,7 +15,7 @@ use std::thread;
 
 use common::any_kv::Backend;
 use common::hex;
-use common::snapshots::{DictionaryReader, address, empty_snapshot, snapshot, state_id};
+use common::snapshots::{DictionaryReader, address, empty_snapshot, read_slot, snapshot, state_id};
 use flatdb_core::bundle::{ReadOnlySnapshotBundle, ReadSource};
 use flatdb_core::bundle_cache::BundleCache;
 use flatdb_core::compactor::SnapshotCompactor;
@@ -133,7 +133,7 @@ fn reads_count_where_they_were_served_from(#[values(false, true)] filtered: bool
     bundle.get_account(&b).unwrap();
     bundle.get_account(&c).unwrap();
     for (address, slot) in [(a, 1), (b, 1), (b, 2), (b, 3), (c, 1)] {
-        bundle.try_get_slot(&address, &u256(slot), filtered).unwrap();
+        read_slot(&bundle, &address, &u256(slot), filtered).unwrap();
     }
     for path in [root, placeholder, persisted] {
         bundle
@@ -258,7 +258,7 @@ fn get_slot_stops_at_the_clear_and_falls_back_to_persistence_otherwise(#[values(
 }
 
 #[test]
-fn try_get_slot_applies_the_newest_clear_itself() {
+fn the_newest_clear_cuts_off_the_slots_written_before_it() {
     let a = address(0xA1);
     let mut reader = DictionaryReader::default();
     reader.slots.insert((a, u256(1)), u256(11));
@@ -275,18 +275,18 @@ fn try_get_slot_applies_the_newest_clear_itself() {
 
     for filtered in [false, true] {
         assert_eq!(
-            bundle.try_get_slot(&a, &u256(1), filtered).unwrap(),
+            read_slot(&bundle, &a, &u256(1), filtered).unwrap(),
             None,
             "cleared after the write"
         );
         assert_eq!(
-            bundle.try_get_slot(&a, &u256(2), filtered).unwrap(),
+            read_slot(&bundle, &a, &u256(2), filtered).unwrap(),
             None,
             "cleared above persistence"
         );
-        assert_eq!(bundle.try_get_slot(&a, &u256(3), filtered).unwrap(), Some(u256(33)));
+        assert_eq!(read_slot(&bundle, &a, &u256(3), filtered).unwrap(), Some(u256(33)));
         assert_eq!(
-            bundle.try_get_slot(&address(0xB2), &u256(1), filtered).unwrap(),
+            read_slot(&bundle, &address(0xB2), &u256(1), filtered).unwrap(),
             Some(u256(6))
         );
     }
@@ -530,7 +530,7 @@ fn concurrent_reads_racing_the_build_match_the_plain_read() {
     );
     let expected: Vec<Option<U256>> = keys
         .iter()
-        .map(|(a, s)| plain.try_get_slot(a, s, false).unwrap())
+        .map(|(a, s)| read_slot(&plain, a, s, false).unwrap())
         .collect();
 
     for _ in 0..20 {
@@ -551,7 +551,7 @@ fn concurrent_reads_racing_the_build_match_the_plain_read() {
                         barrier.wait();
                         (0..keys.len())
                             .map(|n| (n + t * keys.len() / THREADS) % keys.len())
-                            .filter(|i| filtered.try_get_slot(&keys[*i].0, &keys[*i].1, true).unwrap() != expected[*i])
+                            .filter(|i| read_slot(filtered, &keys[*i].0, &keys[*i].1, true).unwrap() != expected[*i])
                             .count()
                     })
                 })
@@ -634,13 +634,13 @@ fn bundles_read_through_a_real_persistence(
     assert_eq!(bundle.get_account(&b).unwrap().0, Some(Account::new(3, u256(30))));
     for filtered in [false, true] {
         assert_eq!(
-            bundle.try_get_slot(&a, &u256(1), filtered).unwrap(),
+            read_slot(&bundle, &a, &u256(1), filtered).unwrap(),
             None,
             "cleared in memory"
         );
-        assert_eq!(bundle.try_get_slot(&b, &u256(1), filtered).unwrap(), Some(u256(200)));
-        assert_eq!(bundle.try_get_slot(&b, &u256(2), filtered).unwrap(), Some(u256(222)));
-        assert_eq!(bundle.try_get_slot(&b, &u256(3), filtered).unwrap(), None);
+        assert_eq!(read_slot(&bundle, &b, &u256(1), filtered).unwrap(), Some(u256(200)));
+        assert_eq!(read_slot(&bundle, &b, &u256(2), filtered).unwrap(), Some(u256(222)));
+        assert_eq!(read_slot(&bundle, &b, &u256(3), filtered).unwrap(), None);
     }
     let state_rlp = bundle.load_state_rlp_unchecked(&TreePath::from_hex("12"), ReadFlags::NONE, <[u8]>::to_vec);
     assert_eq!(
@@ -864,8 +864,8 @@ fn check_stack_reads(stack: &[StackLayer], persistence: &PersistenceModel) -> Re
                     prop_assert_eq!(bundle.get_slot_filtered(&address(a), &slot, d).unwrap().0, expected);
                 }
                 let expected = oracle_slot(&layers, persistence, (a, s), clear).map(u256);
-                prop_assert_eq!(bundle.try_get_slot(&address(a), &slot, false).unwrap(), expected);
-                prop_assert_eq!(bundle.try_get_slot(&address(a), &slot, true).unwrap(), expected);
+                prop_assert_eq!(read_slot(&bundle, &address(a), &slot, false).unwrap(), expected);
+                prop_assert_eq!(read_slot(&bundle, &address(a), &slot, true).unwrap(), expected);
             }
         }
 

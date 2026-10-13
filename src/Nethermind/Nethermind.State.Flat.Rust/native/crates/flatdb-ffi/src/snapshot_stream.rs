@@ -1,19 +1,16 @@
-//! The record stream of `fdb_bld_append`: the content of a C# `Snapshot`, serialized by
-//! `Nethermind.State.Flat.Rust/SnapshotSerializer.cs` and handed over a chunk at a time.
+//! The record stream of the test exports `fdb_test_snapshot_from_records` and `fdb_test_snapshot_dump`: the content
+//! of a snapshot, as the writes of a C# `SnapshotContent`.
 //!
 //! Each record is a tag byte followed by its fields, encoded as in [`crate::op_stream`]; a later record of a key
 //! replaces the earlier one, as a write to the C# dictionaries does. Tests also get a snapshot's content back as
 //! records ([`dump`]).
 
-#[cfg(any(test, feature = "test-api"))]
 use flatdb_core::snapshot::Snapshot;
 use flatdb_core::snapshot::content::SnapshotContentBuilder;
-#[cfg(any(test, feature = "test-api"))]
 use flatdb_core::snapshot::keys::SnapshotKey;
 
 use crate::abi::FfiError;
 use crate::op_stream::Reader;
-#[cfg(any(test, feature = "test-api"))]
 use crate::op_stream::writer::OpWriter;
 
 /// `Accounts[address] = account`: address, account.
@@ -81,7 +78,6 @@ fn append_one(builder: &mut SnapshotContentBuilder, reader: &mut Reader<'_>) -> 
 
 /// Every entry of `snapshot` as records: its accounts, clears, slots, state trie nodes, then storage trie nodes, each
 /// kind sorted as the C# comparers sort its keys, so equal contents dump to equal bytes.
-#[cfg(any(test, feature = "test-api"))]
 pub fn dump(snapshot: &Snapshot) -> Vec<u8> {
     let mut writer = OpWriter::default();
     for (address, account) in sorted(snapshot.accounts()) {
@@ -113,7 +109,6 @@ pub fn dump(snapshot: &Snapshot) -> Vec<u8> {
     writer.0
 }
 
-#[cfg(any(test, feature = "test-api"))]
 fn sorted<'a, K: SnapshotKey, V>(entries: impl Iterator<Item = (&'a K, V)>) -> Vec<(&'a K, V)> {
     let mut entries: Vec<_> = entries.collect();
     entries.sort_unstable_by(|left, right| left.0.compare(right.0));

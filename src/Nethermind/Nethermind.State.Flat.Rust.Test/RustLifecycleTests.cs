@@ -46,14 +46,14 @@ public class RustLifecycleTests
         TestFinality finality = new();
         FlatManagerContainer container = new(FlatManagerContainer.Config(backend), path.Path, finality, new() { PersistenceBarrier = barrier });
         for (ulong number = 0; number <= 3; number++) container.AddBlock(number);
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         // Block 4, the next boundary, is finalized, so the persistence worker persists it once the head reaches block 6.
         finality.Finalize(4, Block);
         barrier.Hold();
         for (ulong number = 4; number <= 8; number++) container.AddBlock(number);
         bool persistHeld = barrier.WaitHeld(Eventually);
-        ReadOnlySnapshotBundle bundle = container.Manager.GatherReadOnlySnapshotBundle(Block(8));
+        IBundleView bundle = container.Arm.GatherReadOnly(Block(8), ReaderFlags.None);
         IPersistence.IPersistenceReader reader = container.PersistenceManager.LeaseReader();
         IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, MaxKey);
 
@@ -95,12 +95,12 @@ public class RustLifecycleTests
         RecordingLogManager logManager = new(LogLevel.Warn);
         FlatTestDbs.TrackingColumnsDb db = new(Path.Combine(path.Path, DbNames.Flat), TimeSpan.Zero, logManager);
         FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, new TestFinality(), new() { Db = db });
-        NativeFlatManager native = container.Resolve<NativeFlatManager>();
+        Fork.NativeFlatManager native = container.Resolve<Fork.NativeFlatManager>();
         RustFlatStore store = container.Resolve<RustPersistence>().Store;
         (bool Manager, bool Store)? releasedAtClose = null;
         db.NativeClosing = () => releasedAtClose = (native.Handle.IsClosed, store.IsClosed);
         for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
-        container.Manager.GatherReadOnlySnapshotBundle(Block(2)).Dispose();
+        container.Arm.GatherReadOnly(Block(2), ReaderFlags.None).Dispose();
 
         await container.DisposeAsync();
 
@@ -161,8 +161,8 @@ public class RustLifecycleTests
         FlatManagerContainer container = new(FlatManagerContainer.Config(backend), path.Path, new TestFinality());
         for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
         RustPersistence persistence = container.Resolve<RustPersistence>();
-        IDisposable[] native = backend == FlatDbBackend.Rust ? [container.Resolve<NativeFlatManager>()] : [];
-        IAsyncDisposable[] shell = container.Manager is RustFlatDbManager rustManager ? [rustManager] : [];
+        IDisposable[] native = backend == FlatDbBackend.Rust ? [container.Resolve<Fork.NativeFlatManager>()] : [];
+        IAsyncDisposable[] shell = backend == FlatDbBackend.Rust ? [container.Resolve<Fork.RustFlatDbManager>()] : [];
         IPersistence.IPersistenceReader reader = persistence.CreateReader();
         IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, MaxKey);
         IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
@@ -226,6 +226,117 @@ public class RustLifecycleTests
             Assert.That(committed, Is.EqualTo(Block(1)), "the abandoned batch wrote nothing");
             if (db is FlatTestDbs.TrackingColumnsDb rocksDb) Assert.That(rocksDb.NativeCloses, Is.EqualTo(1));
         }
+    }
+
+    /// <summary>
+    /// Disposing the node shuts the native manager down, but a scope bundle and a snapshot it committed, both still
+    /// open, keep working and keep the database until they are disposed; the database then closes once.
+    /// </summary>
+    [Test]
+    public async Task Shutdown_waits_for_a_live_scope_and_its_snapshot_which_keep_working()
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, new TestFinality());
+        for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
+        Fork.SnapshotBundle scope = container.Resolve<Fork.IFlatDbManager>().GatherSnapshotBundle(Block(2), ResourcePool.Usage.MainBlockProcessing);
+        scope.SetAccount(BlockAddress, new Account(9, 9));
+        (Fork.Snapshot? snapshot, TransientResource? transient) = scope.CollectAndApplySnapshot(Block(2), Block(3));
+        TestInternals.ReleaseLease(transient!);
+
+        Task disposal = Task.Run(async () => await container.DisposeAsync());
+        bool disposedWithScopeOpen = disposal.Wait(Briefly);
+        scope.SetChangedSlot(BlockAddress, 1, 1);
+        (Account? committed, bool snapshotAlive) = (scope.GetAccount(BlockAddress), snapshot!.TryAcquire());
+        snapshot.Dispose();
+        snapshot.Dispose();
+        scope.Dispose();
+        bool disposed = disposal.Wait(Eventually);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposedWithScopeOpen, Is.False, "the open scope holds the database");
+            Assert.That((committed, snapshotAlive), Is.EqualTo((new Account(9, 9), true)), "the scope and its snapshot work after the manager is gone");
+            Assert.That(disposed, Is.True);
+            Assert.That(container.Db.NativeCloses, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>
+    /// The handles of a native read-only bundle, a native scope and a committed snapshot nobody disposed are released by
+    /// their finalizers: the snapshot's content is freed, and the store and the database go.
+    /// </summary>
+    /// <remarks>
+    /// The forked bundle classes hold a reference on their handle until they are disposed, so a handle is finalized
+    /// only once nothing but the finalizer holds it.
+    /// </remarks>
+    [Test]
+    public async Task Finalizers_release_abandoned_bundle_scope_and_snapshot_handles()
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, new TestFinality());
+        for (ulong number = 0; number <= 2; number++) container.AddBlock(number);
+        long contents = LiveMainContents(container);
+        long contentsHeld = AbandonNative(container);
+        for (int i = 0; i < 2; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        long contentsAfterFinalizers = LiveMainContents(container);
+        Task disposal = container.DisposeAsync().AsTask();
+        bool disposed = await Task.WhenAny(disposal, Task.Delay(Eventually)) == disposal;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((contentsHeld, contentsAfterFinalizers), Is.EqualTo((contents + 1, contents)), "the abandoned snapshot held its content until finalized");
+            Assert.That((disposed, container.Db.NativeCloses), Is.EqualTo((true, 1)));
+        }
+    }
+
+    /// <summary>
+    /// Opens a native read-only bundle and a native scope of the forked manager, and keeps a snapshot a scope committed,
+    /// and drops all three handles.
+    /// </summary>
+    /// <returns>The live contents of block processing while the snapshot is held.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static unsafe long AbandonNative(FlatManagerContainer container)
+    {
+        using (Fork.SnapshotBundle scope = container.Resolve<Fork.IFlatDbManager>().GatherSnapshotBundle(Block(2), ResourcePool.Usage.MainBlockProcessing))
+        {
+            scope.SetAccount(BlockAddress, new Account(9, 9));
+            (Fork.Snapshot? snapshot, TransientResource? transient) = scope.CollectAndApplySnapshot(Block(2), Block(3));
+            TestInternals.ReleaseLease(transient!);
+            GC.KeepAlive(snapshot);
+        }
+
+        long held = LiveMainContents(container);
+        Fork.NativeFlatManager native = container.Resolve<Fork.NativeFlatManager>();
+        RustFlatStore store = container.Resolve<RustPersistence>().Store;
+        FfiStateId head = new(Block(2));
+        FfiScopeFlags flags = new(filterInMemorySlotReads: false, ResourcePool.Usage.MainBlockProcessing);
+        for (int handle = 0; handle < 2; handle++)
+        {
+            store.AddChildReference();
+            bool managerAdded = false;
+            native.Handle.DangerousAddRef(ref managerAdded);
+            nint bundle;
+            FfiRobInfo info;
+            native.ThrowIfFailed(handle == 0
+                ? NativeMethods.fdb_rob_gather(native.Handle, &head, 0, &bundle, &info)
+                : NativeMethods.fdb_scope_open(native.Handle, &head, 0, &flags, &bundle, &info));
+            _ = handle == 0 ? new RobHandle(store, native.Handle, bundle) : (BundleBaseHandle)new ScopeHandle(store, native.Handle, bundle);
+        }
+
+        return held;
+    }
+
+    private static unsafe long LiveMainContents(FlatManagerContainer container)
+    {
+        FdbCounters* counters = NativeMethods.fdb_stats(container.Resolve<Fork.NativeFlatManager>().Handle.DangerousGetHandle());
+        return Volatile.Read(ref counters->ContentActive[(int)ResourcePool.Usage.MainBlockProcessing]);
     }
 
     /// <summary>Opens a reader, an iterator, a batch and a native manager on the store of <paramref name="persistence"/>, and drops them.</summary>

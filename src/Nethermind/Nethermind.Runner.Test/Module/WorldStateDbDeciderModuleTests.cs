@@ -61,11 +61,14 @@ public class WorldStateDbDeciderModuleTests
             container.ResolveKeyed<IDb>(DbNames.State).Set(Bytes.FromHexString("0000000000000001"), [1]);
 
         IWorldStateManager worldStateManager = container.Resolve<IWorldStateManager>();
+        Type flatWorldStateManager = container.Resolve<IFlatDbConfig>().Backend == FlatDbBackend.Rust
+            ? typeof(Nethermind.State.Flat.Rust.Fork.FlatWorldStateManager)
+            : typeof(FlatWorldStateManager);
 
         if (expectFlat)
-            Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
+            Assert.That(worldStateManager, Is.TypeOf(flatWorldStateManager));
         else
-            Assert.That(worldStateManager, Is.Not.TypeOf<FlatWorldStateManager>());
+            Assert.That(worldStateManager, Is.Not.TypeOf(flatWorldStateManager));
     }
 
     [TestCase(true, FullPruningTrigger.StateDbSize, 1, Description = "Flat + automatic trigger → warns once")]

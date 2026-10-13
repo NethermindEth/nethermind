@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.State.Flat.Rust.Interop;
 
 namespace Nethermind.State.Flat.Rust;
@@ -12,8 +13,15 @@ namespace Nethermind.State.Flat.Rust;
 /// publish, so several managers add up as C# ones do, and the histogram observations replayed into their observers.
 /// </summary>
 /// <remarks>
-/// <see cref="Metrics.CompactorStallTime"/> is left out of the replay: <see cref="RustFlatDbManager.AddSnapshot"/>
+/// <para>
+/// <see cref="Metrics.CompactorStallTime"/> is left out of the replay: <see cref="Fork.RustFlatDbManager.AddSnapshot"/>
 /// observes the stall it is handed back, on the block processing thread, as C# does.
+/// </para>
+/// <para>
+/// The native contents count in the pooled-resource gauges of the C# contents they replace: a block's content from
+/// its creation until the last snapshot holding it is released, as a C# one from its rent to its return, and a
+/// compacted content likewise. No native content is pooled, so the cached ones stay 0 and every content is created.
+/// </para>
 /// </remarks>
 internal sealed unsafe class RustMetricsBridge
 {
@@ -27,6 +35,12 @@ internal sealed unsafe class RustMetricsBridge
 
     private static readonly StringLabel?[] Labels =
         [null, new("state_nodes"), new("storage_nodes"), new("in_memory"), new("persisted")];
+
+    private static readonly ResourcePool.PooledResourceLabel[] ContentLabels =
+        [.. Enumerable.Range(0, FdbCounters.ContentUsages).Select(static usage => new ResourcePool.PooledResourceLabel(((ResourcePool.Usage)usage).ToString(), "SnapshotContent"))];
+
+    private static readonly ResourcePool.PooledResourceLabel[] SortedContentLabels =
+        [.. Enumerable.Range(0, FdbCounters.SortedContentUsages).Select(static compact => new ResourcePool.PooledResourceLabel((ResourcePool.Usage.Compact2 + compact).ToString(), "SortedSnapshotContent"))];
 
     private readonly Lock _lock = new();
     private FdbCounters _published;
@@ -55,6 +69,19 @@ internal sealed unsafe class RustMetricsBridge
         current.InMemorySlotFilterMemory = Volatile.Read(ref counters->InMemorySlotFilterMemory);
         current.InMemorySlotFilterBuilds = Volatile.Read(ref counters->InMemorySlotFilterBuilds);
         current.InMemorySlotFilterBuildFailures = Volatile.Read(ref counters->InMemorySlotFilterBuildFailures);
+        for (int usage = 0; usage < FdbCounters.ContentUsages; usage++)
+        {
+            current.ContentActive[usage] = Volatile.Read(ref counters->ContentActive[usage]);
+            current.ContentCreated[usage] = Volatile.Read(ref counters->ContentCreated[usage]);
+            PublishPooled(ContentLabels[usage], current.ContentActive[usage] - _published.ContentActive[usage], current.ContentCreated[usage] - _published.ContentCreated[usage]);
+        }
+
+        for (int compact = 0; compact < FdbCounters.SortedContentUsages; compact++)
+        {
+            current.SortedContentActive[compact] = Volatile.Read(ref counters->SortedContentActive[compact]);
+            current.SortedContentCreated[compact] = Volatile.Read(ref counters->SortedContentCreated[compact]);
+            PublishPooled(SortedContentLabels[compact], current.SortedContentActive[compact] - _published.SortedContentActive[compact], current.SortedContentCreated[compact] - _published.SortedContentCreated[compact]);
+        }
 
         Metrics.SnapshotCount += current.SnapshotCount - _published.SnapshotCount;
         Metrics.CompactedSnapshotCount += current.CompactedSnapshotCount - _published.CompactedSnapshotCount;
@@ -73,6 +100,15 @@ internal sealed unsafe class RustMetricsBridge
             Metrics.SnapshotBundlePersistedSnapshotMemory = current.SnapshotBundlePersistedSnapshotMemory;
 
         _published = current;
+    }
+
+    private static void PublishPooled(ResourcePool.PooledResourceLabel label, long active, long created)
+    {
+        if (active == 0 && created == 0) return;
+
+        Metrics.ActivePooledResource.AddBy(label, active);
+        Metrics.CreatedPooledResource.AddBy(label, created);
+        Metrics.CachedPooledResource.TryAdd(label, 0);
     }
 
     private static void ReplayObservations(nint manager)

@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Security.Cryptography;
 using System.Text;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Rust.Fork;
 using NUnit.Framework;
 
@@ -181,6 +182,7 @@ public class ForkDriftTests
                 Is.Empty,
                 "A Metrics type here would shadow Nethermind.State.Flat.Metrics in the fork.");
             Assert.That(minimumBatchSize, Is.EqualTo(ForkInternals.KeyHashMinimumBatchSize));
+            Assert.That(ILogManager.GetLoggerName(typeof(FlatDbManager)), Is.EqualTo(ForkInternals.FlatDbManagerLoggerName));
         }
     }
 

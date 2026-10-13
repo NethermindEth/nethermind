@@ -16,12 +16,19 @@ namespace Nethermind.State.Flat.Rust.Fork;
 /// </summary>
 /// <remarks>
 /// The copies name these in place of the original call; <c>ForkDriftTests</c> reverses the substitution when it
-/// compares a copy with its origin and pins <see cref="KeyHashMinimumBatchSize"/> to the original constant.
+/// compares a copy with its origin and pins <see cref="KeyHashMinimumBatchSize"/> and
+/// <see cref="FlatDbManagerLoggerName"/> to the original values.
 /// </remarks>
 internal static class ForkInternals
 {
     /// <summary>The value of <c>Nethermind.State.KeyHashBatch.MinimumBatchSize</c>.</summary>
     internal const int KeyHashMinimumBatchSize = 4;
+
+    /// <summary>
+    /// The logger name of <c>FlatDbManager</c>, whose lines the fork's manager logs, given as text since the fork names
+    /// no original type it replaces.
+    /// </summary>
+    internal const string FlatDbManagerLoggerName = "State.Flat.FlatDbManager";
 
     [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "MarkWarmerOwned")]
     internal static extern void MarkWarmerOwned(TrieNode node);

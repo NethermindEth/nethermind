@@ -7,12 +7,15 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
+using Nethermind.Trie;
 using NUnit.Framework;
 using static Nethermind.State.Flat.Rust.Test.FlatManagerContainer;
 
@@ -52,7 +55,7 @@ public class NativeFaultInjectionTests
         TestFinality finality = new();
         await using FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, finality);
         for (ulong number = 0; number <= 5; number++) container.AddBlock(number);
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
         List<string> columns = FlatTestDbs.DumpAll(container.Db);
 
         NativeFaults.Inject(container.Resolve<RustPersistence>().Store, NativeFaults.Fault.KvWrite, "IO error: injected");
@@ -60,7 +63,7 @@ public class NativeFaultInjectionTests
         if (onWorker) finality.Finalize(8, Block);
         for (ulong number = 6; number <= 10; number++) container.AddBlock(number);
         if (onWorker) Assert.That(() => container.Db.FatalShutdowns, Is.Positive.After(EventuallyMs, PollMs), "the worker's error reached C#");
-        Exception? flushFailure = Catch(() => container.Manager.FlushCache(CancellationToken.None));
+        Exception? flushFailure = Catch(() => container.Arm.FlushCache(CancellationToken.None));
 
         using (Assert.EnterMultipleScope())
         {
@@ -86,7 +89,7 @@ public class NativeFaultInjectionTests
         FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, finality, new() { PersistenceBarrier = barrier });
         container.Db.FatalShuttingDown = static () => Thread.Sleep(200);
         for (ulong number = 0; number <= 3; number++) container.AddBlock(number);
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         // Block 4, the next boundary, finalized makes the persistence worker persist once the head reaches block 6.
         finality.Finalize(4, Block);
@@ -140,8 +143,8 @@ public class NativeFaultInjectionTests
         config.InlineCompaction = site != PanicSite.CompactorWorker;
         FlatManagerContainer container = new(config, path.Path, finality);
         container.AddBlock(0);
-        container.Manager.FlushCache(CancellationToken.None);
-        ReadOnlySnapshotBundle held = container.Manager.GatherReadOnlySnapshotBundle(Block(0));
+        container.Arm.FlushCache(CancellationToken.None);
+        IBundleView held = container.Arm.GatherReadOnly(Block(0), ReaderFlags.None);
         RustPersistence persistence = container.Resolve<RustPersistence>();
 
         // Block 4, the next boundary, finalized makes the persistence worker persist once the head reaches block 6.
@@ -152,21 +155,21 @@ public class NativeFaultInjectionTests
             PanicSite.PersistWorker => NativeFaults.Fault.PanicInPersist,
             _ => NativeFaults.Fault.PanicInCompaction,
         }, "injected");
-        FdbStatus? first = Status(() => container.Manager.HasStateForBlock(Block(0)));
+        FdbStatus? first = Status(() => container.Arm.HasStateForBlock(Block(0)));
         for (ulong number = 1; number <= 6 && site != PanicSite.Export; number++)
         {
             ulong block = number;
             Catch(() => container.AddBlock(block));
         }
 
-        Assert.That(() => Status(() => container.Manager.HasStateForBlock(Block(0))), Is.EqualTo(FdbStatus.Poisoned).After(EventuallyMs, PollMs));
+        Assert.That(() => Status(() => container.Arm.HasStateForBlock(Block(0))), Is.EqualTo(FdbStatus.Poisoned).After(EventuallyMs, PollMs));
         FdbStatus?[] later =
         [
-            Status(() => container.Manager.HasStateForBlock(Block(0))),
+            Status(() => container.Arm.HasStateForBlock(Block(0))),
             Status(() => container.AddBlock(7)),
-            Status(() => container.Manager.GatherReadOnlySnapshotBundle(Block(0)).Dispose()),
-            Status(() => container.Manager.FlushCache(CancellationToken.None)),
-            Status(() => container.Manager.DropStateNotReachableFrom(Block(0))),
+            Status(() => container.Arm.GatherReadOnly(Block(0), ReaderFlags.None).Dispose()),
+            Status(() => container.Arm.FlushCache(CancellationToken.None)),
+            Status(() => container.Arm.DropStateNotReachableFrom(Block(0))),
             Status(() => container.PersistenceManager.GetCurrentPersistedStateId()),
             Status(() => persistence.CreateReader().Dispose()),
             Status(() => held.GetAccount(BlockAddress)),
@@ -203,12 +206,12 @@ public class NativeFaultInjectionTests
         for (ulong number = 0; number <= 5; number++) container.AddBlock(number);
         List<string> columns = FlatTestDbs.DumpAll(container.Db);
 
-        Exception? failure = Catch(() => container.Manager.FlushCache(CancellationToken.None));
+        Exception? failure = Catch(() => container.Arm.FlushCache(CancellationToken.None));
         StateId persistedAfterFailure = container.PersistenceManager.GetCurrentPersistedStateId();
         List<string> columnsAfterFailure = FlatTestDbs.DumpAll(container.Db);
         if (backend == FlatDbBackend.Rust) container.Resolve<RustPersistence>().Store.PumpLogs();
         barrier.Failure = null;
-        container.Manager.FlushCache(CancellationToken.None);
+        container.Arm.FlushCache(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -217,6 +220,89 @@ public class NativeFaultInjectionTests
             Assert.That(columnsAfterFailure, Is.EqualTo(columns), "nothing was written");
             Assert.That(logManager.Lines, Has.Some.StartsWith("Error State.Flat.PersistenceManager: Block-data flush failed before persisting state"));
             Assert.That(container.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block(5)), "the flush works again");
+        }
+    }
+
+    /// <summary>Where a scope or read-only bundle call panics.</summary>
+    public enum BundleCall
+    {
+        SetAccount,
+        SetSlot,
+        SetStateNode,
+        PutStorageNodes,
+        Commit,
+        LoadFromReadOnlyBundle,
+    }
+
+    /// <summary>
+    /// A panic inside a write, a commit or a load of a native scope or read-only bundle poisons the store: the call fails
+    /// with <see cref="FdbStatus.Panic"/> and every later one, of the same scope or of the manager, with
+    /// <see cref="FdbStatus.Poisoned"/>, while disposal still releases everything.
+    /// </summary>
+    [Test]
+    public async Task A_panic_in_a_scope_or_bundle_call_poisons_the_store([Values] BundleCall call)
+    {
+        NativeFaults.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, new TestFinality());
+        container.AddBlock(0);
+        Fork.IFlatDbManager manager = container.Resolve<Fork.IFlatDbManager>();
+        Fork.SnapshotBundle bundle = manager.GatherSnapshotBundle(Block(0), ResourcePool.Usage.MainBlockProcessing);
+        Fork.ReadOnlySnapshotBundle readOnly = manager.GatherReadOnlySnapshotBundle(Block(0));
+        TrieNode node = new(NodeType.Leaf, Keccak.Compute("node"), [0xc1, 0x01]);
+
+        NativeFaults.Inject(container.Resolve<RustPersistence>().Store, NativeFaults.Fault.PanicInExport, "injected");
+        FdbStatus? panicked = Status(() =>
+        {
+            switch (call)
+            {
+                case BundleCall.SetAccount: bundle.SetAccount(BlockAddress, new Account(1, 1)); break;
+                case BundleCall.SetSlot: bundle.SetChangedSlot(BlockAddress, 1, 1); break;
+                case BundleCall.SetStateNode: bundle.SetStateNode(TreePath.Empty, node); break;
+                case BundleCall.PutStorageNodes: bundle.PublishStorageNodes(bundle.GetStorageNodeDestination(Keccak.Zero), Keccak.Zero, [[(TreePath.Empty, node)]]); break;
+                case BundleCall.Commit: bundle.CollectAndApplySnapshot(Block(0), Block(1)); break;
+                default: readOnly.TryLoadStateRlp(TreePath.Empty, Keccak.Zero, ReadFlags.None); break;
+            }
+        });
+        FdbStatus?[] later =
+        [
+            Status(() => bundle.GetAccount(BlockAddress)),
+            Status(() => readOnly.GetAccount(BlockAddress)),
+            Status(() => manager.HasStateForBlock(Block(0))),
+        ];
+        Exception? disposalFailure = await CatchAsync(async () =>
+        {
+            bundle.Dispose();
+            readOnly.Dispose();
+            await container.DisposeAsync();
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(panicked, Is.EqualTo(FdbStatus.Panic));
+            Assert.That(later, Is.All.EqualTo(FdbStatus.Poisoned));
+            Assert.That(disposalFailure, Is.Null);
+            Assert.That(container.Db.NativeCloses, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>A late hint or read of a disposed scope bundle, as a prewarmer racing the scope's end makes, fails as disposed.</summary>
+    [Test]
+    public async Task A_late_call_of_a_disposed_scope_bundle_fails_as_disposed()
+    {
+        RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        await using FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust), path.Path, new TestFinality());
+        container.AddBlock(0);
+        Fork.SnapshotBundle bundle = container.Resolve<Fork.IFlatDbManager>().GatherSnapshotBundle(Block(0), ResourcePool.Usage.MainBlockProcessing);
+        bundle.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => bundle.PromoteAccount(BlockAddress, new Account(1, 1)), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bundle.GetAccount(BlockAddress, out _), Throws.TypeOf<ObjectDisposedException>());
+            Assert.That(() => bundle.DetermineSelfDestructSnapshotIdx(BlockAddress), Throws.Nothing, "no clear below the scope, so no call");
+            Assert.That(() => bundle.SetChangedSlot(BlockAddress, 1, 1), Throws.TypeOf<ObjectDisposedException>());
         }
     }
 

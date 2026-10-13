@@ -20,9 +20,10 @@ namespace Nethermind.State.Flat.Rust.Test;
 
 /// <summary>
 /// One seeded random stream of snapshots, forks, reorgs deeper than the compact size, finality, flushes and drops
-/// through a C# and a Rust flat DB manager, each over a RocksDB of its own: after every step both must hold the same
-/// states, read the same accounts, slots and trie nodes through their bundles, have persisted to the same state and
-/// marked the same C# trie nodes persisted; after every flush their columns must be byte-identical.
+/// through a C# and a Rust flat DB manager, each over a RocksDB of its own: every native snapshot must hold what the
+/// C# one holds, and after every step both must hold the same states, read the same accounts, slots and trie nodes
+/// through their bundles, have persisted to the same state and marked the same C# trie nodes persisted; after every
+/// flush their columns must be byte-identical.
 /// </summary>
 /// <remarks>
 /// The C# manager persists on a background task, so every step ends by running <see cref="IPersistenceManager.AddToPersistence"/>
@@ -62,38 +63,9 @@ public class RustFlatDbManagerDifferentialTests
     {
         public static readonly BlockPlan Empty = new([], [], [], [], []);
 
-        /// <summary>
-        /// Builds the snapshot of the plan in <paramref name="container"/> and adds it, returning its trie nodes: a node
-        /// with RLP is a leaf, which is not persisted yet, a node without is a hash-only placeholder.
-        /// </summary>
-        public TrieNode[] AddTo(FlatManagerContainer container, StateId from, StateId to)
-        {
-            Snapshot snapshot = container.ResourcePool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
-            SnapshotContent content = snapshot.Content;
-            foreach ((Address address, bool isNew) in SelfDestructs) content.SelfDestructedStorageAddresses[address] = isNew;
-            foreach ((Address address, Account? account) in Accounts) content.Accounts[address] = account;
-            foreach ((Address address, UInt256 slot, UInt256? value) in Slots) content.Storages[(address, slot)] = value;
-
-            List<TrieNode> nodes = [];
-            foreach ((TreePath path, Hash256 hash, byte[]? rlp) in StateNodes)
-            {
-                TrieNode node = Node(hash, rlp);
-                content.StateNodes[path] = node;
-                nodes.Add(node);
-            }
-
-            foreach ((Hash256 owner, TreePath path, Hash256 hash, byte[]? rlp) in StorageNodes)
-            {
-                TrieNode node = Node(hash, rlp);
-                content.StorageNodes[(owner, path)] = node;
-                nodes.Add(node);
-            }
-
-            container.Manager.AddSnapshot(snapshot, container.ResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing));
-            return [.. nodes];
-        }
-
-        private static TrieNode Node(Hash256 hash, byte[]? rlp) => rlp is null ? new TrieNode(NodeType.Unknown, hash) : new TrieNode(NodeType.Leaf, hash, rlp);
+        /// <summary>Builds the snapshot of the plan in <paramref name="container"/> and adds it.</summary>
+        /// <inheritdoc cref="FlatArm.Add(BlockPlan, in StateId, in StateId)"/>
+        public TrieNode[] AddTo(FlatManagerContainer container, StateId from, StateId to) => container.Arm.Add(this, from, to);
     }
 
     /// <summary>What a scope reads through a gathered bundle.</summary>
@@ -103,13 +75,13 @@ public class RustFlatDbManagerDifferentialTests
     /// </remarks>
     internal static class BundleReads
     {
-        public static List<string> Read(IFlatDbManager manager, in StateId state, Address[] addresses, UInt256[] slots, TreePath[] paths, Hash256[] owners)
+        public static List<string> Read(FlatArm manager, in StateId state, Address[] addresses, UInt256[] slots, TreePath[] paths, Hash256[] owners)
         {
             List<string> reads = [];
-            ReadOnlySnapshotBundle bundle;
+            IBundleView bundle;
             try
             {
-                bundle = manager.GatherReadOnlySnapshotBundle(state, ReaderFlags.Sync);
+                bundle = manager.GatherReadOnly(state, ReaderFlags.Sync);
             }
             catch (Exception exception)
             {
@@ -124,47 +96,37 @@ public class RustFlatDbManagerDifferentialTests
                     int selfDestructIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
                     foreach (UInt256 slot in slots)
                     {
-                        bundle.GetSlot(address, slot, selfDestructIdx, out UInt256? value);
-                        reads.Add($"slot {address} {slot} {value?.ToString() ?? "null"}");
+                        reads.Add($"slot {address} {slot} {bundle.GetSlot(address, slot, selfDestructIdx)?.ToString() ?? "null"}");
                     }
                 }
 
                 foreach (TreePath path in paths)
                 {
-                    byte[]? rlp = bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? node) && !IsPlaceholder(node)
-                        ? node.FullRlp.ToArray()
-                        : bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None);
-                    reads.Add($"state node {path} {rlp?.ToHexString() ?? "null"}");
+                    reads.Add($"state node {path} {bundle.LoadStateRlp(path)?.ToHexString() ?? "null"}");
                 }
 
                 foreach (Hash256 owner in owners)
                 {
                     foreach (TreePath path in paths)
                     {
-                        byte[]? rlp = bundle.TryFindStorageNodes(owner, path, Keccak.Zero, out TrieNode? node) && !IsPlaceholder(node!)
-                            ? node!.FullRlp.ToArray()
-                            : bundle.TryLoadStorageRlp(owner, path, Keccak.Zero, ReadFlags.None);
-                        reads.Add($"storage node {owner} {path} {rlp?.ToHexString() ?? "null"}");
+                        reads.Add($"storage node {owner} {path} {bundle.LoadStorageRlp(owner, path)?.ToHexString() ?? "null"}");
                     }
                 }
             }
 
             // Through a scope's shared bundle with the slot filter, as read-only execution reads.
-            using SnapshotBundle filtered = manager.GatherSnapshotBundle(state, ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true);
+            using IBundleView filtered = manager.GatherScope(state, ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: true);
             foreach (Address address in addresses)
             {
                 int selfDestructIdx = filtered.DetermineSelfDestructSnapshotIdx(address);
                 foreach (UInt256 slot in slots)
                 {
-                    filtered.GetSlot(address, slot, selfDestructIdx, out UInt256? value);
-                    reads.Add($"filtered slot {address} {slot} {value?.ToString() ?? "null"}");
+                    reads.Add($"filtered slot {address} {slot} {filtered.GetSlot(address, slot, selfDestructIdx)?.ToString() ?? "null"}");
                 }
             }
 
             return reads;
         }
-
-        public static bool IsPlaceholder(TrieNode node) => node.NodeType == NodeType.Unknown && node.FullRlp.Length == 0;
 
         private static string Render(Account? account) =>
             account is null ? "null" : $"{account.Nonce} {account.Balance} {account.StorageRoot} {account.CodeHash}";
@@ -225,8 +187,8 @@ public class RustFlatDbManagerDifferentialTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(rust.Manager, Is.InstanceOf<RustFlatDbManager>());
-                Assert.That(csharp.Manager, Is.InstanceOf<FlatDbManager>());
+                Assert.That(rust.Resolve<Fork.IFlatDbManager>(), Is.InstanceOf<Fork.RustFlatDbManager>());
+                Assert.That(csharp.Resolve<IFlatDbManager>(), Is.InstanceOf<FlatDbManager>());
                 Assert.That(_reorgs, Is.GreaterThan(0), "the stream reorged deeper than the compact size");
                 Assert.That(_nodes.Count(static node => node.CSharp.NodeType != NodeType.Unknown && node.CSharp.IsPersisted), Is.GreaterThan(0), "nodes were persisted");
                 Assert.That(_nodes.Count(static node => node.CSharp.NodeType != NodeType.Unknown && !node.CSharp.IsPersisted), Is.GreaterThan(0), "nodes were left unpersisted");
@@ -246,8 +208,9 @@ public class RustFlatDbManagerDifferentialTests
         private void Add(StateId parent, StateId block, BlockPlan plan)
         {
             _step += $" add {parent.BlockNumber}->{block}";
-            TrieNode[] csharpNodes = plan.AddTo(csharp, parent, block);
-            TrieNode[] rustNodes = plan.AddTo(rust, parent, block);
+            TrieNode[] csharpNodes = csharp.Arm.Add(plan, parent, block, out byte[] csharpContent);
+            TrieNode[] rustNodes = rust.Arm.Add(plan, parent, block, out byte[] rustContent);
+            Assert.That(rustContent.ToHexString(), Is.EqualTo(csharpContent.ToHexString()), $"content of {block} after {_step}");
             for (int i = 0; i < csharpNodes.Length; i++) _nodes.Add((csharpNodes[i], rustNodes[i], $"node {i} of {block}"));
             _known.Add(block);
             _headCommittedLast = false;
@@ -286,8 +249,9 @@ public class RustFlatDbManagerDifferentialTests
             StateId parent = _canonical.Count > 1 ? _canonical[^2] : StateId.PreGenesis;
             _step += $" duplicate {block}";
             BlockPlan plan = RandomPlan();
-            plan.AddTo(csharp, parent, block);
-            plan.AddTo(rust, parent, block);
+            csharp.Arm.Add(plan, parent, block, out byte[] csharpContent);
+            rust.Arm.Add(plan, parent, block, out byte[] rustContent);
+            Assert.That(rustContent.ToHexString(), Is.EqualTo(csharpContent.ToHexString()), $"content of the duplicate {block}");
         }
 
         private void AdvanceFinality()
@@ -306,8 +270,8 @@ public class RustFlatDbManagerDifferentialTests
             // FlushCache persists up to the last committed state, so commit the canonical head last.
             if (!_headCommittedLast) AddCanonical(Head, RandomPlan());
             _step += " flush";
-            csharp.Manager.FlushCache(CancellationToken.None);
-            rust.Manager.FlushCache(CancellationToken.None);
+            csharp.Arm.FlushCache(CancellationToken.None);
+            rust.Arm.FlushCache(CancellationToken.None);
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
             {
                 Assert.That(FlatTestDbs.Dump(rust.Db, column), Is.EqualTo(FlatTestDbs.Dump(csharp.Db, column)), $"{column} after {_step}");
@@ -317,8 +281,8 @@ public class RustFlatDbManagerDifferentialTests
         private void Drop()
         {
             _step += " drop";
-            csharp.Manager.DropStateNotReachableFrom(Head);
-            rust.Manager.DropStateNotReachableFrom(Head);
+            csharp.Arm.DropStateNotReachableFrom(Head);
+            rust.Arm.DropStateNotReachableFrom(Head);
         }
 
         /// <summary>Persists what the head allows, until a call persists nothing more, as one call drains at most four snapshots.</summary>
@@ -343,15 +307,15 @@ public class RustFlatDbManagerDifferentialTests
             StateId known = _known[random.Next(_known.Count)];
             foreach (StateId state in new[] { Head, known, unknown })
             {
-                Assert.That(rust.Manager.HasStateForBlock(state), Is.EqualTo(csharp.Manager.HasStateForBlock(state)), $"HasStateForBlock({state}) after {_step}");
+                Assert.That(rust.Arm.HasStateForBlock(state), Is.EqualTo(csharp.Arm.HasStateForBlock(state)), $"HasStateForBlock({state}) after {_step}");
             }
 
             // A pruned state may still be served from either bundle cache until the background persistence clears it, so
             // only retained states and one never added, which no cache holds, are read through the shared bundles.
-            foreach (StateId state in csharp.Manager.HasStateForBlock(known) ? new[] { Head, known, unknown } : [Head, unknown])
+            foreach (StateId state in csharp.Arm.HasStateForBlock(known) ? new[] { Head, known, unknown } : [Head, unknown])
             {
-                List<string> expected = BundleReads.Read(csharp.Manager, state, _addresses, _slots, _paths, _owners);
-                List<string> actual = BundleReads.Read(rust.Manager, state, _addresses, _slots, _paths, _owners);
+                List<string> expected = BundleReads.Read(csharp.Arm, state, _addresses, _slots, _paths, _owners);
+                List<string> actual = BundleReads.Read(rust.Arm, state, _addresses, _slots, _paths, _owners);
                 Assert.That(actual, Is.EqualTo(expected), $"reads at {state} after {_step}");
             }
 

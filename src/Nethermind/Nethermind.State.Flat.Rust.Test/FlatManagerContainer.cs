@@ -53,14 +53,17 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
             .AddSingleton<IStateHeaderProvider>(finality);
         if (overrides.TrieNodeCache is not null) builder.AddSingleton<ITrieNodeCache>(overrides.TrieNodeCache);
         _container = builder.Build();
-        Manager = _container.Resolve<IFlatDbManager>();
         PersistenceManager = _container.Resolve<IPersistenceManager>();
         ResourcePool = _container.Resolve<IResourcePool>();
+        Arm = config.Backend == FlatDbBackend.Rust
+            ? new FlatArm.Rust(_container.Resolve<Fork.IFlatDbManager>(), ResourcePool)
+            : new FlatArm.CSharp(_container.Resolve<IFlatDbManager>(), ResourcePool);
     }
 
     public FlatTestDbs.TrackingColumnsDb Db { get; }
 
-    public IFlatDbManager Manager { get; }
+    /// <summary>The snapshot manager of the backend: the forked one on <see cref="FlatDbBackend.Rust"/>, else the original.</summary>
+    public FlatArm Arm { get; }
 
     public IPersistenceManager PersistenceManager { get; }
 
