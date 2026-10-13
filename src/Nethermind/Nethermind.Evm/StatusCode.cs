@@ -9,7 +9,6 @@ namespace Nethermind.Evm
     public static class StatusCode
     {
         public const byte Failure = 0;
-        // Not static readonly: the zkEVM guest would run a class constructor for this type.
         public static ReadOnlyMemory<byte> FailureBytes => Bytes.ZeroByte;
         public const byte Success = 1;
         public static ReadOnlyMemory<byte> SuccessBytes => Bytes.OneByte;

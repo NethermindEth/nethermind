@@ -30,7 +30,6 @@ public enum ProtocolFork : byte
 
 public static class ProtocolForkExtensions
 {
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     private static Dictionary<string, ProtocolFork> _forksByName => field ??= new(StringComparer.Ordinal)
     {
         [Cancun.Instance.Name] = ProtocolFork.Cancun,

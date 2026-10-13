@@ -50,6 +50,5 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static SepoliaSpecProvider Instance => field ??= new();
 }

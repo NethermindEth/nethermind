@@ -33,7 +33,6 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue - 1;
     public const ulong BogotaBlockTimestamp = ulong.MaxValue;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static ForkActivation ShanghaiActivation => (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
     public static ForkActivation CancunActivation => (ParisBlockNumber + 2, CancunBlockTimestamp);
     public static ForkActivation PragueActivation => (ParisBlockNumber + 3, PragueBlockTimestamp);

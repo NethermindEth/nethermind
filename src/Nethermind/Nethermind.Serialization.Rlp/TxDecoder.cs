@@ -65,7 +65,6 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     }
 
     private const int MaxRetainedTransactions = 2_048;
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
     // PoolPolicy clears payload references before retaining a transaction.
     public static ObjectPool<Transaction> TxObjectPool => field ??= new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);

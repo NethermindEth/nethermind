@@ -23,7 +23,6 @@ namespace Nethermind.State
     {
         private static readonly AccountDecoder _decoder = new();
 
-        // Not static readonly: the zkEVM guest would run a class constructor for this type.
         public static Rlp EmptyAccountRlp => field ??= _decoder.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]

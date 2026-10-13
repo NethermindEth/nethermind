@@ -12,7 +12,6 @@ namespace Nethermind.Blockchain.Receipts;
 public class ReceiptsRootCalculator : IReceiptsRootCalculator
 {
     public static readonly ReceiptsRootCalculator Instance = new();
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     private static IRlpDecoder<TxReceipt> _decoder => field ??= Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
     private static ReceiptMessageDecoder _skipStateDecoder => field ??= new(skipStateAndStatus: true);
 

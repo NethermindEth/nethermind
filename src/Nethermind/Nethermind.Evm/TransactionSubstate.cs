@@ -24,7 +24,6 @@ public readonly ref struct TransactionSubstate
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static byte[] ErrorFunctionSelector => field ??= Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static byte[] PanicFunctionSelector => field ??= Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 

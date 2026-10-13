@@ -44,6 +44,5 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.AuRa;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static ChiadoSpecProvider Instance => field ??= new();
 }

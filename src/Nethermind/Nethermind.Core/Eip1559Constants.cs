@@ -9,7 +9,6 @@ namespace Nethermind.Core
     public class Eip1559Constants
     {
 
-        // Not static readonly: the zkEVM guest would run a class constructor for this type.
         public static UInt256 DefaultForkBaseFee => 1.GWei;
 
         public static readonly UInt256 DefaultBaseFeeMaxChangeDenominator = 8;

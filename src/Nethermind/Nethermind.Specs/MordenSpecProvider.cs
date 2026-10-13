@@ -27,6 +27,5 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Morden;
     public override ulong? BeaconChainGenesisTimestamp => null;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static MordenSpecProvider Instance => field ??= new();
 }

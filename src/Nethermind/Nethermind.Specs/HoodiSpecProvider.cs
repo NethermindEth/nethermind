@@ -47,6 +47,5 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Hoodi;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static HoodiSpecProvider Instance => field ??= new();
 }

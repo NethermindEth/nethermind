@@ -85,7 +85,6 @@ public static class VirtualMachineStatics
     };
 
     internal static readonly Address Ripemd160Address = new((ReadOnlySpan<byte>)[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03]);
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static PrecompileExecutionFailureException PrecompileExecutionFailureException => field ??= new();
     public static OutOfGasException PrecompileOutOfGasException => field ??= new();
     internal const string EcRecoverPrecompileName = "ECREC";

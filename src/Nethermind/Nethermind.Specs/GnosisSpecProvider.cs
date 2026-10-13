@@ -69,6 +69,5 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     public override ulong? DaoBlockNumber => null;
     public string SealEngine => SealEngineType.AuRa;
 
-    // Not static readonly: the zkEVM guest would run a class constructor for this type.
     public static GnosisSpecProvider Instance => field ??= new();
 }
