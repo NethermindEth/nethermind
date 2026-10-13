@@ -51,6 +51,8 @@ public class PrewarmerReadAheadTests
         0x60, 0x02, 0x54, 0x50, 0x00
     ];
     private static readonly IReleaseSpec Spec = Osaka.Instance;
+    // Gas for minutes of the long loop even in Release; a block that large admits the run to discovery's rounds.
+    private const ulong LoopGas = 200_000_000_000;
 
     private IContainer _container = null!;
     private ILifetimeScope _scope = null!;
@@ -152,8 +154,8 @@ public class PrewarmerReadAheadTests
     public void A_run_stops_once_block_processing_finishes_its_transaction()
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
-        Transaction loop = Build.A.Transaction.WithGasLimit(20_000_000).WithTo(LongLoop).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Block block = BuildBlock(loop, Transfer(TestItem.PrivateKeyB, 0));
+        Transaction loop = Build.A.Transaction.WithGasLimit(LoopGas).WithTo(LongLoop).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0));
         using CancellationTokenSource cancellation = new();
 
         Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Spec, null, cancellation.Token));
@@ -290,8 +292,8 @@ public class PrewarmerReadAheadTests
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
         // A creation whose init code loops for minutes: the up-front discovery takes no creation, so the read-ahead runs it.
-        Transaction loop = Build.A.Transaction.WithGasLimit(20_000_000).WithCode(LongLoopCode).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Block block = BuildBlock(loop, Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
+        Transaction loop = Build.A.Transaction.WithGasLimit(LoopGas).WithCode(LongLoopCode).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
         IWorldState worldState = _scope.Resolve<IWorldState>();
         using (worldState.BeginScope(_parent))
         {
@@ -413,8 +415,10 @@ public class PrewarmerReadAheadTests
             readAhead: readAhead,
             readAheadColdReads: coldReads);
 
-    private static Block BuildBlock(params Transaction[] transactions) =>
-        Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).WithTransactions(transactions).TestObject;
+    private static Block BuildBlock(params Transaction[] transactions) => BuildBlock(30_000_000, transactions);
+
+    private static Block BuildBlock(ulong gasLimit, params Transaction[] transactions) =>
+        Build.A.Block.WithNumber(1).WithGasLimit(gasLimit).WithTransactions(transactions).TestObject;
 
     private static Transaction WalkerCall(PrivateKey sender, ulong nonce, UInt256 start, int count) =>
         Call(sender, nonce, ColdTailContracts.Walker, 1_000_000, ColdTailContracts.Words(start, (ulong)count));
