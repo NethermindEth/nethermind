@@ -339,7 +339,7 @@ public class Eip7708Tests(bool eip7708Enabled, bool amsterdam)
     [Test]
     public async Task SameTx_SelfDestruct_ToSelf_EmitsLogs()
     {
-        // Inline path (7708 without 8037): same-tx self-burn emits the legacy SelfDestruct log at opcode time.
+        // Pre-Amsterdam inline path (7708 without 8037): same-tx self-burn emits the legacy SelfDestruct log at opcode time.
         // On Amsterdam EIP-8246 burns nothing, so there is no log to emit at either point.
         // Creation and SELFDESTRUCT must happen in the SAME transaction (EIP-6780).
         using BasicTestBlockchain chain = await CreateChain();
