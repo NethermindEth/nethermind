@@ -701,40 +701,17 @@ public class ReadOnlySnapshotBundleFilterTests
         Address address = Addresses[0];
         StateId head = CreateStateId(10);
         StateId persisted = CreateStateId(5);
-        FlatDbConfig config = new() { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
 
         using LayerStack stack = new();
         stack.AddInMemory(MakeSnapshot(6, c => c.Storages[(address, 1)] = 1));
         stack.AddInMemory(MakeSnapshot(7, c => c.Storages[(address, 2)] = 2));
 
-        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
-        persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
-        persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(_ => new DictionaryReader(stack.PersistenceSlots, stack.PersistenceAccounts, persisted));
-        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
-        repository.AssembleSnapshots(head, persisted, Arg.Any<int>()).Returns(_ => new AssembledSnapshotResult(stack.LeaseInMemory(), PersistedSnapshotList.Empty()));
-
         using CancellationTokenSource cts = new();
-        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
-        processExitSource.Token.Returns(cts.Token);
-        IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
-        blocksConfig.SecondsPerSlot.Returns(12UL);
-
-        await using IContainer container = new ContainerBuilder()
-            .AddModule(new FlatWorldStateModule(config))
-            .AddSingleton<IFlatDbConfig>(config)
-            .AddSingleton<IProcessExitSource>(processExitSource)
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .AddSingleton<IBlocksConfig>(blocksConfig)
-            .AddSingleton<IMetricsConfig>(new MetricsConfig())
-            .AddSingleton<ISnapshotRepository>(repository)
-            .AddSingleton<IPersistenceManager>(persistenceManager)
-            .AddSingleton<IPersistedSnapshotLoader>(Substitute.For<IPersistedSnapshotLoader>())
-            .AddSingleton<ISnapshotCompactor>(Substitute.For<ISnapshotCompactor>())
-            .Build();
+        await using IContainer container = BuildFlatDbManagerContainer(stack, head, persisted, bitsPerKey, cts.Token);
         IFlatDbManager manager = container.Resolve<IFlatDbManager>();
 
         // Block processing reads the shared bundle without the filter...
-        using (SnapshotBundle processing = manager.GatherSnapshotBundle(head, ResourcePool.Usage.MainBlockProcessing))
+        using (SnapshotBundle processing = manager.GatherSnapshotBundle(head, ResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
         {
             processing.GetSlot(address, 1, processing.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
             Assert.That(value, Is.EqualTo((UInt256?)1));
@@ -758,6 +735,76 @@ public class ReadOnlySnapshotBundleFilterTests
             Assert.That(fullScan.SlotFilter, Is.Null);
             Assert.That(preGenesis.SlotFilter, Is.Null);
         }
+    }
+
+    [TestCase(false, TestName = "GatherSnapshotBundle_WithoutFilterFlag_ReadsThroughThePlainLoop")]
+    [TestCase(true, TestName = "GatherSnapshotBundle_WithFilterFlag_ReadsThroughTheSharedFilter")]
+    public async Task GatherSnapshotBundle_FilterFlag_BuildsTheSharedFilterAndKeepsReadsExact(bool filterInMemorySlotReads)
+    {
+        // 1. Two in-memory layers write slots 1 and 2, persistence holds slot 9.
+        // 2. A read-only bundle gathered with or without the flag reads a layer hit, a persisted slot and a slot nobody wrote.
+        // 3. The values must not depend on the flag; only the flagged gather builds the filter on the shared bundle.
+        Address address = Addresses[0];
+        StateId head = CreateStateId(10);
+        StateId persisted = CreateStateId(5);
+
+        using LayerStack stack = new();
+        stack.PersistenceSlots[(address, 9)] = 99;
+        stack.AddInMemory(MakeSnapshot(6, c => c.Storages[(address, 1)] = 1));
+        stack.AddInMemory(MakeSnapshot(7, c => c.Storages[(address, 2)] = 2));
+
+        using CancellationTokenSource cts = new();
+        await using IContainer container = BuildFlatDbManagerContainer(stack, head, persisted, RealBitsPerKey, cts.Token);
+        IFlatDbManager manager = container.Resolve<IFlatDbManager>();
+
+        UInt256? layerHit;
+        UInt256? persistedHit;
+        UInt256? unwritten;
+        using (SnapshotBundle bundle = manager.GatherSnapshotBundle(head, ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads))
+        {
+            int selfDestructIdx = bundle.DetermineSelfDestructSnapshotIdx(address);
+            bundle.GetSlot(address, 2, selfDestructIdx, out layerHit);
+            bundle.GetSlot(address, 9, selfDestructIdx, out persistedHit);
+            bundle.GetSlot(address, 5, selfDestructIdx, out unwritten);
+        }
+
+        using ReadOnlySnapshotBundle shared = manager.GatherReadOnlySnapshotBundle(head);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(layerHit, Is.EqualTo((UInt256?)2), "a slot an in-memory layer wrote must come from that layer");
+            Assert.That(persistedHit, Is.EqualTo((UInt256?)99), "a slot no layer wrote must fall through to persistence");
+            Assert.That(unwritten, Is.Null, "a slot nobody wrote must read as missing");
+            Assert.That(shared.SlotFilter is not null, Is.EqualTo(filterInMemorySlotReads), "only a flagged gather builds the shared filter");
+        }
+    }
+
+    private static IContainer BuildFlatDbManagerContainer(LayerStack stack, StateId head, StateId persisted, double bitsPerKey, CancellationToken token)
+    {
+        FlatDbConfig config = new() { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
+
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
+        persistenceManager.LeaseReader(Arg.Any<ReaderFlags>()).Returns(_ => new DictionaryReader(stack.PersistenceSlots, stack.PersistenceAccounts, persisted));
+        ISnapshotRepository repository = Substitute.For<ISnapshotRepository>();
+        repository.AssembleSnapshots(head, persisted, Arg.Any<int>()).Returns(_ => new AssembledSnapshotResult(stack.LeaseInMemory(), PersistedSnapshotList.Empty()));
+
+        IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+        processExitSource.Token.Returns(token);
+        IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
+        blocksConfig.SecondsPerSlot.Returns(12UL);
+
+        return new ContainerBuilder()
+            .AddModule(new FlatWorldStateModule(config))
+            .AddSingleton<IFlatDbConfig>(config)
+            .AddSingleton<IProcessExitSource>(processExitSource)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IBlocksConfig>(blocksConfig)
+            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<ISnapshotRepository>(repository)
+            .AddSingleton<IPersistenceManager>(persistenceManager)
+            .AddSingleton<IPersistedSnapshotLoader>(Substitute.For<IPersistedSnapshotLoader>())
+            .AddSingleton<ISnapshotCompactor>(Substitute.For<ISnapshotCompactor>())
+            .Build();
     }
 
     private void RunRandomCase(int seed)

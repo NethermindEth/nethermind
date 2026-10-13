@@ -823,7 +823,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
             else
             {
-                Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
+                await Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
             }
         }
 
