@@ -155,7 +155,11 @@ public class StreamingTransportTests
             if (frame.RequestId == 3) _worker.SetResult(Executed());
             return Task.CompletedTask;
         };
-        _input.Add(BlockFrame);
+        _input.AddAsync(async () =>
+        {
+            await _admission.WaitUntilIdle();
+            return BlockFrame();
+        });
         await Run();
         Assert.That((_executions, _output.Frames.Count, _output.Frames[1].Epoch, _output.Frames[2].Validated.Number),
             Is.EqualTo((2, 3, 2UL, 11UL)), "only the retry in the new epoch receives validation");
