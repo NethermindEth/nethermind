@@ -56,7 +56,11 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
 
         if (IlEvmSettings.Profile)
         {
-            IlEvmProfile.Frame(codeInfo);
+            // Initcode is never in the code database, so it could never be shipped. A frame is offered again on every
+            // resume after a nested call; it is counted on entry, its opcodes on every part.
+            if (vm.VmState.ExecutionType.IsAnyCreate())
+                return Declined;
+            IlEvmProfile.Frame(codeInfo, entry: programCounter == 0);
             return DeclinedReportingOpcodes;
         }
 
@@ -70,6 +74,7 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
             return IlEvmDiagnostics.Enabled ? TimeInterpreted(handedBack: false) : count ? DeclinedReportingOpcodes : Declined;
 
         bool cancelable = (flags & FrameRunFlags.Cancelable) != 0;
+        IlEvmSettings.SawFrame();
         int verdict = Volatile.Read(ref contract.Check.Verdict);
         if (IlEvmSettings.SelfCheck && (!_block || IlEvmSettings.BlockSelfCheck))
         {
@@ -79,11 +84,8 @@ public sealed class IlEvmFrameRunner : FrameCodeRunner<EthereumGasPolicy>
                 Environment.TickCount64 - contract.CompiledAt >= IlEvmSettings.SelfCheckDelayMs)
                 return RunChecked(codeInfo, contract, vm, ref stack, ref gas, ref programCounter, cancelable);
         }
-        else if (verdict == IlSelfCheck.Interpreted)
-        {
-            // The other runner's self-check gave the contract back and released its code.
-            return Declined;
-        }
+        // Without its own self-check the block runner ignores the query runner's verdicts: those time calls, not blocks. A
+        // run-time compiled contract that was given back has no code left, and its frames hand back at once.
         if (!IlEvmDiagnostics.Enabled)
             return contract.Run(vm, ref stack, ref gas, ref programCounter, cancelable);
 
@@ -353,6 +355,7 @@ internal sealed class IlSelfCheck
         if (Interlocked.Add(ref bucket.Ops, opCodes) < BucketOps)
             return;
 
+        bool giveBack = false;
         lock (this)
         {
             long ops = Interlocked.Exchange(ref bucket.Ops, 0);
@@ -407,10 +410,14 @@ internal sealed class IlSelfCheck
                 {
                     Interlocked.Increment(ref _givenBackCount);
                     Volatile.Write(ref Verdict, Interpreted);
-                    OnGivenBack?.Invoke();
+                    giveBack = true;
                 }
             }
         }
+
+        // Outside this check's lock: releasing the code takes the contract's own lock.
+        if (giveBack)
+            OnGivenBack?.Invoke();
     }
 
     /// <summary>The pairs so far, in nanoseconds per opcode, for diagnostics.</summary>

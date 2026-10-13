@@ -32,6 +32,7 @@ public class IlEvmPrecompileTests
 {
     private static readonly Address Caller = TestItem.AddressA;
     private static readonly Address Executing = TestItem.AddressB;
+    private static readonly Address Callee = TestItem.AddressC;
 
     private IReleaseSpec _spec = null!;
     private IContainer _container = null!;
@@ -61,6 +62,8 @@ public class IlEvmPrecompileTests
         _stateScope = _state.BeginScope(IWorldState.PreGenesis);
         _state.CreateAccount(Caller, 1_000_000);
         _state.CreateAccount(Executing, 1_000);
+        _state.CreateAccount(Callee, 1_000);
+        _state.InsertCode(Callee, ArithmeticCode(), _spec);
         _state.Commit(_spec);
         _state.CommitTree(0);
         _vm.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.WithNumber(7).WithTimestamp(1234).TestObject, _spec));
@@ -246,6 +249,93 @@ public class IlEvmPrecompileTests
     {
         public Nethermind.Logging.ILogger GetClassLogger<T>() => new(logger);
         public Nethermind.Logging.ILogger GetLogger(string loggerName) => new(logger);
+    }
+
+    /// <summary>Calls the callee with no data, so the caller's frame is offered again when the call returns, then stops.</summary>
+    private static byte[] CallerCode() =>
+        Bytes.FromHexString("60006000600060006000" + "73" + Callee.ToString(false).Substring(2) + "5af15000");
+
+    [Test]
+    public void A_frame_under_another_fork_does_not_keep_the_shipped_contract_away()
+    {
+        Ship(LoopCode());
+        OpcodeBodySet osaka = Bodies();
+        OpcodeBodySet? prague = IlEvm.BodySetFor(Prague.Instance);
+        Assume.That(prague, Is.Not.SameAs(osaka), "Prague and Osaka must run different bodies for this test");
+        CodeInfo codeInfo = new(LoopCode());
+        Assert.That(IlEvm.FindPrecompiledOnly(codeInfo, prague!), Is.Null, "shipped for Osaka only");
+        Assert.That(IlEvm.FindPrecompiledOnly(codeInfo, osaka), Is.Not.Null, "a later Osaka frame still finds it");
+        Assert.That(IlEvm.FindPrecompiledOnly(codeInfo, prague!), Is.Null);
+        Assert.That(IlEvm.FindPrecompiledOnly(codeInfo, osaka), Is.Not.Null);
+    }
+
+    [Test]
+    public void Profile_counts_a_frame_once_however_often_it_resumes()
+    {
+        IlEvmSettings.Profile = true;
+        CodeInfo caller = new(CallerCode());
+        Run(caller, [], enabled: true);
+        IlEvmSettings.Profile = false;
+        List<(ValueHash256 Hash, long Ops, long Frames, int Size)> profile = IlEvmProfile.Snapshot();
+        var callerEntry = profile.Single(e => e.Hash == ValueKeccak.Compute(CallerCode()));
+        var calleeEntry = profile.Single(e => e.Hash == ValueKeccak.Compute(ArithmeticCode()));
+        Assert.That(callerEntry.Frames, Is.EqualTo(1), "entered once, resumed once after the call");
+        Assert.That(calleeEntry.Frames, Is.EqualTo(1));
+        // PUSH1 x5, PUSH20, GAS, CALL before the call; POP, STOP after it.
+        Assert.That(callerEntry.Ops, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void A_shipped_contract_that_loses_its_self_check_keeps_its_code()
+    {
+        double savedRatio = IlEvmSettings.SelfCheckKeepRatio;
+        int savedDelay = IlEvmSettings.SelfCheckDelayMs, savedRecheck = IlEvmSettings.SelfCheckRecheckMs;
+        int savedEarly = IlEvmSettings.SelfCheckEarlyRecheckMs, savedWarmUp = IlEvmSettings.SelfCheckWarmUpMs;
+        try
+        {
+            IlEvmSettings.SelfCheck = true;
+            IlEvmSettings.BlockSelfCheck = true;
+            IlEvmSettings.SelfCheckDelayMs = 0;
+            IlEvmSettings.SelfCheckRecheckMs = 0;
+            IlEvmSettings.SelfCheckEarlyRecheckMs = 0;
+            IlEvmSettings.SelfCheckWarmUpMs = 0;
+            // Nothing is fast enough to keep at this ratio.
+            IlEvmSettings.SelfCheckKeepRatio = 1e-6;
+            Ship(LoopCode());
+            CodeInfo codeInfo = new(LoopCode());
+            byte[] input = Bytes.FromHexString("000000000000000000000000000000000000000000000000000000000000001f");
+            var expected = Run(new CodeInfo(LoopCode()), input, enabled: false);
+            for (int frame = 0; frame < 40_000 && IlEvm.SelfCheckOf(codeInfo)?.Verdict != "interpreted"; frame++)
+                Assert.That(Run(codeInfo, input, enabled: true), Is.EqualTo(expected));
+            Assert.That(IlEvm.SelfCheckOf(codeInfo)?.Verdict, Is.EqualTo("interpreted"), "the check gives the contract back");
+
+            // Its code stays: with block processing's own self-check off, it runs compiled again.
+            IlEvmSettings.BlockSelfCheck = false;
+            IlEvmSettings.SelfCheck = false;
+            Assert.That(Run(codeInfo, input, enabled: true), Is.EqualTo(expected));
+            Assert.That(IlEvm.IsCompiled(codeInfo), Is.True);
+            Assert.That(IlEvm.CompileStats(codeInfo)?.Chunks, Is.GreaterThan(0), "no chunk was released");
+        }
+        finally
+        {
+            IlEvmSettings.SelfCheckKeepRatio = savedRatio;
+            IlEvmSettings.SelfCheckDelayMs = savedDelay;
+            IlEvmSettings.SelfCheckRecheckMs = savedRecheck;
+            IlEvmSettings.SelfCheckEarlyRecheckMs = savedEarly;
+            IlEvmSettings.SelfCheckWarmUpMs = savedWarmUp;
+            IlEvmSettings.SelfCheck = false;
+            IlEvmSettings.BlockSelfCheck = false;
+        }
+    }
+
+    [Test]
+    public void Precompile_list_reads_profile_lines_as_they_are_logged()
+    {
+        string hash = "0x" + new string('c', 64);
+        List<ValueHash256> list = IlEvmPrecompileList.Parse([
+            $"2026-10-13 12:00:00.0000|IL-EVM profile 1 {hash} ops=5 frames=1 size=10 cum=0.5000",
+            "IL-EVM profile end", "0x" + new string('z', 64)]);
+        Assert.That(list, Is.EqualTo(new[] { new ValueHash256(hash) }));
     }
 
     [Test]

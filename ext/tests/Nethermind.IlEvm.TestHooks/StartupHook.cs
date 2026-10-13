@@ -33,7 +33,7 @@ internal class StartupHook
         Nethermind.Evm.Test.VirtualMachineTestsBase.FrameCodeRunnerFactory = static () => Nethermind.IlEvm.IlEvmFrameRunner.Instance;
         Console.WriteLine($"il-evm test hooks: runner attached ({Nethermind.IlEvm.IlEvmModule.Unsupported() ?? "supported"})");
         AppDomain.CurrentDomain.ProcessExit += static (_, _) => Console.WriteLine(
-            $"il-evm test hooks: compiled contracts {Nethermind.IlEvm.IlEvmSettings.CompiledContracts}, failed {Nethermind.IlEvm.IlEvmSettings.FailedContracts}" +
+            $"il-evm test hooks: compiled contracts {Nethermind.IlEvm.IlEvmSettings.CompiledContracts}, failed {Nethermind.IlEvm.IlEvmSettings.FailedContracts}, deferred {Nethermind.IlEvm.IlEvmSettings.DeferredCompiles}" +
             (Nethermind.IlEvm.IlEvmDiagnostics.Enabled
                 ? $", runs {Nethermind.IlEvm.IlEvmDiagnostics.Runs}, chunk calls {Nethermind.IlEvm.IlEvmDiagnostics.ChunkCalls}, hand-backs {Nethermind.IlEvm.IlEvmDiagnostics.Deopts}, failed segments {Nethermind.IlEvm.IlEvmDiagnostics.FailedSegments}"
                 : ""));

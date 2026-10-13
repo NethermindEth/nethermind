@@ -57,10 +57,12 @@ public sealed class IlEvmModule(IIlEvmConfig config) : Module
 
         // Block processing and everything else get the block runner; the read-only query environments get their own,
         // which compiles at run time, so calls keep doing so whatever block processing does.
+        // With Scope=All every kind of read-only query compiles at run time, as before the block runner existed.
+        ReadOnlyQueryKind surfaces = config.Scope == IlEvmScope.All ? ReadOnlyQueryKind.All : config.Surfaces;
         if (config.Scope == IlEvmScope.All)
             builder.RegisterInstance(IlEvmFrameRunner.Block).As<FrameCodeRunner<EthereumGasPolicy>>();
-        if (config.Surfaces != ReadOnlyQueryKind.None)
-            builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(config.Surfaces));
+        if (surfaces != ReadOnlyQueryKind.None)
+            builder.AddSingleton<IReadOnlyQueryModule>(new IlEvmQueryModule(surfaces));
         builder.AddStep(typeof(IlEvmStartupStep));
     }
 }

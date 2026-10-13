@@ -30,38 +30,47 @@ namespace Nethermind.IlEvm;
 /// </remarks>
 public static class IlEvmProfile
 {
-    private sealed class Entry
+    private sealed class Entry(int size)
     {
         public long Frames;
         public long Ops;
+        public readonly int Size = size;
     }
 
-    private static readonly ConcurrentDictionary<CodeInfo, Entry> _entries = new(ReferenceEqualityComparer.Instance);
+    /// <summary>The counts by code hash; each code info's slot points at its entry, so no code info is kept alive.</summary>
+    private static readonly ConcurrentDictionary<ValueHash256, Entry> _entries = new();
     private static int _dumped;
 
-    internal static void Frame(CodeInfo codeInfo) => Interlocked.Increment(ref _entries.GetOrAdd(codeInfo, static _ => new Entry()).Frames);
+    private static Entry For(CodeInfo codeInfo)
+    {
+        ref object? slot = ref IlEvmFrameRunner.CodeSlot(codeInfo);
+        if (slot is Entry entry)
+            return entry;
+        ValueHash256 hash = codeInfo.CodeHash == default ? ValueKeccak.Compute(codeInfo.CodeSpan) : codeInfo.CodeHash;
+        entry = _entries.GetOrAdd(hash, static (_, size) => new Entry(size), codeInfo.CodeSpan.Length);
+        // Profiling compiles nothing, so the slot is free; a lost race only means a second lookup.
+        Interlocked.CompareExchange(ref slot, entry, null);
+        return entry;
+    }
+
+    internal static void Frame(CodeInfo codeInfo, bool entry)
+    {
+        Entry counts = For(codeInfo);
+        if (entry)
+            Interlocked.Increment(ref counts.Frames);
+    }
 
     internal static void Ops(CodeInfo codeInfo, int opCodes)
     {
-        if (_entries.TryGetValue(codeInfo, out Entry? entry))
-            Interlocked.Add(ref entry.Ops, opCodes);
+        if (IlEvmFrameRunner.CodeSlot(codeInfo) is Entry counts)
+            Interlocked.Add(ref counts.Ops, opCodes);
     }
 
-    /// <summary>The profile so far by code, busiest first: keccak, interpreted opcodes, frames, code size.</summary>
-    public static List<(ValueHash256 Hash, long Ops, long Frames, int Size)> Snapshot()
-    {
-        Dictionary<ValueHash256, (long Ops, long Frames, int Size)> byCode = [];
-        foreach ((CodeInfo codeInfo, Entry entry) in _entries)
-        {
-            if (codeInfo.CodeSpan.Length == 0)
-                continue;
-            ValueHash256 hash = codeInfo.CodeHash == default ? ValueKeccak.Compute(codeInfo.CodeSpan) : codeInfo.CodeHash;
-            (long ops, long frames, int _) = byCode.GetValueOrDefault(hash);
-            byCode[hash] = (ops + Interlocked.Read(ref entry.Ops), frames + Interlocked.Read(ref entry.Frames), codeInfo.CodeSpan.Length);
-        }
-
-        return [.. byCode.Select(static p => (p.Key, p.Value.Ops, p.Value.Frames, p.Value.Size)).OrderByDescending(static e => e.Ops)];
-    }
+    /// <summary>The profile so far by code, busiest first: keccak, interpreted opcodes, frames entered, code size.</summary>
+    public static List<(ValueHash256 Hash, long Ops, long Frames, int Size)> Snapshot() =>
+        [.. _entries.Where(static p => p.Value.Size > 0)
+            .Select(static p => (p.Key, Interlocked.Read(ref p.Value.Ops), Interlocked.Read(ref p.Value.Frames), p.Value.Size))
+            .OrderByDescending(static e => e.Item2)];
 
     /// <summary>Logs the busiest <paramref name="top"/> contracts once, at shutdown.</summary>
     public static void Dump(ILogger logger, int top)
@@ -93,7 +102,7 @@ public static class IlEvmProfile
         Write("IL-EVM profile end");
     }
 
-    /// <summary>Forgets everything counted, for tests.</summary>
+    /// <summary>Forgets everything counted, for tests; code infos profiled before keep pointing at their old entries.</summary>
     internal static void Reset()
     {
         _entries.Clear();
@@ -122,7 +131,7 @@ public static class IlEvmPrecompileList
         return Parse(lines);
     }
 
-    /// <summary>One code hash per line, first token, with or without 0x; blank lines and lines starting with # are skipped; duplicates once.</summary>
+    /// <summary>One code hash per line, the first token of 64 hex digits (with or without 0x); blank lines and lines starting with # are skipped; duplicates once.</summary>
     public static List<ValueHash256> Parse(IEnumerable<string> lines)
     {
         List<ValueHash256> hashes = [];
@@ -132,14 +141,16 @@ public static class IlEvmPrecompileList
             string line = raw.Trim();
             if (line.Length == 0 || line[0] == '#')
                 continue;
-            string token = line.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];
-            if (token.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                token = token[2..];
-            if (token.Length != 64)
-                continue;
-            ValueHash256 hash = new(Convert.FromHexString(token));
-            if (seen.Add(hash))
-                hashes.Add(hash);
+            foreach (string part in line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+            {
+                string token = part.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? part[2..] : part;
+                if (token.Length != 64 || !token.All(Uri.IsHexDigit))
+                    continue;
+                ValueHash256 hash = new(Convert.FromHexString(token));
+                if (seen.Add(hash))
+                    hashes.Add(hash);
+                break;
+            }
         }
 
         return hashes;
@@ -181,7 +192,25 @@ public sealed class IlEvmStartupStep(
             return Task.CompletedTask;
         }
 
-        return config.Precompile ? Task.Run(Precompile, cancellationToken) : Task.CompletedTask;
+        return config.Precompile ? Task.Run(() => PrecompileSafely(cancellationToken), cancellationToken) : Task.CompletedTask;
+    }
+
+    /// <summary>The startup compile is an optional speed-up: whatever goes wrong leaves the node on the interpreter, never down.</summary>
+    private void PrecompileSafely(CancellationToken cancellationToken)
+    {
+        try
+        {
+            Precompile(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Shutting down.
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"IL-EVM precompile failed; nothing precompiled, the interpreter runs everything: {exception}");
+        }
     }
 
     private void LogSummary()
@@ -202,7 +231,7 @@ public sealed class IlEvmStartupStep(
     public static long MaxPrecompiledBytes { get; set; } =
         long.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_PRECOMPILE_MAX_BYTES"), out long maxBytes) && maxBytes > 0 ? maxBytes : 768L << 20;
 
-    private void Precompile()
+    private void Precompile(CancellationToken cancellationToken)
     {
         List<ValueHash256> list = IlEvmPrecompileList.Load();
         if (config.PrecompileLimit > 0 && list.Count > config.PrecompileLimit)
@@ -215,8 +244,17 @@ public sealed class IlEvmStartupStep(
         }
 
         BlockHeader? head = blockTree.Head?.Header;
-        // The spec of the next block, which the first payload runs on.
-        IReleaseSpec spec = head is null ? specProvider.GenesisSpec : specProvider.GetSpec(new ForkActivation(head.Number + 1, head.Timestamp + 1));
+        if (head is null || head.Number == 0)
+        {
+            // A node at genesis is about to sync: the spec it would compile for is not the one its blocks will run.
+            if (_logger.IsInfo)
+                _logger.Info("IL-EVM precompile: skipped, the node is at genesis");
+            return;
+        }
+
+        // The spec of the next block, which the first payload runs on: a slot after the head, so a fork activating at
+        // the next block is the one compiled for.
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(head.Number + 1, head.Timestamp + 12));
         if (IlEvm.BodySetFor(spec) is not { } bodies)
         {
             if (_logger.IsWarn)
@@ -230,7 +268,9 @@ public sealed class IlEvmStartupStep(
         long ilBytes = 0, codeBytes = 0;
         Stopwatch wall = Stopwatch.StartNew();
         TimeSpan jitBefore = System.Runtime.JitInfo.GetCompilationTime();
-        Parallel.ForEach(list, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, hash =>
+        // One entry at a time, in list order, so under the memory cap the busiest are the ones compiled.
+        Parallel.ForEach(Partitioner.Create(list, EnumerablePartitionerOptions.NoBuffering),
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = cancellationToken }, hash =>
         {
             // Past the memory cap the rest of the list is skipped; the list is busiest first.
             if (Interlocked.Read(ref ilBytes) >= MaxPrecompiledBytes)

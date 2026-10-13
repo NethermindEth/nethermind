@@ -192,8 +192,25 @@ public static class IlEvmSettings
         }
     }
 
-    /// <summary>Whether the process is still in its start-up window, for the self-check.</summary>
-    internal static bool InWarmUp => Environment.TickCount64 - ProcessStartedAt < SelfCheckWarmUpMs;
+    /// <summary>When a runner first saw a frame, in <see cref="Environment.TickCount64"/> milliseconds; 0 until then.</summary>
+    private static long _firstFrameAt;
+
+    /// <summary>Marks the first frame, from which the start-up window runs; a node may take minutes to start serving.</summary>
+    internal static void SawFrame()
+    {
+        if (Volatile.Read(ref _firstFrameAt) == 0)
+            Interlocked.CompareExchange(ref _firstFrameAt, Environment.TickCount64, 0);
+    }
+
+    /// <summary>Whether the process is still in its start-up window, for the self-check: <see cref="SelfCheckWarmUpMs"/> from the first frame.</summary>
+    internal static bool InWarmUp
+    {
+        get
+        {
+            long first = Volatile.Read(ref _firstFrameAt);
+            return first == 0 || Environment.TickCount64 - first < SelfCheckWarmUpMs;
+        }
+    }
 
     /// <summary>
     /// Count every contract's frames and interpreted opcodes and compile nothing; <see cref="IlEvmProfile"/> logs the
@@ -208,9 +225,13 @@ public static class IlEvmSettings
     /// <summary>Whether block processing (Scope=All) runs the self-check on compiled contracts.</summary>
     public static bool BlockSelfCheck { get; set; }
 
-    /// <summary>On Linux, run the background compiler under SCHED_IDLE, so it takes only CPU time nothing else wants.</summary>
-    /// <remarks>Linux ignores lowered .NET thread priorities for unprivileged processes; an idle-class thread is the supported way down.</remarks>
-    public static bool CompileIdle { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_IDLE") != "0";
+    /// <summary>On Linux, run the background compiler under SCHED_IDLE, so it takes only CPU time nothing else wants. Off unless <c>NETHERMIND_ILEVM_COMPILE_IDLE=1</c>.</summary>
+    /// <remarks>
+    /// Linux ignores lowered .NET thread priorities for unprivileged processes; an idle-class thread is the supported way
+    /// down. Off by default: threads a thread creates inherit its scheduling class, and the runtime starts its tiering
+    /// worker on whichever thread first needs it, so an idle-class compiler could leave the whole process's tier-up idle.
+    /// </remarks>
+    public static bool CompileIdle { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_IDLE") == "1";
 
     /// <summary>Of the frames of code that is not compiled, one in this many counts toward hotness, with this weight, so threads running the same code do not all write its counters.</summary>
     public static int HotnessSampling { get; set; } =
@@ -236,7 +257,7 @@ public static class IlEvmSettings
 
     /// <summary>The background compiler's thread priority; Linux ignores anything but normal for unprivileged threads.</summary>
     public static ThreadPriority CompilePriority { get; set; } =
-        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_PRIORITY"), out ThreadPriority priority) ? priority : ThreadPriority.BelowNormal;
+        Enum.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_ILEVM_COMPILE_PRIORITY"), out ThreadPriority priority) && Enum.IsDefined(priority) ? priority : ThreadPriority.BelowNormal;
 
     /// <summary>Compiles waiting for the background compiler, and the <see cref="System.Diagnostics.Stopwatch"/> ticks it has spent compiling, for diagnostics.</summary>
     public static int PendingCompiles => IlEvm.IlCompileQueue.Pending;
@@ -414,7 +435,10 @@ public static unsafe partial class IlEvm
         /// <summary>Chunks queued or compiled so far: a frame during which this moved waited on the JIT, and its time says nothing of the code.</summary>
         public int ChunkEvents;
         /// <summary>When the contract was laid out, in <see cref="Environment.TickCount64"/> milliseconds; its self-check waits <see cref="IlEvmSettings.SelfCheckDelayMs"/> from then.</summary>
-        public readonly long CompiledAt = Environment.TickCount64;
+        /// <remarks>A shipped contract is laid out at startup, long before it runs: its clock restarts on its first frame.</remarks>
+        public long CompiledAt = Environment.TickCount64;
+        /// <summary>Set once a precompiled contract first meets a frame.</summary>
+        public int Attached;
         /// <summary>Whether <see cref="IlBytes"/> counts toward <see cref="IlEvmSettings.LiveIlBytes"/>; cleared once by release or collection.</summary>
         private int _live;
 
@@ -500,6 +524,9 @@ public static unsafe partial class IlEvm
             if (IlEvmSettings.CompileSynchronously)
                 return CompileChunk(chunk);
             HitColdChunk = true;
+            // Queued already: frames wait for the JIT without writing the shared counter again.
+            if (Volatile.Read(ref _states[chunk]) != ChunkCold)
+                return null;
             if (Interlocked.Increment(ref _entries[chunk]) >= IlEvmSettings.ChunkThreshold &&
                 Interlocked.CompareExchange(ref _states[chunk], ChunkQueued, ChunkCold) == ChunkCold)
             {
@@ -517,32 +544,48 @@ public static unsafe partial class IlEvm
         /// <summary>JIT-compiles <paramref name="chunk"/> and publishes its runner; one contract compiles one chunk at a time.</summary>
         public IlRunner? CompileChunk(int chunk)
         {
+            IlRunner runner;
             lock (Prepared)
             {
                 if (Runners[chunk] is { } compiled)
                     return compiled;
                 if (_states[chunk] == ChunkFailed || Prepared[chunk] is null)
                     return null;
+                runner = Prepared[chunk];
+            }
 
-                IlRunner runner = Prepared[chunk];
-                try
-                {
-                    // An offset past the code returns at once: the call only has the JIT compile the method.
-                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
-                    EvmStack probeStack = default;
-                    EthereumGasPolicy probeGas = default;
-                    nint probePc = -1;
-                    IlRunState probeState = default;
-                    runner(null!, ref probeStack, ref probeGas, ref probePc, ref probeState);
-                    JitTime += System.Diagnostics.Stopwatch.GetElapsedTime(started);
-                }
-                catch (Exception exception)
+            // The JIT runs outside the lock, which a release (the self-check giving the code back) takes: a frame's
+            // thread must never wait on a JIT the compiler thread is running.
+            long started = System.Diagnostics.Stopwatch.GetTimestamp();
+            try
+            {
+                // An offset past the code returns at once: the call only has the JIT compile the method.
+                EvmStack probeStack = default;
+                EthereumGasPolicy probeGas = default;
+                nint probePc = -1;
+                IlRunState probeState = default;
+                runner(null!, ref probeStack, ref probeGas, ref probePc, ref probeState);
+            }
+            catch (Exception exception)
+            {
+                lock (Prepared)
                 {
                     ChunkFailure = exception.ToString();
                     Volatile.Write(ref _states[chunk], ChunkFailed);
-                    return null;
                 }
 
+                return null;
+            }
+
+            TimeSpan jit = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            lock (Prepared)
+            {
+                if (Runners[chunk] is { } raced)
+                    return raced;
+                // Released while the JIT ran: the code is gone, and the chunk stays with the interpreter.
+                if (_states[chunk] == ChunkFailed || !ReferenceEquals(Prepared[chunk], runner))
+                    return null;
+                JitTime += jit;
                 CompiledChunks++;
                 Interlocked.Increment(ref ChunkEvents);
                 Volatile.Write(ref Runners[chunk], runner);
@@ -645,6 +688,8 @@ public static unsafe partial class IlEvm
         /// <summary>Opcodes the interpreter ran for this code in the current one-second window, and when the window began.</summary>
         public int WindowOpCodes;
         public long WindowStart;
+        /// <summary>Frames that reported in the current window.</summary>
+        public int WindowFrames;
         public int Pending;
         /// <summary>Until when a hot frame does not ask for a compile again, after one was turned away by a budget.</summary>
         public long RetryAfter;
@@ -654,8 +699,13 @@ public static unsafe partial class IlEvm
         /// <summary>A fast 64-bit hash of the code, taken once the code runs a second frame, keying the shared cache.</summary>
         public long ContentHash;
         public bool HasContentHash;
-        /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame.</summary>
+        /// <summary>Whether the code was looked up among the precompiled contracts, which happens on its first frame of a fork they were compiled for.</summary>
         public bool PrecompileChecked;
+        /// <summary>The precompiled contract for this code, kept apart so a run-time compile for another fork cannot displace it.</summary>
+        public volatile IlContract? Shipped;
+        /// <summary>The keccak of code no cache stamped, once computed for the precompiled lookup.</summary>
+        public ValueHash256 Keccak;
+        public bool HasKeccak;
     }
 
     /// <summary>A fork's opcode semantics as the compiler sees them, one per interned <see cref="OpcodeBodySet"/>.</summary>
@@ -741,31 +791,37 @@ public static unsafe partial class IlEvm
         if (contract is not null && ReferenceEquals(contract.Fork, fork))
             return contract;
 
+        IlContract? shipped = state.Shipped;
+        if (shipped is not null && ReferenceEquals(shipped.Fork, fork))
+            return shipped;
+
         // A precompiled contract runs compiled from the code's first frame.
-        if (!state.PrecompileChecked)
-        {
-            state.PrecompileChecked = true;
-            if (Precompiled(codeInfo, fork) is { } precompiled)
-            {
-                state.Contract = precompiled;
-                Interlocked.Increment(ref _precompiledAttached);
-                return precompiled;
-            }
-        }
+        if (!state.PrecompileChecked && Attach(codeInfo, state, fork) is { } precompiled)
+            return precompiled;
 
         if (ReferenceEquals(state.FailedFor, fork))
             return null;
 
-        // Past its second frame, code counts toward hotness on one frame in HotnessSampling, with that weight: every
-        // frame writing the counters would have threads that run the same contract fight over its cache line.
-        int weight = IlEvmSettings.HotnessSampling;
-        if (weight > 1 && state.Executions >= 2 && (++_hotnessTick & (uint)(weight - 1)) != 0)
-            return null;
+        // Past its second frame, code counts toward hotness on a random one frame in HotnessSampling, with that weight:
+        // every frame writing the counters would have threads that run the same contract fight over its cache line.
+        int weight = SamplingWeight;
+        if (weight > 1 && state.Executions >= 2)
+        {
+            uint random = _hotnessRandom == 0 ? (uint)Environment.CurrentManagedThreadId * 2654435761u | 1 : _hotnessRandom;
+            random ^= random << 13;
+            random ^= random >> 17;
+            random ^= random << 5;
+            _hotnessRandom = random;
+            if ((random & (uint)(weight - 1)) != 0)
+                return null;
+        }
 
         count = true;
         int executions = state.Executions += state.Executions < 2 ? 1 : weight;
+        // The rate rule needs two counted frames in its window when frames are sampled, so one large sampled frame,
+        // weighted, cannot stand in for a second of steady use.
         bool hot = (executions >= IlEvmSettings.Threshold || state.OpCodesRun >= IlEvmSettings.OpcodeThreshold) &&
-            (IlEvmSettings.Threshold <= 1 || state.WindowOpCodes >= IlEvmSettings.HotOpcodesPerSecond);
+            (IlEvmSettings.Threshold <= 1 || (state.WindowOpCodes >= IlEvmSettings.HotOpcodesPerSecond && (weight == 1 || state.WindowFrames >= 2)));
         // A second frame, or the first hot one, looks the code up by content: it may be compiled under another code info.
         if ((executions == 2 || hot) && IlShared(codeInfo, state, fork) is { } shared)
             return shared;
@@ -773,7 +829,10 @@ public static unsafe partial class IlEvm
         return hot && (state.RetryAfter == 0 || Environment.TickCount64 >= state.RetryAfter) ? IlRequest(codeInfo, state, fork) : null;
     }
 
-    [ThreadStatic] private static uint _hotnessTick;
+    [ThreadStatic] private static uint _hotnessRandom;
+
+    /// <summary>The weight of a counted frame: <see cref="IlEvmSettings.HotnessSampling"/>, or 1 with diagnostics on, which report every frame.</summary>
+    internal static int SamplingWeight => IlEvmDiagnostics.Enabled ? 1 : IlEvmSettings.HotnessSampling;
 
     /// <summary>
     /// The compiled contract a block frame runs when block processing compiles nothing at run time: the precompiled one
@@ -785,25 +844,46 @@ public static unsafe partial class IlEvm
         if (slot is IlCodeState state)
         {
             IlContract? contract = state.Contract;
-            if (contract is not null)
-                return ReferenceEquals(contract.Fork, IlGetFork(bodies)) ? contract : null;
-            if (state.PrecompileChecked)
+            IlContract? shipped = state.Shipped;
+            if (contract is null && shipped is null && state.PrecompileChecked)
                 return null;
-        }
-        else
-        {
-            // Nothing shipped: the code is left alone, the slot unclaimed.
-            if (Volatile.Read(ref _precompiled) is null)
-                return null;
-            state = new IlCodeState();
-            state = Interlocked.CompareExchange(ref slot, state, null) as IlCodeState ?? state;
+            IlFork fork = IlGetFork(bodies);
+            if (contract is not null && ReferenceEquals(contract.Fork, fork))
+                return contract;
+            if (shipped is not null && ReferenceEquals(shipped.Fork, fork))
+                return shipped;
+            return state.PrecompileChecked ? null : Attach(codeInfo, state, fork);
         }
 
-        state.PrecompileChecked = true;
-        if (Precompiled(codeInfo, IlGetFork(bodies)) is not { } precompiled)
+        // Nothing shipped: the code is left alone, the slot unclaimed.
+        if (Volatile.Read(ref _precompiled) is null)
             return null;
-        state.Contract = precompiled;
-        Interlocked.Increment(ref _precompiledAttached);
+        IlCodeState created = new();
+        created = Interlocked.CompareExchange(ref slot, created, null) as IlCodeState ?? created;
+        return Attach(codeInfo, created, IlGetFork(bodies));
+    }
+
+    /// <summary>
+    /// Looks the code up among the precompiled contracts and attaches the one for <paramref name="fork"/>. The code is
+    /// marked checked unless it was shipped for another fork, so a frame of that fork looks again.
+    /// </summary>
+    private static IlContract? Attach(CodeInfo codeInfo, IlCodeState state, IlFork fork)
+    {
+        IlContract? precompiled = Precompiled(codeInfo, state, fork, out bool otherFork);
+        if (precompiled is null)
+        {
+            if (!otherFork)
+                state.PrecompileChecked = true;
+            return null;
+        }
+
+        state.Shipped = precompiled;
+        if (state.Contract is null)
+            state.Contract = precompiled;
+        state.PrecompileChecked = true;
+        // Laid out at startup: its self-check waits from its first frame, so the helpers it calls can tier up first.
+        if (Interlocked.Increment(ref _precompiledAttached) > 0 && precompiled.Attached == 0 && Interlocked.Exchange(ref precompiled.Attached, 1) == 0)
+            precompiled.CompiledAt = Environment.TickCount64;
         return precompiled;
     }
 
@@ -837,21 +917,36 @@ public static unsafe partial class IlEvm
     /// <summary>How many contracts the startup compile published, for tests and diagnostics.</summary>
     public static int PrecompiledCount => Volatile.Read(ref _precompiled)?.Count ?? 0;
 
-    private static IlContract? Precompiled(CodeInfo codeInfo, IlFork fork)
+    private static IlContract? Precompiled(CodeInfo codeInfo, IlCodeState state, IlFork fork, out bool otherFork)
     {
+        otherFork = false;
         Dictionary<ValueHash256, IlContract>? map = Volatile.Read(ref _precompiled);
         if (map is null)
             return null;
         ValueHash256 hash = codeInfo.CodeHash;
         if (hash == default)
         {
-            // Code no cache stamped, as from a state override: hashed once, here, and only when its length could match.
-            if (Volatile.Read(ref _precompiledLengths) is not { } lengths || !lengths.Contains(codeInfo.CodeSpan.Length))
-                return null;
-            hash = ValueKeccak.Compute(codeInfo.CodeSpan);
+            // Code no cache stamped, as from a state override: hashed once, and only when its length could match.
+            if (state.HasKeccak)
+            {
+                hash = state.Keccak;
+            }
+            else
+            {
+                if (Volatile.Read(ref _precompiledLengths) is not { } lengths || !lengths.Contains(codeInfo.CodeSpan.Length))
+                    return null;
+                hash = ValueKeccak.Compute(codeInfo.CodeSpan);
+                state.Keccak = hash;
+                state.HasKeccak = true;
+            }
         }
 
-        return map.TryGetValue(hash, out IlContract? contract) && ReferenceEquals(contract.Fork, fork) ? contract : null;
+        if (!map.TryGetValue(hash, out IlContract? contract))
+            return null;
+        if (ReferenceEquals(contract.Fork, fork))
+            return contract;
+        otherFork = true;
+        return null;
     }
 
     /// <summary>Lays out <paramref name="code"/> for <paramref name="bodies"/> and JIT-compiles every chunk, for the startup compile.</summary>
@@ -862,7 +957,7 @@ public static unsafe partial class IlEvm
         if (contract is null)
             return null;
         contract.CompileAllChunks();
-        contract.Check.OnGivenBack = contract.Release;
+        // Never released: a verdict against it only keeps the runner whose self-check reached it off it.
         contract.Check.Name = contract.Name;
         return contract;
     }
@@ -884,16 +979,18 @@ public static unsafe partial class IlEvm
             return;
         // Past its second frame only sampled frames report, each standing for HotnessSampling of them.
         if (state.Executions > 2)
-            ran *= IlEvmSettings.HotnessSampling;
+            ran *= SamplingWeight;
         state.OpCodesRun += ran;
         long now = Environment.TickCount64;
         if (now - state.WindowStart >= 1000)
         {
             state.WindowStart = now;
             state.WindowOpCodes = 0;
+            state.WindowFrames = 0;
         }
 
         state.WindowOpCodes += ran;
+        state.WindowFrames++;
     }
 
     private static IlContract? IlShared(CodeInfo codeInfo, IlCodeState state, IlFork fork)

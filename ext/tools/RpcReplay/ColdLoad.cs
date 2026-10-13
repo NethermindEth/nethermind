@@ -164,7 +164,7 @@ public static class ColdLoad
         sampler.Start();
 
         IlEvmSettings.Enabled = on;
-        timeBeginPeriod(1);
+        if (OperatingSystem.IsWindows()) timeBeginPeriod(1);
         Stopwatch clock = Stopwatch.StartNew();
         long period = Stopwatch.Frequency / rps;
         long start = Stopwatch.GetTimestamp();
@@ -221,7 +221,7 @@ public static class ColdLoad
         double arrivalSeconds = clock.Elapsed.TotalSeconds;
         bool drained = Task.WaitAll([.. running], TimeSpan.FromSeconds(120));
         double drainSeconds = clock.Elapsed.TotalSeconds - arrivalSeconds;
-        timeEndPeriod(1);
+        if (OperatingSystem.IsWindows()) timeEndPeriod(1);
         stopSampler.Cancel();
         sampler.Join();
         IlEvmSettings.Enabled = false;
