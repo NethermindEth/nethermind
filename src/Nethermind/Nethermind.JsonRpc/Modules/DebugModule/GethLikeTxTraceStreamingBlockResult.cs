@@ -41,7 +41,6 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
     {
         Exception? failure = null;
         bool completeArray = true;
-        bool deadlineExpired = false;
 
         writer.WriteStartArray();
 
@@ -58,7 +57,6 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
                     completeArray = false;
                     throw;
                 }
-                deadlineExpired = true;
                 CommittedFailure = ex;
             }
             failure = ex;
@@ -71,16 +69,16 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("error"u8);
-                    writer.WriteStringValue(deadlineExpired ? "execution timeout" : StructLogEnvelopeWriter.FormatErrorMessage(failure));
+                    writer.WriteStringValue(CommittedFailure is not null ? "execution timeout" : StructLogEnvelopeWriter.FormatErrorMessage(failure));
                     writer.WritePropertyName("errorCode"u8);
-                    writer.WriteNumberValue(deadlineExpired ? ErrorCodes.InvalidInput : StructLogEnvelopeWriter.ResolveErrorCode(failure));
+                    writer.WriteNumberValue(CommittedFailure is not null ? ErrorCodes.InvalidInput : StructLogEnvelopeWriter.ResolveErrorCode(failure));
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();
             }
         }
 
-        if (failure is not null && !deadlineExpired && Logger.IsWarn)
+        if (failure is not null && CommittedFailure is null && Logger.IsWarn)
         {
             Logger.Warn($"debug_traceBlock streaming failed mid-response: {failure}");
         }

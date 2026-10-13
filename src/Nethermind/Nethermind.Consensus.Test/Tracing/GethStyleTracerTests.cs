@@ -258,7 +258,10 @@ public class GethStyleTracerTests
         using Utf8JsonWriter writer = new(observed);
         GethTraceOptions options = new()
         {
-            EnforceExecutionDeadline = true, DeadlineClock = clock, Timeout = TimeSpan.FromSeconds(1), EnableReturnData = true
+            EnforceExecutionDeadline = true,
+            DeadlineClock = clock,
+            Timeout = TimeSpan.FromSeconds(1),
+            EnableReturnData = true
         };
         using GethLikeBlockEnvelopeStreamingTracer inner = new(options, writer, observed, external.Token);
         using GethLikeBlockDeadlineTracer tracer = new(inner, options, external.Token);
