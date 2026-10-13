@@ -1,0 +1,142 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Google.Protobuf;
+using Grpc.Core;
+using Nethermind.Eez.Prove.V2;
+
+namespace Nethermind.Eez.Attester;
+
+internal sealed class StreamingSessionRegistry : IDisposable
+{
+    private readonly object _lock = new();
+    private readonly Dictionary<ByteString, Entry> _sessions = [];
+    private readonly StreamingRegistryLimits _limits;
+    private readonly StreamingSessionLimits _sessionLimits;
+    private readonly TimeProvider _time;
+    private readonly ITimer _timer;
+    private readonly long _reservation;
+    private long _reservedBytes;
+    private bool _disposed;
+
+    internal StreamingSessionRegistry(StreamingRegistryLimits limits, StreamingSessionLimits sessionLimits, TimeProvider time)
+    {
+        sessionLimits.Validate();
+        limits.Validate();
+        if (sessionLimits.MaxBytes > long.MaxValue / 2) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
+        _reservation = sessionLimits.MaxBytes * 2;
+        if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
+        _limits = limits;
+        _sessionLimits = sessionLimits;
+        _time = time;
+        _timer = time.CreateTimer(static registry => ((StreamingSessionRegistry)registry!).Sweep(), this,
+            limits.Retention, limits.Retention);
+    }
+
+    internal StreamingSession Begin(string authenticatedOwner, Begin begin)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(authenticatedOwner);
+        if (authenticatedOwner.Length > 256) throw new ArgumentOutOfRangeException(nameof(authenticatedOwner));
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            SweepCore();
+            int owned = 0;
+            foreach (Entry entry in _sessions.Values)
+                if (StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner)) owned++;
+            if (_sessions.Count >= _limits.MaxSessions || owned >= _limits.MaxSessionsPerOwner ||
+                _reservation > _limits.MaxReservedBytes - _reservedBytes)
+                throw Error(StatusCode.ResourceExhausted, "session registry limit exceeded");
+            StreamingSession session = new(authenticatedOwner, begin, _sessionLimits);
+            _sessions.Add(session.Id, new Entry(session, authenticatedOwner, _time.GetTimestamp()));
+            _reservedBytes += _reservation;
+            return session;
+        }
+    }
+
+    internal (StreamingSession Session, SessionBinding Binding) Resume(string authenticatedOwner, ByteString id, ulong rollupId)
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            SweepCore();
+            if (!_sessions.TryGetValue(id, out Entry? entry) || !StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner) ||
+                entry.Session.RollupId != rollupId)
+                throw Error(StatusCode.NotFound, "session unavailable");
+            SessionBinding binding = entry.Session.Resume(authenticatedOwner);
+            entry.LastUsed = _time.GetTimestamp();
+            return (entry.Session, binding);
+        }
+    }
+
+    internal void Touch(StreamingSession session, SessionBinding binding)
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!_sessions.TryGetValue(session.Id, out Entry? entry) || !ReferenceEquals(entry.Session, session))
+                throw Error(StatusCode.NotFound, "session unavailable");
+            long now = _time.GetTimestamp();
+            if (_time.GetElapsedTime(entry.LastUsed, now) >= _limits.Retention) session.Retire();
+            session.CheckCurrent(binding);
+            entry.LastUsed = now;
+        }
+    }
+
+    internal void Sweep()
+    {
+        lock (_lock)
+        {
+            if (!_disposed) SweepCore();
+        }
+    }
+
+    private void SweepCore()
+    {
+        long now = _time.GetTimestamp();
+        foreach (KeyValuePair<ByteString, Entry> pair in _sessions)
+        {
+            Entry entry = pair.Value;
+            if (_time.GetElapsedTime(entry.LastUsed, now) >= _limits.Retention) entry.Session.Retire();
+            if (entry.Session.CanRelease)
+            {
+                _sessions.Remove(pair.Key);
+                _reservedBytes -= _reservation;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            foreach (Entry entry in _sessions.Values) entry.Session.Retire();
+            _sessions.Clear();
+            _reservedBytes = 0;
+        }
+        _timer.Dispose();
+    }
+
+    private static RpcException Error(StatusCode code, string message) => new(new Status(code, message));
+    private sealed class Entry(StreamingSession session, string owner, long lastUsed)
+    {
+        internal StreamingSession Session { get; } = session;
+        internal string Owner { get; } = owner;
+        internal long LastUsed { get; set; } = lastUsed;
+    }
+}
+
+internal sealed record StreamingRegistryLimits(int MaxSessions, int MaxSessionsPerOwner, long MaxReservedBytes, TimeSpan Retention)
+{
+    internal void Validate()
+    {
+        if (MaxSessions <= 0 || MaxSessionsPerOwner <= 0 || MaxReservedBytes <= 0 || Retention < TimeSpan.FromMilliseconds(1) ||
+            Retention.TotalMilliseconds > uint.MaxValue - 1)
+            throw new ArgumentOutOfRangeException(nameof(MaxSessions));
+    }
+}

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Protobuf Include="prove.proto" GrpcServices="Both" />
+    <Protobuf Include="prove_stream.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>

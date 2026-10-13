@@ -1,0 +1,35 @@
+name: EEZ streaming session tests
+
+on:
+  push:
+    branches: [feature/eez-prove-v2-sessions]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eez-streaming-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Session runtime (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+      - name: Restore
+        run: dotnet restore src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj --locked-mode
+      - name: Compile
+        run: dotnet build src/Nethermind/Nethermind.Eez.Test/Nethermind.Eez.Test.csproj -c Release --no-restore
+      - name: Test
+        run: |
+          dotnet src/Nethermind/artifacts/bin/Nethermind.Eez.Test/release/Nethermind.Eez.Test.dll \
+            --filter 'FullyQualifiedName~Nethermind.Eez.Test.Streaming' \
+            --hangdump --hangdump-timeout 5m --hangdump-type Mini \
+            --crashdump --crashdump-type Mini
