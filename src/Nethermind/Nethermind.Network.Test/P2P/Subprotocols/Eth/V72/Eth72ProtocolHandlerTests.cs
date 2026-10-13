@@ -139,6 +139,121 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_not_allocate_large_blob_gossip_caches_for_an_idle_peer()
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        using Eth72ProtocolHandler handler = CreateProbeHandler(_session, _sparseBlobPoolPeerRegistry);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(allocated, Is.LessThan(2 * 1024 * 1024));
+    }
+
+    [Test]
+    public void registry_should_reject_over_quota_announcements_before_allocating_or_evicting()
+    {
+        ManualTimerFactory timers = new();
+        ManualTimestamper clock = new();
+        using SparseBlobPoolPeerRegistry registry = new(
+            NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance, TimeSpan.Zero, timerFactory: timers, timestamper: clock);
+        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, 1);
+
+        const int capacity = 2048;
+        for (int i = 0; i < capacity; i++)
+        {
+            Assert.That(registry.RecordAnnouncement(peers[0], HashFromInt(i), BlobCellMask.Full), Is.True);
+        }
+
+        Hash256[] rejectedHashes = Enumerable.Range(capacity, 1024).Select(HashFromInt).ToArray();
+        registry.RecordAnnouncement(peers[0], rejectedHashes[0], BlobCellMask.Full);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        int accepted = 0;
+        foreach (Hash256 hash in rejectedHashes)
+        {
+            if (registry.RecordAnnouncement(peers[0], hash, BlobCellMask.Full)) accepted++;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.Zero);
+            Assert.That(allocated, Is.LessThan(65536), "Rejecting new hashes at capacity must not allocate tracking state.");
+            Assert.That(registry.GetFullProviderAnnouncementCount(HashFromInt(0)), Is.EqualTo(1));
+        }
+
+        Assert.That(registry.RecordAnnouncement(peers[0], HashFromInt(0), BlobCellMask.FromIndices([4])), Is.True);
+        clock.Add(TimeSpan.FromMinutes(6));
+        timers.Timer.Fire();
+        Assert.That(registry.RecordAnnouncement(peers[0], rejectedHashes[0], BlobCellMask.Full), Is.True);
+    }
+
+    [Test]
+    public void registry_should_bound_concurrent_announcement_tracking()
+    {
+        using SparseBlobPoolPeerRegistry registry = new(
+            NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance, TimeSpan.Zero, timerFactory: new ManualTimerFactory());
+        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, 16);
+        int accepted = 0;
+        Parallel.For(0, 65536, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
+        {
+            if (registry.RecordAnnouncement(peers[i % peers.Length], HashFromInt(i), BlobCellMask.Full))
+            {
+                Interlocked.Increment(ref accepted);
+            }
+        });
+
+        int retained = Enumerable.Range(0, 65536).Count(i => registry.GetFullProviderAnnouncementCount(HashFromInt(i)) != 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.GreaterThan(16384));
+            Assert.That(retained, Is.InRange(1, 16384));
+        }
+    }
+
+    [Test]
+    public void registry_should_admit_a_new_peer_when_global_tracking_is_full()
+    {
+        using SparseBlobPoolPeerRegistry registry = new(
+            NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance, TimeSpan.Zero, timerFactory: new ManualTimerFactory());
+        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, 9);
+        for (int i = 0; i < 16384; i++)
+        {
+            Assert.That(registry.RecordAnnouncement(peers[i / 2048], HashFromInt(i), BlobCellMask.Full), Is.True);
+        }
+
+        Hash256 newHash = HashFromInt(16384);
+        Assert.That(registry.RecordAnnouncement(peers[8], newHash, BlobCellMask.Full), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.GetFullProviderAnnouncementCount(newHash), Is.EqualTo(1));
+            Assert.That(registry.GetFullProviderAnnouncementCount(HashFromInt(0)), Is.Zero);
+        }
+    }
+
+    private static TestSparseBlobPeer[] CreateSparseBlobPeers(SparseBlobPoolPeerRegistry registry, int count)
+    {
+        TestSparseBlobPeer[] peers = new TestSparseBlobPeer[count];
+        for (int i = 0; i < peers.Length; i++)
+        {
+            byte[] key = new byte[PublicKey.LengthInBytes];
+            BinaryPrimitives.WriteInt32LittleEndian(key, i + 1);
+            peers[i] = new TestSparseBlobPeer(new PublicKey(key));
+            registry.AddPeer(peers[i]);
+        }
+
+        return peers;
+    }
+
+    private Eth72ProtocolHandler CreateProbeHandler(ISession session, SparseBlobPoolPeerRegistry registry) =>
+        new(session, _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance), _syncManager,
+            RunImmediatelyScheduler.Instance, NullTxPool.Instance, _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager), LimboLogs.Instance,
+            new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, _specProvider,
+            _blobCustodyTracker, registry, _txGossipPolicy);
+
+    [Test]
     public void Metadata_correct()
     {
         Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
