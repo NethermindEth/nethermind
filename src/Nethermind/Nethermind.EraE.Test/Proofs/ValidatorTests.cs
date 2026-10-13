@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Specs;
 using Nethermind.Core.Specs;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Proofs;
@@ -56,6 +60,25 @@ public class ValidatorTests
 
         // Epoch 1 requires index 1 in the trusted set, but we only have 1 entry (index 0)
         Assert.That(() => { sut.VerifyAccumulator(8192, root); }, Throws.TypeOf<EraVerificationException>());
+    }
+
+    [Test]
+    public async Task VerifyBlocksRootContext_HistoricalSummaries_LooksUpTheSummaryForTheBlockTimestampInSeconds()
+    {
+        // The first Shanghai block opens summary 758: (1681338455 - 1606824023) / 12 / 8192.
+        using BlocksRootContext context = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
+        context.ProcessBlock(Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject,
+            new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
+            new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));
+        context.FinalizeContext();
+
+        IHistoricalSummariesProvider summaries = Substitute.For<IHistoricalSummariesProvider>();
+        summaries.GetHistoricalSummary(758, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(context.HistoricalSummary);
+        Validator sut = new(MainnetSpecProvider.Instance, null, null, summaries);
+
+        await sut.VerifyBlocksRootContext(context);
+
+        await summaries.Received(1).GetHistoricalSummary(758, Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     private static Validator BuildValidator(ValueHash256 trustedRoot)
