@@ -348,7 +348,7 @@ public class BlockAccessListsSyncFeedTests
     }
 
     [Test]
-    public async Task Leaves_out_block_access_lists_no_peer_has([Values] bool distinctPeers)
+    public async Task Leaves_out_block_access_lists_no_peer_has([Values(1, 2, BlockAccessListsSyncFeed.MaxUnavailableResponses)] int peerCount)
     {
         ISpecProvider specProvider = SetUpChainWithActivation(pivot: 2, activation: 1, timestampActivation: false, headersAvailable: true, []);
         _syncPeerPool
@@ -358,22 +358,23 @@ public class BlockAccessListsSyncFeedTests
         _feed = CreateFeed(specProvider);
         _feed.InitializeFeed();
         _feed.Activate();
-        PeerInfo samePeer = new(Substitute.For<ISyncPeer>());
+        PeerInfo[] peers = Enumerable.Range(0, peerCount).Select(static _ => new PeerInfo(Substitute.For<ISyncPeer>())).ToArray();
+        bool givesUp = peerCount == BlockAccessListsSyncFeed.MaxUnavailableResponses;
 
         for (int i = 0; i < BlockAccessListsSyncFeed.MaxUnavailableResponses; i++)
         {
             using BlockAccessListsSyncBatch batch = (await _feed.PrepareRequest())!;
             Assert.That(batch, Is.Not.Null);
             batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => (byte[]?)null).ToArray());
-            batch.ResponseSourcePeer = distinctPeers ? new PeerInfo(Substitute.For<ISyncPeer>()) : samePeer;
+            batch.ResponseSourcePeer = peers[i % peerCount];
             Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
         }
 
         using BlockAccessListsSyncBatch? next = await _feed.PrepareRequest();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(next, distinctPeers ? Is.Null : Is.Not.Null, "only different peers count towards giving up");
-            Assert.That(_feed.IsFinished, Is.EqualTo(distinctPeers));
+            Assert.That(next, givesUp ? Is.Null : Is.Not.Null, "only different peers count towards giving up");
+            Assert.That(_feed.IsFinished, Is.EqualTo(givesUp));
             _blockAccessListStore.DidNotReceive().Insert(Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<byte[]>());
             _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,7 +51,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     internal const int MaxUnavailableResponses = 8;
 
     private readonly FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.BlockAccessLists, 0, true);
-    private readonly ConcurrentDictionary<ulong, (int Count, ISyncPeer? LastPeer)> _unavailable = new();
+    private readonly ConcurrentDictionary<ulong, HashSet<ISyncPeer>> _unavailable = new();
 
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
@@ -371,16 +372,17 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         return validResponsesCount;
     }
 
-    /// <summary>Counts an unavailable response, once per peer in a row, and reports when the height should be given up.</summary>
+    /// <summary>Records which peer reported the height unavailable and reports when enough different peers have.</summary>
     private bool IsUnavailableEverywhere(ulong blockNumber, ISyncPeer? peer)
     {
-        (int count, _) = _unavailable.AddOrUpdate(
-            blockNumber,
-            static (_, p) => (1, p),
-            static (_, current, p) => p is not null && ReferenceEquals(current.LastPeer, p) ? current : (current.Count + 1, p),
-            peer);
+        if (peer is null) return false;
 
-        if (count < MaxUnavailableResponses) return false;
+        HashSet<ISyncPeer> peers = _unavailable.GetOrAdd(blockNumber, static _ => []);
+        lock (peers)
+        {
+            peers.Add(peer);
+            if (peers.Count < MaxUnavailableResponses) return false;
+        }
 
         _unavailable.TryRemove(blockNumber, out _);
         return true;
