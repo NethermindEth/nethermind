@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -143,6 +144,11 @@ namespace Nethermind.Synchronization.Peers
         /// The header whose hash is <paramref name="hash"/>, or <c>null</c> if no peer supplied it in time.
         /// A response for any other block is discarded, so the result never depends on which peer answered.
         /// </returns>
+        /// <remarks>
+        /// A peer request that times out, is cancelled or hits the peer's concurrent request limit
+        /// (<see cref="ConcurrencyLimitReachedException"/>) counts as that peer not having the header.
+        /// Any other exception propagates.
+        /// </remarks>
         public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default, ILogger logger = default)
         {
             try
@@ -169,24 +175,19 @@ namespace Nethermind.Synchronization.Peers
                     }
                 }
 
-                return await FetchAllocatedHeader(syncPeerPool, hash, cts.Token);
+                return await FetchAllocatedHeader(syncPeerPool, hash, logger, cts.Token);
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
                 return null;
             }
-            catch (Exception ex)
-            {
-                if (logger.IsDebug) logger.Debug($"Failed to fetch header {hash} from an allocated peer: {ex}");
-                return null;
-            }
 
-            static Task<BlockHeader?> FetchAllocatedHeader(ISyncPeerPool syncPeerPool, Hash256 headerHash, CancellationToken token) =>
+            static Task<BlockHeader?> FetchAllocatedHeader(ISyncPeerPool syncPeerPool, Hash256 headerHash, ILogger logger, CancellationToken token) =>
                 syncPeerPool.AllocateAndRun(
                     async (PeerInfo peer) =>
                     {
-                        using IOwnedReadOnlyList<BlockHeader>? headers = await peer.SyncPeer.GetBlockHeaders(headerHash, 1, 0, token);
+                        using IOwnedReadOnlyList<BlockHeader>? headers = await RequestHeaders(peer, headerHash, logger, token);
 
                         ReadOnlySpan<BlockHeader> headersSpan = headers is null ? [] : headers.AsSpan();
                         return headersSpan.Length == 1 ? Validate(syncPeerPool, peer, headersSpan[0], headerHash) : null;
@@ -195,21 +196,39 @@ namespace Nethermind.Synchronization.Peers
                     AllocationContexts.Headers,
                     token);
 
-            static async Task<BlockHeader?> FetchHeader(ISyncPeerPool syncPeerPool, PeerInfo peer, Hash256 headerHash, ILogger logger, CancellationToken token)
+            static async Task<IOwnedReadOnlyList<BlockHeader>?> RequestHeaders(PeerInfo peer, Hash256 headerHash, ILogger logger, CancellationToken token)
             {
                 try
                 {
-                    return Validate(syncPeerPool, peer, await peer.SyncPeer.GetHeadBlockHeader(headerHash, token), headerHash);
+                    return await peer.SyncPeer.GetBlockHeaders(headerHash, 1, 0, token);
+                }
+                catch (ConcurrencyLimitReachedException ex)
+                {
+                    // A busy peer is a peer without the header, not a failed fetch.
+                    if (logger.IsDebug) logger.Debug($"Peer {peer} could not be asked for header {headerHash}: {ex.Message}");
+                    return null;
+                }
+            }
+
+            static async Task<BlockHeader?> FetchHeader(ISyncPeerPool syncPeerPool, PeerInfo peer, Hash256 headerHash, ILogger logger, CancellationToken token)
+            {
+                BlockHeader? header;
+                try
+                {
+                    header = await peer.SyncPeer.GetHeadBlockHeader(headerHash, token);
                 }
                 catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
                 {
                     return null;
                 }
-                catch (Exception ex)
+                catch (ConcurrencyLimitReachedException ex)
                 {
-                    if (logger.IsDebug) logger.Debug($"Peer {peer} failed to return header {headerHash}: {ex.Message}");
+                    // A busy peer is a peer without the header; the other peers and the fallback can still answer.
+                    if (logger.IsDebug) logger.Debug($"Peer {peer} could not be asked for header {headerHash}: {ex.Message}");
                     return null;
                 }
+
+                return Validate(syncPeerPool, peer, header, headerHash);
             }
 
             // A peer without the block answers with an empty list, or with an item that decodes to a null header.
