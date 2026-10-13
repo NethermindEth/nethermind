@@ -204,7 +204,7 @@ public class PrewarmerReadAheadTests
     /// parent values, and the seeds are committed without roots.
     /// </summary>
     [Test]
-    public void A_run_is_seeded_with_what_the_blocks_earlier_transactions_wrote([Values] bool seeded)
+    public void A_run_is_seeded_with_what_the_blocks_earlier_transactions_wrote([Values] bool seeded, [Values] bool cachedCounter)
     {
         CommitCountingEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
         using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs);
@@ -217,6 +217,7 @@ public class PrewarmerReadAheadTests
         footprints.QueueExecuted(0, new[] { (new StorageCell(ColdTailContracts.Batch, 0), moved) });
         footprints.ApplyExecuted();
         preWarmer.OnBeforeTxExecution();
+        if (cachedCounter) _caches.StorageCache.Set(new StorageCell(ColdTailContracts.Batch, 0), ColdTailContracts.BatchCounter);
 
         preWarmer.DiscoverAndWarmStorage([(1, second)], block, Spec, null, CancellationToken.None, footprints: seeded ? footprints : null);
 
@@ -290,37 +291,49 @@ public class PrewarmerReadAheadTests
     [Test]
     public void The_sessions_end_stops_and_joins_its_read_ahead()
     {
-        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true);
+        using GatedEnvs envs = new(_scope.Resolve<PrewarmerEnvFactory>(), _caches);
+        using BlockCachePreWarmer preWarmer = CreatePreWarmer(readAhead: true, policy: envs);
         // A creation whose init code loops for minutes: the up-front discovery takes no creation, so the read-ahead runs it.
         Transaction loop = Build.A.Transaction.WithGasLimit(LoopGas).WithCode(LongLoopCode).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block block = BuildBlock(LoopGas, loop, Transfer(TestItem.PrivateKeyB, 0), Transfer(TestItem.PrivateKeyC, 0));
         IWorldState worldState = _scope.Resolve<IWorldState>();
-        using (worldState.BeginScope(_parent))
+        using IDisposable consumer = worldState.BeginScope(_parent);
+        IDisposable session = preWarmer.PreWarmCaches(block, _parent, Spec)!;
+        Assert.That(session, Is.Not.Null);
+        Task? end = null;
+        try
         {
-            IDisposable? session = preWarmer.PreWarmCaches(block, _parent, Spec);
-            Assert.That(session, Is.Not.Null);
+            envs.Armed = true;
             preWarmer.OnBeforeTxExecution();
             _caches.ReportConsumerColdRead();
-            Thread.Sleep(200);
-            bool running = preWarmer.ReadAheadsRunning == 1;
+            Assert.That(envs.Entered.Wait(Timeout), Is.True, "the read-ahead owns a parent scope before cancellation");
 
-            Task end = Task.Run(() => session!.Dispose());
-            bool ended = end.Wait(TimeSpan.FromSeconds(10));
+            end = Task.Run(session.Dispose);
+            Assert.That(SpinWait.SpinUntil(() => _caches.ColdReadObserver is null, Timeout), Is.True, "the session has entered Close");
+            bool endedBeforeRelease = end.Wait(TimeSpan.FromSeconds(1));
+            envs.Release.Set();
+            Assert.That(envs.Returned.Wait(Timeout), Is.True, "the read-ahead returns its environment after cancellation");
+            Assert.That(end.Wait(Timeout), Is.True, "the session joins the released read-ahead");
+
             int accounts = _caches.StateCache.SnapshotForTests().Count;
             int slots = _caches.StorageCache.SnapshotForTests().Count;
             _caches.ReportConsumerColdRead();
-            Thread.Sleep(200);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(running, Is.True, "precondition: the read-ahead is in its run when the session ends");
-                Assert.That(ended, Is.True, "the session's end stops the run rather than waiting it out");
-                Assert.That(preWarmer.ReadAheadsRunning, Is.Zero);
+                Assert.That(endedBeforeRelease, Is.False, "cancellation alone does not join a read-ahead holding its parent scope");
                 Assert.That(_caches.ColdReadObserver, Is.Null, "nothing listens to block processing's reads past the session");
                 Assert.That(preWarmer.ReadAheadsStarted, Is.EqualTo(1), "no read-ahead starts past the session");
                 Assert.That(_caches.StateCache.SnapshotForTests(), Has.Count.EqualTo(accounts), "nothing is written past the session");
                 Assert.That(_caches.StorageCache.SnapshotForTests(), Has.Count.EqualTo(slots), "nothing is written past the session");
             }
+        }
+        finally
+        {
+            envs.Release.Set();
+            if (envs.Entered.IsSet) envs.Returned.Wait(Timeout);
+            end?.Wait(Timeout);
+            session.Dispose();
         }
     }
 
@@ -431,6 +444,58 @@ public class PrewarmerReadAheadTests
 
     private static Transaction Transfer(PrivateKey sender, ulong nonce) =>
         Build.A.Transaction.WithNonce(nonce).WithTo(TestItem.AddressF).WithValue(1.Wei).SignedAndResolved(sender).TestObject;
+
+    private sealed class GatedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>, IDisposable
+    {
+        public readonly ManualResetEventSlim Entered = new();
+        public readonly ManualResetEventSlim Release = new();
+        public readonly ManualResetEventSlim Returned = new();
+        public volatile bool Armed;
+        private int _claimed;
+
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), this, caches);
+
+        public bool Return(IPrewarmerEnv obj)
+        {
+            if (((Env)obj).Held) Returned.Set();
+            return true;
+        }
+
+        public void Dispose()
+        {
+            Entered.Dispose();
+            Release.Dispose();
+            Returned.Dispose();
+        }
+
+        private sealed class Env(IPrewarmerEnv inner, GatedEnvs owner, PreBlockCaches caches) : IPrewarmerEnv
+        {
+            public bool Held;
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+            FootprintRecorder? IPrewarmerEnv.Recorder => inner.Recorder;
+
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                bool built = inner.TryBuildAtTarget(targetBlock, out scope);
+                if (built && owner.Armed && caches.CurrentStorageReadCapture is not null && Interlocked.CompareExchange(ref owner._claimed, 1, 0) == 0)
+                {
+                    Held = true;
+                    owner.Entered.Set();
+                    if (!owner.Release.Wait(Timeout))
+                    {
+                        scope!.Dispose();
+                        throw new TimeoutException("The read-ahead's parent scope was not released.");
+                    }
+                }
+
+                return built;
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+    }
 
     private sealed class KnownParents : IStateHeaderProvider
     {
