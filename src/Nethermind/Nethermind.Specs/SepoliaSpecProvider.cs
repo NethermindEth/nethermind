@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
@@ -20,11 +19,6 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     public const ulong BPO2Timestamp = 0x68fffd60;
     public const ulong AmsterdamTimestamp = 0x6ac4fd60;
 
-    private static IReleaseSpec? _prague;
-
-    private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => WithSepoliaParameters(new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }));
-
     /// <remarks>Glamsterdam is live, so the consensus layer serves only <see cref="HistoryRetentionConstants.HistoryPruneEpochs"/>.</remarks>
     private static ReleaseSpec WithSepoliaParameters(ReleaseSpec spec)
     {
@@ -37,7 +31,7 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
         [GenesisBlockNumber] = WithSepoliaParameters(new London()),
         [ShanghaiTimestamp] = WithSepoliaParameters(new Shanghai()),
         [CancunTimestamp] = WithSepoliaParameters(new Cancun()),
-        [PragueTimestamp] = Prague,
+        [PragueTimestamp] = WithSepoliaParameters(new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }),
         [OsakaTimestamp] = WithSepoliaParameters(new Osaka()),
         [BPO1Timestamp] = WithSepoliaParameters(new BPO1()),
         [BPO2Timestamp] = WithSepoliaParameters(new BPO2()),

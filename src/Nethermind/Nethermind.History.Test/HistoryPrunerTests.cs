@@ -319,25 +319,11 @@ public class HistoryPrunerTests
         const ulong head = 2_000_000;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
-        IDbProvider dbProvider = Substitute.For<IDbProvider>();
-        dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        HistoryPruner pruner = new(
+        HistoryPruner pruner = CreatePruner(
             blockTree,
-            Substitute.For<IReceiptStorage>(),
-            Substitute.For<IBlockAccessListStore>(),
             new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 33024 }),
-            Substitute.For<IChainLevelInfoRepository>(),
-            Substitute.For<IHeaderStore>(),
-            dbProvider,
-            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs },
-            BlocksConfig,
-            SyncConfig,
-            new ProcessExitSource(new()),
-            Substitute.For<IBackgroundTaskScheduler>(),
-            Substitute.For<IBlockProcessingQueue>(),
-            NullPrunedReceiptRetention.Instance,
-            LimboLogs.Instance);
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs });
 
         using (Assert.EnterMultipleScope())
         {
@@ -365,11 +351,21 @@ public class HistoryPrunerTests
             MinHistoryRetentionEpochs = minHistoryRetentionEpochs,
             MinBalRetentionEpochs = minBalRetentionEpochs,
         });
+        Action action = () => CreatePruner(Substitute.For<IBlockTree>(), specProvider, historyConfig);
+
+        if (shouldThrow)
+            Assert.Throws<HistoryPruner.HistoryPrunerException>(action);
+        else
+            Assert.DoesNotThrow(action);
+    }
+
+    private static HistoryPruner CreatePruner(IBlockTree blockTree, ISpecProvider specProvider, IHistoryConfig historyConfig)
+    {
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
-        Action action = () => new HistoryPruner(
-            Substitute.For<IBlockTree>(),
+        return new HistoryPruner(
+            blockTree,
             Substitute.For<IReceiptStorage>(),
             Substitute.For<IBlockAccessListStore>(),
             specProvider,
@@ -384,11 +380,6 @@ public class HistoryPrunerTests
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);
-
-        if (shouldThrow)
-            Assert.Throws<HistoryPruner.HistoryPrunerException>(action);
-        else
-            Assert.DoesNotThrow(action);
     }
 
     [TestCase(null, false, TestName = "SetDeletePointerToOldestBlock_never_searches_while_no_body_was_inserted")]
