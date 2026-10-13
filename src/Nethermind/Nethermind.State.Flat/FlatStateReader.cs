@@ -48,11 +48,7 @@ public class FlatStateReader(
     {
         StateId stateId = new(baseBlock);
 
-        ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
-        bool historical = reader.IsHistorical;
-        if (historical) reader.Dispose();
-
-        if (historical)
+        if (flatDbManager.IsHistoricalState(stateId))
         {
             try
             {
@@ -66,12 +62,10 @@ public class FlatStateReader(
             throw StateUnavailable(baseBlock, $"State proofs at historical block {stateId.BlockNumber} are not supported");
         }
 
-        using (reader)
-        {
-            ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
-            PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
-        }
+        using ReadOnlySnapshotBundle reader = GatherForRead(baseBlock);
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader, treeVisitor.IsFullDbScan ? null : trieNodeCache);
+        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));

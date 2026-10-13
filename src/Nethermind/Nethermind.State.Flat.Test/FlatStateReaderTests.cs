@@ -43,9 +43,9 @@ public class FlatStateReaderTests
     }
 
     [Test]
-    public void RunTreeVisitor_OnHistoricalBundle_ThrowsMissingTrieNodeException()
+    public void RunTreeVisitor_OnHistoricalState_ThrowsMissingTrieNodeExceptionWithoutGatheringABundle()
     {
-        FlatStateReader reader = CreateReader(new HistoricalBundleFlatDbManager());
+        FlatStateReader reader = CreateReader(new HistoricalStateFlatDbManager());
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => reader.RunTreeVisitor(new TreeDumper(), _header));
         Assert.That(exception!.Message, Does.Contain("historical"));
@@ -159,10 +159,12 @@ public class FlatStateReaderTests
         public void Dispose() { }
     }
 
-    private class HistoricalBundleFlatDbManager : IFlatDbManager
+    private class HistoricalStateFlatDbManager : IFlatDbManager
     {
+        public bool IsHistoricalState(in StateId stateId) => true;
+
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-            new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), isHistorical: true);
+            throw new InvalidOperationException("A historical proof must not gather a snapshot bundle.");
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
