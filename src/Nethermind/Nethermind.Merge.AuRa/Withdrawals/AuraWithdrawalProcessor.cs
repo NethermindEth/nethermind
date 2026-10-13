@@ -4,7 +4,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -57,9 +57,8 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        // Only Contract.CallCore's status-failure path (revert, out of gas, invalid opcode) has no inner exception;
-        // a wrapped exception is a node-local fault (e.g. missing trie node, DB error) and must not invalidate the block.
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is AbiException { InnerException: null })
+        // Other AbiExceptions (e.g. a wrapped state read failure) are node-local faults and must not invalidate the block.
+        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is ContractCallFailedException)
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }
