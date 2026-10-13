@@ -12,7 +12,13 @@ internal interface IGcRegionRuntime
     bool TryStart(long totalSize, long lohSize);
     void End();
     bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting);
+    /// <summary>Returns the memory load the runtime recorded at its last collection.</summary>
+    GcMemoryLoad GetMemoryLoad();
 }
+
+/// <param name="MemoryLoadBytes">The memory in use, machine-wide or within the container limit.</param>
+/// <param name="TotalAvailableMemoryBytes">The memory available to the process: physical memory or the container limit.</param>
+internal readonly record struct GcMemoryLoad(long MemoryLoadBytes, long TotalAvailableMemoryBytes);
 
 internal sealed class GcRegionRuntime : IGcRegionRuntime
 {
@@ -28,4 +34,9 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
         GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No,
             compacting: compacting > GcCompaction.No, trimNativeMemory: true,
             compactLoh: mode != GCCollectionMode.Aggressive && generation == GcLevel.Gen2 && compacting == GcCompaction.Full);
+    public GcMemoryLoad GetMemoryLoad()
+    {
+        GCMemoryInfo info = System.GC.GetGCMemoryInfo();
+        return new(info.MemoryLoadBytes, info.TotalAvailableMemoryBytes);
+    }
 }

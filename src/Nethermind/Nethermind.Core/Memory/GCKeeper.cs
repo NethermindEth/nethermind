@@ -339,6 +339,54 @@ public class GCKeeper : IDisposable
         }
     }
 
+    private enum DecommitDecision { None, Skip, Pressure, SafetyNet, LoadUnknown }
+
+    private DecommitDecision _lastDecommitDecision;
+
+    /// <summary>Decides whether a due decommit runs: under memory pressure, or once the unconditional count is reached.</summary>
+    /// <remarks>
+    /// A skipped decommit stays due, so the load is checked again after every later payload; the count is not reset.
+    /// Without a threshold (0 or less) every due decommit runs and the memory load is not read.
+    /// </remarks>
+    private bool IsDecommitWarranted(long payloadsSinceDecommit)
+    {
+        int loadPercent = _gcStrategy.DecommitMemoryLoadPercent;
+        if (loadPercent <= 0) return true;
+
+        GcMemoryLoad load = _runtime.GetMemoryLoad();
+        int unconditional = _gcStrategy.CollectionsPerUnconditionalDecommit;
+        DecommitDecision decision =
+            load.TotalAvailableMemoryBytes <= 0 ? DecommitDecision.LoadUnknown
+            : load.MemoryLoadBytes * 100 >= load.TotalAvailableMemoryBytes * loadPercent ? DecommitDecision.Pressure
+            : unconditional >= 0 && payloadsSinceDecommit >= unconditional ? DecommitDecision.SafetyNet
+            : DecommitDecision.Skip;
+
+        // Logged when the decision changes rather than at every payload: a skip repeats after each one until it ends.
+        if (decision != _lastDecommitDecision)
+        {
+            _lastDecommitDecision = decision;
+            if (_logger.IsInfo) _logger.Info(DescribeDecommitDecision(decision, load, loadPercent, unconditional, payloadsSinceDecommit));
+        }
+
+        return decision != DecommitDecision.Skip;
+    }
+
+    private static string DescribeDecommitDecision(DecommitDecision decision, GcMemoryLoad load, int loadPercent, int unconditional, long payloads)
+    {
+        string memory = load.TotalAvailableMemoryBytes > 0
+            ? $"memory load {load.MemoryLoadBytes * 100.0 / load.TotalAvailableMemoryBytes:F0}% of {load.TotalAvailableMemoryBytes / (1024.0 * 1024 * 1024):F1} GiB"
+            : "memory load unknown";
+        return decision switch
+        {
+            DecommitDecision.Pressure => $"GC decommit: {memory} is at or above {loadPercent}%, releasing memory after {payloads} payloads.",
+            DecommitDecision.SafetyNet => $"GC decommit: {memory} is below {loadPercent}%, releasing memory anyway after {payloads} payloads (unconditional after {unconditional}).",
+            DecommitDecision.LoadUnknown => $"GC decommit: {memory}, releasing memory after {payloads} payloads.",
+            _ => unconditional >= 0
+                ? $"GC decommit deferred: {memory} is below {loadPercent}%; releasing memory once it is reached or after {unconditional} payloads."
+                : $"GC decommit deferred: {memory} is below {loadPercent}%; releasing memory once it is reached.",
+        };
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -388,7 +436,8 @@ public class GCKeeper : IDisposable
                     int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
 
                     GCCollectionMode mode = GCCollectionMode.Forced;
-                    bool decommit = collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit;
+                    bool decommit = collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit
+                        && IsDecommitWarranted(payloadsSinceDecommit);
                     if (decommit)
                     {
                         // Keep the debt pending through a longer idle gap; new payloads cancel this wait.
