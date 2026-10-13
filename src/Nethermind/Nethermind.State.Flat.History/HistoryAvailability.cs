@@ -164,8 +164,15 @@ public sealed class HistoryAvailability
     {
         Span<byte> key = stackalloc byte[BlockBytes];
         BinaryPrimitives.WriteUInt64BigEndian(key, block);
-        byte[]? capturedRoot = _availableBlocks.Get(key);
-        return capturedRoot is { Length: RootBytes } && stateRoot == new ValueHash256(capturedRoot);
+        Span<byte> capturedRoot = _availableBlocks.GetSpan(key);
+        try
+        {
+            return capturedRoot.Length == RootBytes && capturedRoot.SequenceEqual(stateRoot.Bytes);
+        }
+        finally
+        {
+            _availableBlocks.DangerousReleaseMemory(capturedRoot);
+        }
     }
 
     /// <summary>The raw stamped format byte, or <c>null</c> for a fresh DB.</summary>
