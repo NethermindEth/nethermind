@@ -19,6 +19,7 @@ pub mod compactor;
 pub mod events;
 pub mod host;
 pub mod keccak;
+pub mod keccak_cache;
 pub mod kv;
 pub mod log_ring;
 pub mod manager;
