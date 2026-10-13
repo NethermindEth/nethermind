@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -25,7 +24,6 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateTransactionProcessorAdapter(ITransactionProcessor transactionProcessor, SimulateRequestState simulateRequestState) : ITransactionProcessorAdapter
 {
     private int _currentTxIndex = 0;
-    private ulong _maxTotalGasLimit = ulong.MaxValue;
     private BlockHeader? _header;
     private bool _isEip8037Enabled;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
@@ -59,7 +57,6 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _currentTxIndex = 0;
-        _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
         _header = blockExecutionContext.Header;
         _isEip8037Enabled = blockExecutionContext.Spec.IsEip8037Enabled;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -74,7 +71,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         ulong blockGasAvailable = GetBlockGasAvailable(stateGasAvailable);
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
-            transaction.GasLimit = Math.Min(blockGasAvailable, Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
+            transaction.GasLimit = Math.Min(blockGasAvailable, simulateRequestState.TotalGasLeft);
         }
         else if (transaction.GasLimit > blockGasAvailable)
         {

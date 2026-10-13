@@ -1011,15 +1011,14 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// An explicit <c>gas</c> above EIP-8037's TX_MAX_TOTAL_GAS_LIMIT must be reported as invalid input
-    /// rather than falling through to <c>-32603 Internal error</c>.
+    /// eth_simulateV1 does not apply EIP-8037's TX_MAX_TOTAL_GAS_LIMIT to an explicit <c>gas</c>, with or without validation.
     /// </summary>
     /// <remarks>
     /// Only reachable when the RPC gas cap does not already clamp the request, i.e. when
     /// <c>JsonRpc.GasCap</c> is the "no cap" sentinel <c>0</c> or is itself above the consensus cap.
     /// </remarks>
     [Test]
-    public async Task eth_simulateV1_gas_above_eip8037_total_cap_returns_invalid_input()
+    public async Task eth_simulateV1_runs_gas_above_eip8037_total_cap([Values] bool validation)
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
         chain.RpcConfig.GasCap = 0;
@@ -1031,7 +1030,7 @@ public class EthSimulateTestsBlocksAndTransactions
                 new()
                 {
                     // Above the cap so the block-level EIP-8037 inclusion check cannot reject first.
-                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000 },
+                    BlockOverrides = new BlockOverride { GasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000, BaseFeePerGas = 0 },
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
@@ -1049,18 +1048,14 @@ public class EthSimulateTestsBlocksAndTransactions
                     ]
                 }
             ],
-            Validation = true
+            Validation = validation
         };
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidInput));
-            Assert.That(result.Result!.Error, Does.Contain(
-                TxErrorMessages.TxGasLimitCapExceeded(Eip8037Constants.TxMaxTotalGasLimit + 1, Eip8037Constants.TxMaxTotalGasLimit)));
-        }
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+        Assert.That(result.Data![0].Calls.First().Error, Is.Null);
     }
 
     /// <summary>
@@ -1436,14 +1431,14 @@ public class EthSimulateTestsBlocksAndTransactions
 
     private static IEnumerable<TestCaseData> MissingGasBudgetCases()
     {
-        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget or the
-        // EIP-8037 cap is what binds; 100M sits below the EIP-8037 cap and binds ahead of it.
+        // A GasCap of 0 is "uncapped" (GasCapExtensions.EffectiveGasCap), so the block budget is what binds;
+        // 100M sits below the block budget and binds ahead of it.
         (ulong BlockGasLimit, ulong GasCap, string Dimension)[] budgets =
         [
             (5_000_000UL, 0UL, "a small block's gas budget (execution dimension)"),
             (30_000_000UL, 0UL, "a realistic block's gas budget (state dimension)"),
-            (0x200000000UL, 0UL, "the EIP-8037 cap when the block budget exceeds it"),
-            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the EIP-8037 cap")
+            (0x200000000UL, 0UL, "a block budget above the EIP-8037 total cap"),
+            (0x200000000UL, 100_000_000UL, "the RPC gas cap when it is below the block budget")
         ];
 
         foreach ((ulong blockGasLimit, ulong gasCap, string dimension) in budgets)
@@ -1458,7 +1453,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
     /// <summary>
     /// #12692 (item 1): a no-gas call defaults to the budget still available rather than to the raw
-    /// RPC <c>GasCap</c>, and never resolves above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>.
+    /// RPC <c>GasCap</c>, even above EIP-8037's <c>TX_MAX_TOTAL_GAS_LIMIT</c>, which eth_simulateV1 does not apply.
     /// </summary>
     /// <remarks>
     /// The cases pin the distinct limits the clamp can resolve to. The <c>GasCap</c> values dropped here sat
