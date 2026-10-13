@@ -51,6 +51,10 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
     public void SetUp()
     {
         _chunks = AttesterTests.Window(_fixture, from, to);
+        SettlementBatch recorded = EezCalldata.DecodePostAndVerifyBatch(_chunks[0].Header.PostBatch.AbiCalldata.Span);
+        Assert.That(recorded.Proofs, Has.Length.EqualTo(1), "the recorded settlement has one mined proof");
+        Assert.That(recorded.Proofs[0], Has.Length.EqualTo(EezAttestationSigner.SignatureLength), "the recorded fixture includes the L1 proof");
+        _chunks[0].Header.PostBatch.AbiCalldata = ByteString.CopyFrom(EezCalldata.EncodePostAndVerifyBatch(recorded with { Proofs = [[]] }));
         _parent = Rlp.Decode<BlockHeader>(_chunks[1].Block.Witness.Headers.Single().ToByteArray())!;
         ISpecProvider specs = StatelessFixtures.ReadSpecProvider(_fixture, "chain-config.json");
         JsonElement oracle = StatelessFixtures.ReadJson(_fixture, "oracle.json");
