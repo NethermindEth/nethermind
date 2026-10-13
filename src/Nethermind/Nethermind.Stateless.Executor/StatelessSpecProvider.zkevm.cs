@@ -8,6 +8,7 @@ using Nethermind.Specs;
 namespace Nethermind.Stateless.Execution;
 
 // The guest registers no plugin providers, so it builds only the input chain's provider, not every known chain's.
+// Mirrors ChainSpecBasedSpecProvider's built-in providers; StatelessSpecProviderTests fails when they diverge.
 internal sealed partial class StatelessSpecProvider
 {
     private static IForkAwareSpecProvider? GetKnownProvider(ulong chainId) => chainId switch

@@ -5,7 +5,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs;
 
-// Lazy, so the guest runs no class constructor for this type.
+// Computed on access or lazy, so the guest runs no class constructor for this type.
 public partial class MainnetSpecProvider
 {
     public static ForkActivation ShanghaiActivation => (ParisBlockNumber + 1, ShanghaiBlockTimestamp);

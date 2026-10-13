@@ -5,6 +5,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
@@ -37,6 +38,15 @@ public class StatelessSpecProviderTests
         [Values] bool bogota) =>
         Assert.That(() => StatelessSpecProvider.Create(BlockchainIds.Mainnet, fork,
             bogota ? MainnetSpecProvider.BogotaActivation : MainnetSpecProvider.AmsterdamActivation), Throws.Nothing);
+
+    /// <remarks>The guest resolves these chains with its own switch in <c>StatelessSpecProvider.zkevm.cs</c>.</remarks>
+    [Test]
+    public void Guest_chain_switch_covers_every_built_in_provider() =>
+        Assert.That(ChainSpecBasedSpecProvider.KnownProvidersByChainId.Keys, Is.EquivalentTo(new[]
+        {
+            BlockchainIds.Mainnet, BlockchainIds.Gnosis, BlockchainIds.Chiado,
+            BlockchainIds.Sepolia, BlockchainIds.Hoodi, BlockchainIds.Morden
+        }));
 
     private static ForkActivation GetOsakaActivation(ulong chainId) =>
         chainId == BlockchainIds.Gnosis ? _gnosisOsakaActivation : MainnetSpecProvider.OsakaActivation;
