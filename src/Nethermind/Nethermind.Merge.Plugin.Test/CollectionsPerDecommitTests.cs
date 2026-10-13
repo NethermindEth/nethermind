@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
+using Nethermind.Config.Test;
 using Nethermind.Core.Memory;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Synchronization.ParallelSync;
@@ -35,6 +36,12 @@ public class CollectionsPerDecommitTests
             Assert.That(config.CollectionsPerUnconditionalDecommit, Is.EqualTo(300));
         }
     }
+
+    [TestCase(nameof(IMergeConfig.CollectionsPerDecommit))]
+    [TestCase(nameof(IMergeConfig.DecommitMemoryLoadPercent))]
+    [TestCase(nameof(IMergeConfig.CollectionsPerUnconditionalDecommit))]
+    public void Documented_decommit_default_matches_the_implementation(string propertyName) =>
+        StandardConfigTests.CheckDefault(typeof(IMergeConfig).GetProperty(propertyName)!, new MergeConfig());
 
     [Test]
     public void Strategy_carries_the_decommit_policy()
