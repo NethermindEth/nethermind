@@ -192,9 +192,15 @@ public class AttesterTests
         config["feeCollector"] = Nethermind.Core.Test.Builders.TestItem.AddressD.ToString();
         JsonNode document = fullGenesis ? new JsonObject
         {
-            ["config"] = config, ["alloc"] = new JsonObject(), ["gasLimit"] = "0x1c9c380", ["difficulty"] = "0x0",
-            ["nonce"] = "0x0", ["timestamp"] = "0x0", ["extraData"] = "0x",
-            ["coinbase"] = Address.Zero.ToString(), ["mixHash"] = Keccak.Zero.ToString(),
+            ["config"] = config,
+            ["alloc"] = new JsonObject(),
+            ["gasLimit"] = "0x1c9c380",
+            ["difficulty"] = "0x0",
+            ["nonce"] = "0x0",
+            ["timestamp"] = "0x0",
+            ["extraData"] = "0x",
+            ["coinbase"] = Address.Zero.ToString(),
+            ["mixHash"] = Keccak.Zero.ToString(),
         } : config;
         File.WriteAllText(path, document.ToJsonString());
         try

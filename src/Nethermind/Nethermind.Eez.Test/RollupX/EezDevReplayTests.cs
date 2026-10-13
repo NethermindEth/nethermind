@@ -19,6 +19,8 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Crypto;
 using Nethermind.Eez.Config;
 using Nethermind.Eez.Execution;
@@ -65,7 +67,9 @@ public class EezDevReplayTests
         }
 
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new ConfigProvider(), chainSpec, useTestSpecProvider: false))
+            .AddModule(new TestNethermindModule(new ConfigProvider(
+                new FlatDbConfig { Enabled = TestStateBackend.UseFlatDb, HistoryEnabled = TestStateBackend.UseFlatDb },
+                new PruningConfig { Mode = PruningMode.None }), chainSpec, useTestSpecProvider: false))
             .AddModule(new EezModule(new EezConfig(), rules))
             .Build();
         IMainProcessingContext processing = _container.Resolve<IMainProcessingContext>();

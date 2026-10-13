@@ -193,8 +193,10 @@ public class RollupXExecutionTests
     {
         using Witness witness = new()
         {
-            State = new ArrayPoolList<byte[]>(0), Codes = new ArrayPoolList<byte[]>(0),
-            Keys = new ArrayPoolList<byte[]>(0), Headers = new ArrayPoolList<byte[]>(0),
+            State = new ArrayPoolList<byte[]>(0),
+            Codes = new ArrayPoolList<byte[]>(0),
+            Keys = new ArrayPoolList<byte[]>(0),
+            Headers = new ArrayPoolList<byte[]>(0),
         };
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(1));
         _state.CreateAccount(EezConstants.RollupXEezl2Address, 5);
@@ -207,7 +209,7 @@ public class RollupXExecutionTests
         _state.RecalculateStateRoot();
         Hash256 expectedPrefix = _state.StateRoot;
         _state.AddToBalance(EezConstants.RollupXEezl2Address, 5, spec);
-        _state.AddToBalance(EezConstants.SystemAddress, 7, spec);
+        _state.CreateAccount(EezConstants.SystemAddress, 7);
         _state.Commit(spec);
         Hash256? capturedPrefix = null;
         IBlockProcessor.IBlockTransactionsExecutor probe = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();

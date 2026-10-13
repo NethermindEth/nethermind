@@ -71,7 +71,7 @@ public class EezSettlementEffectsFixtureTests
         byte[] tampered = EezCalldata.EncodePostAndVerifyBatch(batch with { CallData = DaPayloadCodec.Encode(da.RollupId, Blocks(da.Span), actions) });
 
         Assert.That(Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(tampered, Executed.Value, Context(oracle), Spec.Value))!.Message,
-            Does.Contain("does not rebuild"));
+            Does.Contain("rolling hash does not record"));
     }
 
     private static EezSettlementContext Context(JsonElement oracle) => new(oracle.GetProperty("rollup_id").GetUInt64(), oracle.GetProperty("l2_chain_id").GetUInt64(),

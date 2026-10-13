@@ -113,7 +113,10 @@ public class ResumePointFinderTests
         {
             _l1.GetBlockByNumber(number, Arg.Any<CancellationToken>()).Returns(new EezL1Block
             {
-                Number = number, Hash = L1Hash(number), Timestamp = 1000 + number - DeployBlock, MixHash = TestItem.KeccakB,
+                Number = number,
+                Hash = L1Hash(number),
+                Timestamp = 1000 + number - DeployBlock,
+                MixHash = TestItem.KeccakB,
             });
         }
         BlockHeader endpoint = _l2.FindHeader(4)!;
@@ -136,7 +139,10 @@ public class ResumePointFinderTests
         _l1.GetChainId(Arg.Any<CancellationToken>()).Returns(10200UL);
         _l1.GetBlockByNumber(3, Arg.Any<CancellationToken>()).Returns(new EezL1Block
         {
-            Number = 3, Hash = L1Hash(3), Timestamp = 1000, MixHash = TestItem.KeccakA,
+            Number = 3,
+            Hash = L1Hash(3),
+            Timestamp = 1000,
+            MixHash = TestItem.KeccakA,
         });
         _l1.GetLatestBlock(Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 9, Hash = L1Hash(9), Timestamp = 1006, MixHash = TestItem.KeccakC });
         _l1.GetBlockByNumber(10, Arg.Any<CancellationToken>()).Returns(new EezL1Block { Number = 10, Hash = L1Hash(10), Timestamp = 1007, MixHash = TestItem.KeccakC });
