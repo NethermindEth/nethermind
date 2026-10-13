@@ -15,10 +15,8 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Api;
 using Autofac;
-using Nethermind.Core.Memory;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -26,7 +24,6 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -467,20 +464,14 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public async Task Production_module_shares_trie_cache_and_reports_inactive_migration()
+    public async Task Production_module_reports_inactive_migration()
     {
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
-        PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
-        using ILifetimeScope child = container.BeginLifetimeScope();
         IMigrationDebugRpcModule rpcModule = container.Resolve<IMigrationDebugRpcModule>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(child.Resolve<PbtTrieNodeCache>(), Is.SameAs(cache));
             Assert.That(container.Resolve<IPbtDbManager>(), Is.TypeOf<PbtDbManager>());
-            Assert.That(config.AccountTrieNodeCacheSizeBudget, Is.EqualTo(134217728UL));
-            Assert.That(config.CodeTrieNodeCacheSizeBudget, Is.EqualTo(33554432UL));
-            Assert.That(config.StorageTrieNodeCacheSizeBudget, Is.EqualTo(234881024UL));
             Assert.That(container.Resolve<IReadOnlyList<RpcModuleInfo>>().Select(static m => m.ModuleType), Has.Member(typeof(IMigrationDebugRpcModule)));
             Assert.That(rpcModule.debug_migrationProgress().Data, Is.EqualTo(MigrationProgressForRpc.Inactive));
             Assert.That(rpcModule.debug_shadowStateRoot(TestItem.KeccakA).Data, Is.Null);
@@ -816,17 +807,17 @@ public class PbtDbManagerTests
         ILogManager logs = Substitute.For<ILogManager>();
         ILogger wrappedLogger = new(logger);
         logs.GetClassLogger<PbtDbManager>().Returns(wrappedLogger);
-        PbtDbManager manager = harness.CreateManager(exitSource, logs, NoopPbtTrieNodeCache.Instance);
+        PbtDbManager manager = harness.CreateManager(exitSource, logs);
         Task producer = Task.CompletedTask;
         try
         {
-            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
-            manager.AddSnapshot(PersistenceSnapshot(1, 2, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
+            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool));
+            manager.AddSnapshot(PersistenceSnapshot(1, 2, pool));
             await enteredPersistence.Task.WaitAsync(TimeSpan.FromSeconds(10));
             producer = Task.Run(() =>
             {
                 for (int number = 3; number <= 68; number++)
-                    manager.AddSnapshot(PersistenceSnapshot(number - 1, number, pool), pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
+                    manager.AddSnapshot(PersistenceSnapshot(number - 1, number, pool));
             });
             await producerStalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(producer.IsCompleted, Is.False);
@@ -890,78 +881,6 @@ public class PbtDbManagerTests
     }
 
     public enum PersistTrigger { Check, Flush, FinalizedCheck }
-
-    public enum TransientHandOff { Admitted, NoCache, Duplicate, ChannelFull }
-
-    [Test]
-    public async Task AddSnapshot_hands_the_transient_to_the_populator_or_releases_it([Values] TransientHandOff mode)
-    {
-        using PersistenceManagerHarness harness = new(new PbtConfig { CompactionOffset = 0 });
-        PbtResourcePool pool = harness.Pool;
-        IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
-        exitSource.Token.Returns(CancellationToken.None);
-        using PbtTrieNodeCache cache = new(harness.Config);
-        // A closed gate parks the populator on the first transient, so the second fills the one-slot queue and the third finds it full.
-        using ManualResetEventSlim populatorGate = new(mode != TransientHandOff.ChannelFull);
-        TaskCompletionSource populatorEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        IPbtTrieNodeCache gatedCache = Substitute.For<IPbtTrieNodeCache>();
-        gatedCache.When(c => c.Add(Arg.Any<PbtTransientResource>())).Do(call =>
-        {
-            populatorEntered.TrySetResult();
-            populatorGate.Wait();
-            cache.Add(call.Arg<PbtTransientResource>());
-        });
-        PbtDbManager manager = harness.CreateManager(exitSource, LimboLogs.Instance, mode == TransientHandOff.NoCache ? NoopPbtTrieNodeCache.Instance : gatedCache);
-        ConcurrentBag<PbtTransientResource> returned = [];
-        IPbtResourcePool recordingPool = Substitute.For<IPbtResourcePool>();
-        recordingPool.When(p => p.ReturnCachedResource(Arg.Any<PbtResourcePool.Usage>(), Arg.Any<PbtTransientResource>())).Do(call =>
-        {
-            returned.Add(call.Arg<PbtTransientResource>());
-            pool.ReturnCachedResource(call.Arg<PbtResourcePool.Usage>(), call.Arg<PbtTransientResource>());
-        });
-        PbtTransientResource first = StagedTransient(pool, recordingPool, 1);
-        PbtTransientResource second = StagedTransient(pool, recordingPool, 2);
-        PbtTransientResource third = StagedTransient(pool, recordingPool, 3);
-        try
-        {
-            manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), first);
-            if (mode == TransientHandOff.ChannelFull) await populatorEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            manager.AddSnapshot(PersistenceSnapshot(mode == TransientHandOff.Duplicate ? 0 : 1, mode == TransientHandOff.Duplicate ? 1 : 2, pool), second);
-            if (mode == TransientHandOff.ChannelFull)
-            {
-                manager.AddSnapshot(PersistenceSnapshot(2, 3, pool), third);
-                Assert.That(returned, Does.Contain(third), "a full cache queue releases the dropped transient immediately");
-                populatorGate.Set();
-            }
-            else third.ReleaseLease();
-            if (mode == TransientHandOff.Duplicate) Assert.That(returned, Does.Contain(second), "a transient that cannot reach the populator returns to the pool at once");
-            Assert.That(CachedCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 2 }).After(5000, 10));
-            Assert.That(() => returned, Is.EquivalentTo(new[] { first, second, third }).After(5000, 10), "every transient returns to the pool exactly once, ingested or refused");
-            Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);
-        }
-        finally
-        {
-            populatorGate.Set();
-            await manager.DisposeAsync();
-        }
-
-        int CachedCount() => new byte[] { 1, 2, 3 }.Count(marker =>
-        {
-            if (!cache.TryGet(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), out RefCountingMemory? payload)) return false;
-            ((IDisposable)payload).Dispose();
-            return true;
-        });
-    }
-
-    /// <summary>Rents a transient that stages one group and returns itself through <paramref name="returnPool"/>.</summary>
-    private static PbtTransientResource StagedTransient(PbtResourcePool pool, IPbtResourcePool returnPool, byte marker)
-    {
-        PbtTransientResource transient = pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
-        transient.OnRented(returnPool, PbtResourcePool.Usage.MainBlockProcessing);
-        using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([marker]));
-        transient.NodeGroups.Set(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), payload);
-        return transient;
-    }
 
     [Test]
     public async Task ResetPersistedStateId_IsNotUndoneByAReaderOpenedBeforeIt()
@@ -1189,7 +1108,7 @@ public class PbtDbManagerTests
         IPbtPersistence.IReader fresh = Substitute.For<IPbtPersistence.IReader>();
         fresh.CurrentState.Returns(PersistenceState(0));
         harness.Persistence.CreateReader().Returns(stale, fresh);
-        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance, NoopPbtTrieNodeCache.Instance);
+        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
         using PbtReadOnlySnapshotBundle bundle = manager.GatherReadOnlyBundle(state);
         stale.Received(1).Dispose();
         Assert.That(manager.TryGatherReadOnlyBundle(PersistenceState(9)), Is.Null);
@@ -1277,21 +1196,13 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public async Task Pipeline_inline_compaction_and_explicit_flush_clear_caches()
+    public async Task Pipeline_inline_compaction_completes_before_admission_returns()
     {
         using PersistenceManagerHarness harness = new(new PbtConfig { InlineCompaction = true, CompactSize = 2, CompactionOffset = 0 });
-        IPbtTrieNodeCache cache = Substitute.For<IPbtTrieNodeCache>();
-        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance, cache);
-        manager.AddSnapshot(PersistenceSnapshot(0, 1, harness.Pool), harness.Pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
-        manager.AddSnapshot(PersistenceSnapshot(1, 2, harness.Pool), harness.Pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing));
+        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
+        manager.AddSnapshot(PersistenceSnapshot(0, 1, harness.Pool));
+        manager.AddSnapshot(PersistenceSnapshot(1, 2, harness.Pool));
         Assert.That(harness.Repository.CompactedCount, Is.EqualTo(1), "inline compaction is complete at admission return");
-        cache.Received(2).Add(Arg.Any<PbtTransientResource>());
-        manager.FlushCache(CancellationToken.None);
-        cache.Received(1).Clear();
-        using CancellationTokenSource canceled = new();
-        canceled.Cancel();
-        manager.FlushCache(canceled.Token);
-        cache.Received(1).Clear();
     }
 
     [Test]
@@ -1330,7 +1241,7 @@ public class PbtDbManagerTests
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
         reader.CurrentState.Returns(new StateId(0, TestItem.KeccakB.ValueHash256));
         harness.Persistence.CreateReader().Returns(reader);
-        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance, NoopPbtTrieNodeCache.Instance);
+        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
         Assert.That(async () =>
         {
             using PbtReadOnlySnapshotBundle bundle = await Task.Run(() => manager.GatherReadOnlyBundle(PersistenceState(1)))
@@ -1343,7 +1254,7 @@ public class PbtDbManagerTests
     public async Task Rewind_then_commit_drops_abandoned_branch_and_invalidates_cached_bundles()
     {
         using PersistenceManagerHarness harness = new(new PbtConfig { CompactSize = 1, MinReorgDepth = 0, CompactionOffset = 0 });
-        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance, NoopPbtTrieNodeCache.Instance);
+        await using PbtDbManager manager = harness.CreateManager(new ProcessExitSource(CancellationToken.None), LimboLogs.Instance);
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 2, harness.Pool));
         using PbtReadOnlySnapshotBundle held = manager.GatherReadOnlyBundle(PersistenceState(2));
@@ -1588,9 +1499,9 @@ public class PbtDbManagerTests
         public IPbtPersistence.IWriteBatch Batch { get; } = Substitute.For<IPbtPersistence.IWriteBatch>();
         public PbtPersistenceManager PersistenceManager { get; }
 
-        public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs, IPbtTrieNodeCache trieNodeCache) =>
+        public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs) =>
             new(Repository, PersistenceManager, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
-                new MetricsConfig(), trieNodeCache, NullPbtPersistedSnapshotLoader.Instance);
+                new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance);
 
         public void Dispose()
         {

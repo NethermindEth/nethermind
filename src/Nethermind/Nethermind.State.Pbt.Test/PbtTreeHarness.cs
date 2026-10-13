@@ -183,24 +183,24 @@ internal static class PbtStoreTestExtensions
     internal static int NodeGroupCount(this PbtSnapshotContent content) =>
         content.AccountNodeGroups.Count + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count;
 
-    internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
+    internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-        return store.GetNodeGroup(cursor, groupHash);
+        return store.GetNodeGroup(cursor);
     }
 
-    internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, RefCountingMemory? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
-        store.SetNodeGroup(cursor, groupHash, payload);
+        store.SetNodeGroup(cursor, payload);
     }
 
-    internal static void SetNodeGroup(this IPbtStore store, scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    internal static void SetNodeGroup(this IPbtStore store, scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
     {
         using IPbtConcurrentWriter writer = store.CreateWriter();
-        writer.SetNodeGroup(groupKey, groupHash, payload);
+        writer.SetNodeGroup(groupKey, payload);
     }
 
     internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
@@ -243,46 +243,13 @@ internal static class PbtStoreTestExtensions
 
     internal static RefCountingMemory? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
         where TPath : struct, IPbtNodePath<TPath>
-        => store.GetNodeGroup(groupKey, store.GetGroupHash(groupKey));
+        => store.GetNodeGroup(groupKey);
 
-    internal static ValueHash256 GetGroupHash<TPath>(this PbtNodeGroupStore store, TPath groupKey)
-        where TPath : struct, IPbtNodePath<TPath>
-    {
-        IReadOnlyList<PbtPhysicalPayload> groups = store.ExportPhysicalPayloads();
-        PbtStorageNodePath path = new([], 0);
-        while (true)
-        {
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtTestPaths.Locate(path);
-            byte[]? encoding = null;
-            foreach (PbtPhysicalPayload physical in groups)
-                if (physical.Key.Equals(location.GroupKey))
-                    encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.GroupKey, location.Position);
-            // A root leaf's hash is not derivable from its encoding, and the test store ignores group hashes anyway.
-            if (encoding is null || encoding[0] == 0) return default;
-            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
-            int branchDepth = path.BitDepth + node.Prefix.BitCount;
-            for (int bit = path.BitDepth; bit < Math.Min(branchDepth, groupKey.BitDepth); bit++)
-                if (TrieUpdater.GetBit(node.Prefix.Bytes, bit - path.BitDepth) != groupKey.GetBit(bit)) return default;
-            if (branchDepth >= groupKey.BitDepth)
-            {
-                int prefixBits = branchDepth - groupKey.BitDepth;
-                byte[] prefix = new byte[(prefixBits + 7) / 8];
-                for (int bit = 0; bit < prefixBits; bit++)
-                    prefix[bit / 8] |= (byte)(TrieUpdater.GetBit(node.Prefix.Bytes, groupKey.BitDepth - path.BitDepth + bit) << (7 - bit % 8));
-                return PbtTreeHarness.HashBranch(PbtTreeHarness.EncodeBranch(prefix, prefixBits, node.LeftHash, node.RightHash));
-            }
-            int direction = groupKey.GetBit(branchDepth);
-            // An inline leaf has no group below it.
-            if (!(direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix).IsEmpty) return default;
-            path = path.Append(node.Prefix, direction);
-        }
-    }
-
-    internal static byte[]? GetNode<TPath>(this IPbtStore store, TPath path, in ValueHash256 root)
+    internal static byte[]? GetNode<TPath>(this IPbtStore store, TPath path)
         where TPath : struct, IPbtNodePath<TPath>
     {
         if (path.BitDepth != 0) throw new ArgumentException("Use canonical traversal for non-root reads.", nameof(path));
-        using RefCountingMemory? payload = store.GetNodeGroup(path, root);
+        using RefCountingMemory? payload = store.GetNodeGroup(path);
         if (payload is null) return null;
         return ResolveNode(PbtStoreTestExtensions.ReadGroup(path, payload.GetSpan()), path, PbtThreeLevelGroupGeometry.RootPosition);
     }
@@ -474,12 +441,12 @@ internal static class PbtStoreTestExtensions
         if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));
         if (records.Count == 0)
         {
-            store.SetNodeGroup(location.GroupKey, default, null);
+            store.SetNodeGroup(location.GroupKey, null);
             return;
         }
 
         using RefCountingMemory payload = PbtNodeGroupEncoder.EncodeToMemory(location.GroupKey, records, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
-        store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtTreeHarness.HashBranch(encoding), payload);
+        store.SetNodeGroup(location.GroupKey, payload);
     }
 
     /// <summary>The store's canonical records as path-then-encoding hex, in path order.</summary>

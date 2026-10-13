@@ -182,7 +182,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 5000), 22);
         PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.ReadChain(pool, LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
             new ContentReader(persisted), recordDetailedMetrics: false, RealBitsPerKey);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads);
 
         using (Assert.EnterMultipleScope())
         {

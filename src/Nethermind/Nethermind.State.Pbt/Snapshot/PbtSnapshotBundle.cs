@@ -26,7 +26,6 @@ public sealed class PbtSnapshotBundle(
     PbtReadOnlySnapshotBundle readOnlyBundle,
     IPbtResourcePool resourcePool,
     PbtResourcePool.Usage usage,
-    IPbtTrieNodeCache trieNodeCache,
     bool filterInMemorySlotReads) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
@@ -40,7 +39,6 @@ public sealed class PbtSnapshotBundle(
     private readonly ConcurrentDictionary<ValueHash256, Account?> _hintedAccounts = new();
     // Persisted groups, and null for absent ones, that the fold or the node group prefetch read for the block in the write buffer.
     private readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> _persistedNodeGroups = new();
-    private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
@@ -88,18 +86,13 @@ public sealed class PbtSnapshotBundle(
 
     public void CompleteLeafChanges() => _leafChanges.Reset();
 
-    public void SetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
-    {
-        WriteBuffer.SetNodeGroup(groupKey, payload);
-        _transientResource.NodeGroups.Set(groupHash, groupKey, payload);
-    }
+    public void SetNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload) => WriteBuffer.SetNodeGroup(groupKey, payload);
 
-    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
     {
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
-        if (trieNodeCache.TryGet(groupHash, groupKey, out payload)) return payload;
         if (TryGetKeptNodeGroup(groupKey, out payload)) return payload;
         return readOnlyBundle.TryGetSnapshotNodeGroup(groupKey, out payload) ? payload : ReadPersistedNodeGroup(groupKey);
     }
@@ -341,8 +334,8 @@ public sealed class PbtSnapshotBundle(
         return code;
     }
 
-    /// <summary>Seals the write buffer into a snapshot and hands the block's transient resource to the caller, who must return it.</summary>
-    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot, out PbtTransientResource retired)
+    /// <summary>Seals the write buffer into a snapshot and hands its initial lease to the caller.</summary>
+    public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot)
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
             throw new InvalidOperationException("Pending leaf changes must be folded before collecting a snapshot.");
@@ -353,8 +346,6 @@ public sealed class PbtSnapshotBundle(
         ReleasePersistedNodeGroups();
         ReturnReplacedRuns();
         _writeBuffer = resourcePool.GetSnapshotContent(usage);
-        retired = _transientResource;
-        Volatile.Write(ref _transientResource, resourcePool.GetCachedResource(usage));
         return snapshot;
     }
 
@@ -400,14 +391,7 @@ public sealed class PbtSnapshotBundle(
             }
             finally
             {
-                try
-                {
-                    _transientResource.ReleaseLease();
-                }
-                finally
-                {
-                    readOnlyBundle.Dispose();
-                }
+                readOnlyBundle.Dispose();
             }
         }
     }

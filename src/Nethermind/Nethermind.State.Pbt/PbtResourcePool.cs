@@ -54,17 +54,6 @@ public class PbtResourcePool : IPbtResourcePool
     /// <inheritdoc/>
     public void ReturnStorageWriteBatch(Usage usage, PbtWriteBatchBuilder<PbtStoragePath> batch) => _categories[usage].ReturnStorageWriteBatch(batch);
 
-    /// <inheritdoc/>
-    public PbtTransientResource GetCachedResource(Usage usage)
-    {
-        PbtTransientResource resource = _categories[usage].GetCachedResource();
-        resource.OnRented(this, usage);
-        return resource;
-    }
-
-    /// <inheritdoc/>
-    public void ReturnCachedResource(Usage usage, PbtTransientResource resource) => _categories[usage].ReturnCachedResource(resource);
-
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
     /// Takes the number of layers in the leased window, not the scheduled width: the window mixes already-compacted
@@ -105,13 +94,10 @@ public class PbtResourcePool : IPbtResourcePool
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize)
     {
         private readonly ResourcePool.ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
-        // Each writable bundle holds three partition batches and one transient resource.
+        // Each writable bundle holds three partition batches.
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtPath>> _writeBatchPool = new(writableBundlePoolSize * 2);
         private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly ResourcePool.PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
-        private readonly ResourcePool.ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
-        private int _lastNodeGroupCapacity = 1024;
-        private readonly ResourcePool.PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly ResourcePool.PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 
         public PbtSnapshotContent GetSnapshotContent() =>
@@ -128,15 +114,6 @@ public class PbtResourcePool : IPbtResourcePool
             TryRent(_storageWriteBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtStoragePath>? batch) ? batch : new PbtWriteBatchBuilder<PbtStoragePath>();
 
         public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStoragePath> batch) => Return(_storageWriteBatchPool, _writeBatchLabel, batch);
-
-        public PbtTransientResource GetCachedResource() =>
-            TryRent(_cachedResourcePool, _cachedResourceLabel, out PbtTransientResource? resource) ? resource : new PbtTransientResource(Volatile.Read(ref _lastNodeGroupCapacity));
-
-        public void ReturnCachedResource(PbtTransientResource resource)
-        {
-            if (!Return(_cachedResourcePool, _cachedResourceLabel, resource))
-                Volatile.Write(ref _lastNodeGroupCapacity, resource.NodeGroups.Capacity);
-        }
 
         /// <summary>Pops a pooled item; on a miss the caller creates one, counted as created.</summary>
         private bool TryRent<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, [NotNullWhen(true)] out T? item) where T : class, IDisposable, IResettable

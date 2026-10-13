@@ -462,8 +462,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (newStateId != _currentStateId)
             {
                 long addSnapshotStart = Stopwatch.GetTimestamp();
-                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot, out PbtTransientResource transientResource);
-                _commitTarget.AddSnapshot(snapshot, transientResource);
+                PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot);
+                _commitTarget.AddSnapshot(snapshot);
                 Metrics.PbtAddSnapshotTime.Observe(Stopwatch.GetTimestamp() - addSnapshotStart);
                 _currentStateId = newStateId;
             }

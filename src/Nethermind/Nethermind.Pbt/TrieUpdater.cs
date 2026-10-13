@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using static Nethermind.Pbt.TrieUpdater;
@@ -104,7 +103,7 @@ public static partial class TrieUpdater<TKey, TPath>
     /// to delete a group it never held.
     /// </remarks>
     public static long PublishGroup<TFrame>(IPbtNodeGroupSink sink, ref TFrame reader, PbtNodeGroupWriter<TPath> writer,
-        scoped in PbtTraversalPath path, in ValueHash256 hash)
+        scoped in PbtTraversalPath path)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Span<long> descendantBytes = stackalloc long[PbtThreeLevelGroupGeometry.BoundarySlots];
@@ -118,7 +117,7 @@ public static partial class TrieUpdater<TKey, TPath>
             deltaTotal += delta;
         }
         using RefCountingMemory? payload = writer.Detach(descendantBytes, candidateSlots);
-        if (payload is not null || reader.PayloadLength != 0) sink.SetNodeGroup(path, hash, payload);
+        if (payload is not null || reader.PayloadLength != 0) sink.SetNodeGroup(path, payload);
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + deltaTotal;
     }
 

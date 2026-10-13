@@ -14,33 +14,6 @@ namespace Nethermind.State.Pbt;
 
 public static class Metrics
 {
-    [GaugeMetric]
-    [Description("Estimated retained PBT trie-cache memory in bytes by partition, including entry and bucket overhead")]
-    [KeyIsLabel("partition")]
-    public static ConcurrentDictionary<string, long> PbtTrieCacheMemory { get; } = NewTrieCacheMetric();
-
-    [GaugeMetric]
-    [Description("Node groups retained in the PBT trie cache by partition")]
-    [KeyIsLabel("partition")]
-    public static ConcurrentDictionary<string, long> PbtTrieCacheEntries { get; } = NewTrieCacheMetric();
-
-    [CounterMetric]
-    [Description("PBT trie-node cache lookups that returned a cached node group, by partition")]
-    [KeyIsLabel("partition")]
-    public static ConcurrentDictionary<string, long> PbtTrieCacheHits { get; } = NewTrieCacheMetric();
-
-    [CounterMetric]
-    [Description("PBT trie-node cache lookups that did not return a cached node group, by partition")]
-    [KeyIsLabel("partition")]
-    public static ConcurrentDictionary<string, long> PbtTrieCacheMisses { get; } = NewTrieCacheMetric();
-
-    private static ConcurrentDictionary<string, long> NewTrieCacheMetric() => new()
-    {
-        ["account"] = 0,
-        ["code"] = 0,
-        ["storage"] = 0,
-    };
-
     [DetailedMetric]
     [Description("Time a pbt write batch was open, covering the block's storage and account flush (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -57,7 +30,7 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtCommitTime { get; set; } = new NoopMetricObserver();
 
-    /// <remarks>Sealing the write buffer into a snapshot and handing it, with the block's transient resource, to the manager.</remarks>
+    /// <remarks>Sealing the write buffer into a snapshot and handing it to the manager.</remarks>
     [DetailedMetric]
     [Description("Time sealing a committed pbt snapshot and adding it to the db manager (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]

@@ -67,7 +67,7 @@ public static partial class TrieUpdater
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        if (store.GetNodeGroup(rootPath, currentRoot) is not { } rootGroup)
+        if (store.GetNodeGroup(rootPath) is not { } rootGroup)
         {
             if (currentRoot != default) throw new InvalidDataException("A referenced PBT node group is missing.");
             AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0, 0, 0);
@@ -96,7 +96,7 @@ public static partial class TrieUpdater
             rootWriter.ValidateEntry(rootPath, PbtThreeLevelGroupGeometry.RootPosition, entry);
             hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
         }
-        PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
+        PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath);
         return hash;
     }
 

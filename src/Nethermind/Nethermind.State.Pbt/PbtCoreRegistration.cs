@@ -42,7 +42,6 @@ public static class PbtCoreRegistration
             // A second pool would halve each pool's hit rate.
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
-            .AddSingleton<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddPbtPersisted(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
@@ -56,7 +55,7 @@ public static class PbtCoreRegistration
             .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
                 ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
                 ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtTrieNodeCache>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
+                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()

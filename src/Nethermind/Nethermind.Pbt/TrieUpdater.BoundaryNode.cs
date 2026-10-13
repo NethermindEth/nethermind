@@ -20,9 +20,9 @@ public static partial class TrieUpdater<TKey, TPath>
     /// branch's group path in its trailer and its hash in its preimage, and <see cref="LeafSource"/> says which of the
     /// two children it is. The anchor depth is then that branch's, which fixes how many key bytes the trailer omits.
     /// The one leaf stored as a node, a single-leaf tree's root, points at that encoding instead.
-    /// <see cref="Hash"/> is always known, because decomposition reads it from the parent's child link; a boundary
-    /// node is therefore never hashed again to be opened, moved or handed to another thread. An omitted prefixless
-    /// branch is never one, since omission only applies to a group's interior
+    /// A leaf's <see cref="Hash"/> is always known. A branch keeps its parent's child hash when available, otherwise
+    /// composition hashes its encoding only if needed. An omitted prefixless branch is never a boundary node,
+    /// since omission only applies to a group's interior
     /// (<see cref="PbtNodeGroupCodec.ShouldOmit"/>) and a spanning branch always carries a prefix.
     /// </remarks>
     public readonly struct BoundaryNode
@@ -48,21 +48,18 @@ public static partial class TrieUpdater<TKey, TPath>
             _hash = right ? branch.RightHash : branch.LeftHash;
         }
 
-        /// <summary>Creates the leaf a single-leaf tree stores as its root, whose hash is its group's identity.</summary>
+        /// <summary>Creates the leaf a single-leaf tree stores as its root, whose hash is the tree root.</summary>
         /// <remarks>A leaf encoding holds no hash, so this is the one leaf whose hash comes from outside it.</remarks>
         public BoundaryNode(ReadOnlyMemory<byte> encoding, in ValueHash256 hash) : this(encoding, 0, hash, LeafSource.Stored)
         {
             Debug.Assert(PbtNodeCodec.IsLeaf(encoding.Span), "A stored leaf carries a leaf encoding.");
-            Debug.Assert(hash != default, "A boundary node knows its hash.");
+            Debug.Assert(hash != default, "A boundary leaf knows its hash.");
         }
 
         /// <param name="anchorDepth">The absolute bit depth <paramref name="encoding"/>'s compressed prefix starts at.</param>
-        /// <param name="hash">The hash of <paramref name="encoding"/>, taken from the link that referenced it.</param>
-        public BoundaryNode(ReadOnlyMemory<byte> encoding, int anchorDepth, in ValueHash256 hash) : this(encoding, anchorDepth, hash, LeafSource.None)
-        {
+        /// <param name="hash">The hash of <paramref name="encoding"/> from its parent's link, or default when not known.</param>
+        public BoundaryNode(ReadOnlyMemory<byte> encoding, int anchorDepth, in ValueHash256 hash) : this(encoding, anchorDepth, hash, LeafSource.None) =>
             Debug.Assert(!encoding.IsEmpty && !PbtNodeCodec.IsLeaf(encoding.Span), "A boundary branch carries a stored branch encoding.");
-            Debug.Assert(hash != default, "A boundary node knows its hash.");
-        }
 
         private BoundaryNode(ReadOnlyMemory<byte> encoding, int anchorDepth, in ValueHash256 hash, LeafSource source)
         {
@@ -96,13 +93,8 @@ public static partial class TrieUpdater<TKey, TPath>
         }
         /// <summary>A leaf's complete key, completed from <paramref name="cursor"/>, a path through its branch's group.</summary>
         public readonly TKey LeafKey(scoped in PbtTraversalPath cursor) => CompleteKey(cursor, LeafKeyPostfix);
-        /// <summary>The hash of this node as it is stored, which its parent's link already held.</summary>
-        /// <remarks>
-        /// It is kept rather than derived because only an inlined leaf could derive it for free, from the branch it
-        /// points at. A branch would have to hash its own preimage, which is the work decomposition exists to avoid and
-        /// which every node opening a group below it would pay; a stored leaf cannot derive it at all, since a leaf
-        /// hashes over its value as well and no value is stored (<see cref="PbtNodeCodec.Hash"/> refuses a leaf).
-        /// </remarks>
+        /// <summary>The node's hash, or default for a branch whose preimage still needs hashing.</summary>
+        /// <remarks>A leaf's hash is always known because its encoding stores no value to derive it from.</remarks>
         public readonly ValueHash256 Hash => _hash;
         /// <summary>The absolute depth this node's encoding is anchored at, never deeper than its boundary slot.</summary>
         public readonly int AnchorDepth => _anchorDepth;
@@ -172,7 +164,7 @@ public static partial class TrieUpdater<TKey, TPath>
         public readonly BoundaryNode InlineLeaf(bool right) => new(_encoding, _anchorDepth, right);
 
         /// <summary>The boundary node <paramref name="frame"/> stores at <paramref name="position"/>.</summary>
-        /// <param name="hash">The node's hash: the one its parent's link holds where a link names it, and otherwise the one its encoding needs.</param>
+        /// <param name="hash">The node's hash from its parent's link, or default for a branch when not known.</param>
         public static BoundaryNode StoredAt<TFrame>(scoped ref TFrame frame, int position, in ValueHash256 hash)
             where TFrame : struct, IGroupFrame<TKey, TPath>
         {
@@ -197,13 +189,5 @@ public static partial class TrieUpdater<TKey, TPath>
             where TSourceKey : unmanaged, IPbtKey<TSourceKey>
             where TSourcePath : struct, IPbtNodePath<TSourcePath> =>
             new(source.Encoding, source.AnchorDepth, source.Hash, source.Source);
-
-        /// <summary>The hash of this node as the group at <paramref name="depth"/> is keyed by.</summary>
-        /// <remarks>
-        /// A node addressed at its own anchor keys its group by the hash it already carries. A prefix jump addresses it
-        /// deeper, where its shorter encoding hashes differently, and that re-anchored hash is what published the group.
-        /// </remarks>
-        public readonly ValueHash256 HashAt(int depth) =>
-            IsEmpty || IsLeaf || depth == _anchorDepth ? _hash : PbtNodeCodec.HashReanchored(Reader, depth - _anchorDepth);
     }
 }

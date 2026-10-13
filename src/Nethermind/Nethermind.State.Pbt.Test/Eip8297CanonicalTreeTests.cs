@@ -1013,7 +1013,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(rootAfterUpdate, Is.EqualTo(PbtTreeHarness.HashLeaf(setKeyBytes, Value(2))));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(1));
-            Assert.That(store.GetNode(new PbtStorageNodePath([], 0), rootAfterUpdate), Is.EqualTo(expectedLeaf));
+            Assert.That(store.GetNode(new PbtStorageNodePath([], 0)), Is.EqualTo(expectedLeaf));
         }
     }
 
@@ -1172,7 +1172,7 @@ public class Eip8297CanonicalTreeTests
                 store.ThrowOnApply = true;
                 break;
             default:
-                store.OverrideGroup = (_, _) =>
+                store.OverrideGroup = _ =>
                 {
                     RefCountingMemory memory = store.MemoryProvider.Rent(failure == FoldFailure.MalformedGroup ? 1 : 0);
                     if (failure == FoldFailure.MalformedGroup) memory.GetSpan()[0] = 0x01;
@@ -1285,11 +1285,11 @@ public class Eip8297CanonicalTreeTests
     {
         public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash) => store.GetNodeGroup(groupKey, hash);
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey) => store.GetNodeGroup(groupKey);
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
             if (groupKey.BitDepth == failedDepth) throw new InvalidOperationException("Configured publish failure.");
-            store.SetNodeGroup(groupKey, hash, payload);
+            store.SetNodeGroup(groupKey, payload);
         }
     }
 
@@ -1304,9 +1304,9 @@ public class Eip8297CanonicalTreeTests
         TrackingMemoryProvider nodeProvider = new() { FillByte = 0xFF };
         RefCountingMemory? promotedPayload = null;
         bool checkedPromotion = false;
-        store.OverrideGroup = (groupKey, hash) =>
+        store.OverrideGroup = groupKey =>
         {
-            using RefCountingMemory? stored = store.Inner.GetNodeGroup(groupKey, hash);
+            using RefCountingMemory? stored = store.Inner.GetNodeGroup(groupKey);
             if (stored is null) return null;
             RefCountingMemory read = readProvider.Rent(stored.Memory.Length);
             stored.GetSpan().CopyTo(read.GetSpan());
@@ -1554,18 +1554,18 @@ public class Eip8297CanonicalTreeTests
         internal int Applies { get; private set; }
         internal Dictionary<PbtStorageNodePath, int> GroupReads { get; } = [];
         internal Func<PbtStorageNodePath, byte[]?>? OverrideNode { get; set; }
-        internal Func<PbtStorageNodePath, ValueHash256, RefCountingMemory?>? OverrideGroup { get; set; }
+        internal Func<PbtStorageNodePath, RefCountingMemory?>? OverrideGroup { get; set; }
         internal bool ThrowOnApply { get; set; }
         internal Action<PbtStorageNodePath>? OnApply { get; set; }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             Reads++;
             PbtStorageNodePath storageGroupKey = groupKey.ToPath<PbtStorageNodePath>();
             GroupReads[storageGroupKey] = GroupReads.GetValueOrDefault(storageGroupKey) + 1;
             if (OverrideGroup is { } overrideGroup)
             {
-                RefCountingMemory? overriddenPayload = overrideGroup(storageGroupKey, hash);
+                RefCountingMemory? overriddenPayload = overrideGroup(storageGroupKey);
                 return overriddenPayload;
             }
             if (OverrideNode is { } overrideNode)
@@ -1582,16 +1582,16 @@ public class Eip8297CanonicalTreeTests
                 if (records.Count == 0) return null;
                 return PbtNodeGroupEncoder.EncodeToMemory(storageGroupKey, records, MemoryProvider);
             }
-            RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey, hash);
+            RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey);
             return innerPayload;
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
             Applies++;
             OnApply?.Invoke(groupKey.ToPath<PbtStorageNodePath>());
             if (ThrowOnApply) throw new InvalidOperationException("Configured write failure.");
-            Inner.SetNodeGroup(groupKey, hash, payload);
+            Inner.SetNodeGroup(groupKey, payload);
         }
 
         internal void ResetReads()

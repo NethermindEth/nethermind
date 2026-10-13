@@ -42,8 +42,8 @@ public class PbtNodeGroupPrefetchTests
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
         foreach (PbtStorageNodePath path in new[] { FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone) })
         {
-            if (skip == PrefetchSkip.SnapshotBacked) bundle.SetNodeGroup(path, default, null);
-            if (skip == PrefetchSkip.ReadByFold) ((IDisposable?)bundle.GetNodeGroup(path, default))?.Dispose();
+            if (skip == PrefetchSkip.SnapshotBacked) bundle.SetNodeGroup(path, null);
+            if (skip == PrefetchSkip.ReadByFold) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
         }
         if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
         reader.ClearReceivedCalls();
@@ -92,13 +92,13 @@ public class PbtNodeGroupPrefetchTests
         if (snapshotBacked)
         {
             using RefCountingMemory? payload = ReadPayload(storageGroup);
-            bundle.SetNodeGroup(storageGroup, default, payload);
+            bundle.SetNodeGroup(storageGroup, payload);
             using RefCountingMemory? deeperPayload = ReadPayload(deeperSnapshot);
-            bundle.SetNodeGroup(deeperSnapshot, default, deeperPayload);
+            bundle.SetNodeGroup(deeperSnapshot, deeperPayload);
         }
         HashSet<PbtStorageNodePath> firstGroups = [FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.AccountZone), FirstGroup(TestItem.AddressA, Eip8297KeyDerivation.StorageZone), FirstGroup(TestItem.AddressB, Eip8297KeyDerivation.StorageZone)];
         if (readByFold)
-            foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path, default))?.Dispose();
+            foreach (PbtStorageNodePath path in firstGroups) ((IDisposable?)bundle.GetNodeGroup(path))?.Dispose();
 
         PbtWorldStateScope scope = HintBal(bundle, bal);
 
@@ -121,7 +121,7 @@ public class PbtNodeGroupPrefetchTests
         reader.ClearReceivedCalls();
         foreach (PbtStorageNodePath path in expected)
         {
-            using RefCountingMemory? kept = bundle.GetNodeGroup(path, default);
+            using RefCountingMemory? kept = bundle.GetNodeGroup(path);
             using RefCountingMemory? persisted = ReadPayload(path);
             Assert.That(kept?.GetSpan().ToArray(), Is.EqualTo(persisted?.GetSpan().ToArray()));
         }
@@ -150,12 +150,12 @@ public class PbtNodeGroupPrefetchTests
             {
                 PbtStorageNodePath path = FirstGroup(address, Eip8297KeyDerivation.StorageZone);
                 using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 1025);
-                bundle.SetNodeGroup(path, default, payload);
+                bundle.SetNodeGroup(path, payload);
             }
             foreach (Address address in tombstoned)
             {
                 PbtStoragePath key = PbtStateKey.Storage(address, PbtStateKey.AddressKeyHash(address), 1000);
-                bundle.SetNodeGroup(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, 267), default, null);
+                bundle.SetNodeGroup(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, 267), null);
             }
 
             PbtWorldStateScope scope = HintBal(bundle, bal);
@@ -208,7 +208,7 @@ public class PbtNodeGroupPrefetchTests
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetNodeGroup(paths[0], payload);
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
-            pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false))
+            pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
         {
             InterfaceLogger logger = ErrorLogger();
             PbtWorldStateScope scope = HintBal(bundle, bal, logger);

@@ -4,10 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -160,89 +158,6 @@ public class PbtResourcePoolTests
             Assert.That(rented[capacity], Is.Not.SameAs(batches[capacity]));
         }
         foreach (PbtWriteBatchBuilder<TKey> batch in rented) returnBatch(usage, batch);
-    }
-
-    [TestCase(PbtResourcePool.Usage.MainBlockProcessing, PbtResourcePool.Usage.ReadOnlyProcessingEnv)]
-    [TestCase(PbtResourcePool.Usage.ReadOnlyProcessingEnv, PbtResourcePool.Usage.MainBlockProcessing)]
-    public void CachedResourceIsReusedOnlyOnceReturnedAndResets(PbtResourcePool.Usage usage, PbtResourcePool.Usage otherUsage)
-    {
-        PbtTransientResource resource = _pool.GetCachedResource(usage);
-        try
-        {
-            resource.NodeGroups.Set(default, new PbtNodePath([2], 8), RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([1])));
-            PbtTransientResource concurrentRental = _pool.GetCachedResource(usage);
-            try
-            {
-                Assert.That(concurrentRental, Is.Not.SameAs(resource));
-                Assert.That(resource.NodeGroups.Count, Is.EqualTo(1));
-            }
-            finally
-            {
-                concurrentRental.ReleaseLease();
-            }
-        }
-        finally
-        {
-            resource.ReleaseLease();
-        }
-        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException, "a second return must not pool the resource twice");
-        PbtTransientResource reused = _pool.GetCachedResource(usage);
-        try
-        {
-            Assert.That(reused, Is.SameAs(resource));
-            Assert.That(reused.NodeGroups.Count, Is.Zero);
-        }
-        finally
-        {
-            reused.ReleaseLease();
-        }
-        PbtTransientResource other = _pool.GetCachedResource(otherUsage);
-        other.ReleaseLease();
-        Assert.That(other, Is.Not.SameAs(resource));
-        DrainCachedResources(otherUsage, 1);
-        DrainCachedResources(usage, 2);
-    }
-
-    [Test]
-    public void OverflowRetainsGrownNodeGroupCapacity([Values] bool growNodeGroups)
-    {
-        PbtTransientResource resource = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
-        int originalCapacity = resource.NodeGroups.Capacity;
-        try
-        {
-            if (growNodeGroups)
-                for (int first = 0; first < 32; first++)
-                    for (int second = 0; second < 256; second++)
-                        resource.NodeGroups.Set(default, new PbtNodePath([(byte)(first + 2), (byte)second], 16), RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([1])));
-        }
-        finally
-        {
-            resource.ReleaseLease();
-        }
-        Assert.That(resource.NodeGroups.Capacity, growNodeGroups ? Is.GreaterThan(originalCapacity) : Is.EqualTo(originalCapacity));
-        Assert.That(resource.NodeGroups.Count, Is.Zero);
-        PbtTransientResource replacement = _pool.GetCachedResource(PbtResourcePool.Usage.Compact2);
-        try
-        {
-            Assert.That(replacement, Is.Not.SameAs(resource));
-            Assert.That(replacement.NodeGroups.Capacity, Is.EqualTo(resource.NodeGroups.Capacity));
-        }
-        finally
-        {
-            replacement.ReleaseLease();
-        }
-    }
-
-    private void DrainCachedResources(PbtResourcePool.Usage usage, int count)
-    {
-        // The production pool retains resources for the node lifetime; this fixture owns that lifetime.
-        PbtTransientResource[] resources = new PbtTransientResource[count];
-        for (int index = 0; index < count; index++) resources[index] = _pool.GetCachedResource(usage);
-        foreach (PbtTransientResource resource in resources)
-        {
-            resource.ReleaseLease();
-            resource.Dispose();
-        }
     }
 
     [Test]

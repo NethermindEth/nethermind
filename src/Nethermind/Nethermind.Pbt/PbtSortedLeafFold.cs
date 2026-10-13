@@ -136,6 +136,6 @@ public static class PbtSortedLeafFold
     {
         public static readonly NullNodeGroupSink Instance = new();
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) { }
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) { }
     }
 }

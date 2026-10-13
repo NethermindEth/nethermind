@@ -123,7 +123,7 @@ public static partial class TrieUpdater<TKey, TPath>
             absent = new(bitDepth, 0, 0);
         else
         {
-            GroupFrameReader<TKey, TPath> reader = new(context.Store.GetNodeGroup(path, current.HashAt(bitDepth))
+            GroupFrameReader<TKey, TPath> reader = new(context.Store.GetNodeGroup(path)
                 ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
                 return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
@@ -141,17 +141,15 @@ public static partial class TrieUpdater<TKey, TPath>
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
         ComposedNode root = WalkFrame(context, ref reader, ref hashes, writer, current, operations, path);
         SlotNode result = default;
-        ValueHash256 groupHash = default;
         if (!root.IsEmpty)
         {
             ReadOnlySpan<byte> node = writer.Entry(root.Offset, root.Length).Span;
-            groupHash = root.Hash != default ? root.Hash : HashBranch(node);
             result = anchorDepth == bitDepth || PbtNodeCodec.IsLeaf(node)
-                ? Copy(node, groupHash, encoding)
+                ? Copy(node, root.Hash, encoding)
                 : new SlotNode(EncodeLifted(PbtBranchReader.FromValidated(node), path, anchorDepth, encoding), default);
             writer.DropLast(PbtThreeLevelGroupGeometry.RootPosition);
         }
-        result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path, groupHash);
+        result.SizeDelta = PublishGroup(context.Writer, ref reader, writer, path);
         return result;
     }
 
@@ -178,8 +176,8 @@ public static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// A slot is worth a worker when its cover is a branch, which owns a group below it, or when it holds two or more
     /// operations, which build one. A single operation over an empty or leaf cover is trivial, and lies beneath the
-    /// walk's single-operation shortcut, which would skip its result. Every boundary node and old hash is resolved
-    /// here, on the calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
+    /// walk's single-operation shortcut, which would skip its result. Every boundary node is resolved here, on the
+    /// calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
     /// into a slice of its own and never touches the frame, whose group lease outlives the loop, so boundary nodes are
     /// read from it in place. Slots fold on the calling thread while the quota has no free slot, as
     /// <see cref="TrieUpdater.ForEachOnQuota"/> does.
@@ -218,17 +216,6 @@ public static partial class TrieUpdater<TKey, TPath>
         Span<int> runEnds = stackalloc int[PbtThreeLevelGroupGeometry.BoundarySlots];
         int runCount = fanOut.PlanBucketRuns(counts[..foldCount], descendantBytes[..foldCount], runEnds);
         if (runCount < 2) return;
-
-        // A touched boundary sibling needs its old hash to key its group, and an untouched one its hash for the branch
-        // over them, so both are hashed together.
-        for (int fold = 0; fold < foldCount; fold++)
-        {
-            int slot = slots[fold];
-            if ((slot & 1) != 0 && fold > 0 && slots[fold - 1] == slot - 1) continue;
-            if (covers[fold].Kind != CoverKind.Stored || walk.CoverAt(slot ^ 1).Kind != CoverKind.Stored) continue;
-            int left = slot & ~1;
-            walk.Hashes.GetChildHashesPaired(ref walk.Reader, PbtThreeLevelGroupGeometry.BoundaryPosition(left), PbtThreeLevelGroupGeometry.BoundaryPosition(left + 1), out _, out _);
-        }
 
         int operationOffset = OffsetOf(context.Operations!, operations);
         SortedSlotFold[] folds = ArrayPool<SortedSlotFold>.Shared.Rent(foldCount);
@@ -524,10 +511,6 @@ public static partial class TrieUpdater<TKey, TPath>
 
         walk.ChildCovers(local, cover, out Cover leftCover, out Cover rightCover);
         int position = local.Position;
-        // A touched boundary node needs its old hash to key the group below, and an untouched sibling its hash for the
-        // branch over them, so both are hashed together.
-        if (local.Length == PbtThreeLevelGroupGeometry.LevelsPerGroup - 1 && leftCover.Kind == CoverKind.Stored && rightCover.Kind == CoverKind.Stored)
-            walk.Hashes.GetChildHashesPaired(ref walk.Reader, position - local.Width, position - 1, out _, out _);
         ComposedNode left = Walk(ref walk, local.Left, leftCover);
         // Whatever the cursor still holds under this position lies on the right.
         bool rightIsEmpty = rightCover.IsEmpty
@@ -1106,7 +1089,7 @@ public static partial class TrieUpdater<TKey, TPath>
         {
             CoverKind.Empty => default,
             CoverKind.Input => _input,
-            CoverKind.Stored => BoundaryNode.StoredAt(ref Reader, cover.Position, Hashes.GetHash(ref Reader, cover.Position)),
+            CoverKind.Stored => BoundaryNode.StoredAt(ref Reader, cover.Position, Hashes.KnownHash(cover.Position)),
             _ => cover.Position == RootSource ? _input.InlineLeaf(cover.Right) : BoundaryNode.InlineLeafAt(ref Reader, cover.Position, cover.Right),
         };
     }

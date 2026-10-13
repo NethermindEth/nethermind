@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 
@@ -62,7 +61,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         lock (_groupLock)
         {
@@ -77,7 +76,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 
     /// <inheritdoc/>
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
     {
         lock (_groupLock)
         {

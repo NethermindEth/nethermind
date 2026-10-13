@@ -317,10 +317,10 @@ public class ParallelUpdateRootTests
     }
 
     [Test]
-    public void Group_hashes_match_independent_boundary_subtrees_across_mutations(
+    public void Path_only_groups_preserve_roots_and_physical_deletion_across_mutations(
         [Values] bool splitEveryFrame, [Values] bool compressed)
     {
-        using HashRecordingStore store = new();
+        using GroupRecordingStore store = new();
         EipReferenceTree oracle = new();
         ValueHash256 root = default;
         (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, compressed);
@@ -357,47 +357,46 @@ public class ParallelUpdateRootTests
             store.Writes.Clear();
             root = store.Fold(root, changes, SplitFanOut(splitEveryFrame), null);
 
-            foreach ((PbtStorageNodePath path, ValueHash256 hash) in store.Reads)
-            {
-                Assert.That(hash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize(path)), $"old subtree read at {path}");
+            foreach (PbtStorageNodePath path in store.Reads)
                 if (path.BitDepth != 0) nonRootReads++;
-            }
             oracle.Apply(changes);
+            IReadOnlyList<PbtStorageNodePath> storedGroups = store.StoredGroups;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                foreach ((PbtStorageNodePath path, ValueHash256 hash, bool isNull) in store.Writes)
+                foreach ((PbtStorageNodePath path, bool isNull) in store.Writes)
                 {
-                    Assert.That(hash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize(path)), $"new subtree write at {path}, null payload: {isNull}");
+                    Assert.That(storedGroups.Contains(path), Is.EqualTo(!isNull), $"physical group at {path}");
                     if (path.BitDepth != 0) nonRootWrites++;
                     if (isNull)
                     {
                         nullWrites++;
-                        if (hash != default) survivingNullWrites++;
+                        if (new ValueHash256(oracle.Merkelize(path)) != default) survivingNullWrites++;
                     }
                 }
             }
         }
     }
 
-    private sealed class HashRecordingStore : IPbtStore, IPbtNodeGroupSink, IDisposable
+    private sealed class GroupRecordingStore : IPbtStore, IPbtNodeGroupSink, IDisposable
     {
         public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
         private readonly PbtNodeGroupStore _store = new();
-        internal List<(PbtStorageNodePath Path, ValueHash256 Hash)> Reads { get; } = [];
-        internal List<(PbtStorageNodePath Path, ValueHash256 Hash, bool IsNull)> Writes { get; } = [];
+        internal List<PbtStorageNodePath> Reads { get; } = [];
+        internal List<(PbtStorageNodePath Path, bool IsNull)> Writes { get; } = [];
+        internal IReadOnlyList<PbtStorageNodePath> StoredGroups => _store.EnumerateNodeGroupKeys();
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
-            lock (Reads) Reads.Add((groupKey.ToPath<PbtStorageNodePath>(), hash));
-            return _store.GetNodeGroup(groupKey, hash);
+            lock (Reads) Reads.Add(groupKey.ToPath<PbtStorageNodePath>());
+            return _store.GetNodeGroup(groupKey);
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
-            lock (Writes) Writes.Add((groupKey.ToPath<PbtStorageNodePath>(), hash, payload is null));
-            _store.SetNodeGroup(groupKey, hash, payload);
+            lock (Writes) Writes.Add((groupKey.ToPath<PbtStorageNodePath>(), payload is null));
+            _store.SetNodeGroup(groupKey, payload);
         }
 
         public void Dispose() => _store.Dispose();
@@ -452,7 +451,7 @@ public class ParallelUpdateRootTests
         internal int ActiveReads => _activeReads;
         internal bool DuplicateWrites { get; private set; }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             Interlocked.Increment(ref _activeReads);
             try
@@ -466,7 +465,7 @@ public class ParallelUpdateRootTests
                 }
                 if (FailWorker && groupKey.BitDepth >= 12 && groupKey.ToPath<PbtStorageNodePath>().GetByte(0) == 0x01 && groupKey.ToPath<PbtStorageNodePath>().GetByte(1) >= 0x10)
                     throw new InvalidDataException("Injected worker failure after folding the first slot.");
-                return Inner.GetNodeGroup(groupKey, hash);
+                return Inner.GetNodeGroup(groupKey);
             }
             finally
             {
@@ -474,14 +473,14 @@ public class ParallelUpdateRootTests
             }
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload)
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
             lock (_writtenGroups)
             {
                 if (Writes == 0) _writtenGroups.Clear();
                 DuplicateWrites |= !_writtenGroups.Add(groupKey.ToPath<PbtStorageNodePath>());
                 Writes++;
-                Inner.SetNodeGroup(groupKey, hash, payload);
+                Inner.SetNodeGroup(groupKey, payload);
             }
         }
 
@@ -517,7 +516,7 @@ public class ParallelUpdateRootTests
             _coordinate = coordinate;
         }
 
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
         {
             if (_observing)
             {
@@ -532,11 +531,11 @@ public class ParallelUpdateRootTests
                 if (_coordinate && firstBucketRead && arrived <= 2 && !_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
                     throw new TimeoutException("A second bucket worker never read a group.");
             }
-            return Inner.GetNodeGroup(groupKey, hash);
+            return Inner.GetNodeGroup(groupKey);
         }
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) =>
-            Inner.SetNodeGroup(groupKey, hash, payload);
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload) =>
+            Inner.SetNodeGroup(groupKey, payload);
 
         public void Dispose()
         {

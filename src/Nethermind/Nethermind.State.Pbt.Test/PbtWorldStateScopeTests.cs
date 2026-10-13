@@ -33,12 +33,11 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtWorldStateScopeTests
 {
     [Test]
-    public async Task Override_commits_do_not_feed_the_shared_cache_or_change_canonical_state([Values] bool delete)
+    public async Task Override_commits_do_not_change_canonical_state([Values] bool delete)
     {
         PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
-        PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
         Hash256 canonicalRoot;
         using (IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
         {
@@ -47,9 +46,6 @@ public class PbtWorldStateScopeTests
             canonicalRoot = scope.RootHash;
         }
         BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(canonicalRoot).TestObject;
-        PbtNodePath rootPath = new([], 0);
-        // The canonical commit hands its folded groups to the manager, which folds them into the shared cache in the background.
-        Assert.That(() => cache.TryGet(canonicalRoot.ValueHash256, rootPath, out _), Is.True.After(5000, 10));
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
@@ -57,7 +53,6 @@ public class PbtWorldStateScopeTests
                 batch.Set(TestItem.AddressA, delete ? null : Build.An.Account.WithBalance(2).TestObject);
             scope.Commit(2);
             Assert.That(scope.RootHash, Is.Not.EqualTo(canonicalRoot));
-            Assert.That(cache.TryGet(scope.RootHash.ValueHash256, rootPath, out _), Is.False, "an override commit must not feed the shared cache");
         }
         using IWorldStateScopeProvider.IScope canonical = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
         using (Assert.EnterMultipleScope())
@@ -391,73 +386,59 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
-    public async Task Cache_preserves_actual_roots_across_forks_deletion_and_reopen([Values(1UL, 1048576UL)] ulong cacheBudget)
+    public async Task Actual_roots_survive_forks_deletion_and_reopen()
     {
-        List<ValueHash256> expected = await Run(0);
-        List<ValueHash256> actual = await Run(cacheBudget);
-        Assert.That(actual, Is.EqualTo(expected));
-
-        static async Task<List<ValueHash256>> Run(ulong budget)
+        SnapshotableMemColumnsDb<PbtColumns> database = new("pbt-forks-reopen");
+        PbtConfig config = new() { CompactSize = 2 };
+        List<ValueHash256> roots = [];
+        Hash256 committedRoot;
+        await using (PbtTestContext context = new(database, config))
         {
-            SnapshotableMemColumnsDb<PbtColumns> database = new("pbt-cache-parity");
-            PbtConfig config = new()
+            using (PbtWorldStateScope scope = context.BeginScope(null))
             {
-                AccountTrieNodeCacheSizeBudget = budget,
-                CodeTrieNodeCacheSizeBudget = budget,
-                StorageTrieNodeCacheSizeBudget = budget,
-                CompactSize = 2,
-            };
-            List<ValueHash256> roots = [];
-            Hash256 committedRoot;
-            await using (PbtTestContext context = new(database, config))
+                Mutate(scope, 1);
+                scope.Commit(1);
+                roots.Add(scope.RootHash.ValueHash256);
+                committedRoot = scope.RootHash;
+            }
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(committedRoot).TestObject;
+            using (PbtWorldStateScope fork = context.BeginScope(parent))
             {
-                using (PbtWorldStateScope scope = context.BeginScope(null))
+                Mutate(fork, 9);
+                fork.Commit(2);
+                roots.Add(fork.RootHash.ValueHash256);
+            }
+            using (PbtWorldStateScope scope = context.BeginScope(parent))
+            {
+                for (uint generation = 2; generation <= 4; generation++)
                 {
-                    Mutate(scope, 1);
-                    scope.Commit(1);
-                    roots.Add(scope.RootHash.ValueHash256);
-                    committedRoot = scope.RootHash;
-                }
-                BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(committedRoot).TestObject;
-                using (PbtWorldStateScope fork = context.BeginScope(parent))
-                {
-                    Mutate(fork, 9);
-                    fork.Commit(2);
-                    roots.Add(fork.RootHash.ValueHash256);
-                }
-                using (PbtWorldStateScope scope = context.BeginScope(parent))
-                {
-                    for (uint generation = 2; generation <= 4; generation++)
+                    if (generation == 3)
                     {
-                        if (generation == 3)
-                        {
-                            using IWorldStateScopeProvider.IWorldStateWriteBatch deletion = scope.StartWriteBatch(1);
-                            deletion.Set(TestItem.AddressA, null);
-                        }
-                        else Mutate(scope, generation);
-                        scope.UpdateRootHash();
-                        Hash256 folded = scope.RootHash;
-                        scope.UpdateRootHash();
-                        Assert.That(scope.RootHash, Is.EqualTo(folded));
-                        scope.Commit(generation);
-                        roots.Add(scope.RootHash.ValueHash256);
-                        AssertState(scope, generation == 3 ? 0 : generation);
+                        using IWorldStateScopeProvider.IWorldStateWriteBatch deletion = scope.StartWriteBatch(1);
+                        deletion.Set(TestItem.AddressA, null);
                     }
-                    committedRoot = scope.RootHash;
+                    else Mutate(scope, generation);
+                    scope.UpdateRootHash();
+                    Hash256 folded = scope.RootHash;
+                    scope.UpdateRootHash();
+                    Assert.That(scope.RootHash, Is.EqualTo(folded));
+                    scope.Commit(generation);
+                    roots.Add(scope.RootHash.ValueHash256);
+                    AssertState(scope, generation == 3 ? 0 : generation);
                 }
-                context.Manager.FlushCache(default);
-                using IPbtPersistence.IReader reader = context.Persistence.CreateReader();
-                Assert.That(reader.CurrentRoot, Is.EqualTo(roots[^1]));
+                committedRoot = scope.RootHash;
             }
-            await using (PbtTestContext reopened = new(database, config))
-            {
-                BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
-                using PbtWorldStateScope scope = reopened.BeginScope(header);
-                using (PbtReadOnlySnapshotBundle bundle = reopened.Manager.GatherReadOnlyBundle(new StateId(header)))
-                    Assert.That(bundle.TreeRoot, Is.EqualTo(roots[^1]));
-                AssertState(scope, 4);
-            }
-            return roots;
+            context.Manager.FlushCache(default);
+            using IPbtPersistence.IReader reader = context.Persistence.CreateReader();
+            Assert.That(reader.CurrentRoot, Is.EqualTo(roots[^1]));
+        }
+        await using (PbtTestContext reopened = new(database, config))
+        {
+            BlockHeader header = Build.A.BlockHeader.WithNumber(4).WithStateRoot(committedRoot).TestObject;
+            using PbtWorldStateScope scope = reopened.BeginScope(header);
+            using (PbtReadOnlySnapshotBundle bundle = reopened.Manager.GatherReadOnlyBundle(new StateId(header)))
+                Assert.That(bundle.TreeRoot, Is.EqualTo(roots[^1]));
+            AssertState(scope, 4);
         }
 
         static void Mutate(PbtWorldStateScope scope, uint generation)

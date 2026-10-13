@@ -36,7 +36,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
 {
     private readonly CancellationTokenSource _cts = new();
     private readonly PbtCachedReaderPersistence _cachedReaderPersistence;
-    private readonly PbtTrieNodeCache _trieNodeCache;
     private readonly TestStateHeaderProvider _stateHeaderProvider = new();
     private readonly IPbtChildHeaderSource _childHeaders;
 
@@ -70,8 +69,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         PersistenceManager = new PbtPersistenceManager(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance,
             NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
-        _trieNodeCache = new PbtTrieNodeCache(Config);
-        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache, NullPbtPersistedSnapshotLoader.Instance);
+        Manager = new PbtDbManager(Repository, PersistenceManager, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, NullPbtPersistedSnapshotLoader.Instance);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, NodeGroupMemory, Config, _stateHeaderProvider, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
@@ -185,7 +183,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
     {
         _cts.Cancel();
         await Manager.DisposeAsync();
-        _trieNodeCache.Dispose();
         await _cachedReaderPersistence.DisposeAsync();
         _cts.Dispose();
     }

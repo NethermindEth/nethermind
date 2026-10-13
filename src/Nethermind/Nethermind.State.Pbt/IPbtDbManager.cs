@@ -7,11 +7,10 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>Receiver of snapshots sealed at block commit, taking ownership of the snapshot's initial lease and of the transient resource's owner lease.</summary>
+/// <summary>Receiver of snapshots sealed at block commit, taking ownership of the snapshot's initial lease.</summary>
 public interface IPbtCommitTarget
 {
-    /// <param name="transientResource">The block's staged groups; the receiver must release its lease on every path.</param>
-    void AddSnapshot(PbtSnapshot snapshot, PbtTransientResource transientResource);
+    void AddSnapshot(PbtSnapshot snapshot);
 }
 
 /// <summary>Top-level orchestrator of the PBT state: hands out bundles, receives committed snapshots and drives background persistence.</summary>

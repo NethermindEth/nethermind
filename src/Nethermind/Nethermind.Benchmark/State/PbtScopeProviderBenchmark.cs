@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Config;
@@ -130,7 +129,7 @@ public class PbtScopeProviderBenchmark
             config, UnavailableStateHeaderProvider.Instance, persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance, NullPbtPersistedSnapshotLoader.Instance, NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
         _pbtManager = new PbtDbManager(
-            repository, persistenceManager, persistence, resourcePool, compactor, new ProcessExitSource(_cts.Token), LimboLogs.Instance, new MetricsConfig(), new BenchNoopTrieNodeCache(), NullPbtPersistedSnapshotLoader.Instance);
+            repository, persistenceManager, persistence, resourcePool, compactor, new ProcessExitSource(_cts.Token), LimboLogs.Instance, new MetricsConfig(), NullPbtPersistedSnapshotLoader.Instance);
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, UnavailableStateHeaderProvider.Instance, PooledRefCountingMemoryProvider.Instance, isReadOnly: false,
             config, LimboLogs.Instance);
@@ -201,15 +200,4 @@ public class PbtScopeProviderBenchmark
 
     private static Address DeriveAddress(int index) =>
         new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class BenchNoopTrieNodeCache : IPbtTrieNodeCache
-    {
-        public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            payload = null;
-            return false;
-        }
-
-        public void Add(PbtTransientResource transientResource) { }
-    }
 }

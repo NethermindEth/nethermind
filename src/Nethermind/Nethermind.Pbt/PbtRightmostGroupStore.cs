@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 
 namespace Nethermind.Pbt;
@@ -24,7 +23,7 @@ public sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPb
     /// <summary>The group each depth held when the fold started, once superseded; released when the fold ends.</summary>
     private readonly Group[] _superseded = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
 
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
         lock (_lock)
@@ -37,12 +36,12 @@ public sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPb
         }
     }
 
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
     {
         PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
         lock (_lock)
         {
-            writeThrough.SetNodeGroup(groupKey, groupHash, payload);
+            writeThrough.SetNodeGroup(groupKey, payload);
             ref Group edge = ref _edge[groupKey.BitDepth];
             if (edge.Payload is not null && path.CompareTo(edge.Path) < 0) return;
             payload?.AcquireLease();

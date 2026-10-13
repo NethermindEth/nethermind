@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
@@ -28,13 +27,13 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
     private readonly ArrayPoolList<ArrayPoolList<BufferedNodeGroup>> _handedOff = new(16);
 
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        if (!_recordReadTimes) return bundle.GetNodeGroup(storagePath, groupHash);
+        if (!_recordReadTimes) return bundle.GetNodeGroup(storagePath);
 
         long start = Stopwatch.GetTimestamp();
-        RefCountingMemory? payload = bundle.GetNodeGroup(storagePath, groupHash);
+        RefCountingMemory? payload = bundle.GetNodeGroup(storagePath);
         Metrics.PbtTrieUpdaterNodeGroupReadTimes.Observe(
             Stopwatch.GetTimestamp() - start,
             (payload is null ? _nullLabels : _foundLabels)[ReadLabelIndex(storagePath)]);
@@ -64,7 +63,7 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
                 PbtPartition partition = state.partitions[index];
                 foreach (ArrayPoolList<BufferedNodeGroup> buffer in state.handedOff)
                     foreach (BufferedNodeGroup group in buffer)
-                        if (PbtPartitions.PartitionOfPath(group.Path) == partition) state.bundle.SetNodeGroup(group.Path, group.Hash, group.Payload);
+                        if (PbtPartitions.PartitionOfPath(group.Path) == partition) state.bundle.SetNodeGroup(group.Path, group.Payload);
                 return state;
             });
         }
@@ -75,16 +74,16 @@ public sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, IDis
         }
     }
 
-    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, ValueHash256 Hash, RefCountingMemory? Payload);
+    private readonly record struct BufferedNodeGroup(PbtStorageNodePath Path, RefCountingMemory? Payload);
 
     private sealed class ConcurrentWriter(PbtSnapshotStore store) : IPbtConcurrentWriter
     {
         private readonly ArrayPoolList<BufferedNodeGroup> _buffer = new(16);
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
             payload?.AcquireLease();
-            _buffer.Add(new BufferedNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), groupHash, payload));
+            _buffer.Add(new BufferedNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload));
         }
 
         public void Dispose()

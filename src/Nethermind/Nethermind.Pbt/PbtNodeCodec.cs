@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -87,19 +86,6 @@ public static class PbtNodeCodec
         WriteRebasedBranchTrailer(encoding[BranchPreimageLength(bitCount)..length], stored,
             InlineKeyOffset(storedAnchorDepth), InlineKeyOffset(anchorDepth), default);
         return length;
-    }
-
-    /// <summary>Hashes the branch <paramref name="stored"/> re-anchored <paramref name="skippedBits"/> deeper, without its leading prefix bits.</summary>
-    [SkipLocalsInit]
-    public static ValueHash256 HashReanchored(PbtBranchReader stored, int skippedBits)
-    {
-        if (skippedBits == 0) return Blake3Hash.Hash(stored.Preimage);
-        CompressedPrefix prefix = stored.Prefix;
-        int bitCount = prefix.BitCount - skippedBits;
-        Span<byte> preimage = stackalloc byte[BranchPreimageLength(bitCount)];
-        CreateBranchEncoding(preimage, bitCount, stored.LeftHash, stored.RightHash);
-        PbtBitPrefix.CopyBits(prefix.Bytes, skippedBits, bitCount, preimage[3..], 0);
-        return Blake3Hash.Hash(preimage);
     }
 
     /// <summary>Whether <paramref name="encoding"/> is a root leaf rather than a branch.</summary>

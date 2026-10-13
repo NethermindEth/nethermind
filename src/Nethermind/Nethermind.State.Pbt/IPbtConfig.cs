@@ -70,18 +70,6 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }
 
-    /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>
-    [ConfigItem(Description = "Memory budget for cached account PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "134217728")]
-    ulong AccountTrieNodeCacheSizeBudget { get; set; }
-
-    /// <summary>Maximum estimated retained code trie-cache memory in bytes; zero disables this partition.</summary>
-    [ConfigItem(Description = "Memory budget for cached code PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "33554432")]
-    ulong CodeTrieNodeCacheSizeBudget { get; set; }
-
-    /// <summary>Maximum estimated retained storage trie-cache memory in bytes; zero disables this partition.</summary>
-    [ConfigItem(Description = "Memory budget for cached storage PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "234881024")]
-    ulong StorageTrieNodeCacheSizeBudget { get; set; }
-
     [ConfigItem(Description = "Block cache size budget for the PBT account and storage record columns, in bytes.", DefaultValue = "1073741824")]
     ulong BlockCacheSizeBudget { get; set; }
 

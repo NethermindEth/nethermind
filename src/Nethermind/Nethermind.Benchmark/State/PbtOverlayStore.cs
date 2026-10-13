@@ -7,7 +7,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 
@@ -22,7 +21,7 @@ internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposabl
 
     public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
-    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
+    public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey)
     {
         PbtStorageNodePath key = groupKey.ToPath<PbtStorageNodePath>();
         if (!_overlay.TryGetValue(key, out RefCountingMemory? payload) && !_base.TryGetValue(key, out payload)) return null;
@@ -30,7 +29,7 @@ internal sealed class PbtOverlayStore : IPbtStore, IPbtNodeGroupSink, IDisposabl
         return payload;
     }
 
-    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+    public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
     {
         payload?.AcquireLease();
         PbtStorageNodePath key = groupKey.ToPath<PbtStorageNodePath>();

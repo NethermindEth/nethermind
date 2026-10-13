@@ -76,7 +76,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     {
         private IPbtPersistence.IWriteBatch? _batch;
 
-        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, RefCountingMemory? payload)
         {
             cancellationToken.ThrowIfCancellationRequested();
             (_batch ??= target.CreateStagingWriteBatch(WriteFlags.DisableWAL)).SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);

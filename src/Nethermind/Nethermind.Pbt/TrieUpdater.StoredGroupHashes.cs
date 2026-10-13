@@ -31,20 +31,6 @@ public static partial class TrieUpdater<TKey, TPath>
             hashes._known = 0;
         }
 
-        /// <summary>The hash of the node <paramref name="frame"/> stores or leaves implicit at <paramref name="position"/>, computed once.</summary>
-        public ValueHash256 GetHash<TFrame>(ref TFrame frame, int position)
-            where TFrame : struct, IGroupFrame<TKey, TPath>
-        {
-            uint bit = 1u << position;
-            if ((_known & bit) != 0) return _hashes[position];
-            Span<byte> buffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
-            ReadOnlySpan<byte> preimage = PendingPreimage(ref frame, position, buffer);
-            ValueHash256 hash = preimage.IsEmpty ? default : Blake3Hash.Hash(preimage);
-            _hashes[position] = hash;
-            _known |= bit;
-            return hash;
-        }
-
         /// <summary>The hash already known for <paramref name="position"/>, or default when it has not been computed or seeded.</summary>
         public readonly ValueHash256 KnownHash(int position) => (_known & (1u << position)) != 0 ? _hashes[position] : default;
 
@@ -55,7 +41,7 @@ public static partial class TrieUpdater<TKey, TPath>
             _known |= 1u << position;
         }
 
-        /// <summary><see cref="GetHash"/> for both children of an omitted branch, hashing the two together and pairing the hashing of every omitted level below them.</summary>
+        /// <summary>Resolves both children of an omitted branch, hashing the two together and pairing the hashing of every omitted level below them.</summary>
         /// <remarks>
         /// An omitted child is rebuilt from its own children first, so siblings at every level are hashed together
         /// rather than only the stored ones at the bottom.

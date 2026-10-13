@@ -19,28 +19,10 @@ internal static class PbtSnapshotBundleTestExtensions
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in UInt256 value) =>
         bundle.SetSlots(address, PbtStateKey.AddressKeyHash(address), [(slot, value)]);
 
-    public static PbtSnapshot CollectSnapshot(this PbtSnapshotBundle bundle, in StateId from, in StateId to, in ValueHash256 treeRoot)
-    {
-        PbtSnapshot snapshot = bundle.CollectSnapshot(from, to, treeRoot, out PbtTransientResource retired);
-        retired.ReleaseLease();
-        return snapshot;
-    }
-
-    /// <summary>Retains one group in <paramref name="cache"/> by staging it in a throwaway transient resource and folding that in.</summary>
-    public static void Add<TPath>(this PbtTrieNodeCache cache, in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
-    {
-        using PbtTransientResource staged = new(nodeGroupCapacity: 1);
-        staged.NodeGroups.Set(groupHash, path, payload);
-        cache.Add(staged);
-    }
-
-    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader) =>
-        CreateBundle(pool, reader, NoopPbtTrieNodeCache.Instance);
-
-    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtTrieNodeCache cache) => new(
+    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader) => new(
         new PbtSnapshotPooledList(0),
         new PbtReadOnlySnapshotBundle(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
-        pool, PbtResourcePool.Usage.MainBlockProcessing, cache, filterInMemorySlotReads: false);
+        pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
     public static ValueHash256 Fold(this PbtSnapshotBundle bundle, ValueHash256 root)

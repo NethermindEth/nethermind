@@ -32,7 +32,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public readonly ConcurrentDictionary<HashedKey<PbtStoragePath>, PackedSlotRun> Storages = new();
     public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     public readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
-    // Partitioned like PbtTrieNodeCache: account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
+    // Account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
     public readonly Dictionary<PbtNodePath, RefCountingMemory?> AccountNodeGroups = [];
     public readonly Dictionary<PbtNodePath, RefCountingMemory?> CodeNodeGroups = [];
     public readonly Dictionary<PbtStorageNodePath, RefCountingMemory?> StorageNodeGroups = [];
