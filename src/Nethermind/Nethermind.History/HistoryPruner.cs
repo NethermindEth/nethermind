@@ -171,9 +171,11 @@ public class HistoryPruner : IHistoryPruner
 
             return _historyConfig.Pruning == PruningModes.UseAncientBarriers
                 ? _ancientBarrier
-                : CalculateRollingCutoff(_historyConfig.RetentionEpochs);
+                : CalculateRollingCutoff(RetentionEpochs);
         }
     }
+
+    public ulong RetentionEpochs => _historyConfig.RetentionEpochs ?? _minHistoryRetentionEpochs;
 
     public ulong? BalCutoffBlockNumber => _enabled ? CalculateRollingCutoff(_historyConfig.BalRetentionEpochs) : null;
 
@@ -217,7 +219,7 @@ public class HistoryPruner : IHistoryPruner
     public ulong OldestUnreclaimedBlockNumber =>
         _hasLoadedDeletePointers ? ulong.Min(_blocksReclaimCursor, _blocksDeletePointer) : _persistedUnreclaimedFloor;
 
-    private ulong? CalculateRollingCutoff(uint retentionEpochs)
+    private ulong? CalculateRollingCutoff(ulong retentionEpochs)
     {
         ulong? head = _blockTree.Head?.Number;
         if (head is null)
@@ -508,7 +510,7 @@ public class HistoryPruner : IHistoryPruner
 
     private void CheckConfig()
     {
-        if (_historyConfig.RetentionEpochs < _minHistoryRetentionEpochs)
+        if (RetentionEpochs < _minHistoryRetentionEpochs)
         {
             throw new HistoryPrunerException($"HistoryRetentionEpochs must be at least {_minHistoryRetentionEpochs}.");
         }

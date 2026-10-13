@@ -312,11 +312,47 @@ public class HistoryPrunerTests
         }
     }
 
+    [TestCase(null, 33024UL)] // the chain floor
+    [TestCase(40000u, 40000UL)]
+    public void Rolling_retention_defaults_to_the_chain_floor(uint? retentionEpochs, ulong expectedEpochs)
+    {
+        const ulong head = 2_000_000;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.WithNumber(head).TestObject);
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.MetadataDb.Returns(new TestMemDb());
+
+        HistoryPruner pruner = new(
+            blockTree,
+            Substitute.For<IReceiptStorage>(),
+            Substitute.For<IBlockAccessListStore>(),
+            new TestSpecProvider(new ReleaseSpec { MinHistoryRetentionEpochs = 33024 }),
+            Substitute.For<IChainLevelInfoRepository>(),
+            Substitute.For<IHeaderStore>(),
+            dbProvider,
+            new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = retentionEpochs },
+            BlocksConfig,
+            SyncConfig,
+            new ProcessExitSource(new()),
+            Substitute.For<IBackgroundTaskScheduler>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            NullPrunedReceiptRetention.Instance,
+            LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pruner.RetentionEpochs, Is.EqualTo(expectedEpochs));
+            Assert.That(pruner.CutoffBlockNumber, Is.EqualTo(head - expectedEpochs * 32));
+        }
+    }
+
     [TestCase(0UL, 100000u, 0UL, 3533u, false)]
     [TestCase(100UL, 10u, 0UL, 3533u, true)]      // block retention below min
     [TestCase(0UL, 100000u, 3533UL, 3000u, true)] // BAL retention below min
     [TestCase(0UL, 100000u, 3533UL, 3533u, false)] // BAL retention exactly at min
-    public void Validates_config(ulong minHistoryRetentionEpochs, uint retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
+    [TestCase(14299UL, null, 0UL, 3533u, false)] // unset block retention defaults to the floor
+    [TestCase(14299UL, 14298u, 0UL, 3533u, true)]
+    public void Validates_config(ulong minHistoryRetentionEpochs, uint? retentionEpochs, ulong minBalRetentionEpochs, uint balRetentionEpochs, bool shouldThrow)
     {
         IHistoryConfig historyConfig = new HistoryConfig
         {
