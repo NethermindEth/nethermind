@@ -1986,8 +1986,10 @@ public class ArchiveProofTests
         Address first = _accounts[3];
         ValueHash256 firstPath = Keccak.Compute(first.Bytes).ValueHash256;
         Address sibling = _accounts.First(account =>
-            SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 1) &&
-            !SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 2));
+        {
+            ValueHash256 path = Keccak.Compute(account.Bytes).ValueHash256;
+            return SharesNibbles(path, firstPath, nibbles: 1) && !SharesNibbles(path, firstPath, nibbles: 2);
+        });
         Address unrelated = _accounts.First(account => !SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 1));
 
         long siblingPrefetches = PrefetchesOfSecondProof(first, sibling, out AccountProof siblingProof);
