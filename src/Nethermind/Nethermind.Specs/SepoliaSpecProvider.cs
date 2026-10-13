@@ -23,18 +23,25 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     private static IReleaseSpec? _prague;
 
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
-        static () => new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress });
+        static () => WithSepoliaParameters(new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress }));
+
+    /// <remarks>Glamsterdam is live, so the consensus layer serves only <see cref="HistoryRetentionConstants.HistoryPruneEpochs"/>.</remarks>
+    private static ReleaseSpec WithSepoliaParameters(ReleaseSpec spec)
+    {
+        spec.MinHistoryRetentionEpochs = HistoryRetentionConstants.HistoryPruneEpochs;
+        return spec;
+    }
 
     private SepoliaSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlockNumber] = London.Instance,
-        [ShanghaiTimestamp] = Shanghai.Instance,
-        [CancunTimestamp] = Cancun.Instance,
+        [GenesisBlockNumber] = WithSepoliaParameters(new London()),
+        [ShanghaiTimestamp] = WithSepoliaParameters(new Shanghai()),
+        [CancunTimestamp] = WithSepoliaParameters(new Cancun()),
         [PragueTimestamp] = Prague,
-        [OsakaTimestamp] = Osaka.Instance,
-        [BPO1Timestamp] = BPO1.Instance,
-        [BPO2Timestamp] = BPO2.Instance,
-        [AmsterdamTimestamp] = Amsterdam.Instance,
+        [OsakaTimestamp] = WithSepoliaParameters(new Osaka()),
+        [BPO1Timestamp] = WithSepoliaParameters(new BPO1()),
+        [BPO2Timestamp] = WithSepoliaParameters(new BPO2()),
+        [AmsterdamTimestamp] = WithSepoliaParameters(new Amsterdam()),
     })
     { }
 

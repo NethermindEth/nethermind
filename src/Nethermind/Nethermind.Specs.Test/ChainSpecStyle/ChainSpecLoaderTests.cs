@@ -109,7 +109,7 @@ public class ChainSpecLoaderTests
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
-            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(14299UL), "Glamsterdam is live, so the CL serves 14299 epochs");
+            Assert.That(chainSpec.Parameters.MinHistoryRetentionEpochs, Is.EqualTo(HistoryRetentionConstants.HistoryPruneEpochs), "Glamsterdam is live");
         }
     }
 

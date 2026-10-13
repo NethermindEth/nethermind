@@ -694,8 +694,6 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                      .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
                      .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.DepositContractAddress))
-                     // a chainspec parameter; the hardcoded providers carry the mainnet value
-                     .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MinHistoryRetentionEpochs))
 
                      // handle RLP decoders
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
