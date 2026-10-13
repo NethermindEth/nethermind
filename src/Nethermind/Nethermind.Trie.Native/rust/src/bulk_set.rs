@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+//! Port of `PatriciaTree.BulkSet`: entries are bucketed by nibble one level at a time, and new nodes stay pending
+//! until `commit_tree` hashes and stores them.
+
 use std::cell::RefCell;
 use std::cmp::Reverse;
 
@@ -8,12 +11,18 @@ use rayon::prelude::*;
 
 use crate::keccak::{keccak, keccak_many};
 use crate::node::{
-    decode_rlp, decode_stored, encode, nibble, stored_rlp, ChildRef, Nibbles, Node, TreePath,
+    decode_rlp, decode_stored, empty_children, encode, nibble, stored_rlp, ChildRef, Nibbles, Node,
+    TreePath,
 };
 use crate::{Entry, Error, NodeStore};
 
 /// Same as `PatriciaTree.MinEntriesToParallelizeThreshold`.
 const PARALLEL_THRESHOLD: usize = 128;
+
+/// Same as `PatriciaTree.InPlaceSortThreshold`.
+const IN_PLACE_SORT_THRESHOLD: usize = 32;
+
+const FULL_BRANCH: u16 = 0xffff;
 
 const NO_CHILD: u32 = u32::MAX;
 
@@ -27,7 +36,7 @@ thread_local! {
 }
 
 /// Applies `entries` to the trie whose root is stored at the empty path, writing every new node referenced by hash
-/// at its path, and returns the new root hash. `entries` is sorted in place and its keys must be unique.
+/// at its path, and returns the new root hash. `entries` is reordered in place and its keys must be unique.
 ///
 /// Nodes that become unreachable are not removed, except the root when the trie becomes empty.
 pub fn bulk_set<S: NodeStore>(
@@ -44,12 +53,7 @@ pub fn bulk_set<S: NodeStore>(
         return Err(Error::InvalidArgument);
     }
 
-    entries.par_sort_unstable_by(|left, right| left.key.cmp(&right.key));
-    if entries.windows(2).any(|pair| pair[0].key == pair[1].key) {
-        return Err(Error::DuplicateKey);
-    }
-
-    let root_path = TreePath::default();
+    let mut root_path = TreePath::default();
     let mut stored_root = Vec::new();
     let root = if store.fetch(&root_path, &mut stored_root)? {
         Some(decode_stored(&stored_root)?)
@@ -58,7 +62,8 @@ pub fn bulk_set<S: NodeStore>(
     };
 
     let context = Context { store, values };
-    match context.update(entries, &root_path, root)? {
+    let mut sort_buffer = entries.to_vec();
+    match context.update(entries, &mut sort_buffer, &mut root_path, root)? {
         (_, false) if stored_root.is_empty() => Ok(EMPTY_TREE_HASH),
         (_, false) => Ok(keccak(stored_rlp(&stored_root)?)),
         (None, true) => {
@@ -78,9 +83,9 @@ struct Context<'a, S> {
 }
 
 struct ChildUpdate {
-    nibble: usize,
     reference: ChildRef,
-    /// The child with no pending descendants, kept when `reference` is not pending.
+    /// The child with no pending descendants, kept when `reference` is not pending so collapsing a branch need not
+    /// load it again.
     node: Option<Node>,
     changed: bool,
 }
@@ -92,245 +97,326 @@ struct PendingNode {
     children: [u32; 16],
 }
 
+type Bucket<'a> = (&'a mut [Entry], &'a mut [Entry]);
+
 impl<S: NodeStore> Context<'_, S> {
-    /// Applies sorted `entries`, whose keys all start with `path`, to the `node` at `path`.
-    /// Returns the new node, whose new descendants are pending, and whether it differs from `node`.
+    /// Applies `entries`, whose keys all start with `path`, to the `node` at `path`, like `PatriciaTree.BulkSet`.
+    /// `entries` is reordered, with `sort_buffer` of the same length as scratch. Returns the new node, whose new
+    /// descendants are pending, and whether it differs from `node`.
     fn update(
         &self,
-        entries: &[Entry],
-        path: &TreePath,
+        entries: &mut [Entry],
+        sort_buffer: &mut [Entry],
+        path: &mut TreePath,
         node: Option<Node>,
     ) -> Result<(Option<Node>, bool), Error> {
-        if entries.is_empty() {
-            return Ok((node, false));
+        match entries.len() {
+            0 => return Ok((node, false)),
+            1 => return self.set_one(&entries[0], path, node),
+            _ => {}
         }
 
         let depth = path.depth();
-        let first = &entries[0].key;
-        let shared = common_prefix_length(first, &entries[entries.len() - 1].key, depth);
-
-        match node {
-            None => {
-                let result = if entries.len() == 1 {
-                    let value = self.value(&entries[0]);
-                    (!value.is_empty()).then(|| Node::Leaf {
-                        key: Nibbles::from_key(first, depth, 64 - depth),
-                        value: value.to_vec(),
-                    })
-                } else if shared > 0 {
-                    let prefix = Nibbles::from_key(first, depth, shared);
-                    self.update_below_prefix(entries, path, prefix.as_slice(), None)?
-                } else {
-                    self.update_branch(entries, path, Node::empty_branch(), true)?
-                        .0
-                };
-                let changed = result.is_some();
-                Ok((result, changed))
-            }
-            Some(Node::Leaf { key, value }) => {
-                let matched = matched_length(key.as_slice(), first, depth).min(shared);
-                if entries.len() == 1 {
-                    let new_value = self.value(&entries[0]);
-                    if matched == key.len() {
-                        return Ok(match new_value {
-                            [] => (None, true),
-                            _ if new_value == value.as_slice() => {
-                                (Some(Node::Leaf { key, value }), false)
-                            }
-                            _ => (
-                                Some(Node::Leaf {
-                                    key,
-                                    value: new_value.to_vec(),
-                                }),
-                                true,
-                            ),
-                        });
-                    }
-                    if new_value.is_empty() {
-                        return Ok((Some(Node::Leaf { key, value }), false));
-                    }
-                }
-
-                let key = key.as_slice();
-                if matched > 0 {
-                    let rest = Node::Leaf {
-                        key: Nibbles::from_slice(&key[matched..]),
-                        value,
-                    };
-                    return Ok((
-                        self.update_below_prefix(entries, path, &key[..matched], Some(rest))?,
-                        true,
-                    ));
-                }
-                let rest = Node::Leaf {
-                    key: Nibbles::from_slice(&key[1..]),
-                    value,
-                };
-                self.update_branch(
-                    entries,
-                    path,
-                    Self::split(key[0], ChildRef::Pending(Box::new(rest))),
-                    true,
-                )
-            }
-            Some(Node::Extension { key, child }) => {
-                let matched = matched_length(key.as_slice(), first, depth).min(shared);
-                if matched == key.len() {
-                    let child_path = path.append(key.as_slice());
-                    let child_node = self.load(&child_path, child.clone())?;
-                    return Ok(match self.update(entries, &child_path, child_node)? {
-                        (_, false) => (Some(Node::Extension { key, child }), false),
-                        (result, true) => (result.map(|node| prepend(key.as_slice(), node)), true),
-                    });
-                }
-
-                let key = key.as_slice();
-                if matched > 0 {
-                    let rest = Node::Extension {
-                        key: Nibbles::from_slice(&key[matched..]),
-                        child,
-                    };
-                    return Ok((
-                        self.update_below_prefix(entries, path, &key[..matched], Some(rest))?,
-                        true,
-                    ));
-                }
-                let rest = match key.len() {
-                    1 => child,
-                    _ => ChildRef::Pending(Box::new(Node::Extension {
-                        key: Nibbles::from_slice(&key[1..]),
-                        child,
-                    })),
-                };
-                self.update_branch(entries, path, Self::split(key[0], rest), true)
-            }
-            Some(branch) => self.update_branch(entries, path, branch, false),
-        }
-    }
-
-    /// Updates the node at `path + prefix` and puts `prefix` in front of the result.
-    fn update_below_prefix(
-        &self,
-        entries: &[Entry],
-        path: &TreePath,
-        prefix: &[u8],
-        node: Option<Node>,
-    ) -> Result<Option<Node>, Error> {
-        let child_path = path.append(prefix);
-        let (result, _) = self.update(entries, &child_path, node)?;
-        Ok(result.map(|node| prepend(prefix, node)))
-    }
-
-    fn update_branch(
-        &self,
-        entries: &[Entry],
-        path: &TreePath,
-        branch: Node,
-        is_new: bool,
-    ) -> Result<(Option<Node>, bool), Error> {
-        let Node::Branch { mut children } = branch else {
-            unreachable!("not a branch")
-        };
-        let depth = path.depth();
-
-        let mut buckets = Vec::with_capacity(16);
-        let mut start = 0;
-        while start < entries.len() {
-            let child_nibble = nibble(&entries[start].key, depth);
-            let end = start
-                + entries[start..]
-                    .partition_point(|entry| nibble(&entry.key, depth) == child_nibble);
-            let existing = std::mem::take(&mut children[child_nibble as usize]);
-            buckets.push((child_nibble, &entries[start..end], existing));
-            start = end;
+        if depth == 64 {
+            return Err(Error::DuplicateKey);
         }
 
-        let parallel = entries.len() >= PARALLEL_THRESHOLD;
-        let update_child = |(child_nibble, bucket, existing): (u8, &[Entry], ChildRef)| -> Result<ChildUpdate, Error> {
-            let child_path = path.append(&[child_nibble]);
-            let unchanged_reference = match &existing {
-                ChildRef::Pending(_) => None,
-                reference => Some(reference.clone()),
-            };
-            let node = self.load(&child_path, existing)?;
-            let (node, changed) = self.update(bucket, &child_path, node)?;
-            let (reference, node) = match (node, unchanged_reference) {
-                (None, _) => (ChildRef::Empty, None),
-                (Some(node), Some(reference)) if !changed => (reference, Some(node)),
-                // Every parallel task hashes its own subtree, so no level spans threads.
-                (Some(node), _) if parallel => {
-                    let (reference, node) = self.commit_tree(node, child_path, false);
-                    (reference, Some(node))
-                }
-                (Some(node), _) => (ChildRef::Pending(Box::new(node)), None),
-            };
-            Ok(ChildUpdate { nibble: child_nibble as usize, reference, node, changed })
+        let was_empty = node.is_none();
+        let (mut children, is_new) = match node {
+            None => (empty_children(), true),
+            Some(Node::Branch { children }) => (children, false),
+            Some(node) => (make_fake_branch(node), true),
         };
-        let updates: Vec<ChildUpdate> = if parallel {
-            buckets
-                .into_par_iter()
-                .map(update_child)
-                .collect::<Result<_, Error>>()?
+
+        let mut indexes = [0usize; 16];
+        let (entries, sort_buffer, mask) = if entries.len() <= 3 {
+            let mask = sort_tiny(entries, depth, &mut indexes);
+            (entries, sort_buffer, mask)
+        } else if entries.len() < IN_PLACE_SORT_THRESHOLD {
+            let mask = in_place_bucket_sort16(entries, depth, &mut indexes);
+            (entries, sort_buffer, mask)
         } else {
-            buckets
-                .into_iter()
-                .map(update_child)
-                .collect::<Result<_, Error>>()?
+            // The buckets land in the sort buffer, so the two swap roles below this level.
+            let mask = bucket_sort16(entries, sort_buffer, depth, &mut indexes);
+            (sort_buffer, entries, mask)
         };
+        let parallel = entries.len() >= PARALLEL_THRESHOLD && mask == FULL_BRANCH;
+        let mut buckets = split_buckets(mask, &indexes, entries, sort_buffer);
 
         let mut changed = is_new;
-        let mut updated_nodes: [Option<Node>; 16] = Default::default();
-        for update in updates {
-            children[update.nibble] = update.reference;
-            updated_nodes[update.nibble] = update.node;
-            changed |= update.changed;
+        let mut has_remove = false;
+        let mut non_empty_count = 0;
+        let mut resolved_nodes: [Option<Node>; 16] = Default::default();
+        let mut apply =
+            |child_nibble: usize, update: ChildUpdate, children: &mut [ChildRef; 16]| {
+                if update.changed {
+                    changed = true;
+                    match update.reference {
+                        ChildRef::Empty => has_remove = true,
+                        _ => non_empty_count += 1,
+                    }
+                }
+                children[child_nibble] = update.reference;
+                resolved_nodes[child_nibble] = update.node;
+            };
+
+        if parallel {
+            let parent_path = *path;
+            let existing: [ChildRef; 16] =
+                std::array::from_fn(|index| std::mem::take(&mut children[index]));
+            let updates: Vec<ChildUpdate> = buckets
+                .into_par_iter()
+                .zip(existing)
+                .enumerate()
+                .map(|(child_nibble, ((bucket, bucket_buffer), existing))| {
+                    let mut child_path = parent_path.append(&[child_nibble as u8]);
+                    // Every parallel task hashes its own subtree, so no level spans threads.
+                    self.update_child(&mut child_path, existing, true, |path, node| {
+                        self.update(bucket, bucket_buffer, path, node)
+                    })
+                })
+                .collect::<Result<_, Error>>()?;
+            for (child_nibble, update) in updates.into_iter().enumerate() {
+                apply(child_nibble, update, &mut children);
+            }
+        } else {
+            path.push(0);
+            let mut remaining = mask;
+            while remaining != 0 {
+                let child_nibble = remaining.trailing_zeros() as usize;
+                remaining &= remaining - 1;
+                path.set_last(child_nibble as u8);
+                let (bucket, bucket_buffer) = std::mem::take(&mut buckets[child_nibble]);
+                let existing = std::mem::take(&mut children[child_nibble]);
+                let update = self.update_child(path, existing, false, |path, node| {
+                    self.update(bucket, bucket_buffer, path, node)
+                })?;
+                apply(child_nibble, update, &mut children);
+            }
+            path.truncate(depth);
         }
+
         if !changed {
             return Ok((Some(Node::Branch { children }), false));
         }
 
-        let mut remaining = children
-            .iter()
-            .enumerate()
-            .filter(|(_, child)| !matches!(child, ChildRef::Empty));
-        let only_child = match (remaining.next(), remaining.next()) {
-            (None, _) => return Ok((None, true)),
-            (Some((index, _)), None) => Some(index),
-            _ => None,
+        let result = if (has_remove || is_new) && non_empty_count < 2 {
+            self.maybe_combine(children, path, &mut resolved_nodes)?
+        } else {
+            Some(Node::Branch { children })
         };
-
-        if let Some(index) = only_child {
-            let child_path = path.append(&[index as u8]);
-            let (node, committed) = match (
-                std::mem::take(&mut children[index]),
-                updated_nodes[index].take(),
-            ) {
-                (ChildRef::Pending(node), _) => (*node, None),
-                (reference, Some(node)) => (node, Some(reference)),
-                (reference, None) => (
-                    self.load(&child_path, reference.clone())?
-                        .ok_or(Error::MissingNode)?,
-                    Some(reference),
-                ),
-            };
-            let merged = match (node, committed) {
-                (Node::Branch { .. }, Some(reference)) => Node::Extension {
-                    key: Nibbles::from_slice(&[index as u8]),
-                    child: reference,
-                },
-                (node, _) => prepend(&[index as u8], node),
-            };
-            return Ok((Some(merged), true));
+        if was_empty && result.is_none() {
+            return Ok((None, false));
         }
-
-        Ok((Some(Node::Branch { children }), true))
+        Ok((result, true))
     }
 
-    /// A new branch holding what remains of a split leaf or extension under `child_nibble`.
-    fn split(child_nibble: u8, rest: ChildRef) -> Node {
-        let mut branch = Node::empty_branch();
-        branch.set_child(child_nibble as usize, rest);
-        branch
+    /// Applies a single entry to the `node` at `path`, like `PatriciaTree.BulkSetOne`.
+    fn set_one(
+        &self,
+        entry: &Entry,
+        path: &mut TreePath,
+        node: Option<Node>,
+    ) -> Result<(Option<Node>, bool), Error> {
+        let depth = path.depth();
+        let value = self.value(entry);
+        let Some(node) = node else {
+            return Ok(match value {
+                [] => (None, false),
+                _ => (
+                    Some(Node::Leaf {
+                        key: Nibbles::from_key(&entry.key, depth, 64 - depth),
+                        value: value.to_vec(),
+                    }),
+                    true,
+                ),
+            });
+        };
+
+        match node {
+            Node::Branch { mut children } => {
+                let child_nibble = nibble(&entry.key, depth);
+                let existing = std::mem::take(&mut children[child_nibble as usize]);
+                path.push(child_nibble);
+                let update = self.update_child(path, existing, false, |path, node| {
+                    self.set_one(entry, path, node)
+                })?;
+                path.truncate(depth);
+
+                let removed = update.changed && matches!(update.reference, ChildRef::Empty);
+                children[child_nibble as usize] = update.reference;
+                if removed {
+                    let mut resolved_nodes = Default::default();
+                    return Ok((
+                        self.maybe_combine(children, path, &mut resolved_nodes)?,
+                        true,
+                    ));
+                }
+                Ok((Some(Node::Branch { children }), update.changed))
+            }
+            Node::Leaf {
+                key,
+                value: old_value,
+            } => {
+                let matched = matched_length(key.as_slice(), &entry.key, depth);
+                if matched == key.len() {
+                    return Ok(match value {
+                        [] => (None, true),
+                        _ if value == old_value.as_slice() => (
+                            Some(Node::Leaf {
+                                key,
+                                value: old_value,
+                            }),
+                            false,
+                        ),
+                        _ => (
+                            Some(Node::Leaf {
+                                key,
+                                value: value.to_vec(),
+                            }),
+                            true,
+                        ),
+                    });
+                }
+                if value.is_empty() {
+                    return Ok((
+                        Some(Node::Leaf {
+                            key,
+                            value: old_value,
+                        }),
+                        false,
+                    ));
+                }
+
+                let existing = ChildRef::Pending(Box::new(Node::Leaf {
+                    key: Nibbles::from_slice(&key.as_slice()[matched + 1..]),
+                    value: old_value,
+                }));
+                Ok((
+                    Some(diverging_branch(
+                        entry,
+                        depth,
+                        matched,
+                        key.as_slice()[matched],
+                        existing,
+                        value,
+                    )),
+                    true,
+                ))
+            }
+            Node::Extension { key, child } => {
+                let matched = matched_length(key.as_slice(), &entry.key, depth);
+                if matched == key.len() {
+                    path.push_all(key.as_slice());
+                    let child_node = self.load(path, child.clone())?;
+                    let (result, changed) = self.set_one(entry, path, child_node)?;
+                    path.truncate(depth);
+                    return Ok(match changed {
+                        false => (Some(Node::Extension { key, child }), false),
+                        true => (result.map(|node| prepend(key.as_slice(), node)), true),
+                    });
+                }
+                if value.is_empty() {
+                    return Ok((Some(Node::Extension { key, child }), false));
+                }
+
+                let rest = &key.as_slice()[matched + 1..];
+                let existing = match rest {
+                    [] => child,
+                    _ => ChildRef::Pending(Box::new(Node::Extension {
+                        key: Nibbles::from_slice(rest),
+                        child,
+                    })),
+                };
+                Ok((
+                    Some(diverging_branch(
+                        entry,
+                        depth,
+                        matched,
+                        key.as_slice()[matched],
+                        existing,
+                        value,
+                    )),
+                    true,
+                ))
+            }
+        }
+    }
+
+    /// Loads the child at `path` that `existing` refers to and applies `update` to it. A changed child is committed
+    /// when `commit` is set and left pending otherwise.
+    fn update_child(
+        &self,
+        path: &mut TreePath,
+        existing: ChildRef,
+        commit: bool,
+        update: impl FnOnce(&mut TreePath, Option<Node>) -> Result<(Option<Node>, bool), Error>,
+    ) -> Result<ChildUpdate, Error> {
+        let unchanged_reference = match &existing {
+            ChildRef::Pending(_) => None,
+            reference => Some(reference.clone()),
+        };
+        let node = self.load(path, existing)?;
+        let (node, changed) = update(path, node)?;
+        let (reference, node) = match (node, unchanged_reference) {
+            (None, _) => (ChildRef::Empty, None),
+            (Some(node), Some(reference)) if !changed => (reference, Some(node)),
+            (Some(node), _) if commit => {
+                let (reference, node) = self.commit_tree(node, *path, false);
+                (reference, Some(node))
+            }
+            (Some(node), _) => (ChildRef::Pending(Box::new(node)), None),
+        };
+        Ok(ChildUpdate {
+            reference,
+            node,
+            changed,
+        })
+    }
+
+    /// Turns a branch left with fewer than two children into nothing, an extension, or its only child with the
+    /// nibble prepended, like `PatriciaTree.MaybeCombineNode`.
+    fn maybe_combine(
+        &self,
+        mut children: Box<[ChildRef; 16]>,
+        path: &mut TreePath,
+        resolved_nodes: &mut [Option<Node>; 16],
+    ) -> Result<Option<Node>, Error> {
+        let only_child = {
+            let mut present = children
+                .iter()
+                .enumerate()
+                .filter(|(_, child)| !matches!(child, ChildRef::Empty));
+            match (present.next(), present.next()) {
+                (None, _) => return Ok(None),
+                (Some((index, _)), None) => index,
+                _ => return Ok(Some(Node::Branch { children })),
+            }
+        };
+
+        let depth = path.depth();
+        path.push(only_child as u8);
+        let (node, committed) = match (
+            std::mem::take(&mut children[only_child]),
+            resolved_nodes[only_child].take(),
+        ) {
+            (ChildRef::Pending(node), _) => (*node, None),
+            (reference, Some(node)) => (node, Some(reference)),
+            (reference, None) => (
+                self.load(path, reference.clone())?
+                    .ok_or(Error::MissingNode)?,
+                Some(reference),
+            ),
+        };
+        path.truncate(depth);
+
+        Ok(Some(match (node, committed) {
+            (Node::Branch { .. }, Some(reference)) => Node::Extension {
+                key: Nibbles::from_slice(&[only_child as u8]),
+                child: reference,
+            },
+            (node, _) => prepend(&[only_child as u8], node),
+        }))
     }
 
     fn load(&self, path: &TreePath, child: ChildRef) -> Result<Option<Node>, Error> {
@@ -470,10 +556,181 @@ fn prepend(prefix: &[u8], node: Node) -> Node {
     }
 }
 
-fn common_prefix_length(left: &[u8; 32], right: &[u8; 32], from: usize) -> usize {
-    (from..64)
-        .take_while(|&index| nibble(left, index) == nibble(right, index))
-        .count()
+/// Replaces a leaf or an extension with a branch holding what remains of it, like `PatriciaTree.MakeFakeBranch`.
+fn make_fake_branch(node: Node) -> Box<[ChildRef; 16]> {
+    let mut children = empty_children();
+    match node {
+        Node::Leaf { key, value } => {
+            children[key.as_slice()[0] as usize] = ChildRef::Pending(Box::new(Node::Leaf {
+                key: Nibbles::from_slice(&key.as_slice()[1..]),
+                value,
+            }))
+        }
+        Node::Extension { key, child } if key.len() == 1 => {
+            children[key.as_slice()[0] as usize] = child
+        }
+        Node::Extension { key, child } => {
+            children[key.as_slice()[0] as usize] = ChildRef::Pending(Box::new(Node::Extension {
+                key: Nibbles::from_slice(&key.as_slice()[1..]),
+                child,
+            }))
+        }
+        Node::Branch { .. } => unreachable!("already a branch"),
+    }
+    children
+}
+
+/// The branch where `entry` diverges from an existing leaf or extension after `matched` nibbles, holding `existing`
+/// under `existing_nibble`, behind an extension of the matched nibbles when there are any.
+fn diverging_branch(
+    entry: &Entry,
+    depth: usize,
+    matched: usize,
+    existing_nibble: u8,
+    existing: ChildRef,
+    value: &[u8],
+) -> Node {
+    let branch_depth = depth + matched;
+    let mut children = empty_children();
+    children[existing_nibble as usize] = existing;
+    children[nibble(&entry.key, branch_depth) as usize] = ChildRef::Pending(Box::new(Node::Leaf {
+        key: Nibbles::from_key(&entry.key, branch_depth + 1, 63 - branch_depth),
+        value: value.to_vec(),
+    }));
+    let branch = Node::Branch { children };
+    match matched {
+        0 => branch,
+        _ => Node::Extension {
+            key: Nibbles::from_key(&entry.key, depth, matched),
+            child: ChildRef::Pending(Box::new(branch)),
+        },
+    }
+}
+
+/// Sets `indexes` to where each nibble at `depth` starts in `entries`, which are already grouped by it, and returns
+/// the mask of nibbles present.
+fn mark_buckets(entries: &[Entry], depth: usize, indexes: &mut [usize; 16]) -> u16 {
+    let mut mask = 0;
+    for (index, entry) in entries.iter().enumerate().rev() {
+        let child_nibble = nibble(&entry.key, depth);
+        indexes[child_nibble as usize] = index;
+        mask |= 1 << child_nibble;
+    }
+    mask
+}
+
+/// Groups two or three entries by their nibble at `depth` with compare-and-swaps, like `PatriciaTree.SortTiny`.
+fn sort_tiny(entries: &mut [Entry], depth: usize, indexes: &mut [usize; 16]) -> u16 {
+    let length = entries.len();
+    let mut compare_and_swap = |left: usize, right: usize| {
+        if nibble(&entries[left].key, depth) > nibble(&entries[right].key, depth) {
+            entries.swap(left, right);
+        }
+    };
+    compare_and_swap(0, 1);
+    if length == 3 {
+        compare_and_swap(1, 2);
+        compare_and_swap(0, 1);
+    }
+    mark_buckets(entries, depth, indexes)
+}
+
+/// Groups fewer than [`IN_PLACE_SORT_THRESHOLD`] entries by their nibble at `depth` in place, like
+/// `PatriciaTree.InPlaceBucketSort16`: sorts small (index, nibble) pairs, then permutes the entries by following cycles.
+fn in_place_bucket_sort16(entries: &mut [Entry], depth: usize, indexes: &mut [usize; 16]) -> u16 {
+    let mut pairs = [(0u8, 0u8); IN_PLACE_SORT_THRESHOLD];
+    let pairs = &mut pairs[..entries.len()];
+    for (index, pair) in pairs.iter_mut().enumerate() {
+        *pair = (index as u8, nibble(&entries[index].key, depth));
+    }
+    for index in 1..pairs.len() {
+        let pair = pairs[index];
+        let mut position = index;
+        while position > 0 && pairs[position - 1].1 > pair.1 {
+            pairs[position] = pairs[position - 1];
+            position -= 1;
+        }
+        pairs[position] = pair;
+    }
+
+    for start in 0..pairs.len() {
+        if pairs[start].0 as usize == start {
+            continue;
+        }
+        let displaced = entries[start];
+        let mut position = start;
+        loop {
+            let source = pairs[position].0 as usize;
+            pairs[position].0 = position as u8;
+            if source == start {
+                entries[position] = displaced;
+                break;
+            }
+            entries[position] = entries[source];
+            position = source;
+        }
+    }
+
+    mark_buckets(entries, depth, indexes)
+}
+
+/// Counting-sorts `entries` by their nibble at `depth` into `target`, like `PatriciaTree.BucketSort16`.
+fn bucket_sort16(
+    entries: &[Entry],
+    target: &mut [Entry],
+    depth: usize,
+    indexes: &mut [usize; 16],
+) -> u16 {
+    let mut counts = [0usize; 16];
+    for entry in entries {
+        counts[nibble(&entry.key, depth) as usize] += 1;
+    }
+
+    let mut mask = 0;
+    let mut starts = [0usize; 16];
+    let mut total = 0;
+    for child_nibble in 0..16 {
+        starts[child_nibble] = total;
+        total += counts[child_nibble];
+        if counts[child_nibble] != 0 {
+            mask |= 1 << child_nibble;
+            indexes[child_nibble] = starts[child_nibble];
+        }
+    }
+
+    for entry in entries {
+        let child_nibble = nibble(&entry.key, depth) as usize;
+        target[starts[child_nibble]] = *entry;
+        starts[child_nibble] += 1;
+    }
+    mask
+}
+
+/// Splits `entries` and `sort_buffer` into the bucket of every nibble in `mask`, indexed by nibble.
+fn split_buckets<'a>(
+    mask: u16,
+    indexes: &[usize; 16],
+    mut entries: &'a mut [Entry],
+    mut sort_buffer: &'a mut [Entry],
+) -> [Bucket<'a>; 16] {
+    let mut buckets: [Bucket<'a>; 16] = Default::default();
+    let total = entries.len();
+    let mut remaining = mask;
+    while remaining != 0 {
+        let child_nibble = remaining.trailing_zeros() as usize;
+        remaining &= remaining - 1;
+        let end = match remaining {
+            0 => total,
+            _ => indexes[remaining.trailing_zeros() as usize],
+        };
+        let length = end - indexes[child_nibble];
+        let (bucket, rest) = std::mem::take(&mut entries).split_at_mut(length);
+        let (bucket_buffer, rest_buffer) = std::mem::take(&mut sort_buffer).split_at_mut(length);
+        buckets[child_nibble] = (bucket, bucket_buffer);
+        entries = rest;
+        sort_buffer = rest_buffer;
+    }
+    buckets
 }
 
 fn matched_length(nibbles: &[u8], key: &[u8; 32], from: usize) -> usize {
