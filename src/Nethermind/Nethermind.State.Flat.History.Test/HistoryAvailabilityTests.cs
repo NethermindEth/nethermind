@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class HistoryAvailabilityTests
 {
-    private const ulong Block = 7;
+    private const ulong MarkedBlock = 7;
 
     private TempPath _directory = null!;
     private ColumnsDb<FlatHistoryColumns> _columns = null!;
@@ -35,7 +35,7 @@ public class HistoryAvailabilityTests
             LimboLogs.Instance, Enum.GetValues<FlatHistoryColumns>());
         using (IWriteBatch batch = AvailableBlocks.StartWriteBatch())
         {
-            HistoryAvailability.MarkBlock(batch, Block, TestItem.KeccakA, HistoryAvailability.FormatVersion);
+            HistoryAvailability.MarkBlock(batch, MarkedBlock, TestItem.KeccakA, HistoryAvailability.FormatVersion);
         }
 
         _availability = new HistoryAvailability(AvailableBlocks);
@@ -53,10 +53,10 @@ public class HistoryAvailabilityTests
     {
         const int Reads = 1000;
         bool matched = true;
-        for (int i = 0; i < 10; i++) matched &= _availability.RootMatches(Block, TestItem.KeccakA);
+        for (int i = 0; i < 10; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(Block, TestItem.KeccakA);
+        for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         using (Assert.EnterMultipleScope())
@@ -70,15 +70,18 @@ public class HistoryAvailabilityTests
     public void RootMatches_OnlyForTheCapturedRootOfAMarkerOfRootLength()
     {
         Span<byte> key = stackalloc byte[sizeof(ulong)];
-        BinaryPrimitives.WriteUInt64BigEndian(key, Block + 1);
+        BinaryPrimitives.WriteUInt64BigEndian(key, MarkedBlock + 1);
         AvailableBlocks.PutSpan(key, new byte[Hash256.Size + 1]);
+        BinaryPrimitives.WriteUInt64BigEndian(key, MarkedBlock + 3);
+        AvailableBlocks.PutSpan(key, new byte[Hash256.Size - 1]);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(_availability.RootMatches(Block, TestItem.KeccakA), Is.True);
-            Assert.That(_availability.RootMatches(Block, TestItem.KeccakB), Is.False, "another root");
-            Assert.That(_availability.RootMatches(Block + 1, Keccak.Zero), Is.False, "a marker of another length fails closed instead of throwing");
-            Assert.That(_availability.RootMatches(Block + 2, TestItem.KeccakA), Is.False, "no marker");
+            Assert.That(_availability.RootMatches(MarkedBlock, TestItem.KeccakA), Is.True);
+            Assert.That(_availability.RootMatches(MarkedBlock, TestItem.KeccakB), Is.False, "another root");
+            Assert.That(_availability.RootMatches(MarkedBlock + 1, Keccak.Zero), Is.False, "a marker longer than a root fails closed instead of throwing");
+            Assert.That(_availability.RootMatches(MarkedBlock + 2, TestItem.KeccakA), Is.False, "no marker");
+            Assert.That(_availability.RootMatches(MarkedBlock + 3, Keccak.Zero), Is.False, "a marker shorter than a root");
         }
     }
 }
