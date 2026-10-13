@@ -134,9 +134,8 @@ public class DeferredHeaderStoreTests
     /// block stays known; suggesting the block again must write the header. With a durable sibling at the same height the
     /// restarted tree's best suggested header reaches that height, and the block takes the already-known path.
     /// </summary>
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Resuggested_known_block_writes_the_header_a_crash_lost(bool durableSibling)
+    [Test]
+    public async Task Resuggested_known_block_writes_the_header_a_crash_lost([Values] bool durableSibling)
     {
         TestMemDb blocksDb = new(), headersDb = new(), blockNumbersDb = new(), blockInfosDb = new(), metadataDb = new();
         BlockTreeBuilder Builder(DeferredBlockDataWriter writer, StatePersistenceBarrier barrier) => Build.A.BlockTree()
