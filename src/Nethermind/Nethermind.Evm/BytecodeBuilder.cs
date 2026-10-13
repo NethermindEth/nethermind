@@ -116,6 +116,9 @@ namespace Nethermind.Evm
         public static Prepare EXTCODEHASH(this Prepare @this, Address? address = null)
             => @this.PushSingle(address)
                     .Op(Instruction.EXTCODEHASH);
+        public static Prepare SETCODEFROM(this Prepare @this, Address? source = null)
+            => @this.PushSingle(source)
+                    .Op(Instruction.SETCODEFROM);
         public static Prepare PUSHx(this Prepare @this, byte[] args)
             => @this.PushData(args);
         public static Prepare MLOAD(this Prepare @this, UInt256? pos = null)

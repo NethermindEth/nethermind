@@ -521,6 +521,17 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (atStart > account.MinimumBalance) account.MinimumBalance = atStart;
     }
 
+    public override UInt256 GetOriginalBalance(Address address)
+    {
+        UInt256 balance = base.GetOriginalBalance(address);
+        if (!_active) return balance;
+        // The run's first access to an account records its starting balance, which this read must match.
+        ref AccountPrecondition account = ref Require(address, AccountFields.Balance);
+        account.BalanceValueReads++;
+        if (account.Balance != balance) _opaque = true;
+        return balance;
+    }
+
     public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
     {
         base.GetOriginal(in storageCell, out value);
@@ -611,15 +622,29 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
-        if (_active)
-        {
-            ref StateEffect effect = ref AccountEffect(EffectKind.InsertCode, address);
-            effect.CodeHash = codeHash;
-            // Copied: the run's buffer may be reused.
-            effect.Code = code.ToArray();
-        }
-
+        if (_active) RecordCode(EffectKind.InsertCode, address, in codeHash, code);
         return base.InsertCode(address, in codeHash, code, spec, isGenesis);
+    }
+
+    /// <remarks>A replayed code effect goes through <see cref="InsertCode"/>, which would stage the code for the code database.</remarks>
+    public override void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        if (_active) _opaque = true;
+        base.InsertTransientCode(address, in codeHash, code, spec);
+    }
+
+    public override bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+    {
+        if (_active) RecordCode(EffectKind.AdoptCode, address, in codeHash, code);
+        return base.AdoptCode(address, in codeHash, code, spec);
+    }
+
+    private void RecordCode(EffectKind kind, Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
+    {
+        ref StateEffect effect = ref AccountEffect(kind, address);
+        effect.CodeHash = codeHash;
+        // Copied: the run's buffer may be reused.
+        effect.Code = code.ToArray();
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
