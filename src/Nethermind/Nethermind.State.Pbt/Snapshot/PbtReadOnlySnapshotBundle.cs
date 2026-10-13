@@ -17,6 +17,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
@@ -24,9 +25,10 @@ namespace Nethermind.State.Pbt.Snapshot;
 /// <param name="slotFilterBitsPerKey">Bits per key of the negative filter <see cref="RentRunFiltered"/> builds over the
 /// in-memory layers' slot runs; 0 never builds one.</param>
 public sealed class PbtReadOnlySnapshotBundle(
-    PbtSnapshotChain chain,
+    PbtSnapshotPooledList snapshots,
     IPbtPersistence.IReader reader,
     bool recordDetailedMetrics,
+    PbtPersistedSnapshotList persistedSnapshots,
     double slotFilterBitsPerKey) : RefCountingDisposable
 {
     private const int SlotFilterNotBuilt = 0;
@@ -62,14 +64,15 @@ public sealed class PbtReadOnlySnapshotBundle(
     // Negative filter over the run keys and cleared addresses of all in-memory layers, for RentRunFiltered. Built
     // lazily by the first filtered read, so bundles that only serve block processing never pay for it.
     private BloomFilter? _slotFilter;
-    private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, chain.Layers.Count(static layer => layer.Memory is not null));
+    private int _slotFilterState = InitialSlotFilterState(slotFilterBitsPerKey, snapshots.Count);
 
     private static int InitialSlotFilterState(double bitsPerKey, int memoryLayers) =>
         bitsPerKey > 0 && memoryLayers >= MinMemoryLayersForSlotFilter ? SlotFilterNotBuilt : SlotFilterSkipped;
 
-    private int LayerCount => chain.Layers.Count;
-    private PbtSnapshot? MemoryLayer(int index) => chain.Layers[index].Memory;
-    private PersistedSnapshots.PbtPersistedSnapshot? PersistedLayer(int index) => chain.Layers[index].Persisted;
+    // Layers are indexed oldest first: the persisted snapshots, then the in-memory ones.
+    private int LayerCount => persistedSnapshots.Count + snapshots.Count;
+    private PbtSnapshot? MemoryLayer(int index) => index >= persistedSnapshots.Count ? snapshots[index - persistedSnapshots.Count] : null;
+    private PbtPersistedSnapshot? PersistedLayer(int index) => index < persistedSnapshots.Count ? persistedSnapshots[index] : null;
 
     private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
         MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : PersistedLayer(index)!.TryGetAccount(address, out account);
@@ -86,7 +89,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
         else
         {
-            PersistedSnapshots.PbtPersistedSnapshot persisted = PersistedLayer(layer)!;
+            PbtPersistedSnapshot persisted = PersistedLayer(layer)!;
             if (persisted.TryGetSlotRun(key.Key, out PackedSlotRun? run))
             {
                 value = run!.Get(index);
@@ -108,7 +111,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
         else
         {
-            PersistedSnapshots.PbtPersistedSnapshot persisted = PersistedLayer(index)!;
+            PbtPersistedSnapshot persisted = PersistedLayer(index)!;
             if (persisted.TryGetSlotRun(key.Key, out run)) return true;
             if (persisted.TryGetStorageClear(address)) { run = SlotRun.Empty; return true; }
         }
@@ -122,7 +125,9 @@ public sealed class PbtReadOnlySnapshotBundle(
         get
         {
             GuardDispose();
-            return LayerCount > 0 ? chain.Layers[^1].TreeRoot : reader.CurrentRoot;
+            return snapshots.Count > 0 ? snapshots[^1].TreeRoot
+                : persistedSnapshots.Count > 0 ? persistedSnapshots[^1].TreeRoot
+                : reader.CurrentRoot;
         }
     }
 
@@ -339,7 +344,8 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             // Before the layers, whose keys the filter was built from.
             ReleaseSlotFilter();
-            chain.Dispose();
+            snapshots.Dispose();
+            persistedSnapshots.Dispose();
         }
         finally
         {

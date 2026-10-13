@@ -18,6 +18,7 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
 using NUnit.Framework;
@@ -169,7 +170,7 @@ public class PbtMetricsTests
         }
         IPbtResourcePool pool = Substitute.For<IPbtResourcePool>();
         using PbtSnapshotContent emptyContent = new();
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.ReadChain(pool, content, emptyContent), reader, detailedMetrics, slotFilterBitsPerKey: 0);
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content, emptyContent), reader, detailedMetrics, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         UInt256 actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);

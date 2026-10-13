@@ -92,7 +92,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         }
         if (_config.EnableLongFinality && _repository.Count > _config.MaxInMemoryBaseSnapshotCount)
         {
-            StateId[] ordered = _repository.GetInMemoryStates();
+            using ArrayPoolList<StateId> ordered = _repository.GetInMemoryStates();
             foreach (StateId state in ordered)
             {
                 if (!_repository.TryLeaseMemoryState(state, SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted)) continue;
@@ -157,7 +157,7 @@ public class PbtPersistenceManager(IPbtConfig config, IStateHeaderProvider final
         try
         {
             StateId persisted = GetCurrentPersistedStateId();
-            StateId[] states = range ? _repository.GetInMemoryStates() : [candidate.To];
+            using ArrayPoolList<StateId> states = range ? _repository.GetInMemoryStates() : new(1) { candidate.To };
             foreach (StateId state in states)
             {
                 _shutdown.ThrowIfCancellationRequested();

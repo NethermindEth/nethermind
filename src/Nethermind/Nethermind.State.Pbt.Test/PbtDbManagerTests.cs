@@ -66,8 +66,8 @@ public class PbtDbManagerTests
                     Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
                     Assert.That(loader.ConvertAndRegister(snapshot), Is.True);
                     Assert.That(repository.Count, Is.EqualTo(1));
-                    using (PbtReadOnlySnapshotBundle held = new(repository.TryLeaseReadChain(state, StateId.PreGenesis)!,
-                        container.Resolve<IPbtPersistence>().CreateReader(), false, slotFilterBitsPerKey: 0))
+                    using (PbtReadOnlySnapshotBundle held = PbtSnapshotBundleTestExtensions.ReadOnlyBundle(repository.TryLeaseReadChain(state, StateId.PreGenesis),
+                        container.Resolve<IPbtPersistence>().CreateReader(), slotFilterBitsPerKey: 0))
                     {
                         repository.RemoveMemoryState(state);
                         Assert.That(held.GetCode(TestItem.KeccakC.ValueHash256)!.CodeSpan.Length, Is.EqualTo(65537));
@@ -90,8 +90,8 @@ public class PbtDbManagerTests
                 reopened.Resolve<IPbtDbManager>();
                 PbtSnapshotRepository repository = reopened.Resolve<PbtSnapshotRepository>();
                 Assert.That(repository.HasState(state), Is.True);
-                using PbtSnapshotChain chain = repository.TryLeaseReadChain(state, StateId.PreGenesis)!;
-                PbtPersistedSnapshot persisted = chain.Layers[0].Persisted!;
+                using PbtAssembledSnapshotResult assembled = repository.TryLeaseReadChain(state, StateId.PreGenesis);
+                PbtPersistedSnapshot persisted = assembled.Persisted[0];
                 Assert.That(persisted.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
                 Assert.That(persisted.TryGetCode(TestItem.KeccakC.ValueHash256, out CodeInfo? code), Is.True);
                 Assert.That(code!.CodeSpan.ToArray(), Is.EqualTo(new byte[65537]));
@@ -1054,7 +1054,8 @@ public class PbtDbManagerTests
         {
             Assert.That(converted, Is.EquivalentTo(new[] { PersistenceState(1), PersistenceState(2), PersistenceState(3), PersistenceState(4), fork1, fork2 }));
             Assert.That(compactor.Enqueued, Is.EquivalentTo(converted));
-            Assert.That(harness.Repository.GetInMemoryStates(), Is.EqualTo(new[] { orphan }));
+            using ArrayPoolList<StateId> inMemoryStates = harness.Repository.GetInMemoryStates();
+            Assert.That(inMemoryStates, Is.EqualTo(new[] { orphan }));
             Assert.That(persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
         }
         harness.Repository.Dispose();

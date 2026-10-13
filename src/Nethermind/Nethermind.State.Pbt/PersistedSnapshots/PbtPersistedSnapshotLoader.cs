@@ -179,11 +179,9 @@ public sealed class PbtPersistedSnapshotLoader(
         foreach (CatalogEntry entry in entries)
             if ((long)entry.From.BlockNumber < (long)floor.BlockNumber) floor = entry.From;
         if (head == floor) return;
-        using PbtSnapshotChain? chain = repository.TryLeaseReadChain(head, floor);
-        if (chain is null) return;
-        foreach (PbtSnapshotLease layer in chain.Layers)
+        using PbtAssembledSnapshotResult assembled = repository.TryLeaseReadChain(head, floor);
+        foreach (PbtPersistedSnapshot snapshot in assembled.Persisted)
         {
-            PbtPersistedSnapshot snapshot = layer.Persisted!;
             using RefCountedBloomFilter rebuilt = RebuildBloom(snapshot);
             using PbtPersistedSnapshot replacement = snapshot.WithBloom(rebuilt);
             if (repository.ReplacePersistedSnapshot(snapshot, replacement))

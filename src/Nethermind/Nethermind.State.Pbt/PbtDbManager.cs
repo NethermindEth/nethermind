@@ -91,7 +91,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
-        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotChain([]), EmptyPersistenceReader.Instance, _recordDetailedMetrics, slotFilterBitsPerKey: 0);
+        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0);
         long started = 0;
         int attempt = 0;
         while (true)
@@ -105,11 +105,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 Thread.Sleep(Math.Min(1 << Math.Min(attempt, 30), 100));
             }
             IPbtPersistence.IReader reader = _persistence.CreateReader();
-            PbtSnapshotChain? chain;
-            try { chain = _repository.TryLeaseReadChain(stateId, reader.CurrentState); }
+            PbtAssembledSnapshotResult assembled;
+            try { assembled = _repository.TryLeaseReadChain(stateId, reader.CurrentState); }
             catch { reader.Dispose(); throw; }
-            if (chain is null)
+            // Empty with the reader elsewhere means no path reached the reader's state.
+            if (assembled.SnapshotCount == 0 && reader.CurrentState != stateId)
             {
+                assembled.Dispose();
                 reader.Dispose();
                 if (!HasStateForBlock(stateId)) throw new StateNotRetainedException($"No state available for block {stateId.BlockNumber} with state root {stateId.StateRoot}");
                 attempt++;
@@ -118,13 +120,15 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             PbtReadOnlySnapshotBundle bundle;
             try
             {
-                Metrics.PbtSnapshotBundleSize = chain.Layers.Count;
-                Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(chain.Layers.Count > 0
-                    ? chain.Layers[^1].To.BlockNumber - chain.Layers[0].From.BlockNumber : 0);
+                Metrics.PbtSnapshotBundleSize = assembled.SnapshotCount;
+                // The tiers are contiguous, so the chain spans the sum of their spans.
+                Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(
+                    (assembled.InMemory.Count > 0 ? assembled.InMemory[^1].To.BlockNumber - assembled.InMemory[0].From.BlockNumber : 0)
+                    + (assembled.Persisted.Count > 0 ? assembled.Persisted[^1].To.BlockNumber - assembled.Persisted[0].From.BlockNumber : 0));
                 // Nothing is built here: the first filtered read builds the filter.
-                bundle = new(chain, reader, _recordDetailedMetrics, _inMemorySlotFilterBitsPerKey);
+                bundle = new(assembled.InMemory, reader, _recordDetailedMetrics, assembled.Persisted, _inMemorySlotFilterBitsPerKey);
             }
-            catch { chain.Dispose(); reader.Dispose(); throw; }
+            catch { assembled.Dispose(); reader.Dispose(); throw; }
             bundle.TryLease();
             if (!_readOnlyBundleCache.TryAdd(stateId, bundle)) bundle.Dispose();
             return bundle;

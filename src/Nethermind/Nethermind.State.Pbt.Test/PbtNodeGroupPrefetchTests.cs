@@ -19,6 +19,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Snapshot;
 using NSubstitute;
@@ -198,7 +199,7 @@ public class PbtNodeGroupPrefetchTests
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetNodeGroup(paths[0], payload);
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, new PbtPersistedSnapshotList(0), slotFilterBitsPerKey: 0),
             pool, PbtResourcePool.Usage.MainBlockProcessing, filterInMemorySlotReads: false))
         {
             InterfaceLogger logger = ErrorLogger();

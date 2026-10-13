@@ -21,10 +21,9 @@ public sealed class PbtSnapshotLease : IDisposable
     public StateId From => Memory?.From ?? Persisted!.From;
     public StateId To => Memory?.To ?? Persisted!.To;
     public ValueHash256 TreeRoot => Memory?.TreeRoot ?? Persisted!.TreeRoot;
-    public SnapshotTier Tier { get; }
 
-    public PbtSnapshotLease(PbtSnapshot snapshot, SnapshotTier tier) => (Memory, Tier) = (snapshot, tier);
-    public PbtSnapshotLease(PbtPersistedSnapshot snapshot) => (Persisted, Tier) = (snapshot, snapshot.Tier);
+    public PbtSnapshotLease(PbtSnapshot snapshot) => Memory = snapshot;
+    public PbtSnapshotLease(PbtPersistedSnapshot snapshot) => Persisted = snapshot;
 
     public PbtSnapshotLease Lease()
     {
@@ -32,7 +31,7 @@ public sealed class PbtSnapshotLease : IDisposable
         if (Memory is { } memory)
         {
             if (!memory.TryLease()) throw new ObjectDisposedException(nameof(memory));
-            return new(memory, Tier);
+            return new(memory);
         }
         if (!Persisted!.TryLease()) throw new ObjectDisposedException(nameof(Persisted));
         return new(Persisted);
@@ -43,17 +42,5 @@ public sealed class PbtSnapshotLease : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Memory?.Dispose();
         Persisted?.Dispose();
-    }
-}
-
-public sealed class PbtSnapshotChain(List<PbtSnapshotLease> layers) : IDisposable
-{
-    private List<PbtSnapshotLease>? _layers = layers;
-    public IReadOnlyList<PbtSnapshotLease> Layers => _layers ?? throw new ObjectDisposedException(nameof(PbtSnapshotChain));
-    public void Dispose()
-    {
-        List<PbtSnapshotLease>? layers = Interlocked.Exchange(ref _layers, null);
-        if (layers is null) return;
-        foreach (PbtSnapshotLease layer in layers) layer.Dispose();
     }
 }

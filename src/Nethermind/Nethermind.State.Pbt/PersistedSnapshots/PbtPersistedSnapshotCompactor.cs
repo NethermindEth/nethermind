@@ -185,14 +185,13 @@ public sealed class PbtPersistedSnapshotCompactor(
     private bool CompactRange(StateId target, ulong floor, bool isCompactSized)
     {
         _shutdown.ThrowIfCancellationRequested();
-        using PbtSnapshotChain? chain = repository.TryLeasePersistedChain(target, floor);
-        if (chain is null || chain.Layers.Count < 2) return false;
-        using ArrayPoolList<PbtPersistedSnapshot> sources = new(chain.Layers.Count);
+        using PbtAssembledSnapshotResult assembled = repository.TryLeasePersistedChain(target, floor);
+        if (assembled.Persisted.Count < 2) return false;
+        using ArrayPoolList<PbtPersistedSnapshot> sources = new(assembled.Persisted.Count);
         long estimatedSize = 16384, bloomCapacity = 0;
         HashSet<RefCountedBloomFilter> counted = [];
-        foreach (PbtSnapshotLease layer in chain.Layers)
+        foreach (PbtPersistedSnapshot snapshot in assembled.Persisted)
         {
-            PbtPersistedSnapshot snapshot = layer.Persisted!;
             sources.Add(snapshot);
             estimatedSize = checked(estimatedSize + snapshot.Size);
             if (counted.Add(snapshot.BloomRef)) bloomCapacity = checked(bloomCapacity + snapshot.BloomRef.Filter.Count);
