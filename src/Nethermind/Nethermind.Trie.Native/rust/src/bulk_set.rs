@@ -33,6 +33,7 @@ pub const EMPTY_TREE_HASH: [u8; 32] = [
 
 thread_local! {
     static BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(1024));
+    static TRAVERSE_STACK: RefCell<Vec<Frame>> = RefCell::new(Vec::with_capacity(64));
 }
 
 /// Applies `entries` to the trie whose root is stored at the empty path, writing every new node referenced by hash
@@ -88,6 +89,20 @@ struct ChildUpdate {
     /// load it again.
     node: Option<Node>,
     changed: bool,
+}
+
+/// A level `set_one` walked through, holding the node with the child it walked into taken out.
+enum Frame {
+    Branch {
+        children: Box<[ChildRef; 16]>,
+        child_nibble: u8,
+        /// The child's reference when it was not pending, restored if nothing below changed.
+        original: Option<ChildRef>,
+    },
+    Extension {
+        key: Nibbles,
+        original: ChildRef,
+    },
 }
 
 /// A node being committed; `children[slot]` is the index of the pending node that becomes its child `slot`.
@@ -211,136 +226,172 @@ impl<S: NodeStore> Context<'_, S> {
         Ok((result, true))
     }
 
-    /// Applies a single entry to the `node` at `path`, like `PatriciaTree.BulkSetOne`.
+    /// Applies a single entry to the `node` at `path`, like `PatriciaTree.SetNew`: walks down to where the entry
+    /// lands, pushing every level it passes, then pops them to rebuild the path back up.
     fn set_one(
         &self,
         entry: &Entry,
         path: &mut TreePath,
         node: Option<Node>,
     ) -> Result<(Option<Node>, bool), Error> {
-        let depth = path.depth();
-        let value = self.value(entry);
-        let Some(node) = node else {
-            return Ok(match value {
-                [] => (None, false),
-                _ => (
+        TRAVERSE_STACK.with_borrow_mut(|stack| {
+            stack.clear();
+            let value = self.value(entry);
+            let mut node = node;
+            let (mut result, changed) = loop {
+                let depth = path.depth();
+                match node {
+                    None => {
+                        break match value {
+                            [] => (None, false),
+                            _ => (
+                                Some(Node::Leaf {
+                                    key: Nibbles::from_key(&entry.key, depth, 64 - depth),
+                                    value: value.to_vec(),
+                                }),
+                                true,
+                            ),
+                        }
+                    }
+                    Some(Node::Branch { mut children }) => {
+                        let child_nibble = nibble(&entry.key, depth);
+                        let existing = std::mem::take(&mut children[child_nibble as usize]);
+                        let original = match &existing {
+                            ChildRef::Pending(_) => None,
+                            reference => Some(reference.clone()),
+                        };
+                        path.push(child_nibble);
+                        node = self.load(path, existing)?;
+                        stack.push(Frame::Branch {
+                            children,
+                            child_nibble,
+                            original,
+                        });
+                    }
                     Some(Node::Leaf {
-                        key: Nibbles::from_key(&entry.key, depth, 64 - depth),
-                        value: value.to_vec(),
-                    }),
-                    true,
-                ),
-            });
-        };
+                        key,
+                        value: old_value,
+                    }) => {
+                        let matched = matched_length(key.as_slice(), &entry.key, depth);
+                        if matched == key.len() {
+                            break match value {
+                                [] => (None, true),
+                                _ if value == old_value.as_slice() => (
+                                    Some(Node::Leaf {
+                                        key,
+                                        value: old_value,
+                                    }),
+                                    false,
+                                ),
+                                _ => (
+                                    Some(Node::Leaf {
+                                        key,
+                                        value: value.to_vec(),
+                                    }),
+                                    true,
+                                ),
+                            };
+                        }
+                        if value.is_empty() {
+                            break (
+                                Some(Node::Leaf {
+                                    key,
+                                    value: old_value,
+                                }),
+                                false,
+                            );
+                        }
 
-        match node {
-            Node::Branch { mut children } => {
-                let child_nibble = nibble(&entry.key, depth);
-                let existing = std::mem::take(&mut children[child_nibble as usize]);
-                path.push(child_nibble);
-                let update = self.update_child(path, existing, false, |path, node| {
-                    self.set_one(entry, path, node)
-                })?;
-                path.truncate(depth);
-
-                let removed = update.changed && matches!(update.reference, ChildRef::Empty);
-                children[child_nibble as usize] = update.reference;
-                if removed {
-                    let mut resolved_nodes = Default::default();
-                    return Ok((
-                        self.maybe_combine(children, path, &mut resolved_nodes)?,
-                        true,
-                    ));
-                }
-                Ok((Some(Node::Branch { children }), update.changed))
-            }
-            Node::Leaf {
-                key,
-                value: old_value,
-            } => {
-                let matched = matched_length(key.as_slice(), &entry.key, depth);
-                if matched == key.len() {
-                    return Ok(match value {
-                        [] => (None, true),
-                        _ if value == old_value.as_slice() => (
-                            Some(Node::Leaf {
-                                key,
-                                value: old_value,
-                            }),
-                            false,
-                        ),
-                        _ => (
-                            Some(Node::Leaf {
-                                key,
-                                value: value.to_vec(),
-                            }),
-                            true,
-                        ),
-                    });
-                }
-                if value.is_empty() {
-                    return Ok((
-                        Some(Node::Leaf {
-                            key,
+                        let existing = ChildRef::Pending(Box::new(Node::Leaf {
+                            key: Nibbles::from_slice(&key.as_slice()[matched + 1..]),
                             value: old_value,
-                        }),
-                        false,
-                    ));
-                }
+                        }));
+                        break (
+                            Some(diverging_branch(
+                                entry,
+                                depth,
+                                matched,
+                                key.as_slice()[matched],
+                                existing,
+                                value,
+                            )),
+                            true,
+                        );
+                    }
+                    Some(Node::Extension { key, child }) => {
+                        let matched = matched_length(key.as_slice(), &entry.key, depth);
+                        if matched == key.len() {
+                            path.push_all(key.as_slice());
+                            node = self.load(path, child.clone())?;
+                            stack.push(Frame::Extension {
+                                key,
+                                original: child,
+                            });
+                            continue;
+                        }
+                        if value.is_empty() {
+                            break (Some(Node::Extension { key, child }), false);
+                        }
 
-                let existing = ChildRef::Pending(Box::new(Node::Leaf {
-                    key: Nibbles::from_slice(&key.as_slice()[matched + 1..]),
-                    value: old_value,
-                }));
-                Ok((
-                    Some(diverging_branch(
-                        entry,
-                        depth,
-                        matched,
-                        key.as_slice()[matched],
-                        existing,
-                        value,
-                    )),
-                    true,
-                ))
-            }
-            Node::Extension { key, child } => {
-                let matched = matched_length(key.as_slice(), &entry.key, depth);
-                if matched == key.len() {
-                    path.push_all(key.as_slice());
-                    let child_node = self.load(path, child.clone())?;
-                    let (result, changed) = self.set_one(entry, path, child_node)?;
-                    path.truncate(depth);
-                    return Ok(match changed {
-                        false => (Some(Node::Extension { key, child }), false),
-                        true => (result.map(|node| prepend(key.as_slice(), node)), true),
-                    });
+                        let rest = &key.as_slice()[matched + 1..];
+                        let existing = match rest {
+                            [] => child,
+                            _ => ChildRef::Pending(Box::new(Node::Extension {
+                                key: Nibbles::from_slice(rest),
+                                child,
+                            })),
+                        };
+                        break (
+                            Some(diverging_branch(
+                                entry,
+                                depth,
+                                matched,
+                                key.as_slice()[matched],
+                                existing,
+                                value,
+                            )),
+                            true,
+                        );
+                    }
                 }
-                if value.is_empty() {
-                    return Ok((Some(Node::Extension { key, child }), false));
-                }
+            };
 
-                let rest = &key.as_slice()[matched + 1..];
-                let existing = match rest {
-                    [] => child,
-                    _ => ChildRef::Pending(Box::new(Node::Extension {
-                        key: Nibbles::from_slice(rest),
-                        child,
-                    })),
-                };
-                Ok((
-                    Some(diverging_branch(
-                        entry,
-                        depth,
-                        matched,
-                        key.as_slice()[matched],
-                        existing,
-                        value,
-                    )),
-                    true,
-                ))
+            while let Some(frame) = stack.pop() {
+                match frame {
+                    Frame::Extension { key, original } => {
+                        path.truncate(path.depth() - key.len());
+                        result = match changed {
+                            false => Some(Node::Extension {
+                                key,
+                                child: original,
+                            }),
+                            true => result.map(|node| prepend(key.as_slice(), node)),
+                        };
+                    }
+                    Frame::Branch {
+                        mut children,
+                        child_nibble,
+                        original,
+                    } => {
+                        path.truncate(path.depth() - 1);
+                        let removed = changed && result.is_none();
+                        children[child_nibble as usize] = match (original, result.take()) {
+                            (Some(reference), _) if !changed => reference,
+                            (_, Some(node)) => ChildRef::Pending(Box::new(node)),
+                            (_, None) => ChildRef::Empty,
+                        };
+                        result = match removed {
+                            true => {
+                                let mut resolved_nodes = Default::default();
+                                self.maybe_combine(children, path, &mut resolved_nodes)?
+                            }
+                            false => Some(Node::Branch { children }),
+                        };
+                    }
+                }
             }
-        }
+            Ok((result, changed))
+        })
     }
 
     /// Loads the child at `path` that `existing` refers to and applies `update` to it. A changed child is committed
