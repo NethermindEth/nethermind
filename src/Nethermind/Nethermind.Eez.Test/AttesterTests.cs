@@ -311,7 +311,7 @@ public class AttesterTests
     }
 
     /// <summary>The window as the composer streams it: the header, then each block with its witness.</summary>
-    private static List<ProveChunk> Window(string fixture, int from, int to)
+    internal static List<ProveChunk> Window(string fixture, int from, int to)
     {
         JsonElement oracle = StatelessFixtures.ReadJson(fixture, "oracle.json");
         List<ProveChunk> chunks =

@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Eez.Prove;
@@ -223,7 +225,19 @@ internal sealed class StreamingSession
         }
     }
 
-    internal ServerFrame CompleteProof(SessionOperation operation, Proof proof)
+    internal Proof SignCurrent(SessionOperation operation, EezAttestationSigner signer, ValueHash256 publicInputs, CancellationToken cancellation)
+    {
+        lock (_lock)
+        {
+            CheckOperation(operation);
+            cancellation.ThrowIfCancellationRequested();
+            return new Proof { PublicInputsHash = ByteString.CopyFrom(publicInputs.Bytes), Proof_ = ByteString.CopyFrom(signer.Sign(publicInputs)) };
+        }
+    }
+
+    internal ServerFrame CompleteProof(SessionOperation operation, Proof proof) => CompleteProofAndFence(operation, proof).Response;
+
+    internal (ServerFrame Response, Task Revoked) CompleteProofAndFence(SessionOperation operation, Proof proof)
     {
         lock (_lock)
         {
@@ -238,7 +252,7 @@ internal sealed class StreamingSession
             for (int i = 0; i < first; i++) Release(_blocks[i]);
             _blocks.RemoveRange(0, first);
             operation.Completed = true;
-            return response;
+            return (response, _revoked.Task);
         }
     }
 

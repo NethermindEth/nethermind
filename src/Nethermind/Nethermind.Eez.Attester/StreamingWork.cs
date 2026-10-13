@@ -13,14 +13,14 @@ internal sealed class StreamingWork : IDisposable
     private readonly BackendAdmission.BackendLease _slot;
     private readonly CancellationTokenSource _cancellation;
     private readonly CancellationTokenSource _deadline;
-    private readonly Task<ExecutedStreamingBlock> _worker;
+    private readonly Task<StreamingResult> _worker;
     private int _disposed;
 
     internal SessionOperation Operation { get; }
-    internal Task<ExecutedStreamingBlock> Response { get; }
+    internal Task<StreamingResult> Response { get; }
 
     internal StreamingWork(StreamingConnection connection, SessionOperation operation, BackendAdmission.BackendLease slot,
-        Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute, TimeSpan timeout, TimeProvider time, CancellationToken cancellation)
+        Func<SessionOperation, CancellationToken, Task<StreamingResult>> execute, TimeSpan timeout, TimeProvider time, CancellationToken cancellation)
     {
         _connection = connection;
         Operation = operation;
@@ -28,7 +28,7 @@ internal sealed class StreamingWork : IDisposable
         _deadline = new CancellationTokenSource(timeout, time);
         _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _deadline.Token);
         try { _worker = execute(operation, _cancellation.Token); }
-        catch (Exception exception) { _worker = Task.FromException<ExecutedStreamingBlock>(exception); }
+        catch (Exception exception) { _worker = Task.FromException<StreamingResult>(exception); }
         Response = _worker.WaitAsync(_cancellation.Token);
     }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using Nethermind.Eez.Prove.V2;
@@ -15,6 +16,7 @@ internal sealed class StreamingTransport
     private readonly StreamingSessionRegistry _registry;
     private readonly BackendAdmission _admission;
     private readonly Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> _execute;
+    private readonly Func<SessionOperation, CancellationToken, Task<Proof>>? _finalize;
     private readonly StreamingTransportLimits _limits;
     private readonly ILogger<StreamingTransport> _logger;
     private readonly ulong _rollupId;
@@ -22,20 +24,23 @@ internal sealed class StreamingTransport
     private int _connections;
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission, StreamingBlockExecutor executor,
-        StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null)
+        StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
         : this(registry, admission, (operation, cancellation) => Task.Run(() => executor.Execute(operation, cancellation), CancellationToken.None),
-            limits, rollupId, logger, time)
+            limits, rollupId, logger, time, finalize)
     { }
 
     internal StreamingTransport(StreamingSessionRegistry registry, BackendAdmission admission,
         Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute,
-        StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null)
+        StreamingTransportLimits limits, ulong rollupId, ILogger<StreamingTransport> logger, TimeProvider? time = null,
+        Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null)
     {
         limits.Validate();
         if (rollupId == 0) throw new ArgumentOutOfRangeException(nameof(rollupId));
         _registry = registry;
         _admission = admission;
         _execute = execute;
+        _finalize = finalize;
         _limits = limits;
         _rollupId = rollupId;
         _logger = logger;
@@ -78,8 +83,9 @@ internal sealed class StreamingTransport
                         ServerFrame response = await Complete(connection, work, closed.Token).ConfigureAwait(false);
                         work.Dispose();
                         work = null;
-                        await Write(connection, output, response, closed.Token).ConfigureAwait(false);
-                        if (inputClosed) return;
+                        bool terminal = response.Proof is not null;
+                        await Write(connection, output, response, closed.Token, terminal).ConfigureAwait(false);
+                        if (terminal || inputClosed) return;
                         continue;
                     }
                 }
@@ -108,7 +114,7 @@ internal sealed class StreamingTransport
                 }
                 else if (dispatch.Operation is { } operation)
                 {
-                    if (operation.Finalize is not null)
+                    if (operation.Finalize is not null && _finalize is null)
                     {
                         ServerFrame rejected = RejectUnstarted(connection, operation, new Status(StatusCode.Unimplemented, "settlement authorization unavailable"));
                         await Write(connection, output, rejected, closed.Token).ConfigureAwait(false);
@@ -120,7 +126,7 @@ internal sealed class StreamingTransport
                     }
                     else
                     {
-                        work = new StreamingWork(connection, operation, slot, _execute, _limits.OperationTimeout, _time, closed.Token);
+                        work = new StreamingWork(connection, operation, slot, Execute, _limits.OperationTimeout, _time, closed.Token);
                     }
                 }
 
@@ -149,22 +155,33 @@ internal sealed class StreamingTransport
         finally { connection.FinishOperation(operation); }
     }
 
+    private async Task<StreamingResult> Execute(SessionOperation operation, CancellationToken cancellation) =>
+        operation.Finalize is null
+            ? new StreamingResult(await _execute(operation, cancellation).ConfigureAwait(false), null)
+            : new StreamingResult(null, await _finalize!(operation, cancellation).ConfigureAwait(false));
+
     private async Task<ServerFrame> Complete(StreamingConnection connection, StreamingWork work, CancellationToken cancellation)
     {
         try
         {
-            ExecutedStreamingBlock executed = await work.Response.ConfigureAwait(false);
+            StreamingResult result = await work.Response.ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
             work.CheckCancellation();
-            return connection.CommitBlock(work.Operation, executed);
+            return result switch
+            {
+                { Block: { } block, Proof: null } => connection.CommitBlock(work.Operation, block),
+                { Block: null, Proof: { } proof } => connection.CompleteProof(work.Operation, proof),
+                _ => throw new InvalidOperationException("invalid streaming backend result"),
+            };
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested && work.DeadlineExceeded)
         {
             return connection.RejectOperation(work.Operation, new Status(StatusCode.DeadlineExceeded, "stream operation deadline exceeded"));
         }
-        catch (RpcException exception) when (exception.StatusCode != StatusCode.Aborted)
+        catch (RpcException exception)
         {
-            return connection.RejectOperation(work.Operation, exception.Status);
+            return connection.RejectOperation(work.Operation, exception.Status,
+                exception.Trailers.GetValueBytes("grpc-status-details-bin") is { } details ? ByteString.CopyFrom(details) : null);
         }
         catch (Exception exception) when (exception is not RpcException and not OperationCanceledException)
         {
@@ -188,7 +205,8 @@ internal sealed class StreamingTransport
         ServerFrame response, CancellationToken cancellation, bool terminal = false)
     {
         if (!terminal) connection.CheckResponse(response);
-        Task? revoked = terminal ? null : connection.AttachmentRevoked;
+        Task? revoked = response.Proof is not null ? connection.ProofRevoked : terminal ? null : connection.AttachmentRevoked;
+        if (revoked?.IsCompleted == true) throw Error(StatusCode.Aborted, "session attachment no longer current");
         using CancellationTokenSource timeout = new(_limits.WriteTimeout, _time);
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token);
         Task write = output.WriteAsync(response, deadline.Token);

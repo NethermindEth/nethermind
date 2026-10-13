@@ -260,6 +260,131 @@ public class StreamingTransportTests
     }
 
     [Test]
+    public async Task Run_FinalizeWithBackend_ReturnsTerminalProof()
+    {
+        _worker.SetResult(Executed());
+        int finalizations = 0;
+        _transport = Transport(Execute, finalize: (_, _) => { finalizations++; return Task.FromResult(TestProof()); });
+        _input.Add(BlockFrame);
+        _input.Add(FinalizeFrame);
+        _input.Add(() => Bound(4, new Cancel()));
+        await Run();
+        Assert.That((finalizations, _output.Frames[^1].RequestId, _output.Frames[^1].Proof, _input.Reads),
+            Is.EqualTo((1, 3UL, TestProof(), 4)), "Proof is correlated and terminal");
+        await _admission.WaitUntilIdle();
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "proof completion retains the reusable validated prefix");
+    }
+
+    [TestCase("Cancel", TestName = "Run_CancelDuringProof_FencesResponseUntilDrain")]
+    [TestCase("Rewind", TestName = "Run_RewindDuringProof_FencesResponseUntilDrain")]
+    [TestCase("Resume", TestName = "Run_ResumeDuringProof_FencesResponseUntilDrain")]
+    public async Task Run_ControlChangeDuringProof_PreventsLateResponse(string control)
+    {
+        _worker.SetResult(Executed());
+        TaskCompletionSource<Proof> proof = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _transport = Transport(Execute, finalize: (_, _) => proof.Task);
+        _input.Add(BlockFrame);
+        _input.Add(FinalizeFrame);
+        _input.Add(() => control switch
+        {
+            "Cancel" => Bound(4, new Cancel()),
+            "Rewind" => Bound(4, new Rewind { AncestorHash = Hash(1) }),
+            _ => ResumeAndClose(),
+        });
+        Task stream = Run();
+        if (control == "Resume") await Assert.ThrowsAsync<RpcException>(() => stream);
+        else await stream;
+        Assert.That(_admission.TryAcquire(), Is.Null, "an unfinished proof worker owns the shared slot after the control response");
+        proof.SetResult(TestProof());
+        await _admission.WaitUntilIdle();
+        Assert.That(_output.Frames.Exists(static frame => frame.Proof is not null), Is.False, "a stale proof must never reach the writer");
+    }
+
+    [TestCase(false, TestName = "Run_ResumeDuringBlockedProofWrite_FencesOldResponse")]
+    [TestCase(true, TestName = "Run_ResumeThenCancelDuringBlockedProofWrite_FencesOldResponse")]
+    public async Task Run_ControlChangeDuringTerminalProofWrite_CancelsOldWrite(bool cancel)
+    {
+        _worker.SetResult(Executed());
+        _transport = Transport(Execute, finalize: (_, _) => Task.FromResult(TestProof()));
+        _input.Add(BlockFrame);
+        _input.Add(FinalizeFrame);
+        TaskCompletionSource writable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _output.OnWrite = frame =>
+        {
+            if (frame.Proof is null) return Task.CompletedTask;
+            blocked.SetResult();
+            return writable.Task;
+        };
+        Task stream = Run();
+        await blocked.Task;
+        StreamingConnection newer = new(_registry, "composer", 1);
+        ServerFrame ready = newer.Dispatch(new ClientFrame { SessionId = _output.Frames[0].SessionId, Resume = new Resume() }).Response!;
+        Assert.That(ready.Ready.ValidatedThrough, Is.EqualTo(11), "the new authenticated attachment accepts the retained proof prefix");
+        if (cancel)
+        {
+            ServerFrame cancelled = newer.Dispatch(new ClientFrame { SessionId = ready.SessionId, Epoch = ready.Epoch, Cancel = new Cancel() }).Response!;
+            Assert.That(cancelled.Cancelled, Is.Not.Null, "Cancel is accepted before the old proof writer resumes");
+        }
+        RpcException exception = (await Assert.ThrowsAsync<RpcException>(() => stream))!;
+        writable.SetResult();
+        await _admission.WaitUntilIdle();
+        Assert.That((exception.StatusCode, _output.Frames.Exists(static frame => frame.Proof is not null)), Is.EqualTo((StatusCode.Aborted, false)),
+            "a completed but unsent proof is fenced by later controls before their response is accepted");
+    }
+
+    [Test]
+    public async Task Run_ProofDeadlineExpires_PreservesPrefixAndRetainsSlotUntilDrain()
+    {
+        ManualTime time = new();
+        TaskCompletionSource<Proof> proof = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _worker.SetResult(Executed());
+        _transport = Transport(Execute, new StreamingTransportLimits(2, 1000, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(1)), time,
+            (_, _) => { started.SetResult(); return proof.Task; });
+        _input.Add(BlockFrame);
+        _input.Add(FinalizeFrame);
+        TaskCompletionSource<ClientFrame?> next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _input.AddAsync(() => next.Task);
+        _output.OnWrite = frame => { if (frame.Rejected is not null) next.SetResult(null); return Task.CompletedTask; };
+        Task stream = Run();
+        await started.Task;
+        time.Advance(TimeSpan.FromMinutes(1));
+        await stream;
+        Assert.That((_output.Frames[^1].Rejected.Code, _admission.TryAcquire()), Is.EqualTo(((int)StatusCode.DeadlineExceeded, (BackendAdmission.BackendLease?)null)),
+            "response deadlines retain ownership of real proof execution");
+        proof.SetResult(TestProof());
+        await _admission.WaitUntilIdle();
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "failed finalization preserves execution progress");
+    }
+
+    [Test]
+    public async Task Run_SettlementRejection_CarriesActionableDetailsAndAllowsRetry()
+    {
+        _worker.SetResult(Executed());
+        int attempts = 0;
+        ByteString details = ByteString.CopyFrom(new ProveFailure { Inbound = new InboundFailure { EntryIndex = 2, EntryHash = Hash(20) } }.ToByteArray());
+        _transport = Transport(Execute, finalize: (_, _) => ++attempts == 1
+            ? Task.FromException<Proof>(AttestationPipeline.Failure(StatusCode.FailedPrecondition, "settlement validation rejected", ProveFailure.Parser.ParseFrom(details)))
+            : Task.FromResult(TestProof()));
+        _input.Add(BlockFrame);
+        _input.Add(FinalizeFrame);
+        _input.Add(FinalizeFrame);
+        await Run();
+        Assert.That((_output.Frames[2].Rejected.Details, _output.Frames[^1].Proof, attempts), Is.EqualTo((details, TestProof(), 2)),
+            "the exact actionable failure survives v2 and the same validated range can retry");
+    }
+
+    private ClientFrame? ResumeAndClose() { Resume(); return null; }
+
+    private ClientFrame FinalizeFrame() => Bound(3, new Finalize
+    {
+        FromBlock = 11, ToBlock = 11, TerminalHash = Hash(11), Settlement = new SettlementInput { AbiCalldata = Hash(90) },
+    });
+
+    private static Proof TestProof() => new() { PublicInputsHash = Hash(80), Proof_ = ByteString.CopyFrom(new byte[65]) };
+
+    [Test]
     public async Task Run_UnknownOperation_IsCorrelatedAndStreamRemainsUsable()
     {
         _input.Add(() => Bound(3, null));
@@ -421,9 +546,9 @@ public class StreamingTransportTests
 
     private Task Run() => _transport.Run(_input, _output, "composer", CancellationToken.None);
 
-    private StreamingTransport Transport(Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute, StreamingTransportLimits? limits = null, TimeProvider? time = null) =>
+    private StreamingTransport Transport(Func<SessionOperation, CancellationToken, Task<ExecutedStreamingBlock>> execute, StreamingTransportLimits? limits = null, TimeProvider? time = null, Func<SessionOperation, CancellationToken, Task<Proof>>? finalize = null) =>
         new(_registry, _admission, execute, limits ?? new StreamingTransportLimits(2, 1000, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1)),
-            1, NullLogger<StreamingTransport>.Instance, time);
+            1, NullLogger<StreamingTransport>.Instance, time, finalize);
 
     private Task<ExecutedStreamingBlock> Execute(SessionOperation operation, CancellationToken cancellation)
     {
@@ -474,7 +599,7 @@ public class StreamingTransportTests
         return ByteString.CopyFrom(bytes);
     }
 
-    private sealed class Reader : IAsyncStreamReader<ClientFrame>
+    internal sealed class Reader : IAsyncStreamReader<ClientFrame>
     {
         private readonly Queue<Func<Task<ClientFrame?>>> _frames = new();
         public ClientFrame Current { get; private set; } = null!;
@@ -493,7 +618,7 @@ public class StreamingTransportTests
         }
     }
 
-    private sealed class Writer : IServerStreamWriter<ServerFrame>
+    internal sealed class Writer : IServerStreamWriter<ServerFrame>
     {
         internal List<ServerFrame> Frames { get; } = [];
         internal Func<ServerFrame, Task> OnWrite { get; set; } = _ => Task.CompletedTask;
@@ -505,7 +630,7 @@ public class StreamingTransportTests
             Frames.Add(frame.Clone());
         }
     }
-    private sealed class ManualTime : TimeProvider
+    internal sealed class ManualTime : TimeProvider
     {
         private readonly object _lock = new();
         private readonly List<ManualTimer> _timers = [];
@@ -529,7 +654,7 @@ public class StreamingTransportTests
             foreach (ManualTimer timer in timers) timer.Fire();
         }
 
-        private sealed class ManualTimer(ManualTime time, TimerCallback callback, object? state) : ITimer
+        internal sealed class ManualTimer(ManualTime time, TimerCallback callback, object? state) : ITimer
         {
             private long _due = long.MaxValue;
             private bool _disposed;

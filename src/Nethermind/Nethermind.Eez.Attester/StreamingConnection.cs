@@ -19,6 +19,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     private SessionBinding _binding;
     private SessionOperation? _pending;
     private bool _ended;
+    private Task? _proofRevoked;
 
     internal StreamingDispatch Dispatch(ClientFrame frame)
     {
@@ -104,19 +105,25 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         lock (_lock)
         {
             CheckPending(operation);
-            ServerFrame response = _session!.CompleteProof(operation, proof);
+            (ServerFrame response, Task revoked) = _session!.CompleteProofAndFence(operation, proof);
+            _proofRevoked = revoked;
             _ended = true;
             return response;
         }
     }
 
-    internal ServerFrame RejectOperation(SessionOperation operation, Status status)
+    internal ServerFrame RejectOperation(SessionOperation operation, Status status, ByteString? details = null)
     {
         lock (_lock)
         {
             CheckPending(operation);
-            return Reject(operation.RequestId, status);
+            return Reject(operation.RequestId, status, details);
         }
+    }
+
+    internal Task ProofRevoked
+    {
+        get { lock (_lock) return _proofRevoked ?? throw new InvalidOperationException("proof completion fence missing"); }
     }
 
     internal Task AttachmentRevoked
@@ -169,7 +176,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         _session!.CheckCurrent(operation.Binding);
     }
 
-    private ServerFrame Reject(ulong requestId, Status status)
+    private ServerFrame Reject(ulong requestId, Status status, ByteString? details = null)
     {
         ServerFrame response = _session is null ? new ServerFrame { RequestId = requestId } : _session.Ready(_binding, requestId);
         ulong number = response.Ready?.ValidatedThrough ?? 0;
@@ -177,6 +184,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
         response.Rejected = new Rejected
         {
             Code = (int)status.StatusCode,
+            Details = details ?? ByteString.Empty,
             Message = status.Detail,
             ValidatedThrough = number,
             ValidatedHash = hash,

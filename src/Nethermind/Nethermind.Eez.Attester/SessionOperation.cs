@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using Nethermind.Core.Crypto;
 using Google.Protobuf;
 using Nethermind.Eez.Prove;
 using Nethermind.Eez.Prove.V2;
@@ -68,6 +70,9 @@ internal sealed class SessionOperation : IDisposable
         _blocks = [];
         _predecessor = null;
     }
+
+    internal Proof SignCurrent(EezAttestationSigner signer, ValueHash256 publicInputs, CancellationToken cancellation) =>
+        _session.SignCurrent(this, signer, publicInputs, cancellation);
 
     public void Dispose() => _session.ReleaseOperation(this);
 }

@@ -32,6 +32,17 @@ internal sealed class AttestationPipeline(ISpecProvider specProvider, EezSettlem
     /// <exception cref="System.OperationCanceledException"><paramref name="cancellation"/> fired between stages.</exception>
     public ProveResponse Run(AdmittedWindow window, CancellationToken cancellation)
     {
+        ValueHash256 publicInputsHash = Validate(window, cancellation);
+        cancellation.ThrowIfCancellationRequested();
+        return new ProveResponse
+        {
+            PublicInputsHash = ByteString.CopyFrom(publicInputsHash.Bytes),
+            Signature = ByteString.CopyFrom(signer.Sign(publicInputsHash)),
+        };
+    }
+
+    internal ValueHash256 Validate(AdmittedWindow window, CancellationToken cancellation)
+    {
         cancellation.ThrowIfCancellationRequested();
         EezStatelessBlockResult[] executed;
         try
@@ -59,11 +70,7 @@ internal sealed class AttestationPipeline(ISpecProvider specProvider, EezSettlem
         }
 
         cancellation.ThrowIfCancellationRequested();
-        return new ProveResponse
-        {
-            PublicInputsHash = ByteString.CopyFrom(publicInputsHash.Bytes),
-            Signature = ByteString.CopyFrom(signer.Sign(publicInputsHash)),
-        };
+        return publicInputsHash;
     }
 
     internal static RpcException ToStatus(EezSettlementException e, byte[] calldata, Block settling) => e.Failure switch
