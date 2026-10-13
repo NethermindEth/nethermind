@@ -1609,6 +1609,79 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
+    /// <summary>
+    /// A call that omits <c>gas</c> defaults to the gas the block can still include, even when that is below its intrinsic gas.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_default_gas_clamped_below_intrinsic_gas([Values] bool validation)
+    {
+        const ulong blockGasLimit = 2 * GasCostOf.Transaction - 1;
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = GasCostOf.Transaction, GasPrice = UInt256.Zero },
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
+            Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
+        }
+    }
+
+    /// <summary>
+    /// The block budget checks an explicit <c>gas</c> as requested, before the RPC gas cap clamps it.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_checks_explicit_gas_against_the_block_before_the_gas_cap([Values] bool validation)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+        chain.RpcConfig.GasCap = 30_000;
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 50_000, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
+    }
+
     [Test]
     public async Task eth_simulateV1_reports_two_state_writes_in_block_gas_used()
     {

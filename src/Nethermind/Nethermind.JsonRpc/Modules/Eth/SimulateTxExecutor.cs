@@ -63,6 +63,11 @@ public class SimulateTxExecutor<TTrace>(
                         }
 
                         tx.ChainId = _blockchainBridge.GetChainId();
+                        // The block budget checks the gas as requested; the simulate adapter clamps it to the request budget afterwards.
+                        if (hadGasLimitInRequest && !tx.SupportsFrames)
+                        {
+                            tx.GasLimit = asLegacy!.Gas!.Value;
+                        }
 
                         calls[i] = new TransactionWithSourceDetails
                         {
