@@ -7,8 +7,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -25,7 +27,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 {
     private int _currentTxIndex = 0;
     private BlockHeader? _header;
-    private bool _isEip8037Enabled;
+    private IReleaseSpec? _spec;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
@@ -58,7 +60,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     {
         _currentTxIndex = 0;
         _header = blockExecutionContext.Header;
-        _isEip8037Enabled = blockExecutionContext.Spec.IsEip8037Enabled;
+        _spec = blockExecutionContext.Spec;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -73,7 +75,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         {
             transaction.GasLimit = Math.Min(blockGasAvailable, simulateRequestState.TotalGasLeft);
         }
-        else if (transaction.GasLimit > blockGasAvailable)
+        else if (!FitsBlock(transaction, blockGasAvailable, stateGasAvailable))
         {
             TransactionResult result = TransactionResult.ErrorType.BlockGasLimitExceeded.WithDetail(
                 $"block gas limit reached: remaining: {blockGasAvailable}, required: {transaction.GasLimit}");
@@ -95,8 +97,18 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     private ulong GetBlockGasAvailable(ulong stateGasAvailable)
     {
         ulong executionGasAvailable = simulateRequestState.BlockGasLeft;
-        return _isEip8037Enabled && simulateRequestState.Validate && executionGasAvailable >= Eip7825Constants.DefaultTxGasLimitCap
+        return _spec?.IsEip8037Enabled == true && simulateRequestState.Validate && executionGasAvailable >= Eip7825Constants.DefaultTxGasLimitCap
             ? stateGasAvailable
             : Math.Min(executionGasAvailable, stateGasAvailable);
     }
+
+    /// <remarks>
+    /// EIP-8141: a frame transaction reserves block gas per dimension from its frames, not from its summed gas limit.
+    /// </remarks>
+    private bool FitsBlock(Transaction transaction, ulong blockGasAvailable, ulong stateGasAvailable) =>
+        transaction.SupportsFrames
+            ? Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)
+                && executionReservation <= simulateRequestState.BlockGasLeft
+                && stateReservation <= stateGasAvailable
+            : transaction.GasLimit <= blockGasAvailable;
 }

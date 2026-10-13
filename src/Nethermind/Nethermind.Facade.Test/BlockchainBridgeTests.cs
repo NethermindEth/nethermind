@@ -1439,6 +1439,40 @@ public class BlockchainBridgeTests
         Assert.That(omittedGas.GasLimit, Is.EqualTo(expectedGasLimit));
     }
 
+    // Two empty unsigned frames reserve about 612,950 execution and 600,000 state gas: both fit a 1,000,000-gas
+    // block although their summed gas limit (1,200,000) does not.
+    [TestCase(300_000ul, false, TestName = "Simulate adapter admits a frame transaction whose reservations fit the block")]
+    [TestCase(500_000ul, true, TestName = "Simulate adapter rejects a frame transaction whose execution reservation exceeds the block")]
+    public void Simulate_adapter_checks_frame_transactions_by_their_block_gas_reservations(ulong frameExecutionGas, bool expectRejected)
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 10_000_000,
+            BlockGasLeft = 1_000_000,
+            Validate = true,
+        };
+        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, Transaction = new Transaction() }]);
+
+        SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
+        adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
+        Transaction frameTx = Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(TestItem.AddressA).TestObject;
+        frameTx.Frames =
+        [
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, frameExecutionGas, 300_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, frameExecutionGas, 300_000, UInt256.Zero, default)
+        ];
+        frameTx.GasLimit = 2 * (frameExecutionGas + 300_000);
+
+        if (expectRejected)
+        {
+            Assert.That(Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000));
+        }
+    }
+
     private static IEnumerable<TestCaseData> OverrideRoutingCases()
     {
         foreach (OverrideCall call in Enum.GetValues<OverrideCall>())
