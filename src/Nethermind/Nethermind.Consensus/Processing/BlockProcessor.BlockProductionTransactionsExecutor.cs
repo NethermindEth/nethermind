@@ -124,10 +124,8 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        // A no-op today, as every processor failure returns before the receipt and the header's gas
-                        // used are written; it keeps a later failure from leaving either behind. The processor's own
-                        // running block gas cannot be reset from here, but it never reaches the sealed header: each
-                        // receipt rewrites the header's gas used from the receipts kept.
+                        // Drop any receipt/header gas the failed tx left behind. The processor's own running block
+                        // gas is not reset here, but the next receipt rewrites the header's gas used from receipts kept.
                         receiptsTracer.Restore(receiptsSnapshot);
                         balManager.Rollback();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
