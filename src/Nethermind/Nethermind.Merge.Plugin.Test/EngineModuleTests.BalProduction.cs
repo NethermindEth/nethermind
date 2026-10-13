@@ -17,8 +17,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -76,6 +77,7 @@ public partial class EngineModuleTests
         {
             Assert.That(factory.DiscardedCount, Is.GreaterThan(0), "the discarded transaction never executed");
             Assert.That(payload.Transactions, Has.Length.EqualTo(included.Length));
+            Assert.That(payload.GasUsed, Is.EqualTo((ulong)included.Length * GasCostOf.Transaction));
             Assert.That(bal.GetAccountChanges(TestItem.AddressD), Is.Null);
             Assert.That(bal.GetAccountChanges(createdContract), Is.Null);
             ReadOnlyAccountChanges discardedSender = bal.GetAccountChanges(TestItem.AddressC)!;
@@ -162,10 +164,9 @@ public partial class EngineModuleTests
             new DiscardingTransactionProcessor(this, blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel);
 
         /// <remarks>
-        /// Reports <see cref="TransactionResult.ErrorType.StateGasInvariantViolated"/>, the one failure the
-        /// processor raises after mutating state in block building, so the processor's own snapshot restore runs
-        /// exactly as it would for a real violation. As for the real failure, no receipt is reported and the
-        /// header gas is left as it was.
+        /// Fails the refund with <see cref="TransactionResult.ErrorType.StateGasInvariantViolated"/>, the one failure the
+        /// processor raises after mutating state in block building, at the point a real violation is raised: after
+        /// execution, before the receipt and the block gas are accounted, so the processor's own snapshot restore runs.
         /// </remarks>
         private sealed class DiscardingTransactionProcessor(
             DiscardingTransactionProcessorFactory factory,
@@ -178,20 +179,16 @@ public partial class EngineModuleTests
             bool parallel)
             : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         {
-            protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
+            protected override RefundResult Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
+                in TransactionSubstate substate, in EthereumGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds,
+                in EthereumGasPolicy floorGas, in EthereumGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool topLevelCreateStateGasCharged = false)
             {
-                if (opts != ExecutionOptions.BuildUp || !factory._discard(tx)) return base.Execute(tx, tracer, opts);
-
-                BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-                (ulong gasUsed, (ulong, ulong)? gasUsedPerDimension) = (header.GasUsed, header.GasUsedPerDimension);
-                TransactionResult result = base.Execute(tx, NullTxTracer.Instance, opts);
-                if (!result) return result;
-
-                // The real violation is raised before the header gas is accounted, so undo that accounting too.
-                (header.GasUsed, header.GasUsedPerDimension) = (gasUsed, gasUsedPerDimension);
+                RefundResult result = base.Refund(tx, header, spec, opts, in substate, in unspentGas, in gasPrice, codeInsertRefunds,
+                    in floorGas, in intrinsicGasStandard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
+                if (opts != ExecutionOptions.BuildUp || !factory._discard(tx)) return result;
 
                 Interlocked.Increment(ref factory._discardedCount);
-                return TransactionResult.ErrorType.StateGasInvariantViolated.WithDetail("discarded after execution by test");
+                return RefundResult.Invalid(TransactionResult.ErrorType.StateGasInvariantViolated.WithDetail("discarded after execution by test"));
             }
         }
     }
