@@ -3,7 +3,6 @@
 
 namespace Nethermind.Specs.Forks;
 
-// Lazy, so the guest runs no class constructor for this type.
 public abstract partial class NamedReleaseSpec<TSelf>
 {
     public static NamedReleaseSpec Instance => field ??= new TSelf();

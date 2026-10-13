@@ -10,7 +10,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class SecP256r1Precompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(0x100);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

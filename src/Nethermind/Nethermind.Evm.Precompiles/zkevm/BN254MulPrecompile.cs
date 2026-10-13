@@ -10,7 +10,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class BN254MulPrecompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(7);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

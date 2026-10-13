@@ -11,7 +11,6 @@ namespace Nethermind.Evm;
 
 public partial struct EvmPooledMemory
 {
-    // Computed on access, so the guest runs no class constructor for this type.
     private static TraceMemory EmptyTraceMemory => new(0, default);
 
     /// <summary>

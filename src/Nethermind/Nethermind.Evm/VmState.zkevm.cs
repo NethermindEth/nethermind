@@ -9,7 +9,6 @@ namespace Nethermind.Evm;
 public partial class VmState<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    // Lazy, so the guest runs no class constructor for this type.
     private static EvmObjectPool<VmState<TGasPolicy>> _statePool => field ??= new(
         maxShared: VirtualMachineStatics.MaxCallDepth * 2);
 

@@ -17,7 +17,6 @@ namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Rlp OfEmptyByteArray => field ??= new(EmptyByteArrayByte);
 
     public static Rlp OfZero => OfEmptyByteArray;

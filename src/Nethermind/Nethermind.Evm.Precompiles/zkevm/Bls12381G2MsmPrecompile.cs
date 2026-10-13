@@ -12,7 +12,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381G2MsmPrecompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(0xe);
 
     private const int StackallocPairCountThreshold = 4;

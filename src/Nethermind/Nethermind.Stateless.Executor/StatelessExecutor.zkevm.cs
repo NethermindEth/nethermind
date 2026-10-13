@@ -6,7 +6,6 @@ using Nethermind.Stateless.Execution.IO;
 
 namespace Nethermind.Stateless.Execution;
 
-// Computed on access, so the guest runs no class constructor for this type.
 public static partial class StatelessExecutor
 {
     private static StatelessValidationResult _defaultFailureResult => new()

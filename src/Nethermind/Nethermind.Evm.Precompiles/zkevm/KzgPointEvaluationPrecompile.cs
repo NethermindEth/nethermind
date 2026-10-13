@@ -9,7 +9,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class KzgPointEvaluationPrecompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(0x0a);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => RunInternal(inputData);

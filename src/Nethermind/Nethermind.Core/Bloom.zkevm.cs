@@ -3,7 +3,6 @@
 
 namespace Nethermind.Core;
 
-// Lazy, so the guest runs no class constructor for this type.
 public partial class Bloom
 {
     public static Bloom ZeroLength => field ??= CreateZeroLength();

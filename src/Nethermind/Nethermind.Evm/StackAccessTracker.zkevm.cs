@@ -5,7 +5,6 @@ namespace Nethermind.Evm;
 
 public partial struct StackAccessTracker
 {
-    // Lazy, so the guest runs no class constructor for this type.
     private sealed partial class TrackingState
     {
         private static EvmObjectPool<TrackingState> _trackerPool => field ??= new(localCapacity: 1);

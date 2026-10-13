@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core.Threading;
 
-// Lazy, so the guest runs no class constructor for this type.
 /// <inheritdoc cref="ParallelUnbalancedWork"/>
 public partial class ParallelUnbalancedWork
 {

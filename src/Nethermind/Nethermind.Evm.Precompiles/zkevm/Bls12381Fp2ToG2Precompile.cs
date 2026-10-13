@@ -10,7 +10,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381Fp2ToG2Precompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(0x11);
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)

@@ -13,7 +13,6 @@ namespace Nethermind.Core.Extensions;
 
 public static unsafe partial class Bytes
 {
-    // Preinitializable arrays or lazy, so the guest runs no class constructor for this type.
     private static readonly byte[] _zeroByte = [0];
     private static readonly byte[] _oneByte = [1];
     private static readonly byte[] _twoByte = [2];

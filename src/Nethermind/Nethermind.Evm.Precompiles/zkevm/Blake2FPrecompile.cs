@@ -14,7 +14,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Blake2FPrecompile
 {
-    // Lazy, so the guest runs no class constructor for this type.
     public static Address Address => field ??= Address.FromNumber(9);
     private static ReadOnlyMemory<byte> InvalidFlagInput => new byte[RequiredInputLength].WithValueAt(212, 0xFF);
 

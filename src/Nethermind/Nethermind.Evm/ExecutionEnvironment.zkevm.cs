@@ -3,7 +3,6 @@
 
 namespace Nethermind.Evm;
 
-// Lazy, so the guest runs no class constructor for this type.
 public sealed partial class ExecutionEnvironment
 {
     private static EvmObjectPool<ExecutionEnvironment> _pool => field ??= new();

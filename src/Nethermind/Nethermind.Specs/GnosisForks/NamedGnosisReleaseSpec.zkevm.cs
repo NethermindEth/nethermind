@@ -5,7 +5,6 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.GnosisForks;
 
-// Lazy, so the guest runs no class constructor for this type.
 public abstract partial class NamedGnosisReleaseSpec<TSelf>
 {
     public static NamedReleaseSpec Instance => field ??= new TSelf();

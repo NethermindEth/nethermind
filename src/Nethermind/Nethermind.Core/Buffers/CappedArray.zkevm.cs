@@ -3,7 +3,6 @@
 
 namespace Nethermind.Core.Buffers;
 
-// Lazy, so the guest runs no class constructor for this type.
 public readonly partial struct CappedArray<T> where T : struct
 {
     private static CappedArray<T> _empty;

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db;
 
-// Lazy, so the guest runs no class constructor for this type.
 public static partial class Metrics
 {
     public static Dictionary<string, long> DbReads => field ??= [];

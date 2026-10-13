@@ -24,7 +24,6 @@ public static class SafeArrayPool<T>
     /// <summary>Gets the shared zkVM array pool.</summary>
     /// <remarks>
     /// The concrete return type allows the zkVM AOT compiler to devirtualize pool operations.
-    /// Lazy, so the guest runs no class constructor for this type.
     /// </remarks>
     public static SingleThreadedPow2Pool Shared => field ??= new();
 

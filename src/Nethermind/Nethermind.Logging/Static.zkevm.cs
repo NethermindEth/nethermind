@@ -3,7 +3,6 @@
 
 namespace Nethermind.Logging;
 
-// Lazy, so the guest runs no class constructor for this type.
 public static class Static
 {
     public static ILogManager LogManager { get => field ??= LimboLogs.Instance; set; }

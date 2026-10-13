@@ -6,7 +6,6 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie;
 
-// Lazy, so the guest runs no class constructor for this type.
 public static partial class HexPrefix
 {
     // Filled on first use: a block touches a small fraction of the 4096 paths, and building all of them

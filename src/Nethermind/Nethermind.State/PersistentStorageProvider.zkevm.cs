@@ -81,7 +81,6 @@ internal sealed partial class PersistentStorageProvider
             return (writes, skipped);
         }
 
-        // Lazy, so the guest runs no class constructor for this type.
         private static partial class Pool
         {
             private static ConcurrentQueue<PerContractState> _pool => field ??= [];

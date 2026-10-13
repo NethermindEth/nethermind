@@ -8,7 +8,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ECRecoverPrecompile
 {
-    // Lazy or computed on access, so the guest runs no class constructor for this type.
     public static ECRecoverPrecompile Instance => field ??= new();
     private static Result<byte[]> Empty => Array.Empty<byte>();
 
