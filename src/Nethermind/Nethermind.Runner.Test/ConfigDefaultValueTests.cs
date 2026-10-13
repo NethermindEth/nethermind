@@ -3,11 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
-using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Config.Test;
-using Nethermind.Db;
-using Nethermind.Network.Config;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test;
@@ -15,9 +16,20 @@ namespace Nethermind.Runner.Test;
 [Parallelizable(ParallelScope.All)]
 public class ConfigDefaultValueTests
 {
+    /// <summary>
+    /// Properties whose default depends on the machine, so no literal <c>DefaultValue</c> can match it.
+    /// </summary>
+    private static readonly HashSet<string> MachineDependentDefaults =
+    [
+        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 2, 1)
+        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 2, 1)
+        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 2, 1)
+        "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
+    ];
+
     /// <remarks>
-    /// <c>StandardConfigTests.ValidateDefaultValues</c> only loads <c>Nethermind.JsonRpc.dll</c>, so configs
-    /// declared in other assemblies can drift from the defaults published in the docs and in <c>--help</c>.
+    /// <c>StandardConfigTests.ValidateDefaultValues</c> only loads <c>Nethermind.JsonRpc.dll</c>, so this checks every
+    /// config the node discovers at startup, resolved the same way <see cref="ConfigProvider"/> resolves them.
     /// </remarks>
     [TestCaseSource(nameof(Properties))]
     public void Documented_default_matches_the_implementation(Type configInterface, Type implementation, string propertyName)
@@ -26,22 +38,26 @@ public class ConfigDefaultValueTests
         StandardConfigTests.CheckDefault(property, Activator.CreateInstance(implementation));
     }
 
-    private static IEnumerable<TestCaseData> Properties()
+    [Test]
+    public void Discovers_configs_from_all_assemblies()
     {
-        (Type Interface, Type Implementation)[] configs =
-        [
-            (typeof(INetworkConfig), typeof(NetworkConfig)),
-            (typeof(IPruningConfig), typeof(PruningConfig)),
-            (typeof(IInitConfig), typeof(InitConfig)),
-        ];
+        string[] assemblies = ConfigTypes().Select(static c => c.Interface.Assembly.GetName().Name!).Distinct().ToArray();
 
-        foreach ((Type configInterface, Type implementation) in configs)
-        {
-            foreach (PropertyInfo property in configInterface.GetProperties())
-            {
-                yield return new TestCaseData(configInterface, implementation, property.Name)
-                    .SetName($"{configInterface.Name}.{property.Name}");
-            }
-        }
+        Assert.That(assemblies, Does.Contain("Nethermind.JsonRpc"));
+        Assert.That(assemblies, Does.Contain("Nethermind.Network.Contract"));
+        Assert.That(assemblies, Does.Contain("Nethermind.Merge.Plugin"));
     }
+
+    private static IEnumerable<(Type Interface, Type Implementation)> ConfigTypes() =>
+        TypeDiscovery.FindNethermindBasedTypes(typeof(IConfig))
+            .Where(static t => t.IsInterface)
+            .Select(static t => (Interface: t, Implementation: t.GetDirectInterfaceImplementation()))
+            .OrderBy(static c => c.Interface.FullName, StringComparer.Ordinal);
+
+    private static IEnumerable<TestCaseData> Properties() =>
+        from config in ConfigTypes()
+        from property in config.Interface.GetProperties()
+        let name = $"{config.Interface.Name}.{property.Name}"
+        where !MachineDependentDefaults.Contains(name)
+        select new TestCaseData(config.Interface, config.Implementation, property.Name).SetName(name);
 }
