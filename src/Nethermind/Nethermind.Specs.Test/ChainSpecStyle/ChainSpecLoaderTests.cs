@@ -212,6 +212,33 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
+    public void Eip8116_activates_at_its_transition_timestamp()
+    {
+        const ulong transitionTimestamp = 0x10;
+        string json = $$"""
+            {
+                "name": "Test",
+                "engine": { "NethDev": {} },
+                "params": { "networkID": "1", "eip8116TransitionTimestamp": "0x{{transitionTimestamp:x}}" },
+                "genesis": {
+                    "seal": { "ethereum": { "nonce": "0x0", "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000" } },
+                    "difficulty": "0x1",
+                    "gasLimit": "0x1000000",
+                    "timestamp": "0x0"
+                }
+            }
+            """;
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        ChainSpecBasedSpecProvider provider = new(new ChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec((1, transitionTimestamp - 1)).IsEip8116Enabled, Is.False);
+            Assert.That(provider.GetSpec((1, transitionTimestamp)).IsEip8116Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Genesis_logs_bloom_is_zero_length_when_eip7668_is_active([Values(0ul, 1ul)] ulong transitionTimestamp)
     {
         ChainSpec chainSpec = LoadChainSpecWithTransition("eip7668TransitionTimestamp", transitionTimestamp);
