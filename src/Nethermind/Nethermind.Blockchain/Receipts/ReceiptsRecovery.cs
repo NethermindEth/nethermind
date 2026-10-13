@@ -82,6 +82,7 @@ namespace Nethermind.Blockchain.Receipts
             private ReceiptRecoveryBlock _block = block;
             private readonly bool _forceRecoverSender = forceRecoverSender;
             private readonly IEthereumEcdsa _ecdsa = ecdsa;
+            private readonly bool _isEip8116Enabled = releaseSpec.IsEip8116Enabled;
 
             private ulong _gasUsedBefore = 0;
             private int _transactionIndex = 0;
@@ -110,7 +111,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 // how would it be in CREATE2?
                 receipt.ContractAddress = transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null;
-                receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
+                receipt.GasUsed = _isEip8116Enabled ? receipt.GasUsedTotal : receipt.GasUsedTotal - _gasUsedBefore;
                 // The log-count heuristic below assumes a failed transaction has no logs; a frame transaction
                 // can fail while carrying the logs of the frames that succeeded (EIP-8141).
                 if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
@@ -143,7 +144,7 @@ namespace Nethermind.Blockchain.Receipts
 
                 // how would it be in CREATE2?
                 receipt.ContractAddress = (transaction.CreatesTopLevelContract && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender.ToAddress(), transaction.Nonce) : Address.Zero)!.ToStructRef();
-                receipt.GasUsed = receipt.GasUsedTotal - _gasUsedBefore;
+                receipt.GasUsed = _isEip8116Enabled ? receipt.GasUsedTotal : receipt.GasUsedTotal - _gasUsedBefore;
                 // See the note on the same heuristic in the overload above.
                 if (receipt.StatusCode != StatusCode.Success && !receipt.TxType.SupportsFrames())
                 {

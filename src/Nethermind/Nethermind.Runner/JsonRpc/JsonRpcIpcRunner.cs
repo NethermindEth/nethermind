@@ -112,6 +112,10 @@ namespace Nethermind.Runner.JsonRpc
 
         internal async Task HandleIpcConnection(Socket socket, CancellationToken cancellationToken)
         {
+            JsonRpcUrl? url = _jsonRpcConfig.IpcEnabledModules is { Length: > 0 } enabledModules
+                ? new("ipc", _jsonRpcConfig.IpcUnixDomainSocketPath, 0, RpcEndpoint.IPC, isAuthenticated: true, enabledModules)
+                : null;
+
             using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                 string.Empty,
                 new IpcSocketMessageStream(socket),
@@ -119,8 +123,9 @@ namespace Nethermind.Runner.JsonRpc
                 _jsonRpcProcessor,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
+                url,
                 maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize,
-                concurrency: JsonRpcProcessingConcurrency.ForModules(_jsonRpcConfig.EnabledModules, _jsonRpcConfig.IpcProcessingConcurrency));
+                concurrency: JsonRpcProcessingConcurrency.ForModules(url is null ? _jsonRpcConfig.EnabledModules : url.EnabledModules, _jsonRpcConfig.IpcProcessingConcurrency));
 
             try
             {
