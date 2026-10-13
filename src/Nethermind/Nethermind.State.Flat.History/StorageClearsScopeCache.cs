@@ -22,7 +22,7 @@ internal sealed class StorageClearsScopeCache
 
     public bool HasAnyClearUpTo(in ValueHash256 addrHash, scoped ReadOnlySpan<byte> accountKey, StorageClearStore clears, ulong block)
     {
-        ConcurrentDictionary<ValueHash256, bool> hasAnyClear = Volatile.Read(ref _hasAnyClear) ?? Create(ref _hasAnyClear);
+        ConcurrentDictionary<ValueHash256, bool> hasAnyClear = LazyInitializer.EnsureInitialized(ref _hasAnyClear, static () => new());
         if (hasAnyClear.TryGetValue(addrHash, out bool hasAny)) return hasAny;
 
         hasAny = clears.HasClearInRange(accountKey, 0, block);
@@ -32,7 +32,7 @@ internal sealed class StorageClearsScopeCache
 
     public bool TryGetPoisonedClearAbove(in ValueHash256 addrHash, StorageClearStore clears, HistoryAvailability availability, ulong block, out ulong clearBlock)
     {
-        ConcurrentDictionary<ValueHash256, PoisonProbe> poisonedAbove = Volatile.Read(ref _poisonedAbove) ?? Create(ref _poisonedAbove);
+        ConcurrentDictionary<ValueHash256, PoisonProbe> poisonedAbove = LazyInitializer.EnsureInitialized(ref _poisonedAbove, static () => new());
         if (poisonedAbove.TryGetValue(addrHash, out PoisonProbe cached)
             && (cached.ClearBlock != NoPoisonedClear || !availability.HasCapturedSince(cached.Generation)))
         {
@@ -44,12 +44,6 @@ internal sealed class StorageClearsScopeCache
         clearBlock = clears.TryGetPoisonedClearAbove(addrHash.Bytes, block, out ulong found) ? found : NoPoisonedClear;
         poisonedAbove[addrHash] = new PoisonProbe(clearBlock, generation);
         return clearBlock != NoPoisonedClear;
-    }
-
-    private static ConcurrentDictionary<ValueHash256, TValue> Create<TValue>(ref ConcurrentDictionary<ValueHash256, TValue>? memo)
-    {
-        ConcurrentDictionary<ValueHash256, TValue> created = new();
-        return Interlocked.CompareExchange(ref memo, created, null) ?? created;
     }
 
     private readonly record struct PoisonProbe(ulong ClearBlock, long Generation);
