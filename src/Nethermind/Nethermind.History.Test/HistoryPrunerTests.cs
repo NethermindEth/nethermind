@@ -193,13 +193,29 @@ public class HistoryPrunerTests
         balStore.DidNotReceive().DeleteRange(Arg.Is<ulong>(static from => from < 9_000), Arg.Any<ulong>());
     }
 
+    [Test]
+    public async Task Scheduled_pass_prunes_bals_when_history_pruning_is_disabled()
+    {
+        TaskCompletionSource deleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
+        balStore.When(static s => s.DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>())).Do(_ => deleted.TrySetResult());
+        await using BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
+        HistoryPruner pruner = CreateBalOnlyPruner(new TestMemDb(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore, scheduler: scheduler);
+
+        pruner.SchedulePruneHistory();
+
+        await deleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        balStore.Received(1).DeleteRange(1, 9_968);
+    }
+
     private static HistoryPruner CreateBalOnlyPruner(
         TestMemDb metadataDb,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         IBlockAccessListStore balStore,
         bool balPruning = true,
-        bool chainHasAccessLists = true)
+        bool chainHasAccessLists = true,
+        IBackgroundTaskScheduler scheduler = null)
     {
         blockTree.SyncPivot.Returns((10_000UL, Keccak.Zero));
         blockTree.Head.Returns(Build.A.Block.WithNumber(10_000UL).TestObject);
@@ -220,7 +236,7 @@ public class HistoryPrunerTests
             BlocksConfig,
             SyncConfig,
             new ProcessExitSource(new()),
-            Substitute.For<IBackgroundTaskScheduler>(),
+            scheduler ?? Substitute.For<IBackgroundTaskScheduler>(),
             Substitute.For<IBlockProcessingQueue>(),
             NullPrunedReceiptRetention.Instance,
             LimboLogs.Instance);

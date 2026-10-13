@@ -62,11 +62,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("archive")]
     public void Archive_configs_have_pruning_turned_off(string configWildcard) => Test<IPruningConfig, PruningMode>(configWildcard, static c => c.Mode, PruningMode.None);
 
-    [TestCase("mainnet_archive.json")]
-    [TestCase("sepolia_archive.json")]
-    [TestCase("hoodi_archive.json")]
-    [TestCase("gnosis_archive.json")]
-    [TestCase("chiado_archive.json")]
+    [TestCase("archive")]
     public void Archive_configs_keep_block_access_lists(string configWildcard) => Test<IHistoryConfig, bool>(configWildcard, static c => c.BalPruning, false);
 
     [Test]
