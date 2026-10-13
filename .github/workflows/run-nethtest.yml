@@ -553,7 +553,13 @@ jobs:
               find "$FIXTURE_DIR" -maxdepth 1 -type d | head -30
               exit 1
             fi
-            FIXTURE_DIR="$SCOPED_DIR"
+            # The transitions into Amsterdam (e.g. for_bpo2toamsterdamattime15k) also cross the
+            # EIP-7928 boundary, so they are linked in beside it as one runner input.
+            AMSTERDAM_DIR="$RUNNER_TMP/nethtest-amsterdam-scope"
+            mkdir -p "$AMSTERDAM_DIR"
+            ln -s "$SCOPED_DIR" "$AMSTERDAM_DIR/"
+            find "$FIXTURE_DIR" -maxdepth 1 -type d -name '*toamsterdam*' -exec ln -s {} "$AMSTERDAM_DIR/" \;
+            FIXTURE_DIR="$AMSTERDAM_DIR"
           elif [ "$SCOPE" = "bogota" ]; then
             SCOPED_DIR="$(find "$FIXTURE_DIR" -maxdepth 1 -type d -name 'for_bogota' | head -1)"
             if [ -z "$SCOPED_DIR" ]; then
@@ -620,7 +626,7 @@ jobs:
           echo "fixture_dir=$FIXTURE_DIR" >> "$GITHUB_OUTPUT"
           echo "runner_flag=$RUNNER_FLAG" >> "$GITHUB_OUTPUT"
           echo "Found fixture directory: $FIXTURE_DIR"
-          echo "Fixture count: $(find "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
+          echo "Fixture count: $(find -L "$FIXTURE_DIR" -name '*.json' | wc -l) JSON files"
 
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
