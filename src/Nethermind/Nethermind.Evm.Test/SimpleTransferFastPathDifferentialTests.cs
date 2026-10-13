@@ -76,7 +76,7 @@ public class SimpleTransferFastPathDifferentialTests
         string[] AccessReports,
         long[] Refunds,
         string[] TracerEvents,
-        string Bal = "");
+        string Bal);
 
     private static IEnumerable<TestCaseData> Scenarios()
     {
@@ -117,10 +117,16 @@ public class SimpleTransferFastPathDifferentialTests
         ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708, dataLength, tracer, mode);
         ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708, dataLength, tracer, mode);
 
+        AssertEquivalent(fast, slow, recipientKind);
+    }
+
+    private static void AssertEquivalent(ExecutionCapture fast, ExecutionCapture slow, RecipientKind recipientKind)
+    {
         bool fastPathExpectedToEngage = recipientKind is not (RecipientKind.Delegated or RecipientKind.Precompile);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(fast.Executed, Is.True, "fast executed");
             Assert.That(fast.Executed, Is.EqualTo(slow.Executed), "executed");
             Assert.That(fast.EvmExceptionType, Is.EqualTo(slow.EvmExceptionType), "EVM exception");
             Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
@@ -352,8 +358,11 @@ public class SimpleTransferFastPathDifferentialTests
                 {
                     foreach ((string name, ulong? gasLimit) in limits)
                     {
-                        yield return new TestCaseData(value, kind, coinbase, gasLimit)
-                            .SetName($"Amsterdam_{kind}_value{value}_coinbase{coinbase}_{name}");
+                        foreach (TracerShape tracer in (TracerShape[])[TracerShape.AllOn, TracerShape.None])
+                        {
+                            yield return new TestCaseData(value, kind, coinbase, gasLimit, tracer)
+                                .SetName($"Amsterdam_{kind}_value{value}_coinbase{coinbase}_{name}_{tracer}");
+                        }
                     }
                 }
             }
@@ -361,26 +370,11 @@ public class SimpleTransferFastPathDifferentialTests
     }
 
     [TestCaseSource(nameof(AmsterdamEdgeCases))]
-    public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, bool coinbase, ulong? gasLimit)
+    public void Amsterdam_edge_cases_are_equivalent(ulong value, RecipientKind recipientKind, bool coinbase, ulong? gasLimit, TracerShape tracer)
     {
-        foreach (TracerShape shape in (TracerShape[])[TracerShape.AllOn, TracerShape.None])
-        {
-            ExecutionCapture fast = Run(false, value, recipientKind, true, 0, shape, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
-            ExecutionCapture slow = Run(true, value, recipientKind, true, 0, shape, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(fast.Executed, Is.EqualTo(slow.Executed), "executed");
-                Assert.That(fast.EvmExceptionType, Is.EqualTo(slow.EvmExceptionType), "EVM exception");
-                Assert.That(fast.Receipt, Is.EqualTo(slow.Receipt), "receipt");
-                Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
-                Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
-                Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
-                Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
-                Assert.That(fast.Bal, Is.EqualTo(slow.Bal), "bal");
-                Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
-                Assert.That(fast.FastPathEngaged, Is.EqualTo(recipientKind is RecipientKind.Delegated or RecipientKind.Precompile ? 0 : 1), "fast path engaged");
-            }
-        }
+        ExecutionCapture fast = Run(false, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
+        ExecutionCapture slow = Run(true, value, recipientKind, true, 0, tracer, Mode.Execute, eip8037: true, gasLimit: gasLimit, recipientIsCoinbase: coinbase);
+        AssertEquivalent(fast, slow, recipientKind);
     }
 
     private sealed class RecordingTracer : TxTracer
