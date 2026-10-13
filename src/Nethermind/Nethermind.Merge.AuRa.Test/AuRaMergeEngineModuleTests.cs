@@ -10,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -135,6 +134,10 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input) =>
         base.Can_apply_withdrawals_correctly(input);
 
+    [Ignore("Stateless re-execution follows Ethereum block processing, not AuRa's, so no AuRa block matches its root")]
+    public override Task Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness() =>
+        base.Eip8360_tcreate_block_validates_on_another_node_and_from_its_witness();
+
     [Test]
     [Category("Flaky"), Retry(3)]
     [NonParallelizable]
@@ -217,16 +220,7 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
 
-                .AddSingleton<IAuRaBlockFinalizationManager>(Substitute.For<IAuRaBlockFinalizationManager>())
-
-                .AddDecorator<AuRaNethermindApi>((_, api) =>
-                {
-                    // Yes getting from `TestBlockchain` itself, since steps are not run
-                    // and some of these are not from DI. you know... chicken and egg, but don't forget about the rooster.
-                    api.TxPool = TxPool;
-                    api.TransactionComparerProvider = TransactionComparerProvider;
-                    return api;
-                });
+                .AddSingleton<IAuRaBlockFinalizationManager>(Substitute.For<IAuRaBlockFinalizationManager>());
 
         protected override ChainSpec CreateChainSpec()
         {

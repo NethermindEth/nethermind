@@ -174,11 +174,20 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
 
+        /// <summary>An EIP-8141 frame transaction with a malformed, repeated or misplaced EIP-8272 <c>recent_root_verify</c> frame. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxMisplacedRecentRootFrame = new(TxPoolErrorMessages.FrameTxMisplacedRecentRootFrame);
+
+        /// <summary>A blob-carrying EIP-8141 frame transaction with an EIP-8272 <c>recent_root_verify</c> frame, offered to a persistent blob pool that cannot revalidate it. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxRecentRootWithPersistentBlobs = new(TxPoolErrorMessages.FrameTxRecentRootWithPersistentBlobs);
+
         /// <summary>An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.</summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(TxPoolErrorMessages.FrameSimulationFailed);
 
         /// <summary>An EIP-8141 frame transaction paying through an already fully-committed non-canonical paymaster.</summary>
         public static readonly AcceptTxResult NonCanonicalPaymasterLimitReached = new(TxPoolErrorMessages.NonCanonicalPaymasterLimitReached);
+
+        /// <summary>An EIP-8141 frame transaction whose prefix relies on EIP-8298 mutable code already relied on by the maximum number of pending transactions.</summary>
+        public static readonly AcceptTxResult FrameTxCodeDependencyLimitReached = new(TxPoolErrorMessages.FrameTxCodeDependencyLimitReached);
 
         /// <summary>
         /// The node declined to simulate an EIP-8141 validation prefix because its own admission bounds were
@@ -202,6 +211,12 @@ namespace Nethermind.TxPool
         /// sets, so this is a local mempool policy, not a validity rule.
         /// </summary>
         public static readonly AcceptTxResult KeyedNonceOverlap = new(TxPoolErrorMessages.KeyedNonceOverlap);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction beyond its non-canonical paymaster's free pending baseline, submitted
+        /// while the paymaster holds too little MATCHA width to sponsor another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult PaymasterWidthUnmet = new(TxPoolErrorMessages.PaymasterWidthUnmet);
 
         /// <summary>
         /// Declares a result distinct from every other declared result.

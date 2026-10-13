@@ -28,7 +28,7 @@ A guest is Nethermind's stateless block validator, compiled with bflat into a RI
 | `Nethermind.{Core,Trie,Evm}.ZkEvm.Test` | Unit tests of code compiled under `ZK_EVM` |
 | `tools/StatelessInputGen` | Builds stateless inputs from a live node |
 
-`-p:EnableZkEvm=true` defines `ZK_EVM` and trims the build to what a guest can run. Code behind `#if ZK_EVM` / `#if !ZK_EVM` only differs in that build, so test it with the switch.
+`-p:EnableZkEvm=true` defines `ZK_EVM` and trims the build to what a guest can run. Build-specific code lives in `*.std.cs` / `*.zkevm.cs` files (or `std/` / `zkevm/` folders), each compiled only in its build, rather than behind `#if ZK_EVM`. Code that differs per build is only exercised with the switch, so test it with the switch.
 
 There is no exception unwinding in the zkVM runtime. A throw goes to `ZkvmThrow`, which writes `StatelessExecutor.FailureOutput`. That is why the failure result is encoded before anything that can throw.
 
@@ -62,6 +62,7 @@ ZisK emulation is deterministic, so one `make stats` run is an exact measurement
 - **CI-only:** the `ZkEvmBlockchainTests` Pyspec fixtures, which skip unless running on Linux x64. `StatelessExecutorOutputMatchesFixture` compares guest output over `blockchain_tests`, `WitnessMatchesFixture` compares the host-generated witness, and they cover the full fixture tree.
 - **Not covered anywhere:** the guest bytes in `blockchain_tests_engine`. Those fixtures carry `statelessInputBytes`/`statelessOutputBytes` on each `engineNewPayloads[]` entry. Neither `nethtest` nor `StatelessExecutorOutputMatchesFixture` reads them (both read `blocks[]` of `blockchain_tests`). `ZkEvmEngineBlockchainTests` exercises the host's Engine API path (`engine_newPayloadWithWitness*`), not `StatelessExecutor`. The spec recommends guests use these fixtures because they cover more malformed-payload mutations. Until a runner reads them, don't treat a green CI as validating them.
 - **Guests end to end:** `stateless-tests.yml` builds all three guests and runs them on the blocks pinned in `Nethermind.Stateless.ZiskGuest/inputs.json`. Locally, `make run` on one of those inputs must print `<output>0101000000000000000100`.
+- **Benchmark fixtures:** `stateless-benchmark-fixtures.yml` runs weekly, or on dispatch with a release tag and gas values. It feeds every benchmark block of a `tests-zkevm-benchmark` release through the ZisK guest and `nethtest`, and ranks the blocks by cost in the job summary. A matching output does not prove a precompile ran: a benchmark that burns its gas either way reaches the same post-state when the precompile fails. Treat a block whose steps are far below its neighbours' as suspect.
 
 ## Adopting a tests-zkevm release
 

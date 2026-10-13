@@ -129,6 +129,24 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        /// <summary>
+        /// Applies the EIP-8360 end-of-transaction finalization to every live <c>TCREATE</c> account.
+        /// </summary>
+        /// <remarks>
+        /// Code, nonce and storage are dropped and the balance is kept as a fresh nonce-0, code-less account; an
+        /// empty one stays deleted per EIP-161. Accounts on the destroy list are left to self-destruct finalization.
+        /// </remarks>
+        private protected static void FinalizeTransientCreates(IWorldState worldState, in StackAccessTracker accessTracker, bool commit)
+        {
+            foreach (AddressAsKey transientCreate in accessTracker.TransientCreates!.Keys)
+            {
+                if (!accessTracker.IsTransientCreate(worldState, transientCreate, out _) || accessTracker.DestroyList.Contains(transientCreate)) continue;
+
+                UInt256 balance = worldState.GetBalance(transientCreate);
+                DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
+            }
+        }
+
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
         /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
         /// keeps cumulative validation work under the budget.</remarks>
@@ -245,12 +263,14 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
-            {
-                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
-            }
+            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+                ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
+                : Execute(tx, tracer, opts);
 
-            TransactionResult result = Execute(tx, tracer, opts);
+            // EIP-8360: every end path drops the transaction's TCREATE code, a failed or rejected transaction's
+            // included, since block production commits only once per block.
+            if (VirtualMachine.BlockExecutionContext.Spec.IsEip8360Enabled) WorldState.DiscardTransientCode();
+
             if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
             return result;
         }
@@ -1514,10 +1534,28 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     if (tx.IsContractCreation)
                     {
-                        if (!DeployContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                        // EIP-8298: adopted code is already in place, so the creation reports it rather than
+                        // the initcode's ignored return data, as the create-end trace does.
+                        if (CodeDepositHandler.HasAdoptedCode(spec, WorldState, env.ExecutingAccount))
+                        {
+                            if (_tracerFlags.IsTracingReceipt)
+                            {
+                                substate = new(WorldState.GetCode(env.ExecutingAccount), substate.Refund, substate.DestroyList, substate.Logs, shouldRevert: false, logger: Logger)
+                                {
+                                    ShouldRestoreRipemdTouch = substate.ShouldRestoreRipemdTouch,
+                                };
+                            }
+                        }
+                        else if (!DeployContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
+                    }
+
+                    if (accessedItems.TransientCreates is not null)
+                    {
+                        FinalizeTransientCreates(WorldState, in accessedItems,
+                            opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled));
                     }
 
                     // EIP-8037: defer destroy list processing to after PayFees so that
@@ -1738,7 +1776,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
             if (!tx.IsSystem() && (ulong)effectiveStateGas > preRefundGas)
                 return InvalidStateGas(Logger, $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
+            ulong blockAccountingGas = spec.IsEip7778Enabled ? preRefundGas : preRefundGas - executionRefund;
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(blockAccountingGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, executionRefund);
         }
@@ -1897,11 +1936,13 @@ namespace Nethermind.Evm.TransactionProcessing
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
             if (spec.IsEip3298Enabled && refund > 0 && (ulong)refund > spentGas)
                 return InvalidStateGas(Logger, $"EIP-3298 invariant violated: refund ({refund}) exceeds gas used ({spentGas}).");
-            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
+
+            ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
+            ulong blockAccountingGas = spec.IsEip7778Enabled ? spentGas : operationGas;
+            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, blockAccountingGas, floorGasLong);
             if (blockStateGas < 0)
                 return InvalidStateGas(Logger, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
 
-            ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
             if (ShouldRefundGas(tx, opts, in gasPrice))
@@ -1963,14 +2004,14 @@ namespace Nethermind.Evm.TransactionProcessing
         private static (ulong blockGas, long blockStateGas) CalculateBlockGas(
             IReleaseSpec spec,
             in TGasPolicy gasAfterExecution,
-            ulong preRefundGas,
+            ulong blockAccountingGas,
             ulong floorGas)
         {
             if (!spec.IsEip8037Enabled)
-                return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
+                return (spec.IsEip7778Enabled ? Math.Max(blockAccountingGas, floorGas) : 0, 0);
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(blockAccountingGas, (ulong)blockStateGas, floorGas);
 
             return (blockGas, blockStateGas);
         }
