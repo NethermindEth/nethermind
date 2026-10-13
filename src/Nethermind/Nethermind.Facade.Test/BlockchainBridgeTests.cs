@@ -1365,7 +1365,7 @@ public class BlockchainBridgeTests
             });
 
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        Transaction first = new() { GasLimit = 200_000 };
+        Transaction first = new() { GasLimit = 80_000 };
         Transaction second = new() { GasLimit = 500_000 };
         using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(first, second);
         ExecuteWithReceiptsTracer(adapter, receiptsTracer, first);
@@ -1373,7 +1373,7 @@ public class BlockchainBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 200_000, 0 }));
+            Assert.That(executedGasLimits, Is.EqualTo(new ulong[] { 80_000, 0 }));
             Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(200_000));
             Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
         }
@@ -1397,40 +1397,23 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void Simulate_adapter_saturates_block_gas_left_when_explicit_gas_exceeds_it()
+    public void Simulate_adapter_rejects_explicit_gas_above_remaining_block_gas([Values] bool validate)
     {
         SimulateRequestState simulateRequestState = new()
         {
             TotalGasLeft = 300_000,
             BlockGasLeft = 80_000,
-            Validate = false,
+            Validate = validate,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
-            [
-                new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
-                new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, Transaction = new Transaction() }]);
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        processor.Trace(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(ci =>
-            {
-                ci.Arg<Transaction>().BlockGasUsed = 100_000;
-                return TransactionResult.Ok;
-            });
-
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
-        Transaction explicitGas = new() { GasLimit = 200_000 };
-        using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(explicitGas);
-        ExecuteWithReceiptsTracer(adapter, receiptsTracer, explicitGas);
-        Transaction omittedGas = new() { GasLimit = 500_000 };
-        adapter.PrepareForInclusionCheck(omittedGas, ulong.MaxValue);
+        Transaction explicitGas = new() { GasLimit = 80_001 };
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(simulateRequestState.BlockGasLeft, Is.Zero);
-            Assert.That(omittedGas.GasLimit, Is.Zero);
-        }
+        InvalidTransactionException exception = Assert.Throws<InvalidTransactionException>(
+            () => adapter.PrepareForInclusionCheck(explicitGas, ulong.MaxValue))!;
+        Assert.That(exception.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
     }
 
     private static IEnumerable<TestCaseData> OverrideRoutingCases()

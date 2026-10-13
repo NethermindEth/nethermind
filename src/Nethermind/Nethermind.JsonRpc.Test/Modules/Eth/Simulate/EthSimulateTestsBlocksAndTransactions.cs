@@ -1354,6 +1354,42 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
+    /// A call whose explicit gas is above the gas the block can still include fails the request with
+    /// <c>-38015</c>, with or without validation, instead of running past the block gas limit.
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_rejects_explicit_gas_above_remaining_block_gas([Values] bool validation, [Values] bool balPath)
+    {
+        using TestRpcBlockchain chain = balPath ? await BuildAmsterdamBalChain() : await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    BlockOverrides = new BlockOverride { GasLimit = 50_000, BaseFeePerGas = 0 },
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
+                        { TestItem.AddressB, new AccountOverride { Code = Bytes.FromHexString("0x5b600056") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = 100_000, GasPrice = UInt256.Zero }
+                    ]
+                }
+            ],
+            Validation = validation
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
+    }
+
+    /// <summary>
     /// Regression test for #12692: under EIP-7928 the block-access-list path must enforce the
     /// <c>JsonRpc.GasCap</c> budget across the calls of a request. The clamp to the running
     /// <c>TotalGasLeft</c> lives in the simulate adapter, so with a tight cap the second call is
@@ -1579,48 +1615,12 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task eth_simulateV1_rejects_state_free_call_clamped_below_intrinsic_gas()
-    {
-        const ulong blockGasLimit = (ulong)GasCostOf.SSetState + GasCostOf.TransactionEip2780 - 1;
-        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
-        SimulatePayload<TransactionForRpc> payload = new()
-        {
-            BlockStateCalls =
-            [
-                new()
-                {
-                    BlockOverrides = new BlockOverride { GasLimit = blockGasLimit },
-                    StateOverrides = new Dictionary<Address, AccountOverride>
-                    {
-                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } },
-                        { TestItem.AddressC, new AccountOverride { Code = Bytes.FromHexString("0x600160003555") } }
-                    },
-                    Calls =
-                    [
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressC, Gas = StateGasBlockLimit, GasPrice = UInt256.Zero, Input = new byte[32] },
-                        new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Value = 0, GasPrice = UInt256.Zero }
-                    ]
-                }
-            ],
-            Validation = false
-        };
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Failure));
-            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.IntrinsicGas));
-            Assert.That(result.Result.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
-        }
-    }
-
-    [Test]
     public async Task eth_simulateV1_reports_two_state_writes_in_block_gas_used()
     {
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Amsterdam.Instance);
-        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: 200_000, validation: false);
+        const ulong blockGasLimit = 250_000;
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: blockGasLimit - (ulong)GasCostOf.SSetState, validation: false);
+        payload.BlockStateCalls![0].BlockOverrides!.GasLimit = blockGasLimit;
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
@@ -1634,7 +1634,7 @@ public class EthSimulateTestsBlocksAndTransactions
         {
             Assert.That(calls.Select(static call => call.Error), Is.All.Null);
             Assert.That(calls.Select(static call => call.GasUsed), Is.All.Not.Null);
-            Assert.That(block.GasLimit, Is.EqualTo(StateGasBlockLimit));
+            Assert.That(block.GasLimit, Is.EqualTo(blockGasLimit));
             Assert.That(block.GasUsed, Is.EqualTo(2 * (ulong)GasCostOf.SSetState));
         }
     }
@@ -1662,7 +1662,7 @@ public class EthSimulateTestsBlocksAndTransactions
         }
         else
         {
-            Assert.That(result.Result.Error, Does.Contain("StateDimensionExceeded"));
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.BlockGasLimitReached));
         }
     }
 
@@ -1674,7 +1674,9 @@ public class EthSimulateTestsBlocksAndTransactions
     public async Task eth_simulateV1_request_gas_cap_counts_state_gas()
     {
         using TestRpcBlockchain chain = await BuildAmsterdamBalChain();
-        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: StateGasBlockLimit, validation: false);
+        SimulatePayload<TransactionForRpc> payload = CreateTwoSstorePayload(secondGas: null, validation: false);
+        // A block budget above the request cap, so only the cap can leave the second write short.
+        payload.BlockStateCalls![0].BlockOverrides!.GasLimit = 2 * StateGasBlockLimit;
 
         // Each write costs ~125k: SSetState 97_920 of state gas plus ~27k of execution. The cap admits the
         // first and leaves the second short only while both dimensions deplete it; counting execution alone

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -25,6 +26,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 {
     private int _currentTxIndex = 0;
     private ulong _maxTotalGasLimit = ulong.MaxValue;
+    private BlockHeader? _header;
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         // The non-BAL / validation:false paths never run the block executor's pre-check, so resolve the gas
@@ -44,7 +46,6 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         // A transaction's gas limit funds both EIP-8037 dimensions, so the request-wide cap — which is what
         // clamps that limit — depletes by their sum, while the block budgets below track one dimension each.
         simulateRequestState.TotalGasLeft = simulateRequestState.TotalGasLeft.SaturatingSub(blockGasUsed.SaturatingAdd(blockStateGasUsed));
-        // Validation:false admits explicit gas above the remaining block gas, which must not wrap the clamp budget.
         simulateRequestState.BlockGasLeft = simulateRequestState.BlockGasLeft.SaturatingSub(blockGasUsed);
         // The BAL inclusion check refreshes this from receipt totals when it runs; otherwise — non-BAL specs,
         // ForceSequentialBlockAccessList, block production, Validation:false — this running value is authoritative.
@@ -58,6 +59,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     {
         _currentTxIndex = 0;
         _maxTotalGasLimit = blockExecutionContext.Spec.GetProcessorEnforcedTxGasLimitCap();
+        _header = blockExecutionContext.Header;
         transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -67,13 +69,18 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         simulateRequestState.BlockStateGasLeft = stateGasAvailable;
 
         // The per-dimension budgets shrink as the block is processed.
+        // EIP-8037 inclusion requires tx.gas <= remaining state budget whatever state gas the tx uses,
+        // so a defaulted limit clamps to it even for a state-free call.
+        ulong blockGasAvailable = Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable);
         if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
         {
-            // EIP-8037 inclusion requires tx.gas <= remaining state budget whatever state gas the tx uses,
-            // so a defaulted limit clamps to it even for a state-free call.
-            transaction.GasLimit = Math.Min(
-                Math.Min(simulateRequestState.BlockGasLeft, stateGasAvailable),
-                Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
+            transaction.GasLimit = Math.Min(blockGasAvailable, Math.Min(simulateRequestState.TotalGasLeft, _maxTotalGasLimit));
+        }
+        else if (transaction.GasLimit > blockGasAvailable)
+        {
+            TransactionResult result = TransactionResult.ErrorType.BlockGasLimitExceeded.WithDetail(
+                $"block gas limit reached: remaining: {blockGasAvailable}, required: {transaction.GasLimit}");
+            throw new InvalidTransactionException(_header!, result.ErrorDescription, result);
         }
 
         if (simulateRequestState.TotalGasLeft < transaction.GasLimit)
