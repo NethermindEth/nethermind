@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Core.Specs;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.EraE.Proofs;
@@ -79,6 +81,30 @@ public class ValidatorTests
         await sut.VerifyBlocksRootContext(context);
 
         await summaries.Received(1).GetHistoricalSummary(758, Arg.Any<bool>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestCase(false, 10, TestName = "VerifyBlocksRootContext_HistoricalSummaries_UsesTwelveSecondSlots")]
+    [TestCase(true, 11, TestName = "VerifyBlocksRootContext_HistoricalSummaries_UsesEip8198Slots")]
+    public async Task VerifyBlocksRootContext_HistoricalSummaries_FindsTheSlotAcrossEip8198(bool eip8198Scheduled, int expectedIndex)
+    {
+        const ulong genesis = 1_606_824_023;
+        const ulong fork = genesis + 10 * 8192 * 12; // slot 81920
+        const ulong timestamp = fork + 8192 * 10;    // slot 90112 with 10 s slots, 88746 with 12 s
+        (ForkActivation, IReleaseSpec)[] transitions = eip8198Scheduled
+            ? [((ForkActivation)0, Shanghai.Instance), (new ForkActivation(0, fork), new OverridableReleaseSpec(Shanghai.Instance) { IsEip8198Enabled = true })]
+            : [((ForkActivation)0, Shanghai.Instance)];
+        CustomSpecProvider specProvider = new(transitions) { BeaconChainGenesisTimestamp = genesis };
+
+        using BlocksRootContext context = new(1, timestamp, specProvider);
+        context.ProcessBlock(Build.A.Block.WithNumber(1).TestObject, default, default);
+        context.FinalizeContext();
+
+        IHistoricalSummariesProvider summaries = Substitute.For<IHistoricalSummariesProvider>();
+        summaries.GetHistoricalSummary(expectedIndex, Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(context.HistoricalSummary);
+
+        await new Validator(specProvider, null, null, summaries).VerifyBlocksRootContext(context);
+
+        await summaries.Received(1).GetHistoricalSummary(expectedIndex, Arg.Any<bool>(), Arg.Any<CancellationToken>());
     }
 
     private static Validator BuildValidator(ValueHash256 trustedRoot)
