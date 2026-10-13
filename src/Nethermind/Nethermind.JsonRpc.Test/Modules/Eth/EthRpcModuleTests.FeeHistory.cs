@@ -69,7 +69,7 @@ public partial class EthRpcModuleTests
     }
 
     // A block at or after the fork timestamp predicts with EIP-8198. A block just before it predicts with 1/8 while
-    // it is the head, and with EIP-8198 once its canonical child, past the fork, is known.
+    // it is the head; once its canonical child is known, the child's actual base fee is reported.
     [TestCase(0UL, false, 1_104_166_666UL, TestName = "Eth_feeHistory_Eip8198_newest_after_fork")]
     [TestCase(1UL, false, 1_125_000_000UL, TestName = "Eth_feeHistory_Eip8198_newest_before_fork_without_child")]
     [TestCase(1UL, true, 1_104_166_666UL, TestName = "Eth_feeHistory_Eip8198_newest_before_fork_with_child_after_fork")]
@@ -78,13 +78,12 @@ public partial class EthRpcModuleTests
         const ulong forkTimestamp = 1_000;
         Block block = Build.A.Block.WithNumber(0).WithTimestamp(forkTimestamp - secondsBeforeFork).WithBaseFeePerGas(1_000_000_000)
             .WithGasLimit(30_000_000).WithGasUsed(30_000_000).TestObject;
-        BlockHeader child = Build.A.BlockHeader.WithParent(block.Header).WithNumber(1).WithTimestamp(forkTimestamp).TestObject;
+        BlockHeader child = Build.A.BlockHeader.WithParent(block.Header).WithNumber(1).WithTimestamp(forkTimestamp).WithBaseFee(1_104_166_666).TestObject;
 
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
         blockFinder.Head.Returns(block);
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>()).Returns(block);
         blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block);
-        blockFinder.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(block.Header);
         if (childKnown) blockFinder.FindHeader(1UL, Arg.Any<BlockTreeLookupOptions>()).Returns(child);
 
         ISpecProvider specProvider = new CustomSpecProvider(

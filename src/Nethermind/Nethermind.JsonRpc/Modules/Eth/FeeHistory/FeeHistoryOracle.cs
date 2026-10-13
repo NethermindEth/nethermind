@@ -240,16 +240,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         /// <summary>
-        /// The cached estimate picks the next block's spec from the block's own timestamp, so it is one block
-        /// off at a timestamp fork. When the canonical child already exists, its timestamp picks the spec.
+        /// Returns the base fee of the block after <paramref name="info"/>: the canonical child's actual value when
+        /// the child exists, otherwise the estimate.
         /// </summary>
+        /// <remarks>
+        /// The estimate picks the next block's spec from the block's own timestamp, so at a timestamp fork it is one block off.
+        /// </remarks>
         private UInt256 GetNextBaseFee(in BlockFeeHistorySearchInfo info)
         {
             BlockHeader? child = _blockTree.FindHeader(info.BlockNumber + 1, BlockTreeLookupOptions.RequireCanonical | BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (child is null || child.ParentHash != info.BlockHash) return info.BaseFeePerGasEst;
-
-            BlockHeader? header = _blockTree.FindHeader(info.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, info.BlockNumber);
-            return header is null ? info.BaseFeePerGasEst : BaseFeeCalculator.Calculate(header, _specProvider.GetSpec(child));
+            return child is not null && child.ParentHash == info.BlockHash ? child.BaseFeePerGas : info.BaseFeePerGasEst;
         }
 
         private static void DropLeading<T>(ArrayPoolList<T> list, int count)
