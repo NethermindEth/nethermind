@@ -114,15 +114,18 @@ public abstract class TransactionForRpc
     /// <param name="checksFork">Whether the fork is checked; off for a transaction to build that runs as a call to estimate its gas.</param>
     /// <remarks>
     /// The call's fields chose its type, so a field the fork lacks names a type it doesn't enable, even when its value is
-    /// zero or empty; a defaulted type names no field. The fork check comes before the fee cap order check. Transactions
-    /// to build or sign go into a later block, so they stay outside this check and convert with <see cref="ToValidatedTransaction"/>.
+    /// zero or empty; a defaulted type names no field. A fee cap below the priority fee is wrong in any block, so it is
+    /// reported in place of a failed fork check, as trace-interop H14 asks, even when otherwise left to execution.
+    /// Transactions to build or sign go into a later block, so they stay outside this check and convert with
+    /// <see cref="ToValidatedTransaction"/>.
     /// </remarks>
     public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        Result<Transaction> ordered = CheckFeeCapOrder(result);
         if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
-            return TxErrorMessages.InvalidTxType(spec.Name);
-        return validateFeeCapOrder ? CheckFeeCapOrder(result) : result;
+            return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
+        return validateFeeCapOrder ? ordered : result;
     }
 
     private TxType ResolveType(IReleaseSpec? spec)

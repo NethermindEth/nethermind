@@ -113,6 +113,20 @@ public partial class EthRpcModuleTests
         }
     }
 
+    // Trace-interop H14: a defect in any block (fee cap below the priority fee) wins over a field the block's fork lacks.
+    [Test]
+    public async Task Rpc_reports_fee_cap_order_before_the_fork([Values("eth_call", "eth_estimateGas")] string method)
+    {
+        ForkGatedField authorizations = ForkGatedFields().Single(static f => f.Name == "authorizationList");
+        using Context ctx = await Context.Create(new TestSpecProvider(authorizations.Before));
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x2\",{authorizations.Fields}}}");
+
+        string response = await ctx.Test.TestEthRpc(method, call.RootElement, "latest");
+
+        Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(),
+            Does.Contain(RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)), response);
+    }
+
     [Test]
     public async Task Rpc_resolves_a_call_against_its_block_override(
         [Values("eth_call", "eth_estimateGas")] string method,
@@ -1499,8 +1513,8 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        // Before London no transaction carries the fee fields, so the call is rejected before the pair is checked.
-        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Berlin.Instance.Name)), serialized);
+        // Before London no transaction carries the fee fields, but a fee cap below the tip is wrong in any block, so it is reported first.
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Does.Contain(RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(1, 2)), serialized);
     }
 
     [TestCase(null, RpcTransactionErrors.InvalidBlobVersionedHashSize, TestName = "BlobVersionedHash null")]

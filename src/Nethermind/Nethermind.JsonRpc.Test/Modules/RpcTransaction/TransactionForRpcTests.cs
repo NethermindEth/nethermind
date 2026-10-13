@@ -154,6 +154,7 @@ public class TransactionForRpcTests
 
         Assert.That(DeserializeTransactionForRpc(serialized).Type, Is.EqualTo(transaction.Type));
     }
+
     [Test]
     public void Fields_no_single_transaction_type_carries_are_rejected(
         [Values(

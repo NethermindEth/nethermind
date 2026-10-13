@@ -167,7 +167,6 @@ public class TransactionForRpcDeserializationTests
     [TestCase("""{"to":"0x0000000000000000000000000000000000000001","accessList":[]}""", TestName = "Access list before Berlin")]
     [TestCase("""{"to":"0x0000000000000000000000000000000000000001","gasPrice":"0x1","accessList":[]}""", TestName = "Priced access list before Berlin")]
     [TestCase("""{"to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0x0"}""", TestName = "Dynamic fees before Berlin")]
-    [TestCase("""{"to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x1"}""", TestName = "Fee cap below the tip before Berlin")]
     public void Test_FieldChosenType_IsRejectedBeforeItsFork(string txJson)
     {
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
@@ -178,6 +177,18 @@ public class TransactionForRpcDeserializationTests
             // Converting to build or sign doesn't check the fork.
             Assert.That(transactionForRpc.ToTransaction(spec: Istanbul.Instance).IsError, Is.False);
         }
+    }
+
+    // Trace-interop H14: a fee cap below the tip is wrong in any block, so it wins over the fork, even when left to execution.
+    [Test]
+    public void Test_FeeCapBelowTip_WinsOverTheFork([Values] bool validateFeeCapOrder)
+    {
+        TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(
+            """{"to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x1"}""")!;
+
+        Result<Transaction> result = transactionForRpc.ToCallTransaction(Istanbul.Instance, validateFeeCapOrder: validateFeeCapOrder);
+
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(0, 1)));
     }
 
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
