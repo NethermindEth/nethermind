@@ -327,7 +327,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> tracer = writer is null
             ? CreateOptionsTracer(block.Header, filtered, scope.Component.WorldState, specProvider, logIndex is null ? null : (_, _) => logIndex)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, destroyRefund);
-        tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = txHash }, cancellationToken);
+        if (writer is null) tracer = GethLikeBlockDeadlineTracer.Wrap(tracer, options with { TxHash = txHash }, cancellationToken);
 
         try
         {

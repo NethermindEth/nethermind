@@ -372,6 +372,59 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Non_debug_committed_failure_maps_original_exception_without_wire_status()
+    {
+        Exceptions.LimitExceededException failure = new("streamed query limit");
+        CommittedFailureResult result = new(failure);
+        using JsonRpcSuccessResponse response = new()
+        {
+            Id = 42,
+            Result = result,
+            Streaming = CreateStreamingContext("eth_test")
+        };
+        response.Streaming.ReportCompletion = true;
+        long errors = Metrics.JsonRpcErrors;
+        long successes = Metrics.JsonRpcSuccesses;
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
+        try
+        {
+            await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
+            await pipe.Writer.CompleteAsync();
+            ReadResult read = await pipe.Reader.ReadAsync();
+            using JsonDocument document = JsonDocument.Parse(read.Buffer);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.CommittedFailure, Is.SameAs(failure));
+                Assert.That(response.Streaming.Replacement?.Success, Is.False);
+                Assert.That(response.Streaming.Replacement?.IsResourceUnavailable, Is.True);
+                Assert.That(document.RootElement.GetProperty("result").GetString(), Has.Length.EqualTo(32 * 1024));
+                Assert.That(document.RootElement.TryGetProperty("_streamStatus", out _), Is.False);
+                Assert.That(document.RootElement.TryGetProperty("error", out _), Is.False);
+                Assert.That(Metrics.JsonRpcErrors - errors, Is.EqualTo(1));
+                Assert.That(Metrics.JsonRpcSuccesses, Is.EqualTo(successes));
+            }
+        }
+        finally
+        {
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    private sealed class CommittedFailureResult(Exception failure)
+        : JsonStreamingResultBase(new CancellationTokenSource(), NullLogManager.Instance.GetClassLogger<CommittedFailureResult>())
+    {
+        protected override void EmitContent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+        {
+            writer.WriteStringValue(new string('a', 32 * 1024));
+            writer.Flush();
+            pipeWriter!.FlushAsync(cancellationToken).GetAwaiter().GetResult();
+            CommittedFailure = failure;
+        }
+    }
+
     private sealed class PrefixFailureResult(int prefixBytes) : IStreamableResult
     {
         public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)

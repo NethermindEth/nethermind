@@ -33,8 +33,6 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
         _runBlockTrace = runBlockTrace;
     }
 
-    internal bool DeadlineExpired { get; private set; }
-
     public int Count => 0;
     public IEnumerator<GethLikeTxTrace> GetEnumerator() => Enumerable.Empty<GethLikeTxTrace>().GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
@@ -43,6 +41,7 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
     {
         Exception? failure = null;
         bool completeArray = true;
+        bool deadlineExpired = false;
 
         writer.WriteStartArray();
 
@@ -59,7 +58,8 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
                     completeArray = false;
                     throw;
                 }
-                DeadlineExpired = true;
+                deadlineExpired = true;
+                CommittedFailure = ex;
             }
             failure = ex;
         }
@@ -71,16 +71,16 @@ public sealed class GethLikeTxTraceStreamingBlockResult : JsonStreamingResultBas
                 {
                     writer.WriteStartObject();
                     writer.WritePropertyName("error"u8);
-                    writer.WriteStringValue(DeadlineExpired ? "execution timeout" : StructLogEnvelopeWriter.FormatErrorMessage(failure));
+                    writer.WriteStringValue(deadlineExpired ? "execution timeout" : StructLogEnvelopeWriter.FormatErrorMessage(failure));
                     writer.WritePropertyName("errorCode"u8);
-                    writer.WriteNumberValue(DeadlineExpired ? ErrorCodes.InvalidInput : StructLogEnvelopeWriter.ResolveErrorCode(failure));
+                    writer.WriteNumberValue(deadlineExpired ? ErrorCodes.InvalidInput : StructLogEnvelopeWriter.ResolveErrorCode(failure));
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();
             }
         }
 
-        if (failure is not null && !DeadlineExpired && Logger.IsWarn)
+        if (failure is not null && !deadlineExpired && Logger.IsWarn)
         {
             Logger.Warn($"debug_traceBlock streaming failed mid-response: {failure}");
         }

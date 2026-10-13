@@ -19,6 +19,7 @@ internal sealed class GethTraceDeadline : IDisposable
     private long _started;
     private TimeSpan _duration;
     private bool _disposed;
+    private bool _paused;
 
     internal GethTraceDeadline(CancellationToken external = default, TimeProvider? clock = null)
     {
@@ -48,12 +49,39 @@ internal sealed class GethTraceDeadline : IDisposable
             }
         }
     }
+    internal void Pause()
+    {
+        lock (_gate)
+        {
+            if (_disposed || _paused || _request.IsCancellationRequested) return;
+            _duration -= _clock.GetElapsedTime(_started);
+            if (_duration <= TimeSpan.Zero)
+                _request.Cancel();
+            else
+            {
+                _paused = true;
+                _timer!.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            }
+        }
+    }
+
+    internal void Resume()
+    {
+        lock (_gate)
+        {
+            if (_disposed || !_paused || _request.IsCancellationRequested || _external.IsCancellationRequested) return;
+            _started = _clock.GetTimestamp();
+            _paused = false;
+            _timer!.Change(Delay(_duration), Timeout.InfiniteTimeSpan);
+        }
+    }
+
     private static TimeSpan Delay(TimeSpan remaining) => remaining > MaximumTimerDelay ? MaximumTimerDelay : remaining;
     private void Tick()
     {
         lock (_gate)
         {
-            if (_disposed) return;
+            if (_disposed || _paused) return;
             TimeSpan remaining = _duration - _clock.GetElapsedTime(_started);
             if (remaining <= TimeSpan.Zero) _request.Cancel();
             else _timer!.Change(Delay(remaining), Timeout.InfiniteTimeSpan);

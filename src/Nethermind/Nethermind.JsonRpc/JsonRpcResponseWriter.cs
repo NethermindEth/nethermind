@@ -11,7 +11,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
@@ -152,9 +151,9 @@ public static class JsonRpcResponseWriter
             return WriteReplacementError(writer, response, ex, options);
         }
         staged.Commit();
-        if (streamable is Modules.DebugModule.GethLikeTxTraceStreamingBlockResult { DeadlineExpired: true })
+        if (streamable is JsonStreamingResultBase { CommittedFailure: { } failure })
         {
-            using JsonRpcErrorResponse error = response.Streaming!.MapException(new GethTraceDeadlineException());
+            using JsonRpcErrorResponse error = response.Streaming!.MapException(failure);
             return JsonRpcResponseWriteOutcome.Of(error);
         }
         return null;

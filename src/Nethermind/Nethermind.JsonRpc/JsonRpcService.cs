@@ -614,7 +614,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             GethTraceDeadlineException or TargetInvocationException { InnerException: GethTraceDeadlineException }
-                when methodName == "debug_traceBlockByNumber" =>
+                when methodName == nameof(Modules.DebugModule.IDebugRpcModule.debug_traceBlockByNumber) =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, "execution timeout", null, in request.IdRef, returnAction),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>

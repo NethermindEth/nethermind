@@ -4,6 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.IO.Pipelines;
+using System.Text.Json;
+using System.Threading.Tasks.Sources;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -239,6 +242,123 @@ public class GethStyleTracerTests
         public override void Dispose() => DisposeCount++;
     }
 
+    [TestCase(false, false, false)]
+    [TestCase(false, true, false)]
+    [TestCase(true, false, false)]
+    [TestCase(false, true, true)]
+    public async Task Streaming_deadline_excludes_blocked_reader_but_retains_execution_budget(bool cancelExternal, bool exhaustExecution, bool synchronousFlush)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: synchronousFlush ? 0 : 1, resumeWriterThreshold: synchronousFlush ? 0 : 1));
+        FlushObserver observed = new(pipe.Writer, () =>
+        {
+            if (synchronousFlush) clock.Advance(TimeSpan.FromMilliseconds(700));
+        });
+        using Utf8JsonWriter writer = new(observed);
+        GethTraceOptions options = new()
+        {
+            EnforceExecutionDeadline = true, DeadlineClock = clock, Timeout = TimeSpan.FromSeconds(1), EnableReturnData = true
+        };
+        using GethLikeBlockEnvelopeStreamingTracer inner = new(options, writer, observed, external.Token);
+        using GethLikeBlockDeadlineTracer tracer = new(inner, options, external.Token);
+        writer.WriteStartArray();
+        Task execution = null;
+        try
+        {
+            for (int transaction = 0; transaction < (cancelExternal || exhaustExecution ? 1 : 2); transaction++)
+            {
+                observed.Reset();
+                ITxTracer current = tracer.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject);
+                execution = Task.Run(() =>
+                {
+                    try
+                    {
+                        using (current)
+                        using (ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+                            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: default, inputData: default))
+                        {
+                            current.StartOperation(0, Instruction.RETURNDATACOPY, 100, in environment);
+                            current.SetOperationReturnData(new byte[512 * 1024]);
+                            clock.Advance(TimeSpan.FromMilliseconds(400));
+                            current.StartOperation(1, Instruction.STOP, 100, in environment);
+                            clock.Advance(TimeSpan.FromMilliseconds(synchronousFlush ? 0 : exhaustExecution ? 700 : 500));
+                            tracer.EndTxTrace();
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        tracer.HandleFailure(exception);
+                        throw;
+                    }
+                });
+
+                await observed.Blocked.WaitAsync(TimeSpan.FromSeconds(10));
+                if (!synchronousFlush) clock.Advance(TimeSpan.FromSeconds(20));
+                bool expiredDuringTransport = current.IsCancelled;
+                if (cancelExternal) external.Cancel();
+                ReadResult read = await pipe.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+                pipe.Reader.AdvanceTo(read.Buffer.End);
+                Exception failure = null;
+                try { await execution.WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch (Exception exception) { failure = exception; }
+                using (Assert.EnterMultipleScope())
+                {
+                    if (!synchronousFlush)
+                        Assert.That(expiredDuringTransport, Is.False, "queued timer ticks during backpressure must not spend execution time");
+                    Assert.That(failure, cancelExternal ? Is.InstanceOf<OperationCanceledException>()
+                        : exhaustExecution ? Is.TypeOf<GethTraceDeadlineException>() : Is.Null);
+                    Assert.That(clock.Timers.Count, Is.EqualTo(transaction + 1));
+                    Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
+                }
+            }
+        }
+        finally
+        {
+            external.Cancel();
+            observed.CancelPendingFlush();
+            if (execution is { IsCompleted: false })
+            {
+                try { await execution.WaitAsync(TimeSpan.FromSeconds(10)); }
+                catch (OperationCanceledException) { /* The external token releases a blocked flush during cleanup. */ }
+            }
+            tracer.Dispose();
+            writer.WriteEndArray();
+            writer.Flush();
+            await pipe.Writer.CompleteAsync();
+            await pipe.Reader.CompleteAsync();
+        }
+    }
+
+    private sealed class FlushObserver(PipeWriter inner, Action beforeFlush) : PipeWriter, IValueTaskSource<FlushResult>
+    {
+        private TaskCompletionSource _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private ValueTask<FlushResult> _pending;
+        internal Task Blocked => _blocked.Task;
+        internal void Reset() => _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override void Advance(int bytes) => inner.Advance(bytes);
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+        public override void Complete(Exception exception = null) => inner.Complete(exception);
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            beforeFlush();
+            _pending = inner.FlushAsync(cancellationToken);
+            if (_pending.IsCompleted) _blocked.TrySetResult();
+            return _pending.IsCompleted ? _pending : new(this, 0);
+        }
+        public FlushResult GetResult(short token) => _pending.GetAwaiter().GetResult();
+        public ValueTaskSourceStatus GetStatus(short token) => !_pending.IsCompleted ? ValueTaskSourceStatus.Pending
+            : _pending.IsCanceled ? ValueTaskSourceStatus.Canceled
+            : _pending.IsFaulted ? ValueTaskSourceStatus.Faulted : ValueTaskSourceStatus.Succeeded;
+        public void OnCompleted(Action<object> continuation, object state, short token, ValueTaskSourceOnCompletedFlags flags)
+        {
+            _pending.ConfigureAwait(false).GetAwaiter().OnCompleted(() => continuation(state));
+            _blocked.TrySetResult();
+        }
+    }
+
     [Test]
     public void Buffered_deadline_chunks_long_durations_without_sleep()
     {
@@ -250,6 +370,68 @@ public class GethStyleTracerTests
         Assert.That(deadline.Expired, Is.False);
         clock.Advance(TimeSpan.FromDays(50));
         Assert.That(deadline.Expired, Is.True);
+    }
+
+    [Test]
+    public void Deadline_pause_retains_accumulated_time_and_ignores_queued_ticks([Values] bool longDuration)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        TimeSpan duration = longDuration ? TimeSpan.FromDays(100) : TimeSpan.FromSeconds(1);
+        deadline.Start(duration);
+        clock.Advance(duration * 0.4);
+        deadline.Pause();
+        deadline.Pause();
+        clock.Advance(TimeSpan.FromDays(200));
+        Assert.That(deadline.Expired, Is.False);
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        deadline.Resume();
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(longDuration ? TimeSpan.FromMilliseconds(uint.MaxValue - 1) : duration * 0.6));
+        clock.Advance(duration * 0.5);
+        deadline.Resume();
+        deadline.Pause();
+        clock.Advance(TimeSpan.FromDays(200));
+        Assert.That(deadline.Expired, Is.False);
+        deadline.Resume();
+        Assert.That(clock.Timers[0].Due, Is.EqualTo(duration * 0.1));
+        clock.Advance(duration * 0.1);
+        Assert.That(deadline.Expired, Is.True);
+    }
+
+    [Test]
+    public void Deadline_pause_does_not_revive_expired_execution([Values] bool fireTimer)
+    {
+        DeadlineClock clock = new();
+        using GethTraceDeadline deadline = new(clock: clock);
+        deadline.Start(TimeSpan.FromSeconds(1));
+        clock.Advance(TimeSpan.FromSeconds(1), fireTimer);
+        deadline.Pause();
+        deadline.Resume();
+        Assert.That(deadline.Expired, Is.True);
+        Assert.That(deadline.Token.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
+    public void Deadline_pause_cleanup_keeps_external_cancellation_and_disposal([Values] bool disposeWhilePaused)
+    {
+        DeadlineClock clock = new();
+        using CancellationTokenSource external = new();
+        using GethTraceDeadline deadline = new(external.Token, clock);
+        CancellationToken token = deadline.Token;
+        deadline.Start(TimeSpan.FromSeconds(1));
+        deadline.Pause();
+        if (disposeWhilePaused) deadline.Dispose();
+        else external.Cancel();
+        deadline.Resume();
+        clock.Advance(TimeSpan.FromSeconds(10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(token.IsCancellationRequested, Is.EqualTo(!disposeWhilePaused));
+            Assert.That(deadline.Expired, Is.False);
+            Assert.That(clock.Timers[0].Due, Is.EqualTo(Timeout.InfiniteTimeSpan));
+        }
+        deadline.Dispose();
+        Assert.That(clock.Timers.TrueForAll(timer => timer.Disposed), Is.True);
     }
 
     private sealed class DeadlineClock : TimeProvider
@@ -264,10 +446,11 @@ public class GethStyleTracerTests
             Timers.Add(timer);
             return timer;
         }
-        internal void Advance(TimeSpan elapsed)
+        internal void Advance(TimeSpan elapsed, bool fireTimer = true)
         {
             _timestamp += elapsed.Ticks;
-            foreach (DeadlineTimer timer in Timers) timer.Fire();
+            if (fireTimer)
+                foreach (DeadlineTimer timer in Timers) timer.Fire();
         }
     }
 
