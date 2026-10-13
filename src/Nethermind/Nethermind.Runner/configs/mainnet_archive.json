@@ -41,9 +41,6 @@
   "Discovery": {
     "DiscoveryVersion": "All"
   },
-  "History": {
-    "BalPruning": false
-  },
   "FlatDb": {
     "Enabled": true,
     "HistoryEnabled": true,

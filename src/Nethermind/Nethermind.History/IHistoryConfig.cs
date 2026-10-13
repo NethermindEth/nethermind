@@ -26,9 +26,9 @@ public interface IHistoryConfig : IConfig
     uint BalRetentionEpochs { get; set; }
 
     [ConfigItem(
-        Description = "Whether to prune block access lists (BALs) older than the weak subjectivity period when `Pruning` is `Disabled`. The other pruning modes always prune them.",
-        DefaultValue = "true")]
-    bool BalPruning { get; set; }
+        Description = "Whether to prune block access lists (BALs) older than the weak subjectivity period when `Pruning` is `Disabled`. If not set, they are pruned unless `Pruning.Mode` is `None` (archive). The other history pruning modes always prune them.",
+        DefaultValue = "null")]
+    bool? BalPruning { get; set; }
 
     // Set to 0 to prune every slot
     [ConfigItem(

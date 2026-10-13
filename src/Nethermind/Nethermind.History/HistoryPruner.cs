@@ -111,6 +111,7 @@ public class HistoryPruner : IHistoryPruner
         IHeaderStore headerStore,
         IDbProvider dbProvider,
         IHistoryConfig historyConfig,
+        IPruningConfig pruningConfig,
         IBlocksConfig blocksConfig,
         ISyncConfig syncConfig,
         IProcessExitSource processExitSource,
@@ -132,7 +133,10 @@ public class HistoryPruner : IHistoryPruner
         _historyConfig = historyConfig;
         _receiptRetention = receiptRetention;
         _enabled = historyConfig.Enabled();
-        _balPruningOnly = !_enabled && historyConfig.BalPruning && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
+        // An archive node keeps its access lists unless told otherwise.
+        _balPruningOnly = !_enabled
+            && (historyConfig.BalPruning ?? pruningConfig.Mode != PruningMode.None)
+            && specProvider.GetFinalSpec().BlockLevelAccessListsEnabled;
         _pruningInterval = historyConfig.PruningInterval * SlotsPerEpoch;
         _minHistoryRetentionEpochs = specProvider.GenesisSpec.MinHistoryRetentionEpochs;
         _minBalRetentionEpochs = specProvider.GenesisSpec.MinBalRetentionEpochs;

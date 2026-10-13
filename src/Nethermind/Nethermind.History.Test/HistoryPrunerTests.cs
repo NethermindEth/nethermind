@@ -145,16 +145,19 @@ public class HistoryPrunerTests
         }
     }
 
-    [TestCase(true, true, 9_968UL)]
-    [TestCase(false, true, null)]
-    [TestCase(true, false, null)]
-    public void Bals_are_pruned_when_history_pruning_is_disabled(bool balPruning, bool chainHasAccessLists, ulong? expectedCutoff)
+    [TestCase(null, PruningMode.Hybrid, true, 9_968UL)]
+    [TestCase(true, PruningMode.Hybrid, true, 9_968UL)]
+    [TestCase(false, PruningMode.Hybrid, true, null)]
+    [TestCase(null, PruningMode.None, true, null)] // archive keeps them by default
+    [TestCase(true, PruningMode.None, true, 9_968UL)]
+    [TestCase(null, PruningMode.Hybrid, false, null)]
+    public void Bals_are_pruned_when_history_pruning_is_disabled(bool? balPruning, PruningMode stateMode, bool chainHasAccessLists, ulong? expectedCutoff)
     {
         TestMemDb metadataDb = new();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
-        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balPruning, chainHasAccessLists);
+        HistoryPruner pruner = CreateBalOnlyPruner(metadataDb, blockTree, receiptStorage, balStore, balPruning, stateMode, chainHasAccessLists);
 
         pruner.TryPruneHistory(CancellationToken.None);
 
@@ -213,7 +216,8 @@ public class HistoryPrunerTests
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         IBlockAccessListStore balStore,
-        bool balPruning = true,
+        bool? balPruning = null,
+        PruningMode stateMode = PruningMode.Hybrid,
         bool chainHasAccessLists = true,
         IBackgroundTaskScheduler scheduler = null)
     {
@@ -233,6 +237,7 @@ public class HistoryPrunerTests
             Substitute.For<IHeaderStore>(),
             dbProvider,
             new HistoryConfig { Pruning = PruningModes.Disabled, BalRetentionEpochs = 1, BalPruning = balPruning, PruningInterval = 0 },
+            new PruningConfig { Mode = stateMode },
             BlocksConfig,
             SyncConfig,
             new ProcessExitSource(new()),
@@ -438,6 +443,7 @@ public class HistoryPrunerTests
             Substitute.For<IHeaderStore>(),
             dbProvider,
             historyConfig,
+            new PruningConfig(),
             BlocksConfig,
             SyncConfig,
             new ProcessExitSource(new()),
@@ -724,6 +730,7 @@ public class HistoryPrunerTests
             Substitute.For<IHeaderStore>(),
             dbProvider,
             new HistoryConfig { Pruning = PruningModes.Rolling, RetentionEpochs = 100, PruningInterval = pruningInterval, BalRetentionEpochs = balRetentionEpochs },
+            new PruningConfig(),
             BlocksConfig,
             new SyncConfig { FastSync = true, PivotNumber = 10_000, DownloadBodiesInFastSync = true, SynchronizationEnabled = synchronizationEnabled },
             new ProcessExitSource(new()),
@@ -1109,6 +1116,7 @@ public class HistoryPrunerTests
         testBlockchain.Container.Resolve<IHeaderStore>(),
         testBlockchain.Container.Resolve<IDbProvider>(),
         testBlockchain.Container.Resolve<IHistoryConfig>(),
+        testBlockchain.Container.Resolve<IPruningConfig>(),
         testBlockchain.Container.Resolve<IBlocksConfig>(),
         testBlockchain.Container.Resolve<ISyncConfig>(),
         testBlockchain.Container.Resolve<IProcessExitSource>(),

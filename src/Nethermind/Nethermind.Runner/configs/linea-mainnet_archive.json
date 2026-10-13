@@ -27,8 +27,5 @@
   },
   "FlatDb": {
     "PersistenceWriteBufferFloor": 67108864
-  },
-  "History": {
-    "BalPruning": false
   }
 }

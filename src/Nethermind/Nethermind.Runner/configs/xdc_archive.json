@@ -39,8 +39,5 @@
   },
   "FlatDb": {
     "Enabled": false
-  },
-  "History": {
-    "BalPruning": false
   }
 }
