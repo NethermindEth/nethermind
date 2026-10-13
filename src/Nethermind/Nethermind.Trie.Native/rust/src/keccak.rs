@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-//! Keccak-256, with an AVX-512 kernel hashing eight messages of the same padded length at once.
+//! Keccak-256, with an AVX-512 kernel hashing eight messages at once.
 
 use sha3::{Digest, Keccak256};
 
@@ -12,38 +12,36 @@ pub fn keccak(data: &[u8]) -> [u8; 32] {
     Keccak256::digest(data).into()
 }
 
-/// Hashes every message into the hash at the same index.
-pub fn keccak_many(messages: &[&[u8]], hashes: &mut [[u8; 32]]) {
+/// Hashes `message(index)` into `hashes[index]` for every index below `hashes.len()`.
+pub fn keccak_many<'a>(message: impl Fn(usize) -> &'a [u8], hashes: &mut [[u8; 32]]) {
     #[cfg(target_arch = "x86_64")]
-    if messages.len() >= 2 && std::arch::is_x86_feature_detected!("avx512f") {
-        let blocks = |index: &usize| messages[*index].len() / RATE + 1;
-        let mut order: Vec<usize> = (0..messages.len()).collect();
-        order.sort_unstable_by_key(blocks);
-        for same_length in order.chunk_by(|left, right| blocks(left) == blocks(right)) {
-            for group in same_length.chunks(LANES) {
-                if group.len() == 1 {
-                    hashes[group[0]] = keccak(messages[group[0]]);
-                    continue;
-                }
-                let mut group_hashes = [[0u8; 32]; LANES];
-                // SAFETY: AVX-512F support was checked above.
-                unsafe {
-                    avx512::keccak_x8(
-                        group.iter().map(|&index| messages[index]),
-                        blocks(&group[0]),
-                        &mut group_hashes,
-                    )
-                };
-                for (lane, &index) in group.iter().enumerate() {
-                    hashes[index] = group_hashes[lane];
-                }
+    if hashes.len() >= 2 && std::arch::is_x86_feature_detected!("avx512f") {
+        // Sorted by length, each group of eight runs only as many blocks as its longest message.
+        let mut order: Vec<u32> = (0..hashes.len() as u32).collect();
+        order.sort_unstable_by_key(|&index| message(index as usize).len());
+        for group in order.chunks(LANES) {
+            if group.len() == 1 {
+                hashes[group[0] as usize] = keccak(message(group[0] as usize));
+                continue;
+            }
+            let mut group_hashes = [[0u8; 32]; LANES];
+            // SAFETY: AVX-512F support was checked above.
+            unsafe {
+                avx512::keccak_x8(
+                    group.len(),
+                    |lane| message(group[lane] as usize),
+                    &mut group_hashes,
+                )
+            };
+            for (lane, &index) in group.iter().enumerate() {
+                hashes[index as usize] = group_hashes[lane];
             }
         }
         return;
     }
 
-    for (message, hash) in messages.iter().zip(hashes.iter_mut()) {
-        *hash = keccak(message);
+    for (index, hash) in hashes.iter_mut().enumerate() {
+        *hash = keccak(message(index));
     }
 }
 
@@ -90,33 +88,47 @@ mod avx512 {
     /// `a ^ (!b & c)`
     const CHI: i32 = 0xd2;
 
-    /// Hashes up to eight messages that all pad to `blocks` rate blocks; lanes past the messages are left unused.
+    /// Hashes the messages of the first `lanes` lanes, each lane absorbing its own number of blocks.
     #[target_feature(enable = "avx512f")]
     pub unsafe fn keccak_x8<'a>(
-        messages: impl Iterator<Item = &'a [u8]>,
-        blocks: usize,
+        lanes: usize,
+        message: impl Fn(usize) -> &'a [u8],
         hashes: &mut [[u8; 32]; LANES],
     ) {
-        // Row `block * 17 + lane` holds that lane of every message, so each row loads straight into a vector.
-        let padded_length = blocks * RATE;
-        let mut rows = vec![[0u64; LANES]; padded_length / 8];
-        let mut padded = vec![0u8; padded_length];
-        for (message_index, message) in messages.enumerate() {
-            padded.fill(0);
-            padded[..message.len()].copy_from_slice(message);
-            padded[message.len()] |= 0x01;
-            padded[padded_length - 1] |= 0x80;
-            for (row, word) in rows.iter_mut().zip(padded.chunks_exact(8)) {
-                row[message_index] = u64::from_le_bytes(word.try_into().unwrap());
-            }
+        let lengths: [usize; LANES] =
+            std::array::from_fn(|lane| if lane < lanes { message(lane).len() } else { 0 });
+        let last_blocks = lengths.map(|length| length / RATE);
+        let block_count = last_blocks.iter().max().unwrap() + 1;
+
+        let zero_block = [0u8; RATE];
+        let mut final_blocks = [[0u8; RATE]; LANES];
+        for (lane, final_block) in final_blocks.iter_mut().enumerate().take(lanes) {
+            let tail = &message(lane)[last_blocks[lane] * RATE..];
+            final_block[..tail.len()].copy_from_slice(tail);
+            final_block[tail.len()] |= 0x01;
+            final_block[RATE - 1] |= 0x80;
         }
 
         let mut a = [_mm512_setzero_si512(); 25];
         let mut b = [_mm512_setzero_si512(); 25];
         let mut c = [_mm512_setzero_si512(); 5];
-        for block in rows.chunks_exact(RATE / 8) {
-            for (lane, row) in block.iter().enumerate() {
-                a[lane] = _mm512_xor_si512(a[lane], _mm512_loadu_si512(row.as_ptr().cast()));
+        for block in 0..block_count {
+            // A lane past its last block absorbs zeros, which no longer affects its hash.
+            let addresses: [i64; LANES] = std::array::from_fn(|lane| {
+                let block_start = match lane < lanes {
+                    true if block < last_blocks[lane] => message(lane)[block * RATE..].as_ptr(),
+                    true if block == last_blocks[lane] => final_blocks[lane].as_ptr(),
+                    _ => zero_block.as_ptr(),
+                };
+                block_start as i64
+            });
+            let mut word_addresses = _mm512_loadu_si512(addresses.as_ptr().cast());
+            for word in a.iter_mut().take(RATE / 8) {
+                *word = _mm512_xor_si512(
+                    *word,
+                    _mm512_i64gather_epi64::<1>(word_addresses, std::ptr::null()),
+                );
+                word_addresses = _mm512_add_epi64(word_addresses, _mm512_set1_epi64(8));
             }
 
             for round_constant in ROUND_CONSTANTS {
@@ -154,13 +166,16 @@ mod avx512 {
                 }
                 a[0] = _mm512_xor_si512(a[0], _mm512_set1_epi64(round_constant as i64));
             }
-        }
 
-        for lane in 0..4 {
-            let mut words = [0u64; LANES];
-            _mm512_storeu_si512(words.as_mut_ptr().cast(), a[lane]);
-            for (hash, word) in hashes.iter_mut().zip(words) {
-                hash[lane * 8..lane * 8 + 8].copy_from_slice(&word.to_le_bytes());
+            if last_blocks[..lanes].contains(&block) {
+                for word_index in 0..4 {
+                    let mut words = [0u64; LANES];
+                    _mm512_storeu_si512(words.as_mut_ptr().cast(), a[word_index]);
+                    for lane in (0..lanes).filter(|&lane| last_blocks[lane] == block) {
+                        hashes[lane][word_index * 8..word_index * 8 + 8]
+                            .copy_from_slice(&words[lane].to_le_bytes());
+                    }
+                }
             }
         }
     }
@@ -184,7 +199,7 @@ mod tests {
             .collect();
         let slices: Vec<&[u8]> = messages.iter().map(Vec::as_slice).collect();
         let mut hashes = vec![[0u8; 32]; slices.len()];
-        keccak_many(&slices, &mut hashes);
+        keccak_many(|index| slices[index], &mut hashes);
         for (message, hash) in slices.iter().zip(&hashes) {
             assert_eq!(*hash, keccak(message), "length {}", message.len());
         }

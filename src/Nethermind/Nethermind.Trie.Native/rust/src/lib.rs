@@ -15,6 +15,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
 pub use node::TreePath;
 
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// A key to set, with its value at `values[offset..offset + length]`. A zero length deletes the key.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

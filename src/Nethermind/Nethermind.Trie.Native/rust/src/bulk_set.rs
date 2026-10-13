@@ -5,7 +5,6 @@
 //! until `commit_tree` hashes and stores them.
 
 use std::cell::RefCell;
-use std::cmp::Reverse;
 
 use rayon::prelude::*;
 
@@ -24,8 +23,6 @@ const IN_PLACE_SORT_THRESHOLD: usize = 32;
 
 const FULL_BRANCH: u16 = 0xffff;
 
-const NO_CHILD: u32 = u32::MAX;
-
 pub const EMPTY_TREE_HASH: [u8; 32] = [
     0x56, 0xe8, 0x1f, 0x17, 0x1b, 0xcc, 0x55, 0xa6, 0xff, 0x83, 0x45, 0xe6, 0x92, 0xc0, 0xf8, 0x6e,
     0x5b, 0x48, 0xe0, 0x1b, 0x99, 0x6c, 0xad, 0xc0, 0x01, 0x62, 0x2f, 0xb5, 0xe3, 0x63, 0xb4, 0x21,
@@ -34,6 +31,7 @@ pub const EMPTY_TREE_HASH: [u8; 32] = [
 thread_local! {
     static BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(1024));
     static TRAVERSE_STACK: RefCell<Vec<Frame>> = RefCell::new(Vec::with_capacity(64));
+    static COMMIT_SCRATCH: RefCell<CommitScratch> = RefCell::default();
 }
 
 /// Applies `entries` to the trie whose root is stored at the empty path, writing every new node referenced by hash
@@ -84,32 +82,43 @@ struct Context<'a, S> {
 }
 
 struct ChildUpdate {
-    reference: ChildRef,
-    /// The child with no pending descendants, kept when `reference` is not pending so collapsing a branch need not
+    /// The child with no pending descendants, kept when its reference is not pending so collapsing a branch need not
     /// load it again.
     node: Option<Node>,
     changed: bool,
 }
 
-/// A level `set_one` walked through, holding the node with the child it walked into taken out.
+/// A level `set_one` walked through. The child it walked into is taken out of the node when `pending`, and otherwise
+/// left in place to be kept if nothing below changes.
 enum Frame {
     Branch {
         children: Box<[ChildRef; 16]>,
         child_nibble: u8,
-        /// The child's reference when it was not pending, restored if nothing below changed.
-        original: Option<ChildRef>,
+        pending: bool,
     },
     Extension {
         key: Nibbles,
-        original: ChildRef,
+        child: ChildRef,
+        pending: bool,
     },
 }
 
-/// A node being committed; `children[slot]` is the index of the pending node that becomes its child `slot`.
+/// A node being committed, which becomes child `slot` of the pending node at index `parent`.
 struct PendingNode {
     path: TreePath,
-    node: Node,
-    children: [u32; 16],
+    node: Box<Node>,
+    parent: u32,
+    slot: u8,
+}
+
+/// Buffers `commit_tree` reuses between calls on one thread.
+#[derive(Default)]
+struct CommitScratch {
+    nodes: Vec<PendingNode>,
+    order: Vec<u32>,
+    /// (index, stored start, RLP start, end) of every node in the level referenced by hash.
+    hashed: Vec<(u32, usize, usize, usize)>,
+    hashes: Vec<[u8; 32]>,
 }
 
 type Bucket<'a> = (&'a mut [Entry], &'a mut [Entry]);
@@ -162,37 +171,38 @@ impl<S: NodeStore> Context<'_, S> {
         let mut has_remove = false;
         let mut non_empty_count = 0;
         let mut resolved_nodes: [Option<Node>; 16] = Default::default();
-        let mut apply =
-            |child_nibble: usize, update: ChildUpdate, children: &mut [ChildRef; 16]| {
-                if update.changed {
-                    changed = true;
-                    match update.reference {
-                        ChildRef::Empty => has_remove = true,
-                        _ => non_empty_count += 1,
-                    }
+        let mut apply = |child_nibble: usize, update: ChildUpdate, reference: &ChildRef| {
+            if update.changed {
+                changed = true;
+                match reference {
+                    ChildRef::Empty => has_remove = true,
+                    _ => non_empty_count += 1,
                 }
-                children[child_nibble] = update.reference;
-                resolved_nodes[child_nibble] = update.node;
-            };
+            }
+            resolved_nodes[child_nibble] = update.node;
+        };
 
         if parallel {
             let parent_path = *path;
             let existing: [ChildRef; 16] =
                 std::array::from_fn(|index| std::mem::take(&mut children[index]));
-            let updates: Vec<ChildUpdate> = buckets
+            let updates: Vec<(ChildRef, ChildUpdate)> = buckets
                 .into_par_iter()
                 .zip(existing)
                 .enumerate()
-                .map(|(child_nibble, ((bucket, bucket_buffer), existing))| {
+                .map(|(child_nibble, ((bucket, bucket_buffer), mut reference))| {
                     let mut child_path = parent_path.append(&[child_nibble as u8]);
                     // Every parallel task hashes its own subtree, so no level spans threads.
-                    self.update_child(&mut child_path, existing, true, |path, node| {
-                        self.update(bucket, bucket_buffer, path, node)
-                    })
+                    let update =
+                        self.update_child(&mut child_path, &mut reference, true, |path, node| {
+                            self.update(bucket, bucket_buffer, path, node)
+                        })?;
+                    Ok((reference, update))
                 })
                 .collect::<Result<_, Error>>()?;
-            for (child_nibble, update) in updates.into_iter().enumerate() {
-                apply(child_nibble, update, &mut children);
+            for (child_nibble, (reference, update)) in updates.into_iter().enumerate() {
+                apply(child_nibble, update, &reference);
+                children[child_nibble] = reference;
             }
         } else {
             path.push(0);
@@ -202,11 +212,11 @@ impl<S: NodeStore> Context<'_, S> {
                 remaining &= remaining - 1;
                 path.set_last(child_nibble as u8);
                 let (bucket, bucket_buffer) = std::mem::take(&mut buckets[child_nibble]);
-                let existing = std::mem::take(&mut children[child_nibble]);
-                let update = self.update_child(path, existing, false, |path, node| {
+                let reference = &mut children[child_nibble];
+                let update = self.update_child(path, reference, false, |path, node| {
                     self.update(bucket, bucket_buffer, path, node)
                 })?;
-                apply(child_nibble, update, &mut children);
+                apply(child_nibble, update, reference);
             }
             path.truncate(depth);
         }
@@ -255,17 +265,14 @@ impl<S: NodeStore> Context<'_, S> {
                     }
                     Some(Node::Branch { mut children }) => {
                         let child_nibble = nibble(&entry.key, depth);
-                        let existing = std::mem::take(&mut children[child_nibble as usize]);
-                        let original = match &existing {
-                            ChildRef::Pending(_) => None,
-                            reference => Some(reference.clone()),
-                        };
+                        let reference = &mut children[child_nibble as usize];
+                        let pending = matches!(reference, ChildRef::Pending(_));
                         path.push(child_nibble);
-                        node = self.load(path, existing)?;
+                        node = self.load(path, reference)?;
                         stack.push(Frame::Branch {
                             children,
                             child_nibble,
-                            original,
+                            pending,
                         });
                     }
                     Some(Node::Leaf {
@@ -318,14 +325,16 @@ impl<S: NodeStore> Context<'_, S> {
                             true,
                         );
                     }
-                    Some(Node::Extension { key, child }) => {
+                    Some(Node::Extension { key, mut child }) => {
                         let matched = matched_length(key.as_slice(), &entry.key, depth);
                         if matched == key.len() {
                             path.push_all(key.as_slice());
-                            node = self.load(path, child.clone())?;
+                            let pending = matches!(child, ChildRef::Pending(_));
+                            node = self.load(path, &mut child)?;
                             stack.push(Frame::Extension {
                                 key,
-                                original: child,
+                                child,
+                                pending,
                             });
                             continue;
                         }
@@ -358,28 +367,34 @@ impl<S: NodeStore> Context<'_, S> {
 
             while let Some(frame) = stack.pop() {
                 match frame {
-                    Frame::Extension { key, original } => {
+                    Frame::Extension {
+                        key,
+                        child,
+                        pending,
+                    } => {
                         path.truncate(path.depth() - key.len());
-                        result = match changed {
-                            false => Some(Node::Extension {
+                        result = match (changed, pending) {
+                            (false, false) => Some(Node::Extension { key, child }),
+                            (false, true) => result.map(|node| Node::Extension {
                                 key,
-                                child: original,
+                                child: ChildRef::Pending(Box::new(node)),
                             }),
-                            true => result.map(|node| prepend(key.as_slice(), node)),
+                            (true, _) => result.map(|node| prepend(key.as_slice(), node)),
                         };
                     }
                     Frame::Branch {
                         mut children,
                         child_nibble,
-                        original,
+                        pending,
                     } => {
                         path.truncate(path.depth() - 1);
                         let removed = changed && result.is_none();
-                        children[child_nibble as usize] = match (original, result.take()) {
-                            (Some(reference), _) if !changed => reference,
-                            (_, Some(node)) => ChildRef::Pending(Box::new(node)),
-                            (_, None) => ChildRef::Empty,
-                        };
+                        if changed || pending {
+                            children[child_nibble as usize] = match result.take() {
+                                Some(node) => ChildRef::Pending(Box::new(node)),
+                                None => ChildRef::Empty,
+                            };
+                        }
                         result = match removed {
                             true => {
                                 let mut resolved_nodes = Default::default();
@@ -394,35 +409,35 @@ impl<S: NodeStore> Context<'_, S> {
         })
     }
 
-    /// Loads the child at `path` that `existing` refers to and applies `update` to it. A changed child is committed
-    /// when `commit` is set and left pending otherwise.
+    /// Loads the child at `path` that `reference` refers to, applies `update` to it and points `reference` at the
+    /// result. A changed child is committed when `commit` is set and left pending otherwise.
     fn update_child(
         &self,
         path: &mut TreePath,
-        existing: ChildRef,
+        reference: &mut ChildRef,
         commit: bool,
         update: impl FnOnce(&mut TreePath, Option<Node>) -> Result<(Option<Node>, bool), Error>,
     ) -> Result<ChildUpdate, Error> {
-        let unchanged_reference = match &existing {
-            ChildRef::Pending(_) => None,
-            reference => Some(reference.clone()),
-        };
-        let node = self.load(path, existing)?;
+        let pending = matches!(reference, ChildRef::Pending(_));
+        let node = self.load(path, reference)?;
         let (node, changed) = update(path, node)?;
-        let (reference, node) = match (node, unchanged_reference) {
-            (None, _) => (ChildRef::Empty, None),
-            (Some(node), Some(reference)) if !changed => (reference, Some(node)),
-            (Some(node), _) if commit => {
-                let (reference, node) = self.commit_tree(node, *path, false);
-                (reference, Some(node))
+        let node = match node {
+            None => {
+                *reference = ChildRef::Empty;
+                None
             }
-            (Some(node), _) => (ChildRef::Pending(Box::new(node)), None),
+            Some(node) if !changed && !pending => Some(node),
+            Some(node) if commit => {
+                let (committed, node) = self.commit_tree(node, *path, false);
+                *reference = committed;
+                Some(node)
+            }
+            Some(node) => {
+                *reference = ChildRef::Pending(Box::new(node));
+                None
+            }
         };
-        Ok(ChildUpdate {
-            reference,
-            node,
-            changed,
-        })
+        Ok(ChildUpdate { node, changed })
     }
 
     /// Turns a branch left with fewer than two children into nothing, an extension, or its only child with the
@@ -453,9 +468,8 @@ impl<S: NodeStore> Context<'_, S> {
         ) {
             (ChildRef::Pending(node), _) => (*node, None),
             (reference, Some(node)) => (node, Some(reference)),
-            (reference, None) => (
-                self.load(path, reference.clone())?
-                    .ok_or(Error::MissingNode)?,
+            (mut reference, None) => (
+                self.load(path, &mut reference)?.ok_or(Error::MissingNode)?,
                 Some(reference),
             ),
         };
@@ -470,10 +484,14 @@ impl<S: NodeStore> Context<'_, S> {
         }))
     }
 
-    fn load(&self, path: &TreePath, child: ChildRef) -> Result<Option<Node>, Error> {
+    /// Returns the node `child` refers to, taking it out of `child` when it is pending.
+    fn load(&self, path: &TreePath, child: &mut ChildRef) -> Result<Option<Node>, Error> {
         match child {
             ChildRef::Empty => Ok(None),
-            ChildRef::Pending(node) => Ok(Some(*node)),
+            ChildRef::Pending(_) => match std::mem::take(child) {
+                ChildRef::Pending(node) => Ok(Some(*node)),
+                _ => unreachable!(),
+            },
             ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
             ChildRef::Hash(_) => BUFFER.with_borrow_mut(|buffer| {
                 if !self.store.fetch(path, buffer)? {
@@ -492,63 +510,84 @@ impl<S: NodeStore> Context<'_, S> {
     /// length are never each other's ancestor and by then all their children are resolved, so a whole level is
     /// hashed together by the batch Keccak kernel.
     fn commit_tree(&self, node: Node, path: TreePath, is_root: bool) -> (ChildRef, Node) {
-        let mut nodes = Vec::new();
-        collect_pending(node, path, &mut nodes);
-        let top = nodes.len() - 1;
-        let mut order: Vec<usize> = (0..nodes.len()).collect();
-        order.sort_by_key(|&index| Reverse(nodes[index].path.length));
-        let mut references: Vec<ChildRef> = (0..nodes.len()).map(|_| ChildRef::Empty).collect();
+        COMMIT_SCRATCH.with_borrow_mut(|scratch| {
+            let CommitScratch {
+                nodes,
+                order,
+                hashed,
+                hashes,
+            } = scratch;
+            collect_pending(Box::new(node), path, 0, 0, nodes);
 
-        BUFFER.with_borrow_mut(|buffer| {
-            // (index, stored start, RLP start, end) of every node in the level referenced by hash.
-            let mut hashed: Vec<(usize, usize, usize, usize)> = Vec::new();
-            let mut start = 0;
-            while start < order.len() {
-                let length = nodes[order[start]].path.length;
-                let end = start
-                    + order[start..]
-                        .iter()
-                        .take_while(|&&index| nodes[index].path.length == length)
-                        .count();
+            let mut level_ends = [0usize; 65];
+            for pending in nodes.iter() {
+                level_ends[pending.path.depth()] += 1;
+            }
+            let mut total = 0;
+            for depth in (0..65).rev() {
+                total += level_ends[depth];
+                level_ends[depth] = total;
+            }
+            order.resize(nodes.len(), 0);
+            let mut positions = level_ends;
+            for (index, pending) in nodes.iter().enumerate() {
+                let position = &mut positions[pending.path.depth()];
+                *position -= 1;
+                order[*position] = index as u32;
+            }
 
-                buffer.clear();
-                hashed.clear();
-                for &index in &order[start..end] {
-                    let pending = &mut nodes[index];
-                    for (slot, &child) in pending.children.iter().enumerate() {
-                        if child != NO_CHILD {
-                            pending
-                                .node
-                                .set_child(slot, std::mem::take(&mut references[child as usize]));
+            let mut top_reference = ChildRef::Empty;
+            let mut resolve = |nodes: &mut Vec<PendingNode>, index: u32, reference: ChildRef| {
+                if index == 0 {
+                    top_reference = reference;
+                } else {
+                    let PendingNode { parent, slot, .. } = nodes[index as usize];
+                    nodes[parent as usize]
+                        .node
+                        .set_child(slot as usize, reference);
+                }
+            };
+            BUFFER.with_borrow_mut(|buffer| {
+                let mut start = 0;
+                for &end in level_ends.iter().rev() {
+                    if end == start {
+                        continue;
+                    }
+                    buffer.clear();
+                    hashed.clear();
+                    for &index in &order[start..end] {
+                        let stored_start = buffer.len();
+                        let rlp_start = encode(&nodes[index as usize].node, buffer);
+                        if buffer.len() - rlp_start < 32 && !(is_root && index == 0) {
+                            resolve(nodes, index, ChildRef::inline(&buffer[rlp_start..]));
+                            buffer.truncate(stored_start);
+                        } else {
+                            hashed.push((index, stored_start, rlp_start, buffer.len()));
                         }
                     }
-                    let stored_start = buffer.len();
-                    let rlp_start = encode(&pending.node, buffer);
-                    if buffer.len() - rlp_start < 32 && !(is_root && index == top) {
-                        references[index] = ChildRef::inline(&buffer[rlp_start..]);
-                        buffer.truncate(stored_start);
-                    } else {
-                        hashed.push((index, stored_start, rlp_start, buffer.len()));
+
+                    hashes.resize(hashed.len(), [0; 32]);
+                    keccak_many(
+                        |position| {
+                            let (_, _, rlp_start, end) = hashed[position];
+                            &buffer[rlp_start..end]
+                        },
+                        hashes,
+                    );
+                    for (&(index, stored_start, _, end), &hash) in hashed.iter().zip(hashes.iter())
+                    {
+                        self.store
+                            .write(&nodes[index as usize].path, &buffer[stored_start..end]);
+                        resolve(nodes, index, ChildRef::Hash(hash));
                     }
+                    start = end;
                 }
+            });
 
-                let messages: Vec<&[u8]> = hashed
-                    .iter()
-                    .map(|&(_, _, rlp_start, end)| &buffer[rlp_start..end])
-                    .collect();
-                let mut hashes = vec![[0u8; 32]; messages.len()];
-                keccak_many(&messages, &mut hashes);
-                for (&(index, stored_start, _, end), hash) in hashed.iter().zip(hashes) {
-                    self.store
-                        .write(&nodes[index].path, &buffer[stored_start..end]);
-                    references[index] = ChildRef::Hash(hash);
-                }
-                start = end;
-            }
-        });
-
-        let reference = std::mem::take(&mut references[top]);
-        (reference, nodes.pop().unwrap().node)
+            let top = nodes.swap_remove(0);
+            nodes.clear();
+            (top_reference, *top.node)
+        })
     }
 
     fn value(&self, entry: &Entry) -> &[u8] {
@@ -556,37 +595,39 @@ impl<S: NodeStore> Context<'_, S> {
     }
 }
 
-/// Moves `node` and its pending descendants into `nodes`, children before their parent.
-fn collect_pending(mut node: Node, path: TreePath, nodes: &mut Vec<PendingNode>) {
-    let mut children = [NO_CHILD; 16];
-    match &mut node {
-        Node::Branch {
-            children: references,
-        } => {
-            for (slot, reference) in references.iter_mut().enumerate() {
-                if matches!(reference, ChildRef::Pending(_)) {
-                    let ChildRef::Pending(child) = std::mem::take(reference) else {
-                        unreachable!()
-                    };
-                    collect_pending(*child, path.append(&[slot as u8]), nodes);
-                    children[slot] = (nodes.len() - 1) as u32;
-                }
-            }
-        }
-        Node::Extension { key, child } if matches!(child, ChildRef::Pending(_)) => {
-            let ChildRef::Pending(pending) = std::mem::take(child) else {
-                unreachable!()
-            };
-            collect_pending(*pending, path.append(key.as_slice()), nodes);
-            children[0] = (nodes.len() - 1) as u32;
-        }
-        _ => {}
-    }
+/// Moves `node` and its pending descendants into `nodes`, parents before their children.
+fn collect_pending(
+    node: Box<Node>,
+    path: TreePath,
+    parent: u32,
+    slot: u8,
+    nodes: &mut Vec<PendingNode>,
+) {
+    let index = nodes.len();
     nodes.push(PendingNode {
         path,
         node,
-        children,
+        parent,
+        slot,
     });
+    for slot in 0..16u8 {
+        let (child, child_path) = match nodes[index].node.as_mut() {
+            Node::Branch { children } => match &mut children[slot as usize] {
+                reference @ ChildRef::Pending(_) => {
+                    (std::mem::take(reference), path.append(&[slot]))
+                }
+                _ => continue,
+            },
+            Node::Extension { key, child } if matches!(child, ChildRef::Pending(_)) => {
+                (std::mem::take(child), path.append(key.as_slice()))
+            }
+            _ => return,
+        };
+        let ChildRef::Pending(child) = child else {
+            unreachable!()
+        };
+        collect_pending(child, child_path, index as u32, slot, nodes);
+    }
 }
 
 /// Puts `prefix` in front of `node`, merging into it unless it is a branch.
