@@ -350,6 +350,24 @@ public partial class DebugRpcModuleTests
         Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
     }
 
+    // Like geth's eth_call, a bundle call has no EIP-2681 guard: only eth_simulateV1 fails at the maximum nonce.
+    [Test]
+    public async Task Debug_traceCallMany_with_overrides_traces_a_sender_at_max_nonce()
+    {
+        using Context ctx = await CreateContext();
+        TransactionBundle bundle = CreateBundle(CreateTransaction(from: TestItem.AddressA, to: TestItem.AddressB, value: 0, gas: 100_000));
+        bundle.StateOverrides = new Dictionary<Address, AccountOverride>
+        {
+            [TestItem.AddressA] = new() { Nonce = ulong.MaxValue }
+        };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.Zero, result.Result.Error);
+        Assert.That(result.Data.Single().Single().Failed, Is.False);
+    }
+
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
     public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(ulong? requestGas, ulong? configuredGasCap, bool uncapped)
     {

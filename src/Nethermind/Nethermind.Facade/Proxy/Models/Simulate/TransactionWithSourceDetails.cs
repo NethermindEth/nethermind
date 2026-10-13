@@ -12,5 +12,8 @@ public class TransactionWithSourceDetails
 
     /// <summary>The gas limit the block must still be able to include, or <c>null</c> to skip that check.</summary>
     public ulong? GasLimitToFitBlock;
+
+    /// <summary>Whether the call fails at the maximum sender nonce even without validation (EIP-2681).</summary>
+    public bool EnforceNonceLimit = true;
     public Transaction Transaction { get; set; }
 }

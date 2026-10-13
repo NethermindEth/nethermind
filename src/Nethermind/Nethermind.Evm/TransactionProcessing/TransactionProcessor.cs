@@ -79,11 +79,16 @@ namespace Nethermind.Evm.TransactionProcessing
         /// </summary>
         /// <remarks>
         /// execution-apis#907: simulation exempts contract sender and signature checks even with <c>validation: true</c>.
-        /// It also exempts the EIP-8037 TX_MAX_TOTAL_GAS_LIMIT cap on the gas limit.
-        /// With validation skipped, the processor still enforces the EIP-2681 nonce limit and lifts the EIP-8037 execution-gas
-        /// cap, as eth_simulateV1 requires.
+        /// It also exempts the EIP-8037 TX_MAX_TOTAL_GAS_LIMIT cap on the gas limit. With validation skipped, the processor
+        /// also lifts the EIP-8037 execution-gas cap, as eth_simulateV1 and geth's eth_call require.
         /// </remarks>
         public bool SkipSenderChecks { get; set; }
+
+        /// <summary>
+        /// When set, a transaction run with validation skipped fails at the maximum sender nonce (EIP-2681) instead of
+        /// wrapping it to 0, as eth_simulateV1 requires. eth_call-style calls leave it unset.
+        /// </summary>
+        public bool EnforceNonceLimitWithoutValidation { get; set; }
 
         /// <summary>Whether LOG may skip materialising its entry: a prewarming run nobody observes.</summary>
         /// <remarks>Deliberately narrower than the tracer-requirement test the non-frame path uses: a frame
@@ -1336,8 +1341,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
-            // EIP-2681: eth_simulateV1 keeps the nonce limit when it skips validation; other unvalidated calls wrap the nonce.
-            if (nonce == ulong.MaxValue && IsNonStrictSimulation(opts))
+            if (nonce == ulong.MaxValue && !validate && EnforceNonceLimitWithoutValidation)
             {
                 TraceLogInvalidTx(tx, "NONCE_OVERFLOW");
                 return TransactionResult.NonceOverflow;

@@ -40,6 +40,11 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         BlockReceiptsTracer? receiptsTracer = txTracer.GetTracer<BlockReceiptsTracer>();
         Debug.Assert(receiptsTracer is not null, $"Simulate must be traced through a {nameof(BlockReceiptsTracer)}.");
         ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
+        if (transactionProcessor is TransactionProcessorBase processor)
+        {
+            processor.EnforceNonceLimitWithoutValidation = simulateRequestState.TxsEnforcingNonceLimit[_currentTxIndex];
+        }
+
         TransactionResult result = simulateRequestState.Validate ? transactionProcessor.Execute(transaction, txTracer) : transactionProcessor.Trace(transaction, txTracer);
 
         ulong blockGasUsed = transaction.BlockGasUsed;

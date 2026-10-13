@@ -891,8 +891,9 @@ public class DebugRpcModule(
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: WithBufferedLimit(options)),
                 _secondsPerSlot,
-                // Like eth_call, a bundle call is not bounded by the block gas limit; FillOmittedGas relies on this.
-                requestedGasMustFitBlock: false
+                // A bundle call runs as eth_call does: the block gas limit does not bound it, which FillOmittedGas
+                // relies on, and the sender nonce wraps at its maximum.
+                callSemantics: true
             ).Execute(simulatePayload, concreteBlockParameter);
 
         if (simulationResult.ErrorCode != 0)

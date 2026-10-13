@@ -17,6 +17,7 @@ public class SimulateRequestState : IBlobBaseFeeOverrideProvider
     public ulong BlockStateGasLeft { get; set; }
     public bool[] TxsWithExplicitGas { get; private set; } = [];
     public ulong?[] GasLimitsToFitBlock { get; private set; } = [];
+    public bool[] TxsEnforcingNonceLimit { get; private set; } = [];
 
     public void SetTxsWithExplicitGas(TransactionWithSourceDetails[] calls)
     {
@@ -24,12 +25,14 @@ public class SimulateRequestState : IBlobBaseFeeOverrideProvider
         {
             TxsWithExplicitGas = new bool[calls.Length];
             GasLimitsToFitBlock = new ulong?[calls.Length];
+            TxsEnforcingNonceLimit = new bool[calls.Length];
         }
 
         for (int i = 0; i < calls.Length; i++)
         {
             TxsWithExplicitGas[i] = calls[i].HadGasLimitInRequest;
             GasLimitsToFitBlock[i] = calls[i].GasLimitToFitBlock;
+            TxsEnforcingNonceLimit[i] = calls[i].EnforceNonceLimit;
         }
     }
 }
