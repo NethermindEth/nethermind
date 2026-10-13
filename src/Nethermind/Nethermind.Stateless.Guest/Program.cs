@@ -26,6 +26,7 @@ partial class Program
         ReadOnlySpan<byte> input = IO.ReadInput();
         ReadOnlySpan<byte> output = StatelessExecutor.Execute(input);
 
+        _outputWritten = true;
         WriteOutput(output);
 
         return 0;
@@ -37,18 +38,22 @@ partial class Program
 
     static bool _handlingException;
 
+    static bool _outputWritten;
+
     /// <summary>Last-resort handler for an exception escaping managed code.</summary>
     /// <remarks>
     /// Exits 0 after publishing <see cref="StatelessExecutor.FailureOutput"/>:
     /// a guest that failed validation still has a result to prove, and the
     /// distinction lives in the output rather than in the exit code. The
     /// <see cref="_handlingException"/> guard covers a second exception raised
-    /// while reporting the first, which would otherwise recurse.
+    /// while reporting the first, which would otherwise recurse. Once
+    /// <see cref="Main"/> has started publishing its result, it exits 1 instead:
+    /// the guest's output appends, so a second result would follow the first.
     /// </remarks>
     [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
     static unsafe void HandleException(void* exception)
     {
-        if (_handlingException || StatelessExecutor.FailureOutput.IsEmpty)
+        if (_handlingException || _outputWritten || StatelessExecutor.FailureOutput.IsEmpty)
             Environment.Exit(1);
 
         _handlingException = true;
