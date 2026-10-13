@@ -1684,8 +1684,9 @@ public class HistoryWriterTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pending.Storages, Is.Empty);
-            Assert.That(pending.Storages.EnsureCapacity(0), Is.LessThan(100_000), "a walk far longer than a capture of a few blocks must not hold its memory for the life of the process");
-            Assert.That(pending.Accounts.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1_000), "what a capture of a few blocks tracks stays allocated for the next one");
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.LessThan(100_000), "a walk far longer than one persisted chunk must not hold its memory for the life of the process");
+            Assert.That(pending.Storages.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1 << 16), "trimmed back to the limit, not to zero, so a chunk near it does not regrow the map from nothing");
+            Assert.That(pending.Accounts.EnsureCapacity(0), Is.GreaterThanOrEqualTo(1_000), "what a normal capture tracks stays allocated for the next one");
         }
     }
 
