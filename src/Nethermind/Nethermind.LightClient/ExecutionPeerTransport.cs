@@ -95,6 +95,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         InitConfig init = new() { DiagnosticMode = DiagnosticMode.MemDb, DataDir = "src/Nethermind/artifacts/lightclient-execution" };
         NetworkConfig net = new()
         {
+            DiscoveryDns = $"enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{network}.ethdisco.net",
             P2PPort = 30307,
             DiscoveryPort = 30307,
             MaxActivePeers = 16,

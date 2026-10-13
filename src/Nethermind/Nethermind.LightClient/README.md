@@ -299,6 +299,10 @@ value. The startup checkpoint remains a trusted input, whether supplied directly
 or fetched from the selected HTTPS provider. Chain-spec bootnodes and default
 ENRs seed discovery; direct public-network RLPx candidates come from discovered
 peer records from discv5 or the signed DNS ENR tree.
+The light client selects the signer-pinned `snap.<network>.ethdisco.net` tree
+(`snap.mainnet.ethdisco.net`, `snap.hoodi.ethdisco.net` or
+`snap.sepolia.ethdisco.net`) to discover SNAP-capable execution peers.
+SNAP support is confirmed during the live P2P handshake.
 
 Signed discovery ENRs are retained under `<data-dir>/el/<network>/discovery`
 using the existing discovery storage and revalidated on restart. The cache keeps
