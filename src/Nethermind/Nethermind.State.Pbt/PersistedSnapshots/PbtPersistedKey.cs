@@ -8,15 +8,15 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-public static class PbtRetainedKey
+public static class PbtPersistedKey
 {
-    public const byte Metadata = 0;
+    public const byte Ownership = 0;
     public const byte Address = 0x10;
     public const byte Code = 0x20;
     public const byte AccountGroup = 0x30;
     public const byte CodeGroup = 0x31;
     public const byte StorageGroup = 0x32;
-    public const byte Ownership = 0xF0;
+    public const byte Metadata = 0xFF;
     public const byte Clear = 0;
     public const byte Account = 1;
     public const byte HeaderRun = 2;
@@ -51,7 +51,7 @@ public static class PbtRetainedKey
         ReadOnlySpan<byte> bytes = path.Bytes;
         if (bytes.Length != (header ? 34 : 66) || bytes[0] != (header ? Eip8297KeyDerivation.AccountZone : Eip8297KeyDerivation.StorageZone)
             || (bytes[^1] & 15) != 0 || header && bytes[^1] is < 64 or >= 128)
-            throw new InvalidDataException("Invalid retained PBT storage run key.");
+            throw new InvalidDataException("Invalid persisted PBT storage run key.");
         byte[] key = new byte[header ? 36 : 68];
         key[0] = Address;
         bytes.Slice(1, 32).CopyTo(key.AsSpan(1));
@@ -113,24 +113,24 @@ public static class PbtRetainedKey
 
     public static void ValidateDescriptor(ReadOnlySpan<byte> key)
     {
-        if (key.Length < 2 || key[^1] != DescriptorFlag) throw new InvalidDataException("Invalid retained PBT descriptor key.");
+        if (key.Length < 2 || key[^1] != DescriptorFlag) throw new InvalidDataException("Invalid persisted PBT descriptor key.");
         switch (key[0])
         {
             case Address:
-                if (key.Length < 35) throw new InvalidDataException("Invalid retained PBT address key.");
+                if (key.Length < 35) throw new InvalidDataException("Invalid persisted PBT address key.");
                 switch (key[33])
                 {
                     case Clear or Account when key.Length == 35: return;
                     case HeaderRun when key.Length == 36 && key[34] is >= 64 and < 128 && (key[34] & 15) == 0: return;
                     case StorageRun when key.Length == 68 && (key[66] & 15) == 0: return;
-                    default: throw new InvalidDataException("Invalid retained PBT address subtag or run alignment.");
+                    default: throw new InvalidDataException("Invalid persisted PBT address subtag or run alignment.");
                 }
             case Code when key.Length == 34: return;
             case AccountGroup or CodeGroup or StorageGroup:
                 PbtStorageNodePath path = DecodeGroup(key);
-                if (GroupFamily(path) != key[0]) throw new InvalidDataException("Retained PBT group partition mismatch.");
+                if (GroupFamily(path) != key[0]) throw new InvalidDataException("Persisted PBT group partition mismatch.");
                 return;
-            default: throw new InvalidDataException("Unknown retained PBT entity family.");
+            default: throw new InvalidDataException("Unknown persisted PBT entity family.");
         }
     }
 
@@ -144,13 +144,13 @@ public static class PbtRetainedKey
 
     public static PbtStorageNodePath DecodeGroup(ReadOnlySpan<byte> key)
     {
-        if (key.Length < 4) throw new InvalidDataException("Invalid retained PBT group key.");
+        if (key.Length < 4) throw new InvalidDataException("Invalid persisted PBT group key.");
         int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
         int maxDepth = key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
         if (!PbtThreeLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != GroupKeyLength(depth))
-            throw new InvalidDataException("Invalid retained PBT group depth.");
+            throw new InvalidDataException("Invalid persisted PBT group depth.");
         ReadOnlySpan<byte> path = key.Slice(3, key.Length - 4);
-        if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid retained PBT group padding.");
+        if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid persisted PBT group padding.");
         return PbtStorageNodePath.Create(path, depth);
     }
 

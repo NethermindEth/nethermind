@@ -37,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Snapshot;
@@ -273,7 +274,7 @@ public class PbtRocksDbPersistenceTests
         using MemDb metadata = new();
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
         PbtResourcePool pool = new(config);
-        PbtSnapshotRepository repository = new(new MetricsConfig());
+        PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config, LimboLogs.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
@@ -297,7 +298,8 @@ public class PbtRocksDbPersistenceTests
             {
                 PbtRocksDbPersistence persistence = new(db, config, NullTrieNodeLog.Instance);
                 PbtPersistenceManager persistenceManager = new(config, new PbtTestContext.TestFinalizedStateProvider(), persistence,
-                    repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
+                    repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance, NullPbtPersistedSnapshotLoader.Instance,
+                    NullPbtPersistedSnapshotCompactor.Instance, CancellationToken.None);
                 for (ulong number = 0; number <= 5; number++)
                 {
                     StateId next = new(number, TestItem.KeccakA.ValueHash256);
@@ -764,7 +766,7 @@ public class PbtProtocolStorageClearTests
 
     [Test]
     public async Task Protocol_storage_clear_survives_retention_and_base_reopen(
-        [Values] History history, [Values] bool retained)
+        [Values] History history, [Values] bool persisted)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using SnapshotableMemColumnsDb<PbtColumns> baseDb = new("protocol-pbt");
@@ -864,13 +866,13 @@ public class PbtProtocolStorageClearTests
                     state.CommitTree(block);
                     head = Header(block, state.StateRoot);
                 }
-                if (retained)
+                if (persisted)
                 {
                     PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
                     Assert.That(repository.TryLeaseMemoryState(new StateId(head), SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot), Is.True);
                     using (snapshot)
                     {
-                        Assert.That(container.Resolve<IPbtRetainedSnapshotLoader>().ConvertAndRegister(snapshot!), Is.True);
+                        Assert.That(container.Resolve<IPbtPersistedSnapshotLoader>().ConvertAndRegister(snapshot!), Is.True);
                         repository.RemoveMemorySource(snapshot!);
                     }
                     if (repository.TryLeaseMemoryState(new StateId(head), SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted))
@@ -878,18 +880,18 @@ public class PbtProtocolStorageClearTests
                 }
             }
             finalRoot = head.StateRoot!;
-            if (retained)
+            if (persisted)
             {
-                IPbtRetainedSnapshotCompactor compactor = container.Resolve<IPbtRetainedSnapshotCompactor>();
+                IPbtPersistedSnapshotCompactor compactor = container.Resolve<IPbtPersistedSnapshotCompactor>();
                 await compactor.EnqueueAsync(new ArrayPoolList<StateId>(1) { new(head) }, 0, CancellationToken.None);
                 await compactor.DisposeAsync();
-                Assert.That(container.Resolve<PbtSnapshotRepository>().HasRetained(new StateId(head), 2, SnapshotTier.PersistedCompactSized), Is.True);
+                Assert.That(container.Resolve<PbtSnapshotRepository>().HasPersisted(new StateId(head), 2, SnapshotTier.PersistedCompactSized), Is.True);
             }
             else manager.FlushCache(CancellationToken.None);
         }
         if (survives) Assert.That(codeDb[ValueKeccak.Compute(destroy).Bytes], Is.EqualTo(destroy));
         (Hash256 cleanRoot, string[] expectedRecords) = await ExpectedRoot(history, expectedNonce, factoryCode, destroy, contract, survives);
-        if (!retained && history == History.Create2Recreate)
+        if (!persisted && history == History.Create2Recreate)
         {
             string[] actualRecords = Canonical(baseDb);
             TestContext.Out.WriteLine($"factoryCodeHash={ValueKeccak.Compute(factoryCode)} childCodeHash={ValueKeccak.Compute(destroy)}");

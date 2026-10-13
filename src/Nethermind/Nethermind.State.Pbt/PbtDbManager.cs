@@ -66,24 +66,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         IProcessExitSource processExitSource,
         ILogManager logManager,
         IMetricsConfig metricsConfig,
-        IPbtTrieNodeCache trieNodeCache)
-        : this(repository, persistenceManager, persistence, resourcePool, compactor, processExitSource, logManager,
-            metricsConfig, trieNodeCache, NullPbtRetainedSnapshotLoader.Instance)
-    { }
-
-    public PbtDbManager(
-        PbtSnapshotRepository repository,
-        PbtPersistenceManager persistenceManager,
-        IPbtPersistence persistence,
-        IPbtResourcePool resourcePool,
-        PbtSnapshotCompactor compactor,
-        IProcessExitSource processExitSource,
-        ILogManager logManager,
-        IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache,
-        IPbtRetainedSnapshotLoader retainedLoader)
+        IPbtPersistedSnapshotLoader persistedLoader)
     {
-        retainedLoader.Load();
+        persistedLoader.Load();
         _trieNodeCache = trieNodeCache;
         _repository = repository;
         _persistenceManager = persistenceManager;
@@ -112,7 +98,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
-        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics, slotFilterBitsPerKey: 0);
+        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotChain([]), EmptyPersistenceReader.Instance, _recordDetailedMetrics, slotFilterBitsPerKey: 0);
         long started = 0;
         int attempt = 0;
         while (true)

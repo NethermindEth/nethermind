@@ -13,18 +13,18 @@ using Nethermind.State.Pbt.Snapshot;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-public sealed class PbtRetainedSnapshotLoader(
+public sealed class PbtPersistedSnapshotLoader(
     PbtSnapshotRepository repository,
-    PbtRetainedPublicationGate publicationGate,
-    PbtRetainedStorageLifetime lifetime,
+    PbtPersistedPublicationGate publicationGate,
+    PbtPersistedStorageLifetime lifetime,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
     [KeyFilter(DbNames.Pbt)] ISnapshotCatalog catalog,
     IRefCountingMemoryProvider memory,
     IPbtConfig config,
-    ILogManager logManager) : IPbtRetainedSnapshotLoader
+    ILogManager logManager) : IPbtPersistedSnapshotLoader
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<PbtRetainedSnapshotLoader>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtPersistedSnapshotLoader>();
     private readonly Lock _loadLock = new();
     private bool _loaded;
     private ExceptionDispatchInfo? _loadFailure;
@@ -52,26 +52,26 @@ public sealed class PbtRetainedSnapshotLoader(
             foreach (CatalogEntry entry in entries)
                 if (entry.Location.ArenaId < 0 || entry.Location.Offset < 0 || entry.Location.Size <= 0
                     || entry.Location.Size > long.MaxValue - entry.Location.Offset)
-                    throw new InvalidDataException("Invalid retained PBT catalog location.");
+                    throw new InvalidDataException("Invalid persisted PBT catalog location.");
             IReadOnlySet<int> missing = arena.Initialize(entries);
             foreach (CatalogEntry entry in entries)
             {
                 if (missing.Contains(entry.Location.ArenaId))
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Retained PBT state {entry.To} has no arena {entry.Location.ArenaId}; removing its stale catalog entry.");
+                    if (_logger.IsWarn) _logger.Warn($"Persisted PBT state {entry.To} has no arena {entry.Location.ArenaId}; removing its stale catalog entry.");
                     catalog.Remove(entry.To, Depth(entry.From, entry.To));
                     continue;
                 }
                 if (arena is ArenaManager mapped && !mapped.ContainsLocation(entry.Location))
-                    throw new InvalidDataException("Retained PBT catalog location exceeds its arena file.");
+                    throw new InvalidDataException("Persisted PBT catalog location exceeds its arena file.");
                 ArenaReservation reservation = arena.Open(entry.Location);
                 reservations.Add(reservation);
                 using RefCountedBloomFilter bloom = RefCountedBloomFilter.AlwaysTrue();
-                using PbtRetainedSnapshot snapshot = new(entry, reservation, blobs, memory, bloom);
+                using PbtPersistedSnapshot snapshot = new(entry, reservation, blobs, memory, bloom);
                 lock (publicationGate.Sync)
                 {
-                    if (!repository.TryAddRetained(snapshot))
-                        throw new InvalidDataException($"Duplicate retained PBT catalog identity {entry.To}.");
+                    if (!repository.TryAddPersisted(snapshot))
+                        throw new InvalidDataException($"Duplicate persisted PBT catalog identity {entry.To}.");
                 }
             }
             ReconstructBloom(entries);
@@ -93,14 +93,14 @@ public sealed class PbtRetainedSnapshotLoader(
     public bool ConvertAndRegister(PbtSnapshot snapshot)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
-        using BlobArenaWriter blobWriter = blobs.CreateWriter(PbtRetainedSnapshotBuilder.EstimateBlobSize(snapshot));
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(PbtPersistedSnapshotBuilder.EstimateBlobSize(snapshot));
         using RefCountedBloomFilter bloom = new(config.PersistedSnapshotBloomBitsPerKey > 0
             ? new BloomFilter(1, config.PersistedSnapshotBloomBitsPerKey) : BloomFilter.AlwaysTrue());
         SnapshotLocation location;
         ArenaReservation reservation;
-        using (ArenaWriter writer = arena.CreateWriter(PbtRetainedSnapshotBuilder.EstimateSize(snapshot), small: true))
+        using (ArenaWriter writer = arena.CreateWriter(PbtPersistedSnapshotBuilder.EstimateSize(snapshot), small: true))
         {
-            PbtRetainedSnapshotBuilder.Build(snapshot, ref writer.GetWriter(), blobWriter, bloom.Filter);
+            PbtPersistedSnapshotBuilder.Build(snapshot, ref writer.GetWriter(), blobWriter, bloom.Filter);
             (location, reservation) = writer.Complete();
         }
         using (reservation)
@@ -108,51 +108,51 @@ public sealed class PbtRetainedSnapshotLoader(
             blobWriter.Complete();
             reservation.Fsync();
             blobWriter.Fsync();
-            using PbtRetainedSnapshot retained = new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, blobs, memory, bloom);
-            if (config.ValidatePersistedSnapshot) PbtRetainedSnapshotValidation.Validate(snapshot, retained);
+            using PbtPersistedSnapshot persisted = new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, blobs, memory, bloom);
+            if (config.ValidatePersistedSnapshot) PbtPersistedSnapshotValidation.Validate(snapshot, persisted);
             lock (publicationGate.Sync)
             {
                 if (!repository.ContainsMemorySource(snapshot)) return false;
-                return Publish(retained, duplicateSuccess: true);
+                return Publish(persisted, duplicateSuccess: true);
             }
         }
     }
 
-    public bool RegisterCompacted(PbtRetainedSnapshot snapshot, ReadOnlySpan<PbtRetainedSnapshot> sources)
+    public bool RegisterCompacted(PbtPersistedSnapshot snapshot, ReadOnlySpan<PbtPersistedSnapshot> sources)
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         if (sources.Length < 2) return false;
         lock (publicationGate.Sync)
         {
             if (snapshot.From != sources[0].From || snapshot.To != sources[^1].To || snapshot.TreeRoot != sources[^1].TreeRoot)
-                throw new InvalidDataException("Retained PBT compaction output identity mismatch.");
+                throw new InvalidDataException("Persisted PBT compaction output identity mismatch.");
             for (int i = 0; i < sources.Length; i++)
             {
-                if (!repository.ContainsRetainedStorageSource(sources[i])) return false;
+                if (!repository.ContainsPersistedStorageSource(sources[i])) return false;
                 if (i > 0 && sources[i - 1].To != sources[i].From)
-                    throw new InvalidDataException("Disconnected retained PBT compaction sources.");
+                    throw new InvalidDataException("Disconnected persisted PBT compaction sources.");
             }
             snapshot.Reservation.Fsync();
             return Publish(snapshot, duplicateSuccess: false);
         }
     }
 
-    private bool Publish(PbtRetainedSnapshot snapshot, bool duplicateSuccess)
+    private bool Publish(PbtPersistedSnapshot snapshot, bool duplicateSuccess)
     {
         long depth = snapshot.Depth;
-        if (repository.TryLeaseRetainedCatalogKey(snapshot.To, depth, out PbtRetainedSnapshot? existing))
+        if (repository.TryLeasePersistedCatalogKey(snapshot.To, depth, out PbtPersistedSnapshot? existing))
         {
             using (existing)
             {
                 if (existing!.From != snapshot.From || existing.TreeRoot != snapshot.TreeRoot)
-                    throw new InvalidDataException("Conflicting retained PBT catalog identity.");
+                    throw new InvalidDataException("Conflicting persisted PBT catalog identity.");
                 return duplicateSuccess;
             }
         }
         try
         {
             catalog.Add(new(snapshot.From, snapshot.To, snapshot.Location, snapshot.Tier));
-            if (!repository.TryAddRetained(snapshot)) throw new InvalidOperationException("Retained PBT admission lost under publication lock.");
+            if (!repository.TryAddPersisted(snapshot)) throw new InvalidOperationException("Persisted PBT admission lost under publication lock.");
             return true;
         }
         catch (Exception publicationError)
@@ -164,7 +164,7 @@ public sealed class PbtRetainedSnapshotLoader(
             catch (Exception rollbackError)
             {
                 snapshot.PersistOnShutdown();
-                if (_logger.IsError) _logger.Error("Retained PBT publication rollback failed; preserving potentially catalogued data for recovery.", rollbackError);
+                if (_logger.IsError) _logger.Error("Persisted PBT publication rollback failed; preserving potentially catalogued data for recovery.", rollbackError);
                 throw new AggregateException(publicationError, rollbackError);
             }
             throw;
@@ -183,15 +183,15 @@ public sealed class PbtRetainedSnapshotLoader(
         if (chain is null) return;
         foreach (PbtSnapshotLease layer in chain.Layers)
         {
-            PbtRetainedSnapshot snapshot = layer.Retained!;
+            PbtPersistedSnapshot snapshot = layer.Persisted!;
             using RefCountedBloomFilter rebuilt = RebuildBloom(snapshot);
-            using PbtRetainedSnapshot replacement = snapshot.WithBloom(rebuilt);
-            if (repository.ReplaceRetainedSnapshot(snapshot, replacement))
+            using PbtPersistedSnapshot replacement = snapshot.WithBloom(rebuilt);
+            if (repository.ReplacePersistedSnapshot(snapshot, replacement))
                 repository.ShareBloomAcrossRange(snapshot.From, snapshot.To, rebuilt);
         }
     }
 
-    private RefCountedBloomFilter RebuildBloom(PbtRetainedSnapshot snapshot)
+    private RefCountedBloomFilter RebuildBloom(PbtPersistedSnapshot snapshot)
     {
         long count = snapshot.EntityBloomHashes().LongCount();
         RefCountedBloomFilter result = new(new BloomFilter(Math.Max(1, count), config.PersistedSnapshotBloomBitsPerKey));

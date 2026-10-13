@@ -43,20 +43,20 @@ public static class PbtCoreRegistration
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
             .AddSingleton<IPbtTrieNodeCache, PbtTrieNodeCache>()
-            .AddPbtRetained(config)
+            .AddPbtPersisted(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
-                ctx.Resolve<PbtRetainedPublicationGate>()))
+                ctx.Resolve<PbtPersistedPublicationGate>()))
             .AddSingleton<PbtSnapshotCompactor>()
             .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
             .AddSingleton<PbtPersistenceManager>(ctx => new PbtPersistenceManager(
                 config, ctx.Resolve<IStateHeaderProvider>(), ctx.Resolve<IPbtPersistence>(), ctx.Resolve<PbtSnapshotRepository>(),
                 ctx.ResolveKeyed<ICompactionSchedule>(DbNames.Pbt), ctx.Resolve<IStatePersistenceBarrier>(), ctx.Resolve<ILogManager>(),
-                ctx.Resolve<IPbtRetainedSnapshotLoader>(), ctx.Resolve<IPbtRetainedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
+                ctx.Resolve<IPbtPersistedSnapshotLoader>(), ctx.Resolve<IPbtPersistedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
             .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
                 ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceManager>(), ctx.Resolve<IPbtPersistence>(),
                 ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
-                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtTrieNodeCache>(), ctx.Resolve<IPbtRetainedSnapshotLoader>()))
+                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtTrieNodeCache>(), ctx.Resolve<IPbtPersistedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
@@ -66,22 +66,22 @@ public static class PbtCoreRegistration
             .AddSingleton<PbtAnchorImport>()
             .RegisterSingletonJsonRpcModule<IMigrationDebugRpcModule, MigrationDebugRpcModule>();
 
-    private static ContainerBuilder AddPbtRetained(this ContainerBuilder builder, IPbtConfig config)
+    private static ContainerBuilder AddPbtPersisted(this ContainerBuilder builder, IPbtConfig config)
     {
-        builder.AddSingleton<PbtRetainedPublicationGate>();
+        builder.AddSingleton<PbtPersistedPublicationGate>();
         if (!config.EnableLongFinality)
             return builder
                 .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, _ => NullSnapshotCatalog.Instance)
-                .AddSingleton<PbtRetainedStorageLifetime>(_ => new())
-                .AddSingleton<IPbtRetainedSnapshotLoader>(NullPbtRetainedSnapshotLoader.Instance)
-                .AddSingleton<IPbtRetainedSnapshotCompactor>(NullPbtRetainedSnapshotCompactor.Instance);
+                .AddSingleton<PbtPersistedStorageLifetime>(_ => new(null, null))
+                .AddSingleton<IPbtPersistedSnapshotLoader>(NullPbtPersistedSnapshotLoader.Instance)
+                .AddSingleton<IPbtPersistedSnapshotCompactor>(NullPbtPersistedSnapshotCompactor.Instance);
 
         return builder
             .AddKeyedSingleton<IDb>(PbtSnapshotCatalog.DatabaseKey, ctx => ctx.Resolve<IDbFactory>().CreateDb(new DbSettings(
-                PbtSnapshotCatalog.DatabaseKey, Path.Combine(DbNames.Pbt, "retained-snapshots-v1", "catalog"))))
+                PbtSnapshotCatalog.DatabaseKey, Path.Combine(DbNames.Pbt, "persistedSnapshot", "catalog"))))
             .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, ctx => new PbtSnapshotCatalog(ctx.ResolveKeyed<IDb>(PbtSnapshotCatalog.DatabaseKey)))
             .AddKeyedSingleton<IArenaManager>(DbNames.Pbt, ctx => new ArenaManager(
-                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "retained-snapshots-v1", "arena"),
+                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "persistedSnapshot", "arena"),
                 new FlatDbConfig
                 {
                     ArenaFileSizeBytes = config.ArenaFileSizeBytes,
@@ -90,10 +90,10 @@ public static class PbtCoreRegistration
                     PersistedSnapshotPunchHoleOnReclaim = config.PersistedSnapshotPunchHoleOnReclaim,
                 }, ctx.Resolve<ILogManager>()))
             .AddKeyedSingleton<BlobArenaManager>(DbNames.Pbt, ctx => new BlobArenaManager(
-                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "retained-snapshots-v1", "blob"), config.ArenaFileSizeBytes))
-            .AddSingleton<PbtRetainedStorageLifetime>(ctx => new(ctx.ResolveKeyed<IArenaManager>(DbNames.Pbt), ctx.ResolveKeyed<BlobArenaManager>(DbNames.Pbt)))
-            .AddSingleton<IPbtRetainedSnapshotLoader, PbtRetainedSnapshotLoader>()
-            .AddSingleton<IPbtRetainedSnapshotCompactor, PbtRetainedSnapshotCompactor>();
+                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "persistedSnapshot", "blob"), config.ArenaFileSizeBytes))
+            .AddSingleton<PbtPersistedStorageLifetime>(ctx => new(ctx.ResolveKeyed<IArenaManager>(DbNames.Pbt), ctx.ResolveKeyed<BlobArenaManager>(DbNames.Pbt)))
+            .AddSingleton<IPbtPersistedSnapshotLoader, PbtPersistedSnapshotLoader>()
+            .AddSingleton<IPbtPersistedSnapshotCompactor, PbtPersistedSnapshotCompactor>();
     }
 
     /// <summary>Builds the flat compaction schedule over the PBT compaction settings.</summary>

@@ -120,10 +120,11 @@ public static partial class TrieUpdater<TKey, TPath>
         if (IsAbsentGroupBelow(current, bitDepth))
             absent = new(bitDepth, current.BranchSlot(path, bitDepth), ownerReader.DescendantBytes(BoundarySlot(path.Bytes, ownerReader.BitDepth)));
         else if (OwnsNoGroup(current))
-            absent = new(bitDepth);
+            absent = new(bitDepth, 0, 0);
         else
         {
-            GroupFrameReader<TKey, TPath> reader = new(context.Store, path, current.HashAt(bitDepth));
+            GroupFrameReader<TKey, TPath> reader = new(context.Store.GetNodeGroup(path, current.HashAt(bitDepth))
+                ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
                 return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
@@ -361,7 +362,7 @@ public static partial class TrieUpdater<TKey, TPath>
     private static ComposedNode WalkRoot<TFrame>(scoped ref SortedWalk<TFrame> walk, bool inputIsEmpty)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        ComposedNode root = Walk(ref walk, default, inputIsEmpty ? default : new Cover(CoverKind.Input, RootSource));
+        ComposedNode root = Walk(ref walk, default, inputIsEmpty ? default : new Cover(CoverKind.Input, RootSource, right: false));
         Debug.Assert(walk.Next == walk.Operations.Length, "The walk consumes every operation of its frame.");
         return root.IsEmpty ? default : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, walk.Path, root, PbtThreeLevelGroupGeometry.RootPosition);
     }
@@ -870,7 +871,7 @@ public static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>The existing node holding every stored key under a walk position: anchored at or above it, splitting at or below it.</summary>
-    private readonly struct Cover(CoverKind kind, int position, bool right = false)
+    private readonly struct Cover(CoverKind kind, int position, bool right)
     {
         public readonly CoverKind Kind = kind;
         public readonly byte Position = (byte)position;
@@ -1080,15 +1081,15 @@ public static partial class TrieUpdater<TKey, TPath>
         {
             int position = local.Position;
             if (linkHash != default) Hashes.Seed(position, linkHash);
-            if ((_stored & (1u << position)) != 0) return new Cover(CoverKind.Stored, position);
-            if (local.Length < PbtThreeLevelGroupGeometry.LevelsPerGroup) return new Cover(CoverKind.Implicit, position);
+            if ((_stored & (1u << position)) != 0) return new Cover(CoverKind.Stored, position, right: false);
+            if (local.Length < PbtThreeLevelGroupGeometry.LevelsPerGroup) return new Cover(CoverKind.Implicit, position, right: false);
             throw new InvalidDataException("A referenced PBT node is missing.");
         }
 
         /// <summary>The cover of boundary slot <paramref name="slot"/>, descended from the frame's input.</summary>
         public Cover CoverAt(int slot)
         {
-            Cover cover = _input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource);
+            Cover cover = _input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource, right: false);
             NodeGroupPath local = default;
             for (int level = 0; level < PbtThreeLevelGroupGeometry.LevelsPerGroup && !cover.IsEmpty; level++)
             {

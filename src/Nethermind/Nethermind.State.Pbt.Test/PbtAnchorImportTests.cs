@@ -101,9 +101,9 @@ public class PbtAnchorImportTests
     public async Task Portable_image_publishes_native_state_and_matching_restart_takes_the_fast_path(
         [Values("anchor", "a1", "a2", "a3", "a4", "a5", "b2", "b3", "b4", "b5", "b6")] string name, [Values] bool tinyVerifyBuffer)
     {
-        // Tiny buffers keep the verifier's reader pausing on full buckets while its workers sweep them, and spill many spool runs.
+        // Tiny buffers spill many runs in both of the verifier's spools.
         using Harness harness = new(name, tinyVerifyBuffer
-            ? new PbtConfig { MigrationVerifyBucketBytes = 4096, ExportSortBufferBytes = 1024, ImportConcurrency = 2 }
+            ? new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 2 }
             : new PbtConfig());
         ValueHash256 root = await harness.Publish();
         AssertPublishedState(harness, root, name);

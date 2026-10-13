@@ -207,7 +207,7 @@ public class PbtNodeGroupPrefetchTests
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 0)) content.SetNodeGroup(paths[0], payload);
         using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotChain([]), reader, recordDetailedMetrics: false, slotFilterBitsPerKey: 0),
             pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads: false))
         {
             InterfaceLogger logger = ErrorLogger();

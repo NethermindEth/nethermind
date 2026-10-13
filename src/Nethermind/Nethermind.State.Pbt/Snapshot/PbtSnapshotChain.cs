@@ -9,17 +9,15 @@ using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt.Snapshot;
 
-public sealed class PbtRetainedPublicationGate
+public sealed class PbtPersistedPublicationGate
 {
     public Lock Sync { get; } = new();
 }
 
-public sealed class PbtRetainedStorageLifetime
+public sealed class PbtPersistedStorageLifetime(IArenaManager? arena, BlobArenaManager? blobs)
 {
-    private IArenaManager? Arena { get; }
-    private BlobArenaManager? Blobs { get; }
-    public PbtRetainedStorageLifetime() { }
-    public PbtRetainedStorageLifetime(IArenaManager arena, BlobArenaManager blobs) => (Arena, Blobs) = (arena, blobs);
+    private IArenaManager? Arena { get; } = arena;
+    private BlobArenaManager? Blobs { get; } = blobs;
 
     public void AbortLoad()
     {
@@ -32,14 +30,14 @@ public sealed class PbtSnapshotLease : IDisposable
 {
     private int _disposed;
     public PbtSnapshot? Memory { get; }
-    public PbtRetainedSnapshot? Retained { get; }
-    public StateId From => Memory?.From ?? Retained!.From;
-    public StateId To => Memory?.To ?? Retained!.To;
-    public ValueHash256 TreeRoot => Memory?.TreeRoot ?? Retained!.TreeRoot;
+    public PbtPersistedSnapshot? Persisted { get; }
+    public StateId From => Memory?.From ?? Persisted!.From;
+    public StateId To => Memory?.To ?? Persisted!.To;
+    public ValueHash256 TreeRoot => Memory?.TreeRoot ?? Persisted!.TreeRoot;
     public SnapshotTier Tier { get; }
 
     public PbtSnapshotLease(PbtSnapshot snapshot, SnapshotTier tier) => (Memory, Tier) = (snapshot, tier);
-    public PbtSnapshotLease(PbtRetainedSnapshot snapshot) => (Retained, Tier) = (snapshot, snapshot.Tier);
+    public PbtSnapshotLease(PbtPersistedSnapshot snapshot) => (Persisted, Tier) = (snapshot, snapshot.Tier);
 
     public PbtSnapshotLease Lease()
     {
@@ -49,15 +47,15 @@ public sealed class PbtSnapshotLease : IDisposable
             if (!memory.TryLease()) throw new ObjectDisposedException(nameof(memory));
             return new(memory, Tier);
         }
-        if (!Retained!.TryLease()) throw new ObjectDisposedException(nameof(Retained));
-        return new(Retained);
+        if (!Persisted!.TryLease()) throw new ObjectDisposedException(nameof(Persisted));
+        return new(Persisted);
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Memory?.Dispose();
-        Retained?.Dispose();
+        Persisted?.Dispose();
     }
 }
 

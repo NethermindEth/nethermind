@@ -6,15 +6,15 @@ using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
-public interface IPbtRetainedSnapshotCompactor : IAsyncDisposable
+public interface IPbtPersistedSnapshotCompactor : IAsyncDisposable
 {
     // Ownership transfers even when enqueue fails or cancellation is already requested.
     ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken);
 }
 
-public sealed class NullPbtRetainedSnapshotCompactor : IPbtRetainedSnapshotCompactor
+public sealed class NullPbtPersistedSnapshotCompactor : IPbtPersistedSnapshotCompactor
 {
-    public static readonly NullPbtRetainedSnapshotCompactor Instance = new();
+    public static readonly NullPbtPersistedSnapshotCompactor Instance = new();
     public ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
         batch.Dispose();

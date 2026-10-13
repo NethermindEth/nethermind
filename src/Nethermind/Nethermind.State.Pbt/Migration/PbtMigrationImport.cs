@@ -20,15 +20,6 @@ public sealed class PbtMigrationImport(Func<CancellationToken, Task> import, IPr
     private readonly CancellationTokenSource _cancellation = new();
     private string? _error;
 
-    public PbtMigrationImport(PbtMigrationBootstrap bootstrap, PbtBalFollowerScheduler follower, IProcessExitSource processExitSource, ILogManager logManager)
-        : this(async token =>
-        {
-            await bootstrap.Initialize(token);
-            follower.Start();
-        }, processExitSource, logManager)
-    {
-    }
-
     /// <summary>Completes once the import has finished, failed or been cancelled.</summary>
     public Task Completion { get; private set; } = Task.CompletedTask;
 

@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
@@ -60,7 +61,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         }
 
         long builds = Metrics.PbtInMemorySlotFilterBuilds;
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), layers),
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.ReadChain(new PbtResourcePool(new PbtConfig()), layers),
             new ContentReader(persisted), recordDetailedMetrics: false, bitsPerKey);
 
         using (Assert.EnterMultipleScope())
@@ -80,7 +81,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1000), 7);
         PbtSnapshotContent[] layers = [.. Enumerable.Range(0, memoryLayers).Select(layer => LayerWriting(TestItem.Addresses[layer + 1], 1000, 1))];
         long builds = Metrics.PbtInMemorySlotFilterBuilds;
-        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), layers),
+        using PbtReadOnlySnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.ReadChain(new PbtResourcePool(new PbtConfig()), layers),
             new ContentReader(persisted), recordDetailedMetrics: false, bitsPerKey);
         bool expected = bitsPerKey > 0 && memoryLayers >= 2;
 
@@ -94,15 +95,15 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
     [Test]
     [NonParallelizable]
-    public void Definite_miss_honors_in_memory_clears_and_reads_retained_layers_below([Values] bool clearInMemory)
+    public void Definite_miss_honors_in_memory_clears_and_reads_persisted_layers_below([Values] bool clearInMemory)
     {
-        using PbtRetainedTestStore store = new();
-        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        using PbtPersistedTestStore store = new();
+        using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), default, LayerWriting(TestItem.AddressA, 1000, 7), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        using PbtRetainedSnapshot retained = store.Build(source);
-        repository.TryAddRetained(retained);
+        using PbtPersistedSnapshot persisted = store.Build(source);
+        repository.TryAddPersisted(persisted);
         PbtSnapshotContent clearing = LayerWriting(TestItem.AddressB, 1000, 1);
         if (clearInMemory) clearing.ClearStorage(addressHash);
         repository.TryAdd(new PbtSnapshot(new StateId(0, default), new StateId(1, default), default, clearing, pool, PbtResourcePool.Usage.MainBlockProcessing));
@@ -130,7 +131,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
         // BloomFilter rejects a non-finite bits-per-key value, so the build throws for real.
         using PbtReadOnlySnapshotBundle bundle = new(
-            PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressA, 1000, 2)),
+            PbtSnapshotBundleTestExtensions.ReadChain(new PbtResourcePool(new PbtConfig()), LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressA, 1000, 2)),
             new ContentReader(persisted), recordDetailedMetrics: false, double.PositiveInfinity);
         UInt256 hit = ReadRun(bundle, TestItem.AddressA, 1000, filtered: true)[SlotRun.IndexOf((UInt256)1000)];
         UInt256 miss = ReadRun(bundle, TestItem.AddressA, 5000, filtered: true)[SlotRun.IndexOf((UInt256)5000)];
@@ -152,7 +153,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         long memoryBefore = Metrics.PbtInMemorySlotFilterMemory;
         long buildsBefore = Metrics.PbtInMemorySlotFilterBuilds;
         PbtReadOnlySnapshotBundle bundle = new(
-            PbtSnapshotBundleTestExtensions.Chain(new PbtResourcePool(new PbtConfig()), LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
+            PbtSnapshotBundleTestExtensions.ReadChain(new PbtResourcePool(new PbtConfig()), LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
             new ContentReader(new PbtSnapshotContent()), recordDetailedMetrics: false, RealBitsPerKey);
         Assert.That(bundle.TryLease(), Is.True);
         ReadRun(bundle, TestItem.AddressA, 1000, filtered: true);
@@ -179,7 +180,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent persisted = new();
         persisted.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 5000), 22);
-        PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.Chain(pool, LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
+        PbtReadOnlySnapshotBundle readOnly = new(PbtSnapshotBundleTestExtensions.ReadChain(pool, LayerWriting(TestItem.AddressA, 1000, 1), LayerWriting(TestItem.AddressB, 1000, 2)),
             new ContentReader(persisted), recordDetailedMetrics: false, RealBitsPerKey);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, NoopPbtTrieNodeCache.Instance, filterInMemorySlotReads);
 

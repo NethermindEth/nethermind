@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -277,7 +278,130 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         return true;
     }
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.ApplyConcurrently(this, bal);
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The bytecode is written first, on the calling thread; the accounts are then applied concurrently, each thread
+    /// reading and writing a different account and that account's storage.
+    /// </remarks>
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+    {
+        using ArrayPoolList<ValueHash256>? writtenCodeHashes = WriteBalCode(bal);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = StartWriteBatch(bal.AccountChanges.Count))
+        {
+            ParallelUnbalancedWork.For(0, bal.AccountChanges.Count, (scope: this, writeBatch, bal),
+                static (index, state) =>
+                {
+                    state.scope.ApplyBalAccount(state.writeBatch, state.bal.AccountChanges.AsSpan()[index]);
+                    return state;
+                });
+        }
+
+        if (writtenCodeHashes is null) return;
+        foreach (ValueHash256 codeHash in writtenCodeHashes.AsSpan())
+        {
+            CodeDb.MarkCodePersisted(in codeHash);
+        }
+    }
+
+    /// <summary>Writes the bytecode <paramref name="bal"/> deploys that the scope does not hold yet.</summary>
+    /// <returns>The hashes of the written bytecode, or <c>null</c> when none was written.</returns>
+    private ArrayPoolList<ValueHash256>? WriteBalCode(ReadOnlyBlockAccessList bal)
+    {
+        IWorldStateScopeProvider.ICodeSetter? codeSetter = null;
+        // Clones deploying the same code in one block would otherwise all write it: ContainsCode only sees persisted code.
+        ArrayPoolList<ValueHash256>? writtenCodeHashes = null;
+        try
+        {
+            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+            {
+                if (accountChanges.CodeChanges.Length == 0) continue;
+
+                CodeChange codeChange = accountChanges.CodeChanges[^1];
+                if (writtenCodeHashes?.Contains(codeChange.CodeHash) == true || CodeDb.ContainsCode(codeChange.CodeHash)
+                    || !TryGetBalCode(bal, codeChange, out byte[]? code)) continue;
+
+                codeSetter ??= CodeDb.BeginCodeWrite();
+                codeSetter.Set(codeChange.CodeHash, code);
+                (writtenCodeHashes ??= new ArrayPoolList<ValueHash256>(1)).Add(codeChange.CodeHash);
+            }
+            return writtenCodeHashes;
+        }
+        catch
+        {
+            writtenCodeHashes?.Dispose();
+            throw;
+        }
+        finally
+        {
+            codeSetter?.Dispose();
+        }
+    }
+
+    /// <remarks>
+    /// EIP-8298: an adopted change carries only a hash. Bytecode the code database lacks was deposited earlier in the
+    /// block, possibly by an account whose final code differs, so it is taken from that change.
+    /// </remarks>
+    private static bool TryGetBalCode(ReadOnlyBlockAccessList bal, in CodeChange codeChange, [NotNullWhen(true)] out byte[]? code)
+    {
+        if (!codeChange.IsAdopted)
+        {
+            code = codeChange.Code;
+            return true;
+        }
+
+        if (bal.GetCodeChangesByHash()?.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) declared) == true)
+        {
+            code = declared.Code;
+            return true;
+        }
+
+        code = null;
+        return false;
+    }
+
+    private void ApplyBalAccount(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges accountChanges)
+    {
+        if (!accountChanges.HasStateChanges) return;
+
+        Address address = accountChanges.Address;
+        Account? existing = Get(address);
+        if (!accountChanges.HasBalanceNonceOrCodeChanges)
+        {
+            // Slot writes alone are not an account change: they neither create a missing account nor touch an
+            // existing one, so EIP-158 leaves an empty account holding storage in place.
+            if (existing is not null) WriteBalSlots(writeBatch, accountChanges);
+            return;
+        }
+
+        Account account = existing ?? Account.TotallyEmpty;
+
+        if (accountChanges.BalanceChanges.Length > 0) account = account.WithChangedBalance(accountChanges.BalanceChanges[^1].Value);
+        if (accountChanges.NonceChanges.Length > 0) account = account.WithChangedNonce(accountChanges.NonceChanges[^1].Value);
+        if (accountChanges.CodeChanges.Length > 0) account = account.WithChangedCodeHash(accountChanges.CodeChanges[^1].CodeHash.ToCommitment());
+
+        // EIP-158 is always active with BALs (EIP-7928 postdates Spurious Dragon), so an empty account is removed.
+        if (account.IsEmpty)
+        {
+            writeBatch.Set(address, null);
+            return;
+        }
+
+        // Storage creation reads the account; keep flat state and the trie aligned until that read completes.
+        WriteBalSlots(writeBatch, accountChanges);
+        writeBatch.Set(address, account);
+    }
+
+    private static void WriteBalSlots(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch, ReadOnlyAccountChanges accountChanges)
+    {
+        ReadOnlySlotChanges[] storageChanges = accountChanges.StorageChanges;
+        if (storageChanges.Length == 0) return;
+
+        using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(accountChanges.Address, storageChanges.Length);
+        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+        {
+            if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
+        }
+    }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
