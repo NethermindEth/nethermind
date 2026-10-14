@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -125,6 +126,8 @@ public partial class BlockProcessor(
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
+        ThrowIfProducedBlockExceedsItemLimit(block);
+
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out string? error))
         {
             block.DisposeAccountChanges();
@@ -133,6 +136,40 @@ public partial class BlockProcessor(
         }
 
         PostValidation(suggestedBlock, block, receipts, options);
+    }
+
+    /// <summary>
+    /// EIP-7928: a producer's transaction selection leaves room for the end-of-block steps, so a built block over
+    /// <c>block_gas_limit / ITEM_COST</c> means that reserve missed some end-of-block work. Such a block is invalid
+    /// everywhere, so it is rejected here instead of being returned as a payload; the payload keeps its previous best
+    /// build and the executor reserves the excess in later builds.
+    /// </summary>
+    /// <remarks>
+    /// A block without transactions is only logged: transactions never remove items, so its items are the least any
+    /// block on this parent with these withdrawals can have, and no valid block exists to fall back to.
+    /// </remarks>
+    private void ThrowIfProducedBlockExceedsItemLimit(Block block)
+    {
+        if (_blockTransactionsExecutor is not IBlockProductionTransactionsExecutor producer
+            || block.GeneratedBlockAccessList is not { } blockAccessList)
+        {
+            return;
+        }
+
+        int itemCount = blockAccessList.ItemCount;
+        if (!Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit)) return;
+
+        ulong maxItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+        string error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxItems);
+        if (block.Transactions.Length == 0)
+        {
+            if (_logger.IsError) _logger.Error($"Block {block.Number} cannot be built within the block access list item limit, even without transactions: {error}");
+            return;
+        }
+
+        producer.ReportItemLimitExceeded(itemCount - (long)maxItems);
+        block.DisposeAccountChanges();
+        throw new InvalidBlockException(block, error);
     }
 
     protected virtual void PostValidation(Block suggestedBlock, Block processedBlock, TxReceipt[] receipts, ProcessingOptions options)

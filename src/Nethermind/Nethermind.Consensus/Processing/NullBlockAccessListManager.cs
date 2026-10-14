@@ -31,6 +31,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
     public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null) => throw new InvalidOperationException("NullBlockAccessListManager does not provide transaction processors.");
     public void NextTransaction() { }
+    public int CountPendingTransactionItems() => 0;
     public void Rollback() { }
     public void ReturnTxProcessor(uint balIndex) { }
     public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token) { }

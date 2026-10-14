@@ -4052,6 +4052,8 @@ public partial class BlockProcessorTests
         {
         }
 
+        public int CountPendingTransactionItems() => 0;
+
         public void Rollback()
         {
         }
