@@ -37,7 +37,11 @@ public partial struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
         Length = length;
     }
 
-    public int Length { get; private set; }
+    // Word-sized, in the room the struct's padding leaves: a zkVM guest proves a 32-bit access at several times an
+    // aligned 64-bit one.
+    private nint _length;
+
+    public int Length { readonly get => (int)_length; private set => _length = value; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -35,11 +37,13 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
     private readonly bool _deepStorageSnapshots;
+    private readonly Action<CommitmentEmitter>? _release;
 
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
     private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
-    private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
+    // Per parent, the children this block recorded or marked dirty.
+    private readonly Dictionary<NodePathKey, ushort> _blockChangedChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
     private readonly HashSet<NodePathKey> _exactBranches;
@@ -52,6 +56,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
     private bool _disposed;
+    private bool _inPool;
+    private bool _retired;
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
 
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
@@ -64,9 +70,10 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots, Action<CommitmentEmitter>? release = null)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
+        _release = release;
         _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
         _maxExactBranches = exactBranchEntries;
         _extensionTargets = new ClockCache<NodePathKey, bool>(extensionTargetEntries);
@@ -80,8 +87,11 @@ public sealed class CommitmentEmitter : IDisposable
         _storages = new CommitmentStore(history.GetColumnDb(FlatHistoryColumns.StorageCommitments), policy, CommitmentKeyLayout.IdentityLength);
     }
 
-    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), WalkExtensionTargetEntries, respectFloors: false, deepStorageSnapshots);
+    /// <param name="release">When set, disposing the emitter resets it to the state of a new one and hands it here
+    /// instead of releasing its buffers, so a walk that emits per partition and per contract builds each emitter once
+    /// per worker: a new one allocates about 420 KB, most of it the extension-target cache, on the large object heap.</param>
+    public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false, Action<CommitmentEmitter>? release = null) =>
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), WalkExtensionTargetEntries, respectFloors: false, deepStorageSnapshots, release);
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
@@ -122,7 +132,7 @@ public sealed class CommitmentEmitter : IDisposable
         _blockArena.Clear();
         _blockNodes.Clear();
         _blockChanged.Clear();
-        _blockDirtyChildren.Clear();
+        _blockChangedChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _blockTrieDepths.Clear();
         _blockAdoptedTargets.Clear();
@@ -135,7 +145,7 @@ public sealed class CommitmentEmitter : IDisposable
         NodePathKey key = NodePathKey.ForAccount(path);
         if (path.Length == _policy.AccountCheckpointDepth + 1)
         {
-            _blockDirtyChildren.Add(key);
+            NoteChangedChild(key);
             return;
         }
 
@@ -173,7 +183,7 @@ public sealed class CommitmentEmitter : IDisposable
         NodePathKey key = NodePathKey.ForStorage(accountPath, path);
         if (path.Length == _policy.StorageCheckpointDepth + 1)
         {
-            _blockDirtyChildren.Add(key);
+            NoteChangedChild(key);
             return;
         }
 
@@ -265,7 +275,16 @@ public sealed class CommitmentEmitter : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed || _inPool) return;
+
+        if (_release is not null && !_retired)
+        {
+            CommitBatch();
+            Reset();
+            _inPool = true;
+            _release(this);
+            return;
+        }
 
         _disposed = true;
         CommitBatch();
@@ -277,9 +296,45 @@ public sealed class CommitmentEmitter : IDisposable
         ChildVector.Return(_latest);
     }
 
+    /// <summary>Takes an emitter its release callback was handed back out for the next use.</summary>
+    internal CommitmentEmitter Reuse()
+    {
+        _inPool = false;
+        return this;
+    }
+
+    /// <summary>Releases the buffers of an emitter that hands itself back on dispose, for good.</summary>
+    internal void Retire()
+    {
+        _retired = true;
+        _inPool = false;
+        Dispose();
+    }
+
+    private void Reset()
+    {
+        _windows.Clear();
+        _windowSlab.Reset();
+        _blockArena.Clear();
+        _blockNodes.Clear();
+        _blockChanged.Clear();
+        _blockChangedChildren.Clear();
+        _blockStorageMaxDepth.Clear();
+        _blockTrieDepths.Clear();
+        _blockAdoptedTargets.Clear();
+        _exactBranches.Clear();
+        if (_extensionTargets.Count > 0) _extensionTargets.Clear();
+        _block = 0;
+        _haveBlock = false;
+        _floorsEpoch = ulong.MaxValue;
+        _retainedFloor = 0;
+        _fineFloor = 0;
+    }
+
     private void Record(in NodePathKey key, ReadOnlySpan<byte> rlp, ushort? changed)
     {
         _blockNodes[key] = (_blockArena.Append(rlp), rlp.Length);
+        NoteChangedChild(key);
         if (changed is { } mask) _blockChanged[key] = mask;
         else _blockChanged.Remove(key);
     }
@@ -287,7 +342,16 @@ public sealed class CommitmentEmitter : IDisposable
     private void RecordEmpty(in NodePathKey key)
     {
         _blockNodes[key] = (0, EmptyRecord);
+        NoteChangedChild(key);
         _blockChanged.Remove(key);
+    }
+
+    private void NoteChangedChild(in NodePathKey key)
+    {
+        if (key.Depth == 0) return;
+
+        ref ushort children = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChangedChildren, key.Parent(), out _);
+        children |= (ushort)(1 << key.LastNibble);
     }
 
     private void NoteStorageDepth(in ValueHash256 accountPath, int depth)
@@ -468,19 +532,19 @@ public sealed class CommitmentEmitter : IDisposable
     {
         if (_blockChanged.TryGetValue(key, out ushort explicitMask)) return explicitMask;
 
-        ushort changed = 0;
+        ushort changed = (ushort)(children.Presence & _blockChangedChildren.GetValueOrDefault(key));
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (!children.IsPresent(index)) continue;
+            ushort bit = (ushort)(1 << index);
+            if (!children.IsPresent(index) || (changed & bit) != 0) continue;
 
-            if (children[index].Length < Hash256.Size) changed |= (ushort)(1 << index);
+            if (children[index].Length < Hash256.Size) changed |= bit;
             else
             {
                 NodePathKey childKey = key.Child(index);
-                if (_blockNodes.ContainsKey(childKey) || _blockDirtyChildren.Contains(childKey)) changed |= (ushort)(1 << index);
-                else if (_extensionTargets.Contains(childKey))
+                if (_extensionTargets.Contains(childKey))
                 {
-                    changed |= (ushort)(1 << index);
+                    changed |= bit;
                     _blockAdoptedTargets.Add(childKey);
                 }
             }
@@ -559,6 +623,22 @@ public sealed class CommitmentEmitter : IDisposable
         {
             TreePath child = new TreePath(_path, Depth).Append(nibble);
             return new NodePathKey(Scope, child.Path, (byte)child.Length, IsStorage);
+        }
+
+        public NodePathKey Parent()
+        {
+            Debug.Assert(Depth > 0, "a root has no parent within its scope");
+            TreePath parent = new TreePath(_path, Depth).Truncate(Depth - 1);
+            return new NodePathKey(Scope, parent.Path, (byte)parent.Length, IsStorage);
+        }
+
+        public int LastNibble
+        {
+            get
+            {
+                Debug.Assert(Depth > 0, "a root has no last nibble");
+                return new TreePath(_path, Depth)[Depth - 1];
+            }
         }
 
         public NodePathKey Descendant(ReadOnlySpan<byte> nibbles)
