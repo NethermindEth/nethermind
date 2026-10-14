@@ -41,7 +41,7 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
         Debug.Assert(receiptsTracer is not null, $"Simulate must be traced through a {nameof(BlockReceiptsTracer)}.");
         ulong cumulativeStateGasBefore = receiptsTracer?.BlockStateGasUsed ?? 0;
         ExecutionOptions options = simulateRequestState.Validate ? ExecutionOptions.Commit : ExecutionOptions.SkipValidationAndCommit;
-        if (!simulateRequestState.Validate && simulateRequestState.TxsEnforcingNonceLimit[_currentTxIndex])
+        if (!simulateRequestState.Validate && simulateRequestState.Calls[_currentTxIndex].EnforceNonceLimit)
         {
             options |= ExecutionOptions.EnforceNonceLimit;
         }
@@ -77,15 +77,15 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
 
         // The per-dimension budgets shrink as the block is processed.
         ulong blockGasAvailable = GetBlockGasAvailable(stateGasAvailable);
-        if (!simulateRequestState.TxsWithExplicitGas[_currentTxIndex])
+        if (!simulateRequestState.Calls[_currentTxIndex].HadGasLimitInRequest)
         {
             transaction.GasLimit = Math.Min(blockGasAvailable, simulateRequestState.TotalGasLeft);
         }
-        else if (simulateRequestState.GasLimitsToFitBlock[_currentTxIndex] is { } requestedGas
-            && !FitsBlock(transaction, requestedGas, blockGasAvailable, stateGasAvailable))
+        else if (simulateRequestState.Calls[_currentTxIndex].GasLimitToFitBlock is { } requestedGas
+            && !FitsBlock(transaction, requestedGas, blockGasAvailable, stateGasAvailable, out ulong remaining, out ulong required))
         {
             TransactionResult result = TransactionResult.ErrorType.BlockGasLimitExceeded.WithDetail(
-                $"block gas limit reached: remaining: {blockGasAvailable}, required: {requestedGas}");
+                $"block gas limit reached: remaining: {remaining}, required: {required}");
             throw new InvalidTransactionException(_header!, result.ErrorDescription, result);
         }
 
@@ -110,12 +110,18 @@ public class SimulateTransactionProcessorAdapter(ITransactionProcessor transacti
     }
 
     /// <remarks>
-    /// EIP-8141: a frame transaction reserves block gas per dimension from its frames, not from its summed gas limit.
+    /// EIP-8141: a frame transaction reserves block gas per dimension from its frames, not from its summed gas limit,
+    /// so <paramref name="remaining"/> and <paramref name="required"/> report the dimension that does not fit.
     /// </remarks>
-    private bool FitsBlock(Transaction transaction, ulong requestedGas, ulong blockGasAvailable, ulong stateGasAvailable) =>
-        transaction.SupportsFrames
-            ? Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)
-                && executionReservation <= simulateRequestState.BlockGasLeft
-                && stateReservation <= stateGasAvailable
-            : requestedGas <= blockGasAvailable;
+    private bool FitsBlock(Transaction transaction, ulong requestedGas, ulong blockGasAvailable, ulong stateGasAvailable, out ulong remaining, out ulong required)
+    {
+        (remaining, required) = (blockGasAvailable, requestedGas);
+        if (!transaction.SupportsFrames) return required <= remaining;
+        if (!Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, _spec!, out ulong executionReservation, out ulong stateReservation)) return false;
+
+        (remaining, required) = executionReservation > simulateRequestState.BlockGasLeft
+            ? (simulateRequestState.BlockGasLeft, executionReservation)
+            : (stateGasAvailable, stateReservation);
+        return required <= remaining;
+    }
 }

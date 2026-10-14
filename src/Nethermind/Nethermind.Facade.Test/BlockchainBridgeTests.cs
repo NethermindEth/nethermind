@@ -1251,14 +1251,14 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = 60_000,
             Validate = true,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new()
                 {
                     HadGasLimitInRequest = true,
                     Transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject
                 }
-            ]);
+            ];
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
@@ -1299,12 +1299,12 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = blockStateGasLimit,
             Validate = false,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+            ];
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
@@ -1344,11 +1344,11 @@ public class BlockchainBridgeTests
             BlockStateGasLeft = 300_000,
             Validate = false,
         };
-        simulateRequestState.SetTxsWithExplicitGas(
+        simulateRequestState.Calls =
             [
                 new() { HadGasLimitInRequest = true, Transaction = new Transaction() },
                 new() { HadGasLimitInRequest = false, Transaction = new Transaction() }
-            ]);
+            ];
 
         List<ulong> executedGasLimits = [];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
@@ -1405,7 +1405,7 @@ public class BlockchainBridgeTests
             BlockGasLeft = 80_000,
             Validate = validate,
         };
-        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 80_001, Transaction = new Transaction() }]);
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 80_001, Transaction = new Transaction() }];
 
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
@@ -1421,7 +1421,7 @@ public class BlockchainBridgeTests
     {
         Transaction transaction = Build.A.Transaction.WithGasLimit(21_000).TestObject;
         SimulateRequestState state = new() { Validate = validate, TotalGasLeft = 100_000, BlockGasLeft = 100_000 };
-        state.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, EnforceNonceLimit = enforceNonceLimit, Transaction = transaction }]);
+        state.Calls = [new() { HadGasLimitInRequest = true, EnforceNonceLimit = enforceNonceLimit, Transaction = transaction }];
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
         SimulateTransactionProcessorAdapter adapter = new(processor, state);
         using BlockReceiptsTracer receiptsTracer = CreateReceiptsTracer(transaction);
@@ -1446,7 +1446,7 @@ public class BlockchainBridgeTests
             BlockGasLeft = blockGasLeft,
             Validate = validate,
         };
-        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = false, Transaction = new Transaction() }]);
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = false, Transaction = new Transaction() }];
 
         SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Amsterdam.Instance, UInt256.Zero));
@@ -1468,7 +1468,7 @@ public class BlockchainBridgeTests
             BlockGasLeft = 1_000_000,
             Validate = true,
         };
-        simulateRequestState.SetTxsWithExplicitGas([new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 2 * (frameExecutionGas + 300_000), Transaction = new Transaction() }]);
+        simulateRequestState.Calls = [new() { HadGasLimitInRequest = true, GasLimitToFitBlock = 2 * (frameExecutionGas + 300_000), Transaction = new Transaction() }];
 
         SimulateTransactionProcessorAdapter adapter = new(Substitute.For<ITransactionProcessor>(), simulateRequestState);
         adapter.SetBlockExecutionContext(new BlockExecutionContext(Build.A.BlockHeader.TestObject, Eip8141Prototype.Instance, UInt256.Zero));
@@ -1482,7 +1482,9 @@ public class BlockchainBridgeTests
 
         if (expectRejected)
         {
-            Assert.That(Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+            TransactionResult reason = Assert.Throws<InvalidTransactionException>(() => adapter.PrepareForInclusionCheck(frameTx, 1_000_000))!.Reason;
+            Assert.That(reason.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+            Assert.That(reason.ErrorDescription, Does.EndWith("remaining: 1000000, required: 1012950"));
         }
         else
         {
