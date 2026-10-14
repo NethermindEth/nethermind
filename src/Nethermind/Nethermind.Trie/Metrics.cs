@@ -51,5 +51,37 @@ namespace Nethermind.Trie
             if (IsBlockProcessingThread) Interlocked.Increment(ref _mainTreeNodeRlpDecodings.Value);
             else _otherTreeNodeRlpDecodings.Increment();
         }
+
+        [GaugeMetric]
+        [Description("Bytes of trie node log generations readable in place.")]
+        public static long TrieNodeLogMemory { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of trie node log generations readable in place.")]
+        public static long TrieNodeLogGenerations { get; set; }
+
+        [CounterMetric]
+        [Description("Number of trie root lookups resolved by the trie node log.")]
+        public static long TrieNodeLogRootHits => _trieNodeLogRootHits.Sum;
+        private static readonly StripedLong _trieNodeLogRootHits = new();
+        internal static void IncrementTrieNodeLogRootHits() => _trieNodeLogRootHits.Increment();
+
+        [CounterMetric]
+        [Description("Number of trie root lookups not resolved by the trie node log.")]
+        public static long TrieNodeLogRootMisses => _trieNodeLogRootMisses.Sum;
+        private static readonly StripedLong _trieNodeLogRootMisses = new();
+        internal static void IncrementTrieNodeLogRootMisses() => _trieNodeLogRootMisses.Increment();
+
+        [CounterMetric]
+        [Description("Number of trie nodes a bulk set read in place from the trie node log.")]
+        public static long BulkSetNodesFromLog => _bulkSetNodesFromLog.Sum;
+        private static readonly StripedLong _bulkSetNodesFromLog = new();
+        internal static void AddBulkSetNodesFromLog(long count) => _bulkSetNodesFromLog.Add(count);
+
+        [CounterMetric]
+        [Description("Number of trie nodes a bulk set loaded from its node source because the trie node log did not hold them.")]
+        public static long BulkSetNodesFromSource => _bulkSetNodesFromSource.Sum;
+        private static readonly StripedLong _bulkSetNodesFromSource = new();
+        internal static void AddBulkSetNodesFromSource(long count) => _bulkSetNodesFromSource.Add(count);
     }
 }
