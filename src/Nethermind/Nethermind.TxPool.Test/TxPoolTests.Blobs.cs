@@ -1514,6 +1514,35 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_reject_underpriced_sparse_blob_replacement_before_sampling([Values] bool bumpsFee)
+        {
+            _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction BlobTx(UInt256 fee, UInt256 value) => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(0)
+                .WithMaxFeePerGas(fee)
+                .WithMaxPriorityFeePerGas(fee)
+                .WithMaxFeePerBlobGas(fee)
+                .WithValue(value)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            Assert.That(_txPool.SubmitTx(BlobTx(1.GWei, 1), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Transaction replacement = BlobTx(bumpsFee ? 2.GWei : 1.GWei, 2);
+            replacement.NetworkWrapper = (ShardBlobNetworkWrapper)replacement.NetworkWrapper! with
+            {
+                Blobs = [],
+                CellMask = BlobCellMask.Empty,
+                Cells = null,
+            };
+            replacement.ClearLengthCache();
+
+            Assert.That(_txPool.ValidateTxForBlobSampling(replacement), Is.EqualTo(bumpsFee ? AcceptTxResult.Accepted : AcceptTxResult.ReplacementNotAllowed));
+        }
+
+        [Test]
         public void should_allow_to_replace_blob_tx_by_the_one_with_network_wrapper_in_higher_version()
         {
             // start with Cancun

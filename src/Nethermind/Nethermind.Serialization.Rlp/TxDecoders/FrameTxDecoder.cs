@@ -325,7 +325,7 @@ public static class FrameTxNonceCalldata
         {
             if (count == buffer.Length)
             {
-                throw new RlpLimitException($"Exceeded {KeysCountLimit.CollectionExpression}");
+                decoderContext.GuardLimit(count + 1, KeysCountLimit);
             }
 
             buffer[count++] = decoderContext.DecodeUInt256();
