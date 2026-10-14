@@ -32,7 +32,7 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<Address>, Account?> _readAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
-    private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private Dictionary<HashedKey<TreePath>, SnapshotTrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
     private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
@@ -45,6 +45,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -54,6 +55,8 @@ public sealed class SnapshotBundle : IDisposable
     // block processing keeps the plain loop, so its reads do not depend on the filter.
     private readonly bool _filterInMemorySlotReads;
 
+    /// <param name="nativeTrieNodeLog">The log the native bulk set writes the nodes of this bundle to, when it is
+    /// used.</param>
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
@@ -61,12 +64,14 @@ public sealed class SnapshotBundle : IDisposable
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         SnapshotPooledList? snapshots = null,
         bool filterInMemorySlotReads = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -189,25 +194,20 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<TreePath> key = new(path);
 
-        if ((_trieChanged && _changedStateNodes.TryGetValue(key, out node))
-            || (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown))
+        if (_trieChanged && _changedStateNodes.TryGetValue(key, out SnapshotTrieNode changed))
+        {
+            node = changed.ToTrieNode(_nativeTrieNodeLog);
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
+        if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
         }
 
         return DoFindStateNodeExternal(path, hash, out node);
-    }
-
-    /// <summary>Finds a state node among the nodes the trie warmer loaded.</summary>
-    internal bool TryGetWarmedStateNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        GuardDispose();
-
-        if (!_transientResource.TryGetStateNode(path, hash, out node) || node.NodeType == NodeType.Unknown) return false;
-
-        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        return true;
     }
 
     public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
@@ -249,6 +249,28 @@ public sealed class SnapshotBundle : IDisposable
         TrieNode node = new(NodeType.Unknown, hash);
         node.MarkWarmerOwned();
         return node;
+    }
+
+    /// <summary>The nodes the native trie warmer decoded into the current transient resource, which this bundle's native bulk sets read.</summary>
+    internal NativeWarmedNodes WarmedNodes => _transientResource.WarmedNodes;
+
+    /// <summary>
+    /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> into the transient
+    /// resource, see <see cref="NativePatriciaBulkSet.WarmUp"/>, unless the bundle is being torn down.
+    /// </summary>
+    internal void WarmUpNative(INativeNodeStore store, NativeTrieNodeLog log, Hash256? address, Hash256 root, in ValueHash256 key)
+    {
+        TransientResource? transientResource = TryLeaseTransientResource();
+        if (transientResource is null) return;
+
+        try
+        {
+            NativePatriciaBulkSet.WarmUp(store, log, transientResource.WarmedNodes, address, root.ValueHash256, key);
+        }
+        finally
+        {
+            transientResource.ReleaseLease();
+        }
     }
 
     // Returns a leased transient, or null once the bundle is being torn down. A stale read can acquire a
@@ -324,8 +346,14 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
-        if ((_trieChanged && _changedStorageNodes.TryGetValue(key, out node))
-            || (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && node.NodeType != NodeType.Unknown))
+        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out SnapshotTrieNode changed))
+        {
+            node = changed.ToTrieNode(_nativeTrieNodeLog);
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            return true;
+        }
+
+        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) && node.NodeType != NodeType.Unknown)
         {
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
             return true;
@@ -334,17 +362,6 @@ public sealed class SnapshotBundle : IDisposable
         return DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null;
     }
 
-
-    /// <summary>Finds a storage node among the nodes the trie warmer loaded.</summary>
-    internal bool TryGetWarmedStorageNode(Hash256 address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
-    {
-        GuardDispose();
-
-        if (!_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node) || node.NodeType == NodeType.Unknown) return false;
-
-        Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-        return true;
-    }
 
     public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
@@ -467,6 +484,32 @@ public sealed class SnapshotBundle : IDisposable
         foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
         {
             foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
+        }
+    }
+
+    /// <summary>Sets the state nodes a native bulk set wrote as their pointers in the log, and not in the transient resource.</summary>
+    internal void PublishLoggedStateNodes(NativePendingNodes pending)
+    {
+        GuardDispose();
+        _trieChanged = true;
+        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + pending.Count);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) _changedStateNodes[view[i].Path] = new SnapshotTrieNode(view[i].LogPointer);
+        }
+    }
+
+    /// <inheritdoc cref="PublishLoggedStateNodes"/>
+    internal void PublishLoggedStorageNodes(AddressStorageNodeDictionary.AddressNodes nodes, NativePendingNodes pending)
+    {
+        GuardDispose();
+        _trieChanged = true;
+        nodes.EnsureAdditionalCapacity(pending.Count);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes.Set(view[i].Path, new SnapshotTrieNode(view[i].LogPointer));
         }
     }
 

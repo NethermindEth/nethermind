@@ -24,6 +24,8 @@ public sealed class NativeTrieNodeLogPin : IDisposable
     /// <summary>The pinned generation, later generations being greater.</summary>
     public ulong Generation { get; }
 
+    public NativeTrieNodeLog Log => _log;
+
     /// <summary>Pins <see cref="Generation"/> again, for as long as the returned pin.</summary>
     public NativeTrieNodeLogPin Copy() => _log.Pin(Generation);
 

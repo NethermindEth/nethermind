@@ -9,13 +9,16 @@ namespace Nethermind.Trie.Native;
 
 /// <summary>A node a native bulk set wrote, whose RLP is <see cref="RlpLength"/> bytes at <see cref="RlpOffset"/> of the view's arena.</summary>
 /// <remarks>Laid out as the native <c>WrittenNode</c>, whose <c>TreePath</c> takes 40 bytes.</remarks>
-[StructLayout(LayoutKind.Explicit, Size = 80)]
+[StructLayout(LayoutKind.Explicit, Size = 88)]
 public readonly struct NativeWrittenNode
 {
     [field: FieldOffset(0)] public TreePath Path { get; }
     [field: FieldOffset(40)] public ValueHash256 Hash { get; }
     [field: FieldOffset(72)] public int RlpOffset { get; }
     [field: FieldOffset(76)] public int RlpLength { get; }
+
+    /// <summary>Where the node's record is in the <see cref="NativeTrieNodeLog"/> given to the bulk set, meaningless when it was given none.</summary>
+    [field: FieldOffset(80)] public ulong LogPointer { get; }
 }
 
 /// <summary>The nodes held by <see cref="NativePendingNodes"/>, valid until its next bulk set, clear or dispose.</summary>

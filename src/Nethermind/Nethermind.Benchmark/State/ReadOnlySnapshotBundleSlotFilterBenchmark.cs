@@ -130,7 +130,7 @@ public class ReadOnlySnapshotBundleSlotFilterBenchmark
         _persistence = new NoopPersistenceReader();
         _bundle = CreateBundle();
         _snapshotBundle = new SnapshotBundle(CreateBundle(), new NullTrieNodeCache(), resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: Filtered);
+            ResourcePool.Usage.ReadOnlyProcessingEnv, nativeTrieNodeLog: null, filterInMemorySlotReads: Filtered);
 
         // Build the filters now so the read benchmarks measure steady-state reads.
         Read(_misses[0]);

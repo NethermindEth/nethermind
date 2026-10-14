@@ -77,7 +77,7 @@ public class StorageRootCommitBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         CapturingCommitTarget commitTarget = new();
         FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -125,7 +125,7 @@ public class StorageRootCommitBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,

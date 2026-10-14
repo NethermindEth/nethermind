@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -16,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.Trie.Native;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -63,7 +65,7 @@ public class SnapshotBundleWarmerTests
     }
 
     private SnapshotBundle NewBundle(Action<SnapshotContent>? persisted = null) =>
-        new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
+        new(FlatTestHelpers.MakeBundle(_pool, persisted), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
     private static TrieNode Leaf(byte value) => new(NodeType.Leaf, new byte[] { 0xC1, value });
 
@@ -122,7 +124,7 @@ public class SnapshotBundleWarmerTests
     public void Unresolved_warmer_miss_does_not_reach_trie_node_cache([Values] bool storage)
     {
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         TreePath path = TreePath.FromHexString("12");
         Hash256 hash = TestItem.KeccakC;
@@ -153,7 +155,7 @@ public class SnapshotBundleWarmerTests
     public void Repeated_warmer_miss_is_served_from_the_negative_cache([Values] bool storage)
     {
         NullTrieNodeCache cache = new();
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         TreePath path = TreePath.FromHexString("12");
         Hash256 hash = TestItem.KeccakA;
@@ -228,7 +230,7 @@ public class SnapshotBundleWarmerTests
 
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         TrieNode warmed = storage
             ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
@@ -282,7 +284,7 @@ public class SnapshotBundleWarmerTests
         using ManualResetEventSlim readEntered = new(false);
         using ManualResetEventSlim releaseRead = new(false);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool),
-            new BlockingTrieNodeCache(readEntered, releaseRead), _pool, ResourcePool.Usage.MainBlockProcessing);
+            new BlockingTrieNodeCache(readEntered, releaseRead), _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         Task<TrieNode> warmerRead = Task.Run(() => bundle.FindStateNodeOrUnknownForTrieWarmer(path, TestItem.KeccakA));
         Assert.That(readEntered.Wait(BailOutTimeout), Is.True, "the warmer read did not reach the cache");
@@ -320,7 +322,7 @@ public class SnapshotBundleWarmerTests
 
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         TreePath path = TreePath.FromHexString("1234");
         TrieNode source = bundle.FindStateNodeOrUnknownForTrieWarmer(path, branch.Keccak!);
         TreePath resolvePath = path;
@@ -365,7 +367,7 @@ public class SnapshotBundleWarmerTests
 
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         TrieNode warmed = storage
             ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, requestedHash)
@@ -412,7 +414,7 @@ public class SnapshotBundleWarmerTests
 
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
+            FlatTestHelpers.MakeBundle(_pool, reader), cache, _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
 
         TrieNode warmed = storage
             ? bundle.FindStorageNodeOrUnknownTrieWarmer(address, path, hash)
@@ -474,7 +476,7 @@ public class SnapshotBundleWarmerTests
                     if (storage) content.StorageNodes[(address, childPath)] = staleChild;
                     else content.StateNodes[childPath] = staleChild;
                 }
-            }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
+            }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         if (storage) bundle.SetStorageNode(address, childPath, child);
         else bundle.SetStateNode(childPath, child);
         bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
@@ -651,6 +653,71 @@ public class SnapshotBundleWarmerTests
             Assert.That(disposals, Is.GreaterThan(0));
             Assert.That(Volatile.Read(ref leasedReads), Is.GreaterThan(0));
             Assert.That(Volatile.Read(ref queuedPrewarms), Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public void Native_warm_up_decodes_each_persisted_node_once_and_bulk_sets_read_them_without_persistence()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        Hash256 address = TestItem.KeccakC;
+        PatriciaTree.BulkSetEntry[] slots = new PatriciaTree.BulkSetEntry[64];
+        for (int i = 0; i < slots.Length; i++) slots[i] = new PatriciaTree.BulkSetEntry(Keccak.Compute([(byte)i]).ValueHash256, [(byte)(i + 1)]);
+        Dictionary<TreePath, byte[]> persisted = [];
+        Hash256 root;
+        using (NativePendingNodes pending = NativePendingNodes.Rent(slots.Length))
+        {
+            root = NativePatriciaBulkSet.BulkSet(new DictionaryNodeStore(persisted), pending, null, null, address, Keccak.EmptyTreeHash.ValueHash256, slots);
+            for (int shard = 0; shard < pending.ShardCount; shard++)
+            {
+                NativePendingNodesView view = pending.GetView(shard);
+                for (int i = 0; i < view.Count; i++) persisted[view[i].Path] = view.GetRlp(view[i]).ToArray();
+            }
+        }
+
+        CountingStorageReader reader = new(persisted);
+        using NativeTrieNodeLog log = new(64 * 1024 * 1024);
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, reader), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing, log);
+        NativeTrieNodeStore store = new(bundle, address, log);
+        int firstWarmUp = WarmUpAll();
+        int secondWarmUp = WarmUpAll();
+        int readsBeforeBulkSet = reader.Reads;
+        Hash256 newRoot = store.BulkSet(root, [new PatriciaTree.BulkSetEntry(slots[0].Path, [0xff])]);
+
+        PatriciaTree expected = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach (PatriciaTree.BulkSetEntry slot in slots) expected.Set(slot.Path.Bytes, slot.Value!);
+        expected.Set(slots[0].Path.Bytes, [0xff]);
+        expected.UpdateRootHash();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstWarmUp, Is.EqualTo(persisted.Count));
+            Assert.That(secondWarmUp, Is.Zero);
+            Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
+            Assert.That(newRoot, Is.EqualTo(expected.RootHash));
+        }
+
+        int WarmUpAll()
+        {
+            int before = reader.Reads;
+            foreach (PatriciaTree.BulkSetEntry slot in slots) bundle.WarmUpNative(store, log, address, root, slot.Path);
+            return reader.Reads - before;
+        }
+    }
+
+    // Serves storage trie nodes by path, as the generic RLP reads persistence does reach it through, which a substitute
+    // does not run.
+    private sealed class CountingStorageReader(Dictionary<TreePath, byte[]> nodes) : NoopPersistenceReader, IPersistence.IPersistenceReader
+    {
+        private int _reads;
+
+        public int Reads => Volatile.Read(ref _reads);
+
+        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags)
+        {
+            Interlocked.Increment(ref _reads);
+            return nodes.GetValueOrDefault(path);
         }
     }
 }

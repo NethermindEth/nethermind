@@ -55,7 +55,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         ReadOnlySnapshotBundle readOnly = new(
             new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
-        SnapshotBundle bundle = new(readOnly, new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        SnapshotBundle bundle = new(readOnly, new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv, nativeTrieNodeLog: null);
         using FlatWorldStateScope scope = new(
             new StateId(0, Keccak.EmptyTreeHash),
             bundle,

@@ -629,7 +629,7 @@ public class ReadOnlySnapshotBundleFilterTests
         try
         {
             using (SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
-                       ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: filterInMemorySlotReads))
+                       ResourcePool.Usage.ReadOnlyProcessingEnv, nativeTrieNodeLog: null, filterInMemorySlotReads: filterInMemorySlotReads))
             {
                 bundle.GetSlot(address, 1, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
                 Assert.That(value, Is.EqualTo((UInt256?)1));
@@ -958,7 +958,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
                 readOnly.TryLease();
                 bundles[b] = new SnapshotBundle(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
-                    ResourcePool.Usage.ReadOnlyProcessingEnv, ownList, filterInMemorySlotReads: b == 1);
+                    ResourcePool.Usage.ReadOnlyProcessingEnv, nativeTrieNodeLog: null, ownList, filterInMemorySlotReads: b == 1);
                 foreach ((Address address, UInt256 index, UInt256 value, bool clear) in ops)
                 {
                     if (clear) bundles[b].ClearStorage(address, Keccak.Compute(address.Bytes));

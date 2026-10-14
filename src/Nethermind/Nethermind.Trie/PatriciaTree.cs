@@ -372,18 +372,9 @@ namespace Nethermind.Trie
             }
         }
 
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey) => WarmUpPath(rawKey, TreePath.Empty, RootRef);
-
-        /// <summary>
-        /// Warms up the path to <paramref name="rawKey"/> from the node at <paramref name="startPath"/> with hash
-        /// <paramref name="startHash"/>, which must be on that path, skipping the nodes above it.
-        /// </summary>
-        public void WarmUpPath(ReadOnlySpan<byte> rawKey, in TreePath startPath, Hash256 startHash) =>
-            WarmUpPath(rawKey, startPath, TrieStore.FindCachedOrUnknown(startPath, startHash));
-
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        private void WarmUpPath(ReadOnlySpan<byte> rawKey, TreePath startPath, TrieNode? startNode)
+        public void WarmUpPath(ReadOnlySpan<byte> rawKey)
         {
             byte[]? array = null;
             try
@@ -396,7 +387,10 @@ namespace Nethermind.Trie
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
-                DoWarmUpPath(nibbles[startPath.Length..], ref startPath, startNode);
+                TreePath emptyPath = TreePath.Empty;
+                TrieNode? root = RootRef;
+
+                DoWarmUpPath(nibbles, ref emptyPath, root);
             }
             catch (TrieException e)
             {

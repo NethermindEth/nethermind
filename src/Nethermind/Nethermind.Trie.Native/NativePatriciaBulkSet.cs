@@ -32,20 +32,22 @@ public static unsafe partial class NativePatriciaBulkSet
     /// into <paramref name="pending"/>, and returns the new root hash. Every node written also goes into <paramref name="log"/>, or a
     /// temporary log when it is null, its root indexed as that of the storage trie of <paramref name="address"/>, or the state trie when it
     /// is null. Nodes reachable through that root in <paramref name="log"/> are read there, and the others from <paramref name="pending"/>,
-    /// then <paramref name="store"/>, without being added to <paramref name="log"/>.
+    /// then <paramref name="warmed"/> unless it is null, then <paramref name="store"/>, without being added to <paramref name="log"/>.
     /// </summary>
     /// <remarks>
     /// <paramref name="entries"/> is reordered in place and its keys must be unique. Hashing and node writes run in parallel on the native
     /// thread pool. Nodes that become unreachable are not removed.
     /// </remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, Hash256? address, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, NativeWarmedNodes? warmed, Hash256? address, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
     {
         CallState state = new(store);
         GCHandle handle = GCHandle.Alloc(state);
         bool logReferenced = false;
+        bool warmedReferenced = false;
         try
         {
             log?.DangerousAddRef(ref logReferenced);
+            warmed?.DangerousAddRef(ref warmedReferenced);
             ValueHash256 newRoot = default;
             ValueHash256 addressValue = address?.ValueHash256 ?? default;
             int status;
@@ -56,6 +58,7 @@ public static unsafe partial class NativePatriciaBulkSet
             {
                 status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, pending,
                     logReferenced ? log!.DangerousGetHandle() : 0,
+                    warmedReferenced ? warmed!.DangerousGetHandle() : 0,
                     address is null ? null : &addressValue, &Fetch, (void*)GCHandle.ToIntPtr(handle), &newRoot);
             }
             Metrics.AddBulkSetCall(Stopwatch.GetElapsedTime(start).Ticks, Stopwatch.GetElapsedTime(0, state.FetchTimestampTicks).Ticks);
@@ -67,13 +70,14 @@ public static unsafe partial class NativePatriciaBulkSet
         finally
         {
             if (logReferenced) log!.DangerousRelease();
+            if (warmedReferenced) warmed!.DangerousRelease();
             handle.Free();
         }
     }
 
-    /// <inheritdoc cref="BulkSet(INativeNodeStore, NativePendingNodes, NativeTrieNodeLog?, Hash256?, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <inheritdoc cref="BulkSet(INativeNodeStore, NativePendingNodes, NativeTrieNodeLog?, NativeWarmedNodes?, Hash256?, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
     /// <remarks>A null or empty <see cref="PatriciaTree.BulkSetEntry.Value"/> deletes the key. Keys must be unique.</remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, NativeWarmedNodes? warmed, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
         long start = Stopwatch.GetTimestamp();
         int valuesLength = 0;
@@ -92,13 +96,43 @@ public static unsafe partial class NativePatriciaBulkSet
                 offset += value.Length;
             }
 
-            return BulkSet(store, pending, log, address, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
+            return BulkSet(store, pending, log, warmed, address, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
         }
         finally
         {
             ArrayPool<NativeBulkSetEntry>.Shared.Return(nativeEntries);
             ArrayPool<byte>.Shared.Return(values);
             Metrics.AddBulkSet(Stopwatch.GetElapsedTime(start).Ticks);
+        }
+    }
+
+    /// <summary>
+    /// Warms the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/>, the storage trie of
+    /// <paramref name="address"/>, or the state trie when it is null: every node on it that native bulk sets cannot read
+    /// from <paramref name="log"/> nor <paramref name="warmed"/> is fetched from <paramref name="store"/> and added to
+    /// <paramref name="warmed"/>. Stops at the first node <paramref name="store"/> does not have.
+    /// </summary>
+    /// <remarks>Concurrent warm-ups and bulk sets may share <paramref name="warmed"/>.</remarks>
+    public static void WarmUp(INativeNodeStore store, NativeTrieNodeLog log, NativeWarmedNodes warmed, Hash256? address, in ValueHash256 root, in ValueHash256 key)
+    {
+        CallState state = new(store);
+        GCHandle handle = GCHandle.Alloc(state);
+        try
+        {
+            ValueHash256 addressValue = address?.ValueHash256 ?? default;
+            int status;
+            fixed (ValueHash256* rootPointer = &root)
+            fixed (ValueHash256* keyPointer = &key)
+            {
+                status = nm_patricia_warm_up(log, warmed, address is null ? null : &addressValue, rootPointer, keyPointer, &Fetch, (void*)GCHandle.ToIntPtr(handle));
+            }
+
+            if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
+            if (status != 0) throw new InvalidOperationException($"Native warm-up failed with status {status}");
+        }
+        finally
+        {
+            handle.Free();
         }
     }
 
@@ -131,10 +165,21 @@ public static unsafe partial class NativePatriciaBulkSet
         ValueHash256* root,
         NativePendingNodes pending,
         nint log,
+        nint warmed,
         ValueHash256* address,
         delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
         void* context,
         ValueHash256* rootOut);
+
+    [LibraryImport(LibraryName)]
+    private static partial int nm_patricia_warm_up(
+        NativeTrieNodeLog log,
+        NativeWarmedNodes warmed,
+        ValueHash256* address,
+        ValueHash256* root,
+        ValueHash256* key,
+        delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
+        void* context);
 
     private sealed class CallState(INativeNodeStore store)
     {

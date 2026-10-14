@@ -53,6 +53,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IResourcePool>(),
                 ctx.Resolve<IProcessExitSource>(),
                 ctx.Resolve<ITrieNodeCache>(),
+                flatDbConfig.UseNativeBulkSet ? ctx.Resolve<NativeTrieNodeLog>() : null,
                 ctx.Resolve<ISnapshotCompactor>(),
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),

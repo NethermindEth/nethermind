@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
@@ -55,43 +54,27 @@ public sealed unsafe partial class NativeTrieNodeLog : SafeHandle
         DangerousRelease();
     }
 
-    /// <summary>
-    /// Finds the first node on the path to <paramref name="key"/> in the trie with root hash <paramref name="root"/> that
-    /// native bulk sets cannot read from this log, in the storage trie of <paramref name="address"/>, or the state trie
-    /// when it is null.
-    /// </summary>
-    /// <param name="path">The path of that node.</param>
-    /// <param name="hash">The hash of that node.</param>
-    /// <returns>Whether there is such a node, false when bulk sets read every node on the path from this log.</returns>
-    public bool TryFindFirstMissingNode(Hash256? address, in ValueHash256 root, in ValueHash256 key, out TreePath path, [NotNullWhen(true)] out Hash256? hash)
+    /// <summary>The RLP and hash of the node whose record is at <paramref name="pointer"/>.</summary>
+    /// <remarks>
+    /// The RLP is read in place, so it stays valid only while a <see cref="NativeTrieNodeLogPin"/> keeps the generation
+    /// of <paramref name="pointer"/>, as one taken before the node was written does.
+    /// </remarks>
+    public ReadOnlySpan<byte> GetNodeRlp(ulong pointer, out ValueHash256 hash)
     {
-        ValueHash256 addressValue = address?.ValueHash256 ?? default;
-        ValueHash256 missingHash = default;
-        int depth;
-        fixed (ValueHash256* rootPointer = &root)
-        fixed (ValueHash256* keyPointer = &key)
-        {
-            depth = nm_patricia_log_first_missing(this, address is null ? null : &addressValue, rootPointer, keyPointer, &missingHash);
-        }
+        ValueHash256 nodeHash = default;
+        byte* rlp;
+        int length = nm_patricia_log_node(this, pointer, &nodeHash, &rlp);
+        if (length < 0) throw new InvalidOperationException($"Native trie node log read failed with status {length}");
 
-        if (depth < -1) throw new InvalidOperationException($"Native trie node log lookup failed with status {depth}");
-        if (depth == -1)
-        {
-            path = default;
-            hash = null;
-            return false;
-        }
-
-        path = TreePath.FromPath(key.Bytes).Truncate(depth);
-        hash = new Hash256(missingHash);
-        return true;
+        hash = nodeHash;
+        return new ReadOnlySpan<byte>(rlp, length);
     }
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial nint nm_patricia_log_new(ulong maxMemory);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial int nm_patricia_log_first_missing(NativeTrieNodeLog log, ValueHash256* address, ValueHash256* root, ValueHash256* key, ValueHash256* hashOut);
+    private static partial int nm_patricia_log_node(NativeTrieNodeLog log, ulong pointer, ValueHash256* hashOut, byte** rlpOut);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
     private static partial ulong nm_patricia_log_retain_active(NativeTrieNodeLog log);

@@ -70,15 +70,15 @@ public sealed class ForwardCommitmentCapture : IDisposable
         try
         {
             CapturedBlock captured = Take();
-            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in snapshot.StateNodes)
+            foreach (KeyValuePair<HashedKey<TreePath>, SnapshotTrieNode> entry in snapshot.StateNodes)
             {
-                AddAccount(captured, entry.Key.Key, entry.Value.FullRlp.AsSpan());
+                AddAccount(captured, entry.Key.Key, snapshot.GetRlp(entry.Value));
             }
 
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> entry in snapshot.StorageNodes)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> entry in snapshot.StorageNodes)
             {
                 (Hash256 accountPath, TreePath path) = entry.Key.Key;
-                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, entry.Value.FullRlp.AsSpan());
+                AddStorage(captured, new ValueHash256(accountPath.Bytes), path, snapshot.GetRlp(entry.Value));
             }
 
             Buffer(block, captured);

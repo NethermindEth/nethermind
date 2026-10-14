@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -50,7 +52,7 @@ public class NativePatriciaBulkSetTests
         Assert.That(BulkSet(store, pending, log, existingRoot, items), Is.EqualTo(tree.RootHash));
 
         Assert.That(Unsafe.SizeOf<TreePath>(), Is.EqualTo(40));
-        Assert.That(Unsafe.SizeOf<NativeWrittenNode>(), Is.EqualTo(80));
+        Assert.That(Unsafe.SizeOf<NativeWrittenNode>(), Is.EqualTo(88));
         for (int shard = 0; shard < pending.ShardCount; shard++)
         {
             NativePendingNodesView view = pending.GetView(shard);
@@ -87,7 +89,7 @@ public class NativePatriciaBulkSetTests
         // A new log does not have the trie, so its nodes are fetched from the store.
         using NativePendingNodes freshPending = NativePendingNodes.Rent(1);
         using NativeTrieNodeLog freshLog = new(64 * 1024 * 1024);
-        NativePatriciaBulkSet.BulkSet(store, freshPending, freshLog, TestItem.KeccakA, root.ValueHash256, [new PatriciaTree.BulkSetEntry(items[1].key.ValueHash256, [4, 5, 6])]);
+        NativePatriciaBulkSet.BulkSet(store, freshPending, freshLog, null, TestItem.KeccakA, root.ValueHash256, [new PatriciaTree.BulkSetEntry(items[1].key.ValueHash256, [4, 5, 6])]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -103,26 +105,53 @@ public class NativePatriciaBulkSetTests
     }
 
     [Test]
-    public void TryFindFirstMissingNode_finds_no_node_on_a_logged_trie_and_the_root_otherwise()
+    public void WarmUp_fetches_only_nodes_neither_logged_nor_warmed_which_bulk_sets_then_read_without_fetching()
     {
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
 
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 4);
+        Dictionary<TreePath, byte[]> nodes = [];
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
         using NativeTrieNodeLog log = new(64 * 1024 * 1024);
-        Hash256 root = BulkSet(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()), pending, log, Keccak.EmptyTreeHash, items);
+        Hash256 root = BulkSet(new DictionaryNodeStore(nodes), pending, log, Keccak.EmptyTreeHash, items);
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++) nodes[view[i].Path] = view.GetRlp(view[i]).ToArray();
+        }
+
+        // A log without the trie stands for one written before the trie was persisted.
+        CountingNodeStore store = new(new DictionaryNodeStore(nodes));
+        using NativeTrieNodeLog persistedLog = new(64 * 1024 * 1024);
+        using NativeWarmedNodes warmed = new();
+        int fromLog = WarmUp(log, items[0].key);
+        int fromStore = WarmUp(persistedLog, items[0].key);
+        int again = WarmUp(persistedLog, items[0].key);
+        foreach ((Hash256 key, _) in items) WarmUp(persistedLog, key);
+
+        int fetchesBeforeBulkSet = store.Fetches;
+        using NativePendingNodes freshPending = NativePendingNodes.Rent(1);
+        Hash256 newRoot = NativePatriciaBulkSet.BulkSet(store, freshPending, persistedLog, warmed, TestItem.KeccakA, root.ValueHash256, [new PatriciaTree.BulkSetEntry(items[0].key.ValueHash256, [1, 2, 3])]);
+
+        PatriciaTree tree = new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance);
+        foreach ((Hash256 key, byte[] value) in items) tree.Set(key.Bytes, value);
+        tree.Set(items[0].key.Bytes, [1, 2, 3]);
+        tree.UpdateRootHash();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.False);
-            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, TestItem.KeccakH.ValueHash256, out _, out _), Is.False);
-            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, Keccak.EmptyTreeHash.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.False);
-            foreach ((Hash256 address, Hash256 otherRoot) in new (Hash256, Hash256)[] { (TestItem.KeccakA, TestItem.KeccakC), (TestItem.KeccakB, root), (null, root) })
-            {
-                Assert.That(log.TryFindFirstMissingNode(address, otherRoot.ValueHash256, items[0].key.ValueHash256, out TreePath path, out Hash256 hash), Is.True);
-                Assert.That(path, Is.EqualTo(TreePath.Empty));
-                Assert.That(hash, Is.EqualTo(otherRoot));
-            }
+            Assert.That(fromLog, Is.Zero);
+            Assert.That(fromStore, Is.GreaterThan(1));
+            Assert.That(again, Is.Zero);
+            Assert.That(store.Fetches, Is.EqualTo(fetchesBeforeBulkSet));
+            Assert.That(newRoot, Is.EqualTo(tree.RootHash));
+        }
+
+        int WarmUp(NativeTrieNodeLog walkedLog, Hash256 key)
+        {
+            int before = store.Fetches;
+            NativePatriciaBulkSet.WarmUp(store, walkedLog, warmed, TestItem.KeccakA, root.ValueHash256, key.ValueHash256);
+            return store.Fetches - before;
         }
     }
 
@@ -132,7 +161,7 @@ public class NativePatriciaBulkSetTests
         Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
 
         List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 5);
-        DictionaryNodeStore store = new(new Dictionary<TreePath, byte[]>());
+        CountingNodeStore store = new(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()));
         using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
         using NativeTrieNodeLog log = new(256 * 1024);
         NativeTrieNodeLogPin pin = log.PinActiveGeneration();
@@ -142,14 +171,36 @@ public class NativePatriciaBulkSetTests
 
         // Many times what the log holds, so without the pin it would have dropped the trie.
         for (int i = 0; i < 20; i++) BulkSet(store, pending, log, Keccak.EmptyTreeHash, PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 10 + i));
-        bool missingWhilePinned = log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _);
+        bool missingWhilePinned = IsMissing();
+        // Every node written since the pin reads back from the log at its pointer, as in-memory snapshots read them.
+        List<string> unreadable = [];
+        for (int shard = 0; shard < pending.ShardCount; shard++)
+        {
+            NativePendingNodesView view = pending.GetView(shard);
+            for (int i = 0; i < view.Count; i++)
+            {
+                ReadOnlySpan<byte> rlp = log.GetNodeRlp(view[i].LogPointer, out ValueHash256 hash);
+                if (hash != view[i].Hash || !rlp.SequenceEqual(view.GetRlp(view[i]))) unreadable.Add(view[i].Path.ToString());
+            }
+        }
         copy.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copy.Generation, Is.EqualTo(pin.Generation));
             Assert.That(missingWhilePinned, Is.False);
-            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.True);
+            Assert.That(pending.Count, Is.GreaterThan(0));
+            Assert.That(unreadable, Is.Empty);
+            Assert.That(IsMissing(), Is.True);
+        }
+
+        // A node not in the log is fetched to warm it, so a warm-up that fetches nothing read the whole path there.
+        bool IsMissing()
+        {
+            using NativeWarmedNodes warmed = new();
+            int before = store.Fetches;
+            NativePatriciaBulkSet.WarmUp(store, log, warmed, TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256);
+            return store.Fetches != before;
         }
     }
 
@@ -164,6 +215,19 @@ public class NativePatriciaBulkSetTests
             offset += length;
         }
 
-        return NativePatriciaBulkSet.BulkSet(store, pending, log, TestItem.KeccakA, root.ValueHash256, entries, items.SelectMany(item => item.value ?? []).ToArray());
+        return NativePatriciaBulkSet.BulkSet(store, pending, log, null, TestItem.KeccakA, root.ValueHash256, entries, items.SelectMany(item => item.value ?? []).ToArray());
+    }
+
+    private sealed class CountingNodeStore(INativeNodeStore inner) : INativeNodeStore
+    {
+        private int _fetches;
+
+        public int Fetches => Volatile.Read(ref _fetches);
+
+        public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
+        {
+            Interlocked.Increment(ref _fetches);
+            return inner.Fetch(in path, in hash, receiver);
+        }
     }
 }

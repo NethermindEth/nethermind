@@ -311,6 +311,7 @@ public class LongFinalityIntegrationTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
+            nativeTrieNodeLog: null,
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,

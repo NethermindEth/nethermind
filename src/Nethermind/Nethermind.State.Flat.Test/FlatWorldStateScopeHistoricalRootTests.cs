@@ -218,6 +218,7 @@ public class FlatWorldStateScopeHistoricalRootTests
             readOnlyBundle,
             Substitute.For<ITrieNodeCache>(),
             _pool,
-            ResourcePool.Usage.MainBlockProcessing);
+            ResourcePool.Usage.MainBlockProcessing,
+            nativeTrieNodeLog: null);
     }
 }

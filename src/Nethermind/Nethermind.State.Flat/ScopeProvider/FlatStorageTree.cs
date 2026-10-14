@@ -68,7 +68,11 @@ public sealed class FlatStorageTree(
 
     private bool UsesNativeBulkSet => _config.UseNativeBulkSet && !_scope.Trieless;
 
-    private NativeTrieNodeStore NativeStore => _nativeStore ??= new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeLog);
+    // Warmers read it concurrently with the owner, which must not lose its pending nodes to a store a warmer created.
+    private NativeTrieNodeStore NativeStore =>
+        Volatile.Read(ref _nativeStore)
+        ?? Interlocked.CompareExchange(ref _nativeStore, new NativeTrieNodeStore(_bundle, AddressHash, _scope.NativeTrieNodeLog), null)
+        ?? _nativeStore!;
 
     private Trees GetTrees() => Volatile.Read(ref _trees) ?? CreateTrees();
 
@@ -259,10 +263,9 @@ public sealed class FlatStorageTree(
                 {
                     GetTrees().Warmup.WarmUpPath(key.BytesAsSpan);
                 }
-                // The native bulk set reads the top of the path from its log, so only the nodes below it need warming.
-                else if (_scope.NativeTrieNodeLog.TryFindFirstMissingNode(AddressHash, _storageRoot.ValueHash256, key, out TreePath path, out Hash256? hash))
+                else
                 {
-                    GetTrees().Warmup.WarmUpPath(key.BytesAsSpan, path, hash);
+                    _bundle.WarmUpNative(NativeStore, _scope.NativeTrieNodeLog, AddressHash, _storageRoot, key);
                 }
                 return true;
             }

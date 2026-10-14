@@ -179,7 +179,8 @@ public class FlatWorldStateScopeProviderTests
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
             Substitute.For<ITrieNodeCache>(),
             resourcePool,
-            ResourcePool.Usage.ReadOnlyProcessingEnv);
+            ResourcePool.Usage.ReadOnlyProcessingEnv,
+            nativeTrieNodeLog: null);
     }
 
     private class TestContext : IDisposable
@@ -1126,6 +1127,14 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(nodesAtCommit, Is.Not.Empty);
         Assert.That(nodesAtCommit, Is.EquivalentTo(nodesInBatch));
         Assert.That(rootsAtCommit, Is.EqualTo(rootsInBatch));
+
+        // The native bulk set's snapshot holds log pointers, which must read back as the nodes the managed trie commits.
+        if (useNativeBulkSet)
+        {
+            (HashSet<string> managedNodes, Hash256[] managedRoots) = CommitStorageSlots(deferStorageTrieCommit: false, contractCount, clearInSecondBatch, useNativeBulkSet: false);
+            Assert.That(nodesInBatch, Is.EquivalentTo(managedNodes));
+            Assert.That(rootsInBatch, Is.EqualTo(managedRoots));
+        }
     }
 
     [Test]
@@ -1209,9 +1218,12 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         HashSet<string> nodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        Snapshot snapshot = ctx.LastCommittedSnapshot!;
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, SnapshotTrieNode> node in snapshot.StorageNodes)
         {
-            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+            Assert.That(node.Value.Node, useNativeBulkSet ? Is.Null : Is.Not.Null);
+            Assert.That(snapshot.TryGetStorageNode(node.Key, out TrieNode? trieNode), Is.True);
+            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{trieNode!.Keccak}/{snapshot.GetRlp(node.Value).ToHexString()}");
         }
 
         Hash256[] roots = new Hash256[addresses.Length];
@@ -1822,7 +1834,7 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing, nativeTrieNodeLog: null);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         FlatWorldStateScope scope = new(
