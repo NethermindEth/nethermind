@@ -197,10 +197,7 @@ public class BlockValidator(
             // matching block, so a divergent one still reports the mismatch.
             if (suggestedBlock.BlockAccessList is not null
                 && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-                && !ValidateBlockLevelAccessListSize(
-                    processedBlock,
-                    processedBlock.GeneratedBlockAccessList?.ItemCount ?? suggestedBlock.BlockAccessList.ItemCount,
-                    ref balSizeError))
+                && !ValidateBlockLevelAccessListSize(processedBlock, suggestedBlock.BlockAccessList.ItemCount, ref balSizeError))
             {
                 error = balSizeError;
                 return false;
