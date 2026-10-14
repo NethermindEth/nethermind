@@ -212,7 +212,7 @@ public class PbtAnchorImportTests
         bool observedCodeSpool = false;
         using MemoryStream snapshot = new ObservedSnapshot(File.ReadAllBytes(Eip8347FixtureState.ArtifactPath("a4", "snapshot.pbt")), () =>
         {
-            observedCodeSpool = Directory.GetDirectories(harness.Scratch.Path, "pbt-import-codes-*").Length == 1;
+            observedCodeSpool = Directory.Exists(Path.Combine(harness.WorkDb.Path, "import")) && Directory.GetDirectories(Path.Combine(harness.WorkDb.Path, "import"), "pbt-import-codes-*").Length == 1;
             if (observedCodeSpool) cancellation.Cancel();
         });
         using FileStream preimages = OpenArtifact("a4", "preimages.bin");
@@ -591,6 +591,7 @@ public class PbtAnchorImportTests
     private sealed class Harness : IDisposable
     {
         public readonly TempPath Scratch = TempPath.GetTempDirectory();
+        public readonly TempPath WorkDb = TempPath.GetTempDirectory();
         public readonly SyncColumnsDb Target = new();
         public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
@@ -631,10 +632,17 @@ public class PbtAnchorImportTests
             _anchorImport = null;
         }
 
+        private IDbFactory WorkDbFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(WorkDb.Path);
+            return dbFactory;
+        }
+
         private PbtAnchorImport CreateAnchorImport()
         {
             PbtRocksDbPersistence target = new(Target, _config, NullTrieNodeLog.Instance);
-            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, new PbtLeafIngestion(target, _config, LimboLogs.Instance), _config, LimboLogs.Instance);
+            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, new PbtLeafIngestion(target, new PbtRebuilder(target, _config, _config.ImportConcurrency, LimboLogs.Instance), WorkDbFactory(), _config, LimboLogs.Instance), _config, LimboLogs.Instance);
         }
 
         public async Task Publish(CancellationToken cancellationToken = default)
@@ -652,6 +660,7 @@ public class PbtAnchorImportTests
             Pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Target.Dispose();
             Scratch.Dispose();
+            WorkDb.Dispose();
         }
     }
 

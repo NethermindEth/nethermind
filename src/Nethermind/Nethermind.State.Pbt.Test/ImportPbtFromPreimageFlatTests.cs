@@ -643,7 +643,7 @@ public class ImportPbtFromPreimageFlatTests
             .AddSingleton<IPbtConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<PbtRebuilder, PbtRocksDbPersistence, IPbtConfig, ILogManager>(
-                (target, pbtConfig, logManager) => new PbtRebuilder(target, pbtConfig, pbtConfig.FoldConcurrency, logManager))
+                (target, pbtConfig, logManager) => new PbtRebuilder(target, pbtConfig, pbtConfig.ImportConcurrency, logManager))
             .AddSingleton<PbtLeafIngestion>();
         builder.RegisterType<ImportPbtFromPreimageFlat>().WithAttributeFiltering();
         using IContainer container = builder.Build();
@@ -754,8 +754,8 @@ public class ImportPbtFromPreimageFlatTests
 
     private static ImportPbtFromPreimageFlat CreateStep(IPersistence source, IDb codes, IColumnsDb<PbtColumns> db, PbtRocksDbPersistence target, PbtConfig config,
         string? scratchDirectory = null) =>
-        new(source, codes, db, new PbtRebuilder(target, config, config.FoldConcurrency, LimboLogs.Instance),
-            new PbtLeafIngestion(target, config, LimboLogs.Instance), target, ScratchFactory(scratchDirectory), config, LimboLogs.Instance);
+        new(source, codes, db,
+            new PbtLeafIngestion(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchFactory(scratchDirectory), config, LimboLogs.Instance), target, ScratchFactory(scratchDirectory), config, LimboLogs.Instance);
 
     private static IDbFactory ScratchFactory(string? directory = null)
     {

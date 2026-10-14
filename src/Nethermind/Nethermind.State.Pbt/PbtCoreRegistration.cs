@@ -62,6 +62,8 @@ public static class PbtCoreRegistration
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
             .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
+            .AddSingleton<PbtRebuilder, PbtRocksDbPersistence, IPbtConfig, ILogManager>(
+                (target, pbtConfig, logManager) => new PbtRebuilder(target, pbtConfig, pbtConfig.ImportConcurrency, logManager))
             .AddSingleton<PbtLeafIngestion>()
             .AddSingleton<PbtAnchorImport>()
             .RegisterSingletonJsonRpcModule<IMigrationDebugRpcModule, MigrationDebugRpcModule>();

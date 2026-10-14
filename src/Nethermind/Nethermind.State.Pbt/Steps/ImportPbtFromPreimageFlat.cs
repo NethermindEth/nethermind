@@ -28,7 +28,6 @@ public class ImportPbtFromPreimageFlat(
     FlatPersistence flatSource,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IColumnsDb<PbtColumns> pbtDb,
-    PbtRebuilder rebuilder,
     PbtLeafIngestion leafIngestion,
     PbtRocksDbPersistence pbtPersistence,
     IDbFactory dbFactory,
@@ -66,10 +65,9 @@ public class ImportPbtFromPreimageFlat(
         {
             using SortedSpool leaves = new(directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
-            float leafCount = PbtOfflineSource.Spool("PBT import scan", reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken).Leaves;
+            PbtOfflineSource.Spool("PBT import scan", reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken);
             // State is addressed by the source block header's root; the fold records its tree root beside it.
-            await leafIngestion.Ingest(rebuilder, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount,
-                sourceState, config.ImportWindowSize, expectedRoot: null, static _ => { }, directory, cancellationToken);
+            await leafIngestion.Ingest(_ => PbtLeafIngestion.SpoolLeaves(leaves), sourceState, expectedRoot: null, static _ => { }, cancellationToken);
         }
         finally
         {

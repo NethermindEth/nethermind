@@ -53,23 +53,11 @@ public sealed class PbtAnchorImport(
 
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor changed before the import.");
-        // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
-        float snapshotLength = snapshot.Length;
         RecoverStaging(anchor, cancellationToken);
         using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ExportSortBufferBytes, logManager, cancellationToken);
         verifier?.SpoolPreimages(preimages!);
-        string directory = Path.Combine(scratchDirectory, $"pbt-import-codes-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        try
-        {
-            (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-                Leaves, Progress, new StateId(anchor.Header), windowSize: 0, claimedRoot, VerifyStaged, directory, cancellationToken);
-            Finish(anchor, root, accounts, slots, importing, cancellationToken);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
-        }
+        (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(Leaves, new StateId(anchor.Header), claimedRoot, VerifyStaged, cancellationToken);
+        Finish(anchor, root, accounts, slots, importing, cancellationToken);
 
         IEnumerable<RebuildEntry> Leaves(CancellationToken token)
         {
@@ -77,8 +65,6 @@ public sealed class PbtAnchorImport(
             IEnumerable<RebuildEntry> leaves = PbtSnapshotCodec.ReadLeaves(snapshot, token);
             return verifier is null ? leaves : verifier.Join(leaves);
         }
-
-        float Progress(ulong _) => snapshot.Position / snapshotLength;
 
         void VerifyStaged(CancellationToken token)
         {

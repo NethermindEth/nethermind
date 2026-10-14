@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
+using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -14,12 +15,13 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Pbt.Common;
+using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Ingests an ascending PBT leaf stream into an empty target: stages its logical state while folding its tree.</summary>
-public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig config, ILogManager logManager)
+public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder rebuilder, IDbFactory dbFactory, IPbtConfig config, ILogManager logManager)
 {
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
     public const int BatchSize = 255;
@@ -36,24 +38,19 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig co
     /// so the only ordering is the publication, which waits for the staging and <paramref name="verifyStaged"/>, and is
     /// refused when the root differs from <paramref name="expectedRoot"/>.
     /// </remarks>
-    /// <param name="fraction">The fraction of the pass done after the given number of leaves.</param>
-    /// <param name="windowSize">Maximum leaves per fold window; zero uses the rebuilder's default.</param>
     /// <param name="verifyStaged">Checks the staged accounts and slots before the tree is published.</param>
-    /// <param name="scratchDirectory">Caller-owned directory for the code reassembly's spools.</param>
     /// <returns>The tree root and the staged accounts and slots.</returns>
-    public async Task<(ValueHash256 Root, ulong Accounts, ulong Slots)> Ingest(PbtRebuilder rebuilder,
-        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, StateId targetState, int windowSize,
-        ValueHash256? expectedRoot, Action<CancellationToken> verifyStaged, string scratchDirectory, CancellationToken cancellationToken)
+    public async Task<(ValueHash256 Root, ulong Accounts, ulong Slots)> Ingest(Func<CancellationToken, IEnumerable<RebuildEntry>> leaves,
+        StateId targetState, ValueHash256? expectedRoot, Action<CancellationToken> verifyStaged, CancellationToken cancellationToken)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(
-            (windowSize > 0 ? windowSize : PbtSortedLeafFold.DefaultWindowSize) / PbtSortedLeafFold.FoldChunkSize + 1);
+            (config.ImportWindowSize > 0 ? config.ImportWindowSize : PbtSortedLeafFold.DefaultWindowSize) / PbtSortedLeafFold.FoldChunkSize + 1);
         Task<(ulong Accounts, ulong Slots)> staging = Task.Run(() =>
         {
             try
             {
-                (ulong Accounts, ulong Slots) staged = Stage(PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
-                    scratchDirectory, linked.Token);
+                (ulong Accounts, ulong Slots) staged = Stage(PbtSortedLeafFold.Teed(Reported(leaves(linked.Token), logManager), channel.Writer, linked.Token), linked.Token);
                 verifyStaged(linked.Token);
                 return staged;
             }
@@ -61,7 +58,7 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig co
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, linked.Token, windowSize, expectedRoot, staging);
+            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, linked.Token, config.ImportWindowSize, expectedRoot, staging);
             (ulong accounts, ulong slots) = await staging;
             return (root, accounts, slots);
         }
@@ -74,18 +71,27 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig co
         }
     }
 
-    private (ulong Accounts, ulong Slots) Stage(IEnumerable<RebuildEntry> leaves, string scratchDirectory, CancellationToken cancellationToken)
+    private (ulong Accounts, ulong Slots) Stage(IEnumerable<RebuildEntry> leaves, CancellationToken cancellationToken)
     {
         int workers = config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount;
-        (ulong Accounts, ulong Slots) staged;
-        using PbtCodeReassembly codes = new(target, scratchDirectory, config.ExportSortBufferBytes, workers, logManager, cancellationToken);
-        using (LogicalBatch batch = new(target, workers, cancellationToken))
+        string scratchDirectory = Path.Combine(PbtMigrationAnchor.ScratchDirectory(dbFactory, "import"), $"pbt-import-codes-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(scratchDirectory);
+        try
         {
-            staged = Stage(batch, leaves, codes, cancellationToken);
-            batch.Commit();
+            (ulong Accounts, ulong Slots) staged;
+            using PbtCodeReassembly codes = new(target, scratchDirectory, config.ExportSortBufferBytes, workers, logManager, cancellationToken);
+            using (LogicalBatch batch = new(target, workers, cancellationToken))
+            {
+                staged = Stage(batch, leaves, codes, cancellationToken);
+                batch.Commit();
+            }
+            codes.Complete();
+            return staged;
         }
-        codes.Complete();
-        return staged;
+        finally
+        {
+            Directory.Delete(scratchDirectory, recursive: true);
+        }
     }
 
     /// <summary>Stages the logical accounts, code and slot runs of an ascending PBT leaf stream, refusing noncanonical leaves.</summary>
@@ -219,9 +225,8 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig co
         while (cursor.MoveNext()) yield return new RebuildEntry(new PbtVariableTreeKey(cursor.Key), new ValueHash256(cursor.Value));
     }
 
-    /// <param name="fraction">The fraction of the pass done after the given number of leaves, sampled on the reading
-    /// thread since a snapshot's offset briefly moves while its reader re-reads the header section.</param>
-    private static IEnumerable<RebuildEntry> Reported(IEnumerable<RebuildEntry> leaves, Func<ulong, float> fraction, ILogManager logManager)
+    /// <remarks>Progress is the keyspace position of the leaf's path after its zone byte, so it restarts in each zone.</remarks>
+    private static IEnumerable<RebuildEntry> Reported(IEnumerable<RebuildEntry> leaves, ILogManager logManager)
     {
         ulong read = 0;
         float walked = 0;
@@ -229,8 +234,8 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, IPbtConfig co
         progress.Logger.SetFormat(p => PbtImageProgress.Format(Phase, walked, PbtImageProgress.Counted("leaf", p)));
         foreach (RebuildEntry entry in leaves)
         {
-            walked = fraction(++read);
-            progress.Update(read);
+            walked = PbtImageProgress.KeyspaceFraction(new ValueHash256(entry.Key.Bytes.Slice(1, ValueHash256.MemorySize)));
+            progress.Update(++read);
             yield return entry;
         }
     }
