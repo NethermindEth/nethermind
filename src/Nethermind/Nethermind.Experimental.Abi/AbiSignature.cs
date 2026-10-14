@@ -31,7 +31,7 @@ public record AbiSignature<T>(string Name, Abi<T> Abi)
     // TODO: Cache this computation
     public byte[] MethodId()
     {
-        var asciiBytes = Encoding.ASCII.GetBytes(ToString());
+        byte[] asciiBytes = Encoding.ASCII.GetBytes(ToString());
         return Keccak.Compute(asciiBytes).Bytes[..AbiSignature.MethodIdLength].ToArray();
     }
 }

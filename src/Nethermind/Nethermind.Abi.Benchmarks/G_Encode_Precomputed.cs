@@ -36,15 +36,13 @@ public class G_Encode_Precomputed
     }
 
     [Benchmark(Baseline = true)]
-    public byte[] Current()
-    {
-        return AbiEncoder.Instance.Encode(AbiEncodingStyle.None, _g_signature, _g_arguments_boxed);
-    }
+    public byte[] Current() =>
+        AbiEncoder.Instance.Encode(AbiEncodingStyle.None, _g_signature, _g_arguments_boxed);
 
     [Benchmark]
     public byte[] Experimental()
     {
-        var w = new Exp.BinarySpanWriter(_g_encode_buffer);
+        Exp.BinarySpanWriter w = new(_g_encode_buffer);
         _g_exp_signature.Abi.Write(ref w, _g_arguments);
 
         return _g_encode_buffer;

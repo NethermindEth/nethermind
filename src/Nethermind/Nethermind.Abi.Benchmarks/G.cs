@@ -15,7 +15,7 @@ public class G
     [Benchmark(Baseline = true)]
     public (UInt256[][], string[]) Current()
     {
-        AbiSignature signature = new AbiSignature("g",
+        AbiSignature signature = new("g",
             new AbiArray(new AbiArray(AbiType.UInt256)),
             new AbiArray(AbiString.Instance));
 
@@ -24,7 +24,7 @@ public class G
 
         byte[] encoded = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, signature, boxed);
 
-        var decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
+        object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
 
         return ((UInt256[][])decoded[0], (string[])decoded[1]);
     }

@@ -12,10 +12,10 @@ public static class AbiCodec
 {
     public static byte[] Encode<T>(AbiSignature<T> signature, T arg)
     {
-        var valueSize = signature.Abi.Size(arg);
+        int valueSize = signature.Abi.Size(arg);
 
         byte[] buffer = new byte[AbiSignature.MethodIdLength + valueSize];
-        var w = new BinarySpanWriter(buffer);
+        BinarySpanWriter w = new(buffer);
 
         w.Write(signature.MethodId());
         signature.Abi.Write(ref w, arg);
@@ -27,9 +27,9 @@ public static class AbiCodec
 
     public static T Decode<T>(AbiSignature<T> signature, ReadOnlySpan<byte> source)
     {
-        var r = new BinarySpanReader(source);
+        BinarySpanReader r = new(source);
 
-        var id = r.ReadBytes(AbiSignature.MethodIdLength);
+        ReadOnlySpan<byte> id = r.ReadBytes(AbiSignature.MethodIdLength);
         if (!Bytes.AreEqual(id, signature.MethodId())) throw new AbiException();
 
         T arg = signature.Abi.Read(ref r);

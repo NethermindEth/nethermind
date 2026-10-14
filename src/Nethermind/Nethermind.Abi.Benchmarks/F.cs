@@ -16,7 +16,7 @@ public class F
     [Benchmark(Baseline = true)]
     public (UInt256, uint[], byte[], byte[]) Current()
     {
-        AbiSignature signature = new AbiSignature("f",
+        AbiSignature signature = new("f",
             AbiType.UInt256,
             new AbiArray(AbiType.UInt32),
             new AbiBytes(10),
@@ -28,7 +28,7 @@ public class F
 
         byte[] encoded = AbiEncoder.Instance.Encode(AbiEncodingStyle.IncludeSignature, signature, boxed);
 
-        var decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
+        object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.IncludeSignature, signature, encoded);
 
         return ((UInt256)decoded[0], (UInt32[])decoded[1], (byte[])decoded[2], (byte[])decoded[3]);
     }
@@ -36,7 +36,7 @@ public class F
     [Benchmark]
     public (UInt256, uint[], byte[], byte[]) Experimental()
     {
-        var signature = new Exp.AbiSignature("f")
+        Exp.AbiSignature<(UInt256, uint[], byte[], byte[])> signature = new Exp.AbiSignature("f")
             .With(
                 Exp.AbiType.UInt256,
                 Exp.AbiType.Array(Exp.AbiType.UInt32),
@@ -47,7 +47,7 @@ public class F
             "Hello, world!"u8.ToArray());
         byte[] encoded = Exp.AbiCodec.Encode(signature, arguments);
 
-        var decoded = Exp.AbiCodec.Decode(signature, encoded);
+        (UInt256, uint[], byte[], byte[]) decoded = Exp.AbiCodec.Decode(signature, encoded);
 
         return decoded;
     }
