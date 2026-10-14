@@ -17,13 +17,13 @@ using SHA256 =
 
 public static partial class Merkle
 {
-    public static readonly UInt256[] ZeroHashes = new UInt256[64];
+    public static readonly UInt256[] ZeroHashes = new UInt256[65];
 
     private static void BuildZeroHashes()
     {
         Span<UInt256> concatenation = stackalloc UInt256[2];
         // ZeroHashes[0] will be UInt256.Zero
-        for (int i = 1; i < 64; i++)
+        for (int i = 1; i < ZeroHashes.Length; i++)
         {
             UInt256 previous = ZeroHashes[i - 1];
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
@@ -34,7 +34,7 @@ public static partial class Merkle
 
     static Merkle() => BuildZeroHashes();
 
-    public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
+    public static int NextPowerOfTwoExponent(ulong v) => v > (1UL << 63) ? 64 : BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
 
     private static UInt256 Compute(Span<UInt256> span) => MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
 
@@ -97,25 +97,17 @@ public static partial class Merkle
     }
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value)
-    {
-        const int typeSize = 1;
-        int partialChunkLength = value.Length % (32 / typeSize);
-        if (partialChunkLength > 0)
-        {
-            ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
-            Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            lastChunk.Clear();
-            value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
-        }
-        else
-        {
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value));
-        }
-    }
+        => MerkleizeBytes(out root, value, ((ulong)value.Length + 31) / 32);
 
     public static void Merkleize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
     {
+        ulong valueChunkCount = ((ulong)value.Length + 31) / 32;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(valueChunkCount, chunkCount, nameof(value));
+        MerkleizeBytes(out root, value, chunkCount);
+    }
+
+    private static void MerkleizeBytes(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
+    {
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
@@ -124,23 +116,23 @@ public static partial class Merkle
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
             lastChunk.Clear();
             value[^partialChunkLength..].CopyTo(lastChunk);
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
+            MerkleizeChunks(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
         }
         else
         {
-            Merkleize(out root, MemoryMarshal.Cast<byte, UInt256>(value), chunkCount);
+            MerkleizeChunks(out root, MemoryMarshal.Cast<byte, UInt256>(value), [], chunkCount);
         }
     }
 
-    private static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
+    private static void MerkleizeChunks(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong chunkCount)
     {
-        if (limit == 0 && (value.Length + lastChunk.Length == 1))
+        if (chunkCount == 1 && value.Length + lastChunk.Length == 1)
         {
             root = value.Length == 0 ? lastChunk[0] : value[0];
             return;
         }
 
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
+        int depth = NextPowerOfTwoExponent(chunkCount);
         Merkleizer merkleizer = new(depth);
         int length = value.Length;
         for (int i = 0; i < length; i++)
@@ -156,23 +148,13 @@ public static partial class Merkle
         merkleizer.CalculateRoot(out root);
     }
 
-    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value) =>
+        MerkleizeChunks(out root, value, [], (ulong)value.Length);
+
+    public static void Merkleize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit)
     {
-        if (limit == 0 && value.Length == 1)
-        {
-            root = value[0];
-            return;
-        }
-
-        int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new(depth);
-        int length = value.Length;
-        for (int i = 0; i < length; i++)
-        {
-            merkleizer.Feed(value[i]);
-        }
-
-        merkleizer.CalculateRoot(out root);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((ulong)value.Length, limit, nameof(value));
+        MerkleizeChunks(out root, value, [], limit);
     }
 
 #if ZK_EVM

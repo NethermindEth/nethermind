@@ -31,6 +31,8 @@ public class MerkleTests
     [TestCase(4UL, 2UL)]
     [TestCase(ulong.MaxValue / 2, 63UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 63UL)]
+    [TestCase(ulong.MaxValue / 2 + 2, 64UL)]
+    [TestCase(ulong.MaxValue, 64UL)]
     public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
 
     [Test]
@@ -185,6 +187,72 @@ public class MerkleTests
         Assert.That(actual, Is.EqualTo(Merkle.ZeroHashes[depth]));
     }
 
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(3)]
+    public void Feed_beyond_capacity_throws(int depth) =>
+        Assert.That(() => FeedBeyondCapacity(depth), Throws.TypeOf<InvalidOperationException>());
+
+    [TestCase(1, 0UL)]
+    [TestCase(2, 1UL)]
+    [TestCase(4, 3UL)]
+    [TestCase(9, 8UL)]
+    public void Merkleize_uint256_chunks_beyond_limit_throws(int chunkCount, ulong limit) =>
+        Assert.That(() => Merkle.Merkleize(out _, new UInt256[chunkCount], limit), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [TestCase(1, 0UL)]
+    [TestCase(33, 1UL)]
+    [TestCase(97, 3UL)]
+    public void Merkleize_byte_chunks_beyond_limit_throws(int byteLength, ulong chunkLimit) =>
+        Assert.That(() => Merkle.Merkleize(out _, new byte[byteLength], chunkLimit), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [TestCase(0, 0UL)]
+    [TestCase(1, 1UL)]
+    [TestCase(3, 3UL)]
+    [TestCase(8, 8UL)]
+    public void Merkleize_uint256_chunks_at_limit_matches_unbounded(int chunkCount, ulong limit)
+    {
+        UInt256[] chunks = new UInt256[chunkCount];
+        for (int i = 0; i < chunks.Length; i++)
+        {
+            chunks[i] = new UInt256((ulong)i + 1);
+        }
+
+        Merkle.Merkleize(out UInt256 expected, chunks);
+        Merkle.Merkleize(out UInt256 actual, chunks, limit);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [TestCase(0, 0UL)]
+    [TestCase(1, 1UL)]
+    [TestCase(32, 1UL)]
+    [TestCase(33, 2UL)]
+    [TestCase(96, 3UL)]
+    public void Merkleize_byte_chunks_at_limit_matches_unbounded(int byteLength, ulong chunkLimit)
+    {
+        byte[] bytes = new byte[byteLength];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = (byte)i;
+        }
+
+        Merkle.Merkleize(out UInt256 expected, bytes);
+        Merkle.Merkleize(out UInt256 actual, bytes, chunkLimit);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [TestCase(1UL << 63, 63)]
+    [TestCase((1UL << 63) + 1, 64)]
+    [TestCase(ulong.MaxValue, 64)]
+    public void Merkleize_supports_full_ulong_limit_range(ulong limit, int expectedDepth)
+    {
+        Merkle.Merkleize(out UInt256 actual, ReadOnlySpan<UInt256>.Empty, limit);
+
+        Assert.That(actual, Is.EqualTo(Merkle.ZeroHashes[expectedDepth]));
+    }
+
     [TestCase(2, 1)]
     [TestCase(4, 2)]
     [TestCase(8, 3)]
@@ -223,6 +291,18 @@ public class MerkleTests
     }
 
     private delegate void FeedItem<T>(ref Merkleizer merkleizer, T value);
+
+    private static void FeedBeyondCapacity(int depth)
+    {
+        Merkleizer merkleizer = new(depth);
+        ulong capacity = 1UL << depth;
+        for (ulong i = 0; i < capacity; i++)
+        {
+            merkleizer.Feed(UInt256.Zero);
+        }
+
+        merkleizer.Feed(UInt256.Zero);
+    }
 
     private static UInt256 MerkleizeWithConverter<T>(T value, FeedItem<T> feed)
     {

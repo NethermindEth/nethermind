@@ -103,6 +103,22 @@ namespace Nethermind.Serialization.Ssz.Test
             Assert.That(hashTreeRoot.ToArray(), Is.EqualTo(expectedHashTreeRoot));
         }
 
+        [TestCase(1, 0UL)]
+        [TestCase(2, 1UL)]
+        [TestCase(258, 257UL)]
+        public void Merkleize_bitlist_beyond_limit_throws(int bitLength, ulong limit) =>
+            Assert.That(() => Merkle.Merkleize(out _, new BitArray(bitLength), limit), Throws.TypeOf<System.ArgumentOutOfRangeException>());
+
+        [Test]
+        public void Merkleize_bitlist_supports_maximum_limit()
+        {
+            Merkle.Merkleize(out UInt256 root, new BitArray(0), ulong.MaxValue);
+
+            UInt256 expected = Merkle.ZeroHashes[56];
+            Merkle.MixIn(ref expected, 0);
+            Assert.That(root, Is.EqualTo(expected));
+        }
+
         public static IEnumerable<TestCaseData> GetBitvectorData()
         {
             yield return new TestCaseData(
