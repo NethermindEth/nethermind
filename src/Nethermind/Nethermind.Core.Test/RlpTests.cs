@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -1365,24 +1364,36 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void PeekLongPrefixAndContentLength_throws_on_truncated_length_ending_at_int_max([Values(0xB8, 0xF8)] byte prefix)
+        public unsafe void PeekLongPrefixAndContentLength_throws_on_truncated_length_ending_at_int_max([Values(0xB8, 0xF8)] byte prefix)
         {
-            // The span's last byte is the prefix, so position + 1 + lengthOfLength wraps an int. The pinned
-            // backing array holds the byte one past the span's end, which an unchecked read would decode
-            // as a short non-canonical length instead of reporting truncation.
-            byte[] backing = GC.AllocateArray<byte>(2, pinned: true);
-            backing[0] = prefix;
-            backing[1] = 0x01;
+            // The span's last byte is the prefix, so position + 1 + lengthOfLength wraps an int. The native
+            // block holds the byte one past the span's end, which an unchecked read would decode as a short
+            // non-canonical length instead of reporting truncation. Only its last page is ever touched.
             const int position = int.MaxValue - 1;
-
-            Action act = () =>
+            byte* backing;
+            try
             {
-                ReadOnlySpan<byte> data = MemoryMarshal.CreateReadOnlySpan(
-                    ref Unsafe.Subtract(ref MemoryMarshal.GetArrayDataReference(backing), position), int.MaxValue);
-                new LiteRlpReader(data).PeekNextRlpLength(position);
-            };
+                backing = (byte*)NativeMemory.Alloc((nuint)int.MaxValue + 1);
+            }
+            catch (OutOfMemoryException)
+            {
+                Assert.Ignore("Cannot allocate the 2 GB native block this test needs.");
+                return;
+            }
 
-            Assert.That(act, Throws.TypeOf<RlpException>().With.Message.Contains("truncated"));
+            try
+            {
+                backing[position] = prefix;
+                backing[int.MaxValue] = 0x01;
+
+                Action act = () => new LiteRlpReader(new ReadOnlySpan<byte>(backing, int.MaxValue)).PeekNextRlpLength(position);
+
+                Assert.That(act, Throws.TypeOf<RlpException>().With.Message.Contains("truncated"));
+            }
+            finally
+            {
+                NativeMemory.Free(backing);
+            }
         }
     }
 }
