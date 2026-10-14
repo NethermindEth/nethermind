@@ -80,6 +80,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
+            .AddSingleton<Subprotocols.Lean.LeanEthTransactions>()
             .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
             .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
@@ -91,8 +92,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<Subprotocols.Lean.ChunkMessage, Subprotocols.Lean.ChunkMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.CompleteMessage, Subprotocols.Lean.CompleteMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.CancelMessage, Subprotocols.Lean.CancelMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetTransactionsMessage, Subprotocols.Lean.GetTransactionsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.TransactionsMessage, Subprotocols.Lean.TransactionsMessageSerializer>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()

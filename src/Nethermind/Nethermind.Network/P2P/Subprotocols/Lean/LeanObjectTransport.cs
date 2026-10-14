@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>
 /// EIP-8437 proof object transport shared by every <c>lean/1</c> connection: announcements, request lifecycles, bounded
-/// multi-peer reassembly, validation hand-off and serving of validated objects.
+/// single-source reassembly, validation hand-off and serving of validated objects.
 /// </summary>
 /// <remarks>
 /// All peer, request and assembly state is guarded by one lock; messages and penalties are emitted after it is released.
@@ -28,20 +28,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDisposable
 {
     public static readonly ValueHash256 LocalProfile = LeanCommitment.ProfileId(Eip8288Constants.AggregatedVk);
-    public const byte LocalKinds = 0b111;
+    public const byte LocalKinds = 0b11;
     private const int MaxProducedProofs = 16;
-    private const int MaxTransactionRecoveries = 16;
     private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(30);
 
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly ITxPool _txPool;
     private readonly ProofWrapperService _wrappers;
-    private readonly IHeaderDecoder _headerDecoder;
+    private readonly ILeanProofVerifier _proofVerifier;
     private readonly TimeProvider _clock;
     private readonly ILogger _logger;
     private readonly Lock _gate = new();
     private readonly List<LeanPeer> _peers = [];
+    private readonly Dictionary<PublicKey, LeanNodeBudget> _nodes = [];
     private readonly LeanObjectStore _store = new();
     private readonly Dictionary<ValueHash256, LeanAssembly> _assemblies = [];
     private readonly LeanBoundedSet _tombstones = new(LeanLimits.MaxTombstones);
@@ -66,18 +66,18 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     private readonly LeanStats _stats = new();
 
     public LeanObjectTransport(IBlockTree blockTree, ISpecProvider specProvider, ITxPool txPool, ProofWrapperService wrappers,
-        ILogManager logManager, IHeaderDecoder? headerDecoder = null, TimeProvider? timeProvider = null)
+        ILogManager logManager, ILeanProofVerifier proofVerifier, LeanEthTransactions transactions, TimeProvider? timeProvider = null)
     {
         _blockTree = blockTree;
         _specProvider = specProvider;
         _txPool = txPool;
         _wrappers = wrappers;
-        _headerDecoder = headerDecoder ?? new HeaderDecoder();
+        _proofVerifier = proofVerifier;
+        transactions.SetLookup(hash => TryGetRetainedTransaction(hash, out Transaction? transaction) ? transaction : null);
         _clock = timeProvider ?? TimeProvider.System;
         _logger = logManager.GetClassLogger<LeanObjectTransport>();
         _lastStats = _clock.GetTimestamp();
         _wrappers.WrapperValidated += OnWrapperValidated;
-        _wrappers.InclusionListValidated += OnInclusionListValidated;
         _blockTree.NewHeadBlock += OnNewHead;
         _timer = _clock.CreateTimer(static state => ((LeanObjectTransport)state!).Tick(), this, LeanLimits.Tick, LeanLimits.Tick);
     }
@@ -89,6 +89,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
     internal int AssemblyCount { get { lock (_gate) return _assemblies.Count; } }
     internal int StoredObjects { get { lock (_gate) return _store.Count; } }
     internal long IncompleteBytes { get { lock (_gate) return _incompleteBytes; } }
+    private long BufferedBytes => _incompleteBytes + _completionBytes;
     internal long CompletionBytes { get { lock (_gate) return _completionBytes; } }
     internal bool IsTombstoned(in ValueHash256 objectId) { lock (_gate) return _tombstones.Contains(objectId, _clock.GetTimestamp()); }
     internal bool IsStored(in ValueHash256 objectId) { lock (_gate) return _store.Contains(objectId); }
@@ -99,19 +100,23 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         : null;
 
     /// <summary>Registers a peer whose Status is compatible; null disables <c>lean/1</c> on that connection only.</summary>
-    internal LeanPeer? Accept(ILeanLink link, LeanStatusMessage status)
+    internal LeanPeer? Accept(ILeanLink link, LeanStatusMessage status, PublicKey? nodeKey = null)
     {
-        if (!IsEnabled || status.ChainId != (UInt256)_blockTree.ChainId || _blockTree.Genesis?.Hash?.ValueHash256 != status.GenesisHash
+        if (!IsEnabled || !link.HasTransactionRecovery || status.ChainId != (UInt256)_blockTree.ChainId || _blockTree.Genesis?.Hash?.ValueHash256 != status.GenesisHash
             || Array.IndexOf(status.Profiles, LocalProfile) < 0)
         {
             if (_logger.IsDebug) _logger.Debug($"lean/1 disabled for {link.Description}: incompatible Status");
             return null;
         }
         Outbox outbox = new();
-        LeanPeer peer = new(link, status);
+        LeanPeer peer;
         lock (_gate)
         {
             if (_disposed) return null;
+            PublicKey key = nodeKey ?? link.NodeKey;
+            if (!_nodes.TryGetValue(key, out LeanNodeBudget? node)) _nodes.Add(key, node = new(key));
+            peer = new(link, status, node);
+            node.Connections.Add(peer);
             _peers.Add(peer);
             AnnounceStored(peer, outbox);
         }
@@ -136,6 +141,7 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         if (peer.Closed) return;
         peer.Closed = true;
         _peers.Remove(peer);
+        peer.Node.Connections.Remove(peer);
         foreach (LeanOutgoingRequest request in peer.Live.Values) Fail(request, peer);
         peer.Live.Clear();
         _deferred -= peer.Deferred.Count;
@@ -146,7 +152,48 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             serving.Cancellation.Cancel();
         }
         peer.Serving.Clear();
-        foreach (LeanAssembly assembly in _assemblies.Values) assembly.Sources.Remove(peer);
+        foreach (LeanAssembly assembly in _assemblies.Values)
+        {
+            assembly.Sources.Remove(peer);
+            if (assembly.CurrentSource == peer && !assembly.Queued) RestartSource(assembly, peer, new Outbox());
+        }
+        PruneNode(peer.Node);
+    }
+
+    internal bool TryReserveNodeBytes(PublicKey key, long bytes, out IDisposable? lease)
+    {
+        lock (_gate)
+        {
+            lease = null;
+            if (_disposed || bytes < 0 || bytes > LeanLimits.MaxIncompleteBytes - BufferedBytes) return false;
+            if (!_nodes.TryGetValue(key, out LeanNodeBudget? node)) _nodes.Add(key, node = new(key));
+            if (bytes > LeanLimits.MaxPeerBytes - node.ChargedBytes) return false;
+            node.ChargedBytes += bytes;
+            _incompleteBytes += bytes;
+            lease = new NodeReservation(this, node, bytes);
+            return true;
+        }
+    }
+
+    private sealed class NodeReservation(LeanObjectTransport owner, LeanNodeBudget node, long bytes) : IDisposable
+    {
+        private int _released;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _released, 1) != 0) return;
+            lock (owner._gate)
+            {
+                node.ChargedBytes -= bytes;
+                owner._incompleteBytes -= bytes;
+                owner.PruneNode(node);
+            }
+        }
+    }
+
+    private void PruneNode(LeanNodeBudget node)
+    {
+        if (node.Connections.Count == 0 && node.ChargedBytes == 0 && node.Assemblies == 0 && node.Key is { } key)
+            _nodes.Remove(key);
     }
 
     private void Fail(LeanOutgoingRequest request, LeanPeer peer)
@@ -155,9 +202,6 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
         {
             case LeanObjectsRequest objects:
                 objects.Completion.TrySetResult(null);
-                break;
-            case LeanTransactionsRequest transactions:
-                transactions.Completion.TrySetResult(null);
                 break;
             case LeanChunksRequest chunks:
                 ReleaseInFlight(chunks, peer);
@@ -184,8 +228,8 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
 
     private bool CheckIncomingId(LeanPeer peer, ulong requestId, Outbox outbox)
     {
-        // Each direction numbers requests consecutively from one, including refused requests.
-        if (requestId != peer.LastIncoming + 1)
+        // Gaps are allowed, but IDs cannot be reused across either request type.
+        if (requestId == 0 || requestId <= peer.LastIncoming)
         {
             Violation(peer, $"request ID {requestId} after {peer.LastIncoming}", outbox);
             return false;
@@ -229,7 +273,6 @@ public sealed partial class LeanObjectTransport : IBlockProofSidecarSource, IDis
             _assemblies.Clear();
         }
         _wrappers.WrapperValidated -= OnWrapperValidated;
-        _wrappers.InclusionListValidated -= OnInclusionListValidated;
         _blockTree.NewHeadBlock -= OnNewHead;
         _timer.Dispose();
         _stop.Cancel();

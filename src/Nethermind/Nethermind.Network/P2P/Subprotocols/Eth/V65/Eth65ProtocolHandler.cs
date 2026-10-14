@@ -41,7 +41,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         IGossipPolicy gossipPolicy,
         IForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
         : Eth64ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy),
           IBatchMessageHandler<PooledTransactionRequestMessage, ValueHash256>
     {
@@ -197,7 +198,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// Gets the representation of a pooled transaction that this protocol version can serve.
         /// </summary>
         protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
-            => _txPool.TryGetPendingTransaction(hash, out tx);
+            => _txPool.TryGetPendingTransaction(hash, out tx) || leanTransactions?.TryGetRetained(hash, out tx) == true;
 
         protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
 
