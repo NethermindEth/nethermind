@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -90,7 +89,6 @@ public class DiscoveryV5AppTests
         builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
         builder.RegisterInstance(new SyncConfig()).As<ISyncConfig>();
         builder.RegisterInstance(NoopSnapServer.Instance).As<ISnapServer>();
-        builder.RegisterInstance(Substitute.For<ISpecProvider>()).As<ISpecProvider>();
         builder.RegisterType<NodeRecordProvider>().As<INodeRecordProvider>().WithAttributeFiltering().SingleInstance();
         IContainer container = builder.Build();
         _containers.Add(container);

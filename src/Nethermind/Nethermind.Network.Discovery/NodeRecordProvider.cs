@@ -7,12 +7,13 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Enr;
 using Nethermind.State.SnapServer;
+using Nethermind.Stats.Model;
 using NetworkForkId = Nethermind.Network.ForkId;
 
 namespace Nethermind.Network.Discovery;
@@ -29,7 +30,7 @@ public sealed class NodeRecordProvider(
     NetworkListenerState listenerState,
     ISyncConfig syncConfig,
     ISnapServer snapServer,
-    ISpecProvider specProvider
+    IP2PCapabilityResolver[] capabilityResolvers
 ) : INodeRecordProvider
 {
     private readonly Lock _lock = new();
@@ -51,6 +52,10 @@ public sealed class NodeRecordProvider(
                     blockTree.NewHeadBlock += OnNewHeadBlock;
                     listenerState.Changed += OnListenerChanged;
                     ipResolver.Changed += OnExternalIpChanged;
+                    foreach (IP2PCapabilityResolver resolver in capabilityResolvers)
+                    {
+                        resolver.Changed += OnCapabilitiesChanged;
+                    }
                     _subscribed = true;
                 }
 
@@ -102,6 +107,8 @@ public sealed class NodeRecordProvider(
 
     private void OnExternalIpChanged(object? sender, EventArgs e)
         => RefreshRecord(effectiveHeader: null);
+
+    private void OnCapabilitiesChanged() => RefreshRecord(effectiveHeader: null);
 
     private void RefreshRecord(BlockHeader? effectiveHeader)
     {
@@ -168,6 +175,11 @@ public sealed class NodeRecordProvider(
         IPAddress? discoveryAddress = listenerState.DiscoveryAddress;
         bool advertiseV4 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork);
         bool advertiseV6 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6);
+        HashSet<Capability> capabilities = [];
+        foreach (IP2PCapabilityResolver resolver in capabilityResolvers)
+        {
+            resolver.Resolve(capabilities);
+        }
 
         return new LocalNodeRecordState(
             advertiseV4 ? ip.ExternalIpV4 : null,
@@ -178,8 +190,7 @@ public sealed class NodeRecordProvider(
             // Unlike Hello, which also offers snap for snap sync alone, the entry needs snap serving;
             // a server that cannot serve (hash db layout) disconnects requests.
             syncConfig.SnapServingEnabled == true && snapServer.CanServe,
-            // Static across sync: lists snap/2 when the final spec enables it, as SnapP2PCapabilityResolver does once synced.
-            specProvider.GetFinalSpec().BlockLevelAccessListsEnabled);
+            capabilities.Contains(new Capability(Protocol.Snap, SnapVersions.Snap2)));
     }
 
     private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)

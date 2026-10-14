@@ -11,14 +11,15 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Enr;
 using Nethermind.State.SnapServer;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 using EnrForkId = Nethermind.Network.Enr.ForkId;
@@ -511,7 +512,7 @@ public class NodeRecordProviderTests
     [TestCase(null, true, true, null)]
     [TestCase(false, true, true, null)]
     [TestCase(true, false, true, null)]
-    public async Task GetCurrentAsync_PublishesServedSnapVersions(bool? snapServingEnabled, bool canServe, bool balEnabled, string? expectedSnapEntryHex)
+    public async Task GetCurrentAsync_PublishesServedSnapVersions(bool? snapServingEnabled, bool canServe, bool snap2Enabled, string? expectedSnapEntryHex)
     {
         Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -520,8 +521,7 @@ public class NodeRecordProviderTests
         forkInfo.GetForkId(1, 10).Returns(new NetworkForkId(0x01020304, 20));
         ISnapServer snapServer = Substitute.For<ISnapServer>();
         snapServer.CanServe.Returns(canServe);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetFinalSpec().BlockLevelAccessListsEnabled.Returns(balEnabled);
+        IP2PCapabilityResolver capabilityResolver = CreateSnapCapabilityResolver(() => snap2Enabled);
         NodeRecordProvider provider = CreateProvider(
             blockTree,
             forkInfo,
@@ -529,7 +529,7 @@ public class NodeRecordProviderTests
             timestampMilliseconds: 1_000,
             syncConfig: new SyncConfig { SnapServingEnabled = snapServingEnabled },
             snapServer: snapServer,
-            specProvider: specProvider);
+            capabilityResolvers: [capabilityResolver]);
 
         NodeRecord record = await provider.GetCurrentAsync();
 
@@ -543,6 +543,48 @@ public class NodeRecordProviderTests
                 Assert.That(record.GetHex(), Does.Contain(expectedSnapEntryHex));
             }
         }
+    }
+
+    [Test]
+    public async Task GetCurrentAsync_RefreshesSnapVersionsWhenCapabilitiesChange([Values] bool initiallySnap2Enabled)
+    {
+        bool snap2Enabled = initiallySnap2Enabled;
+        IP2PCapabilityResolver resolver = CreateSnapCapabilityResolver(() => snap2Enabled);
+        ISnapServer snapServer = Substitute.For<ISnapServer>();
+        snapServer.CanServe.Returns(true);
+        NodeRecordProvider provider = CreateProvider(
+            Substitute.For<IBlockTree>(),
+            Substitute.For<IForkInfo>(),
+            new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Parse("192.0.2.1")),
+            timestampMilliseconds: 1_000,
+            syncConfig: new SyncConfig { SnapServingEnabled = true },
+            snapServer: snapServer,
+            capabilityResolvers: [resolver]);
+
+        NodeRecord initial = await provider.GetCurrentAsync();
+        Assert.That(initial.GetHex(), Does.Contain(initiallySnap2Enabled ? "84736e6170c20102" : "84736e6170c0"));
+
+        snap2Enabled = !snap2Enabled;
+        resolver.Changed += Raise.Event<Action>();
+        NodeRecord updated = await provider.GetCurrentAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.GetHex(), Does.Contain(snap2Enabled ? "84736e6170c20102" : "84736e6170c0"));
+            Assert.That(updated.EnrSequence, Is.GreaterThan(initial.EnrSequence));
+        }
+    }
+
+    private static IP2PCapabilityResolver CreateSnapCapabilityResolver(Func<bool> snap2Enabled)
+    {
+        IP2PCapabilityResolver resolver = Substitute.For<IP2PCapabilityResolver>();
+        resolver.When(r => r.Resolve(Arg.Any<ISet<Capability>>())).Do(call =>
+        {
+            ISet<Capability> capabilities = call.Arg<ISet<Capability>>();
+            capabilities.Add(new Capability(Protocol.Snap, SnapVersions.Snap1));
+            if (snap2Enabled()) capabilities.Add(new Capability(Protocol.Snap, SnapVersions.Snap2));
+        });
+        return resolver;
     }
 
     private static NodeRecordProvider CreateProvider(Block head, NetworkForkId forkId, IPAddress externalIp)
@@ -584,7 +626,7 @@ public class NodeRecordProviderTests
         Action? onUnixTime = null,
         ISyncConfig? syncConfig = null,
         ISnapServer? snapServer = null,
-        ISpecProvider? specProvider = null)
+        IP2PCapabilityResolver[]? capabilityResolvers = null)
     {
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(resolvedIp));
@@ -595,7 +637,7 @@ public class NodeRecordProviderTests
             listenerState.SetDiscoveryAddress(resolvedIp.LocalIp);
         }
 
-        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, listenerState, logManager, onUnixTime, syncConfig, snapServer, specProvider);
+        return CreateProvider(blockTree, forkInfo, ipResolver, timestampMilliseconds, listenerState, logManager, onUnixTime, syncConfig, snapServer, capabilityResolvers);
     }
 
     private static NodeRecordProvider CreateProvider(
@@ -608,7 +650,7 @@ public class NodeRecordProviderTests
         Action? onUnixTime = null,
         ISyncConfig? syncConfig = null,
         ISnapServer? snapServer = null,
-        ISpecProvider? specProvider = null)
+        IP2PCapabilityResolver[]? capabilityResolvers = null)
     {
         INetworkConfig networkConfig = Substitute.For<INetworkConfig>();
         networkConfig.P2PPort.Returns(30303);
@@ -635,7 +677,7 @@ public class NodeRecordProviderTests
             listenerState,
             syncConfig ?? new SyncConfig(),
             snapServer ?? NoopSnapServer.Instance,
-            specProvider ?? Substitute.For<ISpecProvider>());
+            capabilityResolvers ?? []);
     }
 
     private static NetworkListenerState CreateListenerState(IIPResolver.NethermindIp resolvedIp)
