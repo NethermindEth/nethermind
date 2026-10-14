@@ -15,6 +15,10 @@ namespace Nethermind.Serialization.Ssz;
 /// <typeparam name="T">The implementing container type.</typeparam>
 public interface ISszCodec<T> where T : ISszCodec<T>
 {
+    /// <summary>Releases the resources owned by a decoded value.</summary>
+    /// <remarks>The caller must own the value exclusively and release it only once.</remarks>
+    static abstract void ReleaseDecoded(T value);
+
     /// <summary>Returns the SSZ byte length of <paramref name="value"/>.</summary>
     static abstract int GetLength(T value);
 
@@ -22,6 +26,7 @@ public interface ISszCodec<T> where T : ISszCodec<T>
     static abstract int GetLength(ReadOnlySpan<T> items);
 
     /// <summary>Decodes <paramref name="data"/> into <paramref name="value"/>.</summary>
+    /// <remarks>Implementations must release any partially decoded resources before throwing.</remarks>
     static abstract void Decode(ReadOnlySpan<byte> data, out T value);
 
     /// <summary>

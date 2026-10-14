@@ -53,6 +53,16 @@ public class SszVectorAttribute(int length) : Attribute
 [AttributeUsage(AttributeTargets.Property)]
 public class SszProgressiveBitlistAttribute : Attribute;
 
+/// <summary>Declares whether a custom collection disposes its decoded elements.</summary>
+/// <remarks>The collection constructor must leave its input elements unreleased if it throws.</remarks>
+/// <param name="ownsElements">True when the collection's Dispose releases its elements; false when the generated codec releases them.</param>
+[AttributeUsage(AttributeTargets.Property)]
+public class SszCollectionOwnsElementsAttribute(bool ownsElements) : Attribute
+{
+    /// <summary>Whether the collection's Dispose releases its decoded elements.</summary>
+    public bool OwnsElements { get; } = ownsElements;
+}
+
 /// <summary>
 /// Marks a property that the SSZ source generator should skip entirely.
 /// Use this on domain properties whose type the generator cannot handle

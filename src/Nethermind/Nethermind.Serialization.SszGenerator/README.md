@@ -26,6 +26,29 @@ The destination passed to `Encode(Span<byte>, ...)` must have exactly `GetLength
 
 Collection properties must be arrays, spans, memory types, `List<T>`, or custom collection types that expose public `AsSpan()` and a public constructor from `ReadOnlySpan<T>`. Collection properties must also be marked with `SszVector`, `SszList`, `SszProgressiveList`, or `SszProgressiveBitlist`. For `BitArray`, `SszVector` means bitvector and `SszList` means bitlist.
 
+## Implementation
+
+The generator resolves the complete schema before emitting code:
+
+- `SszTypeDiscovery` handles Roslyn symbols, inherited properties, attributes and supported collection storage. The diagnostic analyzer uses the same discovery rules.
+- `SszModelBuilder` validates the graph and produces immutable wire schemas and C# bindings. Wire schemas contain widths, offsets, collection bounds and progressive field positions. Bindings contain qualified C# names, converter calls, storage and ownership. A scalar hash wrapper can therefore have a byte-vector schema without being mistaken for an SSZ basic type.
+- The encode, decode, collection and Merkle emitters consume that model. They share small C# expression helpers; no Roslyn symbols or source templates are stored in the model.
+- Shared offset validation, converter batching, Merkle reduction and segmented-input decoding live in the SSZ runtime as ordinary C#. Only schema-specific code is generated.
+
+Discovery uses Roslyn's attribute metadata pipeline. Equatable rendered source crosses the incremental output boundary; symbol caches remain associated with their compilation. Recursive schemas are rejected before emission.
+
+Containers with multiple variable fields cache measured lengths on the stack when earlier fields require nested sizing. Collection encoding reuses this scratch space across elements; flat basic collections do not need it.
+
+## Decoded resource ownership
+
+A successfully decoded value owns any custom disposable collections constructed for it. If a later field, setter or collection element fails, generated cleanup releases resources already acquired by that decode. `ISszCodec<T>.ReleaseDecoded` carries the same contract through generic fields; generated implementations are explicit and empty for types without owned resources.
+
+Call `Ssz.ReleaseDecoded(value)` once when discarding a successfully decoded value with owned resources. Do not also dispose its collections separately. For manually implemented codecs, `Decode` must release its partial result on failure, and `ReleaseDecoded` must release a successful result's owned resources.
+
+Disposable custom collections containing owned elements must declare `[SszCollectionOwnsElements(true)]` when their `Dispose` releases those elements, or `false` when the generator must release the elements before disposing the collection's storage. This property attribute describes C# ownership and does not affect SSZ layout. A constructor takes ownership of its input elements only after returning successfully. A successful property setter must retain the assigned owned value.
+
+Null policies are resolved with the binding: lists treat null as empty; supported nullable fixed fields write zeros across their declared width; variable container fields reject null. The public scalar overloads retain the existing null-class behavior of empty encoding and a zero root. Null elements in a collection use the element's wire default, so a fixed container's null element root is derived from its zero encoding.
+
 ## Examples
 
 ### Container with marked collections
@@ -173,11 +196,11 @@ public static class MyBytes32SszVectorTypeConverter
 
 `Length` must be `public const int` with a positive value so the generator can calculate fixed offsets at compile time. Missing or invalid converter members are reported as `SSZ003` diagnostics during source generation.
 
+`Feed` must append exactly one hash-tree root for the value, including zero padding for a basic value. It must not pack separate container fields together.
+
 More examples in Nethermind.Serialization.SszGenerator.Test project.
 
-## Implementation and performance
-
-`SszGenerator` discovers symbols and reports diagnostics. `SszType` and `SszProperty` describe the wire layout. `SszCodecEmitter` emits scalar operations and one shared set of collection operations for containers, collection wrappers, and unions. `SszRuntimeHelpers` emits the shared validation and converter helpers once per consuming assembly; their namespace is unique to that assembly.
+## Performance
 
 Ordinary container and collection roots use a streaming `Merkleizer` with stack scratch proportional to tree depth. Basic converter collections encode bounded batches, and progressive lists retain only subtree roots. Fixed null defaults are rooted from their schema without constructing decoded objects. Progressive containers preserve inactive field positions as zero roots. Bit-array serialization and hashing operate on the backing bytes, masking unused bits without modifying the input. The regular .NET runtime hashes inputs of at least 32,768 padded chunks (about 1 MiB) using at most four workers; smaller inputs and zkVM execution stay sequential.
 

@@ -5,7 +5,7 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-SSZ001 | Design | Error | PropertyRequiredInSszTypeAnalyzer
-SSZ002 | Design | Error | CollectionTypeAnalyzer
+SSZ001 | Design | Error | SszDiagnosticAnalyzer
+SSZ002 | Design | Error | SszDiagnosticAnalyzer
 SSZ003 | SourceGeneration | Error | SszGenerator
 SSZ004 | SourceGeneration | Error | SszGenerator

@@ -1,66 +1,62 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System.Collections;
-using Nethermind.Serialization.Ssz;
 
-public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
+[DiagnosticAnalyzer(LanguageNames.CSharp)]
+public sealed class SszDiagnosticAnalyzer : DiagnosticAnalyzer
 {
-    protected static readonly HashSet<string> SszRootAttributeNames = CreateAttributeNameSet(
-        nameof(SszContainerAttribute),
-        nameof(SszCompatibleUnionAttribute));
+    private static readonly DiagnosticDescriptor PropertyRequired = new(
+        "SSZ001",
+        "Class or struct marked with SszContainer or SszCompatibleUnion must have at least one public property with public getter and setter",
+        "Type '{0}' is marked with SszContainer or SszCompatibleUnion, but does not have any public property with public getter and setter",
+        "Design", DiagnosticSeverity.Error, isEnabledByDefault: true);
 
-    protected static readonly HashSet<string> SszCollectionAttributeNames = CreateAttributeNameSet(
-        nameof(SszVectorAttribute),
-        nameof(SszListAttribute),
-        nameof(SszProgressiveListAttribute),
-        nameof(SszProgressiveBitlistAttribute));
+    private static readonly DiagnosticDescriptor CollectionAttributeRequired = new(
+        "SSZ002",
+        "Property with a collection type should be marked as SszList or SszVector",
+        "Property {0} should be marked as SszList, SszVector, SszProgressiveList, or SszProgressiveBitlist",
+        "Design", DiagnosticSeverity.Error, isEnabledByDefault: true);
 
-    protected static bool IsSszRootType(TypeDeclarationSyntax type) =>
-        type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => MatchesAttributeName(attr, SszRootAttributeNames));
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [PropertyRequired, CollectionAttributeRequired];
 
-    protected static bool IsCollectionType(ITypeSymbol typeSymbol) =>
-            typeSymbol is IArrayTypeSymbol || SszTypeHelpers.IsSpanType(typeSymbol) || SszTypeHelpers.IsMemoryType(typeSymbol) || (typeSymbol is INamedTypeSymbol namedTypeSymbol
-                && (namedTypeSymbol.Name == nameof(BitArray) || namedTypeSymbol.AllInterfaces.Any(i => i.Name == nameof(IEnumerable))));
-
-    protected static bool IsPropertyMarkedWithCollectionAttribute(PropertyDeclarationSyntax property) =>
-        property.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
-
-    protected static bool MatchesAttributeName(AttributeSyntax attribute, HashSet<string> attributeNames) =>
-        attributeNames.Contains(GetAttributeName(attribute));
-
-    public static bool IsPublicGetSetProperty(PropertyDeclarationSyntax property) =>
-        property.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-        property.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&
-        property.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true;
-
-    private static HashSet<string> CreateAttributeNameSet(params string[] attributeTypeNames)
+    public override void Initialize(AnalysisContext context)
     {
-        HashSet<string> names = new(StringComparer.Ordinal);
-        foreach (string attributeTypeName in attributeTypeNames)
-        {
-            names.Add(attributeTypeName);
-            names.Add(TrimAttributeSuffix(attributeTypeName));
-        }
-
-        return names;
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+        context.EnableConcurrentExecution();
+        context.RegisterSymbolAction(AnalyzeType, SymbolKind.NamedType);
     }
 
-    private static string GetAttributeName(AttributeSyntax attribute) => attribute.Name switch
+    private static void AnalyzeType(SymbolAnalysisContext context)
     {
-        IdentifierNameSyntax identifierName => identifierName.Identifier.ValueText,
-        GenericNameSyntax genericName => genericName.Identifier.ValueText,
-        QualifiedNameSyntax qualifiedName => qualifiedName.Right.Identifier.ValueText,
-        AliasQualifiedNameSyntax aliasQualifiedName => aliasQualifiedName.Name.Identifier.ValueText,
-        _ => attribute.Name.ToString(),
-    };
+        INamedTypeSymbol type = (INamedTypeSymbol)context.Symbol;
+        if (SszTypeDiscovery.GetAttribute(type, "SszContainerAttribute") is null
+            && SszTypeDiscovery.GetAttribute(type, "SszCompatibleUnionAttribute") is null)
+        {
+            return;
+        }
 
-    private static string TrimAttributeSuffix(string attributeTypeName) =>
-        attributeTypeName.EndsWith(nameof(Attribute), StringComparison.Ordinal)
-            ? attributeTypeName.Substring(0, attributeTypeName.Length - nameof(Attribute).Length)
-            : attributeTypeName;
+        List<IPropertySymbol> properties = SszTypeDiscovery.GetProperties(type);
+        if (properties.Count == 0)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(PropertyRequired, type.Locations[0], type.Name));
+            return;
+        }
+
+        SszTypeDiscovery discovery = new(context.Compilation);
+        foreach (IPropertySymbol property in properties)
+        {
+            if ((discovery.IsType(property.Type, "System.Collections.BitArray") || discovery.GetCollection(property.Type, validate: false) is not null)
+                && SszTypeDiscovery.GetAttribute(property, "SszVectorAttribute") is null
+                && SszTypeDiscovery.GetAttribute(property, "SszListAttribute") is null
+                && SszTypeDiscovery.GetAttribute(property, "SszProgressiveListAttribute") is null
+                && SszTypeDiscovery.GetAttribute(property, "SszProgressiveBitlistAttribute") is null)
+            {
+                Location location = property.Locations[0].IsInSource ? property.Locations[0] : type.Locations[0];
+                context.ReportDiagnostic(Diagnostic.Create(CollectionAttributeRequired, location, property.Name));
+            }
+        }
+    }
 }

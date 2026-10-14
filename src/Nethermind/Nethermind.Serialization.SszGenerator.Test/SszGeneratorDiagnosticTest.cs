@@ -12,7 +12,7 @@ using System.Reflection;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
-public class SszGeneratorDiagnosticTest
+public partial class SszGeneratorDiagnosticTest
 {
     [Test]
     public void Types_with_equal_names_in_different_namespaces_generate_distinct_codecs()

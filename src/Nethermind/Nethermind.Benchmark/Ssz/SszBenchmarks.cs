@@ -18,6 +18,8 @@ public class SszBenchmarks
     private byte[] _encoded = null!;
     private BitArray _bits = null!;
     private byte[] _encodedBits = null!;
+    private SszBenchmarkVariableContainer _variable;
+    private byte[] _encodedVariable = null!;
 
     [Params(1, 32, 1024)]
     public int Count { get; set; }
@@ -31,6 +33,10 @@ public class SszBenchmarks
         _bits = new(_encoded) { Length = _encoded.Length * 8 - 3 };
         _encodedBits = new byte[_encoded.Length];
         SszCodec.Encode(_encodedBits, _bits, _bits.Length);
+        SszBenchmarkVariableItem[] variableItems = new SszBenchmarkVariableItem[Count];
+        for (int i = 0; i < Count; i++) variableItems[i] = new() { Bytes = [(byte)i, 1, 2, 3] };
+        _variable = new() { First = variableItems, Second = variableItems };
+        _encodedVariable = SszBenchmarkVariableContainer.Encode(_variable);
     }
 
     [Benchmark]
@@ -42,6 +48,9 @@ public class SszBenchmarks
 
     [Benchmark]
     public void EncodeItems() => SszBenchmarkItem.Encode(_encoded, _items);
+
+    [Benchmark]
+    public void EncodeVariableItems() => SszBenchmarkVariableContainer.Encode(_encodedVariable, _variable);
 
     [Benchmark]
     public SszBenchmarkItem[] DecodeItems()
@@ -76,6 +85,23 @@ public partial struct SszBenchmarkItem
 {
     public ulong First { get; set; }
     public ulong Second { get; set; }
+}
+
+[SszContainer]
+public partial struct SszBenchmarkVariableItem
+{
+    [SszList(16)]
+    public byte[] Bytes { get; set; }
+}
+
+[SszContainer]
+public partial struct SszBenchmarkVariableContainer
+{
+    [SszList(2048)]
+    public SszBenchmarkVariableItem[] First { get; set; }
+
+    [SszList(2048)]
+    public SszBenchmarkVariableItem[] Second { get; set; }
 }
 
 [MemoryDiagnoser]
