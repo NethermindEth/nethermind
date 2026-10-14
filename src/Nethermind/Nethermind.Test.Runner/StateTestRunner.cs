@@ -7,7 +7,6 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Evm;
@@ -170,7 +169,7 @@ namespace Nethermind.Test.Runner
             await Parallel.ForAsync(0, 30, async (_, _) => await RunTest(test, NullTxTracer.Instance));
 
             // Give time to JIT optimized version.
-            Thread.Sleep(20);
+            await Task.Delay(20);
             GC.Collect(GC.MaxGeneration);
         }
     }
