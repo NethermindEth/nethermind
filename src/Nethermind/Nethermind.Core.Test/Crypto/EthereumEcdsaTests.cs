@@ -60,14 +60,27 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, true, ulong.MaxValue - 1)]
         [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, false, ulong.MaxValue - 2)]
         [TestCase((ulong.MaxValue - 35) / 2, false, ulong.MaxValue)]
-        public void CalculateV_at_the_largest_chain_ids(ulong chainId, bool addParity, ulong expected) =>
-            Assert.That(EthereumEcdsaExtensions.CalculateV(chainId, addParity), Is.EqualTo(expected));
+        public void CalculateV_at_the_largest_chain_ids(ulong chainId, bool addParity, ulong expected)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(EthereumEcdsaExtensions.CalculateV(chainId, addParity), Is.EqualTo(expected));
+                Assert.That(EthereumEcdsaExtensions.TryCalculateV(chainId, addParity, out ulong v), Is.True);
+                Assert.That(v, Is.EqualTo(expected));
+            }
+        }
 
         [TestCase((ulong.MaxValue - 35) / 2, true)]
         [TestCase((ulong.MaxValue - 35) / 2 + 1, false)]
         [TestCase(ulong.MaxValue, false)]
-        public void CalculateV_throws_where_no_v_fits(ulong chainId, bool addParity) =>
-            Assert.That(() => EthereumEcdsaExtensions.CalculateV(chainId, addParity), Throws.TypeOf<OverflowException>());
+        public void CalculateV_throws_where_no_v_fits(ulong chainId, bool addParity)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => EthereumEcdsaExtensions.CalculateV(chainId, addParity), Throws.TypeOf<OverflowException>());
+                Assert.That(EthereumEcdsaExtensions.TryCalculateV(chainId, addParity, out _), Is.False);
+            }
+        }
 
         [TestCaseSource(nameof(TestCaseSources))]
         public void Signature_verify_test((string Name, Transaction Tx) testCase)

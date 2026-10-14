@@ -23,6 +23,9 @@ public static class RpcTransactionErrors
     public static string InvalidChainId(ulong chainId, ulong requestedChainId)
         => $"invalid chain id (have={chainId}, want={requestedChainId})";
 
+    /// <summary>Reports a protected legacy <c>v</c> whose EIP-155 value does not fit a ulong for the chain id.</summary>
+    public static string NoEip155V(ulong chainId) => $"no EIP-155 v exists for chain id {chainId}";
+
     public static string NullEntryIn(string field) => $"{field} must not contain a null entry";
 
     /// <summary>Reports the gas an EIP-8141 frame transaction reserves against the RPC cap.</summary>

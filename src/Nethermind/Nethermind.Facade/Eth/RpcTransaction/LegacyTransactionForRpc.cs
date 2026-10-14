@@ -162,14 +162,14 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            bool isProtected = V is not null && V.Value <= 1;
-            if (isProtected && ChainId > EthereumEcdsaExtensions.MaxEip155ChainId)
-                return Result<Transaction>.Fail($"no EIP-155 v exists for chain id {ChainId}");
-
-            ulong v = V is null ? 0
-                : isProtected
-                    ? EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V!.Value == 1) // protected
-                    : V.Value.ToUInt64(null); // non protected
+            ulong v = 0;
+            if (V is not null)
+            {
+                if (V.Value > 1)
+                    v = V.Value.ToUInt64(null); // non protected
+                else if (!EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, V.Value == 1, out v)) // protected
+                    return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
+            }
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }

@@ -250,7 +250,17 @@ public static class EthereumEcdsaExtensions
     public const ulong MaxEip155ChainId = (ulong.MaxValue - 36) / 2;
 
     /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; throws <see cref="OverflowException"/> where no such <c>v</c> fits a ulong.</summary>
-    public static ulong CalculateV(ulong chainId, bool addParity = true) => checked(chainId * 2 + 35ul + (addParity ? 1u : 0u));
+    public static ulong CalculateV(ulong chainId, bool addParity = true)
+        => TryCalculateV(chainId, addParity, out ulong v) ? v : throw new OverflowException($"No EIP-155 v fits a ulong for chain id {chainId}.");
+
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; false where no such <c>v</c> fits a ulong.</summary>
+    public static bool TryCalculateV(ulong chainId, bool addParity, out ulong v)
+    {
+        ulong parity = addParity ? 1u : 0u;
+        bool fits = chainId <= (ulong.MaxValue - 35 - parity) / 2;
+        v = fits ? chainId * 2 + 35 + parity : 0;
+        return fits;
+    }
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
