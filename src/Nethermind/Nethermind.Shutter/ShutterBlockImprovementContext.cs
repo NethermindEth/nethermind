@@ -53,6 +53,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
     public DateTimeOffset StartDateTime { get; }
 
     private volatile BlockProductionSnapshot _best;
+    private readonly Lock _lock = new();
 
     private readonly SharedCancellationTokenSource _improvementCancellation;
     private readonly CancellationToken _improvementToken;
@@ -107,7 +108,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        Disposed = true;
+        lock (_lock) Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
     }
 
@@ -179,7 +180,11 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         Block? result = await _blockProducer.BuildBlock(_parentHeader, null, _payloadAttributes, IBlockProducer.Flags.None, _linkedCancellation?.Token ?? default);
         if (result is not null)
         {
-            _best = new(result, UInt256.Zero);
+            // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
+            lock (_lock)
+            {
+                if (!Disposed) _best = new(result, UInt256.Zero);
+            }
         }
     }
 }

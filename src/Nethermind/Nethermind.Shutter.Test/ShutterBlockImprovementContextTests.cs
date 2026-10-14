@@ -58,4 +58,38 @@ public class ShutterBlockImprovementContextTests
 
         Assert.That(Metrics.ShutterKeysMissed - missedBefore, Is.EqualTo((ulong)contexts));
     }
+
+    [Test]
+    [CancelAfter(30000)]
+    public async Task Build_finishing_after_dispose_does_not_replace_the_best_block()
+    {
+        const ulong slotTimestamp = ShutterTestsCommon.InitialSlotTimestamp;
+        Block empty = Build.A.Block.WithNumber(1).TestObject;
+        Block full = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        TaskCompletionSource<Block?> build = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+        blockProducer.BuildBlock(default, default, default, default, default).ReturnsForAnyArgs(build.Task);
+        IShutterTxSignal txSignal = Substitute.For<IShutterTxSignal>();
+        txSignal.HaveTransactionsArrived(Arg.Any<ulong>()).Returns(true);
+        SlotTime slotTime = new(0, new Timestamper(DateTimeOffset.FromUnixTimeSeconds((long)slotTimestamp).UtcDateTime), ShutterTestsCommon.SlotLength, TimeSpan.Zero);
+
+        ShutterBlockImprovementContext context = new(
+            blockProducer,
+            txSignal,
+            new ShutterConfig(),
+            slotTime,
+            empty,
+            empty.Header,
+            new PayloadAttributes { Timestamp = slotTimestamp },
+            DateTimeOffset.UtcNow,
+            ShutterTestsCommon.SlotLength,
+            LimboLogs.Instance,
+            new SharedCancellationTokenSource(new CancellationTokenSource()));
+
+        ((IBlockImprovementContext)context).DisposeAndCancelOngoingImprovements();
+        build.SetResult(full);
+        await context.ImprovementTask;
+
+        Assert.That(context.Best.CurrentBestBlock, Is.SameAs(empty));
+    }
 }

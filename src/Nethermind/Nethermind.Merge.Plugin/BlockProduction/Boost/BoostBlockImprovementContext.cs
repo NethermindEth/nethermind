@@ -25,6 +25,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private volatile BlockProductionSnapshot _best;
+    private readonly Lock _lock = new();
 
     public BoostBlockImprovementContext(Block currentBestBlock,
         IBlockProducer blockProducer,
@@ -58,14 +59,24 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         _stateReader.TryGetAccount(parentHeader, feeRecipient, out AccountStruct account);
         UInt256 balanceBefore = account.Balance;
         Block? block = await blockProducer.BuildBlock(parentHeader, _feesTracer, payloadAttributes, IBlockProducer.Flags.None, cancellationToken);
-        if (block is not null)
+        if (block is not null && TrySetBest(block))
         {
-            _best = new(block, _feesTracer.Fees);
             _stateReader.TryGetAccount(parentHeader, feeRecipient, out account);
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
         return _best.CurrentBestBlock;
+    }
+
+    // A build that ignored cancellation can finish after the payload was handed out; it must not replace it.
+    private bool TrySetBest(Block block)
+    {
+        lock (_lock)
+        {
+            if (Disposed) return false;
+            _best = new(block, _feesTracer.Fees);
+            return true;
+        }
     }
 
     public Task<Block?> ImprovementTask { get; }
@@ -75,7 +86,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        Disposed = true;
+        lock (_lock) Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }

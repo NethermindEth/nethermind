@@ -15,6 +15,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -35,7 +37,7 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
-    public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes()
+    public async Task GetPayload_keeps_returning_the_block_it_handed_out_when_a_late_build_finishes([Values(false, true)] bool boost)
     {
         Block empty = Build.A.Block.WithNumber(1).TestObject;
         Block full = Build.A.Block.WithNumber(1).WithGasUsed(21000).WithTransactions(Build.A.Transaction.TestObject).TestObject;
@@ -46,13 +48,19 @@ public class PayloadPreparationServiceTests
         // A build past its last cancellation check finishes anyway.
         producer.BuildBlock(Arg.Any<BlockHeader>(), Arg.Any<IBlockTracer>(), Arg.Any<PayloadAttributes>(), IBlockProducer.Flags.None, Arg.Any<CancellationToken>())
             .Returns(build.Task);
+        IBoostRelay relay = Substitute.For<IBoostRelay>();
+        relay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
+            .Returns(new BoostPayloadAttributes { Timestamp = Attributes.Timestamp, PrevRandao = Attributes.PrevRandao, SuggestedFeeRecipient = Attributes.SuggestedFeeRecipient });
+        IBlockImprovementContextFactory factory = boost
+            ? new BoostBlockImprovementContextFactory(producer, TimePerSlot, relay, Substitute.For<IStateReader>())
+            : new BlockImprovementContextFactory(producer, TimePerSlot);
         using TestPayloadPreparationService service = new(producer, Substitute.For<ITxPool>(),
-            new BlockImprovementContextFactory(producer, TimePerSlot), Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
+            factory, Substitute.For<ITimerFactory>(), LimboLogs.Instance, TimePerSlot, TimeSpan.FromMilliseconds(1));
         string payloadId = service.StartPreparingPayload(ParentHeader, Attributes);
 
         Block? handedOut = (await service.GetPayload(payloadId))!.CurrentBestBlock;
         build.SetResult(full);
-        Assert.That(() => service.Stored(payloadId)!.ImprovementTask.IsCompleted, Is.True.After(5000, 10));
+        Assert.That(() => service.Stored(payloadId)!.ImprovementTask.IsCompletedSuccessfully, Is.True.After(5000, 10));
         Block? again = (await service.GetPayload(payloadId))!.CurrentBestBlock;
 
         using (Assert.EnterMultipleScope())
