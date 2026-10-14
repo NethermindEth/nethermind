@@ -337,9 +337,9 @@ public class PbtWorldStateScopeTests
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.Content.Accounts.TryGetValue(PbtStateKey.AddressKeyHash(TestItem.AddressA), out PbtAccount? readA), Is.True, "a read is promoted");
+            Assert.That(snapshot.Content.Accounts.TryGetValue(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), out PbtAccount? readA), Is.True, "a read is promoted");
             Assert.That(readA, Is.Null, "a later hint never shadows a promoted read");
-            Assert.That(snapshot.Content.Accounts.ContainsKey(PbtStateKey.AddressKeyHash(TestItem.AddressB)), Is.False,
+            Assert.That(snapshot.Content.Accounts.ContainsKey(Eip8297KeyDerivation.AddressHash(TestItem.AddressB.ToHash().Bytes)), Is.False,
                 "a hint is never promoted, and a read served by a hint never promotes it");
         }
     }

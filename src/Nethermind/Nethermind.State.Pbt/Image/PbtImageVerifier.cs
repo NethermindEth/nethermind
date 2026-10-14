@@ -78,7 +78,7 @@ public sealed class PbtImageVerifier : IDisposable
         PbtPreimageReader reader = new(preimages);
         while (reader.ReadAccount(out Address? address, out uint slotCount, _cancellationToken))
         {
-            ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address);
+            ValueHash256 addressKeyHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
             ValueHash256 addressHash = reader.AccountHash!.Value;
             walked = PbtImageProgress.KeyspaceFraction(addressHash);
             progress.Update(++_accounts);
@@ -89,7 +89,7 @@ public sealed class PbtImageVerifier : IDisposable
                 _slots++;
                 ValueHash256 slot = reader.ReadSlot(_cancellationToken);
                 reader.SlotHash!.Value.Bytes.CopyTo(paths[ValueHash256.MemorySize..]);
-                writer.Add(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)).Bytes, paths);
+                writer.Add(Eip8297KeyDerivation.SlotKey(address.ToHash().Bytes, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)).Bytes, paths);
             }
         }
     }

@@ -436,11 +436,11 @@ public class PbtDbManagerTests
         IPbtResourcePool pool = container.Resolve<IPbtResourcePool>();
         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         content.Codes[TestItem.KeccakC.ValueHash256] = new CodeInfo(new byte[65537]);
-        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         content.Accounts[address] = null;
         content.SelfDestructedStorageAddresses[address] = false;
         content.HeaderStorages[SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 0))] = SlotRun.Empty;
-        content.Storages[SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000))] = SlotRun.Empty;
+        content.Storages[SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000))] = SlotRun.Empty;
         content.AccountNodeGroups[default] = null;
         return new(from, to, TestItem.KeccakB.ValueHash256, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
     }
@@ -1615,13 +1615,13 @@ public class PbtDbManagerTests
             AddDifferentialEdge(reset, new(11, TestItem.KeccakD.ValueHash256), false);
             Assert.That(pbtPersistenceManager.FlushToPersistenceState(CancellationToken.None), Is.EqualTo(flatPersistenceManager.FlushToPersistence(CancellationToken.None)));
             using IPbtPersistence.IReader persistedPbt = pbtPersistence.CreateReader();
-            Assert.That(persistedPbt.GetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressA))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
+            Assert.That(persistedPbt.GetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes))!.Value.ToAccount().Nonce, Is.EqualTo((ulong)11));
             Assert.That(persistedPbt.CurrentRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256), "PBT root is independent of shared header StateId");
 
             void AddDifferentialEdge(StateId from, StateId to, bool compacted)
             {
                 PbtSnapshotContent content = pbtPool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-                content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
+                content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = PbtAccount.From(new Account(to.BlockNumber, 100), null);
                 PbtSnapshot pbtSnapshot = new(from, to, TestItem.KeccakB.ValueHash256, content, pbtPool, PbtResourcePool.Usage.MainBlockProcessing);
                 if (compacted) pbtRepository.TryAddCompacted(pbtSnapshot); else pbtRepository.TryAdd(pbtSnapshot);
                 FlatSnapshot flatSnapshot = flatPool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);

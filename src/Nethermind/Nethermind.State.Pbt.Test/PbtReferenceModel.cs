@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -19,7 +18,7 @@ internal static class PbtReferenceModel
     {
         byte[] basicData = new byte[32];
         PbtKeyDerivation.PackBasicData(basicData, (uint)(code?.Length ?? 0), nonce, balance);
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         Set(model, Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
 
         ValueHash256 codeHash = code is null or [] ? Keccak.OfAnEmptyString.ValueHash256 : ValueKeccak.Compute(code);

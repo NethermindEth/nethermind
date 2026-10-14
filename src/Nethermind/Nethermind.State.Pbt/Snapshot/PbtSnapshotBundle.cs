@@ -132,11 +132,11 @@ public sealed class PbtSnapshotBundle(
         _persistedNodeGroups.Clear();
     }
 
-    public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
+    public Account? GetAccount(Address address) => ReadAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), promote: false);
 
     /// <summary>Reads an account, promoting one found past the write buffer and the hint memo into the write buffer.</summary>
     /// <remarks>The promoted account is sealed into the next snapshot, so later heads read it from the newest layer.</remarks>
-    public Account? GetAndPromoteAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: true);
+    public Account? GetAndPromoteAccount(Address address) => ReadAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), promote: true);
 
     public Account? ReadAccount(in ValueHash256 addressHash, bool promote)
     {
@@ -156,7 +156,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>Records an account the layer above read past this bundle; a value already written or hinted here wins, and the memo is dropped with the write buffer at snapshot collection.</summary>
-    public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(PbtStateKey.AddressKeyHash(address), account);
+    public void HintAccount(Address address, Account? account) => _hintedAccounts.TryAdd(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account);
 
     private void PromoteAccount(in ValueHash256 addressHash, PbtAccount? account)
     {
@@ -165,12 +165,12 @@ public sealed class PbtSnapshotBundle(
         if (!accounts.ContainsKey(addressHash)) accounts.TryAdd(addressHash, account);
     }
 
-    public UInt256 GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtStateKey.AddressKeyHash(address), slot);
+    public UInt256 GetSlot(Address address, in UInt256 slot) => GetSlot(address, Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), slot);
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
     public UInt256 GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => Eip8297KeyDerivation.IsHeaderSlot(slot)
         ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot), addressHash)
-        : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
+        : GetSlot(Eip8297KeyDerivation.StorageKey(address.ToHash().Bytes, addressHash, slot), addressHash);
 
     public UInt256 GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
         BufferRun<TKey>(WriteBuffer, SlotRun.RunKey(slotKey), addressHash).Get(SlotRun.IndexOf(slotKey));
@@ -191,7 +191,7 @@ public sealed class PbtSnapshotBundle(
 
     public void SetAccount(Address address, Account? account)
     {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         // The previous value is known as a stem, or as an account when it awaits its code or was hinted.
         PbtAccount? previous = null;
         if (!_accountsAwaitingCode.TryRemove(addressHash, out Account? prior) && !WriteBuffer.Accounts.TryGetValue(addressHash, out previous) &&
@@ -241,7 +241,7 @@ public sealed class PbtSnapshotBundle(
         if (account is { IsDelegation: false } stem && deployedCode is not null) WriteCodeChunkLeaves(stem.CodeLeaf, deployedCode);
     }
 
-    /// <summary>Sets storage slots of one address, reusing a precomputed <see cref="PbtStateKey.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
+    /// <summary>Sets storage slots of one address, reusing a precomputed <see cref="Eip8297KeyDerivation.AddressHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
     /// <remarks>
     /// Writes are applied in order, so a later write of a slot wins. Adjacent writes into one slot run rewrite that
     /// run once, so writes sorted by slot rewrite each run they touch once.
@@ -261,7 +261,7 @@ public sealed class PbtSnapshotBundle(
             else
             {
                 // A run lies within one stem, so only its first key is hashed.
-                PbtStoragePath key = PbtStateKey.Storage(address, addressHash, runWrites[0].Slot);
+                PbtStoragePath key = Eip8297KeyDerivation.StorageKey(address.ToHash().Bytes, addressHash, runWrites[0].Slot);
                 foreach ((UInt256 Slot, UInt256 Value) write in runWrites) SetPbtLeaf(key = Eip8297KeyDerivation.StorageKeyInStem(key, write.Slot), SlotLeaf(write.Value));
                 SetRunSlots(key, addressHash, runWrites);
             }

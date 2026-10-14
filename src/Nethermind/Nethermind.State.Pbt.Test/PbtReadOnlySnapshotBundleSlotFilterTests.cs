@@ -51,7 +51,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         for (int layer = 0; layer < layers.Length; layer++)
         {
             PbtSnapshotContent content = layers[layer] = new PbtSnapshotContent();
-            if (random.Next(4) == 0) content.ClearStorage(PbtStateKey.AddressKeyHash(addresses[random.Next(addresses.Length)]));
+            if (random.Next(4) == 0) content.ClearStorage(Eip8297KeyDerivation.AddressHash(addresses[random.Next(addresses.Length)].ToHash().Bytes));
             for (int write = random.Next(0, 6); write > 0; write--)
             {
                 UInt256 value = random.Next(3) == 0 ? UInt256.Zero : (UInt256)(ulong)random.Next(1, 1000);
@@ -99,7 +99,7 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
         using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), default, LayerWriting(TestItem.AddressA, 1000, 7), pool, PbtResourcePool.Usage.MainBlockProcessing);
         using PbtPersistedSnapshot persisted = store.Build(source);
         repository.TryAddPersisted(persisted);
@@ -234,10 +234,10 @@ public class PbtReadOnlySnapshotBundleSlotFilterTests
 
     private static UInt256[] ReadRun(PbtReadOnlySnapshotBundle bundle, Address address, in UInt256 slot, bool filtered)
     {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         return Eip8297KeyDerivation.IsHeaderSlot(slot)
             ? ReadRun(bundle, Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot), addressHash, filtered)
-            : ReadRun(bundle, PbtStateKey.Storage(address, addressHash, slot), addressHash, filtered);
+            : ReadRun(bundle, Eip8297KeyDerivation.StorageKey(address.ToHash().Bytes, addressHash, slot), addressHash, filtered);
     }
 
     private static UInt256[] ReadRun<TKey>(PbtReadOnlySnapshotBundle bundle, in TKey slotKey, in ValueHash256 addressHash, bool filtered) where TKey : struct, IPbtKey<TKey>

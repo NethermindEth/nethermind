@@ -35,7 +35,7 @@ public class PbtSnapshotBundleTests
         using PbtPersistedTestStore store = new();
         using PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         PbtResourcePool pool = new(new PbtConfig());
-        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtSnapshotContent persistedContent = new();
         persistedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
         persistedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
@@ -91,7 +91,7 @@ public class PbtSnapshotBundleTests
         UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
         UInt256[] afterClear = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
-        bundle.SelfDestruct(PbtStateKey.AddressKeyHash(TestItem.AddressA));
+        bundle.SelfDestruct(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes));
         bundle.SetSlot(TestItem.AddressA, 5, local);
         using (Assert.EnterMultipleScope())
         {
@@ -476,7 +476,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(stored));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
-            Assert.That(snapshot.Content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)]?.ToAccount(), Is.EqualTo(stored));
+            Assert.That(snapshot.Content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)]?.ToAccount(), Is.EqualTo(stored));
             Assert.That(snapshot.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
         }
         Account rebalanced = account.WithChangedBalance(nonce + 1);
@@ -536,7 +536,7 @@ public class PbtSnapshotBundleTests
         (uint Slot, uint Value)[] expected = [(3, 3), (5, 2), (6, 4), (64, 5), (70, 0), (1000, 7)];
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
         (UInt256 Slot, UInt256 Value)[] slotWrites = Array.ConvertAll(writes, write => ((UInt256)write.Slot, (UInt256)write.Value));
-        bundle.SetSlots(TestItem.AddressA, PbtStateKey.AddressKeyHash(TestItem.AddressA), slotWrites);
+        bundle.SetSlots(TestItem.AddressA, Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), slotWrites);
 
         Dictionary<string, byte[]> model = [];
         foreach ((uint slot, uint value) in expected)
@@ -620,7 +620,7 @@ public class PbtSnapshotBundleTests
     public void Delegation_header_matches_eip_preimages()
     {
         Account account = Build.An.Account.WithCode(Delegation).TestObject;
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         Dictionary<PbtPath, ValueHash256> expected = new()
         {
             [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
@@ -726,7 +726,7 @@ public class PbtSnapshotBundleTests
     public void Hinted_account_serves_the_write_path_without_a_persistence_read_and_never_shadows_a_write()
     {
         Account persisted = Build.An.Account.WithBalance(1).TestObject;
-        Reader reader = new(default, null) { Accounts = [new(PbtStateKey.AddressKeyHash(TestItem.AddressA), persisted)] };
+        Reader reader = new(default, null) { Accounts = [new(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), persisted)] };
         using PbtSnapshotBundle bundle = CreateBundle(reader);
         bundle.HintAccount(TestItem.AddressA, persisted);
         Account written = persisted.WithChangedBalance(2);
@@ -778,7 +778,7 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(replacement));
             Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
             Assert.That(original.TreeRoot, Is.EqualTo(root));
-            Assert.That(original.Content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)]?.ToAccount(), Is.EqualTo(account));
+            Assert.That(original.Content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)]?.ToAccount(), Is.EqualTo(account));
         }
     }
 

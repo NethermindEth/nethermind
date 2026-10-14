@@ -272,7 +272,7 @@ public static class PbtOfflineSource
                 if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
                 code = new CodeInfo(bytes);
             }
-            ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address);
+            ValueHash256 addressKeyHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
             foreach ((PbtPath key, ValueHash256 value) in PbtStateKey.AccountLeaves(addressKeyHash, account, code))
                 AddLeaf((PbtVariableTreeKey)key, value);
 
@@ -286,7 +286,7 @@ public static class PbtOfflineSource
                     ValueHash256 slot = slots.CurrentKey;
                     UInt256 value = new(slots.CurrentValue, isBigEndian: true);
                     if (value.IsZero) throw new InvalidDataException("Source contains a zero storage slot.");
-                    AddLeaf(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), value.ToValueHash());
+                    AddLeaf(Eip8297KeyDerivation.SlotKey(address.ToHash().Bytes, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), value.ToValueHash());
                     if (rawKeys is not null)
                     {
                         addressHash.Bytes.CopyTo(_preimageKey);

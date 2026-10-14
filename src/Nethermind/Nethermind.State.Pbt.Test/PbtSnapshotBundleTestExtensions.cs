@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.State.Pbt.Snapshot;
@@ -17,7 +16,7 @@ namespace Nethermind.State.Pbt.Test;
 internal static class PbtSnapshotBundleTestExtensions
 {
     public static void SetSlot(this PbtSnapshotBundle bundle, Address address, in UInt256 slot, in UInt256 value) =>
-        bundle.SetSlots(address, PbtStateKey.AddressKeyHash(address), [(slot, value)]);
+        bundle.SetSlots(address, Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), [(slot, value)]);
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader) => new(
         new PbtSnapshotPooledList(0),

@@ -497,7 +497,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <summary>Provides a per-address storage view over the scope's unified EIP-8297 tree.</summary>
     private sealed class StorageTree(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageTree
     {
-        private readonly ValueHash256 _addressHash = PbtStateKey.AddressKeyHash(address);
+        private readonly ValueHash256 _addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
 
         public Hash256 RootHash => Keccak.EmptyTreeHash;
 
@@ -528,7 +528,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address, int estimatedEntries) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         // One batch serves one contract on one thread, so the address hash is derived once for the whole run of slots.
-        private readonly ValueHash256 _addressHash = PbtStateKey.AddressKeyHash(address);
+        private readonly ValueHash256 _addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         // Applied together, so each slot run the writes touch is rewritten once for all of its adjacent writes.
         private readonly ArrayPoolList<(UInt256 Slot, UInt256 Value)> _writes = new(estimatedEntries);
 
@@ -600,7 +600,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             {
                 ReadOnlyAccountChanges changes = accountChanges[index];
                 if (!changes.HasStateChanges && !withReads) continue;
-                ValueHash256 addressHash = PbtStateKey.AddressKeyHash(changes.Address);
+                ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(changes.Address.ToHash().Bytes);
                 keys._accountIndexes[addressHash] = index;
                 keys.Accounts.Add(new(Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
                 StemKeys writes = new(changes.Address, addressHash);
@@ -665,7 +665,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 }
                 if (_stemSlot is not { } stemSlot || !Eip8297KeyDerivation.InSameStem(stemSlot, slot))
                 {
-                    _stemKey = PbtStateKey.Storage(address, _addressHash, slot);
+                    _stemKey = Eip8297KeyDerivation.StorageKey(address.ToHash().Bytes, _addressHash, slot);
                     _stemSlot = slot;
                 }
                 storageKeys.Add(new(Eip8297KeyDerivation.StorageKeyInStem(_stemKey, slot), slot.ToValueHash()));

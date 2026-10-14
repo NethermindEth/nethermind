@@ -25,9 +25,9 @@ public class PbtCarryForwardCachingPersistenceTests
 {
     private static readonly StateId Basis0 = new(0, Keccak.EmptyTreeHash);
     private static readonly StateId Basis1 = new(1, Keccak.EmptyTreeHash);
-    private static readonly ValueHash256 AddressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+    private static readonly ValueHash256 AddressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
     private static readonly PbtPath Run1 = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(AddressHash, 1));
-    private static readonly PbtStoragePath Run2 = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, AddressHash, 100));
+    private static readonly PbtStoragePath Run2 = SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, AddressHash, 100));
 
     [TestCaseSource(nameof(ReadCases))]
     public void SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<PbtCarryForwardCachingPersistence, FakePersistence> scenario, int expectedAccountReads, int expectedRunReads)
@@ -64,7 +64,7 @@ public class PbtCarryForwardCachingPersistenceTests
     {
         FakePersistence inner = new();
         PbtCarryForwardCachingPersistence cache = new(inner, maxEntriesPerKind: 1);
-        ValueHash256 other = PbtStateKey.AddressKeyHash(TestItem.AddressB);
+        ValueHash256 other = Eip8297KeyDerivation.AddressHash(TestItem.AddressB.ToHash().Bytes);
 
         ReadAccount(cache, AddressHash);
         ReadAccount(cache, AddressHash);
@@ -84,7 +84,7 @@ public class PbtCarryForwardCachingPersistenceTests
     {
         const int readerThreads = 16;
         const int readsPerReader = 64;
-        ValueHash256[] addressHashes = [.. Enumerable.Range(0, 8).Select(i => PbtStateKey.AddressKeyHash(TestItem.Addresses[i]))];
+        ValueHash256[] addressHashes = [.. Enumerable.Range(0, 8).Select(i => Eip8297KeyDerivation.AddressHash(TestItem.Addresses[i].ToHash().Bytes))];
         FakePersistence inner = new();
         PbtCarryForwardCachingPersistence cache = new(inner, PbtCarryForwardCachingPersistence.DefaultMaxEntriesPerKind);
         using Barrier startLine = new(readerThreads + 1);
@@ -132,7 +132,7 @@ public class PbtCarryForwardCachingPersistenceTests
 
         yield return Scenario("unwritten_entries_carried_forward", 1, 1, batch =>
         {
-            batch.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressB), new Account(1, 100).ToPbtAccount());
+            batch.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressB.ToHash().Bytes), new Account(1, 100).ToPbtAccount());
             batch.SetSlotRun(Run2, SlotRun.Empty);
         });
         yield return Scenario("written_account_invalidated", 2, 1, batch => batch.SetAccount(AddressHash, new Account(1, 100).ToPbtAccount()));

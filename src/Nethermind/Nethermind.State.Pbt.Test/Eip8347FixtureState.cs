@@ -18,7 +18,6 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using NUnit.Framework;
 
@@ -70,7 +69,7 @@ internal static class Eip8347FixtureState
         PbtPreimageReader reader = new(preimages);
         while (reader.ReadAccount(out Address? address, out uint slotCount, CancellationToken.None))
         {
-            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address!);
+            ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address!.ToHash().Bytes);
             ValueHash256 basic = leaves.GetValueOrDefault((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(addressHash, PbtKeyDerivation.BasicDataLeafKey));
             PbtKeyDerivation.UnpackBasicData(basic.Bytes, out ulong nonce, out UInt256 balance);
             int size = (int)PbtKeyDerivation.ReadBasicDataCodeSize(basic.Bytes);

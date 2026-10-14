@@ -48,7 +48,7 @@ public class PbtRebuilderTests
                 ? new Account(nonce, balance).WithChangedCodeHash(Keccak.Compute(code))
                 : new Account(nonce, balance);
             PbtTestLeaves.AddAccount(leaves, address, account, code is { Length: > 0 } ? code : null);
-            stagingBatch.SetAccount(PbtStateKey.AddressKeyHash(address), PbtAccount.From(account, code is { Length: > 0 } ? new CodeInfo(code) : null));
+            stagingBatch.SetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), PbtAccount.From(account, code is { Length: > 0 } ? new CodeInfo(code) : null));
             if (code is { Length: > 0 }) stagingBatch.SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
         }
 

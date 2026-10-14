@@ -84,7 +84,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         UInt256 value = (UInt256)0x1234;
-        static PbtPath Key(uint slot) => Eip8297KeyDerivation.HeaderStorageKey(PbtStateKey.AddressKeyHash(TestItem.AddressA), slot);
+        static PbtPath Key(uint slot) => Eip8297KeyDerivation.HeaderStorageKey(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), slot);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         StateId third = new(3, TestItem.KeccakC.ValueHash256);
@@ -139,7 +139,7 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtVariableTreeKey headerKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         PbtVariableTreeKey overflowKey = PbtTestLeaves.SlotKey(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PbtVariableTreeKey otherAddressKey = PbtTestLeaves.SlotKey(TestItem.AddressB, otherAddressSlot);
@@ -167,7 +167,7 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 0);
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
@@ -277,7 +277,7 @@ public class PbtRocksDbPersistenceTests
         PbtSnapshotRepository repository = new(new MetricsConfig(), NullSnapshotCatalog.Instance, new PbtPersistedPublicationGate());
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config, LimboLogs.Instance);
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         List<(byte[] Key, byte[]? Value)> changes = [];
@@ -382,7 +382,7 @@ public class PbtRocksDbPersistenceTests
         byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
         ValueHash256 treeRoot = TestItem.KeccakD.ValueHash256;
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
         PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
         UInt256 slot = new(TestItem.KeccakD.Bytes, isBigEndian: true);
@@ -499,7 +499,7 @@ public class PbtRocksDbPersistenceTests
             StateId.PreGenesis,
             default))
         {
-            batch.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
+            batch.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
 
@@ -514,7 +514,7 @@ public class PbtRocksDbPersistenceTests
         FailNextCommitColumnsDb db = new(inner);
         TrackingMemoryProvider memoryProvider = new();
         PbtRocksDbPersistence persistence = new(db, new PbtConfig { ImportFromPreimageFlat = true }, NullTrieNodeLog.Instance);
-        ValueHash256 stagedAddressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 stagedAddressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         using (IPbtPersistence.IWriteBatch staging = persistence.CreateStagingWriteBatch())
         {
             staging.SetAccount(stagedAddressHash, Account.TotallyEmpty.ToPbtAccount());

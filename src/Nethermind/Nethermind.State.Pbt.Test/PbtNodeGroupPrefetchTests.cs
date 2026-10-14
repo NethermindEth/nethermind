@@ -70,8 +70,8 @@ public class PbtNodeGroupPrefetchTests
                 .WithStorageChanges(2000, new StorageChange(1, 1u))
                 .WithStorageReads(3000).TestObject,
             Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtStoragePath storagePath = PbtStateKey.Storage(TestItem.AddressA, addressHash, 1000);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
+        PbtStoragePath storagePath = Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, addressHash, 1000);
         PbtStorageNodePath storageGroup = new(storagePath.Bytes[..33], 264);
         TrackingMemoryProvider memory = new();
         IPbtPersistence.IReader reader = Reader();
@@ -98,7 +98,7 @@ public class PbtNodeGroupPrefetchTests
         int levels = descendantBytes switch { <= 512 => 0, <= 8 * 512 => 1, <= 64 * 512 => 2, <= 512 * 512 => 3, _ => 4 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {
-            PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
+            PbtStoragePath key = Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, addressHash, slot);
             for (int depth = 267; depth <= 264 + 3 * levels; depth += 3)
                 expected.Add(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, depth));
         }
@@ -146,7 +146,8 @@ public class PbtNodeGroupPrefetchTests
             }
             foreach (Address address in tombstoned)
             {
-                PbtStoragePath key = PbtStateKey.Storage(address, PbtStateKey.AddressKeyHash(address), 1000);
+                ValueHash256 address32 = address.ToHash();
+                PbtStoragePath key = Eip8297KeyDerivation.StorageKey(address32.Bytes, Eip8297KeyDerivation.AddressHash(address32.Bytes), 1000);
                 bundle.SetNodeGroup(PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, 267), null);
             }
 
@@ -229,7 +230,7 @@ public class PbtNodeGroupPrefetchTests
     {
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
         reader.GetAccount(Arg.Any<ValueHash256>()).Returns(new Account(1, 1).ToPbtAccount());
-        foreach (Address address in missing) reader.GetAccount(PbtStateKey.AddressKeyHash(address)).Returns((PbtAccount?)null);
+        foreach (Address address in missing) reader.GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes)).Returns((PbtAccount?)null);
         reader.GetSlotRun(Arg.Any<PbtPath>()).Returns(_ => SlotRun.Empty);
         reader.GetSlotRun(Arg.Any<PbtStoragePath>()).Returns(_ => SlotRun.Empty);
         return reader;
@@ -248,8 +249,8 @@ public class PbtNodeGroupPrefetchTests
         .SelectMany(static call => call.GetArguments().Select(static argument => argument?.ToString())));
 
     private static PbtStorageNodePath FirstGroup(Address address, byte zone) => zone == Eip8297KeyDerivation.AccountZone
-        ? PbtTestPaths.Prefix<PbtStorageNodePath>(Bytes.FromHexString("00" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()[..6]), 30)
-        : new(Bytes.FromHexString("ff" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()), 264);
+        ? PbtTestPaths.Prefix<PbtStorageNodePath>(Bytes.FromHexString("00" + Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes).Bytes.ToHexString()[..6]), 30)
+        : new(Bytes.FromHexString("ff" + Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes).Bytes.ToHexString()), 264);
 
     private static ReadOnlyBlockAccessList LifecyclePrefetchBal() => Build.A.BlockAccessList.WithAccountChanges(
         Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject,

@@ -129,10 +129,10 @@ public class PbtMetricsTests
         [Values] bool detailedMetrics,
         [ValueSource(nameof(GroupKeys))] (string Path, int Depth, string Partition) group)
     {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
         PbtPath headerStorageKey = Eip8297KeyDerivation.HeaderStorageKey(addressHash, 1);
-        PbtStoragePath storageKey = PbtStateKey.Storage(TestItem.AddressA, addressHash, PbtKeyDerivation.HeaderStorageOffset);
+        PbtStoragePath storageKey = Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, addressHash, PbtKeyDerivation.HeaderStorageOffset);
         PbtNodePath groupKey = new(Bytes.FromHexString(group.Path), group.Depth);
         string partition = group.Partition;
         Account account = new(1, 100);
@@ -212,7 +212,7 @@ public class PbtMetricsTests
         {
             state = new StateId(0, default);
             PbtSnapshotContent content = ctx.ResourcePool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-            content.Accounts[PbtStateKey.AddressKeyHash(TestItem.AddressA)] = new Account(1, 100).ToPbtAccount();
+            content.Accounts[Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes)] = new Account(1, 100).ToPbtAccount();
             ctx.Repository.TryAdd(new PbtSnapshot(StateId.PreGenesis, state, default, content, ctx.ResourcePool, PbtResourcePool.Usage.MainBlockProcessing));
         }
         using PbtReadOnlySnapshotBundle bundle = ctx.Manager.GatherReadOnlyBundle(state);

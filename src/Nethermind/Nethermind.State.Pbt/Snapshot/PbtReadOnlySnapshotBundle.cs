@@ -167,7 +167,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         return result;
     }
 
-    public PbtAccount? GetAccount(Address address) => GetAccount(PbtStateKey.AddressKeyHash(address));
+    public PbtAccount? GetAccount(Address address) => GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes));
 
     public PbtAccount? GetAccount(in ValueHash256 addressHash)
     {
@@ -190,10 +190,10 @@ public sealed class PbtReadOnlySnapshotBundle(
     /// <summary>Reads storage slot <paramref name="slot"/> of <paramref name="address"/>.</summary>
     public UInt256 GetSlot(Address address, in UInt256 slot)
     {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
         return Eip8297KeyDerivation.IsHeaderSlot(slot)
             ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot))
-            : GetSlot(PbtStateKey.Storage(address, addressHash, slot));
+            : GetSlot(Eip8297KeyDerivation.StorageKey(address.ToHash().Bytes, addressHash, slot));
     }
 
     private UInt256 GetSlot<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));

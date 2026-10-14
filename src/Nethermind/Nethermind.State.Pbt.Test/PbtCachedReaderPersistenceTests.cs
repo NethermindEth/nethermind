@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -174,7 +173,7 @@ public class PbtCachedReaderPersistenceTests
     public async Task Reader_and_batch_forward_to_the_inner_persistence()
     {
         Context ctx = new();
-        ValueHash256 key = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 key = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         Account value = new(7, 9);
         PbtNodePath groupKey = new([], 0);
         using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager(new byte[PbtNodeGroupCodec.MaxTrailerLength]));

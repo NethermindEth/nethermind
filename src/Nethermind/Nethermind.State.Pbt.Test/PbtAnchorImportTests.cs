@@ -27,7 +27,6 @@ using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
@@ -242,7 +241,7 @@ public class PbtAnchorImportTests
         {
             // A crash mid-staging leaves staged rows without a validity marker.
             using IPbtPersistence.IWriteBatch batch = new PbtRocksDbPersistence(harness.Target, config, NullTrieNodeLog.Instance).CreateStagingWriteBatch();
-            batch.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressA), Account.TotallyEmpty.ToPbtAccount());
+            batch.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes), Account.TotallyEmpty.ToPbtAccount());
             batch.Commit();
         }
         harness.Reopen();
@@ -313,8 +312,8 @@ public class PbtAnchorImportTests
             Address address = addresses[index] = Address.FromNumber((UInt256)(index + 1));
             ValueHash256 basicData = default;
             PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
-            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(address), 0), basicData));
-            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
+            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), 0), basicData));
+            leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), 1), Keccak.OfAnEmptyString.ValueHash256));
             leaves.Add(new(PbtTestLeaves.SlotKey(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
@@ -331,7 +330,7 @@ public class PbtAnchorImportTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetAccount(PbtStateKey.AddressKeyHash(addresses[index]))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
+                Assert.That(reader.GetAccount(Eip8297KeyDerivation.AddressHash(addresses[index].ToHash().Bytes))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
                 Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(addresses[index], 100)),
                     Is.EqualTo((UInt256)(index + 1)));
             }
@@ -419,9 +418,9 @@ public class PbtAnchorImportTests
         Address authority = new("0x2b5ad5c4795c026514f8317c7a215e218dccd6cf");
         Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
         ValueHash256 writerCodeHash = ValueKeccak.Compute(Bytes.FromHexString("60003560005500"));
-        PbtVariableTreeKey basic = (PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(writer), 0);
+        PbtVariableTreeKey basic = (PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(writer.ToHash().Bytes), 0);
         PbtVariableTreeKey chunk = (PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(writerCodeHash.Bytes, 0);
-        PbtVariableTreeKey delegation = (PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(authority), 2);
+        PbtVariableTreeKey delegation = (PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(authority.ToHash().Bytes), 2);
         PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(history, UInt256.Zero);
         switch (corruption)
         {
@@ -455,8 +454,8 @@ public class PbtAnchorImportTests
                 Address surplus = new("0x00000000000000000000000000000000deadbeef");
                 ValueHash256 basicData = default;
                 PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, 1, UInt256.Zero);
-                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(surplus), 0), basicData));
-                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(surplus), 1), Keccak.OfAnEmptyString.ValueHash256));
+                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(surplus.ToHash().Bytes), 0), basicData));
+                leaves.Add(new((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(surplus.ToHash().Bytes), 1), Keccak.OfAnEmptyString.ValueHash256));
                 break;
             case "orphan-storage-leaf":
                 leaves.Add(new(PbtTestLeaves.SlotKey(new Address("0x00000000000000000000000000000000cafebabe"), 100),
@@ -465,7 +464,7 @@ public class PbtAnchorImportTests
             // Both artifacts drop one account consistently: the image is whole, but not the anchor's state.
             case "anchored-elsewhere":
                 Address dropped = Eoa();
-                ValueHash256 droppedStem = PbtStateKey.AddressKeyHash(dropped);
+                ValueHash256 droppedStem = Eip8297KeyDerivation.AddressHash(dropped.ToHash().Bytes);
                 leaves.RemoveAll(entry => entry.Key.Bytes[0] == 0 && entry.Key.Bytes.Slice(1, 32).SequenceEqual(droppedStem.Bytes));
                 accounts.RemoveAll(account => account.Address == dropped);
                 break;
@@ -503,7 +502,7 @@ public class PbtAnchorImportTests
 
         // A codeless account without storage, whose leaves are only its basic data and empty code hash.
         Address Eoa() => accounts.Find(account => account.SlotCount == 0 && leaves.Exists(entry =>
-            entry.Key.Equals((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(PbtStateKey.AddressKeyHash(account.Address), 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
+            entry.Key.Equals((PbtVariableTreeKey)Eip8297KeyDerivation.AccountKey(Eip8297KeyDerivation.AddressHash(account.Address.ToHash().Bytes), 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
 
         void ChangeSlots(Action<List<ValueHash256>> change)
         {
@@ -553,7 +552,7 @@ public class PbtAnchorImportTests
         }
         foreach ((Address address, GethGenesisAllocJson expected) in Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name))
         {
-            Account? account = reader.GetAccount(PbtStateKey.AddressKeyHash(address))?.ToAccount();
+            Account? account = reader.GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes))?.ToAccount();
             Assert.That(account, Is.Not.Null, address.ToString());
             byte[] code = expected.Code ?? [];
             using (Assert.EnterMultipleScope())

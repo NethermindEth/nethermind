@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Test;
 internal static class PbtTestLeaves
 {
     public static Account? ReadAccount(IPbtPersistence.IReader reader, Address address) =>
-        reader.GetAccount(PbtStateKey.AddressKeyHash(address))?.ToAccount();
+        reader.GetAccount(Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes))?.ToAccount();
 
     /// <summary>The account's stem without its bytecode: a zero code size under its code-hash leaf.</summary>
     public static PbtAccount ToPbtAccount(this Account account)
@@ -38,8 +38,11 @@ internal static class PbtTestLeaves
         return encoded;
     }
 
-    public static PbtVariableTreeKey SlotKey(Address address, in UInt256 slot) =>
-        PbtStateKey.Slot(address, PbtStateKey.AddressKeyHash(address), slot);
+    public static PbtVariableTreeKey SlotKey(Address address, in UInt256 slot)
+    {
+        ValueHash256 address32 = address.ToHash();
+        return Eip8297KeyDerivation.SlotKey(address32.Bytes, Eip8297KeyDerivation.AddressHash(address32.Bytes), slot);
+    }
 
     public static UInt256 ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
         reader.GetSlot(SlotKey(address, slot));
@@ -47,7 +50,7 @@ internal static class PbtTestLeaves
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
         foreach ((PbtPath key, ValueHash256 leaf) in PbtStateKey.AccountLeaves(
-            PbtStateKey.AddressKeyHash(address), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
+            Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
             into.Add(new RebuildEntry((PbtVariableTreeKey)key, leaf));
     }
 

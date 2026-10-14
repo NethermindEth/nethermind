@@ -327,7 +327,7 @@ public class ImportPbtFromPreimageFlatTests
 
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch())
         {
-            staging.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressC), new Account(1, 2).ToPbtAccount());
+            staging.SetAccount(Eip8297KeyDerivation.AddressHash(TestItem.AddressC.ToHash().Bytes), new Account(1, 2).ToPbtAccount());
             PbtVariableTreeKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();

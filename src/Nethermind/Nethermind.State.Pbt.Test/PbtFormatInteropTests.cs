@@ -109,8 +109,8 @@ public class PbtFormatInteropTests
     {
         using PbtPersistedTestStore store = new();
         PbtSnapshotContent content = new();
-        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        ValueHash256 other = PbtStateKey.AddressKeyHash(TestItem.AddressB);
+        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
+        ValueHash256 other = Eip8297KeyDerivation.AddressHash(TestItem.AddressB.ToHash().Bytes);
         byte[] code = delegated ? Bytes.FromHexString("ef01000000000000000000000000000000000000000001") : [0x60, 0x01];
         CodeInfo info = new(code);
         PbtAccount account = PbtAccount.From(new Account(1, 123, Keccak.EmptyTreeHash, new Hash256(ValueKeccak.Compute(code))), info);
@@ -121,7 +121,7 @@ public class PbtFormatInteropTests
         content.SelfDestructedStorageAddresses[address] = true;
         PbtPath headerKey = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 7));
         content.HeaderStorages[new(headerKey)] = SlotRun.Empty;
-        PbtStoragePath storageKey = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000));
+        PbtStoragePath storageKey = SlotRun.RunKey(Eip8297KeyDerivation.StorageKey(TestItem.AddressA.ToHash().Bytes, address, 1000));
         UInt256[] words = new UInt256[16];
         for (int i = 0; i < words.Length; i++) words[i] = (UInt256)(i + 1);
         content.Storages[new(storageKey)] = SlotRun.Create(ushort.MaxValue, words);

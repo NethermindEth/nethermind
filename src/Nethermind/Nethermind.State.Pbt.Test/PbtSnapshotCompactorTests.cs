@@ -89,7 +89,7 @@ public class PbtSnapshotCompactorTests
     [Test]
     public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast)
     {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 addressHash = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         PbtVariableTreeKey otherSlot = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 1);
         PbtVariableTreeKey otherAddress = PbtTestLeaves.SlotKey(TestItem.AddressB, slot);
@@ -129,7 +129,7 @@ public class PbtSnapshotCompactorTests
         [Values] bool clearLast, [Values] bool writeInClearLayer)
     {
         using PbtPersistedTestStore store = new();
-        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         PbtVariableTreeKey neighbor = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 1);
         PbtVariableTreeKey differentRun = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 16);
@@ -298,7 +298,7 @@ public class PbtSnapshotCompactorTests
             older.SetNodeGroup(group, payload);
             newer.SetNodeGroup(group, tombstone ? null : payload);
         }
-        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
         newer.Accounts[address] = null;
         newer.ClearStorage(address);
         newer.SetSlot(leaf, default);
@@ -788,7 +788,7 @@ public class PbtSnapshotCompactorTests
                     for (int block = 1; block <= 8; block++)
                     {
                         PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
-                        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+                        ValueHash256 address = Eip8297KeyDerivation.AddressHash(TestItem.AddressA.ToHash().Bytes);
                         if (block == 1)
                         {
                             content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), (UInt256)1);
