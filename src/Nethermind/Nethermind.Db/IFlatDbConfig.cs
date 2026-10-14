@@ -133,6 +133,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
+    [ConfigItem(Description = "With UseNativeBulkSet, memory budget, in bytes, for the compacted generations of the native trie node log. The oldest are freed beyond it.", DefaultValue = "524288000")]
+    ulong CompressedTrieNodeLogMemoryBudget { get; set; }
+
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 

@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::keccak::keccak_many;
-use crate::log::{LogPointer, LogSession, TrieNodeLog};
+use crate::log::{node_key, LogPointer, LogSession, TrieNodeLog};
 use crate::metrics::NodeReads;
 use crate::node::{
     decode_inline_leaf, decode_rlp, empty_children, encode, nibble, ChildRef, InlineRlp, Nibbles,
@@ -731,14 +731,14 @@ impl<S: NodeStore> Context<'_, S> {
             ChildRef::Empty => Ok(None),
             ChildRef::Pending(_) => unreachable!("only children of nodes read are walked into"),
             ChildRef::Inline(rlp) => Ok(Some(Source::InlineLeaf { rlp: *rlp, skip: 0 })),
-            ChildRef::Hash { pointer, .. } if self.log.is_valid(*pointer) => {
-                self.node_reads.from_log();
-                Ok(Some(Source::Logged {
-                    record: RecordPtr::of(self.log.record(*pointer)),
-                    skip: 0,
-                }))
-            }
-            ChildRef::Hash { hash, .. } => {
+            ChildRef::Hash { hash, pointer } => {
+                if let Some(record) = self.log.record(*pointer) {
+                    self.node_reads.from_log();
+                    return Ok(Some(Source::Logged {
+                        record: RecordPtr::of(record),
+                        skip: 0,
+                    }));
+                }
                 let pending = match self.read_pending {
                     true => BUFFER.with_borrow_mut(|buffer| {
                         self.pending
@@ -873,6 +873,7 @@ impl<S: NodeStore> Context<'_, S> {
                             |(&(index, rlp_start, rlp_end), hash)| {
                                 (
                                     &*nodes[index as usize].node,
+                                    node_key(self.address, &nodes[index as usize].path),
                                     hash,
                                     &buffer[rlp_start..rlp_end],
                                 )
@@ -1299,8 +1300,8 @@ mod tests {
         let items = generate_items(5000, 0x1234_5678);
 
         // A temporary log per bulk set, then a minimal shared one, which keeps dropping the nodes of earlier bulk sets.
-        let minimal = TrieNodeLog::new(0);
-        for log in [None, Some(&minimal)] {
+        let minimal = TrieNodeLog::minimal();
+        for log in [None, Some(&*minimal)] {
             let store = pending::rent(items.len());
             assert_eq!(
                 apply(&store, log, EMPTY_TREE_HASH, &[]),
@@ -1355,7 +1356,7 @@ mod tests {
         // Every node the first bulk set wrote is logged, so the second needs neither the pending nodes nor the store.
         let log = TrieNodeLog::new(256 << 20);
         let logged = PendingNodes::default();
-        let logged_root = apply(&logged, Some(&log), EMPTY_TREE_HASH, &items[..300]).unwrap();
+        let logged_root = apply(&logged, Some(&*log), EMPTY_TREE_HASH, &items[..300]).unwrap();
         let warmed = WarmedNodes::default();
         for shard in 0..logged.shard_count() {
             logged.with_view(shard, |nodes, rlp| {
@@ -1369,7 +1370,7 @@ mod tests {
         }
         logged.clear();
         assert_eq!(
-            apply(&logged, Some(&log), logged_root, &items[300..600]),
+            apply(&logged, Some(&*log), logged_root, &items[300..600]),
             Ok(root_of(&items[..600]))
         );
         // Neither are needed for a trie whose nodes are warmed, which a temporary log never has.
@@ -1410,8 +1411,8 @@ mod tests {
                     .collect();
                 expected.extend_from_slice(&second);
                 let split = PendingNodes::default();
-                let split_log = TrieNodeLog::new(0);
-                let log = logged.then_some(&split_log);
+                let split_log = TrieNodeLog::minimal();
+                let log = logged.then_some(&*split_log);
                 let first_root = apply(&split, log, EMPTY_TREE_HASH, &first).unwrap();
                 assert_eq!(
                     apply(&split, log, first_root, &second),

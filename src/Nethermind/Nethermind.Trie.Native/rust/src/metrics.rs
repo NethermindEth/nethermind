@@ -23,6 +23,10 @@ pub struct Metrics {
     pub nodes_from_pending: u64,
     /// Nodes fetched from the node store.
     pub nodes_fetched: u64,
+    /// Bytes of what compaction kept of generations, still kept.
+    pub compressed_memory: u64,
+    /// Compacted generations of which something is still kept.
+    pub compressed_generations: u64,
 }
 
 static LOG_MEMORY: AtomicU64 = AtomicU64::new(0);
@@ -32,6 +36,8 @@ static ROOT_MISSES: AtomicU64 = AtomicU64::new(0);
 static NODES_FROM_LOG: AtomicU64 = AtomicU64::new(0);
 static NODES_FROM_PENDING: AtomicU64 = AtomicU64::new(0);
 static NODES_FETCHED: AtomicU64 = AtomicU64::new(0);
+static COMPRESSED_MEMORY: AtomicU64 = AtomicU64::new(0);
+static COMPRESSED_GENERATIONS: AtomicU64 = AtomicU64::new(0);
 
 pub fn read() -> Metrics {
     Metrics {
@@ -42,6 +48,8 @@ pub fn read() -> Metrics {
         nodes_from_log: NODES_FROM_LOG.load(Ordering::Relaxed),
         nodes_from_pending: NODES_FROM_PENDING.load(Ordering::Relaxed),
         nodes_fetched: NODES_FETCHED.load(Ordering::Relaxed),
+        compressed_memory: COMPRESSED_MEMORY.load(Ordering::Relaxed),
+        compressed_generations: COMPRESSED_GENERATIONS.load(Ordering::Relaxed),
     }
 }
 
@@ -53,6 +61,16 @@ pub fn generation_allocated(bytes: usize) {
 pub fn generation_freed(bytes: usize) {
     LOG_MEMORY.fetch_sub(bytes as u64, Ordering::Relaxed);
     LOG_GENERATIONS.fetch_sub(1, Ordering::Relaxed);
+}
+
+pub fn compressed_allocated(bytes: u64) {
+    COMPRESSED_MEMORY.fetch_add(bytes, Ordering::Relaxed);
+    COMPRESSED_GENERATIONS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn compressed_freed(bytes: u64) {
+    COMPRESSED_MEMORY.fetch_sub(bytes, Ordering::Relaxed);
+    COMPRESSED_GENERATIONS.fetch_sub(1, Ordering::Relaxed);
 }
 
 pub fn root_looked_up(found: bool) {
