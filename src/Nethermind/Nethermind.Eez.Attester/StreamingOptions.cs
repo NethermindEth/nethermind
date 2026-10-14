@@ -42,7 +42,7 @@ internal sealed record StreamingOptions(IPEndPoint ListenAddress, Uri L1Rpc, Uri
             sessionLimits.Validate();
             transportLimits.Validate();
             if (settings.MaxConnections > 64 || settings.MaxSessions > 64 || settings.MaxSessionsPerOwner > settings.MaxSessions ||
-                settings.MaxReservedBytes > 8L * 1024 * 1024 * 1024 || settings.MaxSessionBytes > registryLimits.MaxReservedBytes / 2)
+                settings.MaxReservedBytes > 8L * 1024 * 1024 * 1024 || settings.MaxSessionBytes > registryLimits.MaxReservedBytes / StreamingSessionRegistry.ReservationCopies)
                 throw Invalid();
             string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             string[] pins = new string[settings.ComposerCertificates.Length];

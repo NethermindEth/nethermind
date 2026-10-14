@@ -60,6 +60,8 @@ internal sealed class StreamingTransport
         using CancellationTokenSource closed = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         StreamingWork? work = null;
         Task<bool>? read = null;
+        ClientFrame? queued = null;
+        CancellationTokenSource? queuedDeadline = null;
         bool inputClosed = false;
         try
         {
@@ -67,12 +69,52 @@ internal sealed class StreamingTransport
             while (true)
             {
                 Task revoked = connection.AttachmentRevoked;
-                if (work is not null)
+                if (revoked.IsCompleted)
                 {
-                    Task incoming = inputClosed ? work.Response : read;
-                    await Task.WhenAny(incoming, work.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
-                    if (revoked.IsCompleted) throw Error(StatusCode.Aborted, "session attachment no longer current");
-                    if (work.Response.IsCompleted)
+                    work?.Dispose();
+                    work = null;
+                    await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false);
+                    return;
+                }
+
+                if (read?.IsCompleted == true)
+                {
+                    bool present = await read.ConfigureAwait(false);
+                    read = null;
+                    if (!present) inputClosed = true;
+                    else
+                    {
+                        ClientFrame frame = input.Current;
+                        CheckMessage(frame);
+                        StreamingDispatch? dispatch;
+                        if (frame.KindCase is ClientFrame.KindOneofCase.Block or ClientFrame.KindOneofCase.Finalize)
+                        {
+                            dispatch = connection.CheckDataFrame(frame);
+                            if (dispatch is null)
+                            {
+                                queued = frame;
+                                queuedDeadline = new CancellationTokenSource(_limits.OperationTimeout, _time);
+                            }
+                        }
+                        else dispatch = connection.Dispatch(frame);
+                        if (dispatch?.Response is { } reply)
+                        {
+                            await Write(connection, output, reply, closed.Token, dispatch.EndStream).ConfigureAwait(false);
+                            if (dispatch.EndStream) return;
+                            if (work is not null && reply.Ready is not null && reply.Epoch != work.Operation.Binding.Epoch)
+                            {
+                                work.Dispose();
+                                work = null;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if (work?.Response.IsCompleted == true)
+                {
+                    ServerFrame response;
+                    try
                     {
                         if (!connection.CanComplete(work.Operation))
                         {
@@ -80,57 +122,98 @@ internal sealed class StreamingTransport
                             work = null;
                             continue;
                         }
-                        ServerFrame response = await Complete(connection, work, closed.Token).ConfigureAwait(false);
-                        work.Dispose();
+                        response = await Complete(connection, work, closed.Token).ConfigureAwait(false);
+                    }
+                    catch (RpcException) when (connection.AttachmentRevoked.IsCompleted)
+                    {
+                        work?.Dispose();
                         work = null;
-                        bool terminal = response.Proof is not null;
-                        await Write(connection, output, response, closed.Token, terminal).ConfigureAwait(false);
-                        if (terminal || inputClosed) return;
                         continue;
                     }
-                }
-
-                await Task.WhenAny(read, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
-                if (revoked.IsCompleted) throw Error(StatusCode.Aborted, "session attachment no longer current");
-                if (!await read.ConfigureAwait(false))
-                {
-                    if (work is null) return;
-                    inputClosed = true;
+                    work.Dispose();
+                    work = null;
+                    bool terminal = response.Proof is not null;
+                    await Write(connection, output, response, closed.Token, terminal).ConfigureAwait(false);
+                    if (terminal) return;
                     continue;
                 }
-                ClientFrame frame = input.Current;
-                if (frame.CalculateSize() > _limits.MaxMessageBytes)
-                    throw Error(StatusCode.ResourceExhausted, "stream message exceeds decoding limit");
-                StreamingDispatch dispatch = connection.Dispatch(frame);
-                if (dispatch.Response is { } reply)
+
+                if (work is null && queued is not null)
                 {
-                    await Write(connection, output, reply, closed.Token, dispatch.EndStream).ConfigureAwait(false);
-                    if (dispatch.EndStream) return;
-                    if (work is not null && reply.Epoch != work.Operation.Binding.Epoch)
+                    BackendAdmission.BackendLease? slot = null;
+                    SessionOperation? admitted = null;
+                    try
                     {
-                        work.Dispose();
-                        work = null;
+                        StreamingDispatch? dispatch = connection.CheckDataFrame(queued);
+                        if (dispatch is null && queued.Finalize is not null && _finalize is null)
+                            dispatch = connection.RejectQueued(queued, new Status(StatusCode.Unimplemented, "settlement authorization unavailable"));
+                        if (dispatch is null)
+                        {
+                            closed.Token.ThrowIfCancellationRequested();
+                            queuedDeadline!.Token.ThrowIfCancellationRequested();
+                            slot = _admission.TryAcquire();
+                            if (slot is null)
+                            {
+                                using CancellationTokenSource waiting = CancellationTokenSource.CreateLinkedTokenSource(closed.Token, queuedDeadline.Token);
+                                slot = await Acquire(connection.AttachmentRevoked, waiting.Token).ConfigureAwait(false);
+                            }
+                            closed.Token.ThrowIfCancellationRequested();
+                            queuedDeadline.Token.ThrowIfCancellationRequested();
+                            dispatch = connection.Dispatch(queued);
+                        }
+                        if (dispatch.Operation is { } operation)
+                        {
+                            admitted = operation;
+                            closed.Token.ThrowIfCancellationRequested();
+                            queuedDeadline!.Token.ThrowIfCancellationRequested();
+                            work = new StreamingWork(connection, operation, slot!, Execute, _limits.OperationTimeout, _time, closed.Token, queuedDeadline);
+                            admitted = null;
+                            slot = null;
+                            queuedDeadline = null;
+                        }
+                        else
+                        {
+                            slot?.Dispose();
+                            slot = null;
+                            await Write(connection, output, dispatch.Response!, closed.Token, dispatch.EndStream).ConfigureAwait(false);
+                            if (dispatch.EndStream) return;
+                        }
                     }
-                }
-                else if (dispatch.Operation is { } operation)
-                {
-                    if (operation.Finalize is not null && _finalize is null)
+                    catch (OperationCanceledException) when (!closed.IsCancellationRequested && queuedDeadline!.IsCancellationRequested)
                     {
-                        ServerFrame rejected = RejectUnstarted(connection, operation, new Status(StatusCode.Unimplemented, "settlement authorization unavailable"));
-                        await Write(connection, output, rejected, closed.Token).ConfigureAwait(false);
+                        if (admitted is not null)
+                        {
+                            connection.FinishOperation(admitted);
+                            admitted = null;
+                        }
+                        slot?.Dispose();
+                        slot = null;
+                        StreamingDispatch rejection = connection.RejectQueued(queued, new Status(StatusCode.DeadlineExceeded, "queued operation deadline exceeded"));
+                        await Write(connection, output, rejection.Response!, closed.Token, rejection.EndStream).ConfigureAwait(false);
+                        if (rejection.EndStream) return;
                     }
-                    else if (_admission.TryAcquire() is not { } slot)
+                    catch (RpcException) when (connection.AttachmentRevoked.IsCompleted)
                     {
-                        ServerFrame rejected = RejectUnstarted(connection, operation, new Status(StatusCode.ResourceExhausted, "another Prove request is already active"));
-                        await Write(connection, output, rejected, closed.Token).ConfigureAwait(false);
+                        await Retire(connection, input, output, read, queued, closed.Token).ConfigureAwait(false);
+                        return;
                     }
-                    else
+                    finally
                     {
-                        work = new StreamingWork(connection, operation, slot, Execute, _limits.OperationTimeout, _time, closed.Token);
+                        if (admitted is not null) connection.FinishOperation(admitted);
+                        slot?.Dispose();
+                        queuedDeadline?.Dispose();
+                        queuedDeadline = null;
+                        queued = null;
                     }
+                    continue;
                 }
 
-                read = Read(input, closed.Token);
+                if (inputClosed && work is null) return;
+                if (read is null && !inputClosed && queued is null) read = Read(input, closed.Token);
+                if (read is not null && work is not null)
+                    await Task.WhenAny(read, work.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
+                else
+                    await Task.WhenAny((Task?)read ?? work!.Response, revoked).WaitAsync(closed.Token).ConfigureAwait(false);
             }
         }
         finally
@@ -142,11 +225,42 @@ internal sealed class StreamingTransport
                 try { work?.Dispose(); }
                 finally
                 {
+                    queuedDeadline?.Dispose();
                     if (read is not null) ObserveRead(read);
                     Interlocked.Decrement(ref _connections);
                 }
             }
         }
+    }
+
+    private async ValueTask<BackendAdmission.BackendLease> Acquire(Task revoked, CancellationToken cancellation)
+    {
+        while (true)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (revoked.IsCompleted) throw Error(StatusCode.Aborted, "session attachment retired");
+            if (_admission.TryAcquire() is { } slot) return slot;
+            await Task.WhenAny(_admission.WaitUntilIdle(), revoked).WaitAsync(cancellation).ConfigureAwait(false);
+        }
+    }
+
+    private async Task Retire(StreamingConnection connection, IAsyncStreamReader<ClientFrame> input,
+        IServerStreamWriter<ServerFrame> output, Task<bool>? read, ClientFrame? queued, CancellationToken cancellation)
+    {
+        if (queued is null)
+        {
+            if (!await (read ?? Read(input, cancellation)).ConfigureAwait(false)) return;
+            queued = input.Current;
+            CheckMessage(queued);
+        }
+        StreamingDispatch dispatch = connection.Retire(queued);
+        await Write(connection, output, dispatch.Response!, cancellation, terminal: true).ConfigureAwait(false);
+    }
+
+    private void CheckMessage(ClientFrame frame)
+    {
+        if (frame.CalculateSize() > _limits.MaxMessageBytes)
+            throw Error(StatusCode.ResourceExhausted, "stream message exceeds decoding limit");
     }
 
     internal static ServerFrame RejectUnstarted(StreamingConnection connection, SessionOperation operation, Status status)

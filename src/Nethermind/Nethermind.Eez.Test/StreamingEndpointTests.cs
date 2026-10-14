@@ -188,7 +188,7 @@ public class StreamingEndpointTests(string fixture, int from, int to)
     }
 
     [Test]
-    public async Task ProveStream_SharedV1Admission_IsRejectedWithoutExecutingBlock()
+    public async Task ProveStream_SharedV1Admission_WaitsThenExecutesBlock()
     {
         using BackendAdmission.BackendLease slot = _server.Admission.TryAcquire()!;
         using GrpcChannel channel = _server.Channel(_server.ClientA);
@@ -201,11 +201,12 @@ public class StreamingEndpointTests(string fixture, int from, int to)
             RequestId = 2,
             Block = new StreamBlock { Data = _server.Chunks[1].Block }
         });
-        Assert.That(await call.ResponseStream.MoveNext(), Is.True, "busy shared admission returns a correlated refusal");
-        Assert.That((call.ResponseStream.Current.Rejected?.Code, call.ResponseStream.Current.Rejected?.ValidatedThrough),
-            Is.EqualTo(((int?)StatusCode.ResourceExhausted, (ulong?)from - 1)), "production v2 uses the same admission lease as v1");
+        slot.Dispose();
+        Assert.That(await call.ResponseStream.MoveNext(), Is.True, "release of shared admission permits the waiting request");
+        Assert.That((call.ResponseStream.Current.RequestId, call.ResponseStream.Current.Validated?.Number),
+            Is.EqualTo((2UL, (ulong?)from)), "production v2 validates through the backend shared with v1");
         await call.RequestStream.CompleteAsync();
-        Assert.That(await call.ResponseStream.MoveNext(), Is.False, "busy admission does not leave an active backend worker");
+        Assert.That(await call.ResponseStream.MoveNext(), Is.False, "completed admission does not leave an active backend worker");
     }
 
     private async Task<ServerFrame> Begin(AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call)

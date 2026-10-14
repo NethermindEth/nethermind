@@ -54,6 +54,17 @@ public class StreamingOptionsTests
         }
     }
 
+    [TestCase(false, TestName = "Load_ExactFourCopyReservation_IsAccepted")]
+    [TestCase(true, TestName = "Load_OneByteBelowFourCopyReservation_IsRejected")]
+    public void Load_ReservationCoversIndependentFinalizeBudget(bool belowLimit)
+    {
+        JsonObject json = Valid();
+        json["maxReservedBytes"] = 4L * 64 * 1024 * 1024 - (belowLimit ? 1 : 0);
+        using TempPath file = Config(json);
+        if (belowLimit) Assert.That(() => StreamingOptions.Load(file.Path, Attester()), Throws.TypeOf<FormatException>());
+        else Assert.That(StreamingOptions.Load(file.Path, Attester()).RegistryLimits.MaxReservedBytes, Is.EqualTo(4L * 64 * 1024 * 1024));
+    }
+
     [TestCase("profile", "rollupx", TestName = "Load_UnsupportedProfile_Rejects")]
     [TestCase("registry", "0x0000000000000000000000000000000000000000", TestName = "Load_ZeroRegistry_Rejects")]
     [TestCase("manager", "0x0000000000000000000000000000000000000000", TestName = "Load_ZeroManager_Rejects")]

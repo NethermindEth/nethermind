@@ -98,21 +98,23 @@ internal sealed class StreamingSession
         }
     }
 
-    internal SessionBinding Resume(string authenticatedOwner)
+    internal SessionBinding Resume(string authenticatedOwner) => ResumeAttachment(authenticatedOwner).Binding;
+
+    internal (SessionBinding Binding, Task Revoked) ResumeAttachment(string authenticatedOwner)
     {
         lock (_lock)
         {
             if (_cancelled || !StringComparer.Ordinal.Equals(_owner, authenticatedOwner))
                 throw Error(StatusCode.NotFound, "session unavailable");
             AdvanceEpoch();
-            return _binding;
+            return (_binding, _revoked.Task);
         }
     }
 
     internal ServerFrame Rewind(SessionBinding binding, ulong requestId, ByteString ancestorHash) =>
         RewindAttachment(binding, requestId, ancestorHash).Response;
 
-    internal (ServerFrame Response, SessionBinding Binding) RewindAttachment(SessionBinding binding, ulong requestId, ByteString ancestorHash)
+    internal (ServerFrame Response, SessionBinding Binding, Task Revoked) RewindAttachment(SessionBinding binding, ulong requestId, ByteString ancestorHash)
     {
         lock (_lock)
         {
@@ -122,7 +124,7 @@ internal sealed class StreamingSession
             if (index == -2) throw Error(StatusCode.FailedPrecondition, "ancestor outside validated prefix");
             AdvanceEpoch();
             RemoveSuffix(index + 1);
-            return (Frame(requestId, new Ready { ValidatedThrough = TipNumber, ValidatedHash = TipHash }), _binding);
+            return (Frame(requestId, new Ready { ValidatedThrough = TipNumber, ValidatedHash = TipHash }), _binding, _revoked.Task);
         }
     }
 
@@ -145,8 +147,9 @@ internal sealed class StreamingSession
         {
             CheckBinding(binding);
             CheckIdle();
-            if (block.Witness is null || block.Rlp.IsEmpty || block.Hash.Length != 32 || block.ParentHash.Length != 32)
+            if (block.Witness is null || block.Hash.Length != 32 || block.ParentHash.Length != 32)
                 throw Error(StatusCode.InvalidArgument, "invalid block witness");
+            if (block.Rlp.IsEmpty) throw Error(StatusCode.FailedPrecondition, "consensus block encoding is empty");
             int duplicate = FindBlock(block.Number);
             if (duplicate >= 0)
             {
@@ -182,7 +185,7 @@ internal sealed class StreamingSession
             int last = FindBlock(finalize.ToBlock);
             if (first < 0 || last < first || _blocks[last].Data.Hash != finalize.TerminalHash)
                 throw Error(StatusCode.FailedPrecondition, "range outside validated prefix");
-            if (finalize.CalculateSize() > _limits.MaxBytes - _bytes)
+            if (finalize.CalculateSize() > _limits.MaxBytes)
                 throw Error(StatusCode.ResourceExhausted, "session settlement limit exceeded");
             BlockWitness[] blocks = new BlockWitness[last - first + 1];
             for (int i = 0; i < blocks.Length; i++) blocks[i] = _blocks[first + i].Data.Clone();

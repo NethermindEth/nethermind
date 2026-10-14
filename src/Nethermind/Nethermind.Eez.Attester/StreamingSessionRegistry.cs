@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Google.Protobuf;
 using Grpc.Core;
 using Nethermind.Eez.Prove.V2;
@@ -12,6 +13,7 @@ namespace Nethermind.Eez.Attester;
 
 internal sealed class StreamingSessionRegistry : IDisposable
 {
+    internal const int ReservationCopies = 4;
     private readonly object _lock = new();
     private readonly Dictionary<ByteString, Entry> _sessions = [];
     private readonly StreamingRegistryLimits _limits;
@@ -26,8 +28,8 @@ internal sealed class StreamingSessionRegistry : IDisposable
     {
         sessionLimits.Validate();
         limits.Validate();
-        if (sessionLimits.MaxBytes > long.MaxValue / 2) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
-        _reservation = sessionLimits.MaxBytes * 2;
+        if (sessionLimits.MaxBytes > long.MaxValue / ReservationCopies) throw new ArgumentOutOfRangeException(nameof(sessionLimits));
+        _reservation = sessionLimits.MaxBytes * ReservationCopies;
         if (_reservation > limits.MaxReservedBytes) throw new ArgumentOutOfRangeException(nameof(limits));
         _limits = limits;
         _sessionLimits = sessionLimits;
@@ -59,6 +61,12 @@ internal sealed class StreamingSessionRegistry : IDisposable
 
     internal (StreamingSession Session, SessionBinding Binding) Resume(string authenticatedOwner, ByteString id, ulong rollupId)
     {
+        (StreamingSession session, SessionBinding binding, _) = ResumeAttachment(authenticatedOwner, id, rollupId);
+        return (session, binding);
+    }
+
+    internal (StreamingSession Session, SessionBinding Binding, Task Revoked) ResumeAttachment(string authenticatedOwner, ByteString id, ulong rollupId)
+    {
         lock (_lock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -66,9 +74,9 @@ internal sealed class StreamingSessionRegistry : IDisposable
             if (!_sessions.TryGetValue(id, out Entry? entry) || !StringComparer.Ordinal.Equals(entry.Owner, authenticatedOwner) ||
                 entry.Session.RollupId != rollupId)
                 throw Error(StatusCode.NotFound, "session unavailable");
-            SessionBinding binding = entry.Session.Resume(authenticatedOwner);
+            (SessionBinding binding, Task revoked) = entry.Session.ResumeAttachment(authenticatedOwner);
             entry.LastUsed = _time.GetTimestamp();
-            return (entry.Session, binding);
+            return (entry.Session, binding, revoked);
         }
     }
 

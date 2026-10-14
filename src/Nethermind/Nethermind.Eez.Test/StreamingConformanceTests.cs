@@ -48,8 +48,25 @@ public class StreamingConformanceTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ProoflessCases()
+    {
+        foreach (TestCaseData test in Cases())
+        {
+            string file = (string)test.Arguments[0]!;
+            string name = (string)test.Arguments[1]!;
+            yield return new TestCaseData(file, name).SetName($"ProveStream_ProoflessRequests_{name}");
+        }
+    }
+
     [TestCaseSource(nameof(Cases))]
-    public async Task ProveStream_UpstreamTranscript_ReturnsExpectedFrames(string file, string name)
+    public async Task ProveStream_UpstreamTranscript_ReturnsExpectedFrames(string file, string name) =>
+        await ReplayScenario(file, name, prooflessRequests: false);
+
+    [TestCaseSource(nameof(ProoflessCases))]
+    public async Task ProveStream_ProoflessRequests_ReturnExpectedFrames(string file, string name) =>
+        await ReplayScenario(file, name, prooflessRequests: true);
+
+    private static async Task ReplayScenario(string file, string name, bool prooflessRequests)
     {
         JsonElement document = Read(file);
         JsonElement scenario = document.GetProperty("cases").EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
@@ -65,7 +82,7 @@ public class StreamingConformanceTests
         using GrpcChannel channel = server.Channel(server.ClientA);
         Prover.ProverClient client = new(channel);
         Address attester = new(document.GetProperty("oracle").GetProperty("attester").GetString()!);
-        await Replay(client, scenario, attester);
+        await Replay(client, scenario, attester, prooflessRequests);
         await server.Admission.WaitUntilIdle();
     }
 
@@ -147,7 +164,17 @@ public class StreamingConformanceTests
         };
     }
 
-    private static async Task Replay(Prover.ProverClient client, JsonElement scenario, Address attester)
+    private static byte[]? ProoflessCalldata(ByteString calldata)
+    {
+        PostBatch batch;
+        try { batch = EezCalldata.DecodePostAndVerifyBatch(calldata.Span); }
+        catch (EezAbiException) { return null; }
+        byte[][] proofs = new byte[batch.Proofs.Length][];
+        Array.Fill(proofs, Array.Empty<byte>());
+        return EezCalldata.EncodePostAndVerifyBatch(batch with { Proofs = proofs });
+    }
+
+    private static async Task Replay(Prover.ProverClient client, JsonElement scenario, Address attester, bool prooflessRequests)
     {
         Dictionary<string, AsyncDuplexStreamingCall<ClientFrame, ServerFrame>> streams = [];
         Dictionary<ByteString, ByteString> sessions = [];
@@ -172,6 +199,8 @@ public class StreamingConformanceTests
                             if (epochs.TryGetValue((request.SessionId, request.Epoch), out ulong epoch)) request.Epoch = epoch;
                             if (sessions.TryGetValue(request.SessionId, out ByteString? id)) request.SessionId = id;
                         }
+                        if (prooflessRequests && request.Finalize?.Settlement is { } settlement && ProoflessCalldata(settlement.AbiCalldata) is { } calldata)
+                            settlement.AbiCalldata = ByteString.CopyFrom(calldata);
                         await streams[name].RequestStream.WriteAsync(request);
                         break;
                     case "receive":

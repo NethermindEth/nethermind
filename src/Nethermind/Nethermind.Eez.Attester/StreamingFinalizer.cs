@@ -33,14 +33,20 @@ internal sealed class StreamingFinalizer
     {
         cancellation.ThrowIfCancellationRequested();
         Finalize finalization = operation.Finalize ?? throw new InvalidOperationException("not a finalization operation");
-        if (finalization.Settlement.Blobs.Count != 0 || finalization.Settlement.PostingContext is not null)
-            throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile"));
+        ValidateSupportedSettlement(finalization.Settlement);
         ValidateProfile(finalization);
         L1AuthorizationSnapshot snapshot = await _authorizer.Authorize(operation.Predecessor!, cancellation).ConfigureAwait(false);
         using AdmittedWindow window = ToWindow(operation, finalization);
         ValueHash256 publicInputs = await Task.Run(() => _pipeline.Validate(window, cancellation), CancellationToken.None).ConfigureAwait(false);
         await _authorizer.Recheck(snapshot, cancellation).ConfigureAwait(false);
         return operation.SignCurrent(_signer, publicInputs, cancellation);
+    }
+
+    internal static void ValidateSupportedSettlement(SettlementInput? settlement)
+    {
+        if (settlement is null) throw new RpcException(new Status(StatusCode.InvalidArgument, "settlement input missing"));
+        if (settlement.Blobs.Count != 0 || settlement.PostingContext is not null)
+            throw new RpcException(new Status(StatusCode.Unimplemented, "unsupported settlement profile"));
     }
 
     private void ValidateProfile(Finalize finalization)

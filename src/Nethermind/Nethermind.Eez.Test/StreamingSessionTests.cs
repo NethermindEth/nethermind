@@ -313,14 +313,26 @@ public class StreamingSessionTests
     }
 
     [Test]
-    public void SettlementQuota_AtLimitSucceeds_OneOverIsRejected()
+    public void Finalize_FullRetainedByteQuota_UsesIndependentSettlementBudget()
     {
         BlockWitness block = Block(11, AnchorHash);
         Finalize finalize = FinalizeRange(11, 11);
-        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(8, block.CalculateSize() + finalize.CalculateSize(), 16));
+        Assert.That(finalize.CalculateSize(), Is.LessThanOrEqualTo(block.CalculateSize()), "settlement fits its independent byte limit");
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(8, block.CalculateSize(), 16));
+        Add(session, 11, AnchorHash);
+        using SessionOperation operation = session.AdmitFinalize(session.Binding, 2, finalize);
+        Assert.That(operation.CopyBlocks()[0].Number, Is.EqualTo(11), "a full retained window remains finalizable");
+    }
+
+    [Test]
+    public void SettlementQuota_AtLimitSucceeds_OneOverIsRejected()
+    {
+        Finalize finalize = FinalizeRange(11, 11);
+        finalize.Settlement.AbiCalldata = ByteString.CopyFrom(new byte[512]);
+        StreamingSession session = new("composer", Anchor(), new StreamingSessionLimits(8, finalize.CalculateSize(), 16));
         Add(session, 11, AnchorHash);
         using (SessionOperation admitted = session.AdmitFinalize(session.Binding, 2, finalize)) { }
-        finalize.Settlement.AbiCalldata = ByteString.CopyFrom(new byte[33]);
+        finalize.Settlement.AbiCalldata = ByteString.CopyFrom(new byte[513]);
         AssertCode(() => session.AdmitFinalize(session.Binding, 3, finalize), StatusCode.ResourceExhausted);
         Assert.That(session.Ready(session.Binding, 4).Ready.ValidatedThrough, Is.EqualTo(11));
     }
@@ -368,7 +380,7 @@ public class StreamingSessionTests
         AssertCode(() => new StreamingSession("composer", begin, Limits()), StatusCode.InvalidArgument);
     }
 
-    [TestCase("rlp", StatusCode.InvalidArgument)]
+    [TestCase("rlp", StatusCode.FailedPrecondition)]
     [TestCase("hash", StatusCode.InvalidArgument)]
     [TestCase("parentLength", StatusCode.InvalidArgument)]
     [TestCase("parent", StatusCode.FailedPrecondition)]

@@ -18,7 +18,7 @@ public class StreamingRegistryTests
     [Test]
     public void OwnerQuota_DoesNotConsumeOtherOwnersCapacity()
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 1, 8000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 1, 16000);
         registry.Begin("first", Anchor());
         AssertCode(() => registry.Begin("first", Anchor()), StatusCode.ResourceExhausted);
         Assert.That(registry.Begin("second", Anchor()).Id.Length, Is.EqualTo(32));
@@ -35,7 +35,7 @@ public class StreamingRegistryTests
     [Test]
     public void GlobalReservationLimit_IsIndependentOfSessionCount()
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 4, 3999);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 4, 7999);
         registry.Begin("first", Anchor());
         AssertCode(() => registry.Begin("second", Anchor()), StatusCode.ResourceExhausted);
     }
@@ -44,7 +44,7 @@ public class StreamingRegistryTests
     public void Expiry_RetiresIdleSession_AndReleasesReservation()
     {
         ManualTime time = new();
-        using StreamingSessionRegistry registry = Registry(time, 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(time, 1, 1, 4000);
         StreamingSession old = registry.Begin("first", Anchor());
         time.Advance(TimeSpan.FromSeconds(10));
         AssertCode(() => registry.Resume("first", old.Id, 1), StatusCode.NotFound);
@@ -55,7 +55,7 @@ public class StreamingRegistryTests
     public void Expiry_FencesWorker_ButDoesNotReleaseQuotaBeforeDrain()
     {
         ManualTime time = new();
-        using StreamingSessionRegistry registry = Registry(time, 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(time, 1, 1, 4000);
         StreamingSession old = registry.Begin("first", Anchor());
         using SessionOperation operation = old.AdmitBlock(old.Binding, 1, Block());
         time.Advance(TimeSpan.FromSeconds(10));
@@ -69,7 +69,7 @@ public class StreamingRegistryTests
     public void Touch_ExtendsRetention_ButWrongOwnerCannotRefresh()
     {
         ManualTime time = new();
-        using StreamingSessionRegistry registry = Registry(time, 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(time, 1, 1, 4000);
         StreamingSession session = registry.Begin("first", Anchor());
         time.Advance(TimeSpan.FromSeconds(9));
         registry.Touch(session, session.Binding);
@@ -83,7 +83,7 @@ public class StreamingRegistryTests
     [Test]
     public void Cancel_ReleasesIdleSlot_ButPendingWorkerKeepsReservation()
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 4000);
         StreamingSession session = registry.Begin("first", Anchor());
         using SessionOperation pending = session.AdmitBlock(session.Binding, 1, Block());
         session.Cancel(session.Binding, 2);
@@ -98,7 +98,7 @@ public class StreamingRegistryTests
     public void Dispose_FencesWorkers_AndRejectsFurtherAccess()
     {
         ManualTime time = new();
-        StreamingSessionRegistry registry = Registry(time, 1, 1, 2000);
+        StreamingSessionRegistry registry = Registry(time, 1, 1, 4000);
         StreamingSession session = registry.Begin("first", Anchor());
         using SessionOperation pending = session.AdmitBlock(session.Binding, 1, Block());
         registry.Dispose();
@@ -106,6 +106,106 @@ public class StreamingRegistryTests
         AssertCode(() => session.CommitBlock(pending, Executed(pending)), StatusCode.Aborted);
         Assert.Throws<ObjectDisposedException>(() => registry.Begin("first", Anchor()));
         Assert.That(time.TimerDisposed, Is.True);
+    }
+
+    [Test]
+    public void Reservation_OverflowIsRejectedBeforeRegistryCreation()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new StreamingSessionRegistry(
+            new StreamingRegistryLimits(2, 2, long.MaxValue, TimeSpan.FromSeconds(10)),
+            new StreamingSessionLimits(8, long.MaxValue / 4 + 1, 16), new ManualTime()));
+        using StreamingSessionRegistry registry = new(new StreamingRegistryLimits(2, 2, long.MaxValue, TimeSpan.FromSeconds(10)),
+            new StreamingSessionLimits(8, long.MaxValue / 4, 16), new ManualTime());
+        registry.Begin("first", Anchor());
+        AssertCode(() => registry.Begin("second", Anchor()), StatusCode.ResourceExhausted);
+    }
+
+    [TestCase("empty", StatusCode.InvalidArgument)]
+    [TestCase("short", StatusCode.InvalidArgument)]
+    [TestCase("long", StatusCode.InvalidArgument)]
+    [TestCase("foreign", StatusCode.PermissionDenied)]
+    [TestCase("zeroEpoch", StatusCode.PermissionDenied)]
+    [TestCase("futureEpoch", StatusCode.PermissionDenied)]
+    [TestCase("begin", StatusCode.InvalidArgument)]
+    [TestCase("resume", StatusCode.InvalidArgument)]
+    public void Connection_UnauthorizedEnvelope_ReportsNoSessionProgress(string invalid, StatusCode code)
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime());
+        StreamingConnection connection = new(registry, "first", 1);
+        ServerFrame ready = connection.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        ClientFrame frame = Frame(ready, 7);
+        frame.Cancel = new Cancel();
+        switch (invalid)
+        {
+            case "empty": frame.SessionId = ByteString.Empty; break;
+            case "short": frame.SessionId = ByteString.CopyFrom(new byte[31]); break;
+            case "long": frame.SessionId = ByteString.CopyFrom(new byte[33]); break;
+            case "foreign": frame.SessionId = Hash(99); break;
+            case "zeroEpoch": frame.Epoch = 0; break;
+            case "futureEpoch": frame.Epoch = ulong.MaxValue; break;
+            case "begin": frame.Begin = Anchor(); break;
+            default: frame.Resume = new Resume(); break;
+        }
+        ServerFrame rejected = connection.Dispatch(frame).Response!;
+        Assert.That((rejected.RequestId, rejected.SessionId.IsEmpty, rejected.Epoch, rejected.Rejected.Code,
+            rejected.Rejected.ValidatedThrough, rejected.Rejected.ValidatedHash.IsEmpty, rejected.Rejected.Details.IsEmpty),
+            Is.EqualTo((7UL, true, 0UL, (int)code, 0UL, true, true)));
+        connection.CheckResponse(rejected);
+        ServerFrame valid = connection.Dispatch(Frame(ready, 8)).Response!;
+        Assert.That((valid.Rejected.Code, valid.SessionId, valid.Epoch, valid.Rejected.ValidatedThrough),
+            Is.EqualTo(((int)StatusCode.Unimplemented, ready.SessionId, ready.Epoch, 10UL)), "invalid envelopes leave the saved authorized binding usable");
+    }
+
+    [TestCase(false, TestName = "Connection_UnsupportedBlobs_AreRejectedBeforeMissingRange")]
+    [TestCase(true, TestName = "Connection_UnsupportedPostingContext_IsRejectedBeforeMissingRange")]
+    public void Connection_UnsupportedSettlement_DoesNotAdmitUnvalidatedRange(bool context)
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime());
+        StreamingConnection connection = new(registry, "first", 1);
+        ServerFrame ready = connection.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        SettlementInput settlement = new() { AbiCalldata = Hash(50) };
+        if (context) settlement.PostingContext = new L1PostingContext();
+        else settlement.Blobs.Add(Hash(60));
+        ClientFrame frame = Frame(ready, 7);
+        frame.Finalize = new Finalize { FromBlock = 12, ToBlock = 12, TerminalHash = Hash(12), Settlement = settlement };
+        StreamingDispatch rejected = connection.Dispatch(frame);
+        Assert.That((rejected.Operation, rejected.Response!.Rejected.Code, rejected.Response.Rejected.ValidatedThrough),
+            Is.EqualTo(((SessionOperation?)null, (int)StatusCode.Unimplemented, 10UL)));
+        ClientFrame block = Frame(ready, 8);
+        block.Block = new Nethermind.Eez.Prove.V2.Block { Data = Block() };
+        SessionOperation operation = connection.Dispatch(block).Operation!;
+        connection.FinishOperation(operation);
+    }
+
+    [TestCase(false, StatusCode.Aborted)]
+    [TestCase(true, StatusCode.PermissionDenied)]
+    public void Connection_RetiredAttachment_ReturnsUnboundRejectionAndEnds(bool copyNewEpoch, StatusCode code)
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime());
+        StreamingConnection original = new(registry, "first", 1);
+        ServerFrame ready = original.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
+        ServerFrame newer = new StreamingConnection(registry, "first", 1).Dispatch(new ClientFrame { SessionId = ready.SessionId, Resume = new Resume() }).Response!;
+        ClientFrame old = Frame(ready, 7);
+        old.Cancel = new Cancel();
+        if (copyNewEpoch) old.Epoch = newer.Epoch;
+        StreamingDispatch retired = original.Dispatch(old);
+        Assert.That((retired.EndStream, retired.Response!.SessionId.IsEmpty, retired.Response.Epoch, retired.Response.RequestId,
+            retired.Response.Rejected.Code, retired.Response.Rejected.ValidatedThrough, retired.Response.Rejected.ValidatedHash.IsEmpty),
+            Is.EqualTo((true, true, 0UL, 7UL, (int)code, 0UL, true)), "copying a fresh epoch does not authorize an old transport");
+    }
+
+    [Test]
+    public void Resume_CapturesRevocationForExactlyItsReturnedBinding()
+    {
+        using StreamingSessionRegistry registry = Registry(new ManualTime());
+        StreamingSession session = registry.Begin("first", Anchor());
+        (StreamingSession first, SessionBinding binding, Task revoked) = registry.ResumeAttachment("first", session.Id, 1);
+        Assert.That((ReferenceEquals(first, session), binding.Epoch, revoked.IsCompleted), Is.EqualTo((true, 2UL, false)));
+        (StreamingSession second, SessionBinding next, Task nextRevoked) = registry.ResumeAttachment("first", session.Id, 1);
+        Assert.That((ReferenceEquals(second, session), next.Epoch, revoked.IsCompleted, nextRevoked.IsCompleted), Is.EqualTo((true, 3UL, true, false)),
+            "a later takeover revokes only the fence paired with the earlier binding");
+        AssertCode(() => session.Ready(binding, 7), StatusCode.Aborted);
+        Assert.That(session.Ready(next, 8).Ready.ValidatedThrough, Is.EqualTo(10));
     }
 
     [Test]
@@ -126,7 +226,7 @@ public class StreamingRegistryTests
     [TestCase(2UL, TestName = "Connection_UnknownRollup_ReturnsUnsupportedProfile")]
     public void Connection_UnsupportedRollup_RemainsUnboundAndAllowsCorrectBegin(ulong rollup)
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 4000);
         StreamingConnection connection = new(registry, "first", 1);
         Begin begin = Anchor();
         begin.RollupId = rollup;
@@ -143,7 +243,7 @@ public class StreamingRegistryTests
     [TestCase("Cancel", TestName = "Connection_CancelBeforeBegin_ReturnsMalformedEnvelope")]
     public void Connection_OperationBeforeBegin_ReturnsUnboundRejection(string kind)
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 4000);
         StreamingConnection connection = new(registry, "first", 1);
         ClientFrame frame = new() { RequestId = 7 };
         switch (kind)
@@ -172,7 +272,7 @@ public class StreamingRegistryTests
         StreamingConnection resumed = new(registry, "first", 1);
         ServerFrame newer = resumed.Dispatch(new ClientFrame { SessionId = ready.SessionId, RequestId = 8, Resume = new Resume() }).Response!;
         Assert.That(newer.Epoch, Is.EqualTo(2));
-        AssertCode(() => original.Dispatch(Frame(newer, 9)), StatusCode.Aborted);
+        Assert.That(original.Dispatch(Frame(newer, 9)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.PermissionDenied));
     }
 
     [Test]
@@ -203,7 +303,7 @@ public class StreamingRegistryTests
     [Test]
     public void Connection_CancelEndsStream_WithoutReleasingRunningWorker()
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 2000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 1, 1, 4000);
         StreamingConnection connection = new(registry, "first", 1);
         ServerFrame ready = connection.Dispatch(new ClientFrame { Begin = Anchor() }).Response!;
         ClientFrame block = Frame(ready, 1);
@@ -250,13 +350,13 @@ public class StreamingRegistryTests
     [Test]
     public void SubmillisecondRetention_IsRejectedBeforeTimerCreation() =>
         Assert.Throws<ArgumentOutOfRangeException>(() => new StreamingSessionRegistry(
-            new StreamingRegistryLimits(1, 1, 2000, TimeSpan.FromTicks(1)),
+            new StreamingRegistryLimits(1, 1, 4000, TimeSpan.FromTicks(1)),
             new StreamingSessionLimits(8, 1000, 16), new ManualTime()));
 
     [Test]
     public void GlobalReservation_AtLimitAcceptsExactlyTwoSessions()
     {
-        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 4, 4000);
+        using StreamingSessionRegistry registry = Registry(new ManualTime(), 4, 4, 8000);
         registry.Begin("first", Anchor());
         registry.Begin("second", Anchor());
         AssertCode(() => registry.Begin("third", Anchor()), StatusCode.ResourceExhausted);
@@ -274,8 +374,8 @@ public class StreamingRegistryTests
         if (wrong == "id") cancel.SessionId = Hash(99);
         else cancel.Epoch++;
         ServerFrame rejected = connection.Dispatch(cancel).Response!;
-        Assert.That((rejected.SessionId, rejected.Epoch, rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough),
-            Is.EqualTo((ready.SessionId, ready.Epoch, 7UL, (int)StatusCode.FailedPrecondition, 10UL)));
+        Assert.That((rejected.SessionId.IsEmpty, rejected.Epoch, rejected.RequestId, rejected.Rejected.Code, rejected.Rejected.ValidatedThrough, rejected.Rejected.ValidatedHash.IsEmpty),
+            Is.EqualTo((true, 0UL, 7UL, (int)StatusCode.PermissionDenied, 0UL, true)));
         Assert.That(connection.Dispatch(Frame(ready, 8)).Response!.Rejected.Code, Is.EqualTo((int)StatusCode.Unimplemented));
     }
 
@@ -333,7 +433,7 @@ public class StreamingRegistryTests
         connection.FinishOperation(operation);
     }
 
-    private static StreamingSessionRegistry Registry(ManualTime time, int count = 4, int perOwner = 4, long bytes = 8000) =>
+    private static StreamingSessionRegistry Registry(ManualTime time, int count = 4, int perOwner = 4, long bytes = 16000) =>
         new(new StreamingRegistryLimits(count, perOwner, bytes, TimeSpan.FromSeconds(10)), new StreamingSessionLimits(8, 1000, 16), time);
     private static Begin Anchor() => new() { RollupId = 1, AnchorNumber = 10, AnchorHash = Hash(1), AnchorStateRoot = Hash(2) };
     private static ClientFrame Frame(ServerFrame ready, ulong requestId) => new() { SessionId = ready.SessionId, Epoch = ready.Epoch, RequestId = requestId };

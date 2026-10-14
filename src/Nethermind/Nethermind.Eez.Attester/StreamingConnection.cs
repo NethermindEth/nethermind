@@ -20,6 +20,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
     private SessionOperation? _pending;
     private bool _ended;
     private Task? _proofRevoked;
+    private Task _attachmentRevoked = Unbound;
 
     internal StreamingDispatch Dispatch(ClientFrame frame)
     {
@@ -29,17 +30,65 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
             try
             {
                 if (_session is null) return Bind(frame);
-                registry.Touch(_session, _binding);
-                if (frame.SessionId != _session.Id || frame.Epoch != _binding.Epoch)
-                    throw Error(StatusCode.FailedPrecondition, "frame session or epoch differs from attachment");
-                if (_pending is not null && _pending.RequestId == frame.RequestId)
-                    throw Error(StatusCode.InvalidArgument, "request id already outstanding");
+                StreamingDispatch? rejection = AuthorizeBound(frame);
+                if (rejection is not null) return rejection;
                 return DispatchBound(frame);
             }
             catch (RpcException exception)
             {
-                return StreamingDispatch.Reply(Reject(frame.RequestId, exception.Status));
+                if (_session is null) return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, exception.Status));
+                if (_attachmentRevoked.IsCompleted) return Retire(frame);
+                try { return StreamingDispatch.Reply(Reject(frame.RequestId, exception.Status)); }
+                catch (RpcException) when (_attachmentRevoked.IsCompleted) { return Retire(frame); }
             }
+        }
+    }
+
+    private StreamingDispatch? AuthorizeBound(ClientFrame frame)
+    {
+        if (_attachmentRevoked.IsCompleted) return Retire(frame);
+        if (frame.KindCase is ClientFrame.KindOneofCase.Begin or ClientFrame.KindOneofCase.Resume)
+            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.InvalidArgument, "stream already bound")));
+        if (frame.SessionId.Length != 32)
+            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.InvalidArgument, "session id must be 32 bytes")));
+        if (frame.SessionId != _session!.Id || frame.Epoch != _binding.Epoch)
+            return StreamingDispatch.Reply(RejectUnbound(frame.RequestId, new Status(StatusCode.PermissionDenied, "frame outside attachment")));
+        registry.Touch(_session, _binding);
+        if (_pending is not null && _pending.RequestId == frame.RequestId)
+            return StreamingDispatch.Reply(Reject(frame.RequestId, new Status(StatusCode.InvalidArgument, "request id already outstanding")));
+        return null;
+    }
+
+    internal StreamingDispatch? CheckDataFrame(ClientFrame frame)
+    {
+        lock (_lock)
+        {
+            if (_ended) throw new InvalidOperationException("stream ended");
+            if (_session is null) return Dispatch(frame);
+            try
+            {
+                StreamingDispatch? rejection = AuthorizeBound(frame);
+                if (rejection is not null) return rejection;
+                if (frame.Finalize is not null) StreamingFinalizer.ValidateSupportedSettlement(frame.Finalize.Settlement);
+                return null;
+            }
+            catch (RpcException exception)
+            {
+                if (_attachmentRevoked.IsCompleted) return Retire(frame);
+                try { return StreamingDispatch.Reply(Reject(frame.RequestId, exception.Status)); }
+                catch (RpcException) when (_attachmentRevoked.IsCompleted) { return Retire(frame); }
+            }
+        }
+    }
+
+    internal StreamingDispatch RejectQueued(ClientFrame frame, Status status)
+    {
+        lock (_lock)
+        {
+            StreamingDispatch? rejection = CheckDataFrame(frame);
+            if (rejection is not null) return rejection;
+            try { return StreamingDispatch.Reply(Reject(frame.RequestId, status)); }
+            catch (RpcException) when (_attachmentRevoked.IsCompleted) { return Retire(frame); }
         }
     }
 
@@ -53,14 +102,17 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
                 if (frame.Begin.RollupId != _rollupId) throw Error(StatusCode.Unimplemented, "rollup identity unsupported");
                 _session = registry.Begin(_owner, frame.Begin);
                 _binding = _session.Binding;
+                _attachmentRevoked = _session.AttachmentRevoked(_binding);
                 return StreamingDispatch.Reply(_session.Ready(_binding, frame.RequestId));
             case ClientFrame.KindOneofCase.Resume:
                 if (frame.SessionId.Length != 32) throw Error(StatusCode.InvalidArgument, "Resume requires a session id");
-                (_session, _binding) = registry.Resume(_owner, frame.SessionId, _rollupId);
+                (_session, _binding, _attachmentRevoked) = registry.ResumeAttachment(_owner, frame.SessionId, _rollupId);
                 return StreamingDispatch.Reply(_session.Ready(_binding, frame.RequestId));
             case ClientFrame.KindOneofCase.None:
+                if (!frame.SessionId.IsEmpty) throw Error(frame.SessionId.Length == 32 ? StatusCode.PermissionDenied : StatusCode.InvalidArgument, "unbound session id");
                 throw Error(StatusCode.Unimplemented, "unsupported operation");
             default:
+                if (!frame.SessionId.IsEmpty) throw Error(frame.SessionId.Length == 32 ? StatusCode.PermissionDenied : StatusCode.InvalidArgument, "unbound session id");
                 throw Error(StatusCode.InvalidArgument, "Begin or Resume must be first");
         }
     }
@@ -74,11 +126,13 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
                 _pending = _session!.AdmitBlock(_binding, frame.RequestId, frame.Block.Data);
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Finalize:
+                StreamingFinalizer.ValidateSupportedSettlement(frame.Finalize.Settlement);
                 _pending = _session!.AdmitFinalize(_binding, frame.RequestId, frame.Finalize);
                 return StreamingDispatch.Work(_pending);
             case ClientFrame.KindOneofCase.Rewind:
-                (ServerFrame response, SessionBinding binding) = _session!.RewindAttachment(_binding, frame.RequestId, frame.Rewind.AncestorHash);
+                (ServerFrame response, SessionBinding binding, Task revoked) = _session!.RewindAttachment(_binding, frame.RequestId, frame.Rewind.AncestorHash);
                 _binding = binding;
+                _attachmentRevoked = revoked;
                 return StreamingDispatch.Reply(response);
             case ClientFrame.KindOneofCase.Cancel:
                 ServerFrame cancelled = _session!.Cancel(_binding, frame.RequestId);
@@ -128,7 +182,7 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
 
     internal Task AttachmentRevoked
     {
-        get { lock (_lock) return _session?.AttachmentRevoked(_binding) ?? Unbound; }
+        get { lock (_lock) return _attachmentRevoked; }
     }
 
     internal bool CanComplete(SessionOperation operation)
@@ -149,11 +203,30 @@ internal sealed class StreamingConnection(StreamingSessionRegistry registry, str
             if (_session is not null)
             {
                 _session.CheckCurrent(_binding);
+                if (response.SessionId.IsEmpty && response.Epoch == 0 && response.Rejected is { ValidatedThrough: 0 } rejected && rejected.ValidatedHash.IsEmpty) return;
                 if (response.SessionId != _session.Id || response.Epoch != _binding.Epoch)
                     throw Error(StatusCode.Aborted, "response outside current attachment");
             }
         }
     }
+
+    internal StreamingDispatch Retire(ClientFrame frame)
+    {
+        lock (_lock)
+        {
+            _ended = true;
+            StatusCode code = frame.SessionId.Length != 32 ? StatusCode.InvalidArgument :
+                frame.SessionId == _session?.Id && (frame.Epoch == _binding.Epoch || frame.Resume is not null && frame.Epoch == 0)
+                    ? StatusCode.Aborted : StatusCode.PermissionDenied;
+            return StreamingDispatch.End(RejectUnbound(frame.RequestId, new Status(code, "session attachment retired")));
+        }
+    }
+
+    private static ServerFrame RejectUnbound(ulong requestId, Status status) => new()
+    {
+        RequestId = requestId,
+        Rejected = new Rejected { Code = (int)status.StatusCode, Message = status.Detail },
+    };
 
     internal void Detach()
     {

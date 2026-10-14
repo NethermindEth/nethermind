@@ -20,12 +20,12 @@ internal sealed class StreamingWork : IDisposable
     internal Task<StreamingResult> Response { get; }
 
     internal StreamingWork(StreamingConnection connection, SessionOperation operation, BackendAdmission.BackendLease slot,
-        Func<SessionOperation, CancellationToken, Task<StreamingResult>> execute, TimeSpan timeout, TimeProvider time, CancellationToken cancellation)
+        Func<SessionOperation, CancellationToken, Task<StreamingResult>> execute, TimeSpan timeout, TimeProvider time, CancellationToken cancellation, CancellationTokenSource? deadline = null)
     {
         _connection = connection;
         Operation = operation;
         _slot = slot;
-        _deadline = new CancellationTokenSource(timeout, time);
+        _deadline = deadline ?? new CancellationTokenSource(timeout, time);
         _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _deadline.Token);
         try { _worker = execute(operation, _cancellation.Token); }
         catch (Exception exception) { _worker = Task.FromException<StreamingResult>(exception); }

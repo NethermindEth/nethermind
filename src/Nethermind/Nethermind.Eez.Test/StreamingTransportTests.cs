@@ -37,7 +37,7 @@ public class StreamingTransportTests
     [SetUp]
     public void SetUp()
     {
-        _registry = new StreamingSessionRegistry(new StreamingRegistryLimits(4, 4, 8000, TimeSpan.FromMinutes(10)),
+        _registry = new StreamingSessionRegistry(new StreamingRegistryLimits(4, 4, 16000, TimeSpan.FromMinutes(10)),
             new StreamingSessionLimits(8, 1000, 16), TimeProvider.System);
         _admission = new BackendAdmission(NullLogger<BackendAdmission>.Instance);
         _input = new Reader();
@@ -176,8 +176,7 @@ public class StreamingTransportTests
             _worker.SetResult(Executed());
             return null;
         });
-        RpcException exception = (await Assert.ThrowsAsync<RpcException>(Run))!;
-        Assert.That(exception.StatusCode, Is.EqualTo(StatusCode.Aborted), "only the latest authenticated attachment can send responses");
+        await Run();
         await _admission.WaitUntilIdle();
         Assert.That(_output.Frames.Count, Is.EqualTo(1), "no response from the superseded worker is written");
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "a superseded execution cannot advance retained state");
@@ -206,15 +205,162 @@ public class StreamingTransportTests
     }
 
     [Test]
-    public async Task Run_SharedBackendIsBusy_RejectsWithoutStartingWorker()
+    public async Task Run_SharedBackendIsBusy_WaitsBeforeStartingWorker()
     {
         using BackendAdmission.BackendLease occupied = _admission.TryAcquire()!;
+        _worker.SetResult(Executed());
         _input.Add(BlockFrame);
-        await Run();
-        Assert.That((_executions, _output.Frames[1].Rejected.Code), Is.EqualTo((0, (int)StatusCode.ResourceExhausted)),
-            "both protocol versions must use the same execution slot");
+        Task stream = Run();
+        Assert.That((_executions, stream.IsCompleted, _admission.TryAcquire()), Is.EqualTo((0, false, (BackendAdmission.BackendLease?)null)),
+            "waiting v2 requests cannot execute next to the current backend owner");
         occupied.Dispose();
-        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "global admission failure cannot acknowledge a block");
+        await stream;
+        Assert.That((_executions, _output.Frames[1].Validated.Number), Is.EqualTo((1, 11UL)), "release permits exactly one waiting execution");
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11));
+    }
+
+    [Test]
+    public async Task Run_PipelinedBlocksAndFinalize_KeepOneQueuedFrameAndDrainInOrder()
+    {
+        TaskCompletionSource<ExecutedStreamingBlock> second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource queued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _transport = Transport((operation, _) =>
+        {
+            _executions++;
+            if (operation.Block!.Number == 11) return _worker.Task;
+            Assert.That(operation.PreStateRoot, Is.EqualTo(Hash(31)), "dependent work sees the committed predecessor state");
+            secondStarted.SetResult();
+            return second.Task;
+        }, finalize: (_, _) => Task.FromResult(TestProof()));
+        _input.Add(BlockFrame);
+        _input.Add(() =>
+        {
+            queued.SetResult();
+            ClientFrame frame = Bound(3, new StreamBlock { Data = new BlockWitness
+            {
+                Number = 12, Hash = Hash(12), ParentHash = Hash(11), Rlp = Hash(12), Witness = new ExecutionWitness(),
+            } });
+            return frame;
+        });
+        _input.Add(() => Bound(4, new Finalize { FromBlock = 11, ToBlock = 12, TerminalHash = Hash(12), Settlement = new SettlementInput { AbiCalldata = Hash(90) } }));
+        Task stream = Run();
+        await queued.Task;
+        Assert.That((_input.Reads, _executions, _output.Frames.Count), Is.EqualTo((3, 1, 1)), "one queued data frame stops further reads");
+        _worker.SetResult(Executed());
+        await secondStarted.Task;
+        Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Validated.Number), Is.EqualTo((2UL, 11UL)));
+        second.SetResult(new ExecutedStreamingBlock(12, Hash(12), Hash(11), Hash(31), Hash(32)));
+        await stream;
+        await _admission.WaitUntilIdle();
+        Assert.That(_output.Frames.Select(static frame => frame.RequestId), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
+        Assert.That((_output.Frames[2].Validated.Number, _output.Frames[3].Proof, _executions), Is.EqualTo((12UL, TestProof(), 2)),
+            "pipelined validation and the terminal proof use one execution slot");
+    }
+
+    [TestCase(false, TestName = "Run_QueueWaitDeadline_RejectsWithoutStartingWorker")]
+    [TestCase(true, TestName = "Run_QueueWaitAndExecution_ShareOneOperationDeadline")]
+    public async Task Run_QueuedOperation_UsesOriginalDeadline(bool execute)
+    {
+        ManualTime time = new();
+        using BackendAdmission.BackendLease occupied = _admission.TryAcquire()!;
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _transport = Transport((operation, token) => { started.SetResult(); return Execute(operation, token); },
+            new StreamingTransportLimits(2, 1000, TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2)), time);
+        _input.Add(BlockFrame);
+        Task stream = Run();
+        Assert.That((_executions, stream.IsCompleted), Is.EqualTo((0, false)), "the pending frame waits on shared admission");
+        time.Advance(TimeSpan.FromMinutes(1));
+        if (execute)
+        {
+            occupied.Dispose();
+            await started.Task;
+        }
+        time.Advance(TimeSpan.FromMinutes(1));
+        await stream;
+        Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _executions),
+            Is.EqualTo((2UL, (int)StatusCode.DeadlineExceeded, execute ? 1 : 0)), "waiting does not renew the operation deadline");
+        Assert.That(_admission.TryAcquire(), Is.Null, "deadline expiry does not release another owner or an undrained worker");
+        if (execute) _worker.SetResult(Executed());
+        else occupied.Dispose();
+        await _admission.WaitUntilIdle();
+        Assert.That(_output.Frames.Exists(static frame => frame.Validated is not null), Is.False);
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "expired queued work cannot run later or commit stale progress");
+    }
+
+    [Test]
+    public async Task Run_UnauthorizedQueuedFrame_DoesNotCancelAcceptedExecution()
+    {
+        _input.Add(BlockFrame);
+        _input.Add(() => new ClientFrame { RequestId = 3, SessionId = Hash(99), Epoch = 1, Block = new StreamBlock { Data = new BlockWitness() } });
+        _output.OnWrite = frame =>
+        {
+            if (frame.Rejected is not null)
+            {
+                Assert.That(_workerCancellation.IsCancellationRequested, Is.False);
+                _worker.SetResult(Executed());
+            }
+            return Task.CompletedTask;
+        };
+        await Run();
+        Assert.That((_output.Frames[1].Rejected.Code, _output.Frames[1].SessionId.IsEmpty, _output.Frames[1].Rejected.ValidatedHash.IsEmpty),
+            Is.EqualTo(((int)StatusCode.PermissionDenied, true, true)));
+        Assert.That((_output.Frames[2].RequestId, _output.Frames[2].Validated.Number), Is.EqualTo((2UL, 11UL)));
+    }
+
+    [Test]
+    public async Task Run_AlreadyReadCancel_FencesSimultaneouslyCompletedWorker()
+    {
+        _input.Add(BlockFrame);
+        _input.Add(() => { _worker.SetResult(Executed()); return Bound(3, new Cancel()); });
+        await Run();
+        await _admission.WaitUntilIdle();
+        Assert.That((_output.Frames.Count, _output.Frames[^1].RequestId, _output.Frames[^1].Cancelled is not null), Is.EqualTo((2, 3UL, true)),
+            "an accepted control fences completed work before its response can be sent");
+    }
+
+    [TestCase(false, StatusCode.Aborted)]
+    [TestCase(true, StatusCode.PermissionDenied)]
+    public async Task Run_ResumeWithQueuedData_RetiresOldStreamAndKeepsBackendUntilDrain(bool copyNewEpoch, StatusCode code)
+    {
+        TaskCompletionSource queued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _input.Add(BlockFrame);
+        _input.Add(() =>
+        {
+            ClientFrame frame = Bound(3, new StreamBlock { Data = new BlockWitness() });
+            if (copyNewEpoch) frame.Epoch = Resume().Epoch;
+            queued.SetResult();
+            return frame;
+        });
+        Task stream = Run();
+        await queued.Task;
+        if (!copyNewEpoch) Resume();
+        await stream;
+        Assert.That((_output.Frames.Count, _output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].SessionId.IsEmpty),
+            Is.EqualTo((2, 3UL, (int)code, true)));
+        Assert.That((_workerCancellation.IsCancellationRequested, _admission.TryAcquire()), Is.EqualTo((true, (BackendAdmission.BackendLease?)null)));
+        _worker.SetResult(Executed());
+        await _admission.WaitUntilIdle();
+        Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(10), "neither running nor queued old-epoch work advances the resumed session");
+    }
+
+    [TestCase(false, TestName = "Run_UnsupportedBlobs_DoNotWaitForBusyBackend")]
+    [TestCase(true, TestName = "Run_UnsupportedPostingContext_DoesNotWaitForBusyBackend")]
+    public async Task Run_UnsupportedSettlement_RejectsBeforeWaitingForAdmission(bool context)
+    {
+        using BackendAdmission.BackendLease occupied = _admission.TryAcquire()!;
+        _transport = Transport(Execute, finalize: (_, _) => Task.FromResult(TestProof()));
+        _input.Add(() =>
+        {
+            SettlementInput settlement = new() { AbiCalldata = Hash(90) };
+            if (context) settlement.PostingContext = new L1PostingContext();
+            else settlement.Blobs.Add(Hash(60));
+            return Bound(2, new Finalize { FromBlock = 11, ToBlock = 11, TerminalHash = Hash(11), Settlement = settlement });
+        });
+        await Run();
+        Assert.That((_output.Frames[^1].RequestId, _output.Frames[^1].Rejected.Code, _output.Frames[^1].Rejected.ValidatedThrough, _executions),
+            Is.EqualTo((2UL, (int)StatusCode.Unimplemented, 10UL, 0)), "unsupported profile data never waits on execution or attempts range admission");
+        Assert.That(_admission.TryAcquire(), Is.Null, "profile refusal leaves the current backend owner untouched");
     }
 
     [Test]
@@ -274,7 +420,7 @@ public class StreamingTransportTests
         _input.Add(() => Bound(4, new Cancel()));
         await Run();
         Assert.That((finalizations, _output.Frames[^1].RequestId, _output.Frames[^1].Proof, _input.Reads),
-            Is.EqualTo((1, 3UL, TestProof(), 4)), "Proof is correlated and terminal");
+            Is.EqualTo((1, 3UL, TestProof(), 3)), "Proof is correlated and terminal");
         await _admission.WaitUntilIdle();
         Assert.That(Resume().Ready.ValidatedThrough, Is.EqualTo(11), "proof completion retains the reusable validated prefix");
     }
@@ -296,8 +442,7 @@ public class StreamingTransportTests
             _ => ResumeAndClose(),
         });
         Task stream = Run();
-        if (control == "Resume") await Assert.ThrowsAsync<RpcException>(() => stream);
-        else await stream;
+        await stream;
         Assert.That(_admission.TryAcquire(), Is.Null, "an unfinished proof worker owns the shared slot after the control response");
         proof.SetResult(TestProof());
         await _admission.WaitUntilIdle();
