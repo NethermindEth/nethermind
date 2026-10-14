@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -41,7 +43,7 @@ public class StateTestTraceStderrTests
         string first = WriteFailingFixture("first");
         string second = WriteFailingFixture("second");
 
-        (_, string stderr) = await NethtestProcess.Run(["-x", "--trace", "-m", "--stateTest"], $"{first}\n{second}\n\n");
+        (string stdout, string stderr) = await NethtestProcess.Run(["-x", "--trace", "-m", "--stateTest"], $"{first}\n{second}\n\n");
 
         string[] lines = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         using (Assert.EnterMultipleScope())
@@ -53,6 +55,8 @@ public class StateTestTraceStderrTests
 
             Assert.That(lines.Count(static line => line.StartsWith("{\"stateRoot\"", StringComparison.Ordinal)), Is.EqualTo(2),
                 "each fixture in the batch ends its trace with the post-state root");
+            Assert.That(Results(stdout), Is.EqualTo(new[] { ("first_d0g0v0_", false), ("second_d0g0v0_", false) }),
+                "each failure is still reported in the stdout results document of its batch line");
         }
     }
 
@@ -62,6 +66,23 @@ public class StateTestTraceStderrTests
         (_, string stderr) = await NethtestProcess.Run(["--stateTest", "--neverTrace", "--input", WriteFailingFixture("untraced")]);
 
         Assert.That(stderr, Does.Contain("FAIL").And.Contain("untraced"));
+    }
+
+    /// <summary>Reads the results documents that a batch run writes to stdout, one per stdin line.</summary>
+    private static List<(string Name, bool Pass)> Results(string stdout)
+    {
+        List<(string Name, bool Pass)> results = [];
+        Utf8JsonReader reader = new(Encoding.UTF8.GetBytes(stdout), new JsonReaderOptions { AllowMultipleValues = true });
+        while (reader.Read())
+        {
+            using JsonDocument document = JsonDocument.ParseValue(ref reader);
+            foreach (JsonElement result in document.RootElement.EnumerateArray())
+            {
+                results.Add((result.GetProperty("name").GetString(), result.GetProperty("pass").GetBoolean()));
+            }
+        }
+
+        return results;
     }
 
     /// <summary>A Berlin transfer to a contract that stores a value, expected to leave a zero state root.</summary>
