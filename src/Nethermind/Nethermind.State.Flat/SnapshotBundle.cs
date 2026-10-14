@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
 
@@ -48,6 +49,7 @@ public sealed class SnapshotBundle : IDisposable
     private readonly TrieNodeLog? _trieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
+    private static int _fallbackReadWarned;
 
     internal ResourcePool.Usage _usage;
 
@@ -449,75 +451,104 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, flags, action, arg);
     }
 
-    // This is called only during trie commit
-    public void SetStateNode(in TreePath path, TrieNode newNode)
+    /// <summary>Makes the nodes a bulk set wrote to the state trie readable from this bundle, in write order.</summary>
+    internal void PublishLoggedStateNodes(WrittenNodes written)
     {
         GuardDispose();
-        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
 
-        // Note: Hot path
         _trieChanged = true;
-        _changedStateNodes[path] = _trieNodeLog!.AppendRecordFromRlp(null, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan());
-        // Its RLP is now readable by path, so the trie node cache may unresolve it from cached parents.
-        newNode.IsPersisted = true;
-        _transientResource.UpdateStateNode(path, newNode);
-    }
-
-    internal void PublishStateNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
-    {
-        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + CountBufferedNodes(buffers));
-
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
-        {
-            foreach ((TreePath path, TrieNode node) in buffer) SetStateNode(path, node);
-        }
+        ReadOnlySpan<(TreePath Path, ulong Pointer)> nodes = written.AsSpan();
+        _changedStateNodes.EnsureCapacity(_changedStateNodes.Count + nodes.Length);
+        foreach ((TreePath path, ulong pointer) in nodes) _changedStateNodes[path] = pointer;
     }
 
     internal AddressStorageNodeDictionary.AddressNodes GetStorageNodeDestination(Hash256 address) =>
         _changedStorageNodes.GetOrAddAddress(address);
 
-    // This is called only during trie commit
-    public void SetStorageNode(Hash256 addr, in TreePath path, TrieNode newNode)
+    /// <summary>Makes the nodes a bulk set wrote to a storage trie readable from this bundle, in write order.</summary>
+    /// <param name="nodes">The destination of the trie's address, from <see cref="GetStorageNodeDestination"/>.</param>
+    internal void PublishLoggedStorageNodes(AddressStorageNodeDictionary.AddressNodes nodes, WrittenNodes written)
     {
         GuardDispose();
-        SetStorageNode(GetStorageNodeDestination(addr), addr, path, newNode);
-    }
 
-    internal void SetStorageNode(
-        AddressStorageNodeDictionary.AddressNodes nodes,
-        Hash256 addr,
-        in TreePath path,
-        TrieNode newNode)
-    {
-        GuardDispose();
-        if (!newNode.IsSealed) throw new Exception("Node must be sealed for setting");
-
-        // Note: Hot path
         _trieChanged = true;
-        nodes.Set(path, _trieNodeLog!.AppendRecordFromRlp(addr, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan()));
-        // Its RLP is now readable by path, so the trie node cache may unresolve it from cached parents.
-        newNode.IsPersisted = true;
-        _transientResource.UpdateStorageNode(addr, path, newNode);
+        ReadOnlySpan<(TreePath Path, ulong Pointer)> writtenNodes = written.AsSpan();
+        nodes.EnsureAdditionalCapacity(writtenNodes.Length);
+        foreach ((TreePath path, ulong pointer) in writtenNodes) nodes.Set(path, pointer);
     }
 
-    internal void PublishStorageNodes(
-        AddressStorageNodeDictionary.AddressNodes nodes,
-        Hash256 address,
-        IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    /// <summary>Loads the record of a trie node the trie node log does not hold, for a bulk set or point read.</summary>
+    /// <remarks>
+    /// Tries the nodes warmed for this block, then persistence, whose node is verified against <paramref name="hash"/> and
+    /// added to the warmed nodes. The nodes of this bundle's changes and of every in-memory snapshot are in the log, which
+    /// their retains keep readable, so they are looked up by path only as a last resort that counts
+    /// <see cref="Metrics.TrieNodeLogFallbackReads"/>.
+    /// </remarks>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    internal bool TryLoadTrieNodeRecord(Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        nodes.EnsureAdditionalCapacity(CountBufferedNodes(buffers));
+        WarmedNodes warmed = _transientResource.WarmedNodes;
+        if (warmed.TryGet(address, path, hash, out record)) return true;
 
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers)
+        bool inserted = false;
+        PersistedNodeInsert insert = new(warmed, address, in path, in hash, ref record, ref inserted);
+        if (address is null) TryLoadStateRlp(path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        else TryLoadStorageRlp(address, path, ReadFlags.None, PersistedNodeInsert.Insert, insert);
+        if (inserted) return true;
+
+        if (!TryFindInMemoryRecord(_snapshots, address, path, hash, out record)
+            && !TryFindInMemoryRecord(_readOnlySnapshotBundle.InMemorySnapshots, address, path, hash, out record)) return false;
+
+        Metrics.IncrementTrieNodeLogFallbackReads();
+        if (Interlocked.Exchange(ref _fallbackReadWarned, 1) == 0)
         {
-            foreach ((TreePath path, TrieNode node) in buffer) SetStorageNode(nodes, address, path, node);
+            ILogger logger = Static.LogManager.GetClassLogger<SnapshotBundle>();
+            if (logger.IsWarn) logger.Warn($"Trie node read by path from an in-memory snapshot instead of the trie node log. Address: {address}, path: {path}, hash: {hash}");
         }
+
+        return true;
     }
 
-    private static int CountBufferedNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers)
+    private static bool TryFindInMemoryRecord(SnapshotPooledList snapshots, Hash256? address, in TreePath path, in ValueHash256 hash, out NodeRecordRef record)
     {
-        int count = 0;
-        foreach (List<(TreePath Path, TrieNode Node)> buffer in buffers) count += buffer.Count;
-        return count;
+        for (int i = snapshots.Count - 1; i >= 0; i--)
+        {
+            Snapshot snapshot = snapshots[i];
+            bool found = address is null
+                ? snapshot.TryGetStateNode(path, out ulong pointer)
+                : snapshot.TryGetStorageNode((address, path), out pointer);
+            if (found && snapshot.LogRetain?.Log.TryLocate(pointer, out record) == true && record.Hash == hash) return true;
+        }
+
+        record = default;
+        return false;
+    }
+
+    /// <summary>Inserts the persisted RLP handed to it into the warmed nodes, if it is the requested node.</summary>
+    private readonly ref struct PersistedNodeInsert
+    {
+        public static readonly ReadOnlySpanAction<byte, PersistedNodeInsert> Insert =
+            static (rlp, insert) => insert._inserted = insert._warmed.TryInsert(insert._address, insert._path, insert._hash, rlp, out insert._record);
+
+        private readonly WarmedNodes _warmed;
+        private readonly Hash256? _address;
+        private readonly ref readonly TreePath _path;
+        private readonly ref readonly ValueHash256 _hash;
+        private readonly ref NodeRecordRef _record;
+        private readonly ref bool _inserted;
+
+        /// <param name="record">Set to the inserted record.</param>
+        /// <param name="inserted">Set to whether the RLP was verified and inserted.</param>
+        public PersistedNodeInsert(WarmedNodes warmed, Hash256? address, ref readonly TreePath path, ref readonly ValueHash256 hash,
+            ref NodeRecordRef record, ref bool inserted)
+        {
+            _warmed = warmed;
+            _address = address;
+            _path = ref path;
+            _hash = ref hash;
+            _record = ref record;
+            _inserted = ref inserted;
+        }
     }
 
     public void SetAccount(Address address, Account? account) =>

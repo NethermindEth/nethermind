@@ -84,10 +84,17 @@ namespace Nethermind.State
                 : new CappedArray<byte>(account.IsTotallyEmpty ? EmptyAccountRlp.Bytes : _decoder.EncodeAsBytes(account)));
         }
 
-        [SkipLocalsInit]
         internal void SetAccounts(Dictionary<AddressAsKey, Account?> accounts)
         {
-            using ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
+            using ArrayPoolListRef<BulkSetEntry> entries = CreateAccountEntries(accounts);
+            BulkSet(entries);
+        }
+
+        /// <summary>The bulk set entries of <paramref name="accounts"/>, keyed by address hash; a null account deletes.</summary>
+        [SkipLocalsInit]
+        internal static ArrayPoolListRef<BulkSetEntry> CreateAccountEntries(Dictionary<AddressAsKey, Account?> accounts)
+        {
+            ArrayPoolListRef<BulkSetEntry> entries = new(accounts.Count);
             Unsafe.SkipInit(out KeyHashBatch batch);
             batch.Initialize(Address.Size);
             foreach (KeyValuePair<AddressAsKey, Account?> entry in accounts)
@@ -99,7 +106,7 @@ namespace Nethermind.State
                 if (batch.IsFull) batch.Flush(entries.AsSpan());
             }
             batch.Flush(entries.AsSpan());
-            BulkSet(entries);
+            return entries;
         }
 
         public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);

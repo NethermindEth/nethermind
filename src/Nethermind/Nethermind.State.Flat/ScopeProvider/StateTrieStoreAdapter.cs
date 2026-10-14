@@ -21,21 +21,10 @@ internal sealed class StateTrieStoreAdapter(
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStateRlp(path, hash, flags);
 
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle);
-
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address is null) return this;
         return new StorageTrieStoreAdapter(bundle, address);
-    }
-
-    private class Committer(SnapshotBundle bundle) : AbstractMinimalCommitter
-    {
-        protected override void WriteNode(in TreePath path, TrieNode node) => bundle.SetStateNode(path, node);
-
-        protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
-            bundle.PublishStateNodes(buffers);
     }
 }
 
@@ -84,22 +73,6 @@ internal sealed class StorageTrieStoreAdapter(
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
-
-    public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-        new Committer(bundle, addressHash);
-
-    private class Committer(
-        SnapshotBundle bundle,
-        Hash256AsKey addressHash) : AbstractMinimalCommitter
-    {
-        private readonly AddressStorageNodeDictionary.AddressNodes _nodes = bundle.GetStorageNodeDestination(addressHash);
-
-        protected override void WriteNode(in TreePath path, TrieNode node) =>
-            bundle.SetStorageNode(_nodes, addressHash, path, node);
-
-        protected override void PublishNodes(IEnumerable<List<(TreePath Path, TrieNode Node)>> buffers) =>
-            bundle.PublishStorageNodes(_nodes, addressHash, buffers);
-    }
 }
 
 internal sealed class StorageTrieStoreWarmerAdapter(

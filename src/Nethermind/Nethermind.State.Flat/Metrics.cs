@@ -24,6 +24,18 @@ public static class Metrics
 
     public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
 
+    [CounterMetric]
+    [Description("Trie nodes a bulk set found only by path in an in-memory snapshot, not by pointer in the trie node log. Nonzero means the log dropped nodes a live snapshot still holds.")]
+    public static long TrieNodeLogFallbackReads => Volatile.Read(ref _trieNodeLogFallbackReads);
+    private static long _trieNodeLogFallbackReads;
+    internal static void IncrementTrieNodeLogFallbackReads() => Interlocked.Increment(ref _trieNodeLogFallbackReads);
+
+    [CounterMetric]
+    [Description("Time spent publishing the trie nodes bulk sets wrote into the snapshot bundle (ticks)")]
+    public static long TrieNodePublishTime => Volatile.Read(ref _trieNodePublishTime);
+    private static long _trieNodePublishTime;
+    internal static void AddTrieNodePublishTime(long ticks) => Interlocked.Add(ref _trieNodePublishTime, ticks);
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }

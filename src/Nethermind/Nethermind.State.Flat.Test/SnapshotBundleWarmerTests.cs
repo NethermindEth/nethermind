@@ -101,12 +101,13 @@ public class SnapshotBundleWarmerTests
         TreePath committedStoragePath = TreePath.FromHexString("34");
         TrieNode committedNode = Leaf(0x82);
         TrieNode committedStorageNode = Leaf(0x83);
-        bundle.SetStateNode(committedPath, committedNode);
-        bundle.SetStorageNode(storageAddress, committedStoragePath, committedStorageNode);
+        TrieNodeLogRetain retain = _log.RetainActive();
+        PublishNode(bundle, null, committedPath, committedNode);
+        PublishNode(bundle, storageAddress, committedStoragePath, committedStorageNode);
 
         // Commit folds the written nodes into the bundle's recyclable _snapshots and swaps the transient away
         // from them, so afterwards they are reachable only through the path the warmer must not take.
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), _log.RetainActive(), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
         TrieNode warmedCommittedState = bundle.FindStateNodeOrUnknownForTrieWarmer(committedPath, TestItem.KeccakA);
         TrieNode warmedCommittedStorage = bundle.FindStorageNodeOrUnknownTrieWarmer(storageAddress, committedStoragePath, TestItem.KeccakA);
@@ -487,9 +488,9 @@ public class SnapshotBundleWarmerTests
         using SnapshotBundle bundle = new(
             new ReadOnlySnapshotBundle(FlatTestHelpers.SnapshotList(persisted), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty()),
             new NullTrieNodeCache(), _log, _pool, ResourcePool.Usage.MainBlockProcessing);
-        if (storage) bundle.SetStorageNode(address, childPath, child);
-        else bundle.SetStateNode(childPath, child);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), _log.RetainActive(), returnSnapshot: false);
+        TrieNodeLogRetain retain = _log.RetainActive();
+        PublishNode(bundle, storage ? address : null, childPath, child);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), retain, returnSnapshot: false);
 
         ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
         TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
@@ -516,35 +517,13 @@ public class SnapshotBundleWarmerTests
         Assert.That(liveChild.FullRlp, Is.SequenceEqualTo(child.FullRlp));
     }
 
-    [Test]
-    public void Committed_nodes_are_pruned_from_cached_parents([Values] bool storage)
+    /// <summary>Publishes <paramref name="node"/> into <paramref name="bundle"/> as a bulk set writing it would.</summary>
+    private void PublishNode(SnapshotBundle bundle, Hash256? address, in TreePath path, TrieNode node)
     {
-        TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
-        Hash256 address = TestItem.KeccakC;
-        TreePath rootPath = TreePath.Empty;
-        TreePath childPath = TreePath.FromHexString("0");
-        TrieNode child = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[33]);
-        child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
-        child.Seal();
-        TrieNode branch = new(NodeType.Branch);
-        branch.SetChild(0, child);
-        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
-        branch.Seal();
-
-        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool, _log, static _ => { }), cache, _log, _pool, ResourcePool.Usage.MainBlockProcessing);
-        foreach ((TreePath path, TrieNode node) in new[] { (childPath, child), (rootPath, branch) })
-        {
-            if (storage) bundle.SetStorageNode(address, path, node);
-            else bundle.SetStateNode(path, node);
-        }
-        (Snapshot? snapshot, TransientResource? transientResource) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), _log.RetainActive());
-        cache.Add(transientResource!);
-        transientResource!.ReleaseLease();
-        snapshot!.Dispose();
-
-        TrieNode childAfterAdd = branch.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref childPath, 0)!;
-        Assert.That(childAfterAdd, Is.Not.SameAs(child));
-        Assert.That(childAfterAdd.Keccak, Is.EqualTo(child.Keccak));
+        using WrittenNodes written = new();
+        written.Add(path, _log.AppendRecordFromRlp(address, path, node.Keccak!.ValueHash256, node.FullRlp.AsSpan()));
+        if (address is null) bundle.PublishLoggedStateNodes(written);
+        else bundle.PublishLoggedStorageNodes(bundle.GetStorageNodeDestination(address), written);
     }
 
     private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)

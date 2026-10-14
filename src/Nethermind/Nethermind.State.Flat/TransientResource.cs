@@ -12,6 +12,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -33,6 +34,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public BloomFilter PrewarmedAddresses = new(size.PrewarmedAddressSize, 14); // 14 is exactly 8 probes, which the SIMD instruction does.
     public TrieNodeCache.ChildCache Nodes = new(size.NodesCacheSize);
+    internal readonly WarmedNodes WarmedNodes = new(size.NodesCacheSize);
 
     internal void OnRented(IResourcePool pool, ResourcePool.Usage usage)
     {
@@ -86,6 +88,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public void Reset()
     {
         Nodes.Reset();
+        WarmedNodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)
         {
