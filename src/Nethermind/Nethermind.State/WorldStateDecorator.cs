@@ -73,6 +73,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void GetOriginal(in StorageCell storageCell, out UInt256 value)
         => State.GetOriginal(in storageCell, out value);
 
+    public virtual UInt256 GetOriginalBalance(Address address)
+        => State.GetOriginalBalance(address);
+
     public virtual void Get(in StorageCell storageCell, out UInt256 value)
         => State.Get(in storageCell, out value);
 
@@ -130,6 +133,12 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => State.InsertCode(address, in codeHash, code, spec, isGenesis);
+
+    public virtual void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => State.InsertTransientCode(address, in codeHash, code, spec);
+
+    public virtual void DiscardTransientCode()
+        => State.DiscardTransientCode();
 
     public virtual bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
         => State.AdoptCode(address, in codeHash, code, spec);
