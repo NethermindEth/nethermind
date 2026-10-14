@@ -458,7 +458,8 @@ public class FrameTxValidationPrefixSimulationTests
         Assert.That(tracer.Violated, Is.True);
     }
 
-    // Banned in every prefix frame, deploy-frame initcode at tx.sender included.
+    // Banned in every prefix frame, deploy-frame initcode at tx.sender included. With EIP-8298 off, SETCODEFROM is
+    // undefined, so the prefix must fare exactly as with another undefined opcode (0xF6).
     [Test]
     public void Simulate_PrefixUsesSetCodeFrom_BannedOnlyUnderEip8298([Values] bool eip8298, [Values] bool inDeployFrame)
     {
