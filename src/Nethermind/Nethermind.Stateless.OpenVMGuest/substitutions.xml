@@ -6,8 +6,14 @@
   ../Nethermind.Stateless.Guest/substitutions.xml.
 -->
 <linker>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only OpenVM's runtime exports the 256-bit multiplication MUL runs on. -->
+    <type fullname="Nethermind.Evm.OpenVmBigIntFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
   <assembly fullname="Nethermind.Serialization.Ssz">
-    <!-- Only OpenVM's runtime exports the SHA-256 compression instruction merkleization hashes pairs with. -->
+    <!-- Merkleization hashes pairs with the three-operand zkvm_sha256_compress only OpenVM's runtime exports; SP1's takes two. -->
     <type fullname="Nethermind.Serialization.Ssz.Merkleization.OpenVmSha256Flag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
