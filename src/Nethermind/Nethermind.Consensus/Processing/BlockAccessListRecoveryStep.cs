@@ -51,9 +51,9 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
 
         if (stored is null || stored.WireHash != expectedHash) return;
 
-        // The engine API path checks the item limit before processing; a list that reaches the block from the
-        // store skipped that check, so one over the limit is left off and the block takes the sequential path,
-        // where the generated list is checked against the limit after execution.
+        // A stored list skipped the engine API's pre-execution item limit check. The validator would still reject
+        // the block afterwards, but an over-limit list would first drive prewarming, the index build and parallel
+        // execution, so leave it off and let the sequential path check the generated list after execution.
         if (Eip7928Constants.ExceedsItemLimit(stored.ItemCount, block.Header.GasLimit))
         {
             if (_logger.IsDebug) _logger.Debug($"Ignoring stored block access list of {block.ToString(Block.Format.Short)}: {stored.ItemCount} items exceed the limit of {block.Header.GasLimit / Eip7928Constants.ItemCost}");

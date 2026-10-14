@@ -175,17 +175,16 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
-        // EIP-7928: the item limit applies to the list execution produced, however the block got here.
-        // The pre-execution check in ValidateBlockLevelAccessList only sees a list delivered with the
-        // block (engine API); RLP imports carry none, and a list reattached from the store for queued
-        // processing (sync, restart replay, reorg) skipped it. Check the generated list, or the attached
-        // one where execution only verified it against the attached list instead of building its own.
+        // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
+        // execution. The pre-execution check in ValidateBlockLevelAccessList only fires when
+        // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
+        // null suggested BAL and the agreed gas limit must still be validated against the
+        // generated BAL here.
         string? balSizeError = null;
-        if (_specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-            && !ValidateBlockLevelAccessListSize(
-                processedBlock,
-                processedBlock.GeneratedBlockAccessList?.ItemCount ?? processedBlock.BlockAccessList?.ItemCount ?? suggestedBlock.BlockAccessList?.ItemCount ?? 0,
-                ref balSizeError))
+        if (suggestedBlock.BlockAccessList is null
+            && processedBlock.GeneratedBlockAccessList is not null
+            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+            && !ValidateBlockLevelAccessListSize(processedBlock, processedBlock.GeneratedBlockAccessList.ItemCount, ref balSizeError))
         {
             error = balSizeError;
             return false;
@@ -193,6 +192,20 @@ public class BlockValidator(
 
         if (processedBlock.Header.Hash == suggestedBlock.Header.Hash)
         {
+            // A list reattached from the store for queued processing (sync, restart replay, reorg) skipped the
+            // pre-execution check, and parallel execution only verified against it, so check it here. Only on a
+            // matching block, so a divergent one still reports the mismatch.
+            if (suggestedBlock.BlockAccessList is not null
+                && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+                && !ValidateBlockLevelAccessListSize(
+                    processedBlock,
+                    processedBlock.GeneratedBlockAccessList?.ItemCount ?? suggestedBlock.BlockAccessList.ItemCount,
+                    ref balSizeError))
+            {
+                error = balSizeError;
+                return false;
+            }
+
             error = null;
             return true;
         }
