@@ -47,7 +47,6 @@ public sealed class ImportPbtSnapshot(
         await using FileStream? preimages = config.MigrationPreimagesPath is { } preimagesPath
             ? File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read)
             : null;
-        await anchorImport.ImportSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
-            () => blockTree.IsMainChain(anchor), cancellationToken);
+        await anchorImport.ImportSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch, cancellationToken);
     }
 }

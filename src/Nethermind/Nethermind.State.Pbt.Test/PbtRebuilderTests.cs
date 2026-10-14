@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -76,33 +76,15 @@ public class PbtRebuilderTests
         return leaves;
     }
 
-    private static async Task<ValueHash256> Rebuild(
-        List<RebuildEntry> leaves,
-        int chunkSize,
-        StateId targetState,
-        PbtRocksDbPersistence target,
-        ILogManager logManager,
-        int windowSize)
+    private static ValueHash256 Rebuild(List<RebuildEntry> leaves, PbtRocksDbPersistence target, ILogManager logManager, int windowSize)
     {
         PbtConfig config = new();
-        PbtRebuilder rebuilder = new(target, config, config.FoldConcurrency, logManager);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
-        for (int offset = 0; offset < leaves.Count; offset += chunkSize)
-        {
-            int count = Math.Min(chunkSize, leaves.Count - offset);
-            ArrayPoolList<RebuildEntry> chunk = new(count);
-            for (int index = 0; index < count; index++) chunk.Add(leaves[offset + index]);
-            channel.Writer.TryWrite(chunk);
-        }
-        channel.Writer.Complete();
-
-        return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
+        using IEnumerator<RebuildEntry> source = leaves.GetEnumerator();
+        return new PbtRebuilder(target, config, config.FoldConcurrency, logManager).Rebuild(source, windowSize, CancellationToken.None);
     }
 
-    [TestCase(1, 3)]
-    [TestCase(3, 1)]
-    [TestCase(int.MaxValue, 0)]
-    public async Task Rebuild_matches_reference_root_across_channel_chunks(int chunkSize, int windowSize)
+    [Test]
+    public void Rebuild_matches_reference_root_across_windows([Values(0, 1, 3)] int windowSize)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtConfig config = Config;
@@ -114,10 +96,7 @@ public class PbtRebuilderTests
         TestLogger log = new();
         ILogManager logManager = new OneLoggerLogManager(new ILogger(log));
 
-        // the header root the source claims is unrelated to the tree root the fold produces, so the
-        // two must be recorded separately rather than one standing in for the other
-        StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Rebuild(leaves, chunkSize, targetState, target, logManager, windowSize);
+        ValueHash256 root = Rebuild(leaves, target, logManager, windowSize);
 
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
@@ -140,36 +119,30 @@ public class PbtRebuilderTests
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and windowed rebuild must have the same root");
             PbtStoreTestExtensions.AssertSameGroups(db, reader, incrementalStore, "incremental replay and windowed rebuild must have the exact same group keys and payloads");
-            Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
-            Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
             Assert.That(log.LogList, Has.Some.Contains("PBT rebuild complete").And.Some.Contains($"{leaves.Count} received leaves"));
         }
     }
 
     [Test]
-    public async Task Rebuild_empty_source_produces_empty_tree()
+    public void Rebuild_empty_source_produces_empty_tree()
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
-        StateId targetState = new(3, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Rebuild([], 1, targetState, target, LimboLogs.Instance, 0);
+        ValueHash256 root = Rebuild([], target, LimboLogs.Instance, 0);
 
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 
     [Test]
-    public async Task Rebuild_commits_leaf_windows_but_publishes_only_on_completion([Values(1, 3)] int windowSize, [Values] SourceEnd end)
+    public async Task Rebuild_commits_leaf_windows_without_publishing([Values(1, 3)] int windowSize, [Values] SourceEnd end)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(1);
-        DrainedChunkReader source = new(channel.Reader);
-        StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
+        using BlockingCollection<RebuildEntry> pending = new();
         using CancellationTokenSource cancellation = new();
-        Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, Config.FoldConcurrency, LimboLogs.Instance)
-            .Rebuild(source, targetState, cancellation.Token, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
+        DrainedLeafEnumerator source = new(pending, windowSize, cancellation.Token);
+        Task<ValueHash256> rebuilding = Task.Run(() => new PbtRebuilder(target, Config, Config.FoldConcurrency, LimboLogs.Instance)
+            .Rebuild(source, windowSize, cancellation.Token));
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;
         ValueHash256 rebuiltRoot = default;
@@ -179,9 +152,7 @@ public class PbtRebuilderTests
             for (int index = 0; index < 2; index++)
             {
                 PbtVariableTreeKey key = (PbtVariableTreeKey)Eip8297KeyDerivation.OverflowCodeKey(TestItem.KeccakB.ValueHash256.Bytes, 256 + index);
-                ArrayPoolList<RebuildEntry> chunk = new(windowSize);
-                for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
-                await channel.Writer.WriteAsync(chunk);
+                for (int repeat = 0; repeat < windowSize; repeat++) pending.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await source.Drained[index].Task.WaitAsync(TimeSpan.FromSeconds(10));
 
                 expectedRoot = expectedStore.Fold(expectedRoot, [(key.Bytes.ToArray(), TestItem.KeccakC.BytesToArray())]);
@@ -192,20 +163,20 @@ public class PbtRebuilderTests
                     Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
                     Assert.That(target.IsValid, Is.False);
                     PbtStoreTestExtensions.AssertSameGroups(db, reader, expectedStore);
-                    Assert.Throws<ObjectDisposedException>(() => chunk.AsSpan());
                 }
             }
 
             switch (end)
             {
                 case SourceEnd.Complete:
-                    channel.Writer.Complete();
+                    pending.CompleteAdding();
                     break;
                 case SourceEnd.Cancel:
                     await cancellation.CancelAsync();
                     break;
                 case SourceEnd.Fail:
-                    channel.Writer.Complete(new InvalidDataException("source failed"));
+                    source.Failure = new InvalidDataException("source failed");
+                    pending.CompleteAdding();
                     break;
             }
             try { rebuiltRoot = await rebuilding.WaitAsync(TimeSpan.FromSeconds(10)); }
@@ -214,7 +185,7 @@ public class PbtRebuilderTests
         finally
         {
             await cancellation.CancelAsync();
-            channel.Writer.TryComplete();
+            pending.CompleteAdding();
         }
         using IPbtPersistence.IReader completedReader = target.CreateReader();
         using (Assert.EnterMultipleScope())
@@ -223,39 +194,47 @@ public class PbtRebuilderTests
             {
                 Assert.That(failure, Is.Null);
                 Assert.That(rebuiltRoot, Is.EqualTo(expectedRoot));
-                Assert.That(completedReader.CurrentState, Is.EqualTo(targetState));
-                Assert.That(target.IsValid, Is.True);
             }
             else
             {
                 Assert.That(failure, end == SourceEnd.Cancel ? Is.InstanceOf<OperationCanceledException>() : Is.TypeOf<InvalidDataException>());
-                Assert.That(completedReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
-                Assert.That(target.IsValid, Is.False);
-                PbtStoreTestExtensions.AssertSameGroups(db, completedReader, expectedStore);
             }
+            Assert.That(completedReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(target.IsValid, Is.False);
+            PbtStoreTestExtensions.AssertSameGroups(db, completedReader, expectedStore);
         }
     }
 
     public enum SourceEnd { Complete, Cancel, Fail }
 
-    private sealed class DrainedChunkReader(ChannelReader<ArrayPoolList<RebuildEntry>> source) : ChannelReader<ArrayPoolList<RebuildEntry>>
+    /// <summary>Hands out the leaves added to <paramref name="source"/>, signalling each time a whole batch has been read and it waits for more.</summary>
+    private sealed class DrainedLeafEnumerator(BlockingCollection<RebuildEntry> source, int batchSize, CancellationToken cancellationToken) : IEnumerator<RebuildEntry>
     {
-        private int _readChunks;
+        private int _consumed;
+        public Exception? Failure { get; set; }
         public TaskCompletionSource[] Drained { get; } =
             [new(TaskCreationOptions.RunContinuationsAsynchronously), new(TaskCreationOptions.RunContinuationsAsynchronously)];
+        public RebuildEntry Current { get; private set; }
+        object IEnumerator.Current => Current;
 
-        public override bool TryRead(out ArrayPoolList<RebuildEntry> item)
+        public bool MoveNext()
         {
-            if (source.TryRead(out item!))
+            if (!source.TryTake(out RebuildEntry entry))
             {
-                _readChunks++;
-                return true;
+                if (_consumed != 0 && _consumed % batchSize == 0) Drained[_consumed / batchSize - 1].TrySetResult();
+                if (!source.TryTake(out entry, Timeout.Infinite, cancellationToken))
+                {
+                    if (Failure is not null) throw Failure;
+                    return false;
+                }
             }
-            if (_readChunks != 0) Drained[_readChunks - 1].TrySetResult();
-            return false;
+            _consumed++;
+            Current = entry;
+            return true;
         }
 
-        public override ValueTask<bool> WaitToReadAsync(CancellationToken cancellationToken = default) =>
-            source.WaitToReadAsync(cancellationToken);
+        public void Reset() => throw new NotSupportedException();
+
+        public void Dispose() { }
     }
 }

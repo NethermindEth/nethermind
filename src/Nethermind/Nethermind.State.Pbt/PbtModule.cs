@@ -54,8 +54,6 @@ public class PbtModule(IPbtConfig config) : Module
             // Import requires a PreimageFlat source; persistence validates the recorded layout.
             .AddSingleton<IPersistence, IColumnsDb<FlatDbColumns>, ILogManager>(
                 (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
-            .AddSingleton<PbtRebuilder, PbtRocksDbPersistence, IPbtConfig, ILogManager>(
-                (target, pbtConfig, logManager) => new PbtRebuilder(target, pbtConfig, pbtConfig.FoldConcurrency, logManager))
             .AddStep(typeof(ImportPbtFromPreimageFlat))
             .AddStep(typeof(ImportPbtSnapshot))
             .AddSingleton<PbtScanner>()

@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
-using Nethermind.Db;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -273,8 +273,11 @@ public static class PbtOfflineSource
                 code = new CodeInfo(bytes);
             }
             ValueHash256 addressKeyHash = Eip8297KeyDerivation.AddressHash(address.ToHash().Bytes);
-            foreach ((PbtPath key, ValueHash256 value) in PbtStateKey.AccountLeaves(addressKeyHash, account, code))
-                AddLeaf((PbtVariableTreeKey)key, value);
+            using (ArrayPoolList<KeyValuePair<PbtPath, ValueHash256>> accountLeaves = PbtStateKey.AccountLeaves(addressKeyHash, account, code))
+            {
+                foreach ((PbtPath key, ValueHash256 value) in accountLeaves)
+                    AddLeaf((PbtVariableTreeKey)key, value);
+            }
 
             ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
             uint count = 0;

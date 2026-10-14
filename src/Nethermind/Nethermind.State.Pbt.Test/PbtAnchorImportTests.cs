@@ -31,6 +31,7 @@ using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
+using NSubstitute;
 using NUnit.Framework;
 using Nethermind.State.Pbt.Image;
 
@@ -206,12 +207,13 @@ public class PbtAnchorImportTests
     [Test]
     public async Task Cancellation_during_snapshot_staging_cleans_code_spool_and_can_be_retried([Values] bool withPreimages)
     {
-        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3 });
+        // A one-leaf window keeps the fold from reading the whole snapshot before staging creates its code spool.
+        using Harness harness = new("a4", new PbtConfig { ExportSortBufferBytes = 1024, ImportConcurrency = 3, ImportWindowSize = 1 });
         using CancellationTokenSource cancellation = new();
         bool observedCodeSpool = false;
         using MemoryStream snapshot = new ObservedSnapshot(File.ReadAllBytes(Eip8347FixtureState.ArtifactPath("a4", "snapshot.pbt")), () =>
         {
-            observedCodeSpool = Directory.GetDirectories(harness.Scratch.Path, "pbt-import-codes-*").Length == 1;
+            observedCodeSpool = Directory.Exists(Path.Combine(harness.WorkDb.Path, "import")) && Directory.GetDirectories(Path.Combine(harness.WorkDb.Path, "import"), "pbt-import-codes-*").Length == 1;
             if (observedCodeSpool) cancellation.Cancel();
         });
         using FileStream preimages = OpenArtifact("a4", "preimages.bin");
@@ -590,13 +592,14 @@ public class PbtAnchorImportTests
     private sealed class Harness : IDisposable
     {
         public readonly TempPath Scratch = TempPath.GetTempDirectory();
+        public readonly TempPath WorkDb = TempPath.GetTempDirectory();
         public readonly SyncColumnsDb Target = new();
         public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
+        public readonly IBlockTree BlockTree = Substitute.For<IBlockTree>();
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorImport? _anchorImport;
-        public PbtAnchorImport AnchorImport => _anchorImport ??=
-            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.PersistenceManager, _config, LimboLogs.Instance);
+        public PbtAnchorImport AnchorImport => _anchorImport ??= CreateAnchorImport();
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -606,6 +609,7 @@ public class PbtAnchorImportTests
         {
             _name = name;
             _config = config;
+            BlockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(_ => IsAnchorCurrent());
             Directory.CreateDirectory(Scratch.Path);
             Anchor = new("1", new Hash256(Eip8347FixtureState.Metadata("anchor").GetProperty("blockHash").GetString()!), Eip8347FixtureState.AnchorHeader(name), 48);
             Open();
@@ -629,6 +633,19 @@ public class PbtAnchorImportTests
             _anchorImport = null;
         }
 
+        private IDbFactory WorkDbFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(WorkDb.Path);
+            return dbFactory;
+        }
+
+        private PbtAnchorImport CreateAnchorImport()
+        {
+            PbtRocksDbPersistence target = new(Target, _config, NullTrieNodeLog.Instance);
+            return new PbtAnchorImport(target, Target, Pbt.PersistenceManager, BlockTree, new PbtLeafIngestion(target, new PbtRebuilder(target, _config, _config.ImportConcurrency, LimboLogs.Instance), WorkDbFactory(), _config, LimboLogs.Instance), _config, LimboLogs.Instance);
+        }
+
         public async Task Publish(CancellationToken cancellationToken = default)
         {
             using FileStream snapshot = OpenArtifact(_name, "snapshot.pbt");
@@ -637,13 +654,14 @@ public class PbtAnchorImportTests
         }
 
         public Task Publish(Stream snapshot, Stream? preimages, CancellationToken cancellationToken) =>
-            AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
+            AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, cancellationToken);
 
         public void Dispose()
         {
             Pbt.DisposeAsync().AsTask().GetAwaiter().GetResult();
             Target.Dispose();
             Scratch.Dispose();
+            WorkDb.Dispose();
         }
     }
 

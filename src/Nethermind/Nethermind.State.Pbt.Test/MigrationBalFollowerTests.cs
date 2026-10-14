@@ -354,8 +354,10 @@ public class MigrationBalFollowerTests
             Directory.CreateDirectory(_scratch.Path);
             using FileStream snapshot = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "snapshot.pbt"));
             using FileStream preimages = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin"));
-            await new PbtAnchorImport(new PbtRocksDbPersistence(_target, new PbtConfig(), NullTrieNodeLog.Instance), _target, _pbt.PersistenceManager, new PbtConfig(), LimboLogs.Instance)
-                .ImportSnapshot(snapshot, preimages, anchor, _scratch.Path, () => true, default);
+            PbtConfig config = new();
+            PbtRocksDbPersistence target = new(_target, config, NullTrieNodeLog.Instance);
+            await new PbtAnchorImport(target, _target, _pbt.PersistenceManager, _blockTree, new PbtLeafIngestion(target, new PbtRebuilder(target, config, config.ImportConcurrency, LimboLogs.Instance), ScratchFactory(), config, LimboLogs.Instance), config, LimboLogs.Instance)
+                .ImportSnapshot(snapshot, preimages, anchor, _scratch.Path, default);
         }
 
         public void Dispose()
@@ -365,6 +367,13 @@ public class MigrationBalFollowerTests
             _target.Dispose();
             _balDb.Dispose();
             _scratch.Dispose();
+        }
+
+        private IDbFactory ScratchFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(_scratch.Path);
+            return dbFactory;
         }
     }
     public class AcquisitionTests

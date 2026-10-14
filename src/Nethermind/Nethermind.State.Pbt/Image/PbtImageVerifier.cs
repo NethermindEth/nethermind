@@ -31,7 +31,7 @@ public sealed class PbtImageResourceLimitException(string message) : Exception(m
 
 /// <summary>Verifies an EIP-8347 snapshot against the anchor's MPT root through the preimages, as the snapshot streams.</summary>
 /// <remarks>
-/// The preimages list the anchor's addresses and slot keys in Keccak path order. <see cref="List"/> first spools them
+/// The preimages list the anchor's addresses and slot keys in Keccak path order. <see cref="SpoolPreimages"/> first spools them
 /// by their PBT tree key, the order the snapshot's leaves ascend in, so <see cref="Join"/> can merge the two streams:
 /// every account and slot leaf must be listed, and every listed entry must be a leaf. What the join reads is spooled
 /// back into Keccak path order, and <see cref="Verify"/> folds the MPT in a single pass over that spool.
@@ -66,7 +66,7 @@ public sealed class PbtImageVerifier : IDisposable
     }
 
     /// <summary>Spools the preimages by tree key; must precede <see cref="Join"/>.</summary>
-    public void List(Stream preimages)
+    public void SpoolPreimages(Stream preimages)
     {
         float walked = 0;
         using ProgressReporter progress = PbtImageProgress.Start(ReadPhase, "acc", 0, _logManager);

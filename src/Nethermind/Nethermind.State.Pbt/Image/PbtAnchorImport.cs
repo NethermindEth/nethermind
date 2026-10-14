@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -22,6 +23,8 @@ public sealed class PbtAnchorImport(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
     PbtPersistenceManager persistenceManager,
+    IBlockTree blockTree,
+    PbtLeafIngestion leafIngestion,
     IPbtConfig config,
     ILogManager logManager)
 {
@@ -41,7 +44,7 @@ public sealed class PbtAnchorImport(
     /// only its own claimed PBT root is checked. Preimages are verified before the fold publishes the tree, which is
     /// what marks the target valid, so a refused import stays unpublished and a restart wipes its staging.</remarks>
     public async Task ImportSnapshot(Stream snapshot, Stream? preimages,
-        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken)
+        PbtImageAnchor anchor, string scratchDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         anchor.Validate();
@@ -49,31 +52,25 @@ public sealed class PbtAnchorImport(
         if (ImportedEarlier(anchor)) return;
 
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
-        if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-        // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
-        float snapshotLength = snapshot.Length;
+        if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor changed before the import.");
         RecoverStaging(anchor, cancellationToken);
         using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ExportSortBufferBytes, logManager, cancellationToken);
-        verifier?.List(preimages!);
-        string directory = Path.Combine(scratchDirectory, $"pbt-import-codes-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        try
+        verifier?.SpoolPreimages(preimages!);
+        (ValueHash256 root, ulong accounts, ulong slots) = await leafIngestion.Ingest(Leaves, new StateId(anchor.Header), claimedRoot, VerifyStaged, cancellationToken);
+        Finish(anchor, root, accounts, slots, importing, cancellationToken);
+
+        IEnumerable<RebuildEntry> Leaves(CancellationToken token)
         {
-            (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-                token => verifier is null ? SnapshotLeaves(snapshot, token) : verifier.Join(SnapshotLeaves(snapshot, token)), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
-                new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
-            Finish(anchor, root, accounts, slots, importing, cancellationToken);
-        }
-        finally
-        {
-            Directory.Delete(directory, recursive: true);
+            snapshot.Position = 0;
+            IEnumerable<RebuildEntry> leaves = PbtSnapshotCodec.ReadLeaves(snapshot, token);
+            return verifier is null ? leaves : verifier.Join(leaves);
         }
 
         void VerifyStaged(CancellationToken token)
         {
             if (verifier is null) return;
             verifier.Verify(anchor, token);
-            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
+            if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
     }
 
@@ -97,12 +94,6 @@ public sealed class PbtAnchorImport(
         if (_logger.IsInfo)
             _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");
-    }
-
-    private static IEnumerable<RebuildEntry> SnapshotLeaves(Stream snapshot, CancellationToken cancellationToken)
-    {
-        snapshot.Position = 0;
-        foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, cancellationToken)) yield return entry;
     }
 
     private void RecoverStaging(PbtImageAnchor anchor, CancellationToken token)

@@ -44,8 +44,6 @@ public class PbtRootBuildBenchmark
         Rebuilder,
     }
 
-    private const int FoldChunkSize = 2048;
-
     private PbtOverlayStore _store = null!;
     private readonly ConcurrencyController _foldQuota = new(Environment.ProcessorCount);
     private RebuildEntry[] _entries = null!;
@@ -119,27 +117,13 @@ public class PbtRootBuildBenchmark
     private ValueHash256 CalculateRoot() =>
         PbtSortedLeafFold.CalculateRoot(_entries, WindowSize, Environment.ProcessorCount, CancellationToken.None);
 
-    /// <remarks>Feeds the rebuilder as <see cref="PbtLeafIngestion"/> does: pooled chunks through a channel bounded at one window.</remarks>
     private ValueHash256 Rebuild()
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtConfig config = new();
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(WindowSize / FoldChunkSize + 1);
-        Task producing = Task.Run(async () =>
-        {
-            using (PbtSortedLeafFold.EntrySink sink = new(channel.Writer, FoldChunkSize, CancellationToken.None))
-            {
-                foreach (RebuildEntry entry in _entries) await sink.Add(entry);
-                await sink.Complete();
-            }
-            channel.Writer.Complete();
-        });
-        ValueHash256 root = new PbtRebuilder(target, config, Environment.ProcessorCount, LimboLogs.Instance)
-            .Rebuild(channel.Reader, new StateId(1, default), CancellationToken.None, WindowSize, expectedRoot: null, publishAfter: Task.CompletedTask)
-            .GetAwaiter().GetResult();
-        producing.GetAwaiter().GetResult();
-        return root;
+        using IEnumerator<RebuildEntry> leaves = ((IEnumerable<RebuildEntry>)_entries).GetEnumerator();
+        return new PbtRebuilder(target, config, Environment.ProcessorCount, LimboLogs.Instance).Rebuild(leaves, WindowSize, CancellationToken.None);
     }
 
     private ValueHash256 BuildPartitioned()
