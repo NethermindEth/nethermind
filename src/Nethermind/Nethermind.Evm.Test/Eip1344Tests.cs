@@ -20,6 +20,7 @@ namespace Nethermind.Evm.Test
         protected override ulong BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
         private readonly ISpecProvider _specProvider = new TestSpecProvider(Istanbul.Instance) { ChainId = chainId };
         protected override ISpecProvider SpecProvider => _specProvider;
+        protected override bool SignWithEip155 => chainId <= (ulong.MaxValue - 36) / 2;
 
         [Test]
         public void Chain_id_opcode_puts_expected_value_onto_the_stack([Values] bool traced)
