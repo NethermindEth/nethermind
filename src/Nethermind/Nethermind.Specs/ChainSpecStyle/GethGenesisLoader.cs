@@ -124,14 +124,11 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip140Transition = config.ByzantiumBlock,
             Eip211Transition = config.ByzantiumBlock,
 
-            ValidateChainIdTransition = config.Eip155Block ?? config.SpuriousDragonBlock,
-
             Eip214Transition = config.ByzantiumBlock,
             Eip658Transition = config.ByzantiumBlock,
 
             Eip145Transition = config.ConstantinopleBlock,
 
-            ValidateReceiptsTransition = config.ByzantiumBlock,
             Eip1014Transition = config.ConstantinopleBlock,
             Eip1052Transition = config.ConstantinopleBlock,
             Eip1283Transition = config.ConstantinopleBlock,
@@ -153,7 +150,8 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
             Eip3198Transition = config.LondonBlock,
             Eip3529Transition = config.LondonBlock,
             Eip3541Transition = config.LondonBlock,
-            Eip3607Transition = config.LondonBlock,
+            // Geth applies EIP-3607 throughout chain history.
+            Eip3607Transition = 0,
 
             MergeForkIdTransition = config.MergeNetsplitBlock,
             TerminalTotalDifficulty = config.TerminalTotalDifficulty,
@@ -481,22 +479,26 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
             }
 
             SortedDictionary<ulong, ulong> bombDelays = [];
-            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000);
-            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 2_000_000);
-            AddBombDelay(bombDelays, config.MuirGlacierBlock, 4_000_000);
-            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 700_000);
-            AddBombDelay(bombDelays, config.GrayGlacierBlock, 1_000_000);
+            ulong previousDelay = 0;
+            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 5_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.MuirGlacierBlock, 9_000_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.LondonBlock, 9_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 10_700_000, ref previousDelay);
+            AddBombDelay(bombDelays, config.GrayGlacierBlock, 11_400_000, ref previousDelay);
 
             return bombDelays.Count == 0 ? null : bombDelays;
         }
 
-        private static void AddBombDelay(SortedDictionary<ulong, ulong> bombDelays, ulong? transition, ulong delay)
+        private static void AddBombDelay(SortedDictionary<ulong, ulong> bombDelays, ulong? transition, ulong cumulativeDelay, ref ulong previousDelay)
         {
             if (transition is not null)
             {
+                ulong delay = cumulativeDelay - previousDelay;
                 bombDelays[transition.Value] = !bombDelays.TryGetValue(transition.Value, out ulong existingDelay)
                     ? delay
                     : existingDelay + delay;
+                previousDelay = cumulativeDelay;
             }
         }
 

@@ -215,8 +215,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
         }
     }
 
-    [Test]
-    public void Sepolia_presets_use_shared_bootnodes_and_preserve_genesis([Values("sepolia.json", "sepolia_archive.json")] string configFile)
+    [TestCase("sepolia.json", 5)]
+    [TestCase("sepolia_archive.json", 5)]
+    [TestCase("mainnet.json", 30)]
+    [TestCase("mainnet_archive.json", 30)]
+    [TestCase("mainnet_aztec.json", 30)]
+    public void Presets_use_shared_bootnodes_and_preserve_genesis(string configFile, int expectedBootnodeCount)
     {
         ConfigProvider configProvider = GetConfigProvider(configFile);
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
@@ -229,15 +233,17 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bootnodes, Has.Length.EqualTo(5));
+            Assert.That(bootnodes, Has.Length.EqualTo(expectedBootnodeCount));
             Assert.That(bootnodes.Select(static node => node.ToString()),
                 Is.EqualTo(chainSpec.Bootnodes.Select(static node => node.ToString())));
         }
 
         foreach (NetworkNode bootnode in bootnodes)
         {
-            Assert.That(bootnode.IsEnr, Is.True, bootnode.ToString());
-            Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr!, out _), Is.True, bootnode.ToString());
+            if (bootnode.IsEnr)
+                Assert.That(Node.TryFromDiscoveryEnr(bootnode.Enr, out _), Is.True, bootnode.ToString());
+            else
+                Assert.That(bootnode.IsEnode, Is.True, bootnode.ToString());
         }
 
         using ILifetimeScope processingScope = container.BeginLifetimeScope(builder => builder

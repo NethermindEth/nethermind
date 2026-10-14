@@ -280,6 +280,49 @@ public class GethGenesisLoaderTests
         }
     }
 
+    private static readonly (ulong Block, ulong Delay)[] GlacierForkCases =
+    [
+        (9, 9_000_000),
+        (10, 9_700_000),
+        (11, 9_700_000),
+        (19, 9_700_000),
+        (20, 10_700_000),
+        (21, 10_700_000),
+        (29, 10_700_000),
+        (30, 11_400_000),
+        (31, 11_400_000)
+    ];
+
+    [Test]
+    public void Glacier_forks_add_difficulty_bomb_delays(
+        [ValueSource(nameof(GlacierForkCases))] (ulong Block, ulong Delay) fork,
+        [Values] bool mergedAtGenesis,
+        [Values] bool activateMuirGlacier)
+    {
+        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"londonBlock\": 10, \"arrowGlacierBlock\": 20, \"grayGlacierBlock\": 30";
+        if (activateMuirGlacier) configExtra += ", \"muirGlacierBlock\": 0";
+        if (mergedAtGenesis) configExtra += ", \"terminalTotalDifficulty\": \"0x0\"";
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra: configExtra));
+
+        ulong expectedDelay = mergedAtGenesis ? 0 : fork.Block < 10 && !activateMuirGlacier ? 5_000_000 : fork.Delay;
+        Assert.That(provider.GetSpec(new ForkActivation(fork.Block)).DifficultyBombDelay, Is.EqualTo(expectedDelay));
+    }
+
+    [Test]
+    public void Historical_forks_keep_validation_enabled([Values(0UL, 9UL, 10UL, 19UL, 20UL, 29UL, 30UL)] ulong blockNumber)
+    {
+        ChainSpecBasedSpecProvider provider = new(LoadStandardGethGenesis(configExtra:
+            "\"eip155Block\": 10, \"byzantiumBlock\": 20, \"londonBlock\": 30"));
+        IReleaseSpec spec = provider.GetSpec(new ForkActivation(blockNumber));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(spec.ValidateChainId, Is.True);
+            Assert.That(spec.ValidateReceipts, Is.True);
+            Assert.That(spec.IsEip3607Enabled, Is.True);
+        }
+    }
+
     [Test]
     public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
     {
@@ -458,45 +501,6 @@ public class GethGenesisLoaderTests
         }
         AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
         Assert.That(genesisProvider.GenesisSpec.MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
-    }
-
-    [Test]
-    public void Maps_additional_eips_to_standard_fork_timestamps()
-    {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 1,
-            "eip150Block": 2,
-            "eip155Block": 3,
-            "eip158Block": 4,
-            "byzantiumBlock": 5,
-            "constantinopleBlock": 6,
-            "petersburgBlock": 7,
-            "istanbulBlock": 8,
-            "berlinBlock": 9,
-            "londonBlock": 10,
-            "terminalTotalDifficulty": "0x0",
-            "shanghaiTime": 11,
-            "cancunTime": 12,
-            "pragueTime": 13,
-            "osakaTime": 14
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(chainSpec.Parameters.Eip7Transition, Is.EqualTo(1));
-            Assert.That(chainSpec.Parameters.ValidateChainIdTransition, Is.EqualTo(3));
-            Assert.That(chainSpec.Parameters.ValidateReceiptsTransition, Is.EqualTo(5));
-        }
     }
 
     [Test]

@@ -216,7 +216,7 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
-            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(5_000_000UL));
+            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(9_700_000UL));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
 
@@ -572,6 +572,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)1) { TestName = "Genesis + 1" };
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.HomesteadBlockNumber - 1)) { TestName = "Before Homestead" };
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber) { TestName = "Homestead" };
+            yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.DaoForkBlockNumber - 1)) { TestName = "Before DAO" };
+            yield return new TestCaseData((ForkActivation)MainnetSpecProvider.DaoForkBlockNumber) { TestName = "DAO" };
+            yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.DaoForkBlockNumber + 1)) { TestName = "After DAO" };
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.TangerineWhistleBlockNumber - 1)) { TestName = "Before TangerineWhistle" };
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber) { TestName = "TangerineWhistle" };
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.SpuriousDragonBlockNumber - 1)) { TestName = "Before SpuriousDragon" };
@@ -590,8 +593,8 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.LondonBlockNumber) { TestName = "London" };
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.ArrowGlacierBlockNumber - 1)) { TestName = "Before ArrowGlacier" };
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber) { TestName = "ArrowGlacier" };
-            yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.ArrowGlacierBlockNumber - 1)) { TestName = "Before GrayGlacier" };
-            yield return new TestCaseData((ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber) { TestName = "GrayGlacier" };
+            yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.GrayGlacierBlockNumber - 1)) { TestName = "Before GrayGlacier" };
+            yield return new TestCaseData((ForkActivation)MainnetSpecProvider.GrayGlacierBlockNumber) { TestName = "GrayGlacier" };
             yield return new TestCaseData(MainnetSpecProvider.ShanghaiActivation) { TestName = "Shanghai" };
             yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1)) { TestName = "Before Cancun" };
             yield return new TestCaseData(MainnetSpecProvider.CancunActivation) { TestName = "Cancun" };
@@ -640,6 +643,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+            Assert.That(provider.DaoBlockNumber, Is.EqualTo(MainnetSpecProvider.DaoForkBlockNumber));
 
             IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
             foreach (ulong t in timestamps)
