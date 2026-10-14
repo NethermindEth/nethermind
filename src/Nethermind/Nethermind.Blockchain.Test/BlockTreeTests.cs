@@ -428,6 +428,65 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockTreeOverlay_ResetMainChain_far_below_best_known_rewrites_levels_above_head_only_when_clearing_stale_markers([Values] bool clearStaleMarkers)
+    {
+        const int levelsAboveHead = 1_024;
+        using TestMemDb baseBlocksDb = new();
+        using TestMemDb overlayBlocksDb = new();
+        using TestMemDb headersDb = new();
+        using TestMemDb blocksInfosDb = new();
+
+        BlockTreeBuilder BuildTree(TestMemDb blocksDb) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb)
+            .WithHeadersDb(headersDb)
+            .WithBlockInfoDb(blocksInfosDb)
+            .WithoutSettingHead;
+
+        BlockTree baseTree = BuildTree(baseBlocksDb).TestObject;
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        AddToMain(baseTree, block0);
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        AddToMain(baseTree, block1);
+
+        // Contiguous canonical levels above the head, as beacon sync leaves them while the head is far behind.
+        ChainLevelInfoRepository levels = new(blocksInfosDb);
+        for (ulong number = block1.Number + 1; number <= block1.Number + levelsAboveHead; number++)
+        {
+            levels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, UInt256.One)));
+        }
+
+        BlockTreeBuilder overlayBuilder = BuildTree(overlayBlocksDb);
+        BlockTree overlayTree = new(overlayBuilder.BlockStore, overlayBuilder.HeaderStore, blocksInfosDb, overlayBuilder.MetadataDb,
+            overlayBuilder.BadBlockStore, overlayBuilder.BlockAccessListStore, overlayBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance,
+            overlayBuilder.SyncConfig, overlayBuilder.StateBoundary, LimboLogs.Instance, new BlockTreeMutationLock())
+        {
+            ClearStaleMarkersOnForcedHeadUpdate = clearStaleMarkers
+        };
+        Assert.That(overlayTree.BestKnownNumber, Is.EqualTo(block1.Number + levelsAboveHead), "precondition: the head is far below best known");
+        BlockTreeOverlay blockTreeOverlay = new(new ReadOnlyBlockTree(baseTree), overlayTree);
+
+        long writesBefore = blocksInfosDb.WritesCount;
+        blockTreeOverlay.ResetMainChain();
+        long writes = blocksInfosDb.WritesCount - writesBefore;
+
+        ChainLevelInfo? levelAboveHead = new ChainLevelInfoRepository(blocksInfosDb).LoadLevel(block1.Number + 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(block1.Hash));
+            if (clearStaleMarkers)
+            {
+                Assert.That(writes, Is.GreaterThanOrEqualTo(levelsAboveHead), "a regular tree clears every stale marker above the new head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.False);
+            }
+            else
+            {
+                Assert.That(writes, Is.LessThan(8), "the overlay must not rewrite the levels above the base head");
+                Assert.That(levelAboveHead!.HasBlockOnMainChain, Is.True);
+            }
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryUpdateMainChain_returns_false_without_mutating_when_a_predecessor_is_missing()
     {
         BlockTree blockTree = BuildBlockTree();
