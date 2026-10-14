@@ -61,14 +61,23 @@ pub fn bulk_set<S: NodeStore>(
         return Err(Error::InvalidArgument);
     }
 
-    let temporary;
-    let log = match log {
-        Some(log) => log,
-        None => {
-            temporary = TrieNodeLog::temporary();
-            &temporary
-        }
-    };
+    match log {
+        Some(log) => bulk_set_in(store, pending, log, address, root, entries, values),
+        None => TrieNodeLog::with_temporary(|log| {
+            bulk_set_in(store, pending, log, address, root, entries, values)
+        }),
+    }
+}
+
+fn bulk_set_in<S: NodeStore>(
+    store: &S,
+    pending: &PendingNodes,
+    log: &TrieNodeLog,
+    address: Option<&[u8; 32]>,
+    root: &[u8; 32],
+    entries: &mut [Entry],
+    values: &[u8],
+) -> Result<[u8; 32], Error> {
     let session = log.pin();
     let mut root_path = TreePath::default();
     let context = Context {

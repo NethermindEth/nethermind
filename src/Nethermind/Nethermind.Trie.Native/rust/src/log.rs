@@ -4,6 +4,7 @@
 //! In-memory log of the decoded nodes bulk sets write, which later bulk sets read in place.
 
 use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -29,6 +30,10 @@ const STATE_ROOT_SLOTS: usize = 1024;
 const MEMORY_PER_STORAGE_ROOT_SLOT: u64 = 4096;
 /// address: [u8; 32], zero for the state trie, root hash: [u8; 32], pointer of the root's record: u64.
 const ROOT_KEY_LENGTH: usize = 72;
+
+thread_local! {
+    static TEMPORARY: RefCell<Option<TrieNodeLog>> = const { RefCell::new(None) };
+}
 
 /// Decoded nodes, each child reference holding the log pointer of its child, so a trie is walked through pointers once
 /// its root is found. Only roots are indexed, the state roots by hash and the storage roots by address and hash, each
@@ -78,9 +83,17 @@ impl TrieNodeLog {
         )
     }
 
-    /// Creates a log for a single bulk set, which never drops a generation, so is always under pressure, and indexes no
-    /// root.
-    pub fn temporary() -> TrieNodeLog {
+    /// Calls `use_log` with a log for a single bulk set, which never drops a generation, so is always under pressure,
+    /// and indexes no root. The thread reuses it afterwards, emptied.
+    pub fn with_temporary<R>(use_log: impl FnOnce(&TrieNodeLog) -> R) -> R {
+        let mut log = TEMPORARY.take().unwrap_or_else(TrieNodeLog::temporary);
+        let result = use_log(&log);
+        log.empty_temporary();
+        TEMPORARY.set(Some(log));
+        result
+    }
+
+    fn temporary() -> TrieNodeLog {
         TrieNodeLog::create(
             MIN_GENERATION_BYTES,
             true,
@@ -113,6 +126,16 @@ impl TrieNodeLog {
         log.generation(1)
             .start(allocate(generation_bytes), generation_bytes);
         log
+    }
+
+    /// Drops every record of a temporary log, which keeps its first generation and nothing else.
+    fn empty_temporary(&mut self) {
+        let active = *self.active.get_mut();
+        for id in 2..=active {
+            self.generation(id).free();
+        }
+        *self.generations[slot(1)].used.get_mut() = 0;
+        *self.active.get_mut() = 1;
     }
 
     /// Pins every live generation until the returned session is dropped.
