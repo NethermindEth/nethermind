@@ -539,9 +539,9 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    public async Task Test_eth_simulate_log_index_increments_across_transactions([Values] bool eip8116Enabled)
     {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
 
         Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
         Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
@@ -591,12 +591,16 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
-        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
-        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+            Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        }
 
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
-        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
+        // EIP-8116 counts logIndex within the receipt.
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(eip8116Enabled ? 0ul : 2ul));
     }
 
     [Test]
