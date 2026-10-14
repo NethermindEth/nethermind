@@ -182,11 +182,14 @@ def run(args):
             digest.update(chunk)
     binary_hash = digest.hexdigest()
     repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    revision = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    dirty = subprocess.run(["git", "-C", repo, "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
-    provenance = {"source_revision": revision, "source_dirty": bool(dirty), "test_dll_sha256": binary_hash,
+    git_revision = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
+    revision = git_revision.stdout.strip() if git_revision.returncode == 0 else os.environ.get("LEAN_NET_SOURCE_REVISION", "unknown")
+    dirty = subprocess.run(["git", "-C", repo, "status", "--porcelain"], capture_output=True, text=True).stdout.strip() if git_revision.returncode == 0 else None
+    provenance = {"source_revision": revision, "source_dirty": bool(dirty) if dirty is not None else None,
+                  "source_archive_sha256": os.environ.get("LEAN_NET_SOURCE_ARCHIVE_SHA256"), "test_dll_sha256": binary_hash,
                   "os": platform.platform(), "python": platform.python_version(),
                   "dotnet": subprocess.check_output([args.dotnet, "--version"], text=True).strip(),
+                  "installed_runtimes": subprocess.check_output([args.dotnet, "--list-runtimes"], text=True).strip(),
                   "arguments": vars(args), "verification": "controlled test verifier; transport results are not native proving throughput"}
     with open(os.path.join(run_dir, "provenance.json"), "w") as f:
         json.dump(provenance, f, indent=2)

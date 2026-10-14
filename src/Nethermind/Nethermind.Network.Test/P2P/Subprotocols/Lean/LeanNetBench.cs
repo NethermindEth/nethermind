@@ -291,6 +291,7 @@ public class LeanNetBenchNode
         Dictionary<string, object?> result = new()
         {
             ["id"] = config.Id,
+            ["runtime"] = Environment.Version.ToString(),
             ["body_bytes"] = objects[0].Body.Length,
             ["binding"] = config.Binding,
             ["broadcast"] = config.Broadcast,
