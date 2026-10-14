@@ -8,9 +8,12 @@ use std::cell::RefCell;
 
 use rayon::prelude::*;
 
-use crate::cache::TrieNodeCache;
 use crate::keccak::keccak_many;
-use crate::node::{decode_rlp, empty_children, encode, nibble, ChildRef, Nibbles, Node, TreePath};
+use crate::log::{LogPointer, LogSession, TrieNodeLog};
+use crate::node::{
+    decode_inline_leaf, decode_rlp, empty_children, encode, nibble, ChildRef, InlineRlp,
+    LoggedNode, Nibbles, Node, NodeKind, TreePath,
+};
 use crate::pending::PendingNodes;
 use crate::{Entry, Error, NodeStore};
 
@@ -34,15 +37,16 @@ thread_local! {
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path into
-/// `pending`, and returns the new root hash. Nodes are read from `cache`, then `pending`, then `store`, and every node
-/// read or written is cached as the trie of `address`, the state trie when `None`. `entries` is reordered in place and
-/// its keys must be unique.
+/// `pending`, and returns the new root hash. Every node written also goes into `log`, or a temporary log when `None`,
+/// with the new root indexed as the root of the trie of `address`, the state trie when `None`. Nodes reachable through
+/// the root in `log` are read there in place, and the others from `pending`, then `store`, without being added to
+/// `log`. `entries` is reordered in place and its keys must be unique.
 ///
 /// Nodes that become unreachable are not removed.
 pub fn bulk_set<S: NodeStore>(
     store: &S,
     pending: &PendingNodes,
-    cache: Option<&TrieNodeCache>,
+    log: Option<&TrieNodeLog>,
     address: Option<&[u8; 32]>,
     root: &[u8; 32],
     entries: &mut [Entry],
@@ -57,25 +61,39 @@ pub fn bulk_set<S: NodeStore>(
         return Err(Error::InvalidArgument);
     }
 
+    let temporary;
+    let log = match log {
+        Some(log) => log,
+        None => {
+            temporary = TrieNodeLog::temporary();
+            &temporary
+        }
+    };
+    let session = log.pin();
     let mut root_path = TreePath::default();
     let context = Context {
         store,
         pending,
-        cache,
-        address,
+        log: &session,
         values,
     };
-    let mut root_reference = match *root {
+    let root_reference = match *root {
         EMPTY_TREE_HASH => ChildRef::Empty,
-        hash => ChildRef::Hash(hash),
+        hash => ChildRef::Hash {
+            hash,
+            pointer: session.root(address, &hash),
+        },
     };
-    let root_node = context.load(&root_path, &mut root_reference)?;
+    let root_node = context.load(&root_path, &root_reference)?;
     let mut sort_buffer = entries.to_vec();
     match context.update(entries, &mut sort_buffer, &mut root_path, root_node)? {
-        (_, false) => Ok(*root),
-        (None, true) => Ok(EMPTY_TREE_HASH),
-        (Some(root), true) => match context.commit_tree(root, root_path, true).0 {
-            ChildRef::Hash(hash) => Ok(hash),
+        Updated::Unchanged(_) => Ok(*root),
+        Updated::Changed(None) => Ok(EMPTY_TREE_HASH),
+        Updated::Changed(Some(root)) => match context.commit_tree(root, root_path, true) {
+            ChildRef::Hash { hash, pointer } => {
+                session.set_root(address, &hash, pointer);
+                Ok(hash)
+            }
             _ => unreachable!("root is always hashed"),
         },
     }
@@ -84,30 +102,44 @@ pub fn bulk_set<S: NodeStore>(
 struct Context<'a, S> {
     store: &'a S,
     pending: &'a PendingNodes,
-    cache: Option<&'a TrieNodeCache>,
-    address: Option<&'a [u8; 32]>,
+    log: &'a LogSession<'a>,
     values: &'a [u8],
 }
 
-struct ChildUpdate {
-    /// The child with no pending descendants, kept when its reference is not pending so collapsing a branch need not
-    /// load it again.
-    node: Option<Node>,
-    changed: bool,
+/// A node the walk reads.
+enum Source {
+    /// Read in place from the log, less the first `skip` nibbles of its key, dropped by the fake branches above it.
+    /// Only a leaf or an extension is ever skipped.
+    Logged { pointer: LogPointer, skip: u8 },
+    /// Embedded in its parent, so always a leaf, see [`decode_inline_leaf`], less the first `skip` nibbles of its key.
+    InlineLeaf { rlp: InlineRlp, skip: u8 },
+    /// Read from the pending nodes or the store, as the log does not have it, and not added to the log.
+    Decoded(Node),
 }
 
-/// A level `set_one` walked through. The child it walked into is taken out of the node when `pending`, and otherwise
-/// left in place to be kept if nothing below changes.
+/// What applying entries to a node did.
+enum Updated {
+    /// Nothing changed, so the node is handed back as it was given.
+    Unchanged(Option<Source>),
+    /// The node replacing it, `None` when removed, whose new descendants are pending.
+    Changed(Option<Node>),
+}
+
+/// A level `set_one` walked through. A logged one is copied out only when the child it walked into changed.
 enum Frame {
+    /// A logged branch or extension, the extension less the first `skip` nibbles of its key.
+    Logged {
+        pointer: LogPointer,
+        skip: u8,
+        child_nibble: u8,
+    },
     Branch {
         children: Box<[ChildRef; 16]>,
         child_nibble: u8,
-        pending: bool,
     },
     Extension {
         key: Nibbles,
         child: ChildRef,
-        pending: bool,
     },
 }
 
@@ -133,17 +165,16 @@ type Bucket<'a> = (&'a mut [Entry], &'a mut [Entry]);
 
 impl<S: NodeStore> Context<'_, S> {
     /// Applies `entries`, whose keys all start with `path`, to the `node` at `path`, like `PatriciaTree.BulkSet`.
-    /// `entries` is reordered, with `sort_buffer` of the same length as scratch. Returns the new node, whose new
-    /// descendants are pending, and whether it differs from `node`.
+    /// `entries` is reordered, with `sort_buffer` of the same length as scratch.
     fn update(
         &self,
         entries: &mut [Entry],
         sort_buffer: &mut [Entry],
         path: &mut TreePath,
-        node: Option<Node>,
-    ) -> Result<(Option<Node>, bool), Error> {
+        node: Option<Source>,
+    ) -> Result<Updated, Error> {
         match entries.len() {
-            0 => return Ok((node, false)),
+            0 => return Ok(Updated::Unchanged(node)),
             1 => return self.set_one(&entries[0], path, node),
             _ => {}
         }
@@ -154,10 +185,22 @@ impl<S: NodeStore> Context<'_, S> {
         }
 
         let was_empty = node.is_none();
+        let mut logged = None;
+        let mut remainders: [Option<Source>; 16] = Default::default();
         let (mut children, is_new) = match node {
             None => (empty_children(), true),
-            Some(Node::Branch { children }) => (children, false),
-            Some(node) => (make_fake_branch(node), true),
+            Some(Source::Decoded(Node::Branch { children })) => (children, false),
+            Some(Source::Logged { pointer, .. })
+                if self.view(pointer).kind() == NodeKind::Branch =>
+            {
+                // Copied out up front, as at least two entries land in it, so it nearly always changes.
+                let Node::Branch { children } = self.view(pointer).to_owned(0) else {
+                    unreachable!("checked to be a branch")
+                };
+                logged = Some(pointer);
+                (children, false)
+            }
+            Some(source) => (self.make_fake_branch(source, &mut remainders)?, true),
         };
 
         let mut indexes = [0usize; 16];
@@ -175,41 +218,54 @@ impl<S: NodeStore> Context<'_, S> {
         let parallel = entries.len() >= PARALLEL_THRESHOLD && mask == FULL_BRANCH;
         let mut buckets = split_buckets(mask, &indexes, entries, sort_buffer);
 
+        for (child_nibble, remainder) in remainders.iter_mut().enumerate() {
+            // No entry lands in it, so it stays as it is below the new branch.
+            if mask & (1 << child_nibble) == 0 {
+                if let Some(source) = remainder.take() {
+                    children[child_nibble] = ChildRef::Pending(Box::new(self.into_node(source)?));
+                }
+            }
+        }
+
         let mut changed = is_new;
         let mut has_remove = false;
         let mut non_empty_count = 0;
-        let mut resolved_nodes: [Option<Node>; 16] = Default::default();
-        let mut apply = |child_nibble: usize, update: ChildUpdate, reference: &ChildRef| {
-            if update.changed {
+        let mut apply = |child_changed: bool, reference: &ChildRef| {
+            if child_changed {
                 changed = true;
                 match reference {
                     ChildRef::Empty => has_remove = true,
                     _ => non_empty_count += 1,
                 }
             }
-            resolved_nodes[child_nibble] = update.node;
         };
 
         if parallel {
             let parent_path = *path;
             let existing: [ChildRef; 16] =
                 std::array::from_fn(|index| std::mem::take(&mut children[index]));
-            let updates: Vec<(ChildRef, ChildUpdate)> = buckets
+            let updates: Vec<(ChildRef, bool)> = buckets
                 .into_par_iter()
                 .zip(existing)
+                .zip(remainders)
                 .enumerate()
-                .map(|(child_nibble, ((bucket, bucket_buffer), mut reference))| {
-                    let mut child_path = parent_path.append(&[child_nibble as u8]);
-                    // Every parallel task hashes its own subtree, so no level spans threads.
-                    let update =
-                        self.update_child(&mut child_path, &mut reference, true, |path, node| {
-                            self.update(bucket, bucket_buffer, path, node)
-                        })?;
-                    Ok((reference, update))
-                })
+                .map(
+                    |(child_nibble, (((bucket, bucket_buffer), mut reference), remainder))| {
+                        let mut child_path = parent_path.append(&[child_nibble as u8]);
+                        // Every parallel task hashes its own subtree, so no level spans threads.
+                        let child_changed = self.update_child(
+                            &mut child_path,
+                            &mut reference,
+                            remainder,
+                            true,
+                            |path, node| self.update(bucket, bucket_buffer, path, node),
+                        )?;
+                        Ok((reference, child_changed))
+                    },
+                )
                 .collect::<Result<_, Error>>()?;
-            for (child_nibble, (reference, update)) in updates.into_iter().enumerate() {
-                apply(child_nibble, update, &reference);
+            for (child_nibble, (reference, child_changed)) in updates.into_iter().enumerate() {
+                apply(child_changed, &reference);
                 children[child_nibble] = reference;
             }
         } else {
@@ -221,27 +277,34 @@ impl<S: NodeStore> Context<'_, S> {
                 path.set_last(child_nibble as u8);
                 let (bucket, bucket_buffer) = std::mem::take(&mut buckets[child_nibble]);
                 let reference = &mut children[child_nibble];
-                let update = self.update_child(path, reference, false, |path, node| {
-                    self.update(bucket, bucket_buffer, path, node)
-                })?;
-                apply(child_nibble, update, reference);
+                let child_changed = self.update_child(
+                    path,
+                    reference,
+                    remainders[child_nibble].take(),
+                    false,
+                    |path, node| self.update(bucket, bucket_buffer, path, node),
+                )?;
+                apply(child_changed, reference);
             }
             path.truncate(depth);
         }
 
         if !changed {
-            return Ok((Some(Node::Branch { children }), false));
+            return Ok(Updated::Unchanged(Some(match logged {
+                Some(pointer) => Source::Logged { pointer, skip: 0 },
+                None => Source::Decoded(Node::Branch { children }),
+            })));
         }
 
         let result = if (has_remove || is_new) && non_empty_count < 2 {
-            self.maybe_combine(children, path, &mut resolved_nodes)?
+            self.maybe_combine(children, path)?
         } else {
             Some(Node::Branch { children })
         };
         if was_empty && result.is_none() {
-            return Ok((None, false));
+            return Ok(Updated::Unchanged(None));
         }
-        Ok((result, true))
+        Ok(Updated::Changed(result))
     }
 
     /// Applies a single entry to the `node` at `path`, like `PatriciaTree.SetNew`: walks down to where the entry
@@ -250,202 +313,265 @@ impl<S: NodeStore> Context<'_, S> {
         &self,
         entry: &Entry,
         path: &mut TreePath,
-        node: Option<Node>,
-    ) -> Result<(Option<Node>, bool), Error> {
+        node: Option<Source>,
+    ) -> Result<Updated, Error> {
         TRAVERSE_STACK.with_borrow_mut(|stack| {
             stack.clear();
             let value = self.value(entry);
             let mut node = node;
-            let (mut result, changed) = loop {
+            let mut result = loop {
                 let depth = path.depth();
-                match node {
-                    None => {
-                        break match value {
-                            [] => (None, false),
-                            _ => (
-                                Some(Node::Leaf {
-                                    key: Nibbles::from_key(&entry.key, depth, 64 - depth),
-                                    value: value.to_vec(),
-                                }),
-                                true,
-                            ),
+                let Some(source) = node else {
+                    break match value {
+                        [] => Updated::Unchanged(None),
+                        _ => Updated::Changed(Some(Node::Leaf {
+                            key: Nibbles::from_key(&entry.key, depth, 64 - depth),
+                            value: value.to_vec(),
+                        })),
+                    };
+                };
+
+                match source {
+                    Source::InlineLeaf { .. } | Source::Decoded(Node::Leaf { .. }) => {
+                        break self.set_leaf(entry, depth, source, value)?
+                    }
+                    Source::Logged { pointer, skip } => {
+                        let view = self.view(pointer);
+                        match view.kind() {
+                            NodeKind::Leaf => break self.set_leaf(entry, depth, source, value)?,
+                            NodeKind::Branch => {
+                                let child_nibble = nibble(&entry.key, depth);
+                                path.push(child_nibble);
+                                node = self.load(path, &view.child(child_nibble))?;
+                                stack.push(Frame::Logged {
+                                    pointer,
+                                    skip,
+                                    child_nibble,
+                                });
+                            }
+                            NodeKind::Extension => {
+                                let key = &view.key()[skip as usize..];
+                                let matched = matched_length(key, &entry.key, depth);
+                                if matched < key.len() {
+                                    break match value {
+                                        [] => Updated::Unchanged(Some(source)),
+                                        _ => Updated::Changed(Some(diverge_extension(
+                                            entry,
+                                            depth,
+                                            matched,
+                                            key,
+                                            view.child(0),
+                                            value,
+                                        ))),
+                                    };
+                                }
+                                path.push_all(key);
+                                node = self.load(path, &view.child(0))?;
+                                stack.push(Frame::Logged {
+                                    pointer,
+                                    skip,
+                                    child_nibble: 0,
+                                });
+                            }
                         }
                     }
-                    Some(Node::Branch { mut children }) => {
+                    Source::Decoded(Node::Branch { children }) => {
                         let child_nibble = nibble(&entry.key, depth);
-                        let reference = &mut children[child_nibble as usize];
-                        let pending = matches!(reference, ChildRef::Pending(_));
                         path.push(child_nibble);
-                        node = self.load(path, reference)?;
+                        node = self.load(path, &children[child_nibble as usize])?;
                         stack.push(Frame::Branch {
                             children,
                             child_nibble,
-                            pending,
                         });
                     }
-                    Some(Node::Leaf {
-                        key,
-                        value: old_value,
-                    }) => {
+                    Source::Decoded(Node::Extension { key, child }) => {
                         let matched = matched_length(key.as_slice(), &entry.key, depth);
-                        if matched == key.len() {
+                        if matched < key.len() {
                             break match value {
-                                [] => (None, true),
-                                _ if value == old_value.as_slice() => (
-                                    Some(Node::Leaf {
-                                        key,
-                                        value: old_value,
-                                    }),
-                                    false,
-                                ),
-                                _ => (
-                                    Some(Node::Leaf {
-                                        key,
-                                        value: value.to_vec(),
-                                    }),
-                                    true,
-                                ),
+                                [] => Updated::Unchanged(Some(Source::Decoded(Node::Extension {
+                                    key,
+                                    child,
+                                }))),
+                                _ => Updated::Changed(Some(diverge_extension(
+                                    entry,
+                                    depth,
+                                    matched,
+                                    key.as_slice(),
+                                    child,
+                                    value,
+                                ))),
                             };
                         }
-                        if value.is_empty() {
-                            break (
-                                Some(Node::Leaf {
-                                    key,
-                                    value: old_value,
-                                }),
-                                false,
-                            );
-                        }
-
-                        let existing = ChildRef::Pending(Box::new(Node::Leaf {
-                            key: Nibbles::from_slice(&key.as_slice()[matched + 1..]),
-                            value: old_value,
-                        }));
-                        break (
-                            Some(diverging_branch(
-                                entry,
-                                depth,
-                                matched,
-                                key.as_slice()[matched],
-                                existing,
-                                value,
-                            )),
-                            true,
-                        );
-                    }
-                    Some(Node::Extension { key, mut child }) => {
-                        let matched = matched_length(key.as_slice(), &entry.key, depth);
-                        if matched == key.len() {
-                            path.push_all(key.as_slice());
-                            let pending = matches!(child, ChildRef::Pending(_));
-                            node = self.load(path, &mut child)?;
-                            stack.push(Frame::Extension {
-                                key,
-                                child,
-                                pending,
-                            });
-                            continue;
-                        }
-                        if value.is_empty() {
-                            break (Some(Node::Extension { key, child }), false);
-                        }
-
-                        let rest = &key.as_slice()[matched + 1..];
-                        let existing = match rest {
-                            [] => child,
-                            _ => ChildRef::Pending(Box::new(Node::Extension {
-                                key: Nibbles::from_slice(rest),
-                                child,
-                            })),
-                        };
-                        break (
-                            Some(diverging_branch(
-                                entry,
-                                depth,
-                                matched,
-                                key.as_slice()[matched],
-                                existing,
-                                value,
-                            )),
-                            true,
-                        );
+                        path.push_all(key.as_slice());
+                        node = self.load(path, &child)?;
+                        stack.push(Frame::Extension { key, child });
                     }
                 }
             };
 
             while let Some(frame) = stack.pop() {
-                match frame {
-                    Frame::Extension {
-                        key,
-                        child,
-                        pending,
+                result = match frame {
+                    Frame::Logged {
+                        pointer,
+                        skip,
+                        child_nibble,
                     } => {
-                        path.truncate(path.depth() - key.len());
-                        result = match (changed, pending) {
-                            (false, false) => Some(Node::Extension { key, child }),
-                            (false, true) => result.map(|node| Node::Extension {
-                                key,
-                                child: ChildRef::Pending(Box::new(node)),
-                            }),
-                            (true, _) => result.map(|node| prepend(key.as_slice(), node)),
-                        };
+                        let view = self.view(pointer);
+                        let key = &view.key()[skip as usize..];
+                        match view.kind() {
+                            NodeKind::Extension => path.truncate(path.depth() - key.len()),
+                            _ => path.truncate(path.depth() - 1),
+                        }
+                        match (result, view.kind()) {
+                            (Updated::Unchanged(_), _) => {
+                                Updated::Unchanged(Some(Source::Logged { pointer, skip }))
+                            }
+                            (Updated::Changed(node), NodeKind::Extension) => {
+                                Updated::Changed(node.map(|node| prepend(key, node)))
+                            }
+                            (Updated::Changed(node), _) => {
+                                let Node::Branch { children } = view.to_owned(0) else {
+                                    unreachable!("only branches and extensions are walked through")
+                                };
+                                Updated::Changed(self.replace_child(
+                                    children,
+                                    child_nibble,
+                                    node,
+                                    path,
+                                )?)
+                            }
+                        }
                     }
                     Frame::Branch {
-                        mut children,
+                        children,
                         child_nibble,
-                        pending,
                     } => {
                         path.truncate(path.depth() - 1);
-                        let removed = changed && result.is_none();
-                        if changed || pending {
-                            children[child_nibble as usize] = match result.take() {
-                                Some(node) => ChildRef::Pending(Box::new(node)),
-                                None => ChildRef::Empty,
-                            };
-                        }
-                        result = match removed {
-                            true => {
-                                let mut resolved_nodes = Default::default();
-                                self.maybe_combine(children, path, &mut resolved_nodes)?
+                        match result {
+                            Updated::Unchanged(_) => {
+                                Updated::Unchanged(Some(Source::Decoded(Node::Branch { children })))
                             }
-                            false => Some(Node::Branch { children }),
-                        };
+                            Updated::Changed(node) => Updated::Changed(self.replace_child(
+                                children,
+                                child_nibble,
+                                node,
+                                path,
+                            )?),
+                        }
                     }
-                }
+                    Frame::Extension { key, child } => {
+                        path.truncate(path.depth() - key.len());
+                        match result {
+                            Updated::Unchanged(_) => {
+                                Updated::Unchanged(Some(Source::Decoded(Node::Extension {
+                                    key,
+                                    child,
+                                })))
+                            }
+                            Updated::Changed(node) => {
+                                Updated::Changed(node.map(|node| prepend(key.as_slice(), node)))
+                            }
+                        }
+                    }
+                };
             }
-            Ok((result, changed))
+            Ok(result)
         })
     }
 
-    /// Loads the child at `path` that `reference` refers to, applies `update` to it and points `reference` at the
-    /// result. A changed child is committed when `commit` is set and left pending otherwise.
+    /// Sets the key of `entry` to `value` in the leaf `source` at `depth`.
+    fn set_leaf(
+        &self,
+        entry: &Entry,
+        depth: usize,
+        source: Source,
+        value: &[u8],
+    ) -> Result<Updated, Error> {
+        let change = match &source {
+            Source::Logged { pointer, skip } => {
+                let view = self.view(*pointer);
+                leaf_change(
+                    entry,
+                    depth,
+                    &view.key()[*skip as usize..],
+                    view.value(),
+                    value,
+                )
+            }
+            Source::InlineLeaf { rlp, skip } => {
+                let (key, old_value) = decode_inline_leaf(rlp.as_slice())?;
+                leaf_change(
+                    entry,
+                    depth,
+                    &key.as_slice()[*skip as usize..],
+                    old_value,
+                    value,
+                )
+            }
+            Source::Decoded(Node::Leaf {
+                key,
+                value: old_value,
+            }) => leaf_change(entry, depth, key.as_slice(), old_value, value),
+            Source::Decoded(_) => unreachable!("not a leaf"),
+        };
+        Ok(match change {
+            Some(node) => Updated::Changed(node),
+            None => Updated::Unchanged(Some(source)),
+        })
+    }
+
+    /// Applies `update` to the child at `path`, `remainder` when given, otherwise the node `reference` refers to, and
+    /// points `reference` at the result. A changed child, or a remainder even unchanged, is committed when `commit` is
+    /// set and left pending otherwise. Returns whether the child changed.
     fn update_child(
         &self,
         path: &mut TreePath,
         reference: &mut ChildRef,
+        remainder: Option<Source>,
         commit: bool,
-        update: impl FnOnce(&mut TreePath, Option<Node>) -> Result<(Option<Node>, bool), Error>,
-    ) -> Result<ChildUpdate, Error> {
-        let pending = matches!(reference, ChildRef::Pending(_));
-        let node = self.load(path, reference)?;
-        let (node, changed) = update(path, node)?;
-        let node = match node {
-            None => {
-                *reference = ChildRef::Empty;
-                None
-            }
-            Some(node) if !changed && !pending => Some(node),
-            Some(node) if commit => {
-                let (committed, node) = self.commit_tree(node, *path, false);
-                *reference = committed;
-                Some(node)
-            }
-            Some(node) => {
-                *reference = ChildRef::Pending(Box::new(node));
-                None
-            }
+        update: impl FnOnce(&mut TreePath, Option<Source>) -> Result<Updated, Error>,
+    ) -> Result<bool, Error> {
+        let is_remainder = remainder.is_some();
+        let node = match remainder {
+            Some(source) => Some(source),
+            None => self.load(path, reference)?,
         };
-        Ok(ChildUpdate { node, changed })
+        let (node, changed) = match update(path, node)? {
+            Updated::Changed(Some(node)) => (node, true),
+            Updated::Changed(None) => {
+                *reference = ChildRef::Empty;
+                return Ok(true);
+            }
+            // A remainder is in no node yet, so it is copied out to be one.
+            Updated::Unchanged(Some(source)) if is_remainder => (self.into_node(source)?, false),
+            Updated::Unchanged(_) => return Ok(false),
+        };
+        *reference = match commit {
+            true => self.commit_tree(node, *path, false),
+            false => ChildRef::Pending(Box::new(node)),
+        };
+        Ok(changed)
+    }
+
+    /// Puts `node`, `None` when removed, as child `child_nibble` of the branch with `children` at `path`, collapsing
+    /// the branch when the child was removed.
+    fn replace_child(
+        &self,
+        mut children: Box<[ChildRef; 16]>,
+        child_nibble: u8,
+        node: Option<Node>,
+        path: &mut TreePath,
+    ) -> Result<Option<Node>, Error> {
+        match node {
+            Some(node) => {
+                children[child_nibble as usize] = ChildRef::Pending(Box::new(node));
+                Ok(Some(Node::Branch { children }))
+            }
+            None => {
+                children[child_nibble as usize] = ChildRef::Empty;
+                self.maybe_combine(children, path)
+            }
+        }
     }
 
     /// Turns a branch left with fewer than two children into nothing, an extension, or its only child with the
@@ -454,7 +580,6 @@ impl<S: NodeStore> Context<'_, S> {
         &self,
         mut children: Box<[ChildRef; 16]>,
         path: &mut TreePath,
-        resolved_nodes: &mut [Option<Node>; 16],
     ) -> Result<Option<Node>, Error> {
         let only_child = {
             let mut present = children
@@ -470,44 +595,104 @@ impl<S: NodeStore> Context<'_, S> {
 
         let depth = path.depth();
         path.push(only_child as u8);
-        let (node, committed) = match (
-            std::mem::take(&mut children[only_child]),
-            resolved_nodes[only_child].take(),
-        ) {
-            (ChildRef::Pending(node), _) => (*node, None),
-            (reference, Some(node)) => (node, Some(reference)),
-            (mut reference, None) => (
-                self.load(path, &mut reference)?.ok_or(Error::MissingNode)?,
-                Some(reference),
-            ),
+        let combined = match std::mem::take(&mut children[only_child]) {
+            ChildRef::Pending(node) => prepend(&[only_child as u8], *node),
+            reference => {
+                let source = self.load(path, &reference)?.ok_or(Error::MissingNode)?;
+                let is_branch = match &source {
+                    Source::Logged { pointer, .. } => {
+                        self.view(*pointer).kind() == NodeKind::Branch
+                    }
+                    Source::Decoded(node) => matches!(node, Node::Branch { .. }),
+                    Source::InlineLeaf { .. } => false,
+                };
+                match is_branch {
+                    true => Node::Extension {
+                        key: Nibbles::from_slice(&[only_child as u8]),
+                        child: reference,
+                    },
+                    false => prepend(&[only_child as u8], self.into_node(source)?),
+                }
+            }
         };
         path.truncate(depth);
-
-        Ok(Some(match (node, committed) {
-            (Node::Branch { .. }, Some(reference)) => Node::Extension {
-                key: Nibbles::from_slice(&[only_child as u8]),
-                child: reference,
-            },
-            (node, _) => prepend(&[only_child as u8], node),
-        }))
+        Ok(Some(combined))
     }
 
-    /// Returns the node `child` refers to, taking it out of `child` when it is pending.
-    fn load(&self, path: &TreePath, child: &mut ChildRef) -> Result<Option<Node>, Error> {
+    /// Splits a leaf or an extension into the children of a branch, like `PatriciaTree.MakeFakeBranch`: its child
+    /// when its key is a single nibble, otherwise what remains of it below its first nibble, put in `remainders` to be
+    /// walked in place.
+    fn make_fake_branch(
+        &self,
+        source: Source,
+        remainders: &mut [Option<Source>; 16],
+    ) -> Result<Box<[ChildRef; 16]>, Error> {
+        let mut children = empty_children();
+        let (child_nibble, remainder) = match source {
+            Source::Logged { pointer, skip } => {
+                let view = self.view(pointer);
+                let key = &view.key()[skip as usize..];
+                if view.kind() == NodeKind::Extension && key.len() == 1 {
+                    children[key[0] as usize] = view.child(0);
+                    return Ok(children);
+                }
+                (
+                    key[0],
+                    Source::Logged {
+                        pointer,
+                        skip: skip + 1,
+                    },
+                )
+            }
+            Source::InlineLeaf { rlp, skip } => {
+                let (key, _) = decode_inline_leaf(rlp.as_slice())?;
+                let child_nibble = key.as_slice()[skip as usize];
+                (
+                    child_nibble,
+                    Source::InlineLeaf {
+                        rlp,
+                        skip: skip + 1,
+                    },
+                )
+            }
+            Source::Decoded(Node::Leaf { key, value }) => (
+                key.as_slice()[0],
+                Source::Decoded(Node::Leaf {
+                    key: Nibbles::from_slice(&key.as_slice()[1..]),
+                    value,
+                }),
+            ),
+            Source::Decoded(Node::Extension { key, child }) if key.len() == 1 => {
+                children[key.as_slice()[0] as usize] = child;
+                return Ok(children);
+            }
+            Source::Decoded(Node::Extension { key, child }) => (
+                key.as_slice()[0],
+                Source::Decoded(Node::Extension {
+                    key: Nibbles::from_slice(&key.as_slice()[1..]),
+                    child,
+                }),
+            ),
+            Source::Decoded(Node::Branch { .. }) => unreachable!("already a branch"),
+        };
+        remainders[child_nibble as usize] = Some(remainder);
+        Ok(children)
+    }
+
+    /// Returns the node `child` refers to. A node referenced by hash is read in place from the log when its pointer is
+    /// valid, and otherwise from the pending nodes or the store, without adding it to the log.
+    fn load(&self, path: &TreePath, child: &ChildRef) -> Result<Option<Source>, Error> {
         match child {
             ChildRef::Empty => Ok(None),
-            ChildRef::Pending(_) => match std::mem::take(child) {
-                ChildRef::Pending(node) => Ok(Some(*node)),
-                _ => unreachable!(),
-            },
-            ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
-            ChildRef::Hash(hash) => {
-                if let Some(node) = self
-                    .cache
-                    .and_then(|cache| cache.get(self.address, path, hash))
-                {
-                    return Ok(Some(node));
-                }
+            ChildRef::Pending(_) => unreachable!("only children of nodes read are walked into"),
+            ChildRef::Inline(rlp) => Ok(Some(Source::InlineLeaf { rlp: *rlp, skip: 0 })),
+            ChildRef::Hash { pointer, .. } if self.log.is_valid(*pointer) => {
+                Ok(Some(Source::Logged {
+                    pointer: *pointer,
+                    skip: 0,
+                }))
+            }
+            ChildRef::Hash { hash, .. } => {
                 let pending = BUFFER.with_borrow_mut(|buffer| {
                     self.pending
                         .copy_to(path, hash, buffer)
@@ -518,26 +703,37 @@ impl<S: NodeStore> Context<'_, S> {
                     Some(node) => node,
                     None => self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?,
                 };
-                self.cache_node(path, hash, &node);
-                Ok(Some(node))
+                Ok(Some(Source::Decoded(node)))
             }
         }
     }
 
-    fn cache_node(&self, path: &TreePath, hash: &[u8; 32], node: &Node) {
-        if let Some(cache) = self.cache {
-            cache.insert(self.address, path, hash, node);
-        }
+    fn view(&self, pointer: LogPointer) -> LoggedNode<'_> {
+        LoggedNode::new(self.log.record(pointer))
+    }
+
+    /// Copies `source` out, to be changed or kept below a new node.
+    fn into_node(&self, source: Source) -> Result<Node, Error> {
+        Ok(match source {
+            Source::Logged { pointer, skip } => self.view(pointer).to_owned(skip as usize),
+            Source::InlineLeaf { rlp, skip } => {
+                let (key, value) = decode_inline_leaf(rlp.as_slice())?;
+                Node::Leaf {
+                    key: Nibbles::from_slice(&key.as_slice()[skip as usize..]),
+                    value: value.to_vec(),
+                }
+            }
+            Source::Decoded(node) => node,
+        })
     }
 
     /// Encodes and hashes `node` and every pending node below it, storing each one referenced by hash, that is,
-    /// whose RLP is at least 32 bytes or which is the root. Returns the reference to `node` and `node` itself with
-    /// its children resolved.
+    /// whose RLP is at least 32 bytes or which is the root. Returns the reference to `node`.
     ///
     /// Nodes are processed one path length at a time, deepest first, like `DirtyNodeHasher`: two nodes of one
     /// length are never each other's ancestor and by then all their children are resolved, so a whole level is
     /// hashed together by the batch Keccak kernel.
-    fn commit_tree(&self, node: Node, path: TreePath, is_root: bool) -> (ChildRef, Node) {
+    fn commit_tree(&self, node: Node, path: TreePath, is_root: bool) -> ChildRef {
         COMMIT_SCRATCH.with_borrow_mut(|scratch| {
             let CommitScratch {
                 nodes,
@@ -565,16 +761,17 @@ impl<S: NodeStore> Context<'_, S> {
             }
 
             let mut top_reference = ChildRef::Empty;
-            let mut resolve = |nodes: &mut Vec<PendingNode>, index: u32, reference: ChildRef| {
-                if index == 0 {
-                    top_reference = reference;
-                } else {
-                    let PendingNode { parent, slot, .. } = nodes[index as usize];
-                    nodes[parent as usize]
-                        .node
-                        .set_child(slot as usize, reference);
-                }
-            };
+            let mut link_to_parent =
+                |nodes: &mut Vec<PendingNode>, index: u32, reference: ChildRef| {
+                    if index == 0 {
+                        top_reference = reference;
+                    } else {
+                        let PendingNode { parent, slot, .. } = nodes[index as usize];
+                        nodes[parent as usize]
+                            .node
+                            .set_child(slot as usize, reference);
+                    }
+                };
             BUFFER.with_borrow_mut(|buffer| {
                 let mut start = 0;
                 for &end in level_ends.iter().rev() {
@@ -587,7 +784,11 @@ impl<S: NodeStore> Context<'_, S> {
                         let rlp_start = buffer.len();
                         encode(&nodes[index as usize].node, buffer);
                         if buffer.len() - rlp_start < 32 && !(is_root && index == 0) {
-                            resolve(nodes, index, ChildRef::inline(&buffer[rlp_start..]));
+                            assert!(
+                                matches!(*nodes[index as usize].node, Node::Leaf { .. }),
+                                "only a leaf can be inline, see decode_inline_leaf"
+                            );
+                            link_to_parent(nodes, index, ChildRef::inline(&buffer[rlp_start..]));
                             buffer.truncate(rlp_start);
                         } else {
                             hashed.push((index, rlp_start, buffer.len()));
@@ -612,18 +813,17 @@ impl<S: NodeStore> Context<'_, S> {
                         },
                     ));
                     for (&(index, _, _), &hash) in hashed.iter().zip(hashes.iter()) {
-                        // Deeper levels are done, so the node's children are all resolved.
-                        let PendingNode { path, node, .. } = &nodes[index as usize];
-                        self.cache_node(path, &hash, node);
-                        resolve(nodes, index, ChildRef::Hash(hash));
+                        // Appended, not read: deeper levels already pointed this node's children at their records,
+                        // and its parent, appended with the next level, gets this record's pointer.
+                        let pointer = self.log.append(&nodes[index as usize].node);
+                        link_to_parent(nodes, index, ChildRef::Hash { hash, pointer });
                     }
                     start = end;
                 }
             });
 
-            let top = nodes.swap_remove(0);
             nodes.clear();
-            (top_reference, *top.node)
+            top_reference
         })
     }
 
@@ -685,28 +885,63 @@ fn prepend(prefix: &[u8], node: Node) -> Node {
     }
 }
 
-/// Replaces a leaf or an extension with a branch holding what remains of it, like `PatriciaTree.MakeFakeBranch`.
-fn make_fake_branch(node: Node) -> Box<[ChildRef; 16]> {
-    let mut children = empty_children();
-    match node {
-        Node::Leaf { key, value } => {
-            children[key.as_slice()[0] as usize] = ChildRef::Pending(Box::new(Node::Leaf {
-                key: Nibbles::from_slice(&key.as_slice()[1..]),
-                value,
-            }))
-        }
-        Node::Extension { key, child } if key.len() == 1 => {
-            children[key.as_slice()[0] as usize] = child
-        }
-        Node::Extension { key, child } => {
-            children[key.as_slice()[0] as usize] = ChildRef::Pending(Box::new(Node::Extension {
-                key: Nibbles::from_slice(&key.as_slice()[1..]),
-                child,
-            }))
-        }
-        Node::Branch { .. } => unreachable!("already a branch"),
+/// What setting the key of `entry` to `value` does to the leaf at `depth` with `key` and `old_value`: `None` when it
+/// stays, otherwise the node replacing it, `None` when removed.
+fn leaf_change(
+    entry: &Entry,
+    depth: usize,
+    key: &[u8],
+    old_value: &[u8],
+    value: &[u8],
+) -> Option<Option<Node>> {
+    let matched = matched_length(key, &entry.key, depth);
+    if matched == key.len() {
+        return match value {
+            [] => Some(None),
+            _ if value == old_value => None,
+            _ => Some(Some(Node::Leaf {
+                key: Nibbles::from_slice(key),
+                value: value.to_vec(),
+            })),
+        };
     }
-    children
+    if value.is_empty() {
+        return None;
+    }
+
+    let existing = ChildRef::Pending(Box::new(Node::Leaf {
+        key: Nibbles::from_slice(&key[matched + 1..]),
+        value: old_value.to_vec(),
+    }));
+    Some(Some(diverging_branch(
+        entry,
+        depth,
+        matched,
+        key[matched],
+        existing,
+        value,
+    )))
+}
+
+/// The node replacing the extension at `depth` with `key` and `child`, from which `entry` diverges after `matched`
+/// nibbles.
+fn diverge_extension(
+    entry: &Entry,
+    depth: usize,
+    matched: usize,
+    key: &[u8],
+    child: ChildRef,
+    value: &[u8],
+) -> Node {
+    let rest = &key[matched + 1..];
+    let existing = match rest {
+        [] => child,
+        _ => ChildRef::Pending(Box::new(Node::Extension {
+            key: Nibbles::from_slice(rest),
+            child,
+        })),
+    };
+    diverging_branch(entry, depth, matched, key[matched], existing, value)
 }
 
 /// The branch where `entry` diverges from an existing leaf or extension after `matched` nibbles, holding `existing`
@@ -887,13 +1122,9 @@ mod tests {
 
     type Item = ([u8; 32], Vec<u8>);
 
-    fn apply(pending: &PendingNodes, root: [u8; 32], items: &[Item]) -> Result<[u8; 32], Error> {
-        apply_cached(pending, None, root, items)
-    }
-
-    fn apply_cached(
+    fn apply(
         pending: &PendingNodes,
-        cache: Option<&TrieNodeCache>,
+        log: Option<&TrieNodeLog>,
         root: [u8; 32],
         items: &[Item],
     ) -> Result<[u8; 32], Error> {
@@ -913,7 +1144,7 @@ mod tests {
         bulk_set(
             &EmptyStore,
             pending,
-            cache,
+            log,
             None,
             &root,
             &mut entries,
@@ -923,17 +1154,19 @@ mod tests {
 
     /// Checks every written node's hash and returns the RLP written at `path`.
     fn written_at(pending: &PendingNodes, path: &TreePath) -> Vec<u8> {
-        pending.with_view(|nodes, rlp| {
-            let mut found = None;
-            for node in nodes {
-                let node_rlp = &rlp[node.rlp_offset as usize..][..node.rlp_length as usize];
-                assert_eq!(keccak(node_rlp), node.hash, "written node hash");
-                if node.path == *path {
-                    found = Some(node_rlp.to_vec());
+        let mut found = None;
+        for shard in 0..pending.shard_count() {
+            pending.with_view(shard, |nodes, rlp| {
+                for node in nodes {
+                    let node_rlp = &rlp[node.rlp_offset as usize..][..node.rlp_length as usize];
+                    assert_eq!(keccak(node_rlp), node.hash, "written node hash");
+                    if node.path == *path {
+                        found = Some(node_rlp.to_vec());
+                    }
                 }
-            }
-            found.expect("node written at path")
-        })
+            });
+        }
+        found.expect("node written at path")
     }
 
     /// Random keys plus keys sharing 62 nibbles, so leaves with 1-byte values are inlined into their branch.
@@ -964,64 +1197,113 @@ mod tests {
     }
 
     fn root_of(items: &[Item]) -> [u8; 32] {
-        apply(&PendingNodes::default(), EMPTY_TREE_HASH, items).unwrap()
+        apply(&PendingNodes::default(), None, EMPTY_TREE_HASH, items).unwrap()
     }
 
     #[test]
     fn bulk_set_is_independent_of_batching_and_deletes_back_to_empty() {
         let items = generate_items(5000, 0x1234_5678);
 
-        let store = pending::rent(items.len());
-        assert_eq!(apply(&store, EMPTY_TREE_HASH, &[]), Ok(EMPTY_TREE_HASH));
-        let root = apply(&store, EMPTY_TREE_HASH, &items).unwrap();
-        assert_eq!(keccak(&written_at(&store, &TreePath::default())), root);
-        assert_eq!(apply(&store, root, &[]), Ok(root));
+        // A temporary log per bulk set, then a minimal shared one, which keeps dropping the nodes of earlier bulk sets.
+        let minimal = TrieNodeLog::new(0);
+        for log in [None, Some(&minimal)] {
+            let store = pending::rent(items.len());
+            assert_eq!(
+                apply(&store, log, EMPTY_TREE_HASH, &[]),
+                Ok(EMPTY_TREE_HASH)
+            );
+            let root = apply(&store, log, EMPTY_TREE_HASH, &items).unwrap();
+            assert_eq!(keccak(&written_at(&store, &TreePath::default())), root);
+            assert_eq!(apply(&store, log, root, &[]), Ok(root));
 
-        let batched = PendingNodes::default();
-        let mut batched_root = EMPTY_TREE_HASH;
-        let mut start = 0;
-        for size in [1, 7, 300, items.len() - 308] {
-            batched_root = apply(&batched, batched_root, &items[start..start + size]).unwrap();
-            start += size;
+            let batched = PendingNodes::default();
+            let mut batched_root = EMPTY_TREE_HASH;
+            let mut start = 0;
+            for size in [1, 7, 300, items.len() - 308] {
+                batched_root =
+                    apply(&batched, log, batched_root, &items[start..start + size]).unwrap();
+                start += size;
+            }
+            assert_eq!(batched_root, root);
+
+            let mut changes: Vec<Item> = items[..2500]
+                .iter()
+                .map(|(key, value)| (*key, [value.as_slice(), &[7]].concat()))
+                .collect();
+            changes.extend(items[2500..4000].iter().map(|(key, _)| (*key, Vec::new())));
+            changes.extend(items[5000..5020].iter().map(|(key, _)| (*key, Vec::new())));
+            let mut expected: Vec<Item> = changes[..2500].to_vec();
+            expected.extend_from_slice(&items[4000..5000]);
+            expected.extend_from_slice(&items[5020..]);
+            let changed_root = apply(&store, log, root, &changes).unwrap();
+            assert_eq!(changed_root, root_of(&expected));
+
+            let deletes: Vec<Item> = expected.iter().map(|(key, _)| (*key, Vec::new())).collect();
+            assert_eq!(
+                apply(&store, log, changed_root, &deletes),
+                Ok(EMPTY_TREE_HASH)
+            );
+
+            assert_eq!(
+                apply(
+                    &store,
+                    log,
+                    EMPTY_TREE_HASH,
+                    &[items[0].clone(), items[0].clone()]
+                ),
+                Err(Error::DuplicateKey)
+            );
+
+            pending::give_back(store);
+            assert_eq!(pending::rent(items.len()).count(), 0);
         }
-        assert_eq!(batched_root, root);
 
-        let mut changes: Vec<Item> = items[..2500]
-            .iter()
-            .map(|(key, value)| (*key, [value.as_slice(), &[7]].concat()))
-            .collect();
-        changes.extend(items[2500..4000].iter().map(|(key, _)| (*key, Vec::new())));
-        changes.extend(items[5000..5020].iter().map(|(key, _)| (*key, Vec::new())));
-        let mut expected: Vec<Item> = changes[..2500].to_vec();
-        expected.extend_from_slice(&items[4000..5000]);
-        expected.extend_from_slice(&items[5020..]);
-        let changed_root = apply(&store, root, &changes).unwrap();
-        assert_eq!(changed_root, root_of(&expected));
-
-        // Every node the first bulk set wrote is cached, so the second needs neither the pending nodes nor the store.
-        let cache = TrieNodeCache::new(256 << 20);
-        let cached = PendingNodes::default();
-        let cached_root =
-            apply_cached(&cached, Some(&cache), EMPTY_TREE_HASH, &items[..300]).unwrap();
-        cached.clear();
+        // Every node the first bulk set wrote is logged, so the second needs neither the pending nodes nor the store.
+        let log = TrieNodeLog::new(256 << 20);
+        let logged = PendingNodes::default();
+        let logged_root = apply(&logged, Some(&log), EMPTY_TREE_HASH, &items[..300]).unwrap();
+        logged.clear();
         assert_eq!(
-            apply_cached(&cached, Some(&cache), cached_root, &items[300..600]),
+            apply(&logged, Some(&log), logged_root, &items[300..600]),
             Ok(root_of(&items[..600]))
         );
 
-        let deletes: Vec<Item> = expected.iter().map(|(key, _)| (*key, Vec::new())).collect();
-        assert_eq!(apply(&store, changed_root, &deletes), Ok(EMPTY_TREE_HASH));
-
-        assert_eq!(
-            apply(
-                &store,
-                EMPTY_TREE_HASH,
-                &[items[0].clone(), items[0].clone()]
-            ),
-            Err(Error::DuplicateKey)
-        );
-
-        pending::give_back(store);
-        assert_eq!(pending::rent(items.len()).count(), 0);
+        // Two entries landing at an existing leaf, inline or not, or extension split it below its first nibble, with
+        // and without one landing on what remains of it, read from the log or decoded. Values are long enough that no
+        // branch is inline.
+        let key = |last: u8| {
+            let mut key = [0xcd; 32];
+            key[31] = last;
+            key
+        };
+        let cases = [
+            ([key(0x00), key(0x10)], [key(0x01), key(0x02)]),
+            ([key(0x00), key(0x10)], [key(0x00), key(0x01)]),
+            ([key(0x00), key(0x01)], [[0x00; 32], [0x11; 32]]),
+            ([key(0x00), key(0x01)], [key(0x05), [0x00; 32]]),
+        ];
+        for (value, logged) in [vec![1; 7], vec![1; 40]]
+            .into_iter()
+            .flat_map(|value| [(value.clone(), false), (value, true)])
+        {
+            for (first, second) in &cases {
+                let first: Vec<Item> = first.iter().map(|key| (*key, value.clone())).collect();
+                let second: Vec<Item> = second.iter().map(|key| (*key, vec![2; 7])).collect();
+                let mut expected: Vec<Item> = first
+                    .iter()
+                    .filter(|(key, _)| second.iter().all(|(other, _)| other != key))
+                    .cloned()
+                    .collect();
+                expected.extend_from_slice(&second);
+                let split = PendingNodes::default();
+                let split_log = TrieNodeLog::new(0);
+                let log = logged.then_some(&split_log);
+                let first_root = apply(&split, log, EMPTY_TREE_HASH, &first).unwrap();
+                assert_eq!(
+                    apply(&split, log, first_root, &second),
+                    Ok(root_of(&expected))
+                );
+            }
+        }
     }
 }
