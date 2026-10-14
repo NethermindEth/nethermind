@@ -140,7 +140,7 @@ namespace Nethermind.Blockchain.Receipts
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
-            _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
+            _storageDecoder = storageDecoder ?? (receiptConfig is { StoreTxHashes: false } ? ReceiptArrayStorageDecoder.WithoutTxHashes : ReceiptArrayStorageDecoder.Instance);
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
             _logger = (logManager ?? LimboLogs.Instance).GetClassLogger<PersistentReceiptStorage>();
 

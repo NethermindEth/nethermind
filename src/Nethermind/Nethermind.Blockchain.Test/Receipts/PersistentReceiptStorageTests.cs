@@ -328,7 +328,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
     }
 
-    private void CreateStorage(bool captureHealthy = true)
+    private void CreateStorage(bool captureHealthy = true, bool configuredDecoder = false)
     {
         _decoder = new ReceiptArrayStorageDecoder(useCompactReceipts);
         IStateHistoryCaptureStatus captureStatus = Substitute.For<IStateHistoryCaptureStatus>();
@@ -341,7 +341,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _blockTree,
             _blockStore,
             _receiptConfig,
-            _decoder,
+            configuredDecoder ? null : _decoder,
             logManager: _logManager,
             historyCaptureStatus: captureStatus
         )
@@ -597,6 +597,20 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(recovered.BlockNumber, Is.EqualTo(block.Number));
         Assert.That(recovered.BlockHash, Is.EqualTo(block.Hash));
         _blockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
+    }
+
+    [TestCase(true, ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes)]
+    [TestCase(false, ReceiptArrayStorageDecoder.CompactEncoding)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Stores_the_transaction_hashes_only_when_configured(bool storeTxHashes, int marker)
+    {
+        Assume.That(useCompactReceipts, "Only compact receipts store the transaction hashes.");
+        _receiptConfig.StoreTxHashes = storeTxHashes;
+        CreateStorage(configuredDecoder: true);
+
+        (Block block, TxReceipt[] _) = InsertBlock();
+
+        Assert.That(ReadStoredReceipts(block)[0], Is.EqualTo(marker));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

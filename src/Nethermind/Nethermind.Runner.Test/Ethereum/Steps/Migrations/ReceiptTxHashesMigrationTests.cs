@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Db;
+using Nethermind.History;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -68,7 +69,7 @@ public class ReceiptTxHashesMigrationTests
     }
 
     [Test]
-    public async Task Waits_until_block_processing_stops_before_a_chunk()
+    public async Task Waits_until_block_processing_stops_before_a_block()
     {
         using Chain chain = new(1);
         byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
@@ -82,13 +83,61 @@ public class ReceiptTxHashesMigrationTests
     }
 
     [Test]
+    public async Task Waits_while_blocks_are_queued_for_processing()
+    {
+        using Chain chain = new(1);
+        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
+        chain.Store(1, withoutHashes);
+        chain.ProcessingQueue.IsEmpty.Returns(false, false, true);
+
+        await chain.RunMigration();
+
+        _ = chain.ProcessingQueue.Received(3).IsEmpty;
+        Assert.That(chain.Read(1), Is.Not.EqualTo(withoutHashes));
+    }
+
+    [Test]
+    public async Task Stops_at_the_oldest_unreclaimed_block_when_it_rises_during_the_pass()
+    {
+        using Chain chain = new(3);
+        byte[][] withoutHashes = new byte[4][];
+        for (ulong number = 1; number <= 3; number++)
+        {
+            withoutHashes[number] = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(number), RlpBehaviors.Storage);
+            chain.Store(number, withoutHashes[number]);
+        }
+
+        chain.HistoryPruner.OldestUnreclaimedBlockNumber.Returns(0UL, 0UL, 3UL);
+
+        await chain.RunMigration();
+
+        Assert.That(chain.Read(3), Is.EqualTo(CompactDecoder.EncodeAsBytes(chain.ReceiptsWithTxHashes(3), RlpBehaviors.Storage)));
+        Assert.That(chain.Read(2), Is.EqualTo(withoutHashes[2]));
+        Assert.That(chain.Read(1), Is.EqualTo(withoutHashes[1]));
+    }
+
+    [Test]
+    public async Task Keeps_a_margin_above_the_history_pruning_cutoff()
+    {
+        using Chain chain = new(2);
+        byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(2), RlpBehaviors.Storage);
+        chain.Store(2, withoutHashes);
+        chain.HistoryPruner.CutoffBlockNumber.Returns(0UL);
+
+        await chain.RunMigration();
+
+        Assert.That(chain.Read(2), Is.EqualTo(withoutHashes));
+        chain.BlockStore.DidNotReceiveWithAnyArgs().GetReceiptRecoveryBlock(default, default!);
+    }
+
+    [Test]
     public async Task Does_nothing_when_disabled()
     {
         using Chain chain = new(1);
         byte[] withoutHashes = CompactDecoder.EncodeAsBytes(chain.ReceiptsWithoutTxHashes(1), RlpBehaviors.Storage);
         chain.Store(1, withoutHashes);
 
-        await chain.RunMigration(new ReceiptConfig { ReceiptsTxHashesMigration = false });
+        await chain.RunMigration(new ReceiptConfig { StoreTxHashes = false });
 
         Assert.That(chain.Read(1), Is.EqualTo(withoutHashes));
     }
@@ -98,6 +147,7 @@ public class ReceiptTxHashesMigrationTests
         public readonly Block[] Blocks;
         public readonly IBlockStore BlockStore = Substitute.For<IBlockStore>();
         public readonly IBlockProcessingQueue ProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+        public readonly IHistoryPruner HistoryPruner = Substitute.For<IHistoryPruner>();
         private readonly TestMemColumnsDb<ReceiptsColumns> _receiptsDb = new();
         private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private readonly IChainLevelInfoRepository _chainLevels = Substitute.For<IChainLevelInfoRepository>();
@@ -122,6 +172,7 @@ public class ReceiptTxHashesMigrationTests
             _blockTree.Head.Returns(Blocks[length]);
             _blockTree.GetLowestBlock().Returns(1UL);
             _syncModeSelector.Current.Returns(SyncMode.WaitingForBlock);
+            ProcessingQueue.IsEmpty.Returns(true);
         }
 
         public TxReceipt[] ReceiptsWithTxHashes(ulong number) =>
@@ -148,6 +199,7 @@ public class ReceiptTxHashesMigrationTests
                 _chainLevels,
                 _syncModeSelector,
                 ProcessingQueue,
+                HistoryPruner,
                 LimboLogs.Instance);
 
             await migration.Run(CancellationToken.None);

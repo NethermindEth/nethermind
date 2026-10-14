@@ -147,6 +147,18 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
+        public void Compact_storage_without_transaction_hashes_keeps_the_plain_marker_when_every_receipt_has_one()
+        {
+            TxReceipt[] receipts = BuildReceipts(2);
+
+            byte[] encoded = ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage);
+
+            Assert.That(encoded[0], Is.EqualTo(ReceiptArrayStorageDecoder.CompactEncoding));
+            Assert.That(encoded, Has.Length.EqualTo(ReceiptArrayStorageDecoder.WithoutTxHashes.GetLength(receipts, RlpBehaviors.Storage)));
+            Assert.That(encoded, Is.EqualTo(ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(WithoutTxHashes(receipts), RlpBehaviors.Storage)));
+        }
+
+        [Test]
         public void Compact_values_with_and_without_transaction_hashes_decode_to_the_same_receipts()
         {
             TxReceipt[] receipts = BuildReceipts(3);

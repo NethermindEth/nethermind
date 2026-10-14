@@ -10,12 +10,15 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpDecoder<TxReceipt[]>
+public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true, bool storeTxHashes = true) : RlpDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
+    /// <summary>Writes compact receipts with the <see cref="CompactEncoding"/> marker only, which earlier versions read.</summary>
+    public static readonly ReceiptArrayStorageDecoder WithoutTxHashes = new(compactEncoding: true, storeTxHashes: false);
+
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptArrayStorageDecoder))]
-    public ReceiptArrayStorageDecoder() : this(true) { }
+    public ReceiptArrayStorageDecoder() : this(true, true) { }
 
     private static readonly ReceiptStorageDecoder Decoder = new();
     private static readonly CompactReceiptStorageDecoder CompactDecoder = CompactReceiptStorageDecoder.Instance;
@@ -39,7 +42,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         int contentLength = GetContentLength(items, rlpBehaviors);
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
-            int txHashesLength = HasAllTxHashes(items) ? Rlp.LengthOfByteString(items.Length * Hash256.Size, byte.MaxValue) : 0;
+            int txHashesLength = WritesTxHashes(items) ? Rlp.LengthOfByteString(items.Length * Hash256.Size, byte.MaxValue) : 0;
             return Rlp.LengthOfSequence(contentLength - 1) + 2 + txHashesLength;
         }
 
@@ -104,7 +107,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
-            if (HasAllTxHashes(items))
+            if (WritesTxHashes(items))
             {
                 writer.WriteByte(CompactEncodingWithTxHashes);
                 writer.StartByteArray(items.Length * Hash256.Size, false);
@@ -332,8 +335,10 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    private static bool HasAllTxHashes(TxReceipt[] items)
+    private bool WritesTxHashes(TxReceipt[] items)
     {
+        if (!storeTxHashes) return false;
+
         for (int i = 0; i < items.Length; i++)
         {
             if (items[i]?.TxHash is null) return false;
