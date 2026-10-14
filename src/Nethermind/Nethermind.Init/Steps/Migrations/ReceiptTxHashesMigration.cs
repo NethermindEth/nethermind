@@ -99,6 +99,7 @@ public sealed class ReceiptTxHashesMigration(
         if (_logger.IsInfo) _logger.Info($"Adding transaction hashes to stored receipts, blocks {lowest} to {next}.");
 
         long rewritten = 0;
+        long bytesAdded = 0;
         while (next >= lowest && !cancellationToken.IsCancellationRequested)
         {
             await WaitWhileProcessing(cancellationToken);
@@ -108,7 +109,9 @@ public sealed class ReceiptTxHashesMigration(
             {
                 for (ulong number = next; number >= chunkEnd; number--)
                 {
-                    rewritten += MigrateLevel(number, batch);
+                    (int blocks, long bytes) = MigrateLevel(number, batch);
+                    rewritten += blocks;
+                    bytesAdded += bytes;
                 }
             }
 
@@ -116,24 +119,32 @@ public sealed class ReceiptTxHashesMigration(
             WriteNextBlock(next < lowest ? Completed : next);
         }
 
-        if (_logger.IsInfo && next < lowest) _logger.Info($"Transaction hashes added to stored receipts of {rewritten} blocks.");
+        if (_logger.IsInfo && next < lowest)
+            _logger.Info($"Transaction hashes added to stored receipts of {rewritten} blocks, {bytesAdded} bytes added.");
     }
 
-    internal int MigrateLevel(ulong number, IWriteBatch batch)
+    /// <returns>The number of rewritten blocks and the bytes their values grew by.</returns>
+    internal (int Blocks, long Bytes) MigrateLevel(ulong number, IWriteBatch batch)
     {
         ChainLevelInfo? level = chainLevels.LoadLevel(number);
-        if (level is null) return 0;
+        if (level is null) return (0, 0);
 
         int rewritten = 0;
+        long bytesAdded = 0;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (MigrateBlock(number, blockInfo.BlockHash, batch)) rewritten++;
+            int added = MigrateBlock(number, blockInfo.BlockHash, batch);
+            if (added < 0) continue;
+
+            rewritten++;
+            bytesAdded += added;
         }
 
-        return rewritten;
+        return (rewritten, bytesAdded);
     }
 
-    private bool MigrateBlock(ulong number, Hash256 blockHash, IWriteBatch batch)
+    /// <returns>The bytes the value grew by, or -1 when it was not rewritten.</returns>
+    private int MigrateBlock(ulong number, Hash256 blockHash, IWriteBatch batch)
     {
         byte[] key = new byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(number, blockHash, key);
@@ -144,10 +155,10 @@ public sealed class ReceiptTxHashesMigration(
             key = blockHash.BytesToArray();
         }
 
-        if (receipts is null || !ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(receipts)) return false;
+        if (receipts is null || !ReceiptArrayStorageDecoder.IsCompactEncodingWithoutTxHashes(receipts)) return -1;
 
         ReceiptRecoveryBlock? recoveryBlock = blockStore.GetReceiptRecoveryBlock(number, blockHash);
-        if (recoveryBlock is null) return false;
+        if (recoveryBlock is null) return -1;
 
         ReceiptRecoveryBlock block = recoveryBlock.Value;
         try
@@ -158,8 +169,9 @@ public sealed class ReceiptTxHashesMigration(
                 block.GetNextTransactionValueHash().Bytes.CopyTo(txHashes.AsSpan(i * Hash256.Size));
             }
 
-            batch[key] = ReceiptArrayStorageDecoder.AddTxHashes(receipts, txHashes);
-            return true;
+            byte[] migrated = ReceiptArrayStorageDecoder.AddTxHashes(receipts, txHashes);
+            batch[key] = migrated;
+            return migrated.Length - receipts.Length;
         }
         finally
         {
