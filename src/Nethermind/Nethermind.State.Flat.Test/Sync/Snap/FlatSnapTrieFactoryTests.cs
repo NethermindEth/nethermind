@@ -24,7 +24,7 @@ namespace Nethermind.State.Flat.Test.Sync.Snap;
 [TestFixture]
 public class FlatSnapTrieFactoryTests
 {
-    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false)
+    private static (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) Build(bool doubleWriteCheck = false, IPersistenceManager? persistenceManager = null)
     {
         IPersistence persistence = Substitute.For<IPersistence>();
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -37,7 +37,7 @@ public class FlatSnapTrieFactoryTests
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.EnableSnapDoubleWriteCheck.Returns(doubleWriteCheck);
 
-        FlatSnapTrieFactory factory = new(persistence, syncConfig, LimboLogs.Instance);
+        FlatSnapTrieFactory factory = new(persistence, persistenceManager ?? Substitute.For<IPersistenceManager>(), syncConfig, LimboLogs.Instance);
         return (factory, persistence, reader);
     }
 
@@ -67,6 +67,23 @@ public class FlatSnapTrieFactoryTests
         persistence.Received(1).Clear();
     }
 
+    // The wipe drops the persisted state pointer. A stale cached pointer (genesis, flushed at startup) kept
+    // HasStateForBlock true for the whole sync, so every read of it retried for 5 s and failed with -32603.
+    [Test]
+    public void EnsureInitialize_ResetsPersistedStatePointerAfterClear()
+    {
+        IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
+        (FlatSnapTrieFactory factory, IPersistence persistence, _) = Build(persistenceManager: persistenceManager);
+
+        factory.EnsureInitialize();
+
+        Received.InOrder(() =>
+        {
+            persistence.Clear();
+            persistenceManager.ResetPersistedStateId();
+        });
+    }
+
     [Test]
     public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values] bool hasState)
     {
@@ -78,7 +95,7 @@ public class FlatSnapTrieFactoryTests
         }
 
         TestLogger logger = new();
-        FlatSnapTrieFactory factory = new(persistence, Substitute.For<ISyncConfig>(), new OneLoggerLogManager(new ILogger(logger)));
+        FlatSnapTrieFactory factory = new(persistence, Substitute.For<IPersistenceManager>(), Substitute.For<ISyncConfig>(), new OneLoggerLogManager(new ILogger(logger)));
 
         factory.EnsureInitialize();
 
