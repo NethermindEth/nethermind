@@ -174,6 +174,11 @@ public sealed partial class LeanObjectTransport
             for (int index = 0; index < assembly.Chunks.Length && indices.Count < LeanProtocol.MaxChunksPerRequest; index++)
                 if (!assembly.Chunks[index] && assembly.InFlight[index] is null) indices.Add(index);
             if (indices.Count == 0 || source.LastIssued == ulong.MaxValue) return;
+            if (!assembly.RetrievalStarted)
+            {
+                assembly.RetrievalStarted = true;
+                assembly.Created = assembly.Updated = now;
+            }
             LeanChunksRequest request = new(++source.LastIssued, now, assembly, [.. indices]);
             foreach (int index in request.Indices) assembly.InFlight[index] = source;
             Issue(source, request);
@@ -448,8 +453,10 @@ public sealed partial class LeanObjectTransport
     {
         List<LeanAssembly>? expired = null;
         foreach (LeanAssembly assembly in _assemblies.Values)
-            if (!assembly.Dropped && (_clock.GetElapsedTime(assembly.Updated, now) >= LeanProtocol.MaxAssemblyIdle
-                || _clock.GetElapsedTime(assembly.Created, now) >= LeanProtocol.MaxAssemblyAge))
+            if (!assembly.Dropped && (assembly.RetrievalStarted
+                ? _clock.GetElapsedTime(assembly.Updated, now) >= LeanProtocol.MaxAssemblyIdle
+                    || _clock.GetElapsedTime(assembly.Created, now) >= LeanProtocol.MaxAssemblyAge
+                : _clock.GetElapsedTime(assembly.Admitted, now) >= LeanLimits.DeferredLifetime))
                 (expired ??= []).Add(assembly);
         if (expired is null) return;
         foreach (LeanAssembly assembly in expired)

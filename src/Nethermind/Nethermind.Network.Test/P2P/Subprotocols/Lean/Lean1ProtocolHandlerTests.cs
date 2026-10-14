@@ -13,6 +13,8 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -67,8 +69,6 @@ public class Lean1ProtocolHandlerTests
         ChunkMessage m => new ChunkMessageSerializer().Encode(m),
         CompleteMessage m => new CompleteMessageSerializer().Encode(m),
         CancelMessage m => new CancelMessageSerializer().Encode(m),
-        GetTransactionsMessage m => new GetTransactionsMessageSerializer().Encode(m),
-        TransactionsMessage m => new TransactionsMessageSerializer().Encode(m),
         _ => throw new ArgumentException(message.GetType().Name)
     };
 
@@ -84,6 +84,8 @@ public class Lean1ProtocolHandlerTests
     {
         ISession session = Substitute.For<ISession, ILeanBulkSession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+        node.EthTransactions.Register(TestItem.PublicKeyA, session, (_, _, _) => Task.FromResult(Array.Empty<Transaction>()));
         session.HasAgreedCapability(Arg.Any<Capability>()).Returns(true);
         ((ILeanBulkSession)session).EnableLeanBulk().Returns(bulk);
         ConcurrentQueue<string> disconnects = new();
@@ -96,15 +98,13 @@ public class Lean1ProtocolHandlerTests
         Route<GetChunksMessage>(session, post);
         Route<CompleteMessage>(session, post);
         Route<CancelMessage>(session, post);
-        Route<GetTransactionsMessage>(session, post);
-        Route<TransactionsMessage>(session, post);
         ((ILeanBulkSession)session).DeliverLeanChunkAsync(Arg.Any<ChunkMessage>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
             post?.Invoke(call.Arg<ChunkMessage>());
             return new ValueTask<int>(1);
         });
         Lean1ProtocolHandler handler = new(session, Substitute.For<INodeStatsManager>(), Substitute.For<IMessageSerializationService>(),
-            Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, node.Transport);
+            Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, node.Transport, node.EthTransactions);
         return new Side(node, session, handler, disconnects);
     }
 
@@ -123,7 +123,18 @@ public class Lean1ProtocolHandlerTests
             _toB = new Wire(() => B?.Handler);
             A = CreateSide(new LeanTestNode(manualTime: false), _toB.Post);
             B = CreateSide(new LeanTestNode(manualTime: false), _toA.Post);
+            BindEth(A, B);
+            BindEth(B, A);
         }
+
+        private static void BindEth(Side receiver, Side source)
+            => receiver.Node.EthTransactions.Register(TestItem.PublicKeyA, receiver.Session, (hashes, reserve, _) =>
+            {
+                Transaction[] transactions = hashes.Select(hash => source.Node.Transport.TryGetRetainedTransaction(hash, out Transaction? retained)
+                    ? retained : source.Node.Pending.Find(transaction => transaction.Hash!.ValueHash256 == hash)).OfType<Transaction>().ToArray();
+                int bytes = transactions.Sum(transaction => TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping));
+                return Task.FromResult(reserve(bytes) ? transactions : []);
+            });
 
         public Side A { get; }
         public Side B { get; }
@@ -167,8 +178,9 @@ public class Lean1ProtocolHandlerTests
         await using Connection connection = new();
         await connection.Open();
         Transaction transaction = FrameTransaction(1);
+        connection.A.Node.Pending.Add(transaction);
         byte[] wrapper = Wrapper(3 * LeanProtocol.ChunkBytes, false, transaction);
-        LeanDescriptor descriptor = Describe(wrapper, out _);
+        LeanDescriptor descriptor = Describe(wrapper);
 
         Assert.That((await connection.A.Node.Wrappers.AcceptDetailedAsync(wrapper)).HasValidProof, Is.True);
 
@@ -182,7 +194,7 @@ public class Lean1ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Hash_entries_are_resolved_over_get_transactions_before_the_peer_admits()
+    public async Task Hash_entries_are_resolved_over_ETH_before_the_peer_admits()
     {
         await using Connection connection = new();
         await connection.Open();
@@ -197,34 +209,18 @@ public class Lean1ProtocolHandlerTests
     }
 
     [Test]
-    public async Task Inclusion_list_package_is_fetched_validated_and_admitted_by_the_peer()
+    public async Task Block_proof_sidecar_matches_known_header_and_full_block_body([Values(0, 300_000)] int proofBytes)
     {
         await using Connection connection = new();
         await connection.Open();
-        Transaction transaction = FrameTransaction(3);
-        byte[] package = InclusionList(2 * LeanProtocol.ChunkBytes, transaction);
-        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
-            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
-
-        Assert.That((await connection.A.Node.Wrappers.AcceptInclusionListDetailedAsync(package)).HasValidProof, Is.True);
-
-        await Until(() => connection.B.Node.Transport.IsStored(descriptor.ObjectId));
-        Assert.That(connection.B.Node.Pending.Select(t => t.Hash), Does.Contain(transaction.Hash));
-        AssertNoDisconnects(connection);
-    }
-
-    [Test]
-    public async Task Block_proof_sidecar_rebuilds_the_header_committed_by_the_block_hash([Values(0, 300_000)] int proofBytes)
-    {
-        await using Connection connection = new();
-        await connection.Open();
-        BlockHeader header = LeanTransportTests.ProofHeader(Proof(proofBytes));
+        byte[] expectedProof = Proof(proofBytes);
+        BlockHeader header = LeanTransportTests.ProofHeader(expectedProof);
         IBlockTree tree = connection.A.Node.Tree;
         tree.FindHeader(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(header);
         tree.IsMainChain(header).Returns(true);
-        BlockHeader withoutProof = header.Clone();
-        withoutProof.RecursiveStark = null;
-        Block block = new(withoutProof, new BlockBody());
+        Block complete = new(header, new BlockBody([], [], starkProof: expectedProof));
+        tree.FindBlock(header.Hash!, Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>()).Returns(complete);
+        Block block = new(header.Clone(), new BlockBody());
 
         using CancellationTokenSource deadline = new(Timeout);
         RecursiveStark? proof = await connection.B.Node.Transport.TryGetAsync(block, deadline.Token);
@@ -232,7 +228,7 @@ public class Lean1ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proof, Is.Not.Null);
-            Assert.That(proof!.StarkProof, Is.EqualTo(header.RecursiveStark!.StarkProof));
+            Assert.That(proof!.StarkProof, Is.EqualTo(expectedProof));
             Assert.That(proof.BlockDepsHash, Is.EqualTo(header.RecursiveStark.BlockDepsHash));
         }
         AssertNoDisconnects(connection);

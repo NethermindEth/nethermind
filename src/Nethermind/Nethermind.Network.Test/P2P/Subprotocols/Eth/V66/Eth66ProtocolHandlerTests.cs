@@ -29,6 +29,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Lean;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
@@ -89,7 +90,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.Init();
         }
 
-        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler) =>
+        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler, LeanEthTransactions? leanTransactions = null) =>
             new(
                 _session,
                 _svc,
@@ -99,7 +100,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
-                LimboLogs.Instance);
+                LimboLogs.Instance, leanTransactions: leanTransactions);
 
         [TearDown]
         public void TearDown()
@@ -415,6 +416,67 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _transactionPool.DidNotReceive().NotifyAboutTx(
                 Arg.Any<ValueHash256>(),
                 Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+        }
+
+        [Test]
+        public async Task Lean_recovery_uses_authenticated_ETH_and_retains_pool_rejected_envelopes()
+        {
+            LeanEthTransactions registry = new();
+            Transaction transaction = Build.A.Transaction.WithNonce(123).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            registry.SetLookup(hash => hash == transaction.Hash!.ValueHash256 ? transaction : null);
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, registry);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            Assert.That(registry.HasPeer(TestItem.PublicKeyA), Is.True);
+            long requestId = 0;
+            _session.When(session => session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()))
+                .Do(call => requestId = call.Arg<GetPooledTransactionsMessage66>().RequestId);
+            int reserved = 0;
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+            Task<Transaction[]> recovery = registry.RecoverAsync(TestItem.PublicKeyA, [transaction.Hash!.ValueHash256],
+                bytes => { reserved += bytes; return true; }, timeout.Token);
+            using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { transaction });
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requestId, message);
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            Transaction[] recovered = await recovery;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reserved, Is.Positive, "response bytes are reserved before decoding");
+                Assert.That(recovered.Select(tx => tx.Hash), Is.EqualTo(new[] { transaction.Hash }));
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            }
+            // ETH serving must also work for a retained envelope that never entered the pool.
+            Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage? served = null;
+            _session.When(session => session.DeliverMessage(Arg.Any<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>()))
+                .Do(call => served = call.Arg<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
+            using GetPooledTransactionsMessage66 incoming = new(new ArrayPoolList<ValueHash256>(1) { transaction.Hash.ValueHash256 });
+            HandleZeroMessage(incoming, Eth66MessageCode.GetPooledTransactions);
+            Assert.That(served?.EthMessage.Transactions.Single().Hash, Is.EqualTo(transaction.Hash));
+            // A late duplicate belongs to lean's retired IDs, not unsolicited ordinary pool ingress.
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        [Test]
+        public async Task Lean_ETH_recovery_refuses_response_before_decode_when_byte_budget_is_full()
+        {
+            LeanEthTransactions registry = new();
+            _session.RemoteNodeId.Returns(TestItem.PublicKeyA);
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, registry);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            long requestId = 0;
+            _session.When(session => session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()))
+                .Do(call => requestId = call.Arg<GetPooledTransactionsMessage66>().RequestId);
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+            Task<Transaction[]> recovery = registry.RecoverAsync(TestItem.PublicKeyA, [TestItem.KeccakA.ValueHash256], _ => false, timeout.Token);
+            using PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>(0));
+            using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requestId, message);
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            Assert.That(await recovery, Is.Empty);
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

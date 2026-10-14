@@ -258,7 +258,9 @@ internal sealed class LeanAssembly(LeanDescriptor descriptor, long now, long met
     public bool[] Chunks { get; } = new bool[descriptor.ChunkCount];
     public LeanPeer?[] InFlight { get; } = new LeanPeer?[descriptor.ChunkCount];
     public int Received { get; set; }
-    public long Created { get; } = now;
+    public long Admitted { get; } = now;
+    public long Created { get; set; } = now;
+    public bool RetrievalStarted { get; set; }
     public long Updated { get; set; } = now;
     public long MetadataBytes { get; } = metadataBytes;
     public LeanPeer? Origin { get; set; }

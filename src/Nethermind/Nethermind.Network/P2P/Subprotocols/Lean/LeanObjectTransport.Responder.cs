@@ -155,7 +155,7 @@ public sealed partial class LeanObjectTransport
             {
                 serving.CompleteWritten = true;
                 bool served = written == indices.Length;
-                outbox.Send(peer, new CompleteMessage(serving.Id, serving.ObjectId, served && !stopped ? LeanCompleteStatus.Served : LeanCompleteStatus.Busy));
+                outbox.Send(peer, new CompleteMessage(serving.Id, serving.ObjectId, cancellation.IsCancellationRequested ? LeanCompleteStatus.Cancelled : served && !stopped ? LeanCompleteStatus.Served : LeanCompleteStatus.Busy));
                 if (served)
                 {
                     Interlocked.Increment(ref _stats.ObjectsServed);
@@ -169,19 +169,13 @@ public sealed partial class LeanObjectTransport
 
     internal void OnCancel(LeanPeer peer, CancelMessage message)
     {
-        Outbox outbox = new();
         lock (_gate)
         {
             if (peer.Closed) return;
-            // Cancels for unknown or completed requests are ignored; other request types already wrote their response.
-            if (peer.Serving.Remove(message.RequestId, out LeanServing? serving) && !serving.CompleteWritten)
-            {
-                serving.CompleteWritten = true;
+            // The serving task writes the terminal after any in-flight Chunk has unwound.
+            if (peer.Serving.TryGetValue(message.RequestId, out LeanServing? serving) && !serving.CompleteWritten)
                 serving.Cancellation.Cancel();
-                outbox.Send(peer, new CompleteMessage(message.RequestId, serving.ObjectId, LeanCompleteStatus.Cancelled));
-            }
         }
-        outbox.Flush();
     }
 
     /// <summary>Builds the sidecar of a recent canonical block on demand; true when a proof had to be hashed.</summary>
