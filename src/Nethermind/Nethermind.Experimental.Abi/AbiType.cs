@@ -236,6 +236,7 @@ public static partial class AbiType
 
             Span<byte> buffer = w.Take(byteSize);
             Encoding.UTF8.GetBytes(v, buffer);
+            buffer[byteCount..].Clear();
         },
         Size = v =>
         {
