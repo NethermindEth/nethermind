@@ -20,14 +20,18 @@ namespace Nethermind.Serialization.Rlp
             if (ctx.TryConsumeNull(out LiteRlpReader rlp, out int position)) return null;
 
             TxReceipt txReceipt = new();
+            int wrapperEnd = -1;
             if (!rlp.IsSequenceNext(position))
             {
-                rlp.SkipLength(ref position);
+                (int prefixLength, int contentLength) = rlp.PeekPrefixAndContentLength(position);
+                position += prefixLength;
+                if (prefixLength != 0) wrapperEnd = position + contentLength;
                 txReceipt.TxType = (TxType)rlp.Data[position++];
             }
 
             rlp.ReadSequenceLength(ref position, out int sequenceLength);
             int receiptEnd = position + sequenceLength;
+            if (wrapperEnd >= 0) RlpHelpers.Check(receiptEnd, wrapperEnd);
 
             if (txReceipt.TxType == TxType.FrameTx)
             {

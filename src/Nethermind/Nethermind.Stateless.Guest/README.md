@@ -4,7 +4,7 @@ The [ZisK](../Nethermind.Stateless.ZiskGuest/),
 [SP1](../Nethermind.Stateless.Sp1Guest/), and
 [OpenVM](../Nethermind.Stateless.OpenVMGuest/) projects compile the shared
 Nethermind stateless executor for each host. Compiler settings are shared in
-[`zkvm-guest.mk`](../zkvm-guest.mk); host Makefiles pin their execution images.
+[`build.mk`](build.mk); host Makefiles pin their execution images.
 
 **`make run` executes the guest. It does not generate or verify a cryptographic
 proof.** The pinned SP1 and OpenVM runner images currently provide execution
@@ -22,7 +22,7 @@ From the repository root, the following builds and executes mainnet block
 
 ```bash
 set -euo pipefail
-for host in Zisk Sp1 OpenVm; do
+for host in Zisk Sp1 OpenVM; do
     guest="src/Nethermind/Nethermind.Stateless.${host}Guest"
     make -C "$guest" build
     (
