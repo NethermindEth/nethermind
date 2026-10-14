@@ -155,18 +155,10 @@ public class ReceiptsMessageSerializerTests
         Assert.That(exception?.Message, Is.EqualTo("Unexpected null array element at index 0"));
     }
 
-    [Test]
-    public void Deserialize_empty()
-    {
-        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        Assert.That(receiptsMessage.TxReceipts, Has.Count.EqualTo(0));
-    }
-
     private static IEnumerable<TestCaseData> EmptyResponses()
     {
-        yield return new TestCaseData(Array.Empty<byte>()).SetName("Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(no bytes)");
-        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetName("Deserialize_empty_is_usable_after_an_earlier_one_is_disposed(empty list)");
+        yield return new TestCaseData(Array.Empty<byte>()).SetArgDisplayNames("no bytes");
+        yield return new TestCaseData(Rlp.OfEmptyList.Bytes).SetArgDisplayNames("empty list");
     }
 
     [TestCaseSource(nameof(EmptyResponses))]
