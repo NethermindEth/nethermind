@@ -32,9 +32,11 @@ namespace Nethermind.Store.Test;
 [TestFixture(false)]
 [TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class StorageProviderTests(bool useFlat)
+public partial class StorageProviderTests(bool useFlat)
 {
     private static readonly ILogManager LogManager = LimboLogs.Instance;
+
+    private bool UseFlat => useFlat;
 
     /// <summary>The test corpus is byte arrays; storage now takes words.</summary>
     private UInt256 Value(int index) => new(_values[index], isBigEndian: true);
@@ -2469,91 +2471,6 @@ public class StorageProviderTests(bool useFlat)
             }
         }
     }
-
-#if ZK_EVM
-    [Test]
-    public void Get_ManyReads_IndexesOriginalValuesEagerly()
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Commit(Frontier.Instance);
-        for (int i = 1; i <= 2048; i++)
-        {
-            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-        }
-
-        OptimizedDictionary<StorageCell, UInt256> originals =
-            (OptimizedDictionary<StorageCell, UInt256>)GetPrivateField(provider._persistentStorageProvider, "_originalValues");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(originals.Count, Is.EqualTo(2048), "Guest reads must index every original value immediately.");
-            Assert.That(typeof(PersistentStorageProvider).GetField("_pendingOriginalValues", BindingFlags.Instance | BindingFlags.NonPublic), Is.Null,
-                "The guest must not allocate a deferred capture buffer.");
-        }
-        provider.Commit(Frontier.Instance);
-        Assert.That(originals.Count, Is.Zero, "Commit must clear the guest original-value index.");
-    }
-
-#else
-    [Test]
-    public void Commit_ReadOnlyRounds_ReusesPendingBuffer([Values(2, 2048)] int slotCount)
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
-        provider.Commit(Frontier.Instance);
-        object buffer = null;
-        for (int round = 0; round < 3; round++)
-        {
-            for (int i = 1; i <= slotCount; i++)
-            {
-                provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-            }
-
-            object currentBuffer = GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues");
-            buffer ??= currentBuffer;
-            Assert.That(currentBuffer, Is.SameAs(buffer));
-            provider.Commit(Frontier.Instance);
-            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.SameAs(buffer));
-            Assert.That(((System.Collections.ICollection)buffer).Count, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void Commit_OversizedPendingBuffer_ReleasesBuffer()
-    {
-        using Context ctx = new(useFlat, preBlockCaches: null);
-        WorldState provider = BuildStorageProvider(ctx);
-        provider.Get(new StorageCell(ctx.Address1, UInt256.Zero), out _);
-        provider.Commit(Frontier.Instance);
-        for (int i = 1; i <= CoreCollectionExtensions.DefaultTrimAboveCapacity + 1; i++)
-        {
-            provider.Get(new StorageCell(ctx.Address1, (UInt256)i), out _);
-        }
-
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
-        provider.Commit(Frontier.Instance);
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
-    }
-
-    [Test]
-    public void EndScope_RetainedPendingBuffer_ReleasesBuffer()
-    {
-        using Context ctx = new(useFlat, setInitialState: false);
-        WorldState provider = BuildStorageProvider(ctx);
-        using (provider.BeginScope(IWorldState.PreGenesis))
-        {
-            StorageCell cell = new(TestItem.AddressA, UInt256.Zero);
-            provider.Get(cell, out _);
-            provider.Commit(Frontier.Instance);
-            provider.Get(cell, out _);
-            Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Not.Null);
-        }
-
-        Assert.That(GetPrivateField(provider._persistentStorageProvider, "_pendingOriginalValues"), Is.Null);
-    }
-
-#endif
 
     [TestCase(RoundBoundary.None)]
     [TestCase(RoundBoundary.ResetKeepingBlockChanges)]
