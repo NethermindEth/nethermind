@@ -28,20 +28,23 @@ public static unsafe partial class NativePatriciaBulkSet
 
     /// <summary>
     /// Applies <paramref name="entries"/> to the trie whose root hash is <paramref name="root"/>, writing every new node referenced by hash
-    /// into <paramref name="pending"/>, and returns the new root hash. Nodes are read from <paramref name="cache"/>, then <paramref name="pending"/>,
-    /// then <paramref name="store"/>, and every node read or written is cached as the storage trie of <paramref name="address"/>, or the state
-    /// trie when it is null.
+    /// into <paramref name="pending"/>, and returns the new root hash. Every node written also goes into <paramref name="log"/>, or a
+    /// temporary log when it is null, its root indexed as that of the storage trie of <paramref name="address"/>, or the state trie when it
+    /// is null. Nodes reachable through that root in <paramref name="log"/> are read there, and the others from <paramref name="pending"/>,
+    /// then <paramref name="store"/>, without being added to <paramref name="log"/>.
     /// </summary>
     /// <remarks>
     /// <paramref name="entries"/> is reordered in place and its keys must be unique. Hashing and node writes run in parallel on the native
     /// thread pool. Nodes that become unreachable are not removed.
     /// </remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeCache cache, Hash256? address, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, Hash256? address, in ValueHash256 root, Span<NativeBulkSetEntry> entries, ReadOnlySpan<byte> values)
     {
         CallState state = new(store);
         GCHandle handle = GCHandle.Alloc(state);
+        bool logReferenced = false;
         try
         {
+            log?.DangerousAddRef(ref logReferenced);
             ValueHash256 newRoot = default;
             ValueHash256 addressValue = address?.ValueHash256 ?? default;
             int status;
@@ -49,7 +52,8 @@ public static unsafe partial class NativePatriciaBulkSet
             fixed (byte* valuesPointer = values)
             fixed (ValueHash256* rootPointer = &root)
             {
-                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, pending, cache,
+                status = nm_patricia_bulk_set(entriesPointer, entries.Length, valuesPointer, values.Length, rootPointer, pending,
+                    logReferenced ? log!.DangerousGetHandle() : 0,
                     address is null ? null : &addressValue, &Fetch, (void*)GCHandle.ToIntPtr(handle), &newRoot);
             }
 
@@ -59,13 +63,14 @@ public static unsafe partial class NativePatriciaBulkSet
         }
         finally
         {
+            if (logReferenced) log!.DangerousRelease();
             handle.Free();
         }
     }
 
-    /// <inheritdoc cref="BulkSet(INativeNodeStore, NativePendingNodes, NativeTrieNodeCache, Hash256?, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
+    /// <inheritdoc cref="BulkSet(INativeNodeStore, NativePendingNodes, NativeTrieNodeLog?, Hash256?, in ValueHash256, Span{NativeBulkSetEntry}, ReadOnlySpan{byte})"/>
     /// <remarks>A null or empty <see cref="PatriciaTree.BulkSetEntry.Value"/> deletes the key. Keys must be unique.</remarks>
-    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeCache cache, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
+    public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
         int valuesLength = 0;
         foreach (PatriciaTree.BulkSetEntry entry in entries) valuesLength += entry.Value?.Length ?? 0;
@@ -83,7 +88,7 @@ public static unsafe partial class NativePatriciaBulkSet
                 offset += value.Length;
             }
 
-            return BulkSet(store, pending, cache, address, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
+            return BulkSet(store, pending, log, address, in root, nativeEntries.AsSpan(0, entries.Length), values.AsSpan(0, valuesLength));
         }
         finally
         {
@@ -115,7 +120,7 @@ public static unsafe partial class NativePatriciaBulkSet
         int valuesLength,
         ValueHash256* root,
         NativePendingNodes pending,
-        NativeTrieNodeCache cache,
+        nint log,
         ValueHash256* address,
         delegate* unmanaged<void*, TreePath*, ValueHash256*, delegate* unmanaged<void*, byte*, int, void>, void*, int> fetch,
         void* context,

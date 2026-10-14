@@ -5,9 +5,10 @@
 
 use std::collections::hash_map::Entry as MapEntry;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 
-use rustc_hash::FxBuildHasher;
+use rustc_hash::{FxBuildHasher, FxHasher};
 
 use crate::node::TreePath;
 
@@ -30,9 +31,9 @@ const _: () = {
     assert!(std::mem::offset_of!(WrittenNode, rlp_length) == 76);
 };
 
-/// The nodes bulk sets wrote, one per path with the last write winning, so later bulk sets read them back.
-#[derive(Default)]
-pub struct PendingNodes(Mutex<Inner>);
+/// The nodes bulk sets wrote, one per path with the last write winning, so later bulk sets read them back. Sharded by
+/// path, so the threads of a large bulk set write in parallel and the caller publishes the shards in parallel.
+pub struct PendingNodes(Box<[Mutex<Inner>]>);
 
 #[derive(Default)]
 struct Inner {
@@ -41,19 +42,63 @@ struct Inner {
     rlp: Vec<u8>,
 }
 
+impl Default for PendingNodes {
+    fn default() -> Self {
+        Self::with_capacity(0, 1)
+    }
+}
+
 impl PendingNodes {
-    fn with_capacity(nodes: usize) -> Self {
-        Self(Mutex::new(Inner {
-            nodes: Vec::with_capacity(nodes),
-            index: HashMap::with_capacity_and_hasher(nodes, FxBuildHasher),
-            rlp: Vec::with_capacity(nodes * INITIAL_ARENA_BYTES_PER_NODE),
-        }))
+    /// Creates `shards` shards with room for `nodes` nodes in all.
+    fn with_capacity(nodes: usize, shards: usize) -> Self {
+        let nodes = nodes.div_ceil(shards);
+        Self(
+            (0..shards)
+                .map(|_| {
+                    Mutex::new(Inner {
+                        nodes: Vec::with_capacity(nodes),
+                        index: HashMap::with_capacity_and_hasher(nodes, FxBuildHasher),
+                        rlp: Vec::with_capacity(nodes * INITIAL_ARENA_BYTES_PER_NODE),
+                    })
+                })
+                .collect(),
+        )
     }
 
-    /// Stores each `(path, hash, rlp)` under one lock. Overwriting a path leaves its old RLP in the arena until
-    /// [`PendingNodes::clear`].
-    pub fn write<'a>(&self, records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8])>) {
-        let mut inner = self.0.lock().unwrap();
+    fn shard(&self, path: &TreePath) -> usize {
+        match self.0.len() {
+            1 => 0,
+            shards => {
+                let mut hasher = FxHasher::default();
+                path.hash(&mut hasher);
+                hasher.finish() as usize % shards
+            }
+        }
+    }
+
+    /// Stores each `(path, hash, rlp)`, locking each shard written to once. Overwriting a path leaves its old RLP in the
+    /// arena until [`PendingNodes::clear`].
+    pub fn write<'a>(
+        &self,
+        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8])> + Clone,
+    ) {
+        let written = records.clone().fold(0u64, |written, (path, _, _)| {
+            written | 1 << self.shard(path)
+        });
+        for shard in (0..self.0.len()).filter(|shard| written & 1 << shard != 0) {
+            let records = records
+                .clone()
+                .filter(|(path, _, _)| self.shard(path) == shard);
+            self.write_shard(shard, records);
+        }
+    }
+
+    fn write_shard<'a>(
+        &self,
+        shard: usize,
+        records: impl Iterator<Item = (&'a TreePath, &'a [u8; 32], &'a [u8])>,
+    ) {
+        let mut inner = self.0[shard].lock().unwrap();
         let Inner { nodes, index, rlp } = &mut *inner;
         for (path, hash, node_rlp) in records {
             let record = WrittenNode {
@@ -75,7 +120,7 @@ impl PendingNodes {
 
     /// Replaces `buffer` with the RLP written at `path` when its hash is `hash`. Returns `false` otherwise.
     pub fn copy_to(&self, path: &TreePath, hash: &[u8; 32], buffer: &mut Vec<u8>) -> bool {
-        let inner = self.0.lock().unwrap();
+        let inner = self.0[self.shard(path)].lock().unwrap();
         let Some(&position) = inner.index.get(path) else {
             return false;
         };
@@ -90,29 +135,47 @@ impl PendingNodes {
     }
 
     pub fn count(&self) -> usize {
-        self.0.lock().unwrap().nodes.len()
+        self.0
+            .iter()
+            .map(|shard| shard.lock().unwrap().nodes.len())
+            .sum()
+    }
+
+    pub fn shard_count(&self) -> usize {
+        self.0.len()
     }
 
     /// Removes every node, keeping the capacity.
     pub fn clear(&self) {
-        let mut inner = self.0.lock().unwrap();
-        inner.nodes.clear();
-        inner.index.clear();
-        inner.rlp.clear();
+        for shard in self.0.iter() {
+            let mut inner = shard.lock().unwrap();
+            inner.nodes.clear();
+            inner.index.clear();
+            inner.rlp.clear();
+        }
     }
 
-    /// Calls `view` with the written nodes and the arena their RLP offsets point into.
-    pub fn with_view<R>(&self, view: impl FnOnce(&[WrittenNode], &[u8]) -> R) -> R {
-        let inner = self.0.lock().unwrap();
+    /// Calls `view` with the nodes written to `shard` and the arena their RLP offsets point into.
+    pub fn with_view<R>(&self, shard: usize, view: impl FnOnce(&[WrittenNode], &[u8]) -> R) -> R {
+        let inner = self.0[shard].lock().unwrap();
         view(&inner.nodes, &inner.rlp)
+    }
+
+    /// Total capacity of the node records and arenas of every shard.
+    fn capacity(&self) -> (usize, usize) {
+        self.0.iter().fold((0, 0), |(nodes, arena), shard| {
+            let inner = shard.lock().unwrap();
+            (nodes + inner.nodes.capacity(), arena + inner.rlp.capacity())
+        })
     }
 }
 
-/// Pooled size classes as (most nodes, structures kept). A bulk set writes about [`NODES_PER_ENTRY`] nodes per entry.
+/// Pooled size classes as (most nodes, structures kept, shards). A bulk set writes about [`NODES_PER_ENTRY`] nodes per
+/// entry, and is sharded only when large enough to write and be published in parallel.
 ///
 /// Worst case retained: 262,144 nodes × (80 B record + ~90 B index + at most [`MAX_ARENA_BYTES_PER_NODE`] arena),
 /// about 110 MB.
-const CLASSES: [(usize, usize); 3] = [(64, 1024), (1024, 64), (16384, 8)];
+const CLASSES: [(usize, usize, usize); 3] = [(64, 1024, 1), (1024, 64, 4), (16384, 8, 16)];
 const NODES_PER_ENTRY: usize = 4;
 const INITIAL_ARENA_BYTES_PER_NODE: usize = 128;
 const MAX_ARENA_BYTES_PER_NODE: usize = 256;
@@ -124,32 +187,36 @@ pub fn rent(estimated_entries: usize) -> Box<PendingNodes> {
     let nodes = estimated_entries.saturating_mul(NODES_PER_ENTRY);
     match CLASSES
         .iter()
-        .position(|&(max_nodes, _)| nodes <= max_nodes)
+        .position(|&(max_nodes, _, _)| nodes <= max_nodes)
     {
         Some(class) => {
             let pooled = POOL.lock().unwrap()[class].pop();
-            pooled.unwrap_or_else(|| Box::new(PendingNodes::with_capacity(CLASSES[class].0)))
+            let (max_nodes, _, shards) = CLASSES[class];
+            pooled.unwrap_or_else(|| Box::new(PendingNodes::with_capacity(max_nodes, shards)))
         }
-        None => Box::new(PendingNodes::with_capacity(nodes)),
+        None => Box::new(PendingNodes::with_capacity(
+            nodes,
+            CLASSES[CLASSES.len() - 1].2,
+        )),
     }
 }
 
-/// Clears `pending` and keeps it in the largest class its capacity serves, unless that class is full or it grew past
-/// the largest class.
+/// Clears `pending` and keeps it in the largest class its capacity serves, unless that class is full or has another
+/// shard count, or it grew past the largest class.
 pub fn give_back(pending: Box<PendingNodes>) {
     pending.clear();
-    let (capacity, arena) = {
-        let inner = pending.0.lock().unwrap();
-        (inner.nodes.capacity(), inner.rlp.capacity())
-    };
+    let (capacity, arena) = pending.capacity();
     let Some(class) = CLASSES
         .iter()
-        .rposition(|&(max_nodes, _)| capacity >= max_nodes)
+        .rposition(|&(max_nodes, _, _)| capacity >= max_nodes)
     else {
         return;
     };
-    let (max_nodes, kept) = CLASSES[class];
-    if capacity > CLASSES[CLASSES.len() - 1].0 || arena > max_nodes * MAX_ARENA_BYTES_PER_NODE {
+    let (max_nodes, kept, shards) = CLASSES[class];
+    if capacity > CLASSES[CLASSES.len() - 1].0
+        || arena > max_nodes * MAX_ARENA_BYTES_PER_NODE
+        || pending.shard_count() != shards
+    {
         return;
     }
     let mut pool = POOL.lock().unwrap();

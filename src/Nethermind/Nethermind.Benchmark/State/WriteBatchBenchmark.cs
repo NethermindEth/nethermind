@@ -31,7 +31,7 @@ public class WriteBatchBenchmark
     private const int SnapshotCount = 1;
 
     private FlatDbConfig _config = null!;
-    private NativeTrieNodeCache _nativeTrieNodeCache;
+    private NativeTrieNodeLog _nativeTrieNodeLog;
     private ResourcePool _resourcePool = null!;
     private TrieNodeLog _trieNodeLog = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
@@ -54,7 +54,7 @@ public class WriteBatchBenchmark
     {
         _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
         // Disabled, like the NullTrieNodeCache the managed tries get.
-        _nativeTrieNodeCache = UseNativeBulkSet ? new NativeTrieNodeCache(0) : null;
+        _nativeTrieNodeLog = UseNativeBulkSet ? new NativeTrieNodeLog(0) : null;
         _resourcePool = new ResourcePool(_config);
         _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(SnapshotCount);
@@ -88,7 +88,7 @@ public class WriteBatchBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: _config,
-                nativeTrieNodeCache: _nativeTrieNodeCache,
+                nativeTrieNodeLog: _nativeTrieNodeLog,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 
@@ -179,7 +179,7 @@ public class WriteBatchBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
-            nativeTrieNodeCache: _nativeTrieNodeCache,
+            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
     }

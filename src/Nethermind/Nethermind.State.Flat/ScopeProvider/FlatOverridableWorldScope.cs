@@ -35,7 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
-        Lazy<NativeTrieNodeCache> nativeTrieNodeCache,
+        Lazy<NativeTrieNodeLog> nativeTrieNodeLog,
         ITrieNodeCache trieNodeCache,
         TrieNodeLog trieNodeLog,
         IResourcePool resourcePool,
@@ -51,7 +51,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
-            configuration.UseNativeBulkSet ? nativeTrieNodeCache.Value : null,
+            configuration.UseNativeBulkSet ? nativeTrieNodeLog.Value : null,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
             headerProvider,
@@ -140,7 +140,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private class OverridableFlatScopeProvider(
         FlatOverridableWorldScope flatOverrideScope,
         IFlatDbConfig configuration,
-        NativeTrieNodeCache? nativeTrieNodeCache,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
         IStateHeaderProvider stateHeaderProvider,
@@ -176,7 +176,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 codeDb,
                 flatOverrideScope,
                 configuration,
-                nativeTrieNodeCache,
+                nativeTrieNodeLog,
                 trieWarmer,
                 logManager);
             return true;

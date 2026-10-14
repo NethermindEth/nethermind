@@ -41,7 +41,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly LoggedTrie? _stateTrie;
     // Set with UseNativeBulkSet, which then maintains the state trie instead of _stateTrie.
     private readonly NativeTrieNodeStore? _nativeStateStore;
-    private readonly NativeTrieNodeCache? _nativeTrieNodeCache;
+    private readonly NativeTrieNodeLog? _nativeTrieNodeLog;
     private Hash256 _nativeStateRoot;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
@@ -80,7 +80,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     internal bool Trieless => _trieless;
 
     // Provided whenever UseNativeBulkSet is set.
-    internal NativeTrieNodeCache NativeTrieNodeCache => _nativeTrieNodeCache!;
+    internal NativeTrieNodeLog NativeTrieNodeLog => _nativeTrieNodeLog!;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -88,7 +88,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IWorldStateScopeProvider.ICodeDb codeDb,
         IFlatCommitTarget commitTarget,
         IFlatDbConfig configuration,
-        NativeTrieNodeCache? nativeTrieNodeCache,
+        NativeTrieNodeLog? nativeTrieNodeLog,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
         Lazy<WarmReadPool>? warmReadPool = null,
@@ -103,7 +103,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _nativeStateRoot = _initialStateRoot;
 
         _configuration = configuration;
-        _nativeTrieNodeCache = nativeTrieNodeCache;
+        _nativeTrieNodeLog = nativeTrieNodeLog;
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
@@ -119,7 +119,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _initialTrieRoot = LogBulkSet.ResolveRoot(log, null, _initialStateRoot.ValueHash256);
             _stateTrie = new LoggedTrie(snapshotBundle, log, null, _initialTrieRoot);
         }
-        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeCache);
+        if (configuration.UseNativeBulkSet && !_trieless) _nativeStateStore = new NativeTrieNodeStore(snapshotBundle, null, NativeTrieNodeLog);
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && !configuration.UseNativeBulkSet && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)

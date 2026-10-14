@@ -12,18 +12,16 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
 /// The <see cref="INativeNodeStore"/> of one trie in a <see cref="SnapshotBundle"/>: the state trie when
-/// <paramref name="addressHash"/> is null, otherwise that account's storage trie. Its nodes are also cached in
-/// <paramref name="cache"/>.
+/// <paramref name="addressHash"/> is null, otherwise that account's storage trie. Its nodes go through
+/// <paramref name="log"/>.
 /// </summary>
 /// <remarks>
 /// Written nodes stay pending in <see cref="NativePendingNodes"/>, where the native bulk set reads them back, until
 /// <see cref="Publish"/> moves them into the bundle, so like the managed tries nothing reaches the bundle before the scope
 /// commits. The native bulk set writes from several threads at once, which the bundle's node dictionaries do not allow.
 /// </remarks>
-internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash, NativeTrieNodeCache cache) : INativeNodeStore
+internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addressHash, NativeTrieNodeLog log) : INativeNodeStore
 {
-    private const int MinNodesToPublishInParallel = 256;
-
     private NativePendingNodes? _pending;
 
     /// <summary>Whether nodes were written since the last <see cref="Publish"/> or <see cref="Clear"/>.</summary>
@@ -31,7 +29,7 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
 
     /// <summary>Applies <paramref name="entries"/> to the trie rooted at <paramref name="root"/> and returns the new root.</summary>
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
-        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), cache, addressHash, root.ValueHash256, entries);
+        NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log, addressHash, root.ValueHash256, entries);
 
     public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
     {
@@ -60,20 +58,27 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     {
         if (_pending is null) return;
 
-        NativePendingNodesView view = _pending.GetView();
-        if (view.Count > 0)
+        NativePendingNodesView[] views = new NativePendingNodesView[_pending.ShardCount];
+        int[] starts = new int[views.Length];
+        int count = 0;
+        for (int shard = 0; shard < views.Length; shard++)
         {
-            List<(TreePath Path, TrieNode Node)> nodes = new(view.Count);
-            CollectionsMarshal.SetCount(nodes, view.Count);
-            if (view.Count < MinNodesToPublishInParallel)
+            views[shard] = _pending.GetView(shard);
+            starts[shard] = count;
+            count += views[shard].Count;
+        }
+
+        if (count > 0)
+        {
+            List<(TreePath Path, TrieNode Node)> nodes = new(count);
+            CollectionsMarshal.SetCount(nodes, count);
+            // Large bulk sets are split into more shards, so publishing is as parallel as they are large.
+            Parallel.For(0, views.Length, shard =>
             {
-                Span<(TreePath Path, TrieNode Node)> destination = CollectionsMarshal.AsSpan(nodes);
+                NativePendingNodesView view = views[shard];
+                Span<(TreePath Path, TrieNode Node)> destination = CollectionsMarshal.AsSpan(nodes).Slice(starts[shard], view.Count);
                 for (int i = 0; i < destination.Length; i++) destination[i] = CreateNode(view, i);
-            }
-            else
-            {
-                Parallel.For(0, view.Count, i => CollectionsMarshal.AsSpan(nodes)[i] = CreateNode(view, i));
-            }
+            });
 
             if (addressHash is null) bundle.PublishStateNodes([nodes]);
             else bundle.PublishStorageNodes(bundle.GetStorageNodeDestination(addressHash), addressHash, [nodes]);
