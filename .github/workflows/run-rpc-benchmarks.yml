@@ -1091,6 +1091,22 @@ jobs:
             *) echo "Unknown image mode '${IMAGE_MODE}'."; exit 1 ;;
           esac
 
+      - name: Build log baseline
+        if: needs.resolve.outputs.benchmark_tool == 'jsonbench-sweep'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=44d7d4aebfa0bb45d1e18bd16093d19d6756a4b7
+          image=nethermind-rpcbench:log-baseline-44d7d4a
+          git fetch --depth=1 origin "$sha"
+          context="$(mktemp -d "${RUNNER_TEMP}/log-baseline.XXXXXX")"
+          git archive "$sha" | tar -x -C "$context"
+          source_date_epoch="$(git log -1 --format=%ct "$sha")"
+          docker build "$context" -f "$context/Dockerfile" -t "$image" \
+            --build-arg BUILD_CONFIG=release --build-arg CI=true \
+            --build-arg COMMIT_HASH="$sha" --build-arg SOURCE_DATE_EPOCH="$source_date_epoch"
+          [[ "$(docker image inspect "$image" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" == "$sha" ]]
+
       - name: Pull reference client image
         if: needs.resolve.outputs.comparison == 'true'
         env:
