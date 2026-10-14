@@ -14,9 +14,9 @@ namespace Nethermind.Synchronization.Blocks
 
         // Ranked by the speed of the data requested: a peer fast with bodies but slow or stingy with
         // access lists or receipts would otherwise keep winning the requests that hold back processing.
-        private static IPeerAllocationStrategy BlockAccessListsAllocationStrategy { get; } =
+        public static IPeerAllocationStrategy BlockAccessListsAllocationStrategy { get; } =
             new BlockAccessListsPeerAllocationStrategy(new BySpeedStrategy(TransferSpeedType.BlockAccessLists, true));
-        private static IPeerAllocationStrategy ReceiptsAllocationStrategy { get; } = new BySpeedStrategy(TransferSpeedType.Receipts, true);
+        public static IPeerAllocationStrategy ReceiptsAllocationStrategy { get; } = new BySpeedStrategy(TransferSpeedType.Receipts, true);
 
         public IPeerAllocationStrategy Create(BlocksRequest? request) =>
             request?.BlockAccessListsRequests.Count > 0 ? BlockAccessListsAllocationStrategy

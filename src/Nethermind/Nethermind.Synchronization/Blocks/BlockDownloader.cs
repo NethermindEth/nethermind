@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.Blocks
                 ?? GethSyncLimits.MaxBodyFetch;
             int? blockAccessListsRequestSize = null;
             int receiptsRequestSize =
-                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxReceiptFetch;
 
             int headersCount = headers.Count;
@@ -345,7 +345,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
-                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
+                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
                         ?? GethSyncLimits.MaxBodyFetch;
 
                     if (blockAccessListsToDownload.Count < blockAccessListsRequestSize.Value)

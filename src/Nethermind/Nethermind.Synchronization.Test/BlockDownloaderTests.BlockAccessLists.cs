@@ -87,6 +87,22 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Sizes_each_request_type_by_the_peers_that_serve_it()
+    {
+        IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        Context ctx = node.Resolve<Context>();
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
+
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+        using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
+
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Bodies, BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.Receipts, BlocksSyncPeerAllocationStrategyFactory.ReceiptsAllocationStrategy, AllocationContexts.Blocks, Arg.Any<CancellationToken>());
+        await ctx.PeerPool.Received().EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, Arg.Any<CancellationToken>());
+    }
+
+    [Test]
     public async Task Full_sync_processing_does_not_request_block_access_lists()
     {
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
