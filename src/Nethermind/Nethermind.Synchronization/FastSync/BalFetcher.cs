@@ -37,9 +37,8 @@ public class BalFetcher(
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
     private readonly ILogger _logger = logManager.GetClassLogger<BalFetcher>();
 
-    // Peers whose last answer held none of the missing BALs. Skipped until every capable peer has answered empty, so
-    // peers without the BALs are not asked again while others may have them. Kept across calls, as healing retries
-    // the same range.
+    // Peers whose last answer held none of the window's missing BALs, skipped until the window completes or no other
+    // peer is eligible. Kept across calls, as healing retries the same range.
     private readonly HashSet<PeerInfo> _answeredEmpty = [];
     private readonly Lock _answeredEmptyLock = new();
 
@@ -68,7 +67,12 @@ public class BalFetcher(
                         missing.Add(header);
                 }
 
-                if (missing.Count == 0) break;
+                if (missing.Count == 0)
+                {
+                    // A peer that lacked this window's BALs may hold the next window's.
+                    lock (_answeredEmptyLock) _answeredEmpty.Clear();
+                    break;
+                }
                 if (noProgress >= MaxNoProgressRounds)
                 {
                     if (_logger.IsWarn) _logger.Warn($"No peer served block access lists for {missing.Count} of blocks {windowStart}..{windowEnd} after {MaxNoProgressRounds} attempts.");
@@ -80,7 +84,7 @@ public class BalFetcher(
                 {
                     if (allocation.Current is null)
                     {
-                        // Every capable peer has answered empty: ask them all again.
+                        // No eligible peer: let the ones that answered empty be asked again.
                         lock (_answeredEmptyLock) _answeredEmpty.Clear();
                         stored = 0;
                     }
@@ -97,7 +101,6 @@ public class BalFetcher(
             }
         }
 
-        lock (_answeredEmptyLock) _answeredEmpty.Clear();
         return true;
     }
 
