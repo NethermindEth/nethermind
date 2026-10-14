@@ -97,6 +97,7 @@
     <PackageVersion Include="System.CommandLine" Version="2.0.13" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.13" />
     <PackageVersion Include="System.IO.Hashing" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
     <PackageVersion Include="Testably.Abstractions" Version="10.3.0" />
     <PackageVersion Include="Testably.Abstractions.Testing" Version="7.0.1" />
