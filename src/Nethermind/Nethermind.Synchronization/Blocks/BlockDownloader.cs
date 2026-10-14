@@ -291,6 +291,17 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
+        // The estimate waits up to a second for a peer to allocate; with no free eth/71 peer that only delays the batch.
+        private bool HasFreeBlockAccessListsPeer()
+        {
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            {
+                if (peer.CanBeAllocated(AllocationContexts.BlockAccessLists)) return true;
+            }
+
+            return false;
+        }
+
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
             BlocksRequestContentType? requestContentType = null;
@@ -345,7 +356,9 @@ namespace Nethermind.Synchronization.Blocks
                 if (ShouldDownloadAccessList(blockHeader, shouldProcess) && (requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
-                        (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
+                        (HasFreeBlockAccessListsPeer()
+                            ? await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, BlocksSyncPeerAllocationStrategyFactory.BlockAccessListsAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation)
+                            : null)
                         ?? GethSyncLimits.MaxBodyFetch;
 
                     if (blockAccessListsToDownload.Count < blockAccessListsRequestSize.Value)
