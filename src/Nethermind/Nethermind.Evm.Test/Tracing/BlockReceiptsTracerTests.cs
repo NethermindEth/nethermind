@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -218,6 +219,43 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.That(allocated, Is.LessThan(1024),
                 "a parallel tracer must reserve receipt capacity for its single transaction, not for the block");
+        }
+
+        /// <summary>A producer that leaves an executed transaction out must not keep its receipt, block gas or fees.</summary>
+        [Test]
+        public void DiscardLastTx_drops_the_receipt_gas_and_fees_of_the_last_transaction()
+        {
+            Transaction first = Build.A.Transaction.WithNonce(0).TestObject;
+            Transaction discarded = Build.A.Transaction.WithNonce(1).TestObject;
+            Transaction last = Build.A.Transaction.WithNonce(2).TestObject;
+            Block block = Build.A.Block.WithTransactions(first, discarded, last).TestObject;
+            FeesTracer fees = new();
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(fees);
+            tracer.StartNewBlockTrace(block);
+
+            Trace(first, 100, 10);
+            Trace(discarded, 200, 20);
+            tracer.DiscardLastTx();
+            Trace(last, 300, 30);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.TxReceipts.Length, Is.EqualTo(2));
+                Assert.That(tracer.TxReceipts[1].Index, Is.EqualTo(1));
+                Assert.That(tracer.TxReceipts[1].GasUsedTotal, Is.EqualTo(400ul));
+                Assert.That(tracer.CumulativeExecutionGasUsed, Is.EqualTo(400ul));
+                Assert.That(block.Header.GasUsed, Is.EqualTo(400ul));
+                Assert.That(fees.Fees, Is.EqualTo((UInt256)40));
+            }
+
+            void Trace(Transaction tx, ulong gas, ulong fee)
+            {
+                tracer.StartNewTxTrace(tx);
+                tracer.ReportFees(fee, 0);
+                tracer.MarkAsSuccess(TestItem.AddressA, gas, [], []);
+                tracer.EndTxTrace();
+            }
         }
     }
 }
