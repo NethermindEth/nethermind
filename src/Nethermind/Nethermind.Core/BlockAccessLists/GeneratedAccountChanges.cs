@@ -65,7 +65,7 @@ public class GeneratedAccountChanges(Address address) : IComparable<GeneratedAcc
     }
 
     /// <summary>Whether <paramref name="key"/> is already an item of this account, as a storage change or a storage read.</summary>
-    public bool HasStorageKey(in UInt256 key) => _storageChanges.ContainsKey(key) || _storageReads.Contains(key);
+    internal bool HasStorageKey(in UInt256 key) => _storageChanges.ContainsKey(key) || _storageReads.Contains(key);
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out GeneratedSlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);

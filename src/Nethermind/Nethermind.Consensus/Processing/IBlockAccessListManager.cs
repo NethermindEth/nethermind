@@ -46,7 +46,7 @@ public interface IBlockAccessListManager
     /// <see cref="NextTransaction"/> merges it.
     /// </summary>
     /// <remarks>Zero when no list is being built. The cost is proportional to the slice, not to the block.</remarks>
-    int CountPendingTransactionItems();
+    int CountPendingTransactionItems() => 0;
 
     void Rollback();
     void ReturnTxProcessor(uint balIndex);
