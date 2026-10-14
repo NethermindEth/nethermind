@@ -348,6 +348,17 @@ public class GethGenesisLoaderTests
         logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.Contains("invalid")), Arg.Any<Exception>());
     }
 
+    [TestCase("", null)]
+    [TestCase("\"name\": null,", null)]
+    [TestCase("\"name\": \"\",", "")]
+    [TestCase("\"name\": \"Custom Testnet\",", "Custom Testnet")]
+    public void Loads_optional_chain_name(string genesisExtra, string? expectedName)
+    {
+        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(genesisExtra: genesisExtra));
+
+        Assert.That(chainSpec.Name, Is.EqualTo(expectedName));
+    }
+
     [Test]
     public void Defaults_bootnodes_to_empty([Values("", "\"bootnodes\": null,", "\"bootnodes\": [],")] string genesisExtra)
     {
@@ -357,7 +368,9 @@ public class GethGenesisLoaderTests
     }
 
     [Test]
-    public void Rejects_invalid_bootnodes_types([Values("\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],")] string genesisExtra) =>
+    public void Rejects_invalid_extension_types([Values(
+        "\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],",
+        "\"name\": 1,", "\"name\": true,", "\"name\": [],", "\"name\": {},")] string genesisExtra) =>
         Assert.That(() => LoadStandardGethGenesis(genesisExtra: genesisExtra), Throws.TypeOf<InvalidDataException>());
 
     [Test]

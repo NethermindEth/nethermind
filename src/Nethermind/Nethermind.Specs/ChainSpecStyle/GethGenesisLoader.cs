@@ -47,6 +47,7 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
         ChainSpec chainSpec = new()
         {
+            Name = gethGenesisJson.Name,
             Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
             ChainId = config.ChainId,
             NetworkId = config.ChainId
