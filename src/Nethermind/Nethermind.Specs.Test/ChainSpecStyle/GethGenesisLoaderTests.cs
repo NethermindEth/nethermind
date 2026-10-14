@@ -50,8 +50,8 @@ public class GethGenesisLoaderTests
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
-    // Eip8369Prototype exists for fixture runs only and is scheduled on no network.
-    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(Eip8369Prototype)];
+    // FramesDevnet1 and Eip8369Prototype exist for fixture runs only and are scheduled on no network.
+    private static readonly HashSet<string> ForkClassesWithoutConfigProp = [nameof(FramesDevnet1), nameof(Eip8369Prototype)];
 
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 

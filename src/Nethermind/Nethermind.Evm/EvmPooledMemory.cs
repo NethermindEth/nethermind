@@ -826,9 +826,6 @@ public partial struct EvmPooledMemory
 
     private const int MinRentSize = 1_024;
     private const int InlineZeroChunk = 256;
-    // Above this, a cache miss rents from the shared pool instead of allocating (pow2 sizes from
-    // here up are LOH-sized).
-    private const int MaxNewAllocLength = 1 << 16;
     // Buffers up to this stay in the per-thread cache. Frames zero-extend their buffer on growth
     // (RentSlow), and a buffer that round-tripped through the shared pool between frames comes
     // back cold and coherence-invalidated under concurrent load — so those zeroing stores stall.
