@@ -11,5 +11,7 @@ public interface ICommitmentEmitterSource
 
     ulong WindowGranularity { get; }
 
-    CommitmentEmitter CreateEmitter();
+    /// <param name="release">Handed the emitter on dispose, reset, instead of releasing its buffers; see
+    /// <see cref="CommitmentEmitter.ForWalk"/>.</param>
+    CommitmentEmitter CreateEmitter(Action<CommitmentEmitter>? release = null);
 }

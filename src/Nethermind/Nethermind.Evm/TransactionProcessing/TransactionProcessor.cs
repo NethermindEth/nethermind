@@ -130,6 +130,24 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        /// <summary>
+        /// Applies the EIP-8360 end-of-transaction finalization to every live <c>TCREATE</c> account.
+        /// </summary>
+        /// <remarks>
+        /// Code, nonce and storage are dropped and the balance is kept as a fresh nonce-0, code-less account; an
+        /// empty one stays deleted per EIP-161. Accounts on the destroy list are left to self-destruct finalization.
+        /// </remarks>
+        private protected static void FinalizeTransientCreates(IWorldState worldState, in StackAccessTracker accessTracker, bool commit)
+        {
+            foreach (AddressAsKey transientCreate in accessTracker.TransientCreates!.Keys)
+            {
+                if (!accessTracker.IsTransientCreate(worldState, transientCreate, out _) || accessTracker.DestroyList.Contains(transientCreate)) continue;
+
+                UInt256 balance = worldState.GetBalance(transientCreate);
+                DestroyAccount(worldState, transientCreate, in balance, commit, removeSelfdestructBurn: true);
+            }
+        }
+
         /// <summary>Bounds a prefix frame's execution gas by what is left of <c>MAX_VERIFY_GAS</c>.</summary>
         /// <remarks>An opaque prefix's declared gas_limits are not structurally bounded, so this cap is what
         /// keeps cumulative validation work under the budget.</remarks>
@@ -246,12 +264,14 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
-            {
-                return GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts);
-            }
+            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+                ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
+                : Execute(tx, tracer, opts);
 
-            TransactionResult result = Execute(tx, tracer, opts);
+            // EIP-8360: every end path drops the transaction's TCREATE code, a failed or rejected transaction's
+            // included, since block production commits only once per block.
+            if (VirtualMachine.BlockExecutionContext.Spec.IsEip8360Enabled) WorldState.DiscardTransientCode();
+
             if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
             return result;
         }
@@ -395,7 +415,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 SuppressLogs = !_tracerFlags.IsCollectingLogs && !_tracerFlags.IsTracingLogs,
                 MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory,
                 // EIP-8279: system calls have no floor to settle against, so they are not metered.
-                BalDataMeter = spec.IsEip8279Enabled && !tx.IsSystem()
+                BalDataMeter = SpecFlags.Eip8279(spec) && !tx.IsSystem()
                     ? (_balDataMeter ??= new()).Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
                     : null,
             });
@@ -1534,6 +1554,12 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
+                    if (accessedItems.TransientCreates is not null)
+                    {
+                        FinalizeTransientCreates(WorldState, in accessedItems,
+                            opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled));
+                    }
+
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
@@ -1575,7 +1601,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(spec, floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1596,11 +1622,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled)
             {
                 // Preserve the top-frame authorization state gas folded into the execution baseline.
-                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong), postIntrinsicStateReservoir);
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong), postIntrinsicStateReservoir);
             }
             else
             {
-                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong));
+                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(spec, floorGasLong));
             }
             goto Complete;
         CompleteWithoutFrame:
@@ -1616,8 +1642,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
         /// <summary>The floor to settle an executed transaction against: the static floor extended by EIP-8279's metered bytes.</summary>
         /// <remarks>Metered bytes are never rewound, so the extension applies whether execution succeeded, reverted or halted.</remarks>
-        private ulong ExecutedFloorGas(ulong staticFloorGas) =>
-            VirtualMachine.TxExecutionContext.BalDataMeter?.FloorGas ?? staticFloorGas;
+        private ulong ExecutedFloorGas(IReleaseSpec spec, ulong staticFloorGas) =>
+            SpecFlags.Eip8279(spec) && VirtualMachine.TxExecutionContext.BalDataMeter is { } balDataMeter
+                ? balDataMeter.FloorGas
+                : staticFloorGas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
