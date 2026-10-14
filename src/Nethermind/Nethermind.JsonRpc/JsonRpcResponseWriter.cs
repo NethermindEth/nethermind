@@ -250,8 +250,17 @@ public static class JsonRpcResponseWriter
 
     internal static void WriteRawSuccess(IBufferWriter<byte> writer, ReadOnlySpan<byte> rawResult, in JsonRpcId id)
     {
-        writer.Write(SuccessEnvelopeStart);
+        WriteRawSuccessStart(writer);
         writer.Write(rawResult);
+        WriteRawSuccessEnd(writer, in id);
+    }
+
+    /// <summary>Writes the envelope up to the raw result that follows it.</summary>
+    internal static void WriteRawSuccessStart(IBufferWriter<byte> writer) => writer.Write(SuccessEnvelopeStart);
+
+    /// <summary>Writes the envelope after a raw result.</summary>
+    internal static void WriteRawSuccessEnd(IBufferWriter<byte> writer, in JsonRpcId id)
+    {
         writer.Write(IdSeparator);
         WriteIdRaw(writer, in id);
         writer.Write(EnvelopeEnd);

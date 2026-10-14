@@ -555,7 +555,7 @@ public partial class EthRpcModule(
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode, checksFork: false);
             if (!frameGasResult)
                 return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
             frameTx.Frames = frameGasResult.Data;
@@ -563,7 +563,10 @@ public partial class EthRpcModule(
 
         if (rpcTx.Gas is null)
         {
-            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(rpcTx, BlockParameter.Latest);
+            // The transaction is built for a later block, so its estimate is outside the fork rule as well.
+            ResultWrapper<UInt256?> gasEstimate = ExecuteWithFrameGas(
+                new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider) { ChecksFork = false },
+                rpcTx, BlockParameter.Latest, stateOverride: null);
             if (gasEstimate.Result.ResultType != ResultType.Success)
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error ?? "gas estimation failed", gasEstimate.ErrorCode);
 
@@ -1077,6 +1080,12 @@ public partial class EthRpcModule(
             if (logFilter is not null && filter is not null)
                 logFilter.UseIndex = filter.UseIndex;
 
+            if (!_rpcConfig.EnableLogsStreamMode
+                && _blockchainBridge.TryGetLogsJson(logFilter, fromBlockHeader, toBlockHeader, cancellationToken, out IEnumerable<LogsJsonChunk> chunks))
+            {
+                return GetRawLogsResponse(chunks, () => _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader));
+            }
+
             IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlockHeader, toBlockHeader, cancellationToken);
 
             return GetLogsResponse(filterLogs, timeout, out timeoutTransferred);
@@ -1191,12 +1200,42 @@ public partial class EthRpcModule(
             if (enforceMaxLogs && logs.Count > _rpcConfig.MaxLogsPerResponse)
             {
                 logs.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
+                return TooManyLogs();
             }
         }
 
         return ResultWrapper<IEnumerable<FilterLog>>.Success(logs);
     }
+
+    private ResultWrapper<IEnumerable<FilterLog>> GetRawLogsResponse(IEnumerable<LogsJsonChunk> chunks, Func<IEnumerable<FilterLog>> findLogs)
+    {
+        bool enforceMaxLogs = JsonRpcContext.Current.Value?.IsAuthenticated != true && _rpcConfig.MaxLogsPerResponse != 0;
+        ArrayPoolList<LogsJsonChunk> collected = new(16);
+        try
+        {
+            int count = 0;
+            foreach (LogsJsonChunk chunk in chunks)
+            {
+                collected.Add(chunk);
+                count += chunk.Count;
+                if (enforceMaxLogs && count > _rpcConfig.MaxLogsPerResponse)
+                {
+                    RawLogsResponse.DisposeChunks(collected);
+                    return TooManyLogs();
+                }
+            }
+        }
+        catch
+        {
+            RawLogsResponse.DisposeChunks(collected);
+            throw;
+        }
+
+        return new RawLogsResponse(collected, findLogs);
+    }
+
+    private ResultWrapper<IEnumerable<FilterLog>> TooManyLogs() =>
+        ResultWrapper<IEnumerable<FilterLog>>.Fail($"Too many logs requested. Max logs per response is {_rpcConfig.MaxLogsPerResponse}.", ErrorCodes.LimitExceeded);
 
     public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
     {

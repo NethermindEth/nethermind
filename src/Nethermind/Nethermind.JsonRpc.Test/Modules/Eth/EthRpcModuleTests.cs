@@ -941,6 +941,69 @@ public partial class EthRpcModuleTests
         Assert.That(getFilterLogsSerialized, Is.EqualTo(getLogsSerialized));
     }
 
+    [Test]
+    public async Task Eth_get_logs_written_from_stored_json_rejects_more_logs_than_allowed()
+    {
+        (TestRpcBlockchain test, Hash256 blockHash) = await CreateBlockWithTwoLogs(maxLogsPerResponse: 1);
+
+        string serialized = await test.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{blockHash}\"}}");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32005,"message":"Too many logs requested. Max logs per response is 1."},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_get_logs_written_from_stored_json_keeps_indentation_of_the_writer()
+    {
+        (TestRpcBlockchain test, Hash256 blockHash) = await CreateBlockWithTwoLogs(maxLogsPerResponse: 2);
+
+        string compact = await test.TestEthRpc("eth_getLogs", $"{{\"blockHash\":\"{blockHash}\"}}");
+        using JsonRpcResponse response = await RpcTest.TestRequest(test.EthRpcModule, "eth_getLogs", new { blockHash });
+        response.Id = new JsonRpcId(67L);
+        Assert.That(response, Is.InstanceOf<IJsonRpcRawResponse>());
+        ArrayBufferWriter<byte> indented = new();
+        JsonRpcResponseWriter.Write(indented, response, EthereumJsonSerializer.JsonOptionsIndented);
+        string indentedJson = Encoding.UTF8.GetString(indented.WrittenSpan);
+
+        Assert.That(indentedJson, Does.Contain(Environment.NewLine));
+        Assert.That(JToken.Parse(indentedJson), Is.EqualTo(JToken.Parse(compact)));
+        Assert.That(JToken.Parse(compact)["result"]!.Count(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task Eth_get_logs_written_from_stored_json_still_returns_the_logs_as_data()
+    {
+        (TestRpcBlockchain test, Hash256 blockHash) = await CreateBlockWithTwoLogs(maxLogsPerResponse: 2);
+
+        BlockParameter block = new(test.BlockTree.FindHeader(blockHash)!.Number);
+        using ResultWrapper<IEnumerable<FilterLog>> response = test.EthRpcModule.eth_getLogs(new Filter { FromBlock = block, ToBlock = block });
+        string serialized = RpcTest.SerializeResponse(response);
+
+        Assert.That(response, Is.InstanceOf<IJsonRpcRawResponse>());
+        FilterLog[] logs = response.Data.ToArray();
+        Assert.That(logs, Has.Length.EqualTo(2));
+        Assert.That(logs.Select(static l => l.LogIndex), Is.EqualTo(new long[] { 0, 1 }));
+        Assert.That(logs.All(l => l.BlockHash == blockHash), Is.True);
+        Assert.That(JToken.Parse(serialized)["result"]!.Count(), Is.EqualTo(2));
+    }
+
+    private static async Task<(TestRpcBlockchain Test, Hash256 BlockHash)> CreateBlockWithTwoLogs(int maxLogsPerResponse)
+    {
+        byte[] twoLogsCode = Prepare.EvmCode
+            .PushData(32).PushData(0).Op(Instruction.LOG0)
+            .PushData(32).PushData(0).Op(Instruction.LOG0)
+            .Done;
+        Transaction createCodeTx = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyA).WithChainId(TestBlockchainIds.ChainId)
+            .WithCode(twoLogsCode)
+            .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableLogsStreamMode = false, MaxLogsPerResponse = maxLogsPerResponse })
+            .Build(initialValues: 2.Ether);
+        await test.AddBlock(createCodeTx);
+        return (test, test.BlockTree.Head!.Hash!);
+    }
+
     private static IEnumerable<TestCaseData> EthGetLogsCases()
     {
         foreach ((string name, string parameter, string expected) in EthGetLogsCaseParameters())

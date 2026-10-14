@@ -40,16 +40,17 @@ public class IndexedLogFinder(
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.
     private readonly IBlockFinder _blockFinder = blockFinder;
 
-    public override IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
+    protected override IEnumerable<TItem> FindLogs<TItem, TCollector>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken) =>
         GetLogIndexRange(filter, fromBlock, toBlock) is not { } indexRange
-            ? base.FindLogs(filter, fromBlock, toBlock, cancellationToken)
-            : FindIndexedLogs(filter, fromBlock, toBlock, indexRange, cancellationToken);
+            ? base.FindLogs<TItem, TCollector>(filter, fromBlock, toBlock, cancellationToken)
+            : FindIndexedLogs<TItem, TCollector>(filter, fromBlock, toBlock, indexRange, cancellationToken);
 
-    private IEnumerable<FilterLog> FindIndexedLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+    private IEnumerable<TItem> FindIndexedLogs<TItem, TCollector>(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, (int from, int to) indexRange, CancellationToken cancellationToken)
+        where TCollector : struct, IBlockLogCollector<TItem>
     {
         if ((ulong)indexRange.from > fromBlock.Number && FindHeaderOrLogError((ulong)(indexRange.from - 1), cancellationToken) is { } beforeIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, fromBlock, beforeIndex, cancellationToken))
+            foreach (TItem log in base.FindLogs<TItem, TCollector>(filter, fromBlock, beforeIndex, cancellationToken))
                 yield return log;
         }
 
@@ -59,7 +60,7 @@ public class IndexedLogFinder(
             .EnumerateBlockNumbersFor(filter, (ulong)indexRange.from, (ulong)indexRange.to)
             .Select(static n => (ulong)n);
 
-        foreach (FilterLog log in FilterLogsInBlocksParallel(filter, indexBlockNumbers, cancellationToken: cancellationToken))
+        foreach (TItem log in FilterLogsInBlocksParallel<TItem, TCollector>(filter, indexBlockNumbers, true, cancellationToken))
         {
             yield return log;
         }
@@ -68,7 +69,7 @@ public class IndexedLogFinder(
 
         if ((ulong)indexRange.to < toBlock.Number && FindHeaderOrLogError((ulong)(indexRange.to + 1), cancellationToken) is { } afterIndex)
         {
-            foreach (FilterLog log in base.FindLogs(filter, afterIndex, toBlock, cancellationToken))
+            foreach (TItem log in base.FindLogs<TItem, TCollector>(filter, afterIndex, toBlock, cancellationToken))
                 yield return log;
         }
     }

@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
@@ -25,6 +26,7 @@ using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -106,6 +108,36 @@ public class LogFinderTests
         Assert.That(logs.Length, Is.EqualTo(5));
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo(new[] { 0, 1, 0, 1, 2 }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Json_logs_are_the_bytes_of_the_serialized_filter_logs([Values(false, true)] bool allowReceiptIterator)
+    {
+        SetUp(allowReceiptIterator);
+        LogFilter[] filters =
+        [
+            AllBlockFilter().Build(),
+            AllBlockFilter().WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(),
+            AllBlockFilter().WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)).Build(),
+            AllBlockFilter().WithAddress(TestItem.AddressF).Build(),
+        ];
+
+        foreach (LogFilter filter in filters)
+        {
+            BlockHeader fromBlock = _blockTree.FindHeader(filter.FromBlock, false)!;
+            BlockHeader toBlock = _blockTree.FindHeader(filter.ToBlock, false)!;
+            EthereumJsonSerializer serializer = new();
+            string expected = string.Join(",", _logFinder.FindLogs(filter, fromBlock, toBlock).Select(log => serializer.Serialize(log)));
+
+            Assert.That(_logFinder.TryFindLogsJson(filter, fromBlock, toBlock, CancellationToken.None, out IEnumerable<LogsJsonChunk> found), Is.True);
+            LogsJsonChunk[] chunks = found.ToArray();
+            string actual = string.Join(",", chunks.Select(static c => Encoding.UTF8.GetString(c.Json)));
+            int count = chunks.Sum(static c => c.Count);
+            foreach (LogsJsonChunk chunk in chunks) chunk.Dispose();
+
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(count, Is.EqualTo(_logFinder.FindLogs(filter, fromBlock, toBlock).Count()));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

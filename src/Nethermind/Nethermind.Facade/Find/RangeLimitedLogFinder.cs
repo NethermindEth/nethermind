@@ -26,7 +26,7 @@ public sealed class RangeLimitedLogFinder(
     ILogFinder logFinder,
     IBlockFinder blockFinder,
     IReceiptConfig receiptConfig,
-    ILogIndexStorage logIndexStorage) : IRpcLogFinder
+    ILogIndexStorage logIndexStorage) : IRpcLogFinder, ILogJsonFinder
 {
     /// <inheritdoc/>
     /// <exception cref="ArgumentException">Scan exceeds <see cref="IReceiptConfig.MaxBlockDepth"/> blocks.</exception>
@@ -42,6 +42,20 @@ public sealed class RangeLimitedLogFinder(
     {
         EnsureScanWithinLimit(filter, fromBlock, toBlock);
         return logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    /// <exception cref="ArgumentException">Scan exceeds <see cref="IReceiptConfig.MaxBlockDepth"/> blocks.</exception>
+    public bool TryFindLogsJson(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken, out IEnumerable<LogsJsonChunk> chunks)
+    {
+        if (logFinder is not ILogJsonFinder jsonFinder)
+        {
+            chunks = [];
+            return false;
+        }
+
+        EnsureScanWithinLimit(filter, fromBlock, toBlock);
+        return jsonFinder.TryFindLogsJson(filter, fromBlock, toBlock, cancellationToken, out chunks);
     }
 
     private void EnsureScanWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)

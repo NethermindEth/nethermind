@@ -612,6 +612,17 @@ namespace Nethermind.Facade
             BlockHeader toBlock,
             CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
 
+        public bool TryGetLogsJson(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken, out IEnumerable<LogsJsonChunk> chunks)
+        {
+            if (logFinder is ILogJsonFinder jsonFinder)
+            {
+                return jsonFinder.TryFindLogsJson(filter, fromBlock, toBlock, cancellationToken, out chunks);
+            }
+
+            chunks = [];
+            return false;
+        }
+
         public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
         {
             LogFilter? filter;
