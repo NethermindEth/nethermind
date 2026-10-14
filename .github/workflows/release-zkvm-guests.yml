@@ -14,9 +14,9 @@ jobs:
   test:
     name: Test
     uses: ./.github/workflows/stateless-tests.yml
-    secrets:
-      DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-      DOCKER_HUB_PASSWORD: ${{ secrets.DOCKER_HUB_PASSWORD }}
+    permissions:
+      contents: read
+      id-token: write
 
   release:
     name: Draft release on GitHub
