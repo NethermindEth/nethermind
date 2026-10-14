@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -22,6 +23,7 @@ public sealed class PbtAnchorImport(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
     PbtPersistenceManager persistenceManager,
+    IBlockTree blockTree,
     IPbtConfig config,
     ILogManager logManager)
 {
@@ -41,7 +43,7 @@ public sealed class PbtAnchorImport(
     /// only its own claimed PBT root is checked. Preimages are verified before the fold publishes the tree, which is
     /// what marks the target valid, so a refused import stays unpublished and a restart wipes its staging.</remarks>
     public async Task ImportSnapshot(Stream snapshot, Stream? preimages,
-        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken)
+        PbtImageAnchor anchor, string scratchDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         anchor.Validate();
@@ -49,19 +51,19 @@ public sealed class PbtAnchorImport(
         if (ImportedEarlier(anchor)) return;
 
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
-        if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
+        if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor changed before the import.");
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
         float snapshotLength = snapshot.Length;
         RecoverStaging(anchor, cancellationToken);
         using PbtImageVerifier? verifier = preimages is null ? null : new(scratchDirectory, config.ExportSortBufferBytes, logManager, cancellationToken);
-        verifier?.List(preimages!);
+        verifier?.SpoolPreimages(preimages!);
         string directory = Path.Combine(scratchDirectory, $"pbt-import-codes-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         try
         {
             (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
                 Leaves, Progress, config.ImportConcurrency,
-                new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
+                new StateId(anchor.Header), windowSize: 0, claimedRoot, VerifyStaged, directory, config.ExportSortBufferBytes, logManager, cancellationToken);
             Finish(anchor, root, accounts, slots, importing, cancellationToken);
         }
         finally
@@ -82,7 +84,7 @@ public sealed class PbtAnchorImport(
         {
             if (verifier is null) return;
             verifier.Verify(anchor, token);
-            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
+            if (!blockTree.IsMainChain(anchor.Header)) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
     }
 

@@ -337,8 +337,8 @@ public class MigrationBalFollowerTests
             Directory.CreateDirectory(_scratch.Path);
             using FileStream snapshot = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "snapshot.pbt"));
             using FileStream preimages = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin"));
-            await new PbtAnchorImport(new PbtRocksDbPersistence(_target, new PbtConfig(), NullTrieNodeLog.Instance), _target, _pbt.PersistenceManager, new PbtConfig(), LimboLogs.Instance)
-                .ImportSnapshot(snapshot, preimages, anchor, _scratch.Path, () => true, default);
+            await new PbtAnchorImport(new PbtRocksDbPersistence(_target, new PbtConfig(), NullTrieNodeLog.Instance), _target, _pbt.PersistenceManager, _blockTree, new PbtConfig(), LimboLogs.Instance)
+                .ImportSnapshot(snapshot, preimages, anchor, _scratch.Path, default);
         }
 
         public void Dispose()

@@ -78,7 +78,7 @@ public sealed class PbtMigrationBootstrap(
             using Stream? verifyingPreimages = configuration.MigrationPreimagesPath is { } verifyingPath
                 ? File.Open(verifyingPath, FileMode.Open, FileAccess.Read, FileShare.Read)
                 : null;
-            await anchorImport.ImportSnapshot(snapshot, verifyingPreimages, anchor, scratch, IsCurrent, cancellationToken);
+            await anchorImport.ImportSnapshot(snapshot, verifyingPreimages, anchor, scratch, cancellationToken);
         }
         else
         {
@@ -95,7 +95,7 @@ public sealed class PbtMigrationBootstrap(
                     configuration.ExportSortBufferBytes, configuration.ImportConcurrency, cancellationToken);
                 exportedSnapshot.Position = 0;
                 exportedPreimages.Position = 0;
-                await anchorImport.ImportSnapshot(exportedSnapshot, exportedPreimages, anchor, scratch, IsCurrent, cancellationToken);
+                await anchorImport.ImportSnapshot(exportedSnapshot, exportedPreimages, anchor, scratch, cancellationToken);
             }
             finally { Directory.Delete(directory, recursive: true); }
         }

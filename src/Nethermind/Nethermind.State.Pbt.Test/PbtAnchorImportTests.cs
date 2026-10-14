@@ -31,6 +31,7 @@ using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
+using NSubstitute;
 using NUnit.Framework;
 using Nethermind.State.Pbt.Image;
 
@@ -593,10 +594,11 @@ public class PbtAnchorImportTests
         public readonly SyncColumnsDb Target = new();
         public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
+        public readonly IBlockTree BlockTree = Substitute.For<IBlockTree>();
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorImport? _anchorImport;
         public PbtAnchorImport AnchorImport => _anchorImport ??=
-            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.PersistenceManager, _config, LimboLogs.Instance);
+            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.PersistenceManager, BlockTree, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -606,6 +608,7 @@ public class PbtAnchorImportTests
         {
             _name = name;
             _config = config;
+            BlockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(_ => IsAnchorCurrent());
             Directory.CreateDirectory(Scratch.Path);
             Anchor = new("1", new Hash256(Eip8347FixtureState.Metadata("anchor").GetProperty("blockHash").GetString()!), Eip8347FixtureState.AnchorHeader(name), 48);
             Open();
@@ -637,7 +640,7 @@ public class PbtAnchorImportTests
         }
 
         public Task Publish(Stream snapshot, Stream? preimages, CancellationToken cancellationToken) =>
-            AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
+            AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, cancellationToken);
 
         public void Dispose()
         {
