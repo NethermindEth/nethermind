@@ -7,6 +7,22 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "applicationUrl": "http://127.0.0.1:8545"
+    },
+    "Nethermind.LightClient (Sepolia)": {
+      "commandName": "Project",
+      "commandLineArgs": "--network sepolia",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://127.0.0.1:8545"
+    },
+    "Nethermind.LightClient (Hoodi)": {
+      "commandName": "Project",
+      "commandLineArgs": "--network hoodi",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://127.0.0.1:8545"
     }
   }
 }

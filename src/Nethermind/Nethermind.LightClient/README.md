@@ -33,6 +33,9 @@ dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDis
 The `Nethermind.LightClient` debug profile selects mainnet and supplies the
 checkpoint URL above automatically. Edit its command-line arguments to select
 another trusted provider or root.
+Select `Nethermind.LightClient (Sepolia)` or `Nethermind.LightClient (Hoodi)`
+from Visual Studio's launch-profile dropdown to debug those networks using
+their EF-operated checkpoint defaults. All profiles use RPC port 8545.
 
 Press **Ctrl+C** in the terminal to cancel checkpoint/bootstrap startup or stop
 the running client. Shutdown waits for RPC and sync workers, closes P2P
