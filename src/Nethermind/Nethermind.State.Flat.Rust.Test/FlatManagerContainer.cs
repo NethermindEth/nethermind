@@ -52,6 +52,7 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
             .AddSingleton<IStatePersistenceBarrier>(overrides.PersistenceBarrier ?? NullStatePersistenceBarrier.Instance)
             .AddSingleton<IStateHeaderProvider>(finality);
         if (overrides.TrieNodeCache is not null) builder.AddSingleton<ITrieNodeCache>(overrides.TrieNodeCache);
+        if (overrides.RocksDbCatalog) builder.AddKeyedSingleton<IDb>(DbNames.PersistedSnapshotCatalog, _ => FlatTestDbs.OpenRocksDbCatalog(basePath));
         _container = builder.Build();
         PersistenceManager = _container.Resolve<IPersistenceManager>();
         ResourcePool = _container.Resolve<IResourcePool>();
@@ -94,26 +95,42 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
     /// <summary>The state of block <paramref name="number"/> of the chains the tests build.</summary>
     public static StateId Block(ulong number) => new(number, Keccak.Compute($"block {number}"));
 
-    /// <inheritdoc cref="Config(FlatDbBackend, FlatLayout, bool, ulong)"/>
-    /// <remarks>On the flat layout, without the carry-forward cache.</remarks>
-    public static FlatDbConfig Config(FlatDbBackend backend) => Config(backend, FlatLayout.Flat, carryForward: false);
+    /// <inheritdoc cref="Config(FlatDbBackend, FlatLayout, bool, ulong, bool)"/>
+    /// <remarks>On the flat layout, without the carry-forward cache, a snapshot byte budget or long finality.</remarks>
+    public static FlatDbConfig Config(FlatDbBackend backend) =>
+        Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false);
 
     /// <summary>The config of a test: compaction every 4 blocks at a fixed offset, inline, and a shallow reorg window.</summary>
-    public static FlatDbConfig Config(FlatDbBackend backend, FlatLayout layout, bool carryForward, ulong maxInMemorySnapshotBytes = 0) => new()
+    /// <param name="longFinality">Whether snapshots past 8 in memory are converted into a persisted-snapshot tier of
+    /// small files, compacted up to 16 blocks wide, with a backstop 48 blocks deep.</param>
+    public static FlatDbConfig Config(FlatDbBackend backend, FlatLayout layout, bool carryForward, ulong maxInMemorySnapshotBytes, bool longFinality)
     {
-        Enabled = true,
-        Backend = backend,
-        Layout = layout,
-        EnableCarryForwardCache = carryForward,
-        EnableLongFinality = false,
-        CompactSize = 4,
-        CompactionOffset = 0,
-        InlineCompaction = true,
-        MinReorgDepth = 2,
-        MaxReorgDepth = 12,
-        MaxInMemorySnapshotBytes = maxInMemorySnapshotBytes,
-        TrieWarmerWorkerCount = 0,
-    };
+        FlatDbConfig config = new()
+        {
+            Enabled = true,
+            Backend = backend,
+            Layout = layout,
+            EnableCarryForwardCache = carryForward,
+            EnableLongFinality = longFinality,
+            CompactSize = 4,
+            CompactionOffset = 0,
+            InlineCompaction = true,
+            MinReorgDepth = 2,
+            MaxReorgDepth = 12,
+            MaxInMemorySnapshotBytes = maxInMemorySnapshotBytes,
+            TrieWarmerWorkerCount = 0,
+        };
+        if (!longFinality) return config;
+
+        config.MaxInMemoryBaseSnapshotCount = 8;
+        config.LongFinalityMaxReorgDepth = 48;
+        config.PersistedSnapshotMaxCompactSize = 16;
+        config.ArenaFileSizeBytes = 64 * 1024;
+        config.PersistedSnapshotDedicatedArenaThresholdBytes = 16 * 1024;
+        config.PersistedSnapshotArenaPageCacheBytes = 0;
+        config.PersistedSnapshotBloomBitsPerKey = 14;
+        return config;
+    }
 
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 
@@ -129,6 +146,9 @@ internal sealed class FlatManagerContainer : IAsyncDisposable
 
         public IStatePersistenceBarrier? PersistenceBarrier { get; init; }
         public ITrieNodeCache? TrieNodeCache { get; init; }
+
+        /// <summary>Whether the persisted-snapshot catalog is a RocksDB in the base path, which a reopen reads again, rather than in memory.</summary>
+        public bool RocksDbCatalog { get; init; }
     }
 }
 

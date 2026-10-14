@@ -186,6 +186,55 @@ public class MetricsParityTests
     }
 
     /// <summary>
+    /// The gauges of the persisted-snapshot tier go back to where they were once a long-finality manager holding
+    /// converted snapshots is disposed, and its page tracker gauges to zero, as C# takes them back on disposal.
+    /// </summary>
+    [Test]
+    public async Task Long_finality_tier_gauges_return_to_their_baseline_after_disposal([Values(FlatDbBackend.CSharp, FlatDbBackend.Rust)] FlatDbBackend backend)
+    {
+        if (backend != FlatDbBackend.CSharp) RustNativeLibrary.Require();
+        using TempPath path = TempPath.GetTempDirectory();
+        string[] baseline = TierGauges();
+        string[] held;
+        await using (FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true), path.Path, new TestFinality()))
+        {
+            for (ulong number = 0; number < 24; number++)
+            {
+                container.AddBlock(number);
+                container.PersistUpTo(Block(number));
+            }
+
+            Publish(container, backend);
+            held = TierGauges();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, Is.Not.EqualTo(baseline), "the tier holds converted snapshots");
+            Assert.That(TierGauges(), Is.EqualTo(baseline));
+            Assert.That((Metrics.PageTrackerResidentBytes, Metrics.PageTrackerMetadataBytes), Is.EqualTo((0L, 0L)));
+        }
+
+        static string[] TierGauges() =>
+        [
+            $"{nameof(Metrics.PersistedSnapshotBloomMemory)}={Metrics.PersistedSnapshotBloomMemory}",
+            $"{nameof(Metrics.PersistedSnapshotBloomCount)}={Metrics.PersistedSnapshotBloomCount}",
+            $"{nameof(Metrics.ArenaFileCount)}={Metrics.ArenaFileCount}",
+            $"{nameof(Metrics.ArenaAllocatedBytes)}={Metrics.ArenaAllocatedBytes}",
+            $"{nameof(Metrics.BlobFileCount)}={Metrics.BlobFileCount}",
+            $"{nameof(Metrics.BlobAllocatedBytes)}={Metrics.BlobAllocatedBytes}",
+            $"{nameof(Metrics.ArenaReservationCount)}={Metrics.ArenaReservationCount}",
+            $"{nameof(Metrics.ArenaReservationBytes)}={Metrics.ArenaReservationBytes}",
+            .. Labelled(nameof(Metrics.PersistedSnapshotCount), Metrics.PersistedSnapshotCount),
+            .. Labelled(nameof(Metrics.PersistedSnapshotMemory), Metrics.PersistedSnapshotMemory),
+            .. Labelled(nameof(Metrics.ActivePersistedSnapshotCount), Metrics.ActivePersistedSnapshotCount),
+        ];
+
+        static IEnumerable<string> Labelled(string metric, IEnumerable<KeyValuePair<PersistedSnapshotLabel, long>> gauge) =>
+            gauge.Where(static entry => entry.Value != 0).Select(entry => $"{metric}{{{entry.Key.Tier},{entry.Key.Size}}}={entry.Value}").Order(StringComparer.Ordinal);
+    }
+
+    /// <summary>
     /// One seeded stream of blocks through the world state scopes of each backend: block processing, sometimes with a
     /// second commit of nothing, a read-only scope that writes and commits, a slot-filtered query scope and every few
     /// blocks an overridable scope committing two blocks, with persistence after each block and a flush at the end.
@@ -237,7 +286,7 @@ public class MetricsParityTests
         using TempPath path = TempPath.GetTempDirectory();
         TestFinality finality = new();
         await using FlatManagerContainer container = new(
-            FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: true), path.Path, finality, new() { MetricsConfig = new MetricsConfig { EnableDetailedMetric = true } });
+            FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: true, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, finality, new() { MetricsConfig = new MetricsConfig { EnableDetailedMetric = true } });
         observers.Clear();
         Observed before = Observed.Take(container, observers);
 

@@ -217,12 +217,19 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
 
         if (flatDbConfig.Enabled && flatDbConfig.Backend != FlatDbBackend.CSharp)
         {
-            // Every other history and archive-proof setting needs HistoryEnabled, as checked above.
-            if (flatDbConfig.EnableLongFinality || flatDbConfig.HistoryEnabled)
+            if (flatDbConfig.Backend == FlatDbBackend.RustPersistence && flatDbConfig.EnableLongFinality)
             {
                 throw new InvalidConfigurationException(
                     $"FlatDb.Backend={flatDbConfig.Backend} supports neither the persisted-snapshot tier nor flat history yet. " +
                     "Set FlatDb.EnableLongFinality=false and FlatDb.HistoryEnabled=false, or FlatDb.Backend=CSharp.", -1);
+            }
+
+            // Every other history and archive-proof setting needs HistoryEnabled, as checked above.
+            if (flatDbConfig.HistoryEnabled)
+            {
+                throw new InvalidConfigurationException(
+                    $"FlatDb.Backend={flatDbConfig.Backend} does not support flat history yet. " +
+                    "Set FlatDb.HistoryEnabled=false, or FlatDb.Backend=CSharp.", -1);
             }
 
             builder.AddModule(new FlatRustWorldStateModule(flatDbConfig));

@@ -52,8 +52,8 @@ public class RustFlatDbManagerDifferentialTests
         using TempPath rustPath = TempPath.GetTempDirectory();
         TestFinality finality = new();
         ulong budget = byteBudget ? 48 * 1024UL : 0;
-        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, layout, carryForward, budget), csharpPath.Path, finality);
-        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, layout, carryForward, budget), rustPath.Path, finality);
+        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, layout, carryForward, budget, longFinality: false), csharpPath.Path, finality);
+        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, layout, carryForward, budget, longFinality: false), rustPath.Path, finality);
 
         int seed = 20261013 + (int)layout * 4 + (carryForward ? 2 : 0) + (byteBudget ? 1 : 0);
         new Lockstep(new Random(seed), finality, csharp, rust).Run();

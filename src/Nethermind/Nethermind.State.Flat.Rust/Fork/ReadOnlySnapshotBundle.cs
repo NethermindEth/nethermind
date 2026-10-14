@@ -40,6 +40,10 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
     private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
+    private static readonly StringLabel _readAccountPersistedLabel = new("account_persisted_snapshot");
+    private static readonly StringLabel _readStoragePersistedLabel = new("storage_persisted_snapshot");
+    private static readonly StringLabel _readStateRlpPersistedLabel = new("state_rlp_persisted_snapshot");
+    private static readonly StringLabel _readStorageRlpPersistedLabel = new("storage_rlp_persisted_snapshot");
 
     private readonly BundleBaseHandle _handle;
     private readonly bool _recordDetailedMetrics;
@@ -235,10 +239,11 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
             }
         }
 
-        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persistence)
+        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persisted or ReadSource.Persistence)
         {
             Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start,
                 source == ReadSource.Snapshot ? _readAccountSnapshotLabel
+                : source == ReadSource.Persisted ? _readAccountPersistedLabel
                 : found == 0 ? _readAccountPersistenceNullLabel
                 : _readAccountPersistenceLabel);
         }
@@ -266,10 +271,11 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
         }
 
         UInt256? slotValue = found == 0 ? null : new UInt256(value[0], value[1], value[2], value[3]);
-        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persistence)
+        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persisted or ReadSource.Persistence)
         {
             Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start,
                 source == ReadSource.Snapshot ? _readStorageSnapshotLabel
+                : source == ReadSource.Persisted ? _readStoragePersistedLabel
                 : slotValue.GetValueOrDefault().IsZero ? _readStoragePersistenceNullLabel
                 : _readStoragePersistenceLabel);
         }
@@ -337,19 +343,22 @@ public sealed class ReadOnlySnapshotBundle : RefCountingDisposable
 
     /// <remarks>
     /// In-memory hits count as loaded from cache and persistence reads as loaded from the database, as the C# bundles
-    /// count them; only the reads C# served from its read-only bundle are timed.
+    /// count them, and persisted-snapshot hits as neither, as <c>PersistedSnapshotStack</c> counts them; only the reads
+    /// C# served from its read-only bundle are timed.
     /// </remarks>
     private void RecordNodeLoad(ReadSource source, bool isStorage, long start)
     {
         if (source == ReadSource.Persistence) Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
-        else Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+        else if (source != ReadSource.Persisted) Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
 
-        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persistence)
+        if (_recordDetailedMetrics && source is ReadSource.Snapshot or ReadSource.Persisted or ReadSource.Persistence)
         {
             Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - start, (source, isStorage) switch
             {
                 (ReadSource.Snapshot, false) => _readStateNodeSnapshotLabel,
                 (ReadSource.Snapshot, true) => _readStorageNodeSnapshotLabel,
+                (ReadSource.Persisted, false) => _readStateRlpPersistedLabel,
+                (ReadSource.Persisted, true) => _readStorageRlpPersistedLabel,
                 (_, false) => _readStateRlpLabel,
                 (_, true) => _readStorageRlpLabel,
             });

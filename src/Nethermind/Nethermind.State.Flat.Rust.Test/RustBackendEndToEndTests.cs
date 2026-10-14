@@ -63,7 +63,7 @@ public class RustBackendEndToEndTests
 
         public Node(FlatDbBackend backend, FlatLayout layout, bool carryForward, bool deferStorageTrieCommit)
         {
-            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward);
+            FlatDbConfig config = FlatManagerContainer.Config(backend, layout, carryForward, maxInMemorySnapshotBytes: 0, longFinality: false);
             config.DeferStorageTrieCommit = deferStorageTrieCommit;
             // The flat module picks the warmer registration from this count when it loads.
             config.TrieWarmerWorkerCount = 2;

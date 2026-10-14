@@ -45,8 +45,8 @@ public static class TestStateBackend
     /// Applies <see cref="FlatBackend"/>, when set, to <paramref name="config"/>, wherever <see cref="UseFlatDb"/> is applied.
     /// </summary>
     /// <remarks>
-    /// The Rust backends refuse the persisted-snapshot tier, so it is turned off for them, and the compaction offset
-    /// is pinned so both implementations compact at the same blocks.
+    /// <see cref="FlatDbBackend.RustPersistence"/> refuses the persisted-snapshot tier, so it is turned off for it, and
+    /// the compaction offset is pinned so both implementations compact at the same blocks.
     /// </remarks>
     /// <returns>The same config, for chaining.</returns>
     public static T ApplyFlatBackend<T>(T config) where T : IFlatDbConfig
@@ -56,7 +56,7 @@ public static class TestStateBackend
         config.Backend = backend;
         if (backend == FlatDbBackend.CSharp) return config;
 
-        config.EnableLongFinality = false;
+        if (backend == FlatDbBackend.RustPersistence) config.EnableLongFinality = false;
         config.CompactionOffset = 0;
         return config;
     }

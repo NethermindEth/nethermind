@@ -363,7 +363,7 @@ public class RustLifecycleTests
         nint manager;
         store.AddChildReference();
         StatusMap.ThrowIfFailed(NativeMethods.fdb_mgr_create(store, &cfg, &callbacks, &manager));
-        _ = new ManagerHandle(store, manager, host);
+        _ = new ManagerHandle(store, manager, host, null);
     }
 
 }

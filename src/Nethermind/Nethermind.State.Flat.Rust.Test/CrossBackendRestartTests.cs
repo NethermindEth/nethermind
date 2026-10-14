@@ -63,14 +63,14 @@ public class CrossBackendRestartTests
         TestFinality finality = new();
         List<string> observed = [];
 
-        await using (FlatManagerContainer first = new(FlatManagerContainer.Config(writer, layout, carryForward: false), path.Path, finality))
+        await using (FlatManagerContainer first = new(FlatManagerContainer.Config(writer, layout, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, finality))
         {
             for (ulong number = 0; number < FirstRunBlocks; number++) Add(first, finality, number);
             if (flushBeforeShutdown) first.Arm.FlushCache(CancellationToken.None);
             observed.Add($"persisted at shutdown {first.PersistenceManager.GetCurrentPersistedStateId()}");
         }
 
-        await using FlatManagerContainer second = new(FlatManagerContainer.Config(reader, layout, carryForward: false), path.Path, finality);
+        await using FlatManagerContainer second = new(FlatManagerContainer.Config(reader, layout, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, finality);
         StateId persisted = second.PersistenceManager.GetCurrentPersistedStateId();
         observed.Add($"persisted after reopen {persisted}");
         observed.Add($"head retained after reopen {second.Arm.HasStateForBlock(Block(FirstRunBlocks - 1))}");

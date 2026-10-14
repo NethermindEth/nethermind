@@ -80,7 +80,8 @@ internal sealed unsafe class ManagedKvBridge : IDisposable
 
     private static ManagedKvBridge Of(nint ctx) => (ManagedKvBridge)GCHandle.FromIntPtr(ctx).Target!;
 
-    private static int Fail(Exception exception)
+    /// <summary>Keeps the exception a callback into C# threw on this thread for <see cref="TakeCallbackException"/>, and returns the failure status.</summary>
+    internal static int Fail(Exception exception)
     {
         _callbackException = exception;
         return Failed;

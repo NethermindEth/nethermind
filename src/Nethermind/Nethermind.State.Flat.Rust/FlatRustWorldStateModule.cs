@@ -10,6 +10,8 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.State.Flat.ScopeProvider;
@@ -30,7 +32,9 @@ namespace Nethermind.State.Flat.Rust;
 /// native, over the native snapshot manager on the same store: <see cref="IWorldStateManager"/> becomes the fork's
 /// wherever the flat one is chosen, and <see cref="IPersistenceManager"/> the native one's shell. The original
 /// <see cref="IFlatDbManager"/> answers state queries through the fork's and refuses bundles and snapshots, so nothing
-/// of the original package writes or reads a C# snapshot; the C# snapshot repository and compactor refuse to be built.
+/// of the original package writes or reads a C# snapshot; the C# snapshot repository and compactor, and the services of
+/// its persisted-snapshot tier, refuse to be built. The native manager runs that tier when the resolved
+/// <see cref="IFlatDbConfig.EnableLongFinality"/> is set, over the <see cref="DbNames.PersistedSnapshotCatalog"/> database.
 /// </para>
 /// <para>
 /// Disposal releases the manager before the store, and the store before the database. Both publish their metrics on
@@ -65,9 +69,12 @@ public class FlatRustWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         builder
             .AddSingleton<Fork.NativeFlatManager>(static ctx =>
             {
+                IComponentContext context = ctx.Resolve<IComponentContext>();
                 Fork.NativeFlatManager manager = new(
                     ctx.Resolve<RustPersistence>(),
                     ctx.Resolve<IFlatDbConfig>(),
+                    ctx.Resolve<IInitConfig>(),
+                    () => context.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog),
                     ctx.Resolve<ICompactionSchedule>() as CompactionSchedule
                         ?? throw new InvalidConfigurationException($"FlatDb.Backend={FlatDbBackend.Rust} needs the {nameof(CompactionSchedule)} of the flat DB.", -1),
                     ctx.Resolve<IBlocksConfig>(),
@@ -96,9 +103,17 @@ public class FlatRustWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 worldStateManager is FlatWorldStateManager ? ctx.Resolve<Fork.FlatWorldStateManager>() : worldStateManager)
             .AddSingleton<IFlatDbManager, FlatDbManagerGuard>()
             .AddSingleton<ISnapshotRepository>(static _ => throw Unsupported(nameof(ISnapshotRepository)))
-            .AddSingleton<ISnapshotCompactor>(static _ => throw Unsupported(nameof(ISnapshotCompactor)));
+            .AddSingleton<ISnapshotCompactor>(static _ => throw Unsupported(nameof(ISnapshotCompactor)))
+            .AddSingleton<IArenaManager>(static _ => throw Unsupported(nameof(IArenaManager)))
+            .AddSingleton<BlobArenaManager>(static _ => throw Unsupported(nameof(BlobArenaManager)))
+            .AddSingleton<IPersistedSnapshotLoader>(static _ => throw Unsupported(nameof(IPersistedSnapshotLoader)))
+            .AddSingleton<PersistedSnapshotLoader>(static _ => throw Unsupported(nameof(PersistedSnapshotLoader)))
+            .AddSingleton<IPersistedSnapshotCompactor>(static _ => throw Unsupported(nameof(IPersistedSnapshotCompactor)))
+            .AddSingleton<PersistedSnapshotCompactor>(static _ => throw Unsupported(nameof(PersistedSnapshotCompactor)))
+            .AddSingleton<ISnapshotCatalog>(static _ => throw Unsupported(nameof(ISnapshotCatalog)))
+            .AddSingleton<SnapshotCatalog>(static _ => throw Unsupported(nameof(SnapshotCatalog)));
     }
 
     private static NotSupportedException Unsupported(string service) =>
-        new($"FlatDb.Backend={FlatDbBackend.Rust} has no {service}: the native snapshot manager holds and compacts the snapshots.");
+        new($"FlatDb.Backend={FlatDbBackend.Rust} has no {service}: the native snapshot manager holds and compacts the snapshots, persisted ones included.");
 }

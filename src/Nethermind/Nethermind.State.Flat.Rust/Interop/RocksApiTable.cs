@@ -16,7 +16,8 @@ namespace Nethermind.State.Flat.Rust.Interop;
 /// a second copy, and a database must only be driven by the code that opened it. The table and the library stay
 /// loaded for the life of the process.
 /// </remarks>
-internal sealed unsafe class RocksApiTable(nint pointer)
+/// <param name="library">The librocksdb the table's addresses come from.</param>
+internal sealed unsafe class RocksApiTable(nint pointer, nint library)
 {
     private const string LibraryFilePrefix = "librocksdb";
 
@@ -37,6 +38,17 @@ internal sealed unsafe class RocksApiTable(nint pointer)
     }
 
     public nint Pointer => pointer;
+
+    /// <summary>
+    /// A new <c>rocksdb_column_family_handle_t*</c> of the default column family of <paramref name="db"/>, which a
+    /// database opened without column families, such as a plain <c>DbOnTheRocks</c>, has no handle of;
+    /// <see cref="DestroyColumnFamilyHandle"/> frees it.
+    /// </summary>
+    public nint CreateDefaultColumnFamilyHandle(nint db) =>
+        ((delegate* unmanaged<nint, nint>)NativeLibrary.GetExport(library, "rocksdb_get_default_column_family_handle"))(db);
+
+    public void DestroyColumnFamilyHandle(nint columnFamily) =>
+        ((delegate* unmanaged<nint, void>)NativeLibrary.GetExport(library, "rocksdb_column_family_handle_destroy"))(columnFamily);
 
     /// <summary>Size of a table with <paramref name="functionCount"/> functions.</summary>
     public static int SizeOf(int functionCount) => 2 * sizeof(uint) + functionCount * sizeof(nint);
@@ -84,7 +96,7 @@ internal sealed unsafe class RocksApiTable(nint pointer)
                 }
             }
 
-            return new RocksApiTable((nint)table);
+            return new RocksApiTable((nint)table, library);
         }
         catch
         {

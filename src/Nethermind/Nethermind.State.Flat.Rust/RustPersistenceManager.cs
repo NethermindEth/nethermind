@@ -12,9 +12,9 @@ namespace Nethermind.State.Flat.Rust;
 /// </summary>
 /// <remarks>
 /// A persist run through it applies the <c>IsPersisted</c> replay before returning, as <c>PersistenceManager</c> marks
-/// the nodes it writes, and a drop releases the nodes the replay kept for the snapshots dropped; the history capture
-/// hook is not supported, so the cancellation token of <see cref="FlushToPersistence"/>, which only that hook reads, is
-/// ignored.
+/// the nodes it writes, and a drop releases the nodes the replay kept for the snapshots dropped, once the conversions
+/// reported before it are replayed; the history capture hook is not supported, so the cancellation token of
+/// <see cref="FlushToPersistence"/>, which only that hook reads, is ignored.
 /// </remarks>
 internal sealed unsafe class RustPersistenceManager(Fork.NativeFlatManager manager) : IPersistenceManager
 {
@@ -44,6 +44,8 @@ internal sealed unsafe class RustPersistenceManager(Fork.NativeFlatManager manag
     {
         FfiStateId nativeHead = new(head);
         manager.ThrowIfFailed(NativeMethods.fdb_drop_unreachable(manager.Handle, &nativeHead));
+        // C# marked a converted snapshot's nodes when it converted it, also when the drop then removed it from the tier.
+        manager.ProcessPersistedEvents();
         manager.DropUnheldReplayNodes();
     }
 }

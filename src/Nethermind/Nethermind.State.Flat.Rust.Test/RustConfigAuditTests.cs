@@ -32,9 +32,8 @@ namespace Nethermind.State.Flat.Rust.Test;
 /// both backends for each value, and differently for the two.
 /// </para>
 /// <para>
-/// With long finality off, a long-finality row must change nothing on either backend. Without history, a history
-/// row must be refused or change nothing on the Rust backend, as must a member that is not a flat-state setting. A
-/// fail-fast row is refused on the Rust backend.
+/// Without history, a history row must be refused or change nothing on the Rust backend, as must a member that is not
+/// a flat-state setting. A fail-fast row is refused on the Rust backend.
 /// </para>
 /// </remarks>
 [Parallelizable(ParallelScope.All)]
@@ -53,8 +52,6 @@ public class RustConfigAuditTests
         FailFast,
         /// <summary>Refused without <see cref="IFlatDbConfig.HistoryEnabled"/>, or read only by the history components.</summary>
         HistoryOnly,
-        /// <summary>Read only by the persisted-snapshot tier of long finality, or validated alike on both backends.</summary>
-        LongFinalityOnly,
         /// <summary>Read outside the flat state, the same whatever the backend.</summary>
         NotFlatState,
     }
@@ -67,7 +64,6 @@ public class RustConfigAuditTests
         public static Row Honored(Type? rustReader, params object[] values) => new(Treatment.Honored, rustReader, values);
         public static Row FailFast() => new(Treatment.FailFast, null, [true]);
         public static Row HistoryOnly(object value) => new(Treatment.HistoryOnly, null, [value]);
-        public static Row LongFinalityOnly(object value) => new(Treatment.LongFinalityOnly, null, [value]);
         public static Row NotFlatState(object value) => new(Treatment.NotFlatState, null, [value]);
     }
 
@@ -109,7 +105,19 @@ public class RustConfigAuditTests
         [nameof(IFlatDbConfig.DropPruningTrieState)] = Row.Honored(null),
 
         [nameof(IFlatDbConfig.HistoryEnabled)] = Row.FailFast(),
-        [nameof(IFlatDbConfig.EnableLongFinality)] = Row.FailFast(),
+
+        // The native persisted-snapshot tier of long finality; C# opens its catalog database.
+        [nameof(IFlatDbConfig.EnableLongFinality)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.LongFinalityMaxReorgDepth)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.MaxInMemoryBaseSnapshotCount)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.ArenaFileSizeBytes)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.PersistedSnapshotDedicatedArenaThresholdBytes)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.PersistedSnapshotArenaPageCacheBytes)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.PersistedSnapshotPunchHoleOnReclaim)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        // Validated against CompactSize by both backends; read otherwise only by the persisted-snapshot compactor.
+        [nameof(IFlatDbConfig.PersistedSnapshotMaxCompactSize)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.ValidatePersistedSnapshot)] = Row.Honored(typeof(Fork.NativeFlatManager)),
+        [nameof(IFlatDbConfig.PersistedSnapshotBloomBitsPerKey)] = Row.Honored(typeof(Fork.NativeFlatManager)),
 
         [nameof(IFlatDbConfig.HistoryRetention)] = Row.HistoryOnly(HistoryRetentionMode.Rolling),
         [nameof(IFlatDbConfig.HistoryRetentionBlocks)] = Row.HistoryOnly(64UL),
@@ -138,17 +146,6 @@ public class RustConfigAuditTests
 
         // The JSON-RPC trace budget (RpcModules), not a history setting despite its name.
         [nameof(IFlatDbConfig.HistoryTransactionIndexTraceParallelism)] = Row.NotFlatState(4),
-
-        [nameof(IFlatDbConfig.LongFinalityMaxReorgDepth)] = Row.LongFinalityOnly(2UL),
-        [nameof(IFlatDbConfig.MaxInMemoryBaseSnapshotCount)] = Row.LongFinalityOnly(1),
-        [nameof(IFlatDbConfig.ArenaFileSizeBytes)] = Row.LongFinalityOnly(4096L),
-        [nameof(IFlatDbConfig.PersistedSnapshotDedicatedArenaThresholdBytes)] = Row.LongFinalityOnly(1L),
-        [nameof(IFlatDbConfig.PersistedSnapshotArenaPageCacheBytes)] = Row.LongFinalityOnly(0L),
-        [nameof(IFlatDbConfig.PersistedSnapshotPunchHoleOnReclaim)] = Row.LongFinalityOnly(false),
-        // Validated against CompactSize by both backends; read otherwise only by the persisted-snapshot compactor.
-        [nameof(IFlatDbConfig.PersistedSnapshotMaxCompactSize)] = Row.LongFinalityOnly(4UL),
-        [nameof(IFlatDbConfig.ValidatePersistedSnapshot)] = Row.LongFinalityOnly(true),
-        [nameof(IFlatDbConfig.PersistedSnapshotBloomBitsPerKey)] = Row.LongFinalityOnly(0d),
     };
 
     private static IEnumerable<string> Members() => typeof(IFlatDbConfig).GetProperties().Select(static property => property.Name);
@@ -161,11 +158,9 @@ public class RustConfigAuditTests
     private static IEnumerable<TestCaseData> ObservablyHonored() => Rows(static row => row.Treatment == Treatment.Honored && row.Values.Length == 2);
 
     private static IEnumerable<TestCaseData> UnusedOnRust() =>
-        Rows(static row => row.Treatment is Treatment.HistoryOnly or Treatment.NotFlatState or Treatment.LongFinalityOnly);
+        Rows(static row => row.Treatment is Treatment.HistoryOnly or Treatment.NotFlatState);
 
     private static IEnumerable<TestCaseData> FailingFast() => Rows(static row => row.Treatment == Treatment.FailFast);
-
-    private static IEnumerable<TestCaseData> LongFinalityOnly() => Rows(static row => row.Treatment == Treatment.LongFinalityOnly);
 
     [TestCaseSource(nameof(Members))]
     public void Member_is_classified(string member) =>
@@ -202,10 +197,6 @@ public class RustConfigAuditTests
 
         Assert.That(await Fingerprint(config), Is.EqualTo(await Fingerprint(Configure(FlatDbBackend.Rust, member, null))));
     }
-
-    [TestCaseSource(nameof(LongFinalityOnly))]
-    public async Task Long_finality_member_changes_nothing_on_the_csharp_backend_either(string member, Row row) =>
-        Assert.That(await Fingerprint(Configure(FlatDbBackend.CSharp, member, row.Values[0])), Is.EqualTo(await Fingerprint(Configure(FlatDbBackend.CSharp, member, null))));
 
     [TestCaseSource(nameof(FailingFast))]
     public async Task Fail_fast_member_is_refused_on_the_rust_backend(string member, Row row) =>

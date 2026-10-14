@@ -27,6 +27,11 @@ internal readonly record struct ShellNode(Hash256? Address, TreePath Path, TrieN
 /// persisted children of every node it kept, as returning a C# snapshot's content prunes those of its nodes.
 /// </para>
 /// <para>
+/// A conversion into the persisted-snapshot tier reports the nodes it wrote for one snapshot, which are marked as
+/// <c>PersistedSnapshotBuilder</c> marks them; only that snapshot is dropped, as the snapshots of other forks at the
+/// same blocks stay in memory.
+/// </para>
+/// <para>
 /// The lock only guards the bookkeeping: a snapshot taken out of it belongs to whoever took it, so marking and
 /// releasing nodes never holds up the block processing thread recording the next snapshot.
 /// </para>
@@ -36,7 +41,7 @@ internal sealed class PersistedNodeReplay : IDisposable
     private readonly Lock _lock = new();
     private readonly Dictionary<StateId, KeptSnapshot> _snapshots = [];
     private readonly PriorityQueue<StateId, ulong> _byBlock = new();
-    // The nodes of the persist being applied, by key, kept at its capacity; only Apply uses it, one call at a time.
+    // The nodes of the persist or conversion being applied, by key, kept at its capacity; only Mark uses it, one call at a time.
     private readonly Dictionary<(bool, ValueHash256, TreePath), ValueHash256> _pending = [];
 
     /// <summary>The snapshots kept.</summary>
@@ -113,13 +118,44 @@ internal sealed class PersistedNodeReplay : IDisposable
             }
         }
 
+        Mark(covered.AsSpan(), persisted);
+
+        foreach (KeptSnapshot snapshot in covered.AsSpan()) snapshot.Dispose();
+        foreach (KeptSnapshot snapshot in dropped.AsSpan()) snapshot.Dispose();
+    }
+
+    /// <summary>
+    /// Marks the nodes a conversion of the snapshot from <paramref name="from"/> to <paramref name="to"/> into the
+    /// persisted-snapshot tier wrote, then drops that snapshot.
+    /// </summary>
+    /// <remarks>The caller runs one call at a time, as for <see cref="Apply"/>.</remarks>
+    public void ApplyConverted(in StateId from, in StateId to, ReadOnlySpan<FfiPersistedNode> converted)
+    {
+        KeptSnapshot? kept;
+        lock (_lock)
+        {
+            if (!_snapshots.TryGetValue(to, out kept) || kept.From != from) return;
+
+            _snapshots.Remove(to);
+        }
+
+        Mark([kept], converted);
+        kept.Dispose();
+    }
+
+    /// <summary>
+    /// Marks the newest node of <paramref name="covered"/>, newest snapshot first, at the key of each of
+    /// <paramref name="written"/> when its hash matches.
+    /// </summary>
+    private void Mark(ReadOnlySpan<KeptSnapshot> covered, ReadOnlySpan<FfiPersistedNode> written)
+    {
         _pending.Clear();
-        foreach (ref readonly FfiPersistedNode node in persisted)
+        foreach (ref readonly FfiPersistedNode node in written)
         {
             _pending[node.Key] = node.NodeHash;
         }
 
-        foreach (KeptSnapshot snapshot in covered.AsSpan())
+        foreach (KeptSnapshot snapshot in covered)
         {
             if (_pending.Count == 0) break;
             if (snapshot.Nodes is not { } nodes) continue;
@@ -143,9 +179,6 @@ internal sealed class PersistedNodeReplay : IDisposable
         }
 
         _pending.Clear();
-
-        foreach (KeptSnapshot snapshot in covered.AsSpan()) snapshot.Dispose();
-        foreach (KeptSnapshot snapshot in dropped.AsSpan()) snapshot.Dispose();
     }
 
     /// <summary>

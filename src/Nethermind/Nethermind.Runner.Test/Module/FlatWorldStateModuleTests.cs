@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Rust;
 using Nethermind.State.Flat.Rust.Interop;
@@ -60,8 +63,10 @@ public class FlatWorldStateModuleTests
     [TestCase(FlatDbBackend.CSharp, true, true, false, null)]
     [TestCase(FlatDbBackend.RustPersistence, true, false, false, null, Description = "Fails fast without the native library")]
     [TestCase(FlatDbBackend.Rust, true, false, false, null, Description = "Fails fast without the native library")]
-    [TestCase(FlatDbBackend.Rust, true, true, false, "supports neither")]
-    [TestCase(FlatDbBackend.RustPersistence, true, false, true, "supports neither")]
+    [TestCase(FlatDbBackend.Rust, true, true, false, null, Description = "Runs the persisted-snapshot tier natively")]
+    [TestCase(FlatDbBackend.RustPersistence, true, true, false, "supports neither")]
+    [TestCase(FlatDbBackend.Rust, true, false, true, "flat history")]
+    [TestCase(FlatDbBackend.RustPersistence, true, false, true, "flat history")]
     [TestCase(FlatDbBackend.Rust, false, true, false, null, Description = "Flat disabled")]
     public void Rust_backends_fail_fast_on_unsupported_configurations(FlatDbBackend backend, bool enabled, bool longFinality, bool history, string error)
     {
@@ -73,18 +78,19 @@ public class FlatWorldStateModuleTests
         Assert.That(() => new ContainerBuilder().AddModule(new FlatWorldStateModule(config)).Build().Dispose(), outcome);
     }
 
-    [TestCase(FlatDbBackend.RustPersistence, typeof(FlatDbManager), typeof(PersistenceManager), 0)]
-    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 0)]
-    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 2)]
-    public async Task Rust_backends_replace_their_components(FlatDbBackend backend, Type flatDbManager, Type persistenceManager, int trieWarmerWorkers)
+    [TestCase(FlatDbBackend.RustPersistence, typeof(FlatDbManager), typeof(PersistenceManager), 0, false)]
+    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 0, false)]
+    [TestCase(FlatDbBackend.Rust, typeof(FlatDbManagerGuard), typeof(RustPersistenceManager), 2, true)]
+    public async Task Rust_backends_replace_their_components(FlatDbBackend backend, Type flatDbManager, Type persistenceManager, int trieWarmerWorkers, bool longFinality)
     {
         if (!NativeMethods.IsAvailable) Assert.Ignore("libnethermind_flatdb.so not built");
-        FlatDbConfig config = new() { Backend = backend, EnableLongFinality = false, TrieWarmerWorkerCount = trieWarmerWorkers };
+        FlatDbConfig config = new() { Backend = backend, EnableLongFinality = longFinality, TrieWarmerWorkerCount = trieWarmerWorkers };
         using TempPath basePath = TempPath.GetTempDirectory();
         await using IContainer container = new ContainerBuilder()
             .AddModule(new FlatWorldStateModule(config))
             .AddSingleton<IFlatDbConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IDbFactory, MemDbFactory>()
             .AddSingleton<IColumnsDb<FlatDbColumns>>(new SnapshotableMemColumnsDb<FlatDbColumns>())
             .AddKeyedSingleton<IDb>(DbNames.Metadata, new MemDb())
             .AddKeyedSingleton<IDb>(DbNames.Code, new MemDb())
@@ -111,6 +117,13 @@ public class FlatWorldStateModuleTests
                 Assert.That(() => guard.GatherReadOnlySnapshotBundle(StateId.PreGenesis), Throws.TypeOf<NotSupportedException>());
                 Assert.That(() => guard.GatherSnapshotBundle(StateId.PreGenesis, ResourcePool.Usage.ReadOnlyProcessingEnv), Throws.TypeOf<NotSupportedException>());
                 Assert.That(container.Resolve<ITrieWarmer>(), trieWarmerWorkers > 0 ? Is.InstanceOf<Fork.TrieWarmer>() : Is.InstanceOf<NoopTrieWarmer>());
+                Assert.That(container.ResolveKeyed<IDb>(DbNames.PersistedSnapshotCatalog), Is.Not.Null);
+                Assert.That(Directory.Exists(Path.Combine(basePath.Path, "persistedSnapshot", "arena")), Is.EqualTo(longFinality));
+                foreach (Type tierService in (Type[])[typeof(IArenaManager), typeof(BlobArenaManager), typeof(IPersistedSnapshotLoader), typeof(PersistedSnapshotLoader),
+                    typeof(IPersistedSnapshotCompactor), typeof(PersistedSnapshotCompactor), typeof(ISnapshotCatalog), typeof(SnapshotCatalog)])
+                {
+                    Assert.That(() => container.Resolve(tierService), Throws.InnerException.TypeOf<NotSupportedException>(), tierService.Name);
+                }
             }
         }
     }

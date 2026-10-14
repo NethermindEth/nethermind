@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using Nethermind.Config;
@@ -40,6 +41,14 @@ public static class FlatTestDbs
     };
 
     public static ColumnsDb<FlatDbColumns> OpenRocksDb(string path) => new TrackingColumnsDb(path);
+
+    /// <summary>The persisted-snapshot catalog in <paramref name="basePath"/>, opened as <c>FlatWorldStateModule</c> opens it.</summary>
+    public static DbOnTheRocks OpenRocksDbCatalog(string basePath)
+    {
+        DbConfig dbConfig = new();
+        return new DbOnTheRocks(basePath, new DbSettings(nameof(DbNames.PersistedSnapshotCatalog), Path.Combine("persistedSnapshot", "catalog")), dbConfig,
+            new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false), LimboLogs.Instance);
+    }
 
     /// <summary>Forces the slot encoding the persistence resolves when it opens the database.</summary>
     public static void ForceSlotEncoding(IColumnsDb<FlatDbColumns> db, bool rlpSlots) =>

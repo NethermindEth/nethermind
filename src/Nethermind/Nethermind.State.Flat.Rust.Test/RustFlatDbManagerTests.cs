@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Rust.Interop;
 using Nethermind.Trie;
 using NUnit.Framework;
 using BlockPlan = Nethermind.State.Flat.Rust.Test.RustFlatDbManagerDifferentialTests.BlockPlan;
@@ -44,8 +46,8 @@ public class RustFlatDbManagerTests
         using TempPath csharpPath = TempPath.GetTempDirectory();
         using TempPath rustPath = TempPath.GetTempDirectory();
         TestFinality finality = new();
-        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, FlatLayout.Flat, carryForward: false), csharpPath.Path, finality);
-        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false), rustPath.Path, finality);
+        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), csharpPath.Path, finality);
+        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), rustPath.Path, finality);
 
         Dictionary<string, (TrieNode CSharp, TrieNode Rust)> nodes = [];
         StateId parent = StateId.PreGenesis;
@@ -91,6 +93,86 @@ public class RustFlatDbManagerTests
     }
 
     /// <summary>
+    /// With long finality and finality stalled, both managers convert the base snapshots past the in-memory window into
+    /// their persisted-snapshot tier, marking the nodes they convert persisted, and read every state alike; the Rust tier
+    /// reopens from its files and catalog, so the converted states stay readable after a restart only when the catalog
+    /// outlives the process.
+    /// </summary>
+    /// <remarks>Which bases are converted depends on when the background persists run, so only what follows from either outcome is compared.</remarks>
+    [Test]
+    public async Task Long_finality_converts_stalled_bases_into_a_persisted_tier([Values] bool rocksDbCatalog)
+    {
+        RustNativeLibrary.Require();
+        using TempPath csharpPath = TempPath.GetTempDirectory();
+        using TempPath rustPath = TempPath.GetTempDirectory();
+        TestFinality finality = new();
+        FlatManagerContainer.Overrides overrides = new() { RocksDbCatalog = rocksDbCatalog };
+        List<StateId> chain = [];
+        List<(TrieNode CSharp, TrieNode Rust)> nodes = [];
+        await using (FlatManagerContainer csharp = new(LongFinalityConfig(FlatDbBackend.CSharp), csharpPath.Path, finality))
+        await using (FlatManagerContainer rust = new(LongFinalityConfig(FlatDbBackend.Rust), rustPath.Path, finality, overrides))
+        {
+            StateId parent = StateId.PreGenesis;
+            for (ulong number = 0; number < 32; number++)
+            {
+                StateId block = Block(number);
+                BlockPlan plan = new([(Address, new Account(number, number))], [], [], [(First, Hash($"{number}", 1), Rlp(number))], []);
+                nodes.Add((plan.AddTo(csharp, parent, block)[0], plan.AddTo(rust, parent, block)[0]));
+                chain.Add(block);
+                if (number is >= 2 and <= 10) finality.Finalize(number - 2, canonical => chain[(int)canonical]);
+
+                csharp.PersistUpTo(block);
+                rust.PersistUpTo(block);
+                parent = block;
+            }
+
+            rust.Resolve<Fork.NativeFlatManager>().ProcessPersistedEvents();
+            StateId persistedBefore = csharp.PersistenceManager.GetCurrentPersistedStateId();
+            // Only a conversion marks a node above the persisted block.
+            (TrieNode CSharp, TrieNode Rust)[] converted = [.. nodes.Skip((int)persistedBefore.BlockNumber + 1)];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedBefore, Is.Not.EqualTo(StateId.PreGenesis), "persisted before the stall");
+                Assert.That(rust.PersistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(persistedBefore));
+                foreach (StateId state in chain)
+                {
+                    Assert.That(rust.Arm.HasStateForBlock(state), Is.EqualTo(csharp.Arm.HasStateForBlock(state)), $"held {state}");
+                    Assert.That(Reads(rust, state), Is.EqualTo(Reads(csharp, state)), $"reads {state}");
+                }
+
+                Assert.That(Directory.EnumerateFiles(Path.Combine(csharpPath.Path, "persistedSnapshot", "arena")), Is.Not.Empty, "C# tier");
+                Assert.That(Directory.EnumerateFiles(Path.Combine(rustPath.Path, "persistedSnapshot", "arena")), Is.Not.Empty, "Rust tier");
+                Assert.That(converted.Count(static node => node.CSharp.IsPersisted), Is.Positive, "C# conversion marks");
+                Assert.That(converted.Count(static node => node.Rust.IsPersisted), Is.Positive, "Rust conversion marks");
+            }
+        }
+
+        await using FlatManagerContainer reopened = new(LongFinalityConfig(FlatDbBackend.Rust), rustPath.Path, finality, overrides);
+        StateId persisted = reopened.PersistenceManager.GetCurrentPersistedStateId();
+        StateId[] held = [.. chain.Where(state => state != persisted && reopened.Arm.HasStateForBlock(state))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(held, rocksDbCatalog ? Is.Not.Empty : Is.Empty, "converted states held after the restart");
+            foreach (StateId state in held)
+            {
+                Assert.That(Reads(reopened, state), Is.EqualTo(ExpectedReads(state.BlockNumber)), $"reads {state} after the restart");
+            }
+        }
+
+        static FlatDbConfig LongFinalityConfig(FlatDbBackend backend) =>
+            FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true);
+
+        static List<string> Reads(FlatManagerContainer container, StateId state) =>
+            RustFlatDbManagerDifferentialTests.BundleReads.Read(container.Arm, state, [Address], [], [First], []);
+
+        static List<string> ExpectedReads(ulong number) =>
+        [
+            $"account {Address} {number} {number} {Keccak.EmptyTreeHash} {Keccak.OfAnEmptyString}",
+            $"state node {First} {Rlp(number).ToHexString()}",
+        ];
+    }
+
+    /// <summary>
     /// A state dropped as unreachable, then added again with the same nodes, has the nodes of the second add marked once
     /// persisted, as C# marks the snapshot it holds; the replay releases the dropped nodes with the drop.
     /// </summary>
@@ -101,8 +183,8 @@ public class RustFlatDbManagerTests
         using TempPath csharpPath = TempPath.GetTempDirectory();
         using TempPath rustPath = TempPath.GetTempDirectory();
         TestFinality finality = new();
-        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, FlatLayout.Flat, carryForward: false), csharpPath.Path, finality);
-        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false), rustPath.Path, finality);
+        await using FlatManagerContainer csharp = new(FlatManagerContainer.Config(FlatDbBackend.CSharp, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), csharpPath.Path, finality);
+        await using FlatManagerContainer rust = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), rustPath.Path, finality);
         StateId parent = StateId.PreGenesis;
         for (ulong number = 0; number <= 2; number++)
         {
@@ -132,6 +214,108 @@ public class RustFlatDbManagerTests
         (TrieNode, TrieNode) Add(BlockPlan plan, StateId from, StateId to) => (plan.AddTo(csharp, from, to)[0], plan.AddTo(rust, from, to)[0]);
     }
 
+    /// <summary>
+    /// With long finality, forks the native background persistence converted into the persisted-snapshot tier, then a
+    /// drop removes, have their nodes marked persisted as C# marks them while converting, though the drop runs before
+    /// the background loop applied the conversions.
+    /// </summary>
+    [Test]
+    public async Task Forks_converted_then_dropped_keep_their_nodes_marked()
+    {
+        RustNativeLibrary.Require();
+        using TempPath csharpPath = TempPath.GetTempDirectory();
+        using TempPath rustPath = TempPath.GetTempDirectory();
+        TestFinality finality = new();
+        await using FlatManagerContainer csharp = new(ConvertEveryBase(FlatDbBackend.CSharp), csharpPath.Path, finality);
+        await using FlatManagerContainer rust = new(ConvertEveryBase(FlatDbBackend.Rust), rustPath.Path, finality);
+        Fork.NativeFlatManager native = rust.Resolve<Fork.NativeFlatManager>();
+        List<StateId> chain = [];
+        StateId head = StateId.PreGenesis;
+        for (ulong number = 0; number < 16; number++)
+        {
+            Add(new BlockPlan([], [], [], [(First, Hash($"{number}", 1), Rlp(number))], []), head, Block(number));
+            chain.Add(Block(number));
+            if (number is >= 2 and <= 10) finality.Finalize(number - 2, canonical => chain[(int)canonical]);
+
+            csharp.PersistUpTo(Block(number));
+            rust.PersistUpTo(Block(number));
+            head = Block(number);
+        }
+
+        long persistedBases = PersistedBases(native);
+        StateId[] forkStates = [.. Enumerable.Range(0, 3).Select(static fork => new StateId(15, Keccak.Compute($"fork {fork}")))];
+        (TrieNode CSharp, TrieNode Rust)[] forks = [.. forkStates.Select((fork, index) =>
+            Add(new BlockPlan([], [], [], [(Second, Hash($"fork {index}", 2), Rlp((ulong)index))], []), Block(14), fork))];
+        await csharp.PersistenceManager.AddToPersistence(head);
+        Assert.That(() => PersistedBases(native), Is.EqualTo(persistedBases + forks.Length).After(10_000, 1), "the native background persistence converts the forks");
+        bool[] markedBeforeTheDrop = [.. forks.Select(static fork => fork.Rust.IsPersisted)];
+        csharp.Arm.DropStateNotReachableFrom(head);
+        rust.Arm.DropStateNotReachableFrom(head);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkStates.Where(fork => csharp.Arm.HasStateForBlock(fork) || rust.Arm.HasStateForBlock(fork)), Is.Empty, "the drop removes the forks");
+            Assert.That(forks.Select(static fork => fork.CSharp.IsPersisted), Is.All.True, "C#");
+            Assert.That(forks.Select(static fork => fork.Rust.IsPersisted), Is.EqualTo(forks.Select(static fork => fork.CSharp.IsPersisted)), $"Rust, marked before the drop: {string.Join(", ", markedBeforeTheDrop)}");
+        }
+
+        static FlatDbConfig ConvertEveryBase(FlatDbBackend backend)
+        {
+            FlatDbConfig config = FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: true);
+            config.MaxInMemoryBaseSnapshotCount = 0;
+            return config;
+        }
+
+        (TrieNode, TrieNode) Add(BlockPlan plan, StateId from, StateId to) => (plan.AddTo(csharp, from, to)[0], plan.AddTo(rust, from, to)[0]);
+    }
+
+    /// <summary>
+    /// A conversion drops from the replay only the snapshot it converted, from the state it was added on, and leaves a
+    /// fork at the same block until a drop releases it.
+    /// </summary>
+    [Test]
+    public void A_conversion_keeps_the_other_snapshots_at_its_block()
+    {
+        using Fork.PersistedNodeReplay replay = new();
+        StateId fork = new(1, Keccak.Compute("fork"));
+        replay.Settle(replay.Record(Block(0), Block(1), null), added: true);
+        replay.Settle(replay.Record(Block(0), fork, null), added: true);
+
+        replay.ApplyConverted(new StateId(0, Keccak.Compute("other parent")), fork, []);
+        int keptAfterAConversionFromElsewhere = replay.Count;
+        replay.ApplyConverted(Block(0), Block(1), []);
+        int keptAfterTheConversion = replay.Count;
+        replay.DropUnheld(state => state != fork, static () => Block(0));
+
+        Assert.That((keptAfterAConversionFromElsewhere, keptAfterTheConversion, replay.Count), Is.EqualTo((2, 1, 0)));
+    }
+
+    /// <summary>The base snapshots in the native persisted-snapshot tier, read without applying the persisted-node events.</summary>
+    private static unsafe long PersistedBases(Fork.NativeFlatManager manager)
+    {
+        const int capacity = 64;
+        FfiTierGaugeRow* rows = stackalloc FfiTierGaugeRow[capacity];
+        nuint count;
+        bool added = false;
+        try
+        {
+            manager.Handle.DangerousAddRef(ref added);
+            StatusMap.ThrowIfFailed(NativeMethods.fdb_persisted_tier_gauges(manager.Handle.DangerousGetHandle(), rows, capacity, &count));
+        }
+        finally
+        {
+            if (added) manager.Handle.DangerousRelease();
+        }
+
+        long bases = 0;
+        for (nuint row = 0; row < count; row++)
+        {
+            if ((SnapshotTier)rows[row].Tier == SnapshotTier.PersistedBase) bases += rows[row].Count;
+        }
+
+        return bases;
+    }
+
     /// <summary>A placeholder hides the older snapshots' node, reads the persisted one, and is never written.</summary>
     /// <remarks>
     /// The compacted snapshot of blocks 1-2 holds the placeholder of block 2 at the path, so the flush writes neither
@@ -142,7 +326,7 @@ public class RustFlatDbManagerTests
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false), path.Path, new TestFinality());
+        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, new TestFinality());
 
         new BlockPlan([], [], [], [(First, Keccak.Compute("0"), Rlp(0))], [(Owner, First, Keccak.Compute("0s"), Rlp(0))])
             .AddTo(container, StateId.PreGenesis, Block(0));
@@ -180,7 +364,7 @@ public class RustFlatDbManagerTests
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false), path.Path, new TestFinality());
+        FlatManagerContainer container = new(FlatManagerContainer.Config(FlatDbBackend.Rust, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, new TestFinality());
         StateId parent = StateId.PreGenesis;
         for (ulong number = 0; number < 3; number++)
         {
@@ -217,7 +401,7 @@ public class RustFlatDbManagerTests
     {
         RustNativeLibrary.Require();
         using TempPath path = TempPath.GetTempDirectory();
-        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false), path.Path, new TestFinality());
+        await using FlatManagerContainer container = new(FlatManagerContainer.Config(backend, FlatLayout.Flat, carryForward: false, maxInMemorySnapshotBytes: 0, longFinality: false), path.Path, new TestFinality());
         BlockPlan plan = new([(Address, new Account(1, 1))], [], [], [(First, Keccak.Compute("0"), Rlp(0))], []);
         plan.AddTo(container, StateId.PreGenesis, Block(0));
         plan.AddTo(container, Block(0), Block(1));

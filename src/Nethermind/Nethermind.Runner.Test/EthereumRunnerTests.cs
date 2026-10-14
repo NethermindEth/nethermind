@@ -743,14 +743,17 @@ public class EthereumRunnerTests
 
         if (NativeMethods.IsAvailable)
         {
-            // The flat DB on the native Rust library, which needs long finality off.
-            ConfigProvider configProvider = new();
-            configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
-            configProvider.Initialize();
-            IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-            flatDbConfig.Backend = FlatDbBackend.Rust;
-            flatDbConfig.EnableLongFinality = false;
-            result.Add(("flat-rust", configProvider));
+            // The flat DB on the native Rust library, without and with its persisted-snapshot tier.
+            foreach ((string name, bool longFinality) in (ReadOnlySpan<(string, bool)>)[("flat-rust", false), ("flat-rust-lf", true)])
+            {
+                ConfigProvider configProvider = new();
+                configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
+                configProvider.Initialize();
+                IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+                flatDbConfig.Backend = FlatDbBackend.Rust;
+                flatDbConfig.EnableLongFinality = longFinality;
+                result.Add((name, configProvider));
+            }
         }
 
         return result;

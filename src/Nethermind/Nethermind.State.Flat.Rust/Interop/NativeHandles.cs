@@ -213,12 +213,14 @@ internal sealed class BatchHandle(RustFlatStore store, nint handle) : StoreChild
 
 /// <summary>
 /// A native snapshot manager. Releasing it, once the bundles gathered from it are released too, publishes its metrics
-/// a last time, shuts the manager down, then frees the host its callbacks reach.
+/// a last time, shuts the manager down, then takes back the gauges of its persisted-snapshot tier and frees the host its
+/// callbacks reach and the catalog the tier writes.
 /// </summary>
-/// <remarks>A manager that failed to be destroyed may still call its host, which is then kept alive.</remarks>
-internal sealed class ManagerHandle(RustFlatStore store, nint handle, GCHandle host) : StoreChildHandle(store, handle)
+/// <remarks>A manager that failed to be destroyed may still call its host and catalog, which are then kept alive.</remarks>
+/// <param name="catalog">The catalog of the manager's persisted-snapshot tier; null without the tier.</param>
+internal sealed class ManagerHandle(RustFlatStore store, nint handle, GCHandle host, RustCatalogStore? catalog) : StoreChildHandle(store, handle)
 {
-    private readonly RustMetricsBridge _metrics = new();
+    private readonly RustMetricsBridge _metrics = new(catalog);
 
     /// <summary>Publishes what changed in the manager's metrics since the last call; does nothing once released.</summary>
     public void PublishMetrics()
@@ -252,7 +254,11 @@ internal sealed class ManagerHandle(RustFlatStore store, nint handle, GCHandle h
         }
 
         FdbStatus status = NativeMethods.fdb_destroy(handle);
-        if (status == FdbStatus.Ok) host.Free();
+        if (status != FdbStatus.Ok) return status;
+
+        _metrics.PublishTierReleased();
+        host.Free();
+        catalog?.Dispose();
         return status;
     }
 }

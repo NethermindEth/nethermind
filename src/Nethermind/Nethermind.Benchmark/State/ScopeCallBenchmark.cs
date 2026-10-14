@@ -5,6 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -223,13 +224,13 @@ internal sealed unsafe class NativeScope : IDisposable
     public NativeScope()
     {
         NativeMethods.EnsureAvailable();
-        FlatDbConfig config = new() { Backend = FlatDbBackend.Rust };
+        FlatDbConfig config = new() { Backend = FlatDbBackend.Rust, EnableLongFinality = false };
         DbConfig dbConfig = new();
         _db = new ColumnsDb<FlatDbColumns>(_path.Path, new DbSettings("Flat", DbNames.Flat), dbConfig,
             new RocksDbConfigFactory(dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), NullLogManager.Instance, validateConfig: false),
             NullLogManager.Instance, []);
         _persistence = new RustPersistence(_db, config, NullLogManager.Instance);
-        _manager = new NativeFlatManager(_persistence, config, new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
+        _manager = new NativeFlatManager(_persistence, config, new InitConfig { BaseDbPath = _path.Path }, static () => new MemDb(), new CompactionSchedule(new MemDb(), config, NullLogManager.Instance),
             new BlocksConfig(), new NoFinality(), new StatePersistenceBarrier(), new ProcessExitSource(CancellationToken.None),
             new MetricsConfig(), NullLogManager.Instance);
         Scope = OpenScope();

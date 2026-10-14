@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -17,22 +20,32 @@ namespace Nethermind.State.Flat.Rust.Fork;
 /// of <see cref="RustPersistence"/>, shared by <see cref="RustFlatDbManager"/> and <see cref="RustPersistenceManager"/>.
 /// </summary>
 /// <remarks>
+/// <para>
 /// It calls back into the services <c>PersistenceManager</c> injects through <see cref="RustHostCallbacks"/>, and
 /// signals process exit to the native manager as <c>FlatDbManager</c> watches <see cref="IProcessExitSource.Token"/>.
 /// A background loop applies the persisted-node events to <see cref="Replay"/>, publishes the metrics, logs what the
-/// store and the native workers logged and reports a fatal RocksDB error a native persist hit, as
+/// store and the native workers logged and reports a fatal RocksDB error a native persist hit to the database it hit, as
 /// <see cref="RustFlatStore.ThrowIfFailed"/> reports one an export hit; the metrics are also published on every metrics
 /// tick with <see cref="PublishMetrics"/>. Disposing it drains and stops the native workers, then frees the manager once
 /// the last bundle or scope gathered from it is released; the store and its database stay open until then, as the
 /// manager holds a reference on the store.
+/// </para>
+/// <para>
+/// With <see cref="IFlatDbConfig.EnableLongFinality"/>, the native manager runs the persisted-snapshot tier in
+/// <c>{BaseDbPath}/persistedSnapshot</c>, over the <see cref="DbNames.PersistedSnapshotCatalog"/> catalog C# opened and
+/// whose rows it reads at startup, as <c>PersistedSnapshotLoader</c> does. A converted snapshot that does not read back
+/// as its source exits the process as the loader does, from the pump rather than the persisting thread.
+/// </para>
 /// </remarks>
-internal sealed class NativeFlatManager : IDisposable
+internal sealed partial class NativeFlatManager : IDisposable
 {
     private static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan FatalReportWait = TimeSpan.FromSeconds(5);
     private const uint DetailedObservationCapacity = 16 * 1024;
+    private const string PersistedSnapshotDirectory = "persistedSnapshot";
 
     private readonly RustPersistence _persistence;
+    private readonly RustCatalogStore? _catalog;
     private readonly ManagerHandle _handle;
     private readonly ILogger _logger;
     private readonly bool _recordDetailedMetrics;
@@ -43,9 +56,13 @@ internal sealed class NativeFlatManager : IDisposable
     private Task _fatalReport = Task.CompletedTask;
     private int _disposed;
 
+    /// <param name="catalogDb">The <see cref="DbNames.PersistedSnapshotCatalog"/> database, resolved only with
+    /// <see cref="IFlatDbConfig.EnableLongFinality"/>.</param>
     public unsafe NativeFlatManager(
         RustPersistence persistence,
         IFlatDbConfig config,
+        IInitConfig initConfig,
+        Func<IDb> catalogDb,
         CompactionSchedule schedule,
         IBlocksConfig blocksConfig,
         IStateHeaderProvider stateHeaderProvider,
@@ -82,20 +99,22 @@ internal sealed class NativeFlatManager : IDisposable
             DetailedMetrics = detailedMetrics ? (byte)1 : (byte)0,
         };
 
-        GCHandle host = GCHandle.Alloc(new RustHostCallbacks(stateHeaderProvider, persistenceBarrier, logManager));
         RustFlatStore store = persistence.Store;
         store.AddChildReference();
+        GCHandle host = default;
         try
         {
+            _catalog = config.EnableLongFinality ? RustCatalogStore.Create(catalogDb()) : null;
+            host = GCHandle.Alloc(new RustHostCallbacks(stateHeaderProvider, persistenceBarrier, logManager));
             FdbHost callbacks = RustHostCallbacks.ToNative(host);
-            nint manager;
-            store.ThrowIfFailed(NativeMethods.fdb_mgr_create(store, &cfg, &callbacks, &manager));
-            _handle = new ManagerHandle(store, manager, host);
+            nint manager = Create(store, cfg, callbacks, config, initConfig.BaseDbPath, _catalog);
+            _handle = new ManagerHandle(store, manager, host, _catalog);
         }
         catch
         {
             store.ReleaseChildReference();
-            host.Free();
+            if (host.IsAllocated) host.Free();
+            _catalog?.Dispose();
             throw;
         }
 
@@ -109,6 +128,9 @@ internal sealed class NativeFlatManager : IDisposable
 
     /// <summary>The C# trie nodes of the added snapshots, marked persisted as the native manager persists them.</summary>
     public PersistedNodeReplay Replay { get; } = new();
+
+    /// <summary>Exits the process with a code, as a failed persisted-snapshot validation does; replaced only by tests.</summary>
+    internal Action<int> ExitProcess { get; set; } = Environment.Exit;
 
     /// <summary>Publishes the counters of the native manager and replays its histogram observations.</summary>
     public void PublishMetrics() => _handle.PublishMetrics();
@@ -173,7 +195,7 @@ internal sealed class NativeFlatManager : IDisposable
     /// <summary>Drains the native compaction and persistence queues and stops the native workers; idempotent.</summary>
     public void Shutdown() => ThrowIfFailed(NativeMethods.fdb_shutdown(_handle));
 
-    /// <summary>Applies every persist the native manager reported to <see cref="Replay"/>, oldest first.</summary>
+    /// <summary>Applies every persist and conversion the native manager reported to <see cref="Replay"/>, oldest first.</summary>
     public unsafe void ProcessPersistedEvents()
     {
         lock (_eventLock)
@@ -186,7 +208,9 @@ internal sealed class NativeFlatManager : IDisposable
 
                 try
                 {
-                    Replay.Apply(persisted.From.ToStateId(), persisted.To.ToStateId(), new ReadOnlySpan<FfiPersistedNode>(persisted.Nodes, checked((int)persisted.NodeCount)));
+                    ReadOnlySpan<FfiPersistedNode> nodes = new(persisted.Nodes, checked((int)persisted.NodeCount));
+                    if (persisted.Kind == PersistedEventKind.Converted) Replay.ApplyConverted(persisted.From.ToStateId(), persisted.To.ToStateId(), nodes);
+                    else Replay.Apply(persisted.From.ToStateId(), persisted.To.ToStateId(), nodes);
                 }
                 finally
                 {
@@ -216,6 +240,48 @@ internal sealed class NativeFlatManager : IDisposable
             _handle.Dispose();
             _stopPump.Dispose();
             Replay.Dispose();
+        }
+    }
+
+    /// <summary>Creates the native manager, with the persisted-snapshot tier over <paramref name="catalog"/> when there is one.</summary>
+    private static unsafe nint Create(RustFlatStore store, FdbMgrCfg cfg, FdbHost callbacks, IFlatDbConfig config, string baseDbPath, RustCatalogStore? catalog)
+    {
+        nint manager;
+        if (catalog is null)
+        {
+            store.ThrowIfFailed(NativeMethods.fdb_mgr_create(store, &cfg, &callbacks, &manager));
+            return manager;
+        }
+
+        string basePath = Path.Combine(baseDbPath, PersistedSnapshotDirectory);
+        byte[] arenaDirectory = Encoding.UTF8.GetBytes(Path.Combine(basePath, "arena"));
+        byte[] blobDirectory = Encoding.UTF8.GetBytes(Path.Combine(basePath, "blob"));
+        byte[] catalogRows = catalog.Rows();
+        ManagedCatalogVTable catalogCallbacks;
+        fixed (byte* arena = arenaDirectory, blob = blobDirectory, rows = catalogRows)
+        {
+            FdbTierCfg tier = new()
+            {
+                ArenaDir = arena,
+                ArenaDirLength = (nuint)arenaDirectory.Length,
+                BlobDir = blob,
+                BlobDirLength = (nuint)blobDirectory.Length,
+                Catalog = catalog.Descriptor(&catalogCallbacks),
+                CatalogRows = rows,
+                CatalogRowsLength = (nuint)catalogRows.Length,
+                LongFinalityMaxReorgDepth = config.LongFinalityMaxReorgDepth,
+                MaxInMemoryBaseSnapshotCount = (ulong)Math.Max(0, config.MaxInMemoryBaseSnapshotCount),
+                ArenaFileSizeBytes = config.ArenaFileSizeBytes,
+                DedicatedArenaThresholdBytes = config.PersistedSnapshotDedicatedArenaThresholdBytes,
+                ArenaPageCacheBytes = config.PersistedSnapshotArenaPageCacheBytes,
+                BloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey,
+                ProcessorCount = (uint)Environment.ProcessorCount,
+                PunchHoleOnReclaim = config.PersistedSnapshotPunchHoleOnReclaim ? (byte)1 : (byte)0,
+                ValidatePersistedSnapshot = config.ValidatePersistedSnapshot ? (byte)1 : (byte)0,
+            };
+            cfg.Tier = &tier;
+            store.ThrowIfFailed(NativeMethods.fdb_mgr_create(store, &cfg, &callbacks, &manager));
+            return manager;
         }
     }
 
@@ -260,6 +326,9 @@ internal sealed class NativeFlatManager : IDisposable
 
         return new ReadOnlySnapshotBundle(handle, info, _recordDetailedMetrics);
     }
+
+    [GeneratedRegex(@"broken\.(\d+)\.(\d+)\.json")]
+    private static partial Regex DumpFileRange();
 
     private void SignalExit()
     {
@@ -308,8 +377,24 @@ internal sealed class NativeFlatManager : IDisposable
         if (NativeMethods.fdb_take_fatal_error(_handle, &source) == FdbStatus.Ok) return;
 
         string message = StatusMap.LastError();
-        if (_logger.IsError) _logger.Error($"Persisting the flat DB failed fatally: {message}");
+        if (source == FatalErrorSource.Validation)
+        {
+            // The dump file names the range, as PersistedSnapshotUtils names it; an error that left no dump names none.
+            Match range = DumpFileRange().Match(message);
+            string snapshot = range.Success ? $"range {range.Groups[1].Value}..{range.Groups[2].Value}" : "a converted snapshot";
+            if (_logger.IsError) _logger.Error($"Persisted snapshot validation failed for {snapshot}. Exiting with code {ExitCodes.GeneralError} for git bisect compatibility.", new InvalidOperationException(message));
+        }
+        else if (_logger.IsError)
+        {
+            _logger.Error($"Persisting the flat DB failed fatally: {message}");
+        }
+
         // Off the pump, which disposal waits for, as shutting down on the error disposes the node.
-        _fatalReport = Task.Run(() => _persistence.Store.ReportFatal(message));
+        _fatalReport = source switch
+        {
+            FatalErrorSource.Validation => Task.Run(() => ExitProcess(ExitCodes.GeneralError)),
+            FatalErrorSource.Catalog => Task.Run(() => _catalog?.ReportFatal(message)),
+            _ => Task.Run(() => _persistence.Store.ReportFatal(message)),
+        };
     }
 }
