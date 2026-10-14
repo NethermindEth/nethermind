@@ -910,6 +910,7 @@ namespace Nethermind.Blockchain
                 if (Logger.IsInfo) Logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
                 _blockStore.Delete(currentNumber, currentHash);
                 _headerStore.Delete(currentHash);
+                _balStore.Delete(currentNumber, currentHash);
 
                 if (nextHash is null)
                 {
