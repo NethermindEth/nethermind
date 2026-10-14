@@ -190,6 +190,33 @@ pub unsafe extern "C" fn nm_patricia_log_free(log: *mut TrieNodeLog) {
     drop(Box::from_raw(log));
 }
 
+/// Writes to `hash_out` the hash of the first node on the path to `key` in the trie of `address`, the state trie when
+/// null, with root hash `root`, that bulk sets cannot read from `log`, and returns its depth in nibbles. Returns -1 when
+/// they read every node on it from `log`, or -2 on panic.
+///
+/// # Safety
+/// `log` must come from [`nm_patricia_log_new`], `address` must be null or valid for 32 bytes, and `root`, `key` and
+/// `hash_out` must be valid for 32 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_log_first_missing(
+    log: *const TrieNodeLog,
+    address: *const [u8; 32],
+    root: *const [u8; 32],
+    key: *const [u8; 32],
+    hash_out: *mut [u8; 32],
+) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        (*log).first_missing(address.as_ref(), &*root, &*key)
+    })) {
+        Ok(Some((depth, hash))) => {
+            *hash_out = hash;
+            depth as i32
+        }
+        Ok(None) => -1,
+        Err(_) => -2,
+    }
+}
+
 /// Takes an empty [`PendingNodes`] sized for a bulk set of about `estimated_entries`, to give back with
 /// [`nm_patricia_pending_return`].
 #[no_mangle]

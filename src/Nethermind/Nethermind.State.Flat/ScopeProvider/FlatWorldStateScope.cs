@@ -462,7 +462,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
                 // this is just for warming up
-                (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(address.ToAccountPath.Bytes);
+                ValueHash256 key = address.ToAccountPath;
+                if (_nativeStateStore is null)
+                {
+                    (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(key.Bytes);
+                }
+                // The native bulk set reads the top of the path from its log, so only the nodes below it need warming.
+                else if (NativeTrieNodeLog.TryFindFirstMissingNode(null, _initialStateRoot.ValueHash256, key, out TreePath path, out Hash256? hash))
+                {
+                    (Volatile.Read(ref _warmupStateTree) ?? CreateWarmupStateTree()).WarmUpPath(key.Bytes, path, hash);
+                }
 
                 return true;
             }

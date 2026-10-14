@@ -255,7 +255,15 @@ public sealed class FlatStorageTree(
                 ValueHash256 key = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(index, ref key);
 
-                GetTrees().Warmup.WarmUpPath(key.BytesAsSpan);
+                if (!UsesNativeBulkSet)
+                {
+                    GetTrees().Warmup.WarmUpPath(key.BytesAsSpan);
+                }
+                // The native bulk set reads the top of the path from its log, so only the nodes below it need warming.
+                else if (_scope.NativeTrieNodeLog.TryFindFirstMissingNode(AddressHash, _storageRoot.ValueHash256, key, out TreePath path, out Hash256? hash))
+                {
+                    GetTrees().Warmup.WarmUpPath(key.BytesAsSpan, path, hash);
+                }
                 return true;
             }
             finally

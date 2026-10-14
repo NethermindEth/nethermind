@@ -1313,6 +1313,43 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void WarmUpPath_from_a_node_on_the_path_loads_only_the_nodes_below_it()
+        {
+            // An extension over the common prefix of _keyA.._keyD, then a branch on 0 or 1, then on a or b.
+            MemDb memDb = new();
+            RawScopedTrieStore trieStore = new(memDb);
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Set(_keyB, _longLeaf2);
+            patriciaTree.Set(_keyC, _longLeaf1);
+            patriciaTree.Set(_keyD, _longLeaf2);
+            patriciaTree.Commit();
+
+            TrieNode extension = trieStore.FindCachedOrUnknown(TreePath.Empty, patriciaTree.RootHash);
+            extension.ResolveNode(trieStore, TreePath.Empty);
+            TreePath branchPath = TreePath.Empty;
+            branchPath.AppendMut(extension.Key);
+            TrieNode branch = extension.GetChildWithChildPath(trieStore, ref branchPath, 0)!;
+
+            long readsFromRoot = WarmUpReads(tree => tree.WarmUpPath(_keyA));
+            long readsFromBranch = WarmUpReads(tree => tree.WarmUpPath(_keyA, branchPath, branch.Keccak!));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(readsFromRoot, Is.EqualTo(4));
+                Assert.That(readsFromBranch, Is.EqualTo(3));
+            }
+
+            long WarmUpReads(Action<PatriciaTree> warmUp)
+            {
+                PatriciaTree tree = new(trieStore, _logManager) { RootHash = patriciaTree.RootHash };
+                long before = memDb.ReadsCount;
+                warmUp(tree);
+                return memDb.ReadsCount - before;
+            }
+        }
+
+        [Test]
         public void WarmUpPath_DoesNotThrow()
         {
             // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD

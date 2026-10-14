@@ -102,6 +102,30 @@ public class NativePatriciaBulkSetTests
         }
     }
 
+    [Test]
+    public void TryFindFirstMissingNode_finds_no_node_on_a_logged_trie_and_the_root_otherwise()
+    {
+        Assume.That(NativePatriciaBulkSet.IsAvailable, "libnethermind_patricia is not built");
+
+        List<(Hash256 key, byte[] value)> items = PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 4);
+        using NativePendingNodes pending = NativePendingNodes.Rent(items.Count);
+        using NativeTrieNodeLog log = new(64 * 1024 * 1024);
+        Hash256 root = BulkSet(new DictionaryNodeStore(new Dictionary<TreePath, byte[]>()), pending, log, Keccak.EmptyTreeHash, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.False);
+            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, root.ValueHash256, TestItem.KeccakH.ValueHash256, out _, out _), Is.False);
+            Assert.That(log.TryFindFirstMissingNode(TestItem.KeccakA, Keccak.EmptyTreeHash.ValueHash256, items[0].key.ValueHash256, out _, out _), Is.False);
+            foreach ((Hash256 address, Hash256 otherRoot) in new (Hash256, Hash256)[] { (TestItem.KeccakA, TestItem.KeccakC), (TestItem.KeccakB, root), (null, root) })
+            {
+                Assert.That(log.TryFindFirstMissingNode(address, otherRoot.ValueHash256, items[0].key.ValueHash256, out TreePath path, out Hash256 hash), Is.True);
+                Assert.That(path, Is.EqualTo(TreePath.Empty));
+                Assert.That(hash, Is.EqualTo(otherRoot));
+            }
+        }
+    }
+
     private static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog log, Hash256 root, List<(Hash256 key, byte[] value)> items)
     {
         NativeBulkSetEntry[] entries = new NativeBulkSetEntry[items.Count];
