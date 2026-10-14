@@ -57,6 +57,18 @@ namespace Nethermind.Core.Test.Crypto
             }
         }
 
+        [TestCase((ulong.MaxValue - 36) / 2, true, ulong.MaxValue - 1)]
+        [TestCase((ulong.MaxValue - 36) / 2, false, ulong.MaxValue - 2)]
+        [TestCase((ulong.MaxValue - 35) / 2, false, ulong.MaxValue)]
+        public void CalculateV_at_the_largest_chain_ids(ulong chainId, bool addParity, ulong expected) =>
+            Assert.That(EthereumEcdsaExtensions.CalculateV(chainId, addParity), Is.EqualTo(expected));
+
+        [TestCase((ulong.MaxValue - 35) / 2, true)]
+        [TestCase((ulong.MaxValue - 35) / 2 + 1, false)]
+        [TestCase(ulong.MaxValue, false)]
+        public void CalculateV_throws_where_no_v_fits(ulong chainId, bool addParity) =>
+            Assert.That(() => EthereumEcdsaExtensions.CalculateV(chainId, addParity), Throws.TypeOf<OverflowException>());
+
         [TestCaseSource(nameof(TestCaseSources))]
         public void Signature_verify_test((string Name, Transaction Tx) testCase)
         {

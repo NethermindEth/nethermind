@@ -246,7 +246,8 @@ public static class EthereumEcdsaExtensions
     private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
-    public static ulong CalculateV(ulong chainId, bool addParity = true) => chainId * 2 + 35ul + (addParity ? 1u : 0u);
+    /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; throws <see cref="OverflowException"/> where no such <c>v</c> fits a ulong.</summary>
+    public static ulong CalculateV(ulong chainId, bool addParity = true) => checked(chainId * 2 + 35ul + (addParity ? 1u : 0u));
 
     public static Address? RecoverAddress(this IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
     {
