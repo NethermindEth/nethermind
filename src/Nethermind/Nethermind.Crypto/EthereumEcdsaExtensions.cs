@@ -152,7 +152,6 @@ public static class EthereumEcdsaExtensions
     {
         useSignatureChainId &= signature.ChainId.HasValue;
 
-        // feels like it is the same check twice
         // Compared through the chain id the signature carries: 2 * chainId + 35 overflows a ulong for the largest chain ids.
         bool applyEip155 = useSignatureChainId || signature.ChainId == ecdsa.ChainId;
         ulong chainId = tx.Type switch
