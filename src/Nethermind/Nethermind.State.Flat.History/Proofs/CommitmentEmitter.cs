@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -39,7 +41,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly RowArena _blockArena = new();
     private readonly Dictionary<NodePathKey, (int Offset, int Length)> _blockNodes = [];
     private readonly Dictionary<NodePathKey, ushort> _blockChanged = [];
-    private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
+    // Per parent, the children this block recorded or marked dirty.
+    private readonly Dictionary<NodePathKey, ushort> _blockChangedChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
     private readonly HashSet<NodePathKey> _exactBranches;
@@ -122,7 +125,7 @@ public sealed class CommitmentEmitter : IDisposable
         _blockArena.Clear();
         _blockNodes.Clear();
         _blockChanged.Clear();
-        _blockDirtyChildren.Clear();
+        _blockChangedChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _blockTrieDepths.Clear();
         _blockAdoptedTargets.Clear();
@@ -135,7 +138,7 @@ public sealed class CommitmentEmitter : IDisposable
         NodePathKey key = NodePathKey.ForAccount(path);
         if (path.Length == _policy.AccountCheckpointDepth + 1)
         {
-            _blockDirtyChildren.Add(key);
+            NoteChangedChild(key);
             return;
         }
 
@@ -173,7 +176,7 @@ public sealed class CommitmentEmitter : IDisposable
         NodePathKey key = NodePathKey.ForStorage(accountPath, path);
         if (path.Length == _policy.StorageCheckpointDepth + 1)
         {
-            _blockDirtyChildren.Add(key);
+            NoteChangedChild(key);
             return;
         }
 
@@ -280,6 +283,7 @@ public sealed class CommitmentEmitter : IDisposable
     private void Record(in NodePathKey key, ReadOnlySpan<byte> rlp, ushort? changed)
     {
         _blockNodes[key] = (_blockArena.Append(rlp), rlp.Length);
+        NoteChangedChild(key);
         if (changed is { } mask) _blockChanged[key] = mask;
         else _blockChanged.Remove(key);
     }
@@ -287,7 +291,16 @@ public sealed class CommitmentEmitter : IDisposable
     private void RecordEmpty(in NodePathKey key)
     {
         _blockNodes[key] = (0, EmptyRecord);
+        NoteChangedChild(key);
         _blockChanged.Remove(key);
+    }
+
+    private void NoteChangedChild(in NodePathKey key)
+    {
+        if (key.Depth == 0) return;
+
+        ref ushort children = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChangedChildren, key.Parent(), out _);
+        children |= (ushort)(1 << key.LastNibble);
     }
 
     private void NoteStorageDepth(in ValueHash256 accountPath, int depth)
@@ -468,19 +481,19 @@ public sealed class CommitmentEmitter : IDisposable
     {
         if (_blockChanged.TryGetValue(key, out ushort explicitMask)) return explicitMask;
 
-        ushort changed = 0;
+        ushort changed = (ushort)(children.Presence & _blockChangedChildren.GetValueOrDefault(key));
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (!children.IsPresent(index)) continue;
+            ushort bit = (ushort)(1 << index);
+            if (!children.IsPresent(index) || (changed & bit) != 0) continue;
 
-            if (children[index].Length < Hash256.Size) changed |= (ushort)(1 << index);
+            if (children[index].Length < Hash256.Size) changed |= bit;
             else
             {
                 NodePathKey childKey = key.Child(index);
-                if (_blockNodes.ContainsKey(childKey) || _blockDirtyChildren.Contains(childKey)) changed |= (ushort)(1 << index);
-                else if (_extensionTargets.Contains(childKey))
+                if (_extensionTargets.Contains(childKey))
                 {
-                    changed |= (ushort)(1 << index);
+                    changed |= bit;
                     _blockAdoptedTargets.Add(childKey);
                 }
             }
@@ -559,6 +572,22 @@ public sealed class CommitmentEmitter : IDisposable
         {
             TreePath child = new TreePath(_path, Depth).Append(nibble);
             return new NodePathKey(Scope, child.Path, (byte)child.Length, IsStorage);
+        }
+
+        public NodePathKey Parent()
+        {
+            Debug.Assert(Depth > 0, "a root has no parent within its scope");
+            TreePath parent = new TreePath(_path, Depth).Truncate(Depth - 1);
+            return new NodePathKey(Scope, parent.Path, (byte)parent.Length, IsStorage);
+        }
+
+        public int LastNibble
+        {
+            get
+            {
+                Debug.Assert(Depth > 0, "a root has no last nibble");
+                return new TreePath(_path, Depth)[Depth - 1];
+            }
         }
 
         public NodePathKey Descendant(ReadOnlySpan<byte> nibbles)
