@@ -33,13 +33,17 @@ verify() {
         sleep 2
     done
     (( ready == 1 )) || { echo "Nethermind genesis RPC did not become ready" >&2; return 1; }
+    local genesis_args=()
+    if [[ "$name" != verify-eezl2-deployment ]]; then
+        genesis_args=(--genesis-evidence "$EEZ_CI_RESULT_DIR/verify-eezl2-deployment.json")
+    fi
     python3 "$HERE/verify.py" \
         --l1 "$EEZ_DEVNET_L1_RPC" --reference "$EEZ_DEVNET_L2_RPC" --candidate "$url" \
         --registry "$EEZ_REGISTRY_ADDRESS" --registry-call "$(cast calldata 'rollups(uint64)' "$EEZ_ROLLUP_ID")" \
         --genesis "$EEZ_INITIAL_BLOCK_HASH" --l1-chain-id "$(cat "$connection/l1-chain-id")" \
         --l2-chain-id "$(cast chain-id --rpc-url "$EEZ_DEVNET_L2_RPC")" \
         --phase "$name" --minimum-native "$minimum" --minimum-height "$height" \
-        --output "$EEZ_CI_RESULT_DIR/$name.json"
+        --output "$EEZ_CI_RESULT_DIR/$name.json" "${genesis_args[@]}"
 }
 if [[ "$phase" == recovery ]]; then
     verify nethermind-l2 before-restart 1 1

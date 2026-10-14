@@ -10,6 +10,8 @@ The initial lane verifies the **legacy Rollup0 0x76 follower profile**. The upst
 
 Results use an exact canonical L1 registry snapshot. The registered commitment is an L2 block hash. Both nodes must provide its entire ancestry and the same transaction bytes and receipts. Canonical L1 and L2 endpoints are checked again after observations. Missing data, empty required scenarios and any mismatch fail the lane.
 
+The initial observation verifies zero native account balance and nonce at genesis on both nodes. Later observations reuse that passed result only when both nodes still have the same genesis hash, state root and chain ID. They do not require historical genesis state to remain available. Account state at the settled endpoint is still checked on both nodes in every phase.
+
 PRs and pushes touching EEZ or its execution dependencies start the workflow. The daily schedule detects upstream-only changes after the workflow reaches the default branch. Manual runs can select an exact upstream revision.
 
 All nodes and Docker builds run on disposable CI runners. Cleanup removes only this run's named enclave and candidate images. Existing VM services are not used or modified.

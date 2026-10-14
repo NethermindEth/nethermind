@@ -125,6 +125,31 @@ def verify_prefix(reference, candidate, commitment, genesis, maximum):
     return {"endpoint": commitment, "height": height, "verified_blocks": blocks, "verified_receipts": receipts, "verified_native_transactions": native}
 
 
+def check_genesis(reference, candidate, args):
+    headers = []
+    for node in (reference, candidate):
+        equal(node.call("eth_chainId"), hex(args.l2_chain_id), "L2 chain identity")
+        header = node.call("eth_getBlockByNumber", "0x0", False)
+        if not isinstance(header, dict) or not header.get("stateRoot"):
+            raise AssertionError("missing genesis header or state root")
+        equal(header.get("hash"), args.genesis, "L2 genesis")
+        headers.append(header)
+    equal(headers[0]["stateRoot"], headers[1]["stateRoot"], "genesis state root")
+    state = {"hash": args.genesis, "state_root": headers[0]["stateRoot"], "chain_id": args.l2_chain_id,
+             "system_account": SYSTEM, "balance": "0x0", "nonce": "0x0"}
+    if args.genesis_evidence is None:
+        equal(args.phase, "verify-eezl2-deployment", "genesis state requires initial deployment phase")
+        for node in (reference, candidate):
+            equal(node.call("eth_getBalance", SYSTEM, "0x0"), "0x0", "no native genesis funding")
+            equal(node.call("eth_getTransactionCount", SYSTEM, "0x0"), "0x0", "native genesis nonce")
+    else:
+        evidence = json.loads(args.genesis_evidence.read_text())
+        equal(evidence.get("result"), "pass", "genesis evidence must be a passed observation")
+        equal(evidence.get("phase"), "verify-eezl2-deployment", "genesis evidence must come from initial deployment")
+        equal(evidence.get("genesis_state"), state, "genesis evidence must match both current nodes")
+    return state
+
+
 def main():
     parser = argparse.ArgumentParser()
     for field in ("l1", "reference", "candidate", "registry", "registry-call", "genesis", "phase"):
@@ -135,15 +160,12 @@ def main():
     parser.add_argument("--minimum-height", type=int, default=1)
     parser.add_argument("--max-blocks", type=int, default=8192)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--genesis-evidence", type=Path)
     args = parser.parse_args()
     deadline = time.monotonic() + 600
     l1, reference, candidate = [Rpc(url, deadline) for url in (args.l1, args.reference, args.candidate)]
     equal(l1.call("eth_chainId"), hex(args.l1_chain_id), "L1 chain identity")
-    for node in (reference, candidate):
-        equal(node.call("eth_chainId"), hex(args.l2_chain_id), "L2 chain identity")
-        equal(node.call("eth_getBlockByNumber", "0x0", False)["hash"], args.genesis, "L2 genesis")
-        equal(node.call("eth_getBalance", SYSTEM, "0x0"), "0x0", "no native genesis funding")
-        equal(node.call("eth_getTransactionCount", SYSTEM, "0x0"), "0x0", "native genesis nonce")
+    genesis_state = check_genesis(reference, candidate, args)
     attempts = 0
     while time.monotonic() < deadline:
         attempts += 1
@@ -162,7 +184,7 @@ def main():
         equal(candidate.call("eth_getBlockByNumber", hex(result["height"]), False)["hash"], commitment, "candidate canonical endpoint")
         if result["verified_native_transactions"] < args.minimum_native:
             raise AssertionError("required native scenarios produced no transactions")
-        result.update({"phase": args.phase, "canonical_l1_hash": snapshot["hash"], "canonical_l1_number": snapshot["number"], "snapshot_attempts": attempts, "result": "pass", "profile": "legacy-rollup0-0x76"})
+        result.update({"genesis_state": genesis_state, "phase": args.phase, "canonical_l1_hash": snapshot["hash"], "canonical_l1_number": snapshot["number"], "snapshot_attempts": attempts, "result": "pass", "profile": "legacy-rollup0-0x76"})
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         print(json.dumps(result))
         return

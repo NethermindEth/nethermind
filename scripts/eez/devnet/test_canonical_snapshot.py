@@ -17,26 +17,37 @@ class Node:
         self.genesis_hash = "genesis"
         self.l1_hash = "snapshot"
         self.height = 1
+        self.genesis_state_root = "genesis-state"
+        self.chain_id = "0x1" if role == "l1" else "0x2"
+        self.genesis_balance = "0x0"
+        self.genesis_nonce = "0x0"
+        self.genesis_state_available = True
+        self.genesis_queries = []
 
     def call(self, method, *arguments):
         if method == "eth_chainId":
-            return "0x1" if self.role == "l1" else "0x2"
+            return self.chain_id
         if method == "eth_getBlockByNumber":
             if self.role == "l1":
                 return {"hash": "snapshot" if arguments[0] == "latest" else self.l1_hash, "number": "0x1"}
             if arguments[0] == "0x0":
-                return {"hash": self.genesis_hash}
+                return {"hash": self.genesis_hash, "stateRoot": self.genesis_state_root}
             return {"hash": self.canonical_hash, "number": hex(self.height)}
         if method == "eth_getBlockByHash":
             return {"hash": "end", "number": hex(self.height)}
         if method in ("eth_getBalance", "eth_getTransactionCount"):
+            if arguments == (verify.SYSTEM, "0x0"):
+                self.genesis_queries.append(method)
+                if not self.genesis_state_available:
+                    raise verify.RpcError("No state available for block 0")
+                return self.genesis_balance if method == "eth_getBalance" else self.genesis_nonce
             return "0x0"
         raise AssertionError("unexpected method " + method)
 
 
 class CanonicalSnapshotTests(unittest.TestCase):
     def invoke(self, output, nodes, result, clock=None, extra=()):
-        arguments = ["verify", "--l1", "l1", "--reference", "reference", "--candidate", "candidate", "--registry", "registry", "--registry-call", "calldata", "--genesis", "genesis", "--phase", "fixture", "--l1-chain-id", "1", "--l2-chain-id", "2", "--output", str(output), *extra]
+        arguments = ["verify", "--l1", "l1", "--reference", "reference", "--candidate", "candidate", "--registry", "registry", "--registry-call", "calldata", "--genesis", "genesis", "--phase", "verify-eezl2-deployment", "--l1-chain-id", "1", "--l2-chain-id", "2", "--output", str(output), *extra]
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(sys, "argv", arguments))
             stack.enter_context(patch.object(verify, "Rpc", side_effect=lambda url, deadline: nodes[url]))
@@ -87,6 +98,74 @@ class CanonicalSnapshotTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 self.invoke(output, nodes, result, clock=[0, 0, 601], extra=["--minimum-height", "2"])
             self.assertFalse(output.exists())
+
+
+    def test_later_observation_passes_with_pruned_genesis_only_after_initial_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+            result = {"height": 1, "endpoint": "end", "verified_native_transactions": 1}
+            evidence = Path(directory) / "initial.json"
+            self.invoke(evidence, nodes, result)
+            for role in ("reference", "candidate"):
+                self.assertEqual(nodes[role].genesis_queries, ["eth_getBalance", "eth_getTransactionCount"])
+                nodes[role].genesis_queries.clear()
+                nodes[role].genesis_state_available = False
+            output = Path(directory) / "later.json"
+            prefix = self.invoke(output, nodes, result, extra=["--phase", "fresh-follower", "--genesis-evidence", str(evidence)])
+            prefix.assert_called_once_with(nodes["reference"], nodes["candidate"], "end", "genesis", 8192)
+            self.assertEqual(json.loads(output.read_text())["genesis_state"], json.loads(evidence.read_text())["genesis_state"])
+            for role in ("reference", "candidate"):
+                self.assertEqual(nodes[role].genesis_queries, [])
+
+    def test_initial_genesis_rpc_errors_and_nonzero_accounts_cannot_pass(self):
+        for role in ("reference", "candidate"):
+            for failure in ("balance", "nonce", "unavailable", "empty-root", "missing-root"):
+                with self.subTest(role=role, failure=failure), tempfile.TemporaryDirectory() as directory:
+                    nodes = {name: Node(name) for name in ("l1", "reference", "candidate")}
+                    if failure == "balance": nodes[role].genesis_balance = "0x1"
+                    if failure == "nonce": nodes[role].genesis_nonce = "0x1"
+                    if failure == "unavailable": nodes[role].genesis_state_available = False
+                    if failure == "empty-root": nodes[role].genesis_state_root = ""
+                    if failure == "missing-root": nodes[role].genesis_state_root = None
+                    output = Path(directory) / "result.json"
+                    with self.assertRaises((AssertionError, verify.RpcError)):
+                        self.invoke(output, nodes, {"height": 1, "verified_native_transactions": 1})
+                    self.assertFalse(output.exists())
+
+    def test_initial_observation_rejects_equal_but_missing_state_roots(self):
+        for root in (None, ""):
+            with self.subTest(root=root), tempfile.TemporaryDirectory() as directory:
+                nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+                for role in ("reference", "candidate"):
+                    nodes[role].genesis_state_root = root
+                output = Path(directory) / "result.json"
+                with self.assertRaisesRegex(AssertionError, "missing genesis header or state root"):
+                    self.invoke(output, nodes, {"height": 1, "verified_native_transactions": 1})
+                self.assertFalse(output.exists())
+
+    def test_later_observation_rejects_missing_failed_or_mismatched_genesis_evidence(self):
+        failures = ("missing", "failed", "wrong-phase", "no-state", "hash", "state_root", "chain_id", "system_account", "balance", "nonce", "reference-hash", "candidate-root", "candidate-chain")
+        for failure in failures:
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
+                nodes = {role: Node(role) for role in ("l1", "reference", "candidate")}
+                result = {"height": 1, "endpoint": "end", "verified_native_transactions": 1}
+                evidence = Path(directory) / "initial.json"
+                self.invoke(evidence, nodes, result)
+                record = json.loads(evidence.read_text())
+                if failure == "failed": record["result"] = "fail"
+                elif failure == "wrong-phase": record["phase"] = "after-restart"
+                elif failure == "no-state": del record["genesis_state"]
+                elif failure == "reference-hash": nodes["reference"].genesis_hash = "other-genesis"
+                elif failure == "candidate-root": nodes["candidate"].genesis_state_root = "other-state"
+                elif failure == "candidate-chain": nodes["candidate"].chain_id = "0x3"
+                elif failure != "missing": record["genesis_state"][failure] = "wrong"
+                evidence.write_text(json.dumps(record))
+                extra = ["--phase", "after-restart"]
+                if failure != "missing": extra.extend(["--genesis-evidence", str(evidence)])
+                output = Path(directory) / "later.json"
+                with self.assertRaises(AssertionError):
+                    self.invoke(output, nodes, result, extra=extra)
+                self.assertFalse(output.exists())
 
 
 class PrefixNode:
