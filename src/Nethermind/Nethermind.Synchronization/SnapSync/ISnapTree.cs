@@ -41,6 +41,6 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
         Interlocked.Add(ref Metrics.SnapStateSynced, totalBytes);
 
         tree.BulkSet(bulkEntries, PatriciaTree.Flags.WasSorted);
-        tree.UpdateRootHash();
+        tree.UpdateRootHash(canBeParallel: true);
     }
 }

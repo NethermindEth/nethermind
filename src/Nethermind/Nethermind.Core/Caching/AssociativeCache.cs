@@ -204,6 +204,28 @@ public sealed partial class AssociativeCache<TKey, TValue>
             return Delete(in key);
         }
 
+        return SetInSet<OnFlag>(in key, hashCode, val);
+    }
+
+    /// <summary>Caches <paramref name="val"/> only if <paramref name="key"/> is not cached already.</summary>
+    /// <returns><see langword="true"/> when <paramref name="val"/> was added.</returns>
+    /// <remarks>
+    /// For a reader caching a value it loaded from the backing store: a value a writer cached while that load ran is
+    /// newer than the loaded one, which must not replace it.
+    /// </remarks>
+    public bool TryAdd(in TKey key, TValue val)
+    {
+        ArgumentNullException.ThrowIfNull(val);
+        if (_setCount == 0) return false;
+
+        return SetInSet<OffFlag>(in key, key.GetHashCode64(), val);
+    }
+
+    /// <summary>Writes <paramref name="val"/> into the key's set under that set's gate.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool SetInSet<TReplaceExisting>(in TKey key, long hashCode, TValue val)
+        where TReplaceExisting : struct, IFlag
+    {
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
         long hashPart = ExtractHashPart(hashCode, _hashShift);
@@ -212,7 +234,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         AcquireGate(ref gate);
         try
         {
-            return SetCore(in key, val, baseIdx, hashPart);
+            return SetCore<TReplaceExisting>(in key, val, baseIdx, hashPart);
         }
         finally
         {
@@ -220,7 +242,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
         }
     }
 
-    private bool SetCore(in TKey key, TValue val, int baseIdx, long hashPart)
+    private bool SetCore<TReplaceExisting>(in TKey key, TValue val, int baseIdx, long hashPart)
+        where TReplaceExisting : struct, IFlag
     {
         // Retry with fresh epoch if Clear() races at any point — never drop an insert.
         while (true)
@@ -246,6 +269,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
+                        if (!TReplaceExisting.IsActive) return false;
+
                         // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
                         // ticker: locking the entry would make concurrent readers wait for an unchanged value.
                         if (ReferenceEquals(e.Value, val))
@@ -301,6 +326,25 @@ public sealed partial class AssociativeCache<TKey, TValue>
             return false;
         }
 
+        return RemoveInSet<OffFlag>(in key, null, out value);
+    }
+
+    /// <summary>Removes <paramref name="key"/> only while it still maps to <paramref name="expected"/>.</summary>
+    /// <returns><see langword="true"/> when the entry was removed.</returns>
+    /// <remarks>
+    /// For a reader withdrawing a value it cached itself: a value a writer cached for the key since then must stay.
+    /// </remarks>
+    public bool TryRemove(in TKey key, TValue expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        return _setCount != 0 && RemoveInSet<OnFlag>(in key, expected, out _);
+    }
+
+    /// <summary>Removes the key's entry under its set's gate, when <typeparamref name="TMatchValue"/> is on only while it holds <paramref name="expected"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool RemoveInSet<TMatchValue>(in TKey key, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
+    {
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
@@ -310,7 +354,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         AcquireGate(ref gate);
         try
         {
-            return DeleteCore(in key, baseIdx, hashPart, out value);
+            return DeleteCore<TMatchValue>(in key, baseIdx, hashPart, expected, out value);
         }
         finally
         {
@@ -318,7 +362,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
         }
     }
 
-    private bool DeleteCore(in TKey key, int baseIdx, long hashPart, out TValue? value)
+    private bool DeleteCore<TMatchValue>(in TKey key, int baseIdx, long hashPart, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
     {
         long epochTag = ReadEpoch(ref _epochAndCount);
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -335,6 +380,11 @@ public sealed partial class AssociativeCache<TKey, TValue>
             if (e.Key.Equals(in key))
             {
                 value = e.Value;
+                if (TMatchValue.IsActive && !ReferenceEquals(value, expected))
+                {
+                    value = null;
+                    return false;
+                }
 
                 long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
                 long lockedHeader = (h & EpochMask) | newSeq | LockMarker;

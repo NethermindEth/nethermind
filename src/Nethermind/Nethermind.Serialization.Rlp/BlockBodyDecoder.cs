@@ -14,16 +14,16 @@ namespace Nethermind.Serialization.Rlp;
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
 public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpDecoder<BlockBody>
 {
-    private static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
+    public static RlpLimit TransactionsCountLimit => RlpLimit.For<BlockBody>(
         checked((int)(RlpLimit.MaxBlockGas / GasCostOf.TransactionEip2780 + 1)),
         nameof(BlockBody.Transactions)
     );
 
-    private static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
+    public static readonly RlpLimit UnclesCountLimit = RlpLimit.For<BlockBody>(2, nameof(BlockBody.Uncles));
 
     // Actual consensus-level max is 16, see MAX_WITHDRAWALS_PER_PAYLOAD at https://github.com/ethereum/consensus-specs/blob/master/specs/capella/beacon-chain.md
     // Increased here for compatibility with execution spec tests and benchmarks
-    private static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(64_000, nameof(BlockBody.Withdrawals));
+    public static readonly RlpLimit WithdrawalsCountLimit = RlpLimit.For<BlockBody>(64_000, nameof(BlockBody.Withdrawals));
 
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
@@ -112,6 +112,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
     /// after all consumers finish. Pass false for retained blocks.
     /// </param>
+    /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> reads the same layout without this decoder and leaves any block
+    /// it does not recognise to it; a body field added here needs adding there to keep that fast path.</remarks>
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
     {
         Transaction[] transactions = DecodeTransactions(ref ctx, usePooledTransactions);

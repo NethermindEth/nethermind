@@ -38,6 +38,7 @@ public partial class BlockProcessor
         private readonly List<TxProcessedEventArgs>? _pendingTransactionProcessedEvents =
             transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
+        private ExecutedGasTally? _executedGasTally;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
         private int[] _txExecutionOrder = [];
@@ -62,7 +63,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = ExecutionFlags.ParallelExecution && !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
@@ -89,6 +90,7 @@ public partial class BlockProcessor
 
             for (uint i = 0; i < block.Transactions.Length; i++)
             {
+                token.ThrowIfCancellationRequested();
                 Transaction currentTx = block.Transactions[i];
                 ITransactionProcessorAdapter txProcessor = balManager.GetTxProcessor(i + 1);
                 if (shouldValidate)
@@ -153,6 +155,8 @@ public partial class BlockProcessor
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
+            ExecutedGasTally executedGas = _executedGasTally ??= new();
+            executedGas.Reset();
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
@@ -174,58 +178,81 @@ public partial class BlockProcessor
                     ParallelUnbalancedWork.For(
                         0,
                         len + 1,
-                        ParallelUnbalancedWork.DefaultOptions,
-                        (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread, inner,
-                            incrementalValidation),
+                        // Cancelled, the workers stop pulling iterations and the loop throws once they have joined.
+                        token.CanBeCanceled
+                            ? new ParallelOptions { MaxDegreeOfParallelism = ParallelUnbalancedWork.DefaultOptions.MaxDegreeOfParallelism, CancellationToken = token }
+                            : ParallelUnbalancedWork.DefaultOptions,
+                        new ParallelTxLoopState(block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults,
+                            specProvider, _txExecutionOrder, isBlockProcessingThread, inner, incrementalValidation, executedGas),
                         static (i, state) =>
                         {
                             // Block already rejected — executing the rest cannot change the outcome.
                             // Iteration 0 is exempt so pre-execution keeps its previous semantics.
-                            if (i != 0 && state.incrementalValidation.HasFailed) return state;
+                            if (i != 0 && state.IncrementalValidation.HasFailed) return state;
 
                             // Propagate the parent thread's IsBlockProcessingThread flag onto the
                             // worker so processing-stats heuristics (e.g. allocation-thread filters)
                             // continue to attribute work correctly across the parallel boundary.
                             bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
-                            ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
+                            ProcessingThread.IsBlockProcessingThread = state.IsBlockProcessingThread;
                             try
                             {
                                 if (i == 0)
                                 {
-                                    state.balManager.WaitForBalWarmup();
-                                    ReadOnlyBlockAccessList bal = state.block.BlockAccessList;
+                                    state.BalManager.WaitForBalWarmup();
+                                    ReadOnlyBlockAccessList bal = state.Block.BlockAccessList;
                                     // The world state never sees the BAL's writes, so its account changes would miss them.
-                                    if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
+                                    if (state.IsBlockProcessingThread) state.Block.AccountChanges = bal.GetStateChangedAddresses();
                                     // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
-                                    state.stateProvider.Commit(state.specProvider.GetSpec(state.block.Header));
-                                    state.stateProvider.ApplyBal(bal);
-                                    state.stateProvider.RecalculateStateRoot();
+                                    state.StateProvider.Commit(state.SpecProvider.GetSpec(state.Block.Header));
+                                    state.StateProvider.ApplyBal(bal);
+                                    state.StateProvider.RecalculateStateRoot();
                                     return state;
                                 }
 
-                                int txIndex = state.txExecutionOrder[i - 1];
-                                Transaction tx = state.txs[txIndex];
+                                int txIndex = state.TxExecutionOrder[i - 1];
+                                Transaction tx = state.Txs[txIndex];
+                                // These stops apply before a tx starts, so a worker already executing one finishes it:
+                                // up to one tx per worker, each at most 2^24 execution gas (EIP-7825), still runs.
+                                if (state.ExecutedGas.Failure is { } failure)
+                                {
+                                    // The validator throws at or before the failed slot, so the rest cannot change the
+                                    // outcome. Reusing the failure keeps a BAL failure retryable sequentially, and the
+                                    // rejection names the failing tx even when this slot comes before it.
+                                    state.GasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, failure));
+                                    return state;
+                                }
+
+                                if (state.ExecutedGas.ExceedsLimit)
+                                {
+                                    // Unblock the in-order validator on this slot without executing the tx.
+                                    state.GasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, new InvalidBlockException(state.Block,
+                                        $"Block gas limit exceeded: transactions executed out of order already exceed block gas limit {state.Block.Header.GasLimit}; transaction index {txIndex} not executed.")));
+                                    return state;
+                                }
+
                                 try
                                 {
                                     // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
                                     // so the validator finds the canonical BAL slot populated when it awaits
                                     // gasResults[txIndex] — even if ProcessTransaction throws.
-                                    using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(txIndex + 1)))
+                                    using (TxProcessorLease lease = state.BalManager.RentTxProcessor((uint)(txIndex + 1)))
                                     {
                                         ProcessTransaction(
                                             lease.Adapter,
-                                            state.stateProvider,
-                                            state.block,
+                                            state.StateProvider,
+                                            state.Block,
                                             tx,
                                             txIndex,
-                                            state.receiptsTracers[txIndex],
-                                            state.processingOptions,
-                                            state.inner);
+                                            state.ReceiptsTracers[txIndex],
+                                            state.ProcessingOptions,
+                                            state.Inner);
                                     }
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                                    ulong blockStateGasUsed = state.ReceiptsTracers[txIndex].BlockStateGasUsed;
+                                    state.ExecutedGas.Add(tx.BlockGasUsed, blockStateGasUsed, state.Block.Header.GasLimit);
+                                    state.GasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, blockStateGasUsed, null));
                                 }
                                 catch (InvalidBlockException ex)
                                 {
@@ -235,14 +262,15 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
+                                    state.ExecutedGas.Fail(ex);
+                                    state.GasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, ex));
                                 }
                                 catch
                                 {
                                     // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
                                     // if an unexpected exception escapes the worker (e.g. NRE, OCE).
                                     // TrySetCanceled unblocks the validator's slot wait.
-                                    state.gasResults[txIndex].TrySetCanceled();
+                                    state.GasResults[txIndex].TrySetCanceled();
                                     throw;
                                 }
 
@@ -509,6 +537,80 @@ public partial class BlockProcessor
 
                 (int addressesCount, int storageKeysCount) = accessList.Count;
                 return addressesCount + storageKeysCount;
+            }
+        }
+
+        /// <summary>Inputs shared by every iteration of one block's parallel transaction loop.</summary>
+        /// <remarks>
+        /// <see cref="ParallelUnbalancedWork"/> passes the loop state by value into and out of each iteration, so a
+        /// reference type keeps that to a pointer copy instead of copying every field.
+        /// </remarks>
+        private sealed class ParallelTxLoopState(
+            Block block,
+            ProcessingOptions processingOptions,
+            IWorldState stateProvider,
+            IBlockAccessListManager balManager,
+            BlockReceiptsTracer[] receiptsTracers,
+            GasValidationResultSlot[] gasResults,
+            ISpecProvider specProvider,
+            int[] txExecutionOrder,
+            bool isBlockProcessingThread,
+            IBlockProcessor.IBlockTransactionsExecutor inner,
+            IncrementalValidationWorkItem incrementalValidation,
+            ExecutedGasTally executedGas)
+        {
+            public readonly Block Block = block;
+            public readonly ProcessingOptions ProcessingOptions = processingOptions;
+            public readonly IWorldState StateProvider = stateProvider;
+            public readonly IBlockAccessListManager BalManager = balManager;
+            public readonly BlockReceiptsTracer[] ReceiptsTracers = receiptsTracers;
+            public readonly GasValidationResultSlot[] GasResults = gasResults;
+            public readonly ISpecProvider SpecProvider = specProvider;
+            public readonly Transaction[] Txs = block.Transactions;
+            public readonly int[] TxExecutionOrder = txExecutionOrder;
+            public readonly bool IsBlockProcessingThread = isBlockProcessingThread;
+            public readonly IBlockProcessor.IBlockTransactionsExecutor Inner = inner;
+            public readonly IncrementalValidationWorkItem IncrementalValidation = incrementalValidation;
+            public readonly ExecutedGasTally ExecutedGas = executedGas;
+        }
+
+        /// <summary>Block gas used by the transactions executed so far, in whatever order they ran, and the first
+        /// transaction failure among them.</summary>
+        /// <remarks>
+        /// A transaction executed against the block access list uses the gas it uses canonically unless the list is
+        /// wrong, so once the executed transactions alone exceed the gas limit in either EIP-8037 dimension the block
+        /// is invalid. A failed transaction spends no block gas, yet the in-order validator throws once it reaches
+        /// that slot. Stopping at either bounds the work an invalid block gets out of the workers while the in-order
+        /// validator waits on a transaction scheduled last.
+        /// </remarks>
+        private sealed class ExecutedGasTally
+        {
+            private ulong _executionGas;
+            private ulong _stateGas;
+            private volatile bool _exceedsLimit;
+            private InvalidBlockException? _failure;
+
+            public bool ExceedsLimit => _exceedsLimit;
+
+            public InvalidBlockException? Failure => Volatile.Read(ref _failure);
+
+            public void Reset()
+            {
+                _executionGas = 0;
+                _stateGas = 0;
+                _exceedsLimit = false;
+                _failure = null;
+            }
+
+            public void Fail(InvalidBlockException exception) => Interlocked.CompareExchange(ref _failure, exception, null);
+
+            public void Add(ulong executionGas, ulong stateGas, ulong gasLimit)
+            {
+                // Non-short-circuiting | so both dimensions always accumulate.
+                if (Interlocked.Add(ref _executionGas, executionGas) > gasLimit | Interlocked.Add(ref _stateGas, stateGas) > gasLimit)
+                {
+                    _exceedsLimit = true;
+                }
             }
         }
 

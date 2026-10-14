@@ -25,25 +25,25 @@ public class BN254Tests
 
     [Test]
     public void Add_rejects_wrong_input_length([Values(0, 64, 96, 127, 129, 192)] int inputLength) =>
-        Assert.That(BN254.Add(new byte[64], new byte[inputLength]), Is.False);
+        Assert.That(BN254.Add(new byte[64], new byte[inputLength]), Is.Not.Null);
 
     [Test]
     public void Add_rejects_short_output([Values(0, 63)] int outputLength) =>
-        Assert.That(BN254.Add(new byte[outputLength], new byte[128]), Is.False);
+        Assert.That(BN254.Add(new byte[outputLength], new byte[128]), Is.Not.Null);
 
     [Test]
     public void Add_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
-        Assert.That(BN254.Add(new byte[outputLength], Bytes.FromHexString(ValidAddInput)), Is.True);
+        Assert.That(BN254.Add(new byte[outputLength], Bytes.FromHexString(ValidAddInput)), Is.Null);
 
     [Test]
     public void Mul_rejects_wrong_input_length([Values(0, 64, 95, 97, 128)] int inputLength) =>
-        Assert.That(BN254.Mul(new byte[64], new byte[inputLength]), Is.False);
+        Assert.That(BN254.Mul(new byte[64], new byte[inputLength]), Is.Not.Null);
 
     [Test]
     public void Mul_rejects_short_output([Values(0, 63)] int outputLength) =>
-        Assert.That(BN254.Mul(new byte[outputLength], new byte[96]), Is.False);
+        Assert.That(BN254.Mul(new byte[outputLength], new byte[96]), Is.Not.Null);
 
     [Test]
     public void Mul_accepts_exact_or_oversized_output([Values(64, 128)] int outputLength) =>
-        Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.True);
+        Assert.That(BN254.Mul(new byte[outputLength], Bytes.FromHexString(ValidMulInput)), Is.Null);
 }

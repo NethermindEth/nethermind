@@ -71,7 +71,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Executes an untraced, non-cancelable JUMP while carrying the landed JUMPDEST count in the
+    /// Executes an untraced JUMP while carrying the landed JUMPDEST count in the
     /// dispatch frame. The <typeparamref name="TUseVmCounter"/> specialization keeps the hot
     /// host path independent of the VM when the counter is flushed by the caller.
     /// </summary>
@@ -383,14 +383,12 @@ public static partial class EvmInstructions
         if (inheritor is null)
             goto StackUnderflow;
 
-        bool meterInheritor = TSpec.IsEip8279Enabled && vm.IsColdBalAccess(inheritor);
-
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
-        // EIP-8279: the beneficiary enters the block access list on this first touch.
-        if (meterInheritor && !vm.TryMeterBalData(Eip8279Constants.AddressBytes))
+        // EIP-8279: the beneficiary enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(inheritor))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
@@ -422,9 +420,28 @@ public static partial class EvmInstructions
 
         if (outOfGas) goto OutOfGas;
 
-        // EIP-8279: a sweep to another account puts the beneficiary's post balance in the block access list.
+        // EIP-8360: price the balance changes of TCREATE accounts on either side of the transfer. A self-targeting
+        // SELFDESTRUCT moves no value; a pre-EIP-8246 burn happens at tx finalization, outside the tables.
+        if (TSpec.IsEip8360Enabled && vmState.AccessTracker.TransientCreates is not null && !result.IsZero && !inheritor.Equals(executingAccount))
+        {
+            if (vmState.IsTransientCreateContext
+                && vmState.AccessTracker.IsTransientCreate(state, executingAccount, out UInt256 original)
+                && !vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in result, UInt256.Zero))
+            {
+                goto OutOfGas;
+            }
+
+            if (vmState.AccessTracker.IsTransientCreate(state, inheritor, out original))
+            {
+                UInt256 inheritorBalance = state.GetBalance(inheritor);
+                if (!vm.TryChargeTransientCreateBalanceChange(vmState, ref gas, in original, in inheritorBalance, inheritorBalance + result))
+                    goto OutOfGas;
+            }
+        }
+
+        // EIP-8279: a sweep to another account puts both post balances in the block access list.
         if (TSpec.IsEip8279Enabled && !result.IsZero && !inheritor.Equals(executingAccount)
-            && !vm.TryMeterBalData(Eip8279Constants.BalanceBytes))
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
             goto OutOfGas;
 
         // Transfer the self-destruct balance without creating an empty beneficiary.
