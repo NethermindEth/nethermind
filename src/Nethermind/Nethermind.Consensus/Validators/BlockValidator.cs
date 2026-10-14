@@ -175,16 +175,17 @@ public class BlockValidator(
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
-        // EIP-7928: enforce the BAL item gas-limit floor against the BAL produced during
-        // execution. The pre-execution check in ValidateBlockLevelAccessList only fires when
-        // the suggested block carries a BAL (engine-API path); RLP-imported blocks have a
-        // null suggested BAL and the agreed gas limit must still be validated against the
-        // generated BAL here.
+        // EIP-7928: the item limit applies to the list execution produced, however the block got here.
+        // The pre-execution check in ValidateBlockLevelAccessList only sees a list delivered with the
+        // block (engine API); RLP imports carry none, and a list reattached from the store for queued
+        // processing (sync, restart replay, reorg) skipped it. Check the generated list, or the attached
+        // one where execution only verified it against the attached list instead of building its own.
         string? balSizeError = null;
-        if (suggestedBlock.BlockAccessList is null
-            && processedBlock.GeneratedBlockAccessList is not null
-            && _specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
-            && !ValidateBlockLevelAccessListSize(processedBlock, ref balSizeError))
+        if (_specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled
+            && !ValidateBlockLevelAccessListSize(
+                processedBlock,
+                processedBlock.GeneratedBlockAccessList?.ItemCount ?? processedBlock.BlockAccessList?.ItemCount ?? suggestedBlock.BlockAccessList?.ItemCount ?? 0,
+                ref balSizeError))
         {
             error = balSizeError;
             return false;
@@ -471,7 +472,7 @@ public class BlockValidator(
                 return false;
             }
 
-            if (!ValidateBlockLevelAccessListSize(block, ref error))
+            if (!ValidateBlockLevelAccessListSize(block, block.BlockAccessList.ItemCount, ref error))
             {
                 return false;
             }
@@ -488,16 +489,12 @@ public class BlockValidator(
 
     }
 
-    private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
+    private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
-        // validation reaches this helper after execution with only GeneratedBlockAccessList.
-        ulong itemCount = (ulong)(block.BlockAccessList?.ItemCount ?? block.GeneratedBlockAccessList?.ItemCount ?? 0);
-        ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-
-        if (itemCount > 0 && itemCount > maxBalItems)
+        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, maxBalItems);
+            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }

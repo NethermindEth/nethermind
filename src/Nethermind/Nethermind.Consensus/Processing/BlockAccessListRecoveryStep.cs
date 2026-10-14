@@ -54,7 +54,7 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
         // The engine API path checks the item limit before processing; a list that reaches the block from the
         // store skipped that check, so one over the limit is left off and the block takes the sequential path,
         // where the generated list is checked against the limit after execution.
-        if (ExceedsItemLimit(stored, block.Header))
+        if (Eip7928Constants.ExceedsItemLimit(stored.ItemCount, block.Header.GasLimit))
         {
             if (_logger.IsDebug) _logger.Debug($"Ignoring stored block access list of {block.ToString(Block.Format.Short)}: {stored.ItemCount} items exceed the limit of {block.Header.GasLimit / Eip7928Constants.ItemCost}");
             return;
@@ -62,7 +62,4 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
 
         block.BlockAccessList = stored;
     }
-
-    private static bool ExceedsItemLimit(ReadOnlyBlockAccessList bal, BlockHeader header) =>
-        (ulong)bal.ItemCount > header.GasLimit / Eip7928Constants.ItemCost;
 }

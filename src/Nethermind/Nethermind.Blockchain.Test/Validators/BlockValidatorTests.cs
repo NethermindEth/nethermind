@@ -444,6 +444,47 @@ public class BlockValidatorTests
         AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
+    // WithPrecompileChanges yields 25 BAL items. A list reattached from the store for queued processing (sync,
+    // restart replay, reorg) never went through ValidateSuggestedBlock, and parallel execution verifies against it
+    // without building a generated list, so the attached list must be checked after execution too.
+    [TestCase(50_000ul, false, true)]
+    [TestCase(49_999ul, false, false)]
+    [TestCase(50_000ul, true, true)]
+    [TestCase(49_999ul, true, false)]
+    public void ValidateProcessedBlock_enforces_bal_item_gas_limit_boundary_for_attached_lists(ulong gasLimit, bool withGenerated, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        Block processedBlock = suggestedBlock.WithReplacedHeader(suggestedBlock.Header.Clone());
+        if (withGenerated)
+        {
+            GeneratedBlockAccessList generated = new();
+            BlockAccessListAtIndex contribution = new();
+            foreach (ReadOnlyAccountChanges account in bal.AccountChanges)
+            {
+                contribution.AddAccountRead(account.Address);
+                foreach (ReadOnlySlotChanges slot in account.StorageChanges) contribution.AddStorageRead(account.Address, slot.Key);
+                foreach (UInt256 slot in account.StorageReads) contribution.AddStorageRead(account.Address, slot);
+            }
+            generated.Merge(contribution);
+            Assert.That(generated.ItemCount, Is.EqualTo(bal.ItemCount), "precondition: generated list has the attached list's items");
+            processedBlock.GeneratedBlockAccessList = generated;
+        }
+
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
     // 1..n = transaction indices, n+1 = post-execution.
     // For a block with 0 transactions, valid indices are 0 and 1.
