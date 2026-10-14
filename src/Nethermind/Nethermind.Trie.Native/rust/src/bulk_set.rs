@@ -10,6 +10,7 @@ use rayon::prelude::*;
 
 use crate::keccak::keccak_many;
 use crate::node::{decode_rlp, empty_children, encode, nibble, ChildRef, Nibbles, Node, TreePath};
+use crate::pending::PendingNodes;
 use crate::{Entry, Error, NodeStore};
 
 /// Same as `PatriciaTree.MinEntriesToParallelizeThreshold`.
@@ -31,12 +32,14 @@ thread_local! {
     static COMMIT_SCRATCH: RefCell<CommitScratch> = RefCell::default();
 }
 
-/// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path,
-/// and returns the new root hash. `entries` is reordered in place and its keys must be unique.
+/// Applies `entries` to the trie whose root hash is `root`, writing every new node referenced by hash at its path into
+/// `pending`, and returns the new root hash. Nodes are read from `pending` before `store`. `entries` is reordered in
+/// place and its keys must be unique.
 ///
 /// Nodes that become unreachable are not removed.
 pub fn bulk_set<S: NodeStore>(
     store: &S,
+    pending: &PendingNodes,
     root: &[u8; 32],
     entries: &mut [Entry],
     values: &[u8],
@@ -51,7 +54,11 @@ pub fn bulk_set<S: NodeStore>(
     }
 
     let mut root_path = TreePath::default();
-    let context = Context { store, values };
+    let context = Context {
+        store,
+        pending,
+        values,
+    };
     let mut root_reference = match *root {
         EMPTY_TREE_HASH => ChildRef::Empty,
         hash => ChildRef::Hash(hash),
@@ -70,6 +77,7 @@ pub fn bulk_set<S: NodeStore>(
 
 struct Context<'a, S> {
     store: &'a S,
+    pending: &'a PendingNodes,
     values: &'a [u8],
 }
 
@@ -486,7 +494,9 @@ impl<S: NodeStore> Context<'_, S> {
             },
             ChildRef::Inline(rlp) => decode_rlp(rlp.as_slice()).map(Some),
             ChildRef::Hash(hash) => BUFFER.with_borrow_mut(|buffer| {
-                if !self.store.fetch(path, hash, buffer)? {
+                if !self.pending.copy_to(path, hash, buffer)
+                    && !self.store.fetch(path, hash, buffer)?
+                {
                     return Err(Error::MissingNode);
                 }
                 decode_rlp(buffer).map(Some)
@@ -566,12 +576,16 @@ impl<S: NodeStore> Context<'_, S> {
                         },
                         hashes,
                     );
-                    for (&(index, rlp_start, rlp_end), &hash) in hashed.iter().zip(hashes.iter()) {
-                        self.store.write(
-                            &nodes[index as usize].path,
-                            &hash,
-                            &buffer[rlp_start..rlp_end],
-                        );
+                    self.pending.write(hashed.iter().zip(hashes.iter()).map(
+                        |(&(index, rlp_start, rlp_end), hash)| {
+                            (
+                                &nodes[index as usize].path,
+                                hash,
+                                &buffer[rlp_start..rlp_end],
+                            )
+                        },
+                    ));
+                    for (&(index, _, _), &hash) in hashed.iter().zip(hashes.iter()) {
                         resolve(nodes, index, ChildRef::Hash(hash));
                     }
                     start = end;
@@ -829,41 +843,22 @@ fn matched_length(nibbles: &[u8], key: &[u8; 32], from: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Mutex;
-
     use super::*;
     use crate::keccak::keccak;
+    use crate::pending;
 
-    #[derive(Default)]
-    struct MapStore(Mutex<HashMap<TreePath, Vec<u8>>>);
+    /// Holds nothing, so every node is read back from the pending nodes.
+    struct EmptyStore;
 
-    impl NodeStore for MapStore {
-        fn fetch(
-            &self,
-            path: &TreePath,
-            hash: &[u8; 32],
-            buffer: &mut Vec<u8>,
-        ) -> Result<bool, Error> {
-            buffer.clear();
-            let nodes = self.0.lock().unwrap();
-            let Some(node) = nodes.get(path) else {
-                return Ok(false);
-            };
-            assert_eq!(keccak(node), *hash, "fetched node hash");
-            buffer.extend_from_slice(node);
-            Ok(true)
-        }
-
-        fn write(&self, path: &TreePath, hash: &[u8; 32], rlp: &[u8]) {
-            assert_eq!(keccak(rlp), *hash, "written node hash");
-            self.0.lock().unwrap().insert(*path, rlp.to_vec());
+    impl NodeStore for EmptyStore {
+        fn fetch(&self, _: &TreePath, _: &[u8; 32], _: &mut Vec<u8>) -> Result<bool, Error> {
+            Ok(false)
         }
     }
 
     type Item = ([u8; 32], Vec<u8>);
 
-    fn apply(store: &MapStore, root: [u8; 32], items: &[Item]) -> Result<[u8; 32], Error> {
+    fn apply(pending: &PendingNodes, root: [u8; 32], items: &[Item]) -> Result<[u8; 32], Error> {
         let mut values = Vec::new();
         let mut entries: Vec<Entry> = items
             .iter()
@@ -877,7 +872,22 @@ mod tests {
                 entry
             })
             .collect();
-        bulk_set(store, &root, &mut entries, &values)
+        bulk_set(&EmptyStore, pending, &root, &mut entries, &values)
+    }
+
+    /// Checks every written node's hash and returns the RLP written at `path`.
+    fn written_at(pending: &PendingNodes, path: &TreePath) -> Vec<u8> {
+        pending.with_view(|nodes, rlp| {
+            let mut found = None;
+            for node in nodes {
+                let node_rlp = &rlp[node.rlp_offset as usize..][..node.rlp_length as usize];
+                assert_eq!(keccak(node_rlp), node.hash, "written node hash");
+                if node.path == *path {
+                    found = Some(node_rlp.to_vec());
+                }
+            }
+            found.expect("node written at path")
+        })
     }
 
     /// Random keys plus keys sharing 62 nibbles, so leaves with 1-byte values are inlined into their branch.
@@ -908,21 +918,20 @@ mod tests {
     }
 
     fn root_of(items: &[Item]) -> [u8; 32] {
-        apply(&MapStore::default(), EMPTY_TREE_HASH, items).unwrap()
+        apply(&PendingNodes::default(), EMPTY_TREE_HASH, items).unwrap()
     }
 
     #[test]
     fn bulk_set_is_independent_of_batching_and_deletes_back_to_empty() {
         let items = generate_items(5000, 0x1234_5678);
 
-        let store = MapStore::default();
+        let store = pending::rent(items.len());
         assert_eq!(apply(&store, EMPTY_TREE_HASH, &[]), Ok(EMPTY_TREE_HASH));
         let root = apply(&store, EMPTY_TREE_HASH, &items).unwrap();
-        let stored_root = store.0.lock().unwrap()[&TreePath::default()].clone();
-        assert_eq!(keccak(&stored_root), root);
+        assert_eq!(keccak(&written_at(&store, &TreePath::default())), root);
         assert_eq!(apply(&store, root, &[]), Ok(root));
 
-        let batched = MapStore::default();
+        let batched = PendingNodes::default();
         let mut batched_root = EMPTY_TREE_HASH;
         let mut start = 0;
         for size in [1, 7, 300, items.len() - 308] {
@@ -954,5 +963,8 @@ mod tests {
             ),
             Err(Error::DuplicateKey)
         );
+
+        pending::give_back(store);
+        assert_eq!(pending::rent(items.len()).count(), 0);
     }
 }

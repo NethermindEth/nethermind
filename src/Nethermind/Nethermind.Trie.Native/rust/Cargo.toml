@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 rayon = "1.10"
 sha3 = "0.10"
 mimalloc = { version = "0.1.52", default-features = false }
+rustc-hash = "2.1"
 
 [profile.release]
 lto = true
