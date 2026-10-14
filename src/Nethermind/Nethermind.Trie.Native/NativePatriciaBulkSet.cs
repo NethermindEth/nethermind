@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -48,6 +49,7 @@ public static unsafe partial class NativePatriciaBulkSet
             ValueHash256 newRoot = default;
             ValueHash256 addressValue = address?.ValueHash256 ?? default;
             int status;
+            long start = Stopwatch.GetTimestamp();
             fixed (NativeBulkSetEntry* entriesPointer = entries)
             fixed (byte* valuesPointer = values)
             fixed (ValueHash256* rootPointer = &root)
@@ -56,6 +58,7 @@ public static unsafe partial class NativePatriciaBulkSet
                     logReferenced ? log!.DangerousGetHandle() : 0,
                     address is null ? null : &addressValue, &Fetch, (void*)GCHandle.ToIntPtr(handle), &newRoot);
             }
+            Metrics.AddBulkSetCall(Stopwatch.GetElapsedTime(start).Ticks, Stopwatch.GetElapsedTime(0, state.FetchTimestampTicks).Ticks);
 
             if (state.Exception is not null) throw new InvalidOperationException("Native node store callback failed", state.Exception);
             if (status != 0) throw new InvalidOperationException($"Native bulk set failed with status {status}");
@@ -72,6 +75,7 @@ public static unsafe partial class NativePatriciaBulkSet
     /// <remarks>A null or empty <see cref="PatriciaTree.BulkSetEntry.Value"/> deletes the key. Keys must be unique.</remarks>
     public static Hash256 BulkSet(INativeNodeStore store, NativePendingNodes pending, NativeTrieNodeLog? log, Hash256? address, in ValueHash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries)
     {
+        long start = Stopwatch.GetTimestamp();
         int valuesLength = 0;
         foreach (PatriciaTree.BulkSetEntry entry in entries) valuesLength += entry.Value?.Length ?? 0;
 
@@ -94,6 +98,7 @@ public static unsafe partial class NativePatriciaBulkSet
         {
             ArrayPool<NativeBulkSetEntry>.Shared.Return(nativeEntries);
             ArrayPool<byte>.Shared.Return(values);
+            Metrics.AddBulkSet(Stopwatch.GetElapsedTime(start).Ticks);
         }
     }
 
@@ -101,6 +106,7 @@ public static unsafe partial class NativePatriciaBulkSet
     private static int Fetch(void* context, TreePath* path, ValueHash256* hash, delegate* unmanaged<void*, byte*, int, void> receive, void* receiveContext)
     {
         CallState state = CallState.From(context);
+        long start = Stopwatch.GetTimestamp();
         try
         {
             return state.Store.Fetch(in *path, in *hash, new NativeNodeReceiver(receive, receiveContext)) ? 1 : 0;
@@ -109,6 +115,10 @@ public static unsafe partial class NativePatriciaBulkSet
         {
             Interlocked.CompareExchange(ref state.Exception, e, null);
             return -1;
+        }
+        finally
+        {
+            Interlocked.Add(ref state.FetchTimestampTicks, Stopwatch.GetTimestamp() - start);
         }
     }
 
@@ -130,6 +140,8 @@ public static unsafe partial class NativePatriciaBulkSet
     {
         public readonly INativeNodeStore Store = store;
         public Exception? Exception;
+        // In Stopwatch timestamp units, summed over the threads calling back.
+        public long FetchTimestampTicks;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static CallState From(void* context) => (CallState)GCHandle.FromIntPtr((nint)context).Target!;
