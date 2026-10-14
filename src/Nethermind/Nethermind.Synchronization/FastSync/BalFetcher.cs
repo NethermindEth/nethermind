@@ -37,6 +37,12 @@ public class BalFetcher(
     private readonly int _allocateTimeoutMs = syncConfig.SyncDispatcherAllocateTimeoutMs;
     private readonly ILogger _logger = logManager.GetClassLogger<BalFetcher>();
 
+    // Peers whose last answer held none of the missing BALs. Skipped until every capable peer has answered empty, so
+    // peers without the BALs are not asked again while others may have them. Kept across calls, as healing retries
+    // the same range.
+    private readonly HashSet<PeerInfo> _answeredEmpty = [];
+    private readonly Lock _answeredEmptyLock = new();
+
     public async Task<bool> EnsureRange(BlockHeader from, BlockHeader to, CancellationToken token)
     {
         for (ulong windowStart = from.Number + 1; windowStart <= to.Number; windowStart += WindowSize)
@@ -70,9 +76,18 @@ public class BalFetcher(
                 }
 
                 int stored;
-                using (SyncPeerAllocation allocation = await peerPool.Allocate(PeerStrategy, AllocationContexts.State, _allocateTimeoutMs, token))
+                using (SyncPeerAllocation allocation = await peerPool.Allocate(new SkipAnsweredEmptyStrategy(this), AllocationContexts.State, _allocateTimeoutMs, token))
                 {
-                    stored = allocation.Current is null ? 0 : await FetchFromPeer(allocation.Current, missing, token);
+                    if (allocation.Current is null)
+                    {
+                        // Every capable peer has answered empty: ask them all again.
+                        lock (_answeredEmptyLock) _answeredEmpty.Clear();
+                        stored = 0;
+                    }
+                    else
+                    {
+                        stored = await FetchFromPeer(allocation.Current, missing, token);
+                    }
                 }
 
                 if (stored == 0)
@@ -82,6 +97,7 @@ public class BalFetcher(
             }
         }
 
+        lock (_answeredEmptyLock) _answeredEmpty.Clear();
         return true;
     }
 
@@ -134,6 +150,7 @@ public class BalFetcher(
         // An empty entry is a well-formed answer from a peer that does not have that BAL; only a failed
         // request or a list that does not match its header is the peer's own fault.
         if (peerAtFault) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
+        else if (stored == 0) lock (_answeredEmptyLock) _answeredEmpty.Add(peer);
         return stored;
     }
 
@@ -142,6 +159,14 @@ public class BalFetcher(
         if (!BlockAccessListHashValidator.Validate(header, rlp, out _)) return false;
         balStore.Insert(header.Number, header.Hash!, rlp);
         return true;
+    }
+
+    private sealed class SkipAnsweredEmptyStrategy(BalFetcher fetcher) : FilterPeerAllocationStrategy(PeerStrategy)
+    {
+        protected override bool Filter(PeerInfo peer)
+        {
+            lock (fetcher._answeredEmptyLock) return !fetcher._answeredEmpty.Contains(peer);
+        }
     }
 
     private sealed class BalCapablePeerAllocationStrategy(IPeerAllocationStrategy strategy)
