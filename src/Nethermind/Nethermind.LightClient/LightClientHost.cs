@@ -17,13 +17,27 @@ internal static class LightClientHost
             }
             string requestOrigin = context.Request.Headers.Origin.ToString();
             if (!string.IsNullOrEmpty(requestOrigin) &&
-                !string.Equals(requestOrigin, $"{context.Request.Scheme}://{context.Request.Host}", StringComparison.OrdinalIgnoreCase))
+                !string.Equals(requestOrigin, $"{context.Request.Scheme}://{context.Request.Host}", StringComparison.OrdinalIgnoreCase) &&
+                !IsBrowserExtensionOrigin(requestOrigin))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
             await next(context);
         });
+        app.UseCors(static policy => policy.SetIsOriginAllowed(IsBrowserExtensionOrigin).WithMethods("GET", "POST").AllowAnyHeader());
+    }
+
+    private static bool IsBrowserExtensionOrigin(string origin)
+    {
+        if (!Uri.TryCreate(origin, UriKind.Absolute, out Uri? url) ||
+            !string.Equals(origin, $"{url.Scheme}://{url.Host}", StringComparison.OrdinalIgnoreCase)) return false;
+        return url.Scheme switch
+        {
+            "chrome-extension" => url.Host.Length == 32 && url.Host.AsSpan().IndexOfAnyExceptInRange('a', 'p') < 0,
+            "moz-extension" => Guid.TryParseExact(url.Host, "D", out _),
+            _ => false,
+        };
     }
 
     internal static async Task RunAsync(WebApplication app, Func<CancellationToken, Task> synchronize, ILogger? logger = null)

@@ -66,6 +66,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     using NLogManager logManager = new();
     builder.Logging.ClearProviders();
     builder.Services.Replace(ServiceDescriptor.Singleton<ILoggerFactory>(new NethermindLoggerFactory(logManager)));
+    builder.Services.AddCors();
     string network = builder.Configuration["network"] ?? "mainnet";
     BeaconChainSpec spec = network switch
     {

@@ -4,14 +4,23 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.LightClient.Test;
 
 public class HostTests
 {
+    private const string ChromeOrigin = "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn";
+    private const string FirefoxOrigin = "moz-extension://12345678-1234-1234-1234-123456789abc";
+
     [Test]
     [NonParallelizable]
     public async Task Ctrl_C_cancels_checkpoint_fetch_before_the_rpc_host_starts()
@@ -54,20 +63,118 @@ public class HostTests
     [TestCase("https://wallet.example", null, 403)]
     [TestCase(null, "attacker.example", 403)]
     [TestCase("http://attacker.example", "attacker.example", 403)]
+    [TestCase(ChromeOrigin, null, 200)]
+    [TestCase(FirefoxOrigin, null, 200)]
+    [TestCase(ChromeOrigin, "attacker.example", 403)]
+    [TestCase("null", null, 403)]
+    [TestCase("chrome-extension://abc", null, 403)]
+    [TestCase("chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknz", null, 403)]
+    [TestCase("https://nkbihfbeogaeaoehlefnkodbefgpgknn", null, 403)]
+    [TestCase(ChromeOrigin + ".attacker.example", null, 403)]
+    [TestCase(ChromeOrigin + ":8545", null, 403)]
+    [TestCase("chrome-extension://user@nkbihfbeogaeaoehlefnkodbefgpgknn", null, 403)]
+    [TestCase(ChromeOrigin + "/", null, 403)]
+    [TestCase(ChromeOrigin + "?query", null, 403)]
+    [TestCase(ChromeOrigin + "#fragment", null, 403)]
+    [TestCase("moz-extension://not-a-uuid", null, 403)]
+    [TestCase("moz-extension://12345678123412341234123456789abc", null, 403)]
+    [TestCase(ChromeOrigin + ", " + FirefoxOrigin, null, 403)]
     public async Task Rpc_origin_and_host_policy_rejects_cross_site_and_rebinding_requests(
         string? requestOrigin, string? requestHost, int expectedStatus)
     {
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
         LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
         app.MapGet("/", () => "ok");
+        app.MapGet("/ws", () => "ok");
         await app.StartAsync();
         using HttpClient client = new();
-        using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single());
-        if (requestOrigin is not null) request.Headers.Add("Origin", requestOrigin == "local" ? app.Urls.Single() : requestOrigin);
-        if (requestHost is not null) request.Headers.Host = requestHost;
-        using HttpResponseMessage response = await client.SendAsync(request);
+        foreach (string path in new[] { "/", "/ws" })
+        {
+            using HttpRequestMessage request = new(HttpMethod.Get, app.Urls.Single() + path);
+            if (requestOrigin is not null) request.Headers.Add("Origin", requestOrigin == "local" ? app.Urls.Single() : requestOrigin);
+            if (requestHost is not null) request.Headers.Host = requestHost;
+            using HttpResponseMessage response = await client.SendAsync(request);
 
-        Assert.That((int)response.StatusCode, Is.EqualTo(expectedStatus));
+            Assert.That((int)response.StatusCode, Is.EqualTo(expectedStatus), path);
+        }
+    }
+
+    [TestCase(ChromeOrigin)]
+    [TestCase(FirefoxOrigin)]
+    public async Task Wallet_extension_can_preflight_and_fetch_chain_id(string origin)
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+        LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
+        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance));
+        await app.StartAsync();
+        using HttpClient client = new();
+        using HttpRequestMessage preflight = new(HttpMethod.Options, app.Urls.Single());
+        preflight.Headers.Add("Origin", origin);
+        preflight.Headers.Add("Access-Control-Request-Method", "POST");
+        preflight.Headers.Add("Access-Control-Request-Headers", "content-type,authorization");
+        using HttpResponseMessage options = await client.SendAsync(preflight);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.StatusCode, Is.EqualTo(HttpStatusCode.NoContent));
+            Assert.That(options.Headers.GetValues("Access-Control-Allow-Origin"), Is.EqualTo(new[] { origin }));
+            Assert.That(options.Headers.GetValues("Vary"), Does.Contain("Origin"));
+            Assert.That(options.Headers.GetValues("Access-Control-Allow-Methods").Single().Split(','), Does.Contain("POST"));
+            Assert.That(options.Headers.GetValues("Access-Control-Allow-Headers").Single().Split(','),
+                Is.EquivalentTo(new[] { "content-type", "authorization" }));
+            Assert.That(options.Headers.Contains("Access-Control-Allow-Credentials"), Is.False);
+            Assert.That(options.Headers.Contains("Access-Control-Allow-Private-Network"), Is.False);
+        }
+
+        using HttpRequestMessage request = new(HttpMethod.Post, app.Urls.Single());
+        request.Headers.Add("Origin", origin);
+        request.Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}""", Encoding.UTF8, "application/json");
+        using HttpResponseMessage response = await client.SendAsync(request);
+        using JsonDocument json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Headers.GetValues("Access-Control-Allow-Origin"), Is.EqualTo(new[] { origin }));
+            Assert.That(response.Headers.Contains("Access-Control-Allow-Credentials"), Is.False);
+            Assert.That(json.RootElement.GetProperty("result").GetString(), Is.EqualTo("0x1"));
+            Assert.That(json.RootElement.GetProperty("id").GetInt32(), Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(ChromeOrigin, true)]
+    [TestCase(FirefoxOrigin, true)]
+    [TestCase("https://wallet.example", false)]
+    [TestCase("null", false)]
+    public async Task Websocket_upgrade_enforces_the_wallet_origin_policy(string origin, bool allowed)
+    {
+        await using WebApplication app = CreateApp("http://127.0.0.1:0");
+        LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
+        app.UseWebSockets();
+        app.MapGet("/ws", async context =>
+        {
+            using WebSocket socket = await context.WebSockets.AcceptWebSocketAsync();
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", context.RequestAborted);
+        });
+        await app.StartAsync();
+        using ClientWebSocket client = new();
+        client.Options.SetRequestHeader("Origin", origin);
+        Uri endpoint = new(app.Urls.Single().Replace("http://", "ws://", StringComparison.Ordinal) + "/ws");
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        if (allowed)
+        {
+            await client.ConnectAsync(endpoint, timeout.Token);
+            WebSocketReceiveResult result = await client.ReceiveAsync(new ArraySegment<byte>(new byte[1]), timeout.Token);
+            Assert.That(result.CloseStatus, Is.EqualTo(WebSocketCloseStatus.NormalClosure));
+            await client.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "test complete", timeout.Token);
+        }
+        else
+        {
+            Assert.ThrowsAsync<WebSocketException>(() => client.ConnectAsync(endpoint, timeout.Token));
+            Assert.That(client.State, Is.EqualTo(WebSocketState.Closed));
+        }
     }
 
     [Test]
@@ -117,6 +224,7 @@ public class HostTests
     {
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
+        builder.Services.AddCors();
         builder.WebHost.UseUrls(url);
         return builder.Build();
     }

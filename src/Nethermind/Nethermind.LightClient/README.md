@@ -54,8 +54,20 @@ selection and before a cross-check.
 
 `--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
-Loopback listeners reject non-loopback Host headers, and requests with a
-foreign Origin are rejected. Public listeners require an authenticated gateway.
+To use MetaMask or another browser wallet extension, wait for `Verified RPC
+listening`, then select `http://127.0.0.1:8545` as the RPC URL for Ethereum
+Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network
+settings, edit the existing network and add the local endpoint to its RPC URLs;
+see the [wallet setup guide](https://support.metamask.io/configure/networks/how-to-add-a-custom-network-rpc#adding-or-editing-rpc-urls).
+HTTP RPC and WebSocket subscriptions share the port; the WebSocket URL is
+`ws://127.0.0.1:8545/ws`.
+
+Loopback listeners reject non-loopback Host headers. Requests from browser
+extensions (`chrome-extension://` or `moz-extension://`) are allowed, including
+CORS preflights. CORS does not enable credentialed cross-origin requests. Ordinary
+website and opaque (`null`) origins are rejected on both HTTP and WebSocket
+connections. This permits installed wallet extensions; it does not authenticate
+an extension or caller. Public listeners require an authenticated gateway.
 The root must be a recent **finalized beacon block root**. It is not an execution
 block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
