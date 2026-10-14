@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test;
 /// precompile exception into a failed call. Both dispatch paths are covered: CALL runs a precompile in a call
 /// frame, and an untraced STATICCALL runs it inline.
 /// </summary>
-public class KzgSetupFaultTests : VirtualMachineTestsBase
+public class PrecompileFaultTests : VirtualMachineTestsBase
 {
     private const int CallGas = 100_000;
     private const int PointEvaluationInputLength = 192;
@@ -50,6 +50,7 @@ public class KzgSetupFaultTests : VirtualMachineTestsBase
     {
         yield return new KzgSetupUnavailableException("KZG trusted setup failed to load");
         yield return new OutOfMemoryException();
+        yield return new TypeInitializationException("Precompile", new OutOfMemoryException());
     }
 
     [TestCase(Instruction.CALL)]
