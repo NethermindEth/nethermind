@@ -620,42 +620,115 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
-    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount)
+    public void ApplyBal_DisposesEveryStorageBatchWhenWorkerFails([Values(0, 15)] int failingIndex, [Values] bool disposalAlsoFails)
+    {
+        const int count = 16;
+        int caller = Environment.CurrentManagedThreadId;
+        int active = 0;
+        int ownerViolations = 0;
+        int activeAtParentDispose = -1;
+        int[]? disposedAtParent = null;
+        int[] disposed = new int[count];
+        IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IWorldStateWriteBatch parent = Substitute.For<IWorldStateScopeProvider.IWorldStateWriteBatch>();
+        scope.StartWriteBatch(count).Returns(parent);
+        scope.Get(Arg.Any<Address>()).Returns(new Account(nonce: 1, balance: 1));
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[count];
+        for (int i = 0; i < count; i++)
+        {
+            int index = i;
+            Address address = Address.FromNumber((UInt256)(i + 1));
+            changes[i] = Build.An.AccountChanges.WithAddress(address)
+                .WithNonceChanges(new NonceChange(1, 2))
+                .WithStorageChanges(1, new StorageChange(1, 2)).TestObject;
+            IWorldStateScopeProvider.IStorageWriteBatch child = Substitute.For<IWorldStateScopeProvider.IStorageWriteBatch>();
+            parent.CreateStorageWriteBatch(address, 1).Returns(_ =>
+            {
+                if (Environment.CurrentManagedThreadId != caller) Interlocked.Increment(ref ownerViolations);
+                return child;
+            });
+            child.When(x => x.Set(Arg.Any<UInt256>(), Arg.Any<UInt256>())).Do(_ =>
+            {
+                Interlocked.Increment(ref active);
+                try
+                {
+                    Thread.Yield();
+                    if (index == failingIndex) throw new InvalidOperationException("storage write failed");
+                }
+                finally { Interlocked.Decrement(ref active); }
+            });
+            child.When(x => x.Dispose()).Do(_ =>
+            {
+                Interlocked.Increment(ref disposed[index]);
+                if (disposalAlsoFails && index == 7) throw new InvalidOperationException("storage dispose failed");
+            });
+        }
+        parent.When(x => x.Set(Arg.Any<Address>(), Arg.Any<Account?>())).Do(_ =>
+        {
+            if (Environment.CurrentManagedThreadId != caller) Interlocked.Increment(ref ownerViolations);
+        });
+        parent.When(x => x.Dispose()).Do(_ =>
+        {
+            activeAtParentDispose = Volatile.Read(ref active);
+            disposedAtParent = (int[])disposed.Clone();
+        });
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
+
+        Assert.That(() => ScopeBalApplier.Apply(scope, bal), Throws.Exception);
+        parent.Received(1).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ownerViolations, Is.Zero);
+            Assert.That(activeAtParentDispose, Is.Zero, "all workers must have joined before parent disposal");
+            Assert.That(disposedAtParent, Is.All.EqualTo(1), "every staged batch must be disposed before its parent");
+            Assert.That(disposed, Is.All.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void ApplyBal_WithAccountAndStorageChanges_WithVerifyWithTrie([Values] bool existingAccount, [Values(1, 8)] int accountCount)
     {
         using TestContext ctx = new(config: new FlatDbConfig { VerifyWithTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
-        Address address = TestItem.AddressA;
+        Address[] addresses = new Address[accountCount];
+        for (int i = 0; i < accountCount; i++) addresses[i] = Address.FromNumber((UInt256)(i + 1));
         if (existingAccount)
         {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1);
-            writeBatch.Set(address, new Account(nonce: 1, balance: 5));
+            using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(accountCount);
+            foreach (Address address in addresses) writeBatch.Set(address, new Account(nonce: 1, balance: 5));
         }
 
         byte[] code = [0x60, 0x00];
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(address)
+        ReadOnlyAccountChanges[] changes = new ReadOnlyAccountChanges[accountCount];
+        for (int i = 0; i < accountCount; i++)
+        {
+            changes[i] = Build.An.AccountChanges
+                .WithAddress(addresses[i])
                 .WithBalanceChanges(new BalanceChange(1, 10))
                 .WithNonceChanges(new NonceChange(1, 2))
                 .WithCodeChanges(new CodeChange(1, code))
                 .WithStorageChanges(1, new StorageChange(1, 0xCAFE))
-                .TestObject)
-            .TestObject;
+                .TestObject;
+        }
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(changes).TestObject;
 
         scope.ApplyBal(bal);
         scope.UpdateRootHash();
 
-        Account? account = scope.Get(address);
-        Assert.That(account, Is.Not.Null);
-        scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
-        using (Assert.EnterMultipleScope())
+        foreach (Address address in addresses)
         {
-            Assert.That(account!.Nonce, Is.EqualTo(2ul));
-            Assert.That(account.Balance, Is.EqualTo((UInt256)10));
-            Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
-            Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
-            Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+            Account? account = scope.Get(address);
+            Assert.That(account, Is.Not.Null);
+            scope.CreateStorageTree(address).Get((UInt256)1, out UInt256 value);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(account!.Nonce, Is.EqualTo(2ul));
+                Assert.That(account.Balance, Is.EqualTo((UInt256)10));
+                Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)));
+                Assert.That(value, Is.EqualTo((UInt256)0xCAFE));
+            }
         }
+        Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
     }
 
     [Test]
