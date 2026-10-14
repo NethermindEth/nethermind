@@ -41,6 +41,7 @@ public abstract class VirtualMachineTestsBase
     protected EthereumVirtualMachine Machine { get; private set; }
     protected CacheCodeInfoRepository CodeInfoRepository { get; private set; }
     protected IWorldState TestState { get; private set; }
+    protected IDbProvider DbProvider { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -67,8 +68,8 @@ public abstract class VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestState = TestWorldStateFactory.CreateForTest(dbProvider, logManager);
+        DbProvider = TestMemDbProvider.Init();
+        TestState = TestWorldStateFactory.CreateForTest(DbProvider, logManager);
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
@@ -82,6 +83,7 @@ public abstract class VirtualMachineTestsBase
     {
         _stateDb?.Dispose();
         _worldStateCloser?.Dispose();
+        DbProvider?.Dispose();
         Machine?.Dispose();
     }
 

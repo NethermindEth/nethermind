@@ -941,6 +941,35 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // EIP-8151: ecRecover reads the recovered account, so the prestate holds it wherever movePrecompileToAddress put
+    // ecRecover, and not for a call to 0x01 that runs another precompile.
+    [TestCase(
+        """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}""",
+        "0xc200000000000000000000000000000000000000", true,
+        TestName = "Debug_traceCall_prestate_follows_a_moved_ecrecover(ecRecover moved away from 0x01)")]
+    [TestCase(
+        """{"0x0000000000000000000000000000000000000002":{"movePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}""",
+        "0x0000000000000000000000000000000000000001", false,
+        TestName = "Debug_traceCall_prestate_follows_a_moved_ecrecover(SHA-256 moved onto 0x01)")]
+    public async Task Debug_traceCall_prestate_follows_a_moved_ecrecover(string stateOverrideJson, string to, bool includesRecovered)
+    {
+        const string recovered = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        using Context ctx = await Context.Create(new TestSpecProvider(new OverridableReleaseSpec(Osaka.Instance) { IsEip8151Enabled = true }));
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new
+            {
+                from = "0x7f554713be84160fdf0178cc8df86f5aabd33397",
+                to,
+                input = "0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"
+            },
+            null,
+            new { tracer = "prestateTracer", stateOverrides = JsonSerializer.Deserialize<object>(stateOverrideJson) });
+
+        JObject prestate = (JObject)JToken.Parse(response)["result"]!;
+        Assert.That(prestate.ContainsKey(recovered), Is.EqualTo(includesRecovered), response);
+    }
+
     // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
     // Returns gas available at start of execution as a 32-byte uint256.
     private const string GasReturnContractAddress = "0xc200000000000000000000000000000000000000";
