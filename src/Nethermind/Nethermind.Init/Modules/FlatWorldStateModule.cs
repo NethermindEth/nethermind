@@ -64,7 +64,11 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
-            .AddSingleton<ITrieNodeCache, TrieNodeCache>()
+            // With UseNativeBulkSet the native trie node cache takes the memory budget instead.
+            .AddSingleton<ITrieNodeCache>(flatDbConfig.UseNativeBulkSet
+                ? _ => new NoopTrieNodeCache()
+                : ctx => ctx.Resolve<TrieNodeCache>())
+            .AddSingleton<TrieNodeCache>()
             .AddSingleton<TrieNodeLog, IFlatDbConfig>(c => new TrieNodeLog(c.CompressedTrieNodeLogMemoryBudget, TrieNodeLog.DefaultGenerationBytes))
             // Only created with UseNativeBulkSet, which needs libnethermind_patricia.
             .AddSingleton<NativeTrieNodeCache, IFlatDbConfig>(config => new NativeTrieNodeCache(config.TrieCacheMemoryBudget))
