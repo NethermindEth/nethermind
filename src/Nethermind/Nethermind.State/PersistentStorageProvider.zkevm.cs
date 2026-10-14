@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -10,6 +11,38 @@ namespace Nethermind.State;
 
 internal sealed partial class PersistentStorageProvider
 {
+    public void SetBackendScope(IWorldStateScopeProvider.IScope? scope) => _currentScope = scope;
+
+    private partial bool HasCapturedOriginals
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _originalValues.Count != 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
+    {
+        OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
+        if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
+        {
+            GrowOriginalsIntoLarge();
+        }
+
+        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
+        if (!exists)
+        {
+            slot = value;
+        }
+        _lastCapturedCell = cell;
+        _lastCapturedOriginal = slot;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void EnsureOriginalsIndexed() { }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void EndPendingOriginalsRound() { }
+
     private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch) =>
         UpdateRootHashesSingleThread(writeBatch);
 

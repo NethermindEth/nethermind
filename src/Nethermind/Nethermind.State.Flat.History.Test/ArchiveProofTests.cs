@@ -1979,6 +1979,40 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Proof_UnderAComposedNodeAnEarlierProofResolved_TakesTheChildFromTheNodeCache()
+    {
+        _policy = EpochPolicy;
+        BuildCommitments();
+        Address first = _accounts[3];
+        ValueHash256 firstPath = Keccak.Compute(first.Bytes).ValueHash256;
+        Address sibling = _accounts.First(account =>
+        {
+            ValueHash256 path = Keccak.Compute(account.Bytes).ValueHash256;
+            return SharesNibbles(path, firstPath, nibbles: 1) && !SharesNibbles(path, firstPath, nibbles: 2);
+        });
+        Address unrelated = _accounts.First(account => !SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 1));
+
+        long siblingPrefetches = PrefetchesOfSecondProof(first, sibling, out AccountProof siblingProof);
+        long unrelatedPrefetches = PrefetchesOfSecondProof(unrelated, sibling, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(siblingPrefetches, Is.LessThan(unrelatedPrefetches),
+                "composing the shared depth-1 node resolved all its depth-2 children, so the sibling's depth-2 node is already cached");
+            Assert.That(siblingProof.Proof, Is.EqualTo(_chain.ExpectedProof(sibling, Blocks).Proof), "a child served from the cache is verified against its parent like any other node");
+        }
+    }
+
+    private long PrefetchesOfSecondProof(Address first, Address second, out AccountProof secondProof)
+    {
+        ArchiveProofSource source = CreateSource(_policy);
+        ProveFromArchive(source, first, Blocks);
+        long afterFirst = source.PrefetchedPaths;
+        secondProof = ProveFromArchive(source, second, Blocks);
+        return source.PrefetchedPaths - afterFirst;
+    }
+
+    [Test]
     public void A_rebuilt_subtree_serves_the_levels_below_it()
     {
         _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, 2, 2, 0, 0, 1, 1);
@@ -2395,6 +2429,55 @@ public class ArchiveProofTests
 
         Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
         retrofit.PublishCoverage(0, _chain.Head);
+    }
+
+    [Test]
+    public void A_walk_reuses_its_emitters_and_releases_them_all_when_it_ends()
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        retrofit.Prepare();
+        CountingEmitterSource source = new(retrofit);
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, source, retrofit.Metadata);
+
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None);
+        int releasedDuringTheWalk = source.Released;
+        foreach (CommitmentEmitter emitter in source.Created)
+        {
+            emitter.Reuse();
+            emitter.Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "precondition: the walk emits and proves its commitments");
+            Assert.That(releasedDuringTheWalk, Is.GreaterThan(source.Created.Count), "partitions, storage groups and contracts outnumber the emitters, so emitters were handed back and reused");
+            Assert.That(source.Released, Is.EqualTo(releasedDuringTheWalk), "once the walk ends no emitter hands itself back again: each was released for good, not kept for the life of the node");
+        }
+    }
+
+    private sealed class CountingEmitterSource(ICommitmentEmitterSource inner) : ICommitmentEmitterSource
+    {
+        public List<CommitmentEmitter> Created { get; } = [];
+
+        public int Released { get; private set; }
+
+        public CommitmentDepthPolicy Policy => inner.Policy;
+
+        public CommitmentMetadata Metadata => inner.Metadata;
+
+        public ulong WindowGranularity => inner.WindowGranularity;
+
+        public CommitmentEmitter CreateEmitter(Action<CommitmentEmitter>? release = null)
+        {
+            CommitmentEmitter emitter = inner.CreateEmitter(release is null ? null : spare =>
+            {
+                lock (Created) Released++;
+                release(spare);
+            });
+            lock (Created) Created.Add(emitter);
+            return emitter;
+        }
     }
 
     private HistoryWalkVerdict WalkAndEmit(IHistoryHeaderSource headers, int workers, out ArchiveProofRetrofit retrofit, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
