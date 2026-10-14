@@ -49,13 +49,16 @@ public sealed unsafe partial class NativePendingNodes : SafeHandle
 
     public int Count => nm_patricia_pending_count(this);
 
+    /// <summary>How many shards the nodes are split into by path, more for larger bulk sets, each with its own view.</summary>
+    public int ShardCount => nm_patricia_pending_shard_count(this);
+
     public void Clear() => nm_patricia_pending_clear(this);
 
-    public NativePendingNodesView GetView()
+    public NativePendingNodesView GetView(int shard)
     {
         NativeWrittenNode* nodes;
         byte* rlp;
-        int count = nm_patricia_pending_view(this, &nodes, &rlp);
+        int count = nm_patricia_pending_view(this, shard, &nodes, &rlp);
         return new NativePendingNodesView(nodes, rlp, count);
     }
 
@@ -78,5 +81,8 @@ public sealed unsafe partial class NativePendingNodes : SafeHandle
     private static partial void nm_patricia_pending_clear(NativePendingNodes pending);
 
     [LibraryImport(NativePatriciaBulkSet.LibraryName)]
-    private static partial int nm_patricia_pending_view(NativePendingNodes pending, NativeWrittenNode** nodes, byte** rlp);
+    private static partial int nm_patricia_pending_shard_count(NativePendingNodes pending);
+
+    [LibraryImport(NativePatriciaBulkSet.LibraryName)]
+    private static partial int nm_patricia_pending_view(NativePendingNodes pending, int shard, NativeWrittenNode** nodes, byte** rlp);
 }

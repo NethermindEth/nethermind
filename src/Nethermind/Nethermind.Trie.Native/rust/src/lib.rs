@@ -4,11 +4,11 @@
 //! Patricia trie bulk set over a path-keyed node store, exposed to Nethermind via FFI.
 //!
 //! Every node referenced by hash is stored at its `TreePath` as its RLP. Bulk sets write new nodes into a pooled
-//! [`PendingNodes`] the caller publishes from, and keep decoded nodes in a shared [`TrieNodeCache`].
+//! [`PendingNodes`] the caller publishes from, and keep decoded nodes in a shared [`TrieNodeLog`].
 
 mod bulk_set;
-mod cache;
 mod keccak;
+mod log;
 mod node;
 mod pending;
 
@@ -16,7 +16,7 @@ use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub use bulk_set::{bulk_set, EMPTY_TREE_HASH};
-pub use cache::TrieNodeCache;
+pub use log::TrieNodeLog;
 pub use node::TreePath;
 use node::{decode_rlp, Node};
 pub use pending::{PendingNodes, WrittenNode};
@@ -111,14 +111,15 @@ unsafe extern "C" fn receive(context: *mut c_void, rlp: *const u8, length: i32) 
 }
 
 /// Applies `entries` to the trie whose root hash is `root`, writing new nodes into `pending`, and writes the new root
-/// hash to `root_out`. Nodes are read from `cache`, then `pending`, then `fetch`, and cached as the trie of `address`,
-/// the state trie when null. `entries` is reordered in place. Returns 0 on success, -1 on panic, or an
-/// [`Error::code`].
+/// hash to `root_out`. Nodes written also go into `log`, or a temporary log when null, the new root indexed as that of
+/// the trie of `address`, the state trie when null. Nodes reachable through that root in `log` are read there, and the
+/// others from `pending`, then `fetch`. `entries` is reordered in place.
+/// Returns 0 on success, -1 on panic, or an [`Error::code`].
 ///
 /// # Safety
 /// `entries`, `values`, `root`, `address` and `root_out` must be valid for the given lengths (32 bytes for `root`,
-/// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `cache` must be null or come
-/// from [`nm_patricia_cache_new`], and `fetch` must be callable concurrently with `context`.
+/// `address` and `root_out`), `pending` must come from [`nm_patricia_pending_rent`], `log` must be null or come
+/// from [`nm_patricia_log_new`], and `fetch` must be callable concurrently with `context`.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_bulk_set(
     entries: *mut Entry,
@@ -127,7 +128,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     values_length: i32,
     root: *const [u8; 32],
     pending: *const PendingNodes,
-    cache: *const TrieNodeCache,
+    log: *const TrieNodeLog,
     address: *const [u8; 32],
     fetch: FetchFn,
     context: *mut c_void,
@@ -156,7 +157,7 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
         bulk_set(
             &CallbackStore { fetch, context },
             &*pending,
-            cache.as_ref(),
+            log.as_ref(),
             address.as_ref(),
             &*root,
             entries,
@@ -174,17 +175,17 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     }
 }
 
-/// Creates a [`TrieNodeCache`] of about `max_memory` bytes, to free with [`nm_patricia_cache_free`].
+/// Creates a [`TrieNodeLog`] of about `max_memory` bytes, to free with [`nm_patricia_log_free`].
 #[no_mangle]
-pub extern "C" fn nm_patricia_cache_new(max_memory: u64) -> *mut TrieNodeCache {
-    Box::into_raw(Box::new(TrieNodeCache::new(max_memory)))
+pub extern "C" fn nm_patricia_log_new(max_memory: u64) -> *mut TrieNodeLog {
+    Box::into_raw(Box::new(TrieNodeLog::new(max_memory)))
 }
 
 /// # Safety
-/// `cache` must come from [`nm_patricia_cache_new`], not be freed yet, and not be in use by a bulk set.
+/// `log` must come from [`nm_patricia_log_new`], not be freed yet, and not be in use by a bulk set.
 #[no_mangle]
-pub unsafe extern "C" fn nm_patricia_cache_free(cache: *mut TrieNodeCache) {
-    drop(Box::from_raw(cache));
+pub unsafe extern "C" fn nm_patricia_log_free(log: *mut TrieNodeLog) {
+    drop(Box::from_raw(log));
 }
 
 /// Takes an empty [`PendingNodes`] sized for a bulk set of about `estimated_entries`, to give back with
@@ -217,18 +218,27 @@ pub unsafe extern "C" fn nm_patricia_pending_clear(pending: *const PendingNodes)
     (*pending).clear();
 }
 
-/// Points `nodes` at the written nodes and `rlp` at the arena their RLP offsets point into, and returns their count.
-/// Both stay valid until the next bulk set, clear or return of `pending`.
+/// # Safety
+/// `pending` must come from [`nm_patricia_pending_rent`].
+#[no_mangle]
+pub unsafe extern "C" fn nm_patricia_pending_shard_count(pending: *const PendingNodes) -> i32 {
+    (*pending).shard_count() as i32
+}
+
+/// Points `nodes` at the nodes written to `shard` and `rlp` at the arena their RLP offsets point into, and returns their
+/// count. Both stay valid until the next bulk set, clear or return of `pending`.
 ///
 /// # Safety
-/// `pending` must come from [`nm_patricia_pending_rent`], and `nodes` and `rlp` must be writable.
+/// `pending` must come from [`nm_patricia_pending_rent`], `shard` must be below its
+/// [`nm_patricia_pending_shard_count`], and `nodes` and `rlp` must be writable.
 #[no_mangle]
 pub unsafe extern "C" fn nm_patricia_pending_view(
     pending: *const PendingNodes,
+    shard: i32,
     nodes: *mut *const WrittenNode,
     rlp: *mut *const u8,
 ) -> i32 {
-    (*pending).with_view(|written, arena| {
+    (*pending).with_view(shard as usize, |written, arena| {
         *nodes = written.as_ptr();
         *rlp = arena.as_ptr();
         written.len() as i32

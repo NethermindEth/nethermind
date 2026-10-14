@@ -108,7 +108,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 codeDb: new NullCodeDb(),
                 commitTarget: commitTarget,
                 configuration: config,
-                nativeTrieNodeCache: null,
+                nativeTrieNodeLog: null,
                 trieCacheWarmer: new NoopTrieWarmer(),
                 logManager: NullLogManager.Instance);
 

@@ -43,7 +43,7 @@ public class StorageRootCommitBenchmark
     private const ulong BaseBlockNumber = 1;
 
     private FlatDbConfig _config = null!;
-    private NativeTrieNodeCache _nativeTrieNodeCache;
+    private NativeTrieNodeLog _nativeTrieNodeLog;
     private ResourcePool _resourcePool = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
@@ -64,7 +64,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig { UseNativeBulkSet = UseNativeBulkSet };
         // Disabled, like the NullTrieNodeCache the managed tries get.
-        _nativeTrieNodeCache = UseNativeBulkSet ? new NativeTrieNodeCache(0) : null;
+        _nativeTrieNodeLog = UseNativeBulkSet ? new NativeTrieNodeLog(0) : null;
         _resourcePool = new ResourcePool(_config);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
@@ -85,7 +85,7 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
-            nativeTrieNodeCache: _nativeTrieNodeCache,
+            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
 
@@ -133,7 +133,7 @@ public class StorageRootCommitBenchmark
             codeDb: new NullCodeDb(),
             commitTarget: commitTarget,
             configuration: _config,
-            nativeTrieNodeCache: _nativeTrieNodeCache,
+            nativeTrieNodeLog: _nativeTrieNodeLog,
             trieCacheWarmer: new NoopTrieWarmer(),
             logManager: NullLogManager.Instance);
     }
