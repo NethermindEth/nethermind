@@ -7,6 +7,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Handlers;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -54,7 +55,8 @@ public class TaikoEngineApiTests
             Substitute.For<ILogManager>(),
             Substitute.For<IBlockProcessingPauseControl>(),
             new BlockTreeMutationLock(),
-            StateReaderWithEveryState()
+            StateReaderWithEveryState(),
+            new ReceiptConfig()
         );
 
         ResultWrapper<ForkchoiceUpdatedV1Result> beforeNewBlockAdded = await forkchoiceUpdatedHandler.Handle(new ForkchoiceStateV1(genesisBlock.Hash!, futureBlock.Hash!, futureBlock.Hash!), null, 2);
@@ -112,7 +114,8 @@ public class TaikoEngineApiTests
             Substitute.For<ILogManager>(),
             Substitute.For<IBlockProcessingPauseControl>(),
             new BlockTreeMutationLock(),
-            StateReaderWithEveryState()
+            StateReaderWithEveryState(),
+            new ReceiptConfig()
         );
 
         PayloadAttributes payloadAttributes = new()

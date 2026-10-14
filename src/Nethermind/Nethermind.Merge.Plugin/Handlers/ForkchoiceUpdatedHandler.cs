@@ -53,7 +53,7 @@ public class ForkchoiceUpdatedHandler(
     IBlockProcessingPauseControl pauseControl,
     BlockTreeMutationLock mutationLock,
     IStateReader stateReader,
-    IReceiptConfig? receiptConfig = null) : IForkchoiceUpdatedHandler
+    IReceiptConfig receiptConfig) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
@@ -75,9 +75,8 @@ public class ForkchoiceUpdatedHandler(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
-    private readonly ProcessingOptions _reprocessingOptions = receiptConfig?.StoreReceipts ?? true
-        ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts
-        : ProcessingOptions.EthereumMerge;
+    private readonly ProcessingOptions _reprocessingOptions = NewPayloadHandler.GetProcessingOptions(receiptConfig);
+    private Task _reprocessing = Task.CompletedTask;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
@@ -95,11 +94,13 @@ public class ForkchoiceUpdatedHandler(
     /// A block leaves the processing queue without a verdict when its processing throws or runs past
     /// <c>Blocks.BlockProcessingTimeoutMs</c>. A forkchoice update alone would otherwise leave it there: suggesting a
     /// known block again does nothing, and without a beacon pivot sync does not start. Blocks inserted by beacon sync
-    /// are left to sync. Not awaited, as this runs inside <see cref="ApplyForkchoiceUpdate"/>'s priority boost.
+    /// are left to sync. Each forkchoice update that finds the queue empty retries, as a re-sent newPayload would; at most
+    /// one retry is in flight.
     /// </remarks>
     private void ReprocessUnprocessedHead(BlockHeader head, BlockInfo headInfo, BlockHeader parent)
     {
         if (headInfo.IsBeaconInfo
+            || !_reprocessing.IsCompleted
             || !_blockTree.WasProcessed(parent.Number, parent.GetOrCalculateHash())
             || !stateReader.HasStateForBlock(parent))
         {
@@ -110,7 +111,21 @@ public class ForkchoiceUpdatedHandler(
         if (block is null) return;
 
         if (_logger.IsInfo) _logger.Info($"Processing head {block.ToString(Block.Format.Short)} again: it was left unprocessed on a processed parent.");
-        _ = processingQueue.Enqueue(block, _reprocessingOptions);
+        // Off this thread: with the queue empty the processing channel's synchronous continuations would run the whole
+        // block inside Enqueue, on this thread, while it holds the engine API's lock (see NewPayloadHandler).
+        _reprocessing = Task.Run(() => EnqueueForReprocessingAsync(block));
+    }
+
+    private async Task EnqueueForReprocessingAsync(Block block)
+    {
+        try
+        {
+            await processingQueue.Enqueue(block, _reprocessingOptions);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Queueing head {block.ToString(Block.Format.Short)} for processing again failed: {e}");
+        }
     }
 
     /// <summary>

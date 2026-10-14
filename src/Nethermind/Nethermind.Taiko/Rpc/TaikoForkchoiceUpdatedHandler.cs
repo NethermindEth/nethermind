@@ -40,7 +40,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     IBlockProcessingPauseControl pauseControl,
     BlockTreeMutationLock mutationLock,
     IStateReader stateReader,
-    IReceiptConfig? receiptConfig = null) : ForkchoiceUpdatedHandler(
+    IReceiptConfig receiptConfig) : ForkchoiceUpdatedHandler(
     blockTree,
     poSSwitcher,
     payloadPreparationService,

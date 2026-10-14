@@ -110,7 +110,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _txValidator = txValidator;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
-        _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+        _defaultProcessingOptions = GetProcessingOptions(receiptConfig);
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
         if (mergeConfig.NewPayloadCacheSize > 0)
             _latestBlocks = new(mergeConfig.NewPayloadCacheSize, 0, "LatestBlocks");
@@ -118,6 +118,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _processingQueue.BlockExecuted += GetProcessingQueueOnBlockExecuted;
         _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
     }
+
+    /// <summary>The options an execution payload's block is processed with.</summary>
+    internal static ProcessingOptions GetProcessingOptions(IReceiptConfig receiptConfig) =>
+        receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
 
     private string GetGasChange(ulong blockGasLimit) => blockGasLimit.CompareTo(_lastBlockGasLimit) switch
     {

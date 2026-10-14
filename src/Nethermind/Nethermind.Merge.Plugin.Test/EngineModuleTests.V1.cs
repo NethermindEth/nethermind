@@ -587,24 +587,43 @@ public partial class EngineModuleTests
 
     /// <summary>
     /// A block whose processing failed without a verdict stays in the tree unprocessed; a forkchoice update naming it
-    /// as head queues it again, and once it is processed the next one moves the head to it.
+    /// as head queues it again, without running it on the forkchoice update's own thread, and once it is processed the
+    /// next one moves the head to it.
     /// </summary>
     [Test]
     public async Task forkchoiceUpdatedV1_processes_again_a_head_left_unprocessed_on_a_processed_parent()
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockchain()
-            .Build(new TestSingleReleaseSpecProvider(London.Instance));
+        // Started off NUnit's synchronization context, which the processing loop would otherwise capture and post every
+        // wake-up to, so the loop resumes inline on a writer's thread as it does in a node.
+        using MergeTestBlockchain chain = await Task.Run(() => CreateBaseBlockchain()
+            .Build(new TestSingleReleaseSpecProvider(London.Instance)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
         Hash256 parentHash = chain.BlockTree.HeadHash;
 
         branchProcessor.ExceptionToThrow = new Exception("unexpected exception");
         ExecutionPayload executionPayload = await CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+        TaskCompletionSource processorIdle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.ProcessingQueueEmpty += (_, _) => processorIdle.TrySetResult();
         Assert.That((await rpc.engine_newPayloadV1(executionPayload)).Result.ResultType, Is.EqualTo(ResultType.Failure));
         branchProcessor.ExceptionToThrow = null;
+        // The failure is reported before the processor takes the block off its count, and a non-empty queue skips the
+        // retry. Idle, the processor would also run a block queued on the forkchoice update's thread right there.
+        await processorIdle.Task.WaitAsync(GateTimeout);
 
         ForkchoiceStateV1 forkchoiceState = new(executionPayload.BlockHash, parentHash, parentHash);
-        Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        branchProcessor.ProcessingRelease = processingRelease.Task;
+        try
+        {
+            ResultWrapper<ForkchoiceUpdatedV1Result> whileProcessing = await Task.Run(() => rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).WaitAsync(GateTimeout);
+            Assert.That(whileProcessing.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+        finally
+        {
+            processingRelease.TrySetResult();
+        }
+
         Assert.That(() => chain.BlockTree.WasProcessed(executionPayload.BlockNumber, executionPayload.BlockHash), Is.True.After(10_000, 50));
 
         Assert.That((await rpc.engine_forkchoiceUpdatedV1(forkchoiceState)).Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
