@@ -194,6 +194,7 @@ public enum Instruction : byte
     // EIP-8360 leaves the opcode TBD; 0xf6 is provisional.
     TCREATE = 0xf6,
     STATICCALL = 0xfa,
+    PAY = 0xfc, // EIP-5920
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff
