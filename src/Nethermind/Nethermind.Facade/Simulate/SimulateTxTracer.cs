@@ -195,18 +195,28 @@ public sealed class SimulateTxTracer : TxTracer, IFrameTxReceiptTracer
         ? frameError.GetEvmExceptionDescription() ?? frameError.ToString()
         : error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error;
 
-    private List<Log> BuildLogs() => _logs.Select((entry, i) => new Log
+    private List<Log> BuildLogs()
     {
-        Address = entry.Address,
-        Topics = entry.Topics,
-        Data = entry.Data,
-        LogIndex = _logIndexStart + (ulong)i,
-        TransactionHash = _tx.Hash!,
-        TransactionIndex = _txIndex,
-        BlockHash = _currentBlockHash,
-        BlockNumber = _currentBlockNumber,
-        BlockTimestamp = _currentBlockTimestamp
-    }).ToList();
+        List<Log> logs = new(_logs.Count);
+        for (int i = 0; i < _logs.Count; i++)
+        {
+            LogEntry entry = _logs[i];
+            logs.Add(new Log
+            {
+                Address = entry.Address,
+                Topics = entry.Topics,
+                Data = entry.Data,
+                LogIndex = _logIndexStart + (ulong)i,
+                TransactionHash = _tx.Hash!,
+                TransactionIndex = _txIndex,
+                BlockHash = _currentBlockHash,
+                BlockNumber = _currentBlockNumber,
+                BlockTimestamp = _currentBlockTimestamp
+            });
+        }
+
+        return logs;
+    }
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 

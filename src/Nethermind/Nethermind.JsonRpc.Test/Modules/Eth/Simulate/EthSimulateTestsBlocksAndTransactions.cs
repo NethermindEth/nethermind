@@ -690,14 +690,17 @@ public class EthSimulateTestsBlocksAndTransactions
             ]
         };
 
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(new OverridableReleaseSpec(London.Instance));
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
         SimulateCallResult[] calls = result.Data[0].Calls.ToArray();
-        Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
-        Assert.That(calls[0].Logs, Is.Empty);
-        Assert.That(calls[1].Logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0 }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls[0].Status, Is.EqualTo(StatusCode.Failure));
+            Assert.That(calls[0].Logs, Is.Empty);
+            Assert.That(calls[1].Logs.Select(static l => l.LogIndex), Is.EqualTo(new ulong[] { 0 }));
+        }
     }
 
     [TestCase(
