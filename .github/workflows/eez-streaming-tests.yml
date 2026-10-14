@@ -15,7 +15,7 @@ on:
       - 'global.json'
       - '.github/workflows/eez-streaming-tests.yml'
   push:
-    branches: [master, feature/eez-l2-execution]
+    branches: [master]
     paths:
       - 'src/Nethermind/Nethermind.Eez*/**'
       - 'src/Nethermind/Nethermind.Consensus*/**'
