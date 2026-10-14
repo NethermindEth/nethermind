@@ -26,6 +26,11 @@ public static unsafe partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 offset, out UInt256 length, out UInt256 scope))
             return EvmExceptionType.StackUnderflow;
 
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory))
+        {
+            return EvmExceptionType.OutOfGas;
+        }
+
         TxFrame frame = ctx.CurrentFrame;
 
         // EIP-7906 forbids the call, not the permission bits: a POST_TX frame may carry an approval
@@ -44,12 +49,6 @@ public static unsafe partial class EvmInstructions
         if (outcome != FrameApprovalOutcome.Approved)
         {
             if (outcome == FrameApprovalOutcome.Rejected) goto Reject;
-            return EvmExceptionType.OutOfGas;
-        }
-
-        // EIP-8141 APPROVE: the memory region becomes the frame's return data, following RETURN semantics.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in offset, in length, ref vm.VmState.Memory))
-        {
             return EvmExceptionType.OutOfGas;
         }
 

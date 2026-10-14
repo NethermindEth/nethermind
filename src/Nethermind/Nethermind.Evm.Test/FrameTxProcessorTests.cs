@@ -2592,6 +2592,63 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_PaymentApprovalChargesCreationOfASenderEmptiedByAnEarlierFrame()
+    {
+        Address sponsor = TestItem.AddressD;
+        _stateProvider.CreateAccount(Sender, 1);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(sponsor, ApproveCode(FrameFlags.ApprovePayment), 1.Ether);
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            Frame(FrameMode.Sender, target: Recipient, value: 1),
+            new TxFrame(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, executionGasLimit: 200_000, (ulong)GasCostOf.NewAccountState, UInt256.Zero, default));
+        tx.FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, default)];
+        SignCanonicalHash(tx, index: 0, TestItem.PrivateKeyA, signer: null);
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(tracer.FrameReceipts[2].StateGasUsed, Is.EqualTo((ulong)GasCostOf.NewAccountState));
+            Assert.That(_stateProvider.GetBalance(Recipient), Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [TestCase((byte)FrameFlags.ApprovePayment, TestName = "Execute_RefusedApproval_PayerAlreadySet_ChargesMemoryExpansion")]
+    [TestCase((byte)FrameFlags.ApproveExecution, TestName = "Execute_RefusedApproval_ScopeNotAllowed_ChargesMemoryExpansion")]
+    [TestCase((byte)FrameFlags.AtomicBatch, TestName = "Execute_RefusedApproval_ScopeBeyondMask_ChargesMemoryExpansion")]
+    public void Execute_RefusedApprovalChargesTheMemoryExpansionOfItsReturnData(byte scope)
+    {
+        Address withoutReturnData = TestItem.AddressD;
+        Address withReturnData = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(withoutReturnData, Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done);
+        DeployContract(withReturnData, Prepare.EvmCode.PushData(scope).PushData(1024).PushData(0).Op(Instruction.APPROVE).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(FrameMode.Default, flags: FrameFlags.ApprovePayment, target: withoutReturnData),
+            Frame(FrameMode.Default, flags: FrameFlags.ApprovePayment, target: withReturnData));
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure));
+            Assert.That(tracer.FrameReceipts[2].GasUsed - tracer.FrameReceipts[1].GasUsed, Is.EqualTo(98UL));
+        }
+    }
+
     /// <summary>A codeless target of a non-<c>VERIFY</c> frame runs empty code in the VM, warming it.</summary>
     /// <remarks>Routing it to default code instead would skip the EVM and leave it cold.</remarks>
     [Test]
