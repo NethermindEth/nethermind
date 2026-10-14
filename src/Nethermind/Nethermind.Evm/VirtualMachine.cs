@@ -1300,7 +1300,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
+        catch (Exception exception) when (!IsNodeFault(exception))
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             output = default;
@@ -1466,6 +1466,10 @@ public partial class VirtualMachine<TGasPolicy>(
     /// Subclasses may override this to support precompile variants that compute and report their own dynamic
     /// gas consumption after execution.
     /// </summary>
+    /// <remarks>
+    /// An exception from <see cref="IPrecompile.Run"/> fails the call, except a missing KZG setup and running out of
+    /// memory (even as an inner exception): those are node faults with no counterpart in the execution spec, so they propagate instead.
+    /// </remarks>
     protected virtual CallResult ExecutePrecompileCall(
         VmState<TGasPolicy> state,
         IPrecompile precompile,
@@ -1503,7 +1507,7 @@ public partial class VirtualMachine<TGasPolicy>(
             Environment.Exit(ExitCodes.MissingPrecompile);
             throw; // Unreachable
         }
-        catch (Exception exception) when (exception is not KzgSetupUnavailableException)
+        catch (Exception exception) when (!IsNodeFault(exception))
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
@@ -1563,6 +1567,9 @@ public partial class VirtualMachine<TGasPolicy>(
         { InnerException: DllNotFoundException missingDependency } => missingDependency,
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
+
+    private static bool IsNodeFault(Exception exception) =>
+        exception is KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException };
 
     /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
     protected static string GetErrorString(string? error)
