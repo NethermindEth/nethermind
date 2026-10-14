@@ -16,23 +16,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 public class BlockHeadersMessageSerializerTests
 {
     [Test]
-    public void A_maximum_size_proof_header_roundtrips()
+    public void Proof_commitments_roundtrip_without_inline_proof_bytes()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new RecursiveStark(new byte[Eip8288Constants.MaxAggregateProofBytes], Keccak.Zero);
+        header.RecursiveStark = new RecursiveStarkCommitment(TestItem.KeccakA, TestItem.KeccakB);
         using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(1) { header });
         BlockHeadersMessageSerializer serializer = new();
 
         using BlockHeadersMessage decoded = serializer.Deserialize(serializer.Serialize(message));
 
-        Assert.That(decoded.BlockHeaders[0].RecursiveStark!.StarkProof.Length, Is.EqualTo(Eip8288Constants.MaxAggregateProofBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.BlockHeaders[0].RecursiveStark!.StarkProofHash, Is.EqualTo(TestItem.KeccakA));
+            Assert.That(decoded.BlockHeaders[0].RecursiveStark!.BlockDepsHash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(serializer.GetLength(message, out _), Is.LessThan(1024), "ordinary ETH headers carry two commitments, not the proof");
+        }
     }
 
     [Test]
     public void Oversized_header_batches_are_rejected_before_encoding_or_decoding()
     {
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        header.RecursiveStark = new RecursiveStark(new byte[5 * 1024 * 1024], Keccak.Zero);
+        header.ExtraData = new byte[5 * 1024 * 1024];
         using BlockHeadersMessage message = new(new ArrayPoolList<BlockHeader>(2) { header, header });
         BlockHeadersMessageSerializer serializer = new();
 
