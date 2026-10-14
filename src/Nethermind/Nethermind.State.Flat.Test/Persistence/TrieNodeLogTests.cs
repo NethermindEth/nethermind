@@ -759,6 +759,57 @@ public class TrieNodeLogTests
     }
 
     [Test]
+    public async Task A_wipe_interrupted_before_the_log_was_cleared_restarts_after_the_resync()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        BasePersistence.MarkWipeStarted(_db); // the crash comes before the log is cleared
+        Open();
+        _persistence.Clear(); // the wipe is redone
+        Batch(0, 1).Dispose(); // the resync completes without a new generation in the shard that held Rlp1
+
+        await Reopen();
+        Assert.That(ReadTop(), Is.Null);
+    }
+
+    [Test]
+    public async Task Disposal_completes_while_second_level_merges_keep_failing()
+    {
+        await _log.DisposeAsync();
+        _config.TrieNodeLogMergeLag = 0;
+        _config.TrieNodeLogSecondLevelMergeLag = 0;
+        // Second-level merges fail at the trie columns' flush; first-level copies into the second level never flush them.
+        _log = new TrieNodeLog(_directory.Path, WithUnflushable(static column => column != FlatDbColumns.Metadata), _config, LimboLogs.Instance);
+        _persistence = new RocksDbPersistence(_db, LimboLogs.Instance, _log);
+
+        // Every write fills and seals a first-level generation with a key no later write supersedes, so every generation
+        // is copied; the third copy finds the second level's backlog full.
+        for (ulong block = 0; block < 3; block++)
+        {
+            using IPersistence.IWriteBatch batch = Batch(block, block + 1);
+            batch.SetStateTrieNode(TreePath.FromHexString($"1234{block}"), Value((byte)block, 4096));
+        }
+        Assert.That(() => ShardFiles("state-0-l2"), Has.Length.EqualTo(2).After(5000, 20));
+        Assert.That(() => ShardFiles("state-0"), Has.Length.EqualTo(1).After(5000, 20), "the third copy is waiting");
+
+        Assert.That(_log.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(10)), Is.True, "shutdown must not wait on the second level's backlog");
+    }
+
+    [Test]
+    public async Task A_failed_manifest_write_releases_the_recovered_shards()
+    {
+        WriteTop(0, 1, Rlp1);
+        await _log.DisposeAsync();
+        long alive = TrieNodeLogGeneration.AliveCount;
+
+        Assert.That(() => new TrieNodeLog(_directory.Path, WithUnflushable(static column => column == FlatDbColumns.Metadata), _config, LimboLogs.Instance), Throws.TypeOf<IOException>());
+        Assert.That(TrieNodeLogGeneration.AliveCount, Is.EqualTo(alive), "the recovered generations are released");
+
+        Open();
+        Assert.That(ReadTop(), Is.EqualTo(Rlp1));
+    }
+
+    [Test]
     public void A_WAL_sync_failure_does_not_confirm_the_log()
     {
         IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
@@ -791,10 +842,7 @@ public class TrieNodeLogTests
     public void Clear_marks_the_wipe_before_dropping_the_log()
     {
         WriteTop(0, 1, Rlp1);
-        IDb metadata = new UnflushableDb(_db.GetColumnDb(FlatDbColumns.Metadata));
-        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
-        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call => call.Arg<FlatDbColumns>() == FlatDbColumns.Metadata ? metadata : _db.GetColumnDb(call.Arg<FlatDbColumns>()));
-        RocksDbPersistence persistence = new(db, LimboLogs.Instance, _log);
+        RocksDbPersistence persistence = new(WithUnflushable(static column => column == FlatDbColumns.Metadata), LimboLogs.Instance, _log);
 
         Assert.That(persistence.Clear, Throws.TypeOf<IOException>(), "the wipe marker could not be made durable");
         using (Assert.EnterMultipleScope())
@@ -858,6 +906,19 @@ public class TrieNodeLogTests
         public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
         public void FlushOrThrow() => throw new IOException("durable flush failed");
         public void Dispose() => inner.Dispose();
+    }
+
+    /// <summary>The test database with the durable flush of every <paramref name="unflushable"/> column failing.</summary>
+    private IColumnsDb<FlatDbColumns> WithUnflushable(Func<FlatDbColumns, bool> unflushable)
+    {
+        IColumnsDb<FlatDbColumns> db = Substitute.For<IColumnsDb<FlatDbColumns>>();
+        db.GetColumnDb(Arg.Any<FlatDbColumns>()).Returns(call =>
+        {
+            IDb column = _db.GetColumnDb(call.Arg<FlatDbColumns>());
+            return unflushable(call.Arg<FlatDbColumns>()) ? new UnflushableDb(column) : column;
+        });
+        db.StartWriteBatch().Returns(_ => _db.StartWriteBatch());
+        return db;
     }
 
     /// <summary>The test database with its snapshots supplied by <paramref name="snapshot"/>.</summary>

@@ -95,6 +95,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 }
                 foreach (FlatDbColumns column in columns) db.GetColumnDb(column).SetWriteBuffer(WriteBufferAdjuster.MaxWriteBufferSize(column));
             }
+            _shards = shards.ToArray();
+            _secondLevelShards = secondLevelShards.ToArray();
+            WriteShardManifest(db, _shards.Concat(_secondLevelShards).Select(static shard => shard.Name));
         }
         catch
         {
@@ -103,9 +106,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             foreach (TrieNodeLogShard shard in secondLevelShards) shard.DisposeAsync().AsTask().GetAwaiter().GetResult();
             throw;
         }
-        _shards = shards.ToArray();
-        _secondLevelShards = secondLevelShards.ToArray();
-        WriteShardManifest(db, _shards.Concat(_secondLevelShards).Select(static shard => shard.Name));
     }
 
     internal IReadOnlyList<TrieNodeLogShard> Shards => _shards;
@@ -326,6 +326,9 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 if (_logger.IsError) _logger.Error("Trie node log merge at shutdown failed; the generations are kept for the next start", e);
             }
         }
+        // A first-level merge copying into a second level whose own merges keep failing waits on its backlog; that
+        // wait is cancelled first so the first-level workers can be awaited.
+        foreach (TrieNodeLogShard shard in _secondLevelShards) shard.CancelBackgroundWork();
         // First-level merges may still be copying into the second level.
         foreach (TrieNodeLogShard shard in _shards) await shard.DisposeAsync();
         foreach (TrieNodeLogShard shard in _secondLevelShards) await shard.DisposeAsync();

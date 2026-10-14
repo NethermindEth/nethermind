@@ -271,11 +271,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         // they go, so neither a crash in between nor a later commit makes recovery look for their files.
         ulong watermark;
         using (_lock.EnterScope()) watermark = _nextGeneration - 1;
-        IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
-        Span<byte> marker = stackalloc byte[8];
-        BinaryPrimitives.WriteUInt64BigEndian(marker, watermark);
-        metadata.PutSpan(FlushedGenerationKey, marker);
-        metadata.FlushOrThrow();
+        WriteFlushedGeneration(watermark);
         Metrics.TrieNodeLogFlushedGeneration[_label] = (long)watermark;
 
         _retention.EnterWriteLock();
@@ -297,6 +293,19 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         }
         _secondLevel?.Clear();
     }
+
+    /// <summary>Durably moves the merged marker to <paramref name="generation"/>.</summary>
+    private void WriteFlushedGeneration(ulong generation)
+    {
+        IDb metadata = _db.GetColumnDb(FlatDbColumns.Metadata);
+        Span<byte> marker = stackalloc byte[8];
+        BinaryPrimitives.WriteUInt64BigEndian(marker, generation);
+        metadata.PutSpan(FlushedGenerationKey, marker);
+        metadata.FlushOrThrow();
+    }
+
+    /// <summary>Fails any roll waiting on the merge backlog and stops the merge worker, ahead of <see cref="DisposeAsync"/>.</summary>
+    internal void CancelBackgroundWork() => _cancellation.Cancel();
 
     public async ValueTask DisposeAsync()
     {
@@ -393,7 +402,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
                 if (_logger.IsWarn) _logger.Warn($"Trie node log {Name} has {backlog} unmerged generations (limit {_maxBacklog}); persistence is waiting for a merge");
             }
             _flushSignal.Release(); // a merge that failed is retried rather than leaving persistence stuck
-            if (!_merged.Wait(TimeSpan.FromSeconds(10)) && _logger.IsWarn)
+            if (!_merged.Wait(TimeSpan.FromSeconds(10), _cancellation.Token) && _logger.IsWarn)
                 _logger.Warn($"Trie node log {Name} still has {backlog} unmerged generations after {Stopwatch.GetElapsedTime(sw).TotalSeconds:F0} s; persistence is still waiting");
         }
 
@@ -676,6 +685,21 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             if (ulong.TryParse(name.AsSpan(FilePrefix.Length), out ulong number)) files.Add((number, path));
         }
         files.Sort();
+
+        if (wiped)
+        {
+            // The files go with the wipe, so they count as merged, durably before they go, as in ClearExclusive:
+            // otherwise the generation recorded by a wipe interrupted before the log was cleared would require their
+            // files again once the resync removes the wipe marker.
+            ulong discarded = Math.Max(flushedGeneration, ReadUInt64(metadata.Get(GenerationKey)));
+            if (files.Count > 0) discarded = Math.Max(discarded, files[^1].Number);
+            if (discarded != flushedGeneration)
+            {
+                WriteFlushedGeneration(discarded);
+                flushedGeneration = discarded;
+                _nextGeneration = discarded + 1;
+            }
+        }
 
         try
         {
