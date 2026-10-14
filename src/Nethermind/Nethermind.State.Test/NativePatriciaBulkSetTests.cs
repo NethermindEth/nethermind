@@ -96,7 +96,7 @@ public class NativePatriciaBulkSetTests
             Assert.That(NativeMetrics.NativeTrieNodeLogRootHits, Is.GreaterThan(rootHits));
             Assert.That(NativeMetrics.NativeBulkSetNodesFromLog, Is.GreaterThan(nodesFromLog));
             Assert.That(NativeMetrics.NativeBulkSetNodesFetched, Is.GreaterThan(nodesFetched));
-            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.GreaterThanOrEqualTo(2 * 64 * 1024 * 1024 / 8));
+            Assert.That(NativeMetrics.NativeTrieNodeLogMemory, Is.GreaterThanOrEqualTo(2 * 1024 * 1024));
             Assert.That(NativeMetrics.NativeTrieNodeLogGenerations, Is.GreaterThanOrEqualTo(2));
             Assert.That(NativeMetrics.NativeBulkSetTime, Is.GreaterThan(bulkSetTime));
             Assert.That(NativeMetrics.NativeBulkSetCallTime, Is.GreaterThan(callTime));
@@ -184,6 +184,8 @@ public class NativePatriciaBulkSetTests
             }
         }
         copy.Dispose();
+        // Enough for the log to drop the generations the pin kept, of which compaction keeps no node later tries rewrote.
+        for (int i = 0; i < 40; i++) BulkSet(store, pending, log, Keccak.EmptyTreeHash, PatriciaTreeBulkSetterTests.GenRandomOfLength(1000, seed: 30 + i));
 
         using (Assert.EnterMultipleScope())
         {

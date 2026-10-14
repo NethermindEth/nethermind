@@ -219,10 +219,11 @@ pub unsafe extern "C" fn nm_patricia_bulk_set(
     }
 }
 
-/// Creates a [`TrieNodeLog`] of about `max_memory` bytes, to free with [`nm_patricia_log_free`].
+/// Creates a [`TrieNodeLog`] whose compacted generations take about `compressed_max_memory` bytes, to free with
+/// [`nm_patricia_log_free`].
 #[no_mangle]
-pub extern "C" fn nm_patricia_log_new(max_memory: u64) -> *mut TrieNodeLog {
-    Box::into_raw(Box::new(TrieNodeLog::new(max_memory)))
+pub extern "C" fn nm_patricia_log_new(compressed_max_memory: u64) -> *mut TrieNodeLog {
+    Box::into_raw(TrieNodeLog::new(compressed_max_memory))
 }
 
 /// # Safety

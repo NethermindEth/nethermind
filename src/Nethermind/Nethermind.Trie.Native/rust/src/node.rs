@@ -208,8 +208,8 @@ const EXTENSION: u8 = 1;
 const HASHED_BRANCH: u8 = 2;
 /// A branch with an inline child, whose children are found by parsing those before them.
 const INLINE_BRANCH: u8 = 3;
-/// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32].
-pub const RECORD_HEADER_LENGTH: usize = 40;
+/// kind: u8, zero: u8, hash mask: u16, RLP length: u32, node hash: [u8; 32], key: u64, see [`crate::log::node_key`].
+pub const RECORD_HEADER_LENGTH: usize = 48;
 const POINTER_LENGTH: usize = 8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -249,12 +249,12 @@ pub fn record_length_of(header: &[u8]) -> usize {
         + u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize
 }
 
-/// Writes the log record of `node`, whose children must all be resolved, with hash `hash` and RLP `rlp`, to `out` of
-/// [`record_length`] bytes.
+/// Writes the log record of `node`, whose children must all be resolved, with key `key`, hash `hash` and RLP `rlp`, to
+/// `out` of [`record_length`] bytes.
 ///
 /// A record is its header, the log pointer of every child referenced by hash, in child order, then the RLP, which
 /// [`LoggedNode`] decodes in place.
-pub fn write_record(node: &Node, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
+pub fn write_record(node: &Node, key: u64, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
     let mask = hash_mask(node);
     out[0] = match node {
         Node::Leaf { .. } => LEAF,
@@ -271,7 +271,8 @@ pub fn write_record(node: &Node, hash: &[u8; 32], rlp: &[u8], out: &mut [u8]) {
     out[1] = 0;
     out[2..4].copy_from_slice(&mask.to_le_bytes());
     out[4..8].copy_from_slice(&(rlp.len() as u32).to_le_bytes());
-    out[8..RECORD_HEADER_LENGTH].copy_from_slice(hash);
+    out[8..40].copy_from_slice(hash);
+    out[40..RECORD_HEADER_LENGTH].copy_from_slice(&key.to_le_bytes());
     let mut offset = RECORD_HEADER_LENGTH;
     for child in children(node) {
         match child {
@@ -329,7 +330,11 @@ impl<'a> LoggedNode<'a> {
     }
 
     pub fn hash(&self) -> &'a [u8; 32] {
-        self.record[8..RECORD_HEADER_LENGTH].try_into().unwrap()
+        self.record[8..40].try_into().unwrap()
+    }
+
+    pub fn log_key(&self) -> u64 {
+        u64::from_le_bytes(self.record[40..RECORD_HEADER_LENGTH].try_into().unwrap())
     }
 
     pub fn rlp(&self) -> &'a [u8] {

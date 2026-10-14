@@ -20,6 +20,14 @@ public static partial class Metrics
     [Description("Native trie node log generations allocated, live or still pinned by a running bulk set")]
     public static long NativeTrieNodeLogGenerations => (long)Read().LogGenerations;
 
+    [GaugeMetric]
+    [Description("Bytes of what compaction kept of dropped native trie node log generations")]
+    public static long NativeTrieNodeLogCompressedMemory => (long)Read().CompressedMemory;
+
+    [GaugeMetric]
+    [Description("Compacted native trie node log generations of which something is kept")]
+    public static long NativeTrieNodeLogCompressedGenerations => (long)Read().CompressedGenerations;
+
     [CounterMetric]
     [Description("Native bulk sets on a non-empty trie whose root was in the native trie node log")]
     public static long NativeTrieNodeLogRootHits => (long)Read().RootHits;
@@ -84,5 +92,7 @@ public static partial class Metrics
         public readonly ulong NodesFromLog;
         public readonly ulong NodesFromPending;
         public readonly ulong NodesFetched;
+        public readonly ulong CompressedMemory;
+        public readonly ulong CompressedGenerations;
     }
 }

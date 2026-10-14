@@ -71,7 +71,7 @@ impl WarmedNodes {
     ) -> Result<RecordPtr, Error> {
         let node = decode_rlp(rlp)?;
         let record = self.append(record_length(&node, rlp.len()), |out| {
-            write_record(&node, hash, rlp, out)
+            write_record(&node, 0, hash, rlp, out)
         });
         let key = (address.copied().unwrap_or_default(), *path);
         let mut shard = self.shard(&key).lock().unwrap();
@@ -137,9 +137,9 @@ pub fn warm_up<S: NodeStore>(
     let mut hash = *root;
     let mut pointer = session.find_root(address, root);
     loop {
-        let record = match session.is_valid(pointer) {
-            true => RecordPtr::of(session.record(pointer)),
-            false => match warmed.get(address, &path, &hash) {
+        let record = match session.record(pointer) {
+            Some(record) => RecordPtr::of(record),
+            None => match warmed.get(address, &path, &hash) {
                 Some(record) => record,
                 None => match store.fetch_rlp(&path, &hash, |rlp| {
                     warmed.insert(address, &path, &hash, rlp)
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn warm_up_fetches_only_nodes_neither_logged_nor_warmed() {
         // A logged root branch whose child 1 is logged, and whose child 2, an extension over a leaf, is only in the store.
-        let log = TrieNodeLog::new(0);
+        let log = TrieNodeLog::minimal();
         let session = log.pin();
         let leaf = Node::Leaf {
             key: Nibbles::from_slice(&[0; 61]),
