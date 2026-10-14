@@ -5,15 +5,17 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;
 
-internal static class FlatTestHelpers
+public static class FlatTestHelpers
 {
     public static Snapshot MakeSnapshot(IResourcePool pool, Action<SnapshotContent>? populate = null)
     {
@@ -21,6 +23,61 @@ internal static class FlatTestHelpers
         populate?.Invoke(content);
         return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing);
     }
+
+    /// <summary>A log with 64 KiB generations, so tests can rotate it cheaply.</summary>
+    public static TrieNodeLog NewTestLog() => new(0, 64 * 1024);
+
+    public const string LeafRlpA = "c482200101";
+    public const string LeafRlpB = "c482200102";
+    public const string LeafRlpC = "c482200103";
+
+    /// <summary>Creates a snapshot owning a retain on the active generation of <paramref name="log"/>.</summary>
+    public static Snapshot CreateSnapshot(this IResourcePool pool, in StateId from, in StateId to, ResourcePool.Usage usage, TrieNodeLog log) =>
+        new(from, to, pool.GetSnapshotContent(usage), pool, usage) { LogRetain = log.RetainActive() };
+
+    /// <summary>Appends records until <paramref name="log"/> starts a new generation.</summary>
+    public static void StartNewGeneration(TrieNodeLog log)
+    {
+        byte[] leaf = Bytes.FromHexString(LeafRlpA);
+        ulong generation = AppendNode(log, null, TreePath.Empty, leaf) >> 32;
+        while (AppendNode(log, null, TreePath.Empty, leaf) >> 32 == generation) { }
+    }
+
+    /// <summary>Makes a snapshot owning a retain on <paramref name="log"/> taken before <paramref name="populate"/> writes its nodes.</summary>
+    public static Snapshot MakeSnapshot(IResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate)
+    {
+        TrieNodeLogRetain retain = log.RetainActive();
+        SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
+        populate(content);
+        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+    }
+
+    /// <summary>Records the node <paramref name="rlpHex"/> in <paramref name="log"/> and sets its pointer as the state node at <paramref name="path"/>.</summary>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, string rlpHex) =>
+        content.SetStateNodeRlp(log, path, Bytes.FromHexString(rlpHex));
+
+    /// <inheritdoc cref="SetStateNodeRlp(SnapshotContent, TrieNodeLog, in TreePath, string)"/>
+    public static ulong SetStateNodeRlp(this SnapshotContent content, TrieNodeLog log, in TreePath path, byte[] rlp) =>
+        content.StateNodes[path] = AppendNode(log, null, path, rlp);
+
+    /// <summary>Records the node <paramref name="rlpHex"/> in <paramref name="log"/> and sets its pointer as the storage node of <paramref name="address"/> at <paramref name="path"/>.</summary>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, string rlpHex) =>
+        content.SetStorageNodeRlp(log, address, path, Bytes.FromHexString(rlpHex));
+
+    /// <inheritdoc cref="SetStorageNodeRlp(SnapshotContent, TrieNodeLog, Hash256, in TreePath, string)"/>
+    public static ulong SetStorageNodeRlp(this SnapshotContent content, TrieNodeLog log, Hash256 address, in TreePath path, byte[] rlp) =>
+        content.StorageNodes[(address, path)] = AppendNode(log, address, path, rlp);
+
+    /// <summary>The RLP of a leaf with an empty key holding <paramref name="value"/>, a distinct valid trie node per value.</summary>
+    public static byte[] LeafRlp(params byte[] value)
+    {
+        byte[] rlp = new byte[NodeRlp.LeafLength([], value)];
+        NodeRlp.WriteLeaf([], value, rlp);
+        return rlp;
+    }
+
+    private static ulong AppendNode(TrieNodeLog log, Hash256? address, in TreePath path, byte[] rlp) =>
+        log.AppendRecordFromRlp(address, path, ValueKeccak.Compute(rlp), rlp);
 
     public static SnapshotPooledList SnapshotList(params Snapshot[] snapshots)
     {
@@ -43,6 +100,12 @@ internal static class FlatTestHelpers
         IPersistence.IPersistenceReader reader,
         Action<SnapshotContent>? populate = null) =>
         new(SnapshotList(MakeSnapshot(pool, populate)), reader,
+            recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
+
+    /// <inheritdoc cref="MakeBundle(ResourcePool, Action{SnapshotContent})"/>
+    /// <param name="log">The log <paramref name="populate"/> records nodes in; the snapshot retains it.</param>
+    public static ReadOnlySnapshotBundle MakeBundle(ResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate) =>
+        new(SnapshotList(MakeSnapshot(pool, log, populate)), Substitute.For<IPersistence.IPersistenceReader>(),
             recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
 }
 

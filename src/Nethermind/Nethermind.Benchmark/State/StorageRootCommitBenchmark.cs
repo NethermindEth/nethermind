@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.Trie.NodeLog;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -43,6 +44,7 @@ public class StorageRootCommitBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
+    private TrieNodeLog _trieNodeLog = null!;
     private List<FlatSnapshot> _baseSnapshots = null!;
     private StateId _baseStateId;
     private Address _address = null!;
@@ -59,6 +61,7 @@ public class StorageRootCommitBenchmark
 
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
+        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _baseSnapshots = new List<FlatSnapshot>(1);
         _address = DeriveAddress(1);
 
@@ -70,7 +73,7 @@ public class StorageRootCommitBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         FlatWorldStateScope scope = new(
             currentStateId: initialStateId,
@@ -117,7 +120,7 @@ public class StorageRootCommitBenchmark
             PersistedSnapshotStack.Empty());
         NullTrieNodeCache cache = new();
         SnapshotBundle bundle = new(
-            readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
+            readOnly, cache, _trieNodeLog, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
         CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _baseStateId,

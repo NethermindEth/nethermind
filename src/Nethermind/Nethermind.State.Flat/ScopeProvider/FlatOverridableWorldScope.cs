@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -26,6 +27,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
+    private readonly TrieNodeLog _trieNodeLog;
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
@@ -33,6 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbManager flatDbManager,
         IFlatDbConfig configuration,
         ITrieNodeCache trieNodeCache,
+        TrieNodeLog trieNodeLog,
         IResourcePool resourcePool,
         IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
@@ -42,6 +45,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
+        _trieNodeLog = trieNodeLog;
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
@@ -112,6 +116,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         return new SnapshotBundle(
             readOnlySnapshotBundle,
             _trieNodeCache,
+            _trieNodeLog,
             _resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             snapshots,

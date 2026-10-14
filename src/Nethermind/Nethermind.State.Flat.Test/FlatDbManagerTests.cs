@@ -85,6 +85,7 @@ public class FlatDbManagerTests
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
+        FlatTestHelpers.NewTestLog(),
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

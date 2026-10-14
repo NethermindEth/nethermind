@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -29,6 +30,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
+    // Taken before the block's first trie write and handed to its snapshot at commit, so every node the block writes stays readable.
+    private TrieNodeLogRetain? _logRetain;
 
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
@@ -96,6 +99,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+        if (!_trieless) _logRetain = snapshotBundle.TrieNodeLog!.RetainActive();
 
         if (configuration.ApplyStorageWritesOnIdleThread && !isReadOnly && !_trieless && !configuration.VerifyWithTrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
@@ -136,6 +140,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
+        _logRetain?.Dispose();
         _warmer.OnExitScope();
     }
 
@@ -547,7 +552,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;
-        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, shouldAddSnapshot);
+        (Snapshot? newSnapshot, TransientResource? cachedResource) = _snapshotBundle.CollectAndApplySnapshot(_currentStateId, newStateId, _logRetain, shouldAddSnapshot);
+        _logRetain = _trieless ? null : _snapshotBundle.TrieNodeLog!.RetainActive();
 
         if (shouldAddSnapshot)
         {

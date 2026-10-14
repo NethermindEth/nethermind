@@ -52,7 +52,7 @@ public class SnapshotCompactionBenchmark
     [Params(false, true)]
     public bool SortedInputs;
 
-    private static readonly TrieNode PlaceholderNode = new(NodeType.Leaf, Keccak.EmptyTreeHash);
+    private const ulong PlaceholderNode = 1;
 
     private SnapshotCompactor _compactor = null!;
     private SnapshotPooledList _snapshots = null!;

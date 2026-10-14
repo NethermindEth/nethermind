@@ -12,6 +12,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
 namespace Nethermind.Benchmarks.State;
@@ -30,6 +31,7 @@ public class ReadOnlyScopeLifecycleBenchmark
 
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
+    private TrieNodeLog _trieNodeLog = null!;
     private NoopTrieWarmer _warmer = null!;
     private Address[] _addresses = null!;
 
@@ -44,6 +46,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         _config = new FlatDbConfig();
         _resourcePool = new ResourcePool(_config);
+        _trieNodeLog = new TrieNodeLog(0, TrieNodeLog.DefaultGenerationBytes);
         _warmer = new NoopTrieWarmer();
         _addresses = new Address[16];
         for (int i = 0; i < _addresses.Length; i++) _addresses[i] = DeriveAddress(i + 1);
@@ -55,7 +58,7 @@ public class ReadOnlyScopeLifecycleBenchmark
     {
         ReadOnlySnapshotBundle readOnly = new(
             new SnapshotPooledList(0), new NoopPersistenceReader(), recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
-        SnapshotBundle bundle = new(readOnly, new NullTrieNodeCache(), _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        SnapshotBundle bundle = new(readOnly, new NullTrieNodeCache(), _trieNodeLog, _resourcePool, ResourcePool.Usage.ReadOnlyProcessingEnv);
         using FlatWorldStateScope scope = new(
             new StateId(0, Keccak.EmptyTreeHash),
             bundle,

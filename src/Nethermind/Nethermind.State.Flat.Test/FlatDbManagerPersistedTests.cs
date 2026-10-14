@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -79,10 +80,11 @@ public class FlatDbManagerPersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         TreePath path = new(Keccak.Compute("path"), 4);
-        byte[] nodeRlp = [0xC2, 0x80, 0x80];
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
+        TrieNodeLog log = FlatTestHelpers.NewTestLog();
         SnapshotContent content = new();
-        content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        content.SetStateNodeRlp(log, path, nodeRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = log.RetainActive() };
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;
@@ -99,6 +101,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
+            FlatTestHelpers.NewTestLog(),
             Substitute.For<ISnapshotCompactor>(),
             repo,
             persistenceManager,
@@ -132,6 +135,7 @@ public class FlatDbManagerPersistedTests
             Substitute.For<IResourcePool>(),
             _processExitSource,
             Substitute.For<ITrieNodeCache>(),
+            FlatTestHelpers.NewTestLog(),
             Substitute.For<ISnapshotCompactor>(),
             repo,
             Substitute.For<IPersistenceManager>(),
@@ -175,7 +179,7 @@ public class FlatDbManagerPersistedTests
             return false;
         });
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<ITrieNodeCache>(), FlatTestHelpers.NewTestLog(), compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Task? disposal = null;
@@ -231,7 +235,7 @@ public class FlatDbManagerPersistedTests
         ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
         compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
         FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
-            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<ITrieNodeCache>(), FlatTestHelpers.NewTestLog(), compactor, tier.Repository, persistence,
             Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
 
         Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
@@ -272,6 +276,7 @@ public class FlatDbManagerPersistedTests
             tier.ResourcePool,
             _processExitSource,
             tier.Resolve<ITrieNodeCache>(),
+            tier.Resolve<TrieNodeLog>(),
             tier.Resolve<ISnapshotCompactor>(),
             tier.Repository,
             persistenceManager,

@@ -12,6 +12,7 @@ using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Test;
 using Nethermind.Core.Buffers;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -28,6 +29,7 @@ public class ForwardCommitmentCaptureTests
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
     private ResourcePool _resourcePool = null!;
+    private TrieNodeLog _log = null!;
     private FlatTestContainer _tier = null!;
     private SnapshotRepository _repository = null!;
     private HistoryWriter _writer = null!;
@@ -39,6 +41,7 @@ public class ForwardCommitmentCaptureTests
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
+        _log = FlatTestHelpers.NewTestLog();
         _tier = new FlatTestContainer(new FlatDbConfig { CompactSize = 16 });
         _repository = _tier.Repository;
 
@@ -158,10 +161,10 @@ public class ForwardCommitmentCaptureTests
         (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
         ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
         ForwardCommitmentCapture capture = Track(new ForwardCommitmentCapture(_historyColumns, Policy, _metadata, settings, CreateReclaimer(settings), LimboLogs.Instance, maxBufferedBytes: 100));
-        Snapshot first = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
-        first.Content.StateNodes[PerChangePath] = new TrieNode(NodeType.Leaf, LeafRlp(0));
-        Snapshot again = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
-        again.Content.StateNodes[PerChangePath] = new TrieNode(NodeType.Leaf, LeafRlp(1));
+        Snapshot first = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        first.Content.SetStateNodeRlp(_log, PerChangePath, LeafRlp(0));
+        Snapshot again = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        again.Content.SetStateNodeRlp(_log, PerChangePath, LeafRlp(1));
 
         capture.Capture(0, first);
         capture.Capture(0, again);
@@ -179,9 +182,9 @@ public class ForwardCommitmentCaptureTests
     public void A_capture_round_that_reaches_the_large_trie_depth_writes_exact_rows_at_the_tries_top()
     {
         TreePath deep = TreePath.FromHexString("7abcde");
-        Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
-        genesis.Content.StorageNodes[(StorageAccount.ToCommitment(), TreePath.FromHexString("7"))] = new TrieNode(NodeType.Branch, BranchRlp.Encode(ChildrenAt(0xa, 0xb)));
-        genesis.Content.StorageNodes[(StorageAccount.ToCommitment(), deep)] = new TrieNode(NodeType.Leaf, LeafRlp(3));
+        Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), TreePath.FromHexString("7"), BranchRlp.Encode(ChildrenAt(0xa, 0xb)));
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), deep, LeafRlp(3));
         Add(genesis, 0);
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
@@ -202,8 +205,8 @@ public class ForwardCommitmentCaptureTests
     [Test]
     public void A_storage_node_is_recorded_under_its_accounts_identity()
     {
-        Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv);
-        genesis.Content.StorageNodes[(StorageAccount.ToCommitment(), StoragePath)] = new TrieNode(NodeType.Leaf, LeafRlp(9));
+        Snapshot genesis = _resourcePool.CreateSnapshot(StateId.PreGenesis, StateAt(0), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        genesis.Content.SetStorageNodeRlp(_log, StorageAccount.ToCommitment(), StoragePath, LeafRlp(9));
         Add(genesis, 0);
 
         _writer.CaptureUpTo(StateAt(0), _repository, CancellationToken.None);
@@ -261,8 +264,8 @@ public class ForwardCommitmentCaptureTests
     private void CommitBlock(ulong block, in TreePath path, byte[] rlp)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(
-            block == 0 ? StateId.PreGenesis : StateAt(block - 1), StateAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv);
-        snapshot.Content.StateNodes[path] = new TrieNode(rlp.Length == 0 ? NodeType.Unknown : NodeType.Leaf, rlp);
+            block == 0 ? StateId.PreGenesis : StateAt(block - 1), StateAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv, _log);
+        if (rlp.Length > 0) snapshot.Content.SetStateNodeRlp(_log, path, rlp);
         Add(snapshot, block);
     }
 

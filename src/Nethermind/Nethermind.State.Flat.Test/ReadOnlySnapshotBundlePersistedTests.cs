@@ -13,6 +13,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -22,6 +23,7 @@ namespace Nethermind.State.Flat.Test;
 public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
+    private TrieNodeLog _log = null!;
     private ArenaManager _memArena = null!;
     private string _memArenaDir = null!;
     private BlobArenaManager _blobs = null!;
@@ -31,6 +33,7 @@ public class ReadOnlySnapshotBundlePersistedTests
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
+        _log = FlatTestHelpers.NewTestLog();
         _memArenaDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-arena-{Guid.NewGuid():N}");
         _memArena = TestFixtureHelpers.CreateArenaManager(_memArenaDir);
         _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-blobs-{Guid.NewGuid():N}");
@@ -53,11 +56,11 @@ public class ReadOnlySnapshotBundlePersistedTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         TreePath path = new(Keccak.Compute("path"), 4);
-        byte[] nodeRlp = [0xC2, 0x80, 0x80];
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
 
         SnapshotContent content = new();
-        content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        content.SetStateNodeRlp(_log, path, nodeRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -85,11 +88,11 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         Hash256 address = Keccak.Compute("address");
         TreePath path = new(Keccak.Compute("path"), 6);
-        byte[] nodeRlp = [0xC1, 0x80];
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
         SnapshotContent content = new();
-        content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        content.SetStorageNodeRlp(_log, address, path, nodeRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -117,12 +120,12 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         TreePath storedPath = new(Keccak.Compute("stored"), 4);
         TreePath missingPath = new(Keccak.Compute("missing"), 3);
-        byte[] nodeRlp = [0xC0];
+        byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC0);
         byte[] dbRlp = [0xC1, 0x80, 0x80];
 
         SnapshotContent content = new();
-        content.StateNodes[storedPath] = new TrieNode(NodeType.Leaf, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        content.SetStateNodeRlp(_log, storedPath, nodeRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
         byte[] tableData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
@@ -175,7 +178,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         TreePath persistedPath = new(Keccak.Compute("persisted"), pathLength);
         TreePath missingPath = new(Keccak.Compute("missing"), pathLength);
         byte[] dbRlp = Bytes.FromHexString("c3018080");
-        byte[] persistedRlp = Bytes.FromHexString("c20280");
+        byte[] persistedRlp = Bytes.FromHexString(FlatTestHelpers.LeafRlpB);
 
         using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
         RocksDbPersistence persistence = new(db, LimboLogs.Instance);
@@ -186,9 +189,9 @@ public class ReadOnlySnapshotBundlePersistedTests
         }
 
         SnapshotContent content = new();
-        if (storage) content.StorageNodes[(address, persistedPath)] = new TrieNode(NodeType.Leaf, persistedRlp);
-        else content.StateNodes[persistedPath] = new TrieNode(NodeType.Leaf, persistedRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        if (storage) content.SetStorageNodeRlp(_log, address, persistedPath, persistedRlp);
+        else content.SetStateNodeRlp(_log, persistedPath, persistedRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
         PersistedSnapshotList list = new(1) { CreatePersistedSnapshot(s0, s1, PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs)) };
 
         using ReadOnlySnapshotBundle bundle = new(

@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 
 namespace Nethermind.State.Flat;
 
@@ -174,7 +175,19 @@ public class SnapshotCompactor(
             throw;
         }
 
-        return new Snapshot(from, to, content, _resourcePool, usage);
+        // The oldest retain covers every merged snapshot, whose retains may be released before the compacted snapshot.
+        return new Snapshot(from, to, content, _resourcePool, usage) { LogRetain = OldestLogRetain(snapshots)?.Copy() };
+    }
+
+    private static TrieNodeLogRetain? OldestLogRetain(SnapshotPooledList snapshots)
+    {
+        TrieNodeLogRetain? oldest = null;
+        for (int i = 0; i < snapshots.Count; i++)
+        {
+            if (snapshots[i].LogRetain is { } retain && (oldest is null || retain.Generation < oldest.Generation)) oldest = retain;
+        }
+
+        return oldest;
     }
 
     private static void MergeInto<TKey, TValue, TComparer>(

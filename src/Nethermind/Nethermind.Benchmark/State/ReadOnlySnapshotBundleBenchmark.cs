@@ -17,6 +17,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using FlatSnapshot = Nethermind.State.Flat.Snapshot;
 using static Nethermind.Benchmarks.State.FlatWorldStateBenchmarkHarness;
 
@@ -64,6 +65,7 @@ public class ReadOnlySnapshotBundleBenchmark
     {
         FlatDbConfig config = new() { CompactionOffset = 0 };
         ResourcePool resourcePool = new(config);
+        TrieNodeLog trieNodeLog = new(0, TrieNodeLog.DefaultGenerationBytes);
         // The repository only satisfies the compactor ctor; CompactSnapshotBundle never touches it, and the
         // repository itself does not use the arena managers, so the persisted tier can stay unwired.
         SnapshotCompactor compactor = new(
@@ -100,7 +102,7 @@ public class ReadOnlySnapshotBundleBenchmark
                 PersistedSnapshotStack.Empty());
             NullTrieNodeCache cache = new();
             SnapshotBundle bundle = new(
-                readOnly, cache, resourcePool, ResourcePool.Usage.MainBlockProcessing);
+                readOnly, cache, trieNodeLog, resourcePool, ResourcePool.Usage.MainBlockProcessing);
             CapturingCommitTarget commitTarget = new();
             FlatWorldStateScope scope = new(
                 currentStateId: currentStateId,
@@ -216,7 +218,7 @@ public class ReadOnlySnapshotBundleBenchmark
         {
             if (shortPaths.Count < ArraySize || longPaths.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kv in snapshot.StateNodes)
+                foreach (KeyValuePair<HashedKey<TreePath>, ulong> kv in snapshot.StateNodes)
                 {
                     if (shortPaths.Count < ArraySize && kv.Key.Key.Length <= 15)
                         shortPaths.Add(kv.Key.Key);
@@ -229,7 +231,7 @@ public class ReadOnlySnapshotBundleBenchmark
 
             if (storageNodesList.Count < ArraySize)
             {
-                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
                 {
                     storageNodesList.Add((kv.Key.Key.Item1, kv.Key.Key.Item2));
                     if (storageNodesList.Count >= ArraySize)
@@ -252,7 +254,7 @@ public class ReadOnlySnapshotBundleBenchmark
         List<(Hash256, TreePath)> sameAccountNodesList = new(ArraySize);
         foreach (FlatSnapshot snapshot in allSnapshots)
         {
-            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> kv in snapshot.StorageNodes)
             {
                 if (kv.Key.Key.Item1 == sameAddrHash)
                 {

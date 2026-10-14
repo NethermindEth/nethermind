@@ -9,6 +9,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 
 namespace Nethermind.State.Flat;
 
@@ -31,7 +32,7 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
     private ConcurrentDictionary<HashedKey<Address>, Account?> _readAccounts = null!;
     private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
-    private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
+    private Dictionary<HashedKey<TreePath>, ulong> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
     private ConcurrentDictionary<HashedKey<Address>, byte>? _addressesWithChangedSlots;
@@ -44,6 +45,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly ITrieNodeCache _trieNodeCache;
+    private readonly TrieNodeLog? _trieNodeLog;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -58,6 +60,7 @@ public sealed class SnapshotBundle : IDisposable
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         ITrieNodeCache trieNodeCache,
+        TrieNodeLog? trieNodeLog,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
@@ -66,6 +69,7 @@ public sealed class SnapshotBundle : IDisposable
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
+        _trieNodeLog = trieNodeLog;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -78,6 +82,9 @@ public sealed class SnapshotBundle : IDisposable
 
         Metrics.ActiveSnapshotBundle++;
     }
+
+    /// <summary>The log the trie nodes written through this bundle are recorded in; <c>null</c> for a trie-less bundle.</summary>
+    internal TrieNodeLog? TrieNodeLog => _trieNodeLog;
 
     private void ExpandCurrentPooledContent()
     {
@@ -185,8 +192,10 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<TreePath> key = new(path);
 
-        if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
+        TrieNode? node;
+        if (_trieChanged && _changedStateNodes.TryGetValue(key, out ulong pointer))
         {
+            node = _trieNodeLog!.GetRecord(pointer).ToTrieNode();
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStateNode(path, hash, out node) && node.NodeType != NodeType.Unknown)
@@ -315,8 +324,10 @@ public sealed class SnapshotBundle : IDisposable
 
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
-        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
+        TrieNode? node;
+        if (_trieChanged && _changedStorageNodes.TryGetValue(key, out ulong pointer))
         {
+            node = _trieNodeLog!.GetRecord(pointer).ToTrieNode();
             Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
         }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node)
@@ -446,7 +457,7 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        _changedStateNodes[path] = newNode;
+        _changedStateNodes[path] = _trieNodeLog!.AppendRecordFromRlp(null, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan());
         _transientResource.UpdateStateNode(path, newNode);
     }
 
@@ -481,7 +492,7 @@ public sealed class SnapshotBundle : IDisposable
 
         // Note: Hot path
         _trieChanged = true;
-        nodes.Set(path, newNode);
+        nodes.Set(path, _trieNodeLog!.AppendRecordFromRlp(addr, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan()));
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
@@ -616,7 +627,8 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)
+    /// <param name="logRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, TrieNodeLogRetain? logRetain, bool returnSnapshot = true)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -625,7 +637,10 @@ public sealed class SnapshotBundle : IDisposable
             to: to,
             content: _currentPooledContent,
             resourcePool: _resourcePool,
-            usage: _usage);
+            usage: _usage)
+        {
+            LogRetain = logRetain
+        };
 
         snapshot.AcquireLease(); // For this SnapshotBundle.
         _snapshots.Add(snapshot); // Now later reads are correct

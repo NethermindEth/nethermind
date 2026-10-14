@@ -12,6 +12,7 @@ using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test;
 using Nethermind.Core;
@@ -26,6 +27,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
@@ -161,14 +163,15 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        TrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
+            FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStateNodeRlp(log, path, FlatTestHelpers.LeafRlpA))),
             recordDetailedMetrics: true);
 
         Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
-        Assert.That(found, Is.SameAs(node));
+        Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+        Assert.That(found.Keccak, Is.EqualTo(Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
     }
 
     [Test]
@@ -185,14 +188,14 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x02]);
+        TrieNodeLog log = FlatTestHelpers.NewTestLog();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
+            FlatTestHelpers.MakeSnapshot(_pool, log, c => c.SetStorageNodeRlp(log, address, path, FlatTestHelpers.LeafRlpB))),
             recordDetailedMetrics: true);
 
         Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
-        Assert.That(found, Is.SameAs(node));
+        Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
     }
 
     [Test]
@@ -258,6 +261,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
+    private TrieNodeLog _log = null!;
 
     public enum FilterMode
     {
@@ -279,6 +283,7 @@ public class ReadOnlySnapshotBundleFilterTests
         _pool = _tier.ResourcePool;
         _compactor = _tier.Resolve<ISnapshotCompactor>();
         _blobs = _tier.Blobs;
+        _log = FlatTestHelpers.NewTestLog();
     }
 
     [TearDown]
@@ -289,7 +294,7 @@ public class ReadOnlySnapshotBundleFilterTests
     public void Persisted_snapshot_helper_releases_reservation_and_blob_leases()
     {
         using Snapshot snapshot = MakeSnapshot(0, content =>
-            content.StateNodes[new TreePath(Keccak.Compute("p"), 8)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]));
+            content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 8), FlatTestHelpers.LeafRlpA));
         long blobBytes = Metrics.BlobAllocatedBytes;
         byte[] table = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         long reservations = Metrics.ArenaReservationCount;
@@ -628,7 +633,7 @@ public class ReadOnlySnapshotBundleFilterTests
         Assert.That(readOnly.TryLease(), Is.True);
         try
         {
-            using (SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
+            using (SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), null, _pool,
                        ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: filterInMemorySlotReads))
             {
                 bundle.GetSlot(address, 1, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
@@ -957,7 +962,7 @@ public class ReadOnlySnapshotBundleFilterTests
                 }
 
                 readOnly.TryLease();
-                bundles[b] = new SnapshotBundle(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
+                bundles[b] = new SnapshotBundle(readOnly, Substitute.For<ITrieNodeCache>(), null, _pool,
                     ResourcePool.Usage.ReadOnlyProcessingEnv, ownList, filterInMemorySlotReads: b == 1);
                 foreach ((Address address, UInt256 index, UInt256 value, bool clear) in ops)
                 {
@@ -1076,9 +1081,10 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private Snapshot MakeSnapshot(ulong block, Action<SnapshotContent>? populate = null)
     {
+        TrieNodeLogRetain retain = _log.RetainActive();
         SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
         populate?.Invoke(content);
-        return new Snapshot(CreateStateId(block), CreateStateId(block + 1), content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        return new Snapshot(CreateStateId(block), CreateStateId(block + 1), content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
     }
 
     private Snapshot MakeSnapshot(int block, Action<SnapshotContent>? populate = null) => MakeSnapshot((ulong)block, populate);

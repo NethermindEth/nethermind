@@ -58,7 +58,7 @@ public class ResourcePoolTests
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
         content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
-        content1.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
+        content1.StorageNodes[(TestItem.KeccakA, TreePath.Empty)] = 1;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(content1.Accounts, Is.Not.Empty);

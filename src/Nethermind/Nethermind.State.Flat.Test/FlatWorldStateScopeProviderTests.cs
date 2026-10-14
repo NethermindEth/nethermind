@@ -29,6 +29,7 @@ using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeLog;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,7 +53,7 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>()).Returns(_ =>
         {
             if (!stateAvailable) throw CreateStateUnavailableException();
-            return CreateSnapshotBundle(context.ResourcePool);
+            return CreateSnapshotBundle(context.ResourcePool, context.TrieNodeLog);
         });
 
         IWorldStateScopeProvider provider = manager.GlobalWorldState;
@@ -140,7 +141,7 @@ public class FlatWorldStateScopeProviderTests
 
         using TestContext context = new(blockTree);
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
-            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
+            .Returns(_ => CreateSnapshotBundle(context.ResourcePool, context.TrieNodeLog, persistenceReader));
 
         Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
         Assert.That(readerDisposed, Is.False);
@@ -171,12 +172,13 @@ public class FlatWorldStateScopeProviderTests
 
     private static Exception CreateStateUnavailableException() => new StateUnavailableException("state removed during acquisition");
 
-    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, IPersistence.IPersistenceReader? persistenceReader = null)
+    private static SnapshotBundle CreateSnapshotBundle(ResourcePool resourcePool, TrieNodeLog trieNodeLog, IPersistence.IPersistenceReader? persistenceReader = null)
     {
         persistenceReader ??= Substitute.For<IPersistence.IPersistenceReader>();
         return new SnapshotBundle(
             new ReadOnlySnapshotBundle(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty()),
             Substitute.For<ITrieNodeCache>(),
+            trieNodeLog,
             resourcePool,
             ResourcePool.Usage.ReadOnlyProcessingEnv);
     }
@@ -190,6 +192,7 @@ public class FlatWorldStateScopeProviderTests
         private IContainer Container => _container ??= _containerBuilder.Build();
 
         public ResourcePool ResourcePool => field ??= Container.Resolve<ResourcePool>();
+        public TrieNodeLog TrieNodeLog => field ??= Container.Resolve<TrieNodeLog>();
         public IFlatDbManager FlatDbManager => field ??= Container.Resolve<IFlatDbManager>();
         public IWorldStateManager WorldStateManager => field ??= Container.Resolve<IWorldStateManager>();
         public SnapshotBundle SnapshotBundle => Container.Resolve<SnapshotBundle>();
@@ -237,7 +240,7 @@ public class FlatWorldStateScopeProviderTests
                             });
 
                         flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
-                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>()));
+                            .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>(), Container.Resolve<TrieNodeLog>()));
                         flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
                             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
                         flatDiff.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
@@ -304,18 +307,8 @@ public class FlatWorldStateScopeProviderTests
             public void Exit(int exitCode) => throw new NotImplementedException();
         }
 
-        public void AddSnapshot(Action<SnapshotContent> populator)
-        {
-            SnapshotContent snapshotContent = ResourcePool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-            populator(snapshotContent);
-
-            ReadOnlySnapshots.Add(new Snapshot(
-                StateId.PreGenesis,
-                StateId.PreGenesis,
-                snapshotContent,
-                ResourcePool,
-                ResourcePool.Usage.MainBlockProcessing));
-        }
+        public void AddSnapshot(Action<SnapshotContent> populator) =>
+            ReadOnlySnapshots.Add(FlatTestHelpers.MakeSnapshot(ResourcePool, TrieNodeLog, populator));
     }
 
 
@@ -1198,9 +1191,9 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         HashSet<string> nodes = [];
-        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in ctx.LastCommittedSnapshot!.StorageNodes)
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, ulong> node in ctx.LastCommittedSnapshot!.StorageNodes)
         {
-            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{node.Value.Keccak}");
+            nodes.Add($"{node.Key.Key.Item1}/{node.Key.Key.Item2}/{new Hash256(ctx.LastCommittedSnapshot.GetNodeRecord(node.Value).Hash)}");
         }
 
         Hash256[] roots = new Hash256[addresses.Length];
@@ -1458,8 +1451,7 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = BaseFlatPersistence.DecodeSlotValue(value1);
 
             // Also add a storage trie node for addr1 at root path
-            TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
-            content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
+            content.SetStorageNodeRlp(ctx.TrieNodeLog, addr1Hash, TreePath.Empty, FlatTestHelpers.LeafRlpA);
         });
 
         // Create local commits for addr2 (NOT addr1) - this creates local _snapshots
@@ -1796,7 +1788,7 @@ public class FlatWorldStateScopeProviderTests
         ReadOnlySnapshotBundle readOnlyBundle = new(new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty());
         FlatDbConfig config = new();
         ResourcePool resourcePool = new(config);
-        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
+        SnapshotBundle bundle = new(readOnlyBundle, Substitute.For<ITrieNodeCache>(), FlatTestHelpers.NewTestLog(), resourcePool, ResourcePool.Usage.MainBlockProcessing);
         await using TrieWarmer warmer = new(LimboLogs.Instance, config);
 
         FlatWorldStateScope scope = new(
