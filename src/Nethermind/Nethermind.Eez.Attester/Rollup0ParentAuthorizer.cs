@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,8 +21,7 @@ internal sealed class Rollup0ParentAuthorizer
     private readonly SettlementRpcReader _l1;
     private readonly SettlementRpcReader _l2;
     private readonly ulong _l1ChainId;
-    private readonly Address _registry;
-    private readonly Address _manager;
+    private readonly SettlementDeployment _deployment;
     internal EezSettlementContext Context { get; }
     internal Address Signer { get; }
 
@@ -36,8 +34,7 @@ internal sealed class Rollup0ParentAuthorizer
         _l1 = l1;
         _l2 = l2;
         _l1ChainId = l1ChainId;
-        _registry = registry;
-        _manager = manager;
+        _deployment = new SettlementDeployment(l1, registry, manager, context, signer);
         Context = context;
         Signer = signer;
     }
@@ -64,15 +61,9 @@ internal sealed class Rollup0ParentAuthorizer
             throw Rejected();
 
         L1AuthorizationSnapshot snapshot = await ReadSnapshot("latest", cancellation).ConfigureAwait(false);
-        byte[] rollup = await Call(_registry, Calldata("rollups(uint64)", RollupWord(Context.RollupId)), snapshot, cancellation).ConfigureAwait(false);
-        if (rollup.Length != 96 || !IsAddress(rollup.AsSpan(0, 32), _manager) ||
-            !rollup.AsSpan(32, 32).SequenceEqual(predecessor.AnchorHash.Span)) throw Rejected();
-        byte[] vkey = await Call(_manager, Calldata("verificationKey(address)", AddressWord(Context.ProofSystem)), snapshot, cancellation).ConfigureAwait(false);
-        if (!vkey.AsSpan().SequenceEqual(Context.VerificationKey.Bytes)) throw Rejected();
-        byte[] signer = await Call(Context.ProofSystem, Calldata("signer()", []), snapshot, cancellation).ConfigureAwait(false);
-        if (signer.Length != 32 || !IsAddress(signer, Signer)) throw Rejected();
-        byte[] threshold = await Call(_manager, Calldata("threshold()", []), snapshot, cancellation).ConfigureAwait(false);
-        if (threshold.Length != 32 || threshold.AsSpan(0, 31).ContainsAnyExcept((byte)0) || threshold[31] > 1) throw Rejected();
+        Hash256 root = await _deployment.ReadRoot(snapshot, cancellation).ConfigureAwait(false);
+        if (!root.Bytes.SequenceEqual(predecessor.AnchorHash.Span)) throw Rejected();
+        await _deployment.ValidateVerifier(snapshot, cancellation).ConfigureAwait(false);
         await Recheck(snapshot, cancellation).ConfigureAwait(false);
         return snapshot;
     }
@@ -91,35 +82,6 @@ internal sealed class Rollup0ParentAuthorizer
         byte[] bytes = SettlementRpcReader.Bytes(hash);
         if (bytes.Length != 32 || !bytes.AsSpan().ContainsAnyExcept((byte)0)) throw SettlementRpcReader.Unavailable();
         return new L1AuthorizationSnapshot(SettlementRpcReader.Quantity(height), new Hash256(bytes));
-    }
-
-    private async Task<byte[]> Call(Address target, byte[] data, L1AuthorizationSnapshot snapshot, CancellationToken cancellation) =>
-        SettlementRpcReader.Bytes(await _l1.Read("eth_call",
-            [new { to = target.ToString(), data = data.ToHexString(true) }, new { blockHash = snapshot.Hash.ToString(), requireCanonical = true }], cancellation).ConfigureAwait(false));
-
-    private static bool IsAddress(ReadOnlySpan<byte> word, Address address) =>
-        word.Length == 32 && !word[..12].ContainsAnyExcept((byte)0) && word[12..].SequenceEqual(address.Bytes);
-
-    private static byte[] AddressWord(Address address)
-    {
-        byte[] word = new byte[32];
-        address.Bytes.CopyTo(word.AsSpan(12));
-        return word;
-    }
-
-    private static byte[] RollupWord(ulong rollupId)
-    {
-        byte[] word = new byte[32];
-        BinaryPrimitives.WriteUInt64BigEndian(word.AsSpan(24), rollupId);
-        return word;
-    }
-
-    private static byte[] Calldata(string signature, byte[] arguments)
-    {
-        byte[] data = new byte[4 + arguments.Length];
-        Keccak.Compute(signature).Bytes[..4].CopyTo(data);
-        arguments.CopyTo(data.AsSpan(4));
-        return data;
     }
 
     private static RpcException Rejected() => new(new Status(StatusCode.FailedPrecondition, "settlement authorization rejected"));

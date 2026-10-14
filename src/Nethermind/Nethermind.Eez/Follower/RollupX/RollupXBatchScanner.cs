@@ -40,13 +40,14 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
             batches.Add(batch.Batch);
         }
 
-        L1Settlement[] settlements = new L1Settlement[posted.Count];
-        for (int i = 0; i < posted.Count; i++)
+        ClaimedChain[] claims = new ClaimedChain[posted.Count];
+        for (int i = 0; i < posted.Count; i++) claims[i] = posted[i].Claim;
+        (L1Settlement[] settlements, int[] superseded) = RollupXSettlementAttribution.Attribute(batches, claims, block.Roots);
+        if (_logger.IsInfo)
         {
-            settlements[i] = CarrierAttribution.Attribute(posted[i].Claim, Observed(batches, posted[i].Batch, block));
+            foreach (int index in superseded)
+                _logger.Info($"Batch {posted[index].Batch.TransactionHash} in L1 block {block.Number} only re-anchors {claims[index].CurrentRoot}, which another batch settles.");
         }
-
-        SupersedeNoOps(posted, settlements, block);
         ScannedBatch[] result = new ScannedBatch[posted.Count];
         for (int i = 0; i < result.Length; i++)
         {
@@ -129,57 +130,6 @@ public sealed class RollupXBatchScanner(IEezL1Api l1, IL1BlobSource blobs, Addre
         {
             if (_logger.IsDebug) _logger.Debug($"Skipping batch {log.TransactionHash} in L1 block {log.BlockNumber}, which is not a postAndVerifyBatch call: {e.Message}");
             return null;
-        }
-    }
-
-    /// <summary>The roots our rollup settled from the batch's transaction up to the next batch that lists us.</summary>
-    private static List<ValueHash256> Observed(List<L1Batch> batches, L1Batch batch, L1SettlingBlock block)
-    {
-        ulong windowEnd = SettlementAttribution.WindowEnd(batches, batch);
-        List<ValueHash256> observed = [];
-        foreach (SettledRoot root in block.Roots)
-        {
-            if (root.TransactionIndex >= batch.TransactionIndex && root.TransactionIndex < windowEnd && root.BlockHash == batch.BlockHash)
-            {
-                observed.Add(root.Root);
-            }
-        }
-
-        return observed;
-    }
-
-    /// <summary>
-    /// Leaves one batch per root to name the L2 range after it: a settled richer batch over any anchor-only no-op, else
-    /// the earliest no-op.
-    /// </summary>
-    private void SupersedeNoOps(List<Posted> posted, L1Settlement[] settlements, L1SettlingBlock block)
-    {
-        HashSet<ValueHash256> richer = [];
-        Dictionary<ValueHash256, int> firstNoOp = [];
-        for (int i = 0; i < posted.Count; i++)
-        {
-            if (settlements[i].IsEmpty || posted[i].Claim.CurrentRoot is not { } root)
-            {
-                continue;
-            }
-
-            if (!posted[i].Claim.IsAnchorOnlyNoOp)
-            {
-                richer.Add(root);
-            }
-            else
-            {
-                firstNoOp.TryAdd(root, i);
-            }
-        }
-
-        for (int i = 0; i < posted.Count; i++)
-        {
-            if (!settlements[i].IsEmpty && posted[i].Claim is { IsAnchorOnlyNoOp: true, CurrentRoot: { } root } && (richer.Contains(root) || firstNoOp[root] != i))
-            {
-                if (_logger.IsInfo) _logger.Info($"Batch {posted[i].Batch.TransactionHash} in L1 block {block.Number} only re-anchors {root}, which another batch settles.");
-                settlements[i] = L1Settlement.None;
-            }
         }
     }
 
