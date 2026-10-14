@@ -70,6 +70,9 @@ public class Block
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
 
+    /// <summary>The recursive proof carried in the EIP-8288 block body.</summary>
+    public byte[]? StarkProof { get => Body.StarkProof; set => Body.StarkProof = value; }
+
     public Hash256? Hash => Header.Hash; // do not add setter here
 
     public Hash256? ParentHash => Header.ParentHash; // do not add setter here

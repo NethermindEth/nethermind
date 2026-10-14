@@ -50,9 +50,10 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
         IChainHeadSpecProvider specProvider,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy) =>
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, leanTransactions) =>
         _balRequests = new MessageDictionary<GetBlockAccessListsMessage, BlockAccessListsMessage>(this);
 
     public override string Name => "eth71";

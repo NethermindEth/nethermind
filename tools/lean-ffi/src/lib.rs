@@ -951,6 +951,10 @@ mod tests {
             );
             let (proof, key) = prove_stark(&source, &input).unwrap();
             assert!(verify_stark(&input, &key, &proof));
+            let mut encoded = Reader { bytes: &proof };
+            let code = encoded.blob().unwrap();
+            let former_key = keccak(&[b"eip8288/leanstark-vk/leanvm-cpu\0".as_slice(), code].concat());
+            assert!(!verify_stark(&input, &former_key, &proof));
             for index in [7, 15, 23, 31] {
                 let mut wrong = input;
                 wrong[index] ^= 1;
@@ -1183,7 +1187,7 @@ mod tests {
             key.iter()
                 .map(|byte| format!("{byte:02x}"))
                 .collect::<String>(),
-            "c77fc9fe635aa8ba3c34028af0134e155391f8f76ad76f2e598b6823e0e7f7d1"
+            "00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e"
         );
         let mut limits = [0u32; 9];
         assert_eq!(unsafe { nlean_limits(limits.as_mut_ptr(), 9) }, 1);

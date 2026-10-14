@@ -204,7 +204,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Proof_bearing_headers_preserve_requested_batch_size_for_bounded_server([Values] bool proofAtHead)
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            header.RecursiveStark = new RecursiveStark([1], TestItem.KeccakB);
+            header.RecursiveStark = new RecursiveStarkCommitment(TestItem.KeccakA, TestItem.KeccakB);
             if (proofAtHead) _syncManager.Head.Returns(header);
             else _syncManager.FindHeader(TestItem.KeccakA).Returns(header);
             using GetBlockHeadersMessage message = new()

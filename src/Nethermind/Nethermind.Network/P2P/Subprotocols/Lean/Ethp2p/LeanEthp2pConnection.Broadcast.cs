@@ -13,6 +13,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 
 internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
 {
+    LeanPeer? ILeanBroadcastPeer.RetrievalPeer => Volatile.Read(ref _peer);
+
     private static readonly TimeSpan UnknownShardDeferral = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan DeferralPoll = TimeSpan.FromMilliseconds(50);
 
@@ -49,7 +51,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
     /// <summary>Routes a stream whose selector is not retrieval: BCAST, SESS or CHUNK.</summary>
     private async Task ReadFrameworkStreamAsync(QuicStream stream, byte selector, byte[] leftover, long accepted)
     {
-        StreamInput input = new(stream, selector, leftover);
+        using StreamInput input = new(stream, selector, leftover, ReserveFrame);
         // The first framework envelope expires within MAX_REQUEST_IDLE_SECONDS of stream acceptance.
         TimeSpan firstEnvelope = LeanProtocol.MaxRequestIdle - _clock.GetElapsedTime(accepted);
         try
@@ -73,6 +75,11 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
                     Violation($"unknown stream type {selector}");
                     break;
             }
+        }
+        catch (LeanEthp2pRefusedException)
+        {
+            if (selector == LeanEthp2pProtocol.BcastStream) Close(LeanEthp2pProtocol.NoError, "shared receive budget");
+            else Refuse(stream);
         }
         catch (LeanBroadcastFormatException exception)
         {
@@ -375,22 +382,24 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
     }
 
     /// <summary>Buffered reads of a framework stream: length-prefixed envelopes, exact shard bodies and FIN.</summary>
-    private sealed class StreamInput(QuicStream stream, byte selector, byte[] leftover)
+    private sealed class StreamInput(QuicStream stream, byte selector, byte[] leftover, Func<int, IDisposable?> reserve) : IDisposable
     {
         private byte[] _buffer = leftover;
         private int _offset;
+        private int _length = leftover.Length;
+        private readonly List<IDisposable> _leases = [];
 
         public QuicStream Stream { get; } = stream;
 
-        private int Buffered => _buffer.Length - _offset;
+        private int Buffered => _length - _offset;
 
         private async ValueTask<bool> FillAsync(CancellationToken token)
         {
             if (Buffered > 0) return true;
-            byte[] buffer = new byte[16 * 1024];
-            int read = await Stream.ReadAsync(buffer, token).ConfigureAwait(false);
+            if (_buffer.Length < ReadBufferBytes) _buffer = new byte[ReadBufferBytes];
+            int read = await Stream.ReadAsync(_buffer, token).ConfigureAwait(false);
             LeanMetrics.Ethp2pBytes(outbound: false, selector, read);
-            _buffer = buffer[..read];
+            _length = read;
             _offset = 0;
             return read > 0;
         }
@@ -400,18 +409,21 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
         /// must follow within MAX_REQUEST_IDLE_SECONDS, and trickled bytes do not extend that.</remarks>
         public async Task<byte[]?> ReadEnvelopeAsync(int maxLength, TimeSpan? firstByte, CancellationToken closing)
         {
+            ReleaseFrames();
             using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(closing);
             if (firstByte is { } first) deadline.CancelAfter(first > TimeSpan.Zero ? first : TimeSpan.Zero);
             if (!await FillAsync(deadline.Token).ConfigureAwait(false)) return null;
             deadline.CancelAfter(LeanProtocol.MaxRequestIdle);
             byte[] prefix = await ReadExactAsync(LeanBroadcastWire.EnvelopeLengthBytes, deadline.Token).ConfigureAwait(false);
             uint length = BinaryPrimitives.ReadUInt32BigEndian(prefix);
-            if (length > maxLength) throw new LeanBroadcastFormatException($"envelope of {length} bytes exceeds MAX_MESSAGE_BYTES");
+            if (length == 0 || length > maxLength) throw new LeanBroadcastFormatException($"envelope of {length} bytes exceeds MAX_MESSAGE_BYTES");
             return await ReadExactAsync((int)length, deadline.Token).ConfigureAwait(false);
         }
 
         public async Task<byte[]> ReadExactAsync(int length, CancellationToken token)
         {
+            IDisposable lease = reserve(3 * length) ?? throw new LeanEthp2pRefusedException();
+            _leases.Add(lease);
             byte[] result = new byte[length];
             int filled = 0;
             while (filled < length)
@@ -426,5 +438,13 @@ internal sealed partial class LeanEthp2pConnection : ILeanBroadcastPeer
         }
 
         public async Task<bool> AtEndAsync(CancellationToken token) => !await FillAsync(token).ConfigureAwait(false);
+
+        private void ReleaseFrames()
+        {
+            foreach (IDisposable lease in _leases) lease.Dispose();
+            _leases.Clear();
+        }
+
+        public void Dispose() => ReleaseFrames();
     }
 }

@@ -9,14 +9,22 @@ namespace Nethermind.Core.Test.Threading;
 
 public sealed class ManualTimeProvider : TimeProvider
 {
+    /// <summary>Fires only through <see cref="AdvanceAndFireTimer"/>; records the due time it was last changed to.</summary>
     private sealed class NoopTimer : ITimer
     {
-        public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+        public TimeSpan? DueTime { get; private set; }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            DueTime = dueTime;
+            return true;
+        }
+
         public void Dispose() { }
         public ValueTask DisposeAsync() => default;
     }
 
-    private static readonly NoopTimer SharedTimer = new();
+    private readonly NoopTimer _timer = new();
     private readonly TaskCompletionSource _timerCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TimerCallback? _timerCallback;
     private object? _timerState;
@@ -24,6 +32,9 @@ public sealed class ManualTimeProvider : TimeProvider
     private long _utcTicks;
 
     public Task TimerCreated => _timerCreated.Task;
+
+    /// <summary>The due time the timer was last changed to, if it was changed after creation.</summary>
+    public TimeSpan? TimerDueTime => _timer.DueTime;
 
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
@@ -36,7 +47,7 @@ public sealed class ManualTimeProvider : TimeProvider
         _timerCallback = callback;
         _timerState = state;
         _timerCreated.TrySetResult();
-        return SharedTimer;
+        return _timer;
     }
 
     public void Advance(TimeSpan elapsed)

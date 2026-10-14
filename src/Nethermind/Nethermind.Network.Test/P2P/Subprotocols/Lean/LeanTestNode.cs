@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
@@ -28,12 +29,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 internal sealed class LeanTestVerifier : ILeanProofVerifier
 {
     public bool Valid { get; set; } = true;
+    public TimeSpan Delay { get; set; }
     public ManualResetEventSlim? Gate { get; set; }
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    /// <summary>Simulated recursive STARK verification time, for benchmarks.</summary>
-    public TimeSpan Delay { get; set; }
-
     public void EnsureAvailable() { }
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => Valid;
@@ -57,9 +55,28 @@ internal sealed class FakeLink(string name = "peer") : ILeanLink
     private readonly List<string> _penalties = [];
 
     public Func<ChunkMessage, CancellationToken, ValueTask<bool>>? OnChunk { get; set; }
-    public string Description => name;
 
-    public void Send(LeanMessage message) { lock (_sent) _sent.Add(message); }
+    /// <summary>Runs before a control message is recorded, on the sending thread.</summary>
+    public Action<LeanMessage>? OnSend { get; set; }
+    public string Description => name;
+    public PublicKey NodeKey { get; } = new PrivateKey(Nethermind.Core.Crypto.ValueKeccak.Compute(name).ToByteArray()).PublicKey;
+    public bool HasTransactionRecovery { get; set; } = true;
+    public Func<ValueHash256[], Transaction[]>? OnRecover { get; set; }
+    public int RecoveryCalls { get; private set; }
+    public Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        RecoveryCalls++;
+        Transaction[] transactions = OnRecover?.Invoke(hashes) ?? [];
+        int bytes = transactions.Sum(transaction => LeanTestObjects.Envelope(transaction).Length);
+        return Task.FromResult(reserve(bytes) ? transactions : []);
+    }
+
+    public void Send(LeanMessage message)
+    {
+        OnSend?.Invoke(message);
+        lock (_sent) _sent.Add(message);
+    }
 
     public async ValueTask<bool> SendChunkAsync(ChunkMessage message, CancellationToken cancellationToken)
     {
@@ -104,7 +121,7 @@ internal sealed class LeanTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, Specs, Tree, ProofStore, Verifier);
-        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, logManager ?? LimboLogs.Instance, null, Time);
+        Transport = new LeanObjectTransport(Tree, Specs, Pool, Wrappers, logManager ?? LimboLogs.Instance, Verifier, EthTransactions, Time);
     }
 
     public ManualTimeProvider? Time { get; }
@@ -114,6 +131,7 @@ internal sealed class LeanTestNode : IDisposable
     public LeanTestVerifier Verifier { get; } = new();
     public List<Transaction> Pending { get; } = [];
     public LeanProofStore ProofStore { get; } = new();
+    public LeanEthTransactions EthTransactions { get; } = new();
     public bool Reject { get; set; }
     public ProofWrapperService Wrappers { get; }
     public LeanObjectTransport Transport { get; }
@@ -168,16 +186,6 @@ internal static class LeanTestObjects
         }).Bytes;
     }
 
-    public static byte[] InclusionList(int proofBytes, params Transaction[] transactions)
-    {
-        List<FrameDependency> deps = Eip8288Dependencies.Canonicalize(transactions.SelectMany(Eip8288Dependencies.ForTransaction));
-        return InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
-        {
-            Transactions = transactions,
-            RecursiveStark = new RecursiveStark(Proof(proofBytes), new Hash256(Eip8288Dependencies.ComputeDepsHash(deps)))
-        }).Bytes;
-    }
-
     public static byte[] Proof(int bytes)
     {
         byte[] proof = new byte[bytes];
@@ -185,20 +193,18 @@ internal static class LeanTestObjects
         return proof;
     }
 
-    /// <summary>A canonical kind-1 body of roughly <paramref name="size"/> bytes that is not a valid wrapper.</summary>
     public static byte[] OpaqueWrapperBody(int size, int seed = 0)
     {
-        byte[] envelope = new byte[size];
-        new Random(seed).NextBytes(envelope);
-        return LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeList(LeanRlp.EncodeUInt(0), LeanRlp.EncodeBytes(envelope))),
-            LeanRlp.EncodeUInt(1), LeanRlp.EncodeList(LeanRlp.EncodeList(), LeanRlp.EncodeBytes([])));
+        byte[] body = new byte[size];
+        new Random(seed).NextBytes(body);
+        return body;
     }
 
-    public static LeanDescriptor Describe(byte[] body, out LeanChunkTree tree) =>
-        LeanDescriptor.Create(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, LeanDescriptor.WrapperContext(), body, out tree);
+    public static LeanDescriptor Describe(byte[] body) =>
+        LeanDescriptor.Create(LeanProtocol.KindWrapper, LeanObjectTransport.LocalProfile, LeanDescriptor.WrapperContext(), body);
 
-    public static ChunkMessage Chunk(ulong requestId, LeanDescriptor descriptor, byte[] body, LeanChunkTree tree, int index) =>
-        new(requestId, descriptor.ObjectId, index, body.AsMemory(index * LeanProtocol.ChunkBytes, descriptor.ChunkLength(index)), tree.GetBranch(index));
+    public static ChunkMessage Chunk(ulong requestId, LeanDescriptor descriptor, byte[] body, int index) =>
+        new(requestId, descriptor.ObjectId, index, body.AsMemory(index * LeanProtocol.ChunkBytes, descriptor.ChunkLength(index)));
 
     public static byte[] Wire(ChunkMessage chunk) => new ChunkMessageSerializer().Encode(chunk);
 }

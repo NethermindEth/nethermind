@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
@@ -17,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>The EIP-8437 <c>lean/1</c> connection: Status negotiation and strict decoding for the shared object transport.</summary>
 public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer,
-    IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager, LeanObjectTransport transport)
+    IBackgroundTaskScheduler backgroundTaskScheduler, ILogManager logManager, LeanObjectTransport transport, LeanEthTransactions transactions)
     : ZeroProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IStaticProtocolInfo, ILeanLink
 {
     private static readonly LeanStatusMessageSerializer StatusSerializer = new();
@@ -27,8 +29,6 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
     private static readonly GetChunksMessageSerializer GetChunksSerializer = new();
     private static readonly CompleteMessageSerializer CompleteSerializer = new();
     private static readonly CancelMessageSerializer CancelSerializer = new();
-    private static readonly GetTransactionsMessageSerializer GetTransactionsSerializer = new();
-    private static readonly TransactionsMessageSerializer TransactionsSerializer = new();
 
     private readonly LeanObjectTransport _transport = transport;
     private LeanPeer? _peer;
@@ -42,6 +42,11 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
     public override byte ProtocolVersion => Version;
     public override int MessageIdSpaceSize => LeanProtocol.MessageCount;
     protected override TimeSpan InitTimeout => TimeSpan.FromSeconds(10);
+
+    PublicKey ILeanLink.NodeKey => Session.RemoteNodeId;
+    bool ILeanLink.HasTransactionRecovery => transactions.HasPeer(Session.RemoteNodeId);
+    Task<Transaction[]> ILeanLink.RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken token)
+        => transactions.RecoverAsync(Session.RemoteNodeId, hashes, reserve, token);
 
     string ILeanLink.Description => Session.ToString() ?? "lean peer";
 
@@ -100,11 +105,7 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
                 case LeanMessageCode.Chunk: _transport.OnChunk(peer, LeanChunkView.Parse(data)); break;
                 case LeanMessageCode.Complete: _transport.OnComplete(peer, CompleteSerializer.Decode(data)); break;
                 case LeanMessageCode.Cancel: _transport.OnCancel(peer, CancelSerializer.Decode(data)); break;
-                case LeanMessageCode.GetTransactions: _transport.OnGetTransactions(peer, GetTransactionsSerializer.Decode(data)); break;
-                case LeanMessageCode.Transactions:
-                    if (data.Length > LeanProtocol.MaxTxResponseBytes) throw new RlpException("Transactions exceeds MAX_TX_RESPONSE_BYTES");
-                    _transport.OnTransactions(peer, TransactionsSerializer.Decode(data));
-                    break;
+
             }
         }
         catch (RlpException exception)
@@ -123,7 +124,27 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
         }
         _statusReceived = true;
         ReceivedProtocolInitMsg(status);
-        LeanPeer? peer = _transport.Accept(this, status, Session.Node?.Id);
+        if (!transactions.HasPeer(Session.RemoteNodeId))
+        {
+            _ = WaitForEthAsync(status);
+            return;
+        }
+        AcceptStatus(status);
+    }
+
+    private async Task WaitForEthAsync(LeanStatusMessage status)
+    {
+        for (int attempt = 0; attempt < 100 && Volatile.Read(ref _disposed) == 0; attempt++)
+        {
+            if (transactions.HasPeer(Session.RemoteNodeId)) { AcceptStatus(status); return; }
+            await Task.Delay(50).ConfigureAwait(false);
+        }
+        Dispose();
+    }
+
+    private void AcceptStatus(LeanStatusMessage status)
+    {
+        LeanPeer? peer = _transport.Accept(this, status);
         if (peer is null)
         {
             // A well-formed incompatible Status disables only this capability; other protocols keep the connection.
@@ -158,8 +179,6 @@ public sealed class Lean1ProtocolHandler(ISession session, INodeStatsManager nod
             case GetChunksMessage getChunks: Send(getChunks); break;
             case CompleteMessage complete: Send(complete); break;
             case CancelMessage cancel: Send(cancel); break;
-            case GetTransactionsMessage getTransactions: Send(getTransactions); break;
-            case TransactionsMessage transactions: Send(transactions); break;
             default: throw new ArgumentException($"{message.GetType().Name} is not sent as a control message", nameof(message));
         }
     }

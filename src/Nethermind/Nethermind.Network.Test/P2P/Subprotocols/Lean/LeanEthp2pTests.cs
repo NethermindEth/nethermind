@@ -100,13 +100,22 @@ public class LeanEthp2pTests
     }
 
     [Test]
-    public void Receive_windows_hold_a_maximal_frame_and_reserve_capacity_for_every_stream()
+    public void Receive_windows_hold_a_full_response_and_reserve_capacity_for_the_control_streams()
     {
+        int frame = LeanEthp2pProtocol.FrameHeaderBytes + LeanProtocol.MaxMessageBytes;
+        // A GetChunks response: every requested chunk with a maximal branch, each in its own frame, then Complete.
+        ChunkMessage chunk = new(ulong.MaxValue, default, LeanProtocol.MaxChunkCount - 1, new byte[LeanProtocol.ChunkBytes],
+            new ValueHash256[LeanCommitment.Depth(LeanProtocol.MaxChunkCount)]);
+        int response = LeanEthp2pProtocol.ResponsePrefixBytes + LeanProtocol.MaxChunksPerRequest
+            * (LeanEthp2pProtocol.FrameHeaderBytes + new ChunkMessageSerializer().Encode(chunk).Length) + frame;
+        // Full windows of both control streams and every live response stream, and a maximal frame on every broadcast stream.
+        int reserved = (2 + LeanProtocol.MaxRequestsPerPeer) * LeanEthp2pProtocol.StreamReceiveWindow + LeanEthp2pProtocol.MaxBroadcastStreams * frame;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LeanEthp2pProtocol.StreamReceiveWindow, Is.GreaterThanOrEqualTo(LeanEthp2pProtocol.FrameHeaderBytes + LeanProtocol.MaxMessageBytes));
-            Assert.That(LeanEthp2pProtocol.ConnectionReceiveWindow,
-                Is.GreaterThanOrEqualTo(LeanEthp2pProtocol.MaxInboundStreams * LeanEthp2pProtocol.StreamReceiveWindow));
+            Assert.That(response, Is.LessThanOrEqualTo(LeanEthp2pProtocol.StreamReceiveWindow));
+            Assert.That(reserved, Is.LessThanOrEqualTo(LeanEthp2pProtocol.ConnectionReceiveWindow));
+            Assert.That(LeanEthp2pProtocol.StreamReceiveWindow >= 4 * 1024 * 1024, Is.True, "EIP-8437 recommends at least 4 MiB per stream");
+            Assert.That(LeanEthp2pProtocol.ConnectionReceiveWindow >= 32 * 1024 * 1024, Is.True, "EIP-8437 recommends at least 32 MiB per connection");
             Assert.That(int.IsPow2(LeanEthp2pProtocol.StreamReceiveWindow) && int.IsPow2(LeanEthp2pProtocol.ConnectionReceiveWindow), Is.True);
         }
     }

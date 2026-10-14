@@ -9,6 +9,8 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 
 /// <summary>Invalid stream data under the ethp2p binding: the binding is terminated.</summary>
+internal sealed class LeanEthp2pRefusedException() : Exception("shared receive budget");
+
 internal sealed class LeanEthp2pViolationException(string message) : Exception(message);
 
 /// <summary>The stream is not a retrieval stream; the shared dispatcher routes it.</summary>
@@ -48,7 +50,7 @@ internal enum LeanEthp2pStreamEnd
 /// A terminal response is held until FIN, so extra bytes after it are rejected before the request retires.
 /// Not thread-safe: one reader per stream.
 /// </remarks>
-internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
+internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler, Func<int, IDisposable?>? reserve = null)
 {
     private enum Stage { Type, RequestId, Header, Payload, Discard }
 
@@ -59,14 +61,14 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
     private static readonly GetChunksMessageSerializer GetChunksSerializer = new();
     private static readonly CompleteMessageSerializer CompleteSerializer = new();
     private static readonly CancelMessageSerializer CancelSerializer = new();
-    private static readonly GetTransactionsMessageSerializer GetTransactionsSerializer = new();
-    private static readonly TransactionsMessageSerializer TransactionsSerializer = new();
 
     private readonly byte[] _small = new byte[LeanEthp2pProtocol.ResponsePrefixBytes];
     private Stage _stage = Stage.Type;
     private int _want = 1;
     private int _have;
     private byte[]? _payload;
+    private IDisposable? _payloadLease;
+    private IDisposable? _terminalLease;
     private int _messageId;
     private bool _statusSeen;
     private LeanResponseTarget _target;
@@ -121,7 +123,12 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
     }
 
     /// <summary>Releases a payload buffer of an unfinished frame.</summary>
-    public void Abandon() => ReturnPayload();
+    public void Abandon()
+    {
+        ReturnPayload();
+        _terminalLease?.Dispose();
+        _terminalLease = null;
+    }
 
     private void Consume()
     {
@@ -164,6 +171,7 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
         uint length = BinaryPrimitives.ReadUInt32BigEndian(_small.AsSpan(1));
         if (length == 0 || length > LeanEthp2pProtocol.MaxPayload(_messageId))
             throw new LeanEthp2pViolationException($"message {_messageId} payload length {length}");
+        if (reserve is not null && (_payloadLease = reserve(3 * (int)length)) is null) throw new LeanEthp2pRefusedException();
         _payload = ArrayPool<byte>.Shared.Rent((int)length);
         Next(Stage.Payload, (int)length);
     }
@@ -171,13 +179,13 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
     private bool Allowed(int messageId) => Type == LeanEthp2pProtocol.ControlStream
         ? _statusSeen
             ? messageId is LeanMessageCode.AnnounceObjects or LeanMessageCode.GetObjects or LeanMessageCode.GetChunks
-                or LeanMessageCode.Cancel or LeanMessageCode.GetTransactions
+                or LeanMessageCode.Cancel
             : messageId == LeanMessageCode.Status
         : _target switch
         {
             LeanResponseTarget.GetObjects => messageId == LeanMessageCode.Objects,
             LeanResponseTarget.GetChunks => messageId is LeanMessageCode.Chunk or LeanMessageCode.Complete,
-            _ => messageId == LeanMessageCode.Transactions
+            _ => false
         };
 
     private void ConsumePayload()
@@ -198,10 +206,12 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
                 {
                     LeanMessageCode.Objects => ObjectsSerializer.Decode(payload),
                     LeanMessageCode.Complete => CompleteSerializer.Decode(payload),
-                    _ => TransactionsSerializer.Decode(payload)
+                    _ => throw new LeanEthp2pViolationException("invalid terminal response")
                 };
                 CheckResponseId(LeanEthp2pProtocol.RequestIdOf(terminal));
                 Terminal = terminal;
+                _terminalLease = _payloadLease;
+                _payloadLease = null;
             }
         }
         catch (RlpException exception)
@@ -229,7 +239,7 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
             LeanMessageCode.GetObjects => GetObjectsSerializer.Decode(payload),
             LeanMessageCode.GetChunks => GetChunksSerializer.Decode(payload),
             LeanMessageCode.Cancel => CancelSerializer.Decode(payload),
-            _ => GetTransactionsSerializer.Decode(payload)
+            _ => throw new LeanEthp2pViolationException("invalid control message")
         };
     }
 
@@ -246,8 +256,9 @@ internal sealed class LeanEthp2pStreamReader(ILeanEthp2pStreamHandler handler)
 
     private void ReturnPayload()
     {
-        if (_payload is null) return;
-        ArrayPool<byte>.Shared.Return(_payload);
+        if (_payload is not null) ArrayPool<byte>.Shared.Return(_payload);
         _payload = null;
+        _payloadLease?.Dispose();
+        _payloadLease = null;
     }
 }

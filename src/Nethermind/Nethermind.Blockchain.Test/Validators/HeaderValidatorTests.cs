@@ -65,21 +65,20 @@ public class HeaderValidatorTests
     [TestCase(false, "absent", true, null)]
     [TestCase(false, "valid", false, BlockErrorMessages.RecursiveStarkNotEnabled)]
     [TestCase(true, "absent", false, BlockErrorMessages.MissingRecursiveStark)]
-    [TestCase(true, "empty", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "missing-proof-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "empty-deps", true, null)]
     [TestCase(true, "empty-deps-with-proof", false, BlockErrorMessages.InvalidRecursiveStark)]
-    [TestCase(true, "oversized", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
     [TestCase(true, "valid", true, null)]
     public void Header_validation_gates_recursive_proof_shape(bool enabled, string shape, bool valid, string? expectedError)
     {
         OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = enabled, IsEip8288Enabled = enabled };
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
-        _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStark(shape switch
+        _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStarkCommitment(shape switch
         {
-            "empty" or "empty-deps" => [],
-            "oversized" => new byte[Eip8288Constants.MaxAggregateProofBytes + 1],
-            _ => [1]
+            "missing-proof-hash" => null!,
+            "empty-deps" => Keccak.OfAnEmptyString,
+            _ => Keccak.Compute(new byte[] { 1 })
         }, shape switch
         {
             "missing-hash" => null!,

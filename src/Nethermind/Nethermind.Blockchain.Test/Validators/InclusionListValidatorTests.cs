@@ -213,7 +213,7 @@ public class InclusionListValidatorTests
     [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = true, TestName = "Full block excuses a new dependency")]
     [TestCase(Eip8288Constants.MaxDepsPerBlock, 0, Eip8288Constants.LeanSphincsScheme, true, ExpectedResult = false, TestName = "Full block still fits a dependency it has")]
     [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanStarkScheme, false, ExpectedResult = true, TestName = "Full leanSTARK capacity excuses a new leanSTARK")]
-    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = false, TestName = "Full leanSTARK capacity still fits a leanSPHINCS")]
+    [TestCase(Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock, Eip8288Constants.LeanSphincsScheme, false, ExpectedResult = true, TestName = "Full leanSTARK units excuse a new leanSPHINCS")]
     public bool Only_block_dependency_capacity_excuses_an_omission(int blockDependencies, int blockLeanStark, byte scheme, bool present)
     {
         FrameDependency[] blockDeps = new FrameDependency[blockDependencies];

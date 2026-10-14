@@ -120,7 +120,8 @@ public class BlockStoreTests
         using TestMemDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        block.Header.RecursiveStark = new(new byte[128 * 1024], TestItem.KeccakA);
+        block.StarkProof = new byte[128 * 1024];
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
         store.Insert(block);
         Assert.That(store.Get(block.Number, block.Hash!, shouldCache: true), Is.Not.Null);
 
@@ -154,7 +155,8 @@ public class BlockStoreTests
             Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
             byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
             proofs[i] = new(proof);
-            block.Header.RecursiveStark = new(proof, TestItem.KeccakA);
+            block.StarkProof = proof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
             store.Cache(block);
         }
         return proofs;

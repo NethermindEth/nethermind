@@ -1,6 +1,6 @@
 # EIP-8288 native Lean integration
 
-This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/e2500781943f061da7b4f36e2af8a548b3526451),
+This adapter uses a temporary [leanVM mixed-recursion fork](https://github.com/Marchhill/leanVM/tree/cf1e92f87a7aec052b680f73e56145e866218583),
 based on the Daisugi-compatible `f33f31bf7c1191667e29a68a3acae63b9164c1c6` revision.
 The fork adds one recursive guest for Keccak SPHINCS claims and generic leanVM programs;
 `Cargo.lock` pins the exact dependency revision. Upstream replacement belongs behind the
@@ -60,25 +60,21 @@ standalone generic witnesses may be up to 8 MiB and are verified before recursiv
 can replace them. These are prototype consensus limits, not proven maxima of upstream
 proof sizes or process memory guarantees. Larger proofs fail closed.
 
-The [EIP](https://eips.ethereum.org/EIPS/eip-8288#recursive-stark-header-entry) requires the proof in the block header, so the header database and caches retain it.
-The recursive guest compresses both proof schemes into one blob; the protocol still permits headers up to the 8 MiB proof bound. On proof-bearing chains,
-header serving loads full headers incrementally and stops at a 9 MiB response budget
-before loading the next header. Headers with proofs above 64 KiB use a separate
-32 MiB / 128-header LRU with owned proof snapshots; repeated reads avoid DB decoding
-without multiplying the ordinary cache's capacity by large proof size. Large proofs reduce batch size. This trades header-sync throughput and storage for the prototype's
-current header format; a finalized sidecar format would require a protocol change.
-ETH header responses retain their standard whole-message encoding, so a large
-proof-bearing header can still delay other traffic on that connection.
-The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain
-large proof-bearing records in a separate eight-entry / 64 MiB tier, counting header
-proofs and inclusion-list proof/dependency buffers and returning owned copies.
+The current EIP-8288 companion places `stark_proof` in the block body and commits to
+`[keccak256(stark_proof), block_deps_hash]` in the header. Header synchronization therefore
+uses compact commitments. Block decoding and validation enforce the 8 MiB proof ceiling,
+the proof hash, and the exact dependency union. Engine payloads and payload-body responses
+carry `recursiveStarkProof`; an empty dependency union requires an empty proof.
+The decoded block cache skips proofs above 64 KiB. Invalid-block diagnostics retain large
+proof-bearing records in a separate eight-entry / 64 MiB tier, counting body proofs and
+inclusion-list proof/dependency buffers and returning owned copies.
 
 * **SPHINCS witness:** public key (32 bytes), signature (6176 bytes). As in EIP-8288, the
   dependency key is the public key itself, root then public parameter. Both the key and the
   signature over `data_hash` are checked.
 * **leanSTARK witness:** bytecode blob length, canonical bytecode, then fixed-integer bincode
   serialization of the upstream CPU proof (no trailing bytes). The dependency key is
-  Keccak-256 of that canonical bytecode. `data_hash` is the VM's 32-byte public commitment,
+  Keccak-256 of the EIP-8288 domain tag followed by that canonical verification-key encoding. `data_hash` is the VM's 32-byte public commitment,
   packed into two 128-bit field cells; the guest must constrain the relation it represents.
   At most 2048 instructions and operand offsets through 65535 are accepted; the offset
   limit bounds upstream assembly's g-power table. Each instruction is a 45-byte record: opcode
@@ -107,14 +103,16 @@ executing another recursive proving step.
 scheme is another dependency. The guest's `enabled_schemes` are leanSPHINCS (`0x10`) and
 leanSTARK (`0x11`), matching `Eip8288Constants.LeanStarkSchemeEnabled`; it checks every entry
 of the selected list and of each child list, discarded entries included. Its leanSTARK profile
-is a generic leanVM CPU proof whose `verification_key_hash` is Keccak-256 of the 32-byte tag
-`eip8288/leanstark-vk/leanvm-cpu` and the canonical program encoding.
+is a generic leanVM CPU proof whose `verification_key_hash` is Keccak-256 of the ASCII tag
+`ethereum/8288/leanSTARK/vk/v1`, one terminal zero byte (30 bytes total), and the canonical program encoding.
 
 This profile is incompatible with the earlier ABI 5 `NLR3` profile, its Keccak commitment and
 guest key, with older `NLR2` captures, and with the 64-byte-entry ABI 6 guest, whose key differs.
 Startup checks ABI 6, the new key and all nine bounds
 together; lean status checks the pinned key before proof transfer. New devnets require fresh
 chain and database namespaces.
+
+The latest companion specification uses a 4,096-dependency block ceiling and a shared 4,096-unit budget (leanSPHINCS weight 1, leanSTARK weight 16). These are distinct from this prototype guest's 256-dependency and 16-generic-claim limits. This key cannot prove every set allowed by the draft's public capacity; this prototype is not full-capacity conformance. Local inability to prove or retain a set is not an inclusion-list omission excuse. Full activation requires a profile supporting every valid public set. A trivial-program timing sample cannot justify weight 16 for every permitted generic program; worst-case profile geometry, recursive merges and discards still require measurement.
 
 ## Proving resources
 
@@ -221,72 +219,48 @@ proof gossip use the same verification, pool insertion and witness-retention rul
 
 ## Negotiated proof gossip
 
-When the prototype fork is active at the node's head, it advertises only `lean/1`
-alongside normal Ethereum capabilities. This unpublished prototype uses application chunks
-as its current wire format; no whole-object fallback is registered. Earlier unpublished
-whole-wrapper `lean/1` nodes are incompatible and devnets must upgrade together. The same
-capability version is retained deliberately; mixed revisions must not exchange this transport.
-The existing protocol registry
-shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
-admission service and background scheduler.
+When the EIP-8288 fork is active, the node advertises `lean/1` alongside ETH. The
+[EIP-8437 draft](https://github.com/ethereum/EIPs/pull/12423) defines eight RLP messages:
+Status, AnnounceObjects, GetObjects, Objects, GetChunks, Chunk, Complete and Cancel.
+Status negotiates chain ID, genesis, profiles, supported kinds and maximum object size.
+The profile is `keccak256("lean/1/profile\0" || AGGREGATED_VK)`.
 
-Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes) and the
-EIP-8437 profile ID `keccak("lean/1/profile\0" || AGGREGATED_VK)` of the pinned recursive guest key. All three must match before message 1 is accepted;
-a mismatch disables only lean, preserving the session's other protocols.
-The RLP mempool wrapper is the EIP-8437 kind-1 body `[transactions, mode, [deps, proof_content]]`:
-tagged `[0, transaction]` or `[1, hash]` entries in strictly ascending hash order, a list of
-96-byte triples, and per-dependency proofs (mode 0) or the bare `stark_proof` (mode 1). It is
-bounded by 10 MiB and 4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
-transactions.
+Kind 1 carries the canonical EIP-8288 wrapper
+`[transaction_hashes, mode, [dependencies, proof_content]]`. Hashes are sorted and unique;
+transaction envelopes are recovered over the same authenticated peer's ETH protocol,
+including envelopes retained with validated wrappers after pool eviction. The descriptor
+is `[kind, profile_id, context, byte_length, content_hash]`; its object ID is
+`keccak256("lean/1/object\0" || rlp(descriptor))`.
 
-`lean/1` streams independent chunks: a 48-byte header holds the whole-wrapper
-Keccak commitment and big-endian total length, index, count and chunk size, followed
-by chunk bytes. The default chunk is 64 KiB, with 16/32/64/128 KiB supported and
-128 KiB as the maximum. Geometry is checked before allocation. The peer supplies an
-unauthenticated commitment: matching it checks received bytes, not proof validity. The complete wrapper's proof and transactions
-still pass shared admission before gaining proof-backed pool coverage. This is an
-[EIP-8411](https://eips.ethereum.org/EIPS/eip-8411)-inspired bounded transfer, without
-signed bids or Merkle authentication of individual chunks.
+Kind 2 is optional block-proof retrieval: context is `[block_hash]`, and the body is
+`[stark_proof]`. The ordinary header must already be known. The received proof must match
+its hash commitment and verify against its dependency commitment before use. Ordinary
+block bodies already carry the proof. There is no inclusion-list object kind.
 
-A shared 64 MiB / 1024-object budget covers received fragment memory, assembly metadata,
-completion copies and completed wrappers queued or undergoing verification. Incomplete
-fragment memory is capped at 48 MiB, preserving completion headroom within the total budget;
-single-chunk complete objects can use that headroom without an incomplete reservation. Advertised
-length never reserves or allocates a full wrapper: a 16 KiB start retains that fragment
-and bounded metadata. The final contiguous buffer is reserved before allocation; fragment
-memory is released after copying. Each peer retains at most two objects and approximately
-20 MiB persistently; one temporary completion copy can raise its charge to approximately
-30 MiB under the global cap, so two maximum wrappers can finish while admission is pending. Local quota or rate pressure drops incomplete
-streams without penalizing the peer. TCP streams must start at index zero and advance in
-order; unknown continuation chunks are ignored, and gaps within an accepted stream are
-malformed. This prevents dropped starts from creating assemblies that can never complete.
-Incomplete objects expire after 30 seconds without progress or five minutes absolutely.
-Duplicates do not extend their lifetime, timer expiry needs no inbound traffic, and repeated
-abandonment within 30 minutes disconnects the peer, including streams abandoned more than five
-minutes apart. Isolated failures beyond that window do not accumulate forever. Shutdown and cancelled admission release leases; a completed
-commitment is suppressed only while its admission buffer remains retained, so cancellation
-can retry. Per-peer wire bytes and message counts are bounded before copying, allowing two
-maximum wrappers per second including every chunk header. Each verification returns pending
-work to the shared scheduler. Invalid proofs or encodings disconnect the peer; ordinary pool
-rejection does not.
-Busy verification retains the charged wrapper for cancellable retries, up to five seconds;
-RPC native validation runs asynchronously under the same bounded admission gate.
+Objects are bounded to 9 MiB, chunks to 64 KiB and messages to 128 KiB. A request may
+ask for at most 32 chunks (2 MiB), with four outstanding requests per peer in each
+direction. Request IDs are positive and strictly increasing across both request types;
+gaps are permitted. Cancelled requests retain their slots until termination or expiry.
 
-The EIP-8288 one-second tick refreshes completed pending selections independently of one tracked
-aggregation worker. Ticks coalesce while proving; they do not queue new jobs or imply a one-second
-native proving time. Bounded selection rotates across disjoint groups; overlapping changes reuse the
-previous authenticated aggregate and discard removed dependencies. Completed selections are checked
-against current pool membership before publication. Each peer keeps one active transfer and the
-latest pending selection; a cadence never cancels an active object. Chunk sends await actual channel
-writes and yield between chunks so control and ETH traffic can interleave. A whole transfer is
-memoized only after every write succeeds. Unchanged wrappers refresh every 30–35 seconds with per-
-peer jitter, recovering dropped queued work without admission acknowledgements. Mixed wrappers carry
-one recursive guest proof, with no raw generic witnesses in recursive mode. Each peer remembers at
-most 64 recent delivered hashes. Only admitted transactions retain witness coverage.
-`eth_getProofWrapper` returns a copy of the background-produced wrapper without invoking the prover.
-Managed aggregation folds at most four direct witnesses or two children per call and checks
-cancellation before and after each call. An individual native call remains uninterruptible; shutdown
-cancels peer work and joins the worker.
+One source supplies an assembly at a time. Changing sources discards its bytes, and at
+most three source attempts are allowed within the original five-minute deadline.
+Requests expire after 30 seconds without progress or two minutes absolutely; assemblies
+expire after 30 seconds without progress or five minutes absolutely. Deferred work is
+bounded and scheduled fairly. Quota pressure defers work without penalizing the peer.
+
+The shared receive budget is 18 MiB per source and 72 MiB globally. It includes assembly
+storage, recovered envelopes, completion/verification ownership and transport reservations.
+The contiguous object allocation is reserved on its first accepted chunk and remains
+charged through validation. A separate 128 MiB / 256-object store retains validated
+objects and their envelopes. Objects are served or announced only after validation.
+
+The EIP-8288 one-second tick refreshes pending selections independently of one tracked
+aggregation worker. Ticks coalesce while proving; they do not imply one-second proving.
+Selections rotate across disjoint groups, reuse authenticated child proofs and discard
+removed dependencies. Completed selections are checked against current pool membership
+before publication. `eth_getProofWrapper` returns a copy without invoking the prover.
+Managed aggregation folds at most four direct witnesses or two children per call.
+Cancellation is checked between calls; an individual native call remains uninterruptible.
 
 The node-wide prover decorator shares up to 64 verified aggregation steps within 32 MiB, keyed by
 immutable complete inputs, verification key and expected statement. Identical concurrent requests
@@ -315,8 +289,7 @@ fragments of one RLPx object.
 With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
 execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}` and
 the optional `inclusionListProvenDependencies`, a hex string concatenating sorted,
-deduplicated 96-byte triples (at most 256 / 24 KiB). As in EIP-8288 and the EIP-8437 kind-3
-body, `deps_hash` must equal the commitment to `dependencies(transactions)`, the union over
+deduplicated 96-byte triples (subject to the native profile limit). As in EIP-8288, `deps_hash` must equal the commitment to `dependencies(transactions)`, the union over
 every entry, and the proof must pass the STARK check against it: an empty dependency list
 carries an empty proof. The optional metadata must equal that list. Proof-bearing FOCIL RLP
 is `[transactions, [stark_proof, deps_hash]]`.

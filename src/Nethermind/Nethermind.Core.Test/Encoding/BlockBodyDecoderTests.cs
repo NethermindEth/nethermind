@@ -11,6 +11,25 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class BlockBodyDecoderTests
 {
+    [Test]
+    public void Proof_body_roundtrip_obeys_size_limit(
+        [Values(0, 65536, Eip8288Constants.MaxAggregateProofBytes, Eip8288Constants.MaxAggregateProofBytes + 1)] int size,
+        [Values] bool withdrawals)
+    {
+        BlockBody body = new([], [], withdrawals ? [] : null, new byte[size]);
+        byte[] encoded = BlockBodyDecoder.Instance.Encode(body).Bytes;
+        if (size > Eip8288Constants.MaxAggregateProofBytes)
+        {
+            Assert.Throws<RlpLimitException>(() => DecodeMalformed(encoded));
+            return;
+        }
+        RlpReader reader = new(encoded);
+        BlockBody decoded = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader);
+        Assert.That(decoded.StarkProof, Is.EqualTo(body.StarkProof));
+        Assert.That(decoded.Withdrawals, Is.EqualTo(body.Withdrawals));
+        Assert.That(reader.Position, Is.EqualTo(encoded.Length));
+    }
+
     [Test, NonParallelizable]
     public void Transaction_pool_use_matches_decoder_ownership(
         [Values("body", "unwrapped-body", "block")] string format,
@@ -51,8 +70,8 @@ public class BlockBodyDecoderTests
             "transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), new Rlp([0xc1, 0x80])]), Rlp.OfEmptyList).Bytes,
             "null-transaction" => Rlp.Encode(Rlp.Encode(sequence: [Rlp.Encode(Build.A.Transaction.Signed().TestObject), Rlp.OfEmptyList]), Rlp.OfEmptyList).Bytes,
             "uncles" => Rlp.Encode(transactions, Rlp.OfEmptyByteArray).Bytes,
-            "withdrawals" => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes,
-            _ => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyList, Rlp.OfEmptyByteArray).Bytes
+            "withdrawals" => Rlp.Encode(transactions, Rlp.OfEmptyList, new Rlp([0xc1, 0x80])).Bytes,
+            _ => Rlp.Encode(transactions, Rlp.OfEmptyList, Rlp.OfEmptyList, Rlp.OfEmptyByteArray, Rlp.OfEmptyByteArray).Bytes
         };
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 

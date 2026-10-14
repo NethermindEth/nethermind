@@ -10,6 +10,7 @@ using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -20,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 /// <para>
 /// One dispatcher routes the stream selectors <c>0x01</c> BCAST, <c>0x02</c> SESS and <c>0x03</c> CHUNK of the broadcast
 /// framework and <c>0x10</c>, <c>0x11</c> of retrieval. Each endpoint opens one retrieval control stream (<c>0x10</c>, Status
-/// first) for AnnounceObjects, GetObjects, GetChunks, Cancel and GetTransactions, so requests keep their consecutive IDs and
+/// first) for AnnounceObjects, GetObjects, GetChunks and Cancel, so requests keep their increasing IDs and
 /// order. Every response travels on its own stream (<c>0x11 || U64(request_id)</c>) finished by FIN after its terminal
 /// message, so response streams advance independently. The shared <see cref="LeanObjectTransport"/> keeps object commitments,
 /// validation, credit and deadlines; this class only maps its messages onto streams.
@@ -47,6 +48,8 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
 
     private readonly QuicConnection _quic;
     private readonly LeanObjectTransport _transport;
+    private readonly LeanEthTransactions _transactions;
+    private IDisposable? _receiveCredit;
     private readonly TimeProvider _clock;
     private readonly ILogger _logger;
     private readonly Lock _lock = new();
@@ -64,7 +67,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
     private int _closeStarted;
     private int _activeStreams;
 
-    public LeanEthp2pConnection(QuicConnection quic, PublicKey remoteKey, bool outbound, LeanObjectTransport transport, LeanBroadcastEngine? engine,
+    public LeanEthp2pConnection(QuicConnection quic, PublicKey remoteKey, bool outbound, LeanObjectTransport transport, LeanBroadcastEngine? engine, LeanEthTransactions transactions,
         ILogManager logManager, TimeProvider? timeProvider = null)
     {
         _quic = quic;
@@ -72,6 +75,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         RemoteKey = remoteKey;
         Outbound = outbound;
         _transport = transport;
+        _transactions = transactions;
         _clock = timeProvider ?? TimeProvider.System;
         _logger = logManager.GetClassLogger<LeanEthp2pConnection>();
         _established = _clock.GetTimestamp();
@@ -86,6 +90,16 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
     public IPEndPoint RemoteEndPoint => _quic.RemoteEndPoint;
 
     public string Description { get; }
+    public PublicKey NodeKey => RemoteKey;
+    public bool HasTransactionRecovery => _transactions.HasPeer(RemoteKey);
+    public Task<Transaction[]> RecoverTransactionsAsync(ValueHash256[] hashes, Func<int, bool> reserve, CancellationToken cancellationToken) =>
+        _transactions.RecoverAsync(RemoteKey, hashes, reserve, cancellationToken);
+
+    internal bool TryReserveReceiveCredit() =>
+        _transport.TryReserveNodeBytes(RemoteKey, LeanEthp2pProtocol.ConnectionReceiveWindow, out _receiveCredit);
+
+    private IDisposable? ReserveFrame(int bytes) =>
+        _transport.TryReserveNodeBytes(RemoteKey, bytes, out IDisposable? lease) ? lease : null;
 
     /// <summary>Whether the peer's compatible Status was accepted.</summary>
     public bool IsEstablished => Volatile.Read(ref _peer) is not null;
@@ -156,10 +170,10 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         if (_closing.IsCancellationRequested) return;
         switch (message)
         {
-            case ObjectsMessage or CompleteMessage or TransactionsMessage:
+            case ObjectsMessage or CompleteMessage:
                 _ = SendTerminalAsync(LeanEthp2pProtocol.RequestIdOf(message), message);
                 break;
-            case AnnounceObjectsMessage or GetObjectsMessage or GetChunksMessage or CancelMessage or GetTransactionsMessage:
+            case AnnounceObjectsMessage or GetObjectsMessage or GetChunksMessage or CancelMessage:
                 EnqueueControl(message);
                 break;
             default:
@@ -215,7 +229,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
                     Violation("bidirectional stream");
                     return;
                 }
-                IncomingStream incoming = new(stream, new LeanEthp2pStreamReader(this), _clock.GetTimestamp());
+                IncomingStream incoming = new(stream, new LeanEthp2pStreamReader(this, ReserveFrame), _clock.GetTimestamp());
                 lock (_lock) _incoming.Add(incoming);
                 _ = ReadStreamAsync(incoming);
             }
@@ -228,6 +242,14 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
 
     private async Task ReadStreamAsync(IncomingStream incoming)
     {
+        using IDisposable? readLease = ReserveFrame(3 * ReadBufferBytes);
+        if (readLease is null)
+        {
+            Refuse(incoming.Stream);
+            lock (_lock) _incoming.Remove(incoming);
+            await DisposeQuietly(incoming.Stream).ConfigureAwait(false);
+            return;
+        }
         Interlocked.Increment(ref _activeStreams);
         LeanEthp2pStreamReader reader = incoming.Reader;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ReadBufferBytes);
@@ -263,6 +285,11 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
                     break;
                 }
             }
+        }
+        catch (LeanEthp2pRefusedException)
+        {
+            if (reader.Type == LeanEthp2pProtocol.ControlStream) Close(LeanEthp2pProtocol.NoError, "shared receive budget");
+            else Refuse(incoming.Stream);
         }
         catch (LeanEthp2pViolationException exception)
         {
@@ -327,7 +354,6 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
                 {
                     case ObjectsMessage objects: _transport.OnObjects(peer, objects); break;
                     case CompleteMessage complete: _transport.OnComplete(peer, complete); break;
-                    case TransactionsMessage transactions: _transport.OnTransactions(peer, transactions); break;
                 }
                 break;
             case LeanEthp2pStreamEnd.Incomplete:
@@ -365,7 +391,6 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
             case GetObjectsMessage getObjects: _transport.OnGetObjects(peer, getObjects); break;
             case GetChunksMessage getChunks: _transport.OnGetChunks(peer, getChunks); break;
             case CancelMessage cancel: _transport.OnCancel(peer, cancel); break;
-            case GetTransactionsMessage getTransactions: _transport.OnGetTransactions(peer, getTransactions); break;
         }
     }
 
@@ -381,7 +406,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
             if (_statusReceived) throw new LeanEthp2pViolationException("second Status");
             _statusReceived = true;
         }
-        LeanPeer? peer = _transport.Accept(this, status, RemoteKey);
+        LeanPeer? peer = _transport.Accept(this, status);
         if (peer is null)
         {
             // Incompatibility is not misbehaviour: RLPx remains available.
@@ -586,6 +611,7 @@ internal sealed partial class LeanEthp2pConnection : ILeanLink, ILeanEthp2pStrea
         await _closed.Task.ConfigureAwait(false);
         // Disposing the connection aborts its streams, so their readers unwind before the shared token goes away.
         await _quic.DisposeAsync().ConfigureAwait(false);
+        Interlocked.Exchange(ref _receiveCredit, null)?.Dispose();
         using CancellationTokenSource drain = new(TimeSpan.FromSeconds(5));
         while (Volatile.Read(ref _activeStreams) > 0 && !drain.IsCancellationRequested) await Task.Delay(10, CancellationToken.None).ConfigureAwait(false);
         if (Volatile.Read(ref _activeStreams) == 0) _closing.Dispose();

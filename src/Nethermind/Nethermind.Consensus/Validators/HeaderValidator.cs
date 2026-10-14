@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Validators
 
         private static bool ValidateRecursiveStarkFields(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            RecursiveStark? proof = header.RecursiveStark;
+            RecursiveStarkCommitment? proof = header.RecursiveStark;
             if (!spec.IsEip8288Enabled)
             {
                 if (proof is null) return true;

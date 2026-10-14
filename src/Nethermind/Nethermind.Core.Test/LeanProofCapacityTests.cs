@@ -65,15 +65,14 @@ public class LeanProofCapacityTests
     }
 
     [Test]
-    public void Block_capacity_matches_the_consensus_limits()
+    public void Block_capacity_is_distinct_from_wrapper_and_local_proof_limits()
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LeanProofCapacity.Block, Is.EqualTo(new LeanProofCapacity.Limits(4096, 16)));
+            Assert.That(LeanProofCapacity.Block, Is.EqualTo(new LeanProofCapacity.Limits(4096, int.MaxValue, 4096)));
             Assert.That(LeanProofCapacity.Block.Dependencies, Is.GreaterThanOrEqualTo(LeanProofCapacity.Proof.Dependencies));
-            // Distinct mempool and consensus constants: one mode-1 aggregate fits an otherwise empty block.
-            Assert.That(new LeanProofCapacity.Limits(Eip8288Constants.MaxDepsPerAggregate, Eip8288Constants.MaxLeanStarkDepsPerAggregate),
-                Is.EqualTo(LeanProofCapacity.Block));
+            Assert.That(LeanProofCapacity.FitsBlock(Distinct(Eip8288Constants.MaxDepsPerAggregate,
+                Eip8288Constants.MaxLeanStarkDepsPerAggregate)), Is.False);
         }
     }
 
@@ -86,27 +85,42 @@ public class LeanProofCapacityTests
             Is.EqualTo("Unknown dependency proof scheme"));
     }
 
-    // EIP-8288 test case 11: 4,096 distinct dependencies with 16 leanSTARK fit; a 4,097th or a 17th leanSTARK does not,
-    // while dependencies already in the block still fit.
-    [Test]
-    public void Block_capacity_counts_the_distinct_union([Values] bool leanStark)
+    [TestCase(4096, 0, true)]
+    [TestCase(256, 256, true)]
+    [TestCase(2176, 128, true)]
+    [TestCase(2177, 128, false)]
+    [TestCase(4081, 1, true)]
+    [TestCase(4082, 1, false)]
+    [TestCase(4097, 0, false)]
+    public void Block_capacity_matches_the_weighted_dependency_union(int count, int leanStark, bool fits)
     {
-        HashSet<FrameDependency> block = Distinct(Eip8288Constants.MaxDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock);
+        HashSet<FrameDependency> block = Distinct(count, leanStark);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(LeanProofCapacity.FitsBlock(block), Is.EqualTo(fits));
+            Assert.That(LeanProofCapacity.CreateAppendBudget(block, LeanProofCapacity.Block).CapacityError([]) is null,
+                Is.EqualTo(fits));
+        }
+    }
+
+    [Test]
+    public void Full_block_units_count_only_new_dependencies([Values] bool leanStark)
+    {
+        HashSet<FrameDependency> block = Distinct(2176, 128);
         FrameDependency present = Generic(0);
         FrameDependency added = leanStark ? Generic(-1) : Sphincs(-1);
         LeanProofCapacity.AppendBudget budget = LeanProofCapacity.CreateAppendBudget(block, LeanProofCapacity.Block);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(LeanProofCapacity.FitsBlock(block), Is.True);
-            Assert.That(budget.CapacityError([present, present, Sphincs(Eip8288Constants.MaxDepsPerBlock - 1)]), Is.Null);
-            Assert.That(budget.CapacityError([added]), Is.Not.Null);
+            Assert.That(budget.CapacityError([present, present, Sphincs(2175)]), Is.Null);
+            Assert.That(budget.CapacityError([added, added]), Is.EqualTo("Dependency proof unit limit exceeded"));
             Assert.That(LeanProofCapacity.FitsBlock([.. block, added]), Is.False);
         }
-
-        HashSet<FrameDependency> belowTotal = Distinct(Eip8288Constants.MaxDepsPerBlock - 1, Eip8288Constants.MaxLeanStarkDepsPerBlock);
-        Assert.That(LeanProofCapacity.CreateAppendBudget(belowTotal, LeanProofCapacity.Block).CapacityError([added]),
-            leanStark ? Is.EqualTo("Generic STARK proof count limit exceeded") : Is.Null);
     }
+
+    [Test]
+    public void Invalid_schemes_are_not_filtered_from_block_capacity()
+        => Assert.That(LeanProofCapacity.FitsBlock([new(0xff, default, default)]), Is.False);
 
     [Test]
     public void Proof_envelope_does_not_bound_block_capacity()

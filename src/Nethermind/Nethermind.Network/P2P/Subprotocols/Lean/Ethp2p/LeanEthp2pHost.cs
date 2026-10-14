@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 [SupportedOSPlatform("macos")]
 [SupportedOSPlatform("windows")]
 public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig config,
-    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey, ILogManager logManager, ILeanBroadcastProfile? broadcastProfile = null)
+    [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey, ILogManager logManager, LeanEthTransactions transactions, ILeanBroadcastProfile? broadcastProfile = null)
     : IAsyncDisposable
 {
     private static readonly TimeSpan DialInterval = TimeSpan.FromSeconds(10);
@@ -49,6 +49,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
     internal const int MaxInboundPerSubnet = 4;
 
     private readonly LeanObjectTransport _transport = transport;
+    private readonly LeanEthTransactions _transactions = transactions;
     private readonly INetworkConfig _config = config;
     private readonly IProtectedPrivateKey _nodeKey = nodeKey;
     private readonly ILogManager _logManager = logManager;
@@ -179,7 +180,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
                 await quic.DisposeAsync().ConfigureAwait(false);
                 continue;
             }
-            await Register(new LeanEthp2pConnection(quic, key, outbound: false, _transport, _engine, _logManager)).ConfigureAwait(false);
+            await Register(new LeanEthp2pConnection(quic, key, outbound: false, _transport, _engine, _transactions, _logManager)).ConfigureAwait(false);
         }
     }
 
@@ -212,7 +213,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
             if (_logger.IsDebug) _logger.Debug($"lean/1 ethp2p dial to {record.EndPoint} failed: {exception.Message}");
             return null;
         }
-        LeanEthp2pConnection connection = new(quic, expected, outbound: true, _transport, _engine, _logManager);
+        LeanEthp2pConnection connection = new(quic, expected, outbound: true, _transport, _engine, _transactions, _logManager);
         return await Register(connection).ConfigureAwait(false) ? connection : null;
     }
 
@@ -233,6 +234,7 @@ public sealed class LeanEthp2pHost(LeanObjectTransport transport, INetworkConfig
             }
             else refusal = CheckLimits(connection);
 
+            if (refusal is null && !connection.TryReserveReceiveCredit()) refusal = "shared receive budget";
             if (refusal is null)
             {
                 _connections[connection.RemoteKey] = connection;

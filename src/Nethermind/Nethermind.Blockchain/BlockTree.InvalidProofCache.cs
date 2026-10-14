@@ -48,7 +48,7 @@ public partial class BlockTree
         {
             ValueHash256 hash = block.Hash!.ValueHash256;
             _knownInvalid.Set(hash);
-            if ((block.Header.RecursiveStark?.StarkProof.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
+            if ((block.StarkProof?.Length ?? 0) > Eip8288Constants.MaxAggregateProofBytes ||
                 block.InclusionLists is { Count: > Eip7805Constants.InclusionListCommitteeSize } || HasOversizedListProof(block))
             {
                 Delete(hash);
@@ -77,7 +77,7 @@ public partial class BlockTree
 
         public static long ProofBytes(Block block)
         {
-            long bytes = block.Header.RecursiveStark?.StarkProof.Length ?? 0;
+            long bytes = block.StarkProof?.Length ?? 0;
             foreach (CommitteeInclusionList list in block.InclusionLists ?? []) bytes += list.Proof?.StarkProof.Length ?? 0;
             return bytes;
         }
@@ -103,9 +103,9 @@ public partial class BlockTree
         private static Block Snapshot(Block block)
         {
             BlockHeader header = block.Header.Clone();
-            header.RecursiveStark = Copy(block.Header.RecursiveStark);
             // Keep full invalid-block metadata; only mutable proof buffers require private ownership.
-            return new Block(header, block.Body, block.BlockAccessList)
+            BlockBody body = new(block.Transactions, block.Uncles, block.Withdrawals, block.StarkProof is { } proof ? (byte[])proof.Clone() : null);
+            return new Block(header, body, block.BlockAccessList)
             {
                 GeneratedBlockAccessList = block.GeneratedBlockAccessList,
                 ExecutionRequests = block.ExecutionRequests,

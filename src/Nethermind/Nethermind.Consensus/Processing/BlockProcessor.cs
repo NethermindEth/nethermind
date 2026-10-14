@@ -243,8 +243,9 @@ public partial class BlockProcessor(
                 _productionProofKey = key;
             }
             token.ThrowIfCancellationRequested();
-            // Headers escape the processor; their mutable bytes cannot alias the improvement cache.
-            block.Header.RecursiveStark = new RecursiveStark((byte[])proof.Clone(), new Hash256(depsHash));
+            // Produced blocks must not alias the mutable improvement cache.
+            block.StarkProof = (byte[])proof.Clone();
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
         }
     }
 

@@ -363,6 +363,49 @@ public class LeanBroadcastTests
         }
     }
 
+    /// <summary>A subscribed connection that holds every shard send until released, to observe the sender's CHUNK stream window.</summary>
+    private sealed class HeldPeer : ILeanBroadcastPeer
+    {
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _live, _maxLive, _sent;
+
+        public string Description => "held";
+        public ulong MaxObjectBytes => LeanLimits.MaxObjectBytes;
+        public bool IsClosed => false;
+        public int Live => Volatile.Read(ref _live);
+        public int MaxLive => Volatile.Read(ref _maxLive);
+        public int Sent => Volatile.Read(ref _sent);
+
+        public bool IsSubscribed(string channel) => true;
+
+        public ILeanBroadcastSession OpenSession(string channel, string messageId, byte[] preamble, byte[] initialUpdate) =>
+            new HeldSession(channel, messageId);
+
+        public async ValueTask<bool> SendShardAsync(ILeanBroadcastSession session, int index, ReadOnlyMemory<byte> shard)
+        {
+            int live = Interlocked.Increment(ref _live);
+            for (int max = Volatile.Read(ref _maxLive); max < live; max = Volatile.Read(ref _maxLive))
+                if (Interlocked.CompareExchange(ref _maxLive, live, max) == max) break;
+            await _release.Task;
+            Interlocked.Decrement(ref _live);
+            Interlocked.Increment(ref _sent);
+            return true;
+        }
+
+        public void Release() => _release.TrySetResult();
+
+        public void Penalize(string reason) { }
+
+        private sealed class HeldSession(string channel, string messageId) : ILeanBroadcastSession
+        {
+            public string Channel { get; } = channel;
+            public string MessageId { get; } = messageId;
+            public void Update(byte[] bitmap) { }
+            public void Complete() { }
+            public void Close() { }
+        }
+    }
+
     private static (LinkPeer AtoB, LinkPeer BtoA) Link(BroadcastNode a, BroadcastNode b)
     {
         LinkPeer toB = new($"{a.GetHashCode()}->b", b), toA = new($"{b.GetHashCode()}->a", a);
@@ -415,6 +458,108 @@ public class LeanBroadcastTests
             Assert.That(originToRelay.Delivered.Distinct().Count(), Is.GreaterThanOrEqualTo(LeanReedSolomon.DataShards));
             Assert.That(new[] { originToRelay, relayToOrigin, relayToReceiver, receiverToRelay }.SelectMany(p => p.Penalties), Is.Empty);
         }
+    }
+
+    [Test]
+    public async Task Shards_in_flight_to_a_connection_are_capped_across_sessions_and_resume_as_streams_free()
+    {
+        using BroadcastNode origin = new();
+        HeldPeer peer = new();
+        origin.Engine.AddPeer(peer);
+        (LeanBroadcastManifest first, _) = await Package(origin, 5, duty: 0);
+        (LeanBroadcastManifest second, _) = await Package(origin, 6, duty: 1);
+
+        Assert.That(origin.Engine.Originate(first, TestBroadcastProfile.Sign(first), []), Is.True);
+        Assert.That(origin.Engine.Originate(second, TestBroadcastProfile.Sign(second), []), Is.True);
+        await Until(() => peer.Live == LeanBroadcastEngine.MaxShardsInFlightPerPeer);
+        peer.Release();
+
+        // Streams freed by one session go to the other, so both codewords reach the peer.
+        await Until(() => peer.Sent == 2 * LeanReedSolomon.TotalShards);
+        Assert.That(peer.MaxLive, Is.EqualTo(LeanBroadcastEngine.MaxShardsInFlightPerPeer));
+    }
+
+    [Test]
+    public void Retrieval_waits_about_a_round_trip_while_broadcast_shards_arrive()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        LeanDescriptor descriptor = BroadcastPackage(node, 7);
+        TimeSpan wait = node.Transport.BroadcastWait;
+        node.Transport.OnBroadcastProgress(descriptor);
+
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        TimeSpan? wake = node.Time!.TimerDueTime;
+        node.Tick(wait / 2);
+        node.Transport.OnBroadcastProgress(descriptor);
+        node.Tick(wait / 2);
+        GetChunksMessage[] deferred = link.Sent<GetChunksMessage>();
+        // No new shard for a round trip: the object is retrieved within its unchanged deadlines.
+        node.Tick(wait);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.Empty, "chunks are not requested while shards keep arriving");
+            Assert.That(wake, Is.EqualTo(wait), "the timer fires when the deferral ends rather than at the next tick");
+            Assert.That(link.Sent<GetChunksMessage>(), Is.Not.Empty);
+        }
+    }
+
+    [Test]
+    public void Shards_trickling_in_defer_retrieval_only_a_few_round_trips_after_the_manifest()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        LeanDescriptor descriptor = BroadcastPackage(node, 8);
+        TimeSpan wait = node.Transport.BroadcastWait;
+        node.Transport.OnBroadcastProgress(descriptor);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+
+        int ticks = 0;
+        while (link.Sent<GetChunksMessage>().Length == 0 && ticks++ < 100)
+        {
+            node.Tick(wait / 2);
+            node.Transport.OnBroadcastProgress(descriptor);
+        }
+        Assert.That(ticks * (wait / 2), Is.GreaterThanOrEqualTo(3 * wait).And.LessThanOrEqualTo(3 * wait + wait / 2),
+            "retrieval waits while shards arrive, but no longer than three round trips after the manifest");
+    }
+
+    [Test]
+    public void A_slow_peer_does_not_lengthen_the_broadcast_wait()
+    {
+        using LeanTestNode node = new();
+        LeanPeer fast = node.Connect(new FakeLink("fast")), slow = node.Connect(new FakeLink("slow"));
+        node.Transport.SampleRoundTrip(fast, TimeSpan.FromMilliseconds(100).Ticks * node.Time!.TimestampFrequency / TimeSpan.TicksPerSecond);
+        node.Transport.SampleRoundTrip(slow, 10 * node.Time.TimestampFrequency);
+        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(100)));
+    }
+
+    [Test]
+    public void Round_trip_is_measured_on_the_transport_clock_from_sending_to_the_first_chunk()
+    {
+        using LeanTestNode node = new();
+        FakeLink link = new();
+        LeanPeer peer = node.Connect(link);
+        byte[] body = Wrapper(3 * LeanProtocol.ChunkBytes, false, FrameTransaction(9));
+        LeanDescriptor descriptor = Describe(body, out LeanChunkTree tree);
+        node.Transport.OnAnnounce(peer, new AnnounceObjectsMessage([descriptor]));
+        GetChunksMessage request = link.Sent<GetChunksMessage>().Single();
+
+        node.Time!.Advance(TimeSpan.FromMilliseconds(300));
+        node.Transport.OnChunk(peer, LeanChunkView.Parse(Wire(Chunk(request.RequestId, descriptor, body, tree, request.Indices[0]))));
+        Assert.That(node.Transport.BroadcastWait, Is.EqualTo(TimeSpan.FromMilliseconds(300)));
+    }
+
+    /// <summary>A kind-3 package whose broadcast was admitted, starting its shared assembly.</summary>
+    private static LeanDescriptor BroadcastPackage(LeanTestNode node, int seed)
+    {
+        byte[] package = InclusionList(3 * LeanProtocol.ChunkBytes, FrameTransaction(seed));
+        LeanDescriptor descriptor = LeanDescriptor.Create(LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile,
+            LeanDescriptor.InclusionListContext(ValueKeccak.Compute(package)), package, out _);
+        Assert.That(node.Transport.AdmitBroadcast(descriptor, 0), Is.EqualTo(LeanBroadcastAdmission.Started));
+        return descriptor;
     }
 
     [Test]

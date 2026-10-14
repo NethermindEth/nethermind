@@ -580,7 +580,7 @@ public class SessionTests
             await _channelHandlerContext.Received(negotiated ? 1 : 0).WriteAndFlushAsync(small);
             if (!negotiated)
             {
-                ChunkMessage chunk = new(1, default, 0, new byte[1], []);
+                ChunkMessage chunk = new(1, default, 0, new byte[1]);
                 Assert.That(await ((ILeanBulkSession)session).DeliverLeanChunkAsync(chunk, CancellationToken.None), Is.Zero);
                 serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
             }

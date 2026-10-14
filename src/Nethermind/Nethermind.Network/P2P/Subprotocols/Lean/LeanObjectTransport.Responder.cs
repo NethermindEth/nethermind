@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -20,22 +19,25 @@ public sealed partial class LeanObjectTransport
 
     internal void OnGetObjects(LeanPeer peer, GetObjectsMessage message)
     {
+        Outbox outbox = new(_clock);
+        bool accepted;
+        lock (_gate) accepted = !peer.Closed && CheckIncomingId(peer, message.RequestId, outbox);
+        if (!accepted) { outbox.Flush(); return; }
         // Block proofs are built from the block tree on demand, outside the lock, since hashing a proof is not cheap.
         int builds = 0;
         foreach (LeanSelector selector in message.Selectors)
-            if (selector is { Kind: LeanProtocol.KindBlockProof, LookupKind: LeanProtocol.LookupPrimary } && selector.ProfileId == LocalProfile
+            if (selector.Kind == LeanProtocol.KindBlockProof && selector.ProfileId == LocalProfile
                 && builds < MaxOnDemandBuilds && EnsureBlockProof(selector)) builds++;
 
         bool enabled = IsEnabled;
-        Outbox outbox = new();
         lock (_gate)
         {
-            if (peer.Closed || !CheckIncomingId(peer, message.RequestId, outbox))
+            if (peer.Closed)
             {
                 outbox.Flush();
                 return;
             }
-            bool busy = !enabled || peer.ServingFull;
+            bool busy = !enabled || peer.Node.ServingRequests >= LeanProtocol.MaxRequestsPerPeer;
             LeanSelector[] selectors = message.Selectors;
             LeanObjectResult[] results = new LeanObjectResult[selectors.Length];
             int remaining = LeanProtocol.MaxMetadataResponseBytes - ResponseOverhead - selectors.Length * NonOkResultBytes;
@@ -50,7 +52,7 @@ public sealed partial class LeanObjectTransport
                 else if (entry.Descriptor.ByteLength > peer.Status.MaxObjectBytes) result = LeanObjectResult.Of(LeanResultStatus.TooLarge);
                 else
                 {
-                    result = new(LeanResultStatus.Ok, entry.Descriptor, entry.Skeleton);
+                    result = new(LeanResultStatus.Ok, entry.Descriptor);
                     // OK results that would overflow the response are returned as Busy rather than omitted or split.
                     int length = ObjectsMessageSerializer.EncodeResult(result).Length - NonOkResultBytes;
                     if (length > remaining) result = LeanObjectResult.Of(LeanResultStatus.Busy);
@@ -66,7 +68,7 @@ public sealed partial class LeanObjectTransport
     internal void OnGetChunks(LeanPeer peer, GetChunksMessage message)
     {
         bool enabled = IsEnabled;
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         LeanServing? serving = null;
         LeanObjectStore.Entry? entry = null;
         lock (_gate)
@@ -77,7 +79,7 @@ public sealed partial class LeanObjectTransport
                 return;
             }
             LeanCompleteStatus? status = null;
-            if (!enabled || peer.ServingFull) status = LeanCompleteStatus.Busy;
+            if (!enabled || peer.Node.ServingRequests >= LeanProtocol.MaxRequestsPerPeer) status = LeanCompleteStatus.Busy;
             else if (!_store.TryGet(message.ObjectId, out entry)) status = LeanCompleteStatus.Unavailable;
             else if (message.Indices[^1] >= entry.Descriptor.ChunkCount)
             {
@@ -120,7 +122,7 @@ public sealed partial class LeanObjectTransport
                 }
                 int offset = index * LeanProtocol.ChunkBytes;
                 ChunkMessage chunk = new(serving.Id, serving.ObjectId, index,
-                    entry.Body.AsMemory(offset, entry.Descriptor.ChunkLength(index)), entry.Tree.GetBranch(index));
+                    entry.Body.AsMemory(offset, entry.Descriptor.ChunkLength(index)));
                 using CancellationTokenSource idle = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
                 idle.CancelAfter(LeanProtocol.MaxRequestIdle);
                 if (!await peer.Link.SendChunkAsync(chunk, idle.Token).ConfigureAwait(false))
@@ -144,15 +146,15 @@ public sealed partial class LeanObjectTransport
             stopped = true;
         }
 
-        Outbox outbox = new();
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             if (peer.Serving.TryGetValue(serving.Id, out LeanServing? current) && current == serving) peer.Serving.Remove(serving.Id);
-            if (!serving.CompleteWritten && !stopped && !peer.Closed)
+            if (!serving.CompleteWritten && !peer.Closed)
             {
                 serving.CompleteWritten = true;
                 bool served = written == indices.Length;
-                outbox.Send(peer, new CompleteMessage(serving.Id, serving.ObjectId, served ? LeanCompleteStatus.Served : LeanCompleteStatus.Busy));
+                outbox.Send(peer, new CompleteMessage(serving.Id, serving.ObjectId, cancellation.IsCancellationRequested ? LeanCompleteStatus.Cancelled : served && !stopped ? LeanCompleteStatus.Served : LeanCompleteStatus.Busy));
                 if (served)
                 {
                     Interlocked.Increment(ref _stats.ObjectsServed);
@@ -166,64 +168,13 @@ public sealed partial class LeanObjectTransport
 
     internal void OnCancel(LeanPeer peer, CancelMessage message)
     {
-        Outbox outbox = new();
         lock (_gate)
         {
             if (peer.Closed) return;
-            // Cancels for unknown or completed requests are ignored; other request types already wrote their response.
-            if (peer.Serving.Remove(message.RequestId, out LeanServing? serving) && !serving.CompleteWritten)
-            {
-                serving.CompleteWritten = true;
+            // The serving task writes the terminal after any in-flight Chunk has unwound.
+            if (peer.Serving.TryGetValue(message.RequestId, out LeanServing? serving) && !serving.CompleteWritten)
                 serving.Cancellation.Cancel();
-                outbox.Send(peer, new CompleteMessage(message.RequestId, serving.ObjectId, LeanCompleteStatus.Cancelled));
-            }
         }
-        outbox.Flush();
-    }
-
-    internal void OnGetTransactions(LeanPeer peer, GetTransactionsMessage message)
-    {
-        bool busy;
-        Outbox outbox = new();
-        lock (_gate)
-        {
-            if (peer.Closed || !CheckIncomingId(peer, message.RequestId, outbox))
-            {
-                outbox.Flush();
-                return;
-            }
-            busy = !IsEnabled || peer.ServingFull;
-        }
-
-        ValueHash256[] hashes = message.Hashes;
-        (LeanResultStatus, byte[])[] results = new (LeanResultStatus, byte[])[hashes.Length];
-        int others = (hashes.Length - 1) * NonOkResultBytes;
-        int remaining = LeanProtocol.MaxTxResponseBytes - ResponseOverhead - hashes.Length * NonOkResultBytes;
-        for (int i = 0; i < hashes.Length; i++)
-        {
-            results[i] = (busy ? LeanResultStatus.Busy : LeanResultStatus.Unavailable, []);
-            if (busy || FindEnvelope(hashes[i]) is not { } envelope) continue;
-            int length = TransactionsMessageSerializer.EncodeResult(LeanResultStatus.Ok, envelope).Length - NonOkResultBytes;
-            if (length + others + NonOkResultBytes > LeanProtocol.MaxTxResponseBytes - ResponseOverhead) results[i] = (LeanResultStatus.TooLarge, []);
-            else if (length > remaining) results[i] = (LeanResultStatus.Busy, []);
-            else
-            {
-                remaining -= length;
-                results[i] = (LeanResultStatus.Ok, envelope);
-            }
-        }
-        peer.Link.Send(new TransactionsMessage(message.RequestId, results));
-    }
-
-    /// <summary>Finds a canonical envelope in the pool or retained with a served wrapper; never searches history or asks peers.</summary>
-    private byte[]? FindEnvelope(in ValueHash256 hash)
-    {
-        if (_txPool.TryGetPendingTransaction(hash, out Transaction? transaction))
-        {
-            byte[] envelope = TxDecoder.Instance.Encode(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
-            if (ValueKeccak.Compute(envelope) == hash) return envelope;
-        }
-        lock (_gate) return _store.TryGetEnvelope(hash, out byte[] retained) ? retained : null;
     }
 
     /// <summary>Builds the sidecar of a recent canonical block on demand; true when a proof had to be hashed.</summary>
@@ -236,7 +187,8 @@ public sealed partial class LeanObjectTransport
                 is not { RecursiveStark: not null } header
             || _blockTree.Head is not { } head || header.Number > head.Number || head.Number - header.Number > MaxOnDemandDepth
             || !_blockTree.IsMainChain(header)) return false;
-        PublishBlockProof(header, announce: false);
+        if (_blockTree.FindBlock(hash, Blockchain.BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { } block)
+            PublishBlockProof(block, announce: false);
         return true;
     }
 }
