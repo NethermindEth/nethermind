@@ -47,8 +47,6 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
         ChainSpec chainSpec = new()
         {
-            Name = gethGenesisJson.Name,
-            DataDir = gethGenesisJson.DataDir,
             Bootnodes = NetworkNode.ParseNodes(gethGenesisJson.Bootnodes, _logger),
             ChainId = config.ChainId,
             NetworkId = config.ChainId
@@ -477,11 +475,6 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
 
         private static SortedDictionary<ulong, ulong>? BuildDifficultyBombDelays(GethGenesisConfigJson config)
         {
-            if (config.DifficultyBombDisabled == true)
-            {
-                return new SortedDictionary<ulong, ulong> { [0] = long.MaxValue };
-            }
-
             if (config.TerminalTotalDifficulty is not null && config.TerminalTotalDifficulty.Value == UInt256.Zero)
             {
                 return null;

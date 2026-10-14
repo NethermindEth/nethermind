@@ -1,7 +1,5 @@
 {
   "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/genesis.json",
-  "name": "Sepolia Testnet",
-  "dataDir": "sepolia",
   "config": {
     "chainId": 11155111,
     "homesteadBlock": 0,
@@ -16,7 +14,6 @@
     "londonBlock": 0,
     "terminalTotalDifficulty": "0x3c6568f12e8000",
     "mergeNetsplitBlock": 1735371,
-    "difficultyBombDisabled": true,
     "beaconChainGenesisTimestamp": 1655733600,
     "shanghaiTime": 1677557088,
     "cancunTime": 1706655072,

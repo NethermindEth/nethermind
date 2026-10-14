@@ -280,31 +280,6 @@ public class GethGenesisLoaderTests
         }
     }
 
-    [TestCase("true", false, (ulong)long.MaxValue)]
-    [TestCase("false", false, 5_000_000UL)]
-    [TestCase("null", false, 5_000_000UL)]
-    [TestCase(null, false, 5_000_000UL)]
-    [TestCase("true", true, (ulong)long.MaxValue)]
-    [TestCase(null, true, 0UL)]
-    public void Loads_difficulty_bomb_disabled(string? disabled, bool mergedAtGenesis, ulong expectedDelay)
-    {
-        string configExtra = "\"byzantiumBlock\": 0, \"constantinopleBlock\": 0, \"muirGlacierBlock\": 10";
-        if (disabled is not null) configExtra += $", \"difficultyBombDisabled\": {disabled}";
-        if (mergedAtGenesis) configExtra += ", \"terminalTotalDifficulty\": \"0x0\"";
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        EthashChainSpecEngineParameters engine = chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(expectedDelay));
-            Assert.That(provider.GetSpec(new ForkActivation(9)).DifficultyBombDelay, Is.EqualTo(expectedDelay));
-            Assert.That(provider.GetSpec(new ForkActivation(10)).DifficultyBombDelay,
-                Is.EqualTo(disabled == "true" || mergedAtGenesis ? expectedDelay : expectedDelay + 4_000_000));
-            Assert.That(engine.DifficultyBombDelays?[0] ?? 0, Is.EqualTo(expectedDelay));
-        }
-    }
-
     [Test]
     public void Loads_bootnodes_with_enode_and_enr([Values] bool includeInvalid)
     {
@@ -337,10 +312,6 @@ public class GethGenesisLoaderTests
 
         Assert.That(chainSpec.Bootnodes, Is.Empty);
     }
-
-    [Test]
-    public void Rejects_invalid_extension_types([Values("\"difficultyBombDisabled\": \"invalid\"", "\"difficultyBombDisabled\": 1")] string configExtra) =>
-        Assert.That(() => LoadStandardGethGenesis(configExtra: configExtra), Throws.TypeOf<InvalidDataException>());
 
     [Test]
     public void Rejects_invalid_bootnodes_types([Values("\"bootnodes\": \"enr:invalid\",", "\"bootnodes\": [1],")] string genesisExtra) =>

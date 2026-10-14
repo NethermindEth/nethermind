@@ -84,12 +84,6 @@ public class GethGenesisConfigJson : IHasNamedForks
     public Address? DepositContractAddress { get; set; }
 
     /// <summary>
-    /// Whether to disable the Ethash difficulty bomb from genesis; <c>null</c> and <c>false</c> retain fork-based delays.
-    /// </summary>
-    /// <remarks>Nethermind extension to EIP-7949.</remarks>
-    public bool? DifficultyBombDisabled { get; set; }
-
-    /// <summary>
     /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.
     /// </summary>
     /// <remarks>
