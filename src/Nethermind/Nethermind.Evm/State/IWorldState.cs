@@ -70,6 +70,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
+    /// Returns the balance <paramref name="address"/> had at the start of the current transaction.
+    /// </summary>
+    /// <remarks>The transaction start is found as for <see cref="GetOriginal"/>.</remarks>
+    /// <param name="address">The account to read.</param>
+    UInt256 GetOriginalBalance(Address address);
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
@@ -106,8 +113,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
     /// <returns>Snapshot index</returns>
     /// <remarks>
-    /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
-    /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
+    /// If <see cref="newTransactionStart"/> is true and there are already changes then next call to <see cref="GetOriginal"/>
+    /// or <see cref="GetOriginalBalance"/> will use changes before this snapshot as original values for this new transaction.
     /// </remarks>
     Snapshot TakeSnapshot(bool newTransactionStart = false);
 
@@ -125,6 +132,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="address">Contract address</param>
     void ClearStorage(Address address);
+
+    /// <summary>Reads the value a slot held before its contract's storage was cleared in the current transaction (EIP-7906).</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared.</returns>
+    bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
 
     /// <summary>Only valid where no revert can follow AND the round is committed before any further
     /// writes (validation mode); build-up/revertible clearing must use <see cref="ClearStorage"/>.</summary>
@@ -151,6 +166,32 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
     /// Note: This is different from whether the account has its hash updated</returns>
     bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+
+    /// <summary>
+    /// Sets the code of an EIP-8360 <c>TCREATE</c> account, which is readable by its hash until the transaction ends
+    /// and is never written to the code database.
+    /// </summary>
+    /// <remarks>
+    /// The code is dropped by <see cref="DiscardTransientCode"/> when the transaction ends, by which time it has
+    /// finalized the accounts, and by <see cref="Commit(IReleaseSpec, IWorldStateTracer, bool, bool)"/> and <see cref="Reset"/>.
+    /// A persistent deployment of the same code still stages it for the code database through <see cref="InsertCode"/>.
+    /// </remarks>
+    void InsertTransientCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec);
+
+    /// <summary>Drops the code installed by <see cref="InsertTransientCode"/>, at the end of a transaction.</summary>
+    /// <remarks>Not tied to <see cref="ResetTransient"/>, which also runs between EIP-8141 frames of one transaction.</remarks>
+    void DiscardTransientCode();
+
+    /// <summary>Sets the account's code to code adopted from another account by EIP-8298 <c>SETCODEFROM</c>.</summary>
+    /// <remarks>
+    /// Same state effect as <see cref="InsertCode"/>. Kept apart so a block access list records the change by its
+    /// code hash rather than its bytecode, as EIP-8298 requires. A forwarding implementation must override it, as
+    /// deriving from <c>WorldStateDecorator</c> does; the default sends it to its own <see cref="InsertCode"/>, so
+    /// a recording state it wraps records bytecode.
+    /// </remarks>
+    /// <returns>As <see cref="InsertCode"/>.</returns>
+    bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
+        => InsertCode(address, in codeHash, code, spec);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 

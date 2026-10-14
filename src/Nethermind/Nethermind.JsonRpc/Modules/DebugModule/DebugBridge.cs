@@ -149,10 +149,17 @@ public class DebugBridge : IDebugBridge
         if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
             return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
+        bool replacesPreForkAccessListProgress = target is not null &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber >= startNumber &&
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber <= endNumber &&
+            LowestRequiredBlockAccessListNumber is null;
         int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
         // Completed history remains contiguous from its retained floors to target, below the deleted range.
         // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
         if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        // Deletion removes the header proving this floor predates EIP-7928; retain that proof at the new head.
+        if (deleted > 0 && replacesPreForkAccessListProgress)
+            _syncPointers.LowestInsertedBlockAccessListBlockNumber = target!.Number;
         return ResultWrapper<int>.Success(deleted);
 
         static ResultWrapper<int> NotDrained() =>
@@ -182,7 +189,7 @@ public class DebugBridge : IDebugBridge
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
                IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
                IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
-               IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
+               IsDeleted(LowestRequiredBlockAccessListNumber)
             ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
             : null;
 
@@ -244,7 +251,34 @@ public class DebugBridge : IDebugBridge
         _blockTree.LowestInsertedHeader?.Number > number ||
         _syncPointers.LowestInsertedBodyNumber > number ||
         _syncPointers.LowestInsertedReceiptBlockNumber > number ||
-        _syncPointers.LowestInsertedBlockAccessListBlockNumber > number;
+        LowestRequiredBlockAccessListNumber > number;
+
+    /// <summary>
+    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block at or below it predates EIP-7928.
+    /// </summary>
+    /// <remarks>
+    /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
+    /// leaves there does not bound how deep the chain can be rewound or deleted.
+    /// </remarks>
+    private ulong? LowestRequiredBlockAccessListNumber
+    {
+        get
+        {
+            ulong? progress = _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+            if (progress is not { } lowest || lowest == 0) return progress;
+            if (_blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { } canonical)
+                return canonical.BlockAccessListHash is null ? null : progress;
+
+            // Rewind clears canonical markers above the head; every retained candidate must prove the floor is pre-fork.
+            if (_blockTree.Head is not { } head || lowest <= head.Number ||
+                _blockTree.FindLevel(lowest)?.BlockInfos is not { Length: > 0 } candidates)
+                return progress;
+            foreach (BlockInfo candidate in candidates)
+                if (_blockTree.FindHeader(candidate.BlockHash, blockNumber: lowest) is not { BlockAccessListHash: null })
+                    return progress;
+            return null;
+        }
+    }
 
     private bool CanRewindChain()
     {
@@ -310,8 +344,8 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-        return block?.Transactions[txReceipt.Index];
+        int index = block.GetTransactionIndex(txHash.ValueHash256);
+        return index < 0 ? null : block.Transactions[index];
     }
 
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]

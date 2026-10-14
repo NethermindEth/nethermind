@@ -19,12 +19,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -154,7 +156,8 @@ public class LogFinderTests
             receiptFinder,
             _receiptStorage,
             LimboLogs.Instance,
-            _receiptsRecovery);
+            _receiptsRecovery,
+            MainnetSpecProvider.Instance);
 
         FilterLog[] allLogs = logFinder.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray();
         FilterLog[] addressedLogs = logFinder.FindLogs(
@@ -195,7 +198,7 @@ public class LogFinderTests
 
         ThrowingReceiptFinder throwing = new(exceptionType);
         LogFinder logFinder = new(_blockTree, throwing, _receiptStorage, LimboLogs.Instance,
-            _receiptsRecovery, new ReceiptConfig { DeriveFromState = true });
+            _receiptsRecovery, MainnetSpecProvider.Instance, new ReceiptConfig { DeriveFromState = true });
 
         Assert.That(() => logFinder.FindLogs(AllBlockFilter().Build()).ToArray(),
             Throws.TypeOf(exceptionType));
@@ -424,6 +427,50 @@ public class LogFinderTests
         Assert.That(() => CreateLogFinder(_rawBlockTree, receiptStorage).FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray(), Throws.TypeOf<InvalidOperationException>().With.Message.Contains(@"missing block data"));
     }
 
+    [Test]
+    public void FindLogs_WhenEncodedLogsAreFiltered_ReturnsOwnedDataAndOriginalIndexes([Values] bool compact, [Values] bool filterByTopic, [Values(0, 31, 64)] int zeroPrefix)
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] data = new byte[64];
+        data.AsSpan(zeroPrefix).Fill(0x42);
+        LogEntry rejected = new(filterByTopic ? TestItem.AddressA : TestItem.AddressB, new byte[1024], [TestItem.KeccakB]);
+        LogEntry accepted = new(TestItem.AddressA, data, [TestItem.KeccakA]);
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .WithIndex(0)
+            .WithTransactionHash(block.Transactions[0].Hash)
+            .WithLogs(rejected, accepted)
+            .TestObject;
+        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+        ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
+        LegacyReceiptFinder receiptFinder = new(encoded, decoder,
+            () => recovery.CreateLogRecoveryContext(new ReceiptRecoveryBlock(block)));
+        LogFinder finder = new(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!);
+        FilterBuilder builder = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA);
+        if (filterByTopic) builder = builder.WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA));
+
+        FilterLog[] logs = finder.FindLogs(builder.Build()).ToArray();
+        Array.Clear(encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs, Has.Length.EqualTo(1));
+            foreach (FilterLog log in logs)
+            {
+                Assert.That(log.LogIndex, Is.EqualTo(1), "rejected logs must still count towards the block log index");
+                Assert.That(log.Data, Is.EqualTo(data), "response data must survive release of the encoded receipt buffer");
+                Assert.That(log.Topics, Is.EqualTo(accepted.Topics));
+                Assert.That(log.Address, Is.EqualTo(accepted.Address));
+                Assert.That(log.BlockHash, Is.EqualTo(block.Hash));
+                Assert.That(log.BlockNumber, Is.EqualTo(block.Number));
+                Assert.That(log.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+                Assert.That(log.TransactionIndex, Is.Zero);
+            }
+        }
+    }
+
     private const ulong BoundaryOldestStored = 50;
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
@@ -438,7 +485,7 @@ public class LogFinderTests
         index.MaxBlockNumber.Returns(indexFrom is null ? (int?)null : BoundaryTo);
         return new IndexedLogFinder(
             blockFinder, Substitute.For<IReceiptFinder>(), Substitute.For<IReceiptStorage>(), LimboLogs.Instance,
-            Substitute.For<IReceiptsRecovery>(), index, prunedLogsRetention: retention, historyPruner: historyPruner);
+            Substitute.For<IReceiptsRecovery>(), MainnetSpecProvider.Instance, index, prunedLogsRetention: retention, historyPruner: historyPruner);
     }
 
     private static LogFilter BoundaryFilter(ulong from = BoundaryFrom) =>
@@ -665,7 +712,8 @@ public class LogFinderTests
         private Exception Create() => (Exception)Activator.CreateInstance(exceptionType, "receipts path failure")!;
     }
 
-    private sealed class LegacyReceiptFinder(byte[] receiptsData) : IReceiptFinder
+    private sealed class LegacyReceiptFinder(byte[] receiptsData, IReceiptRefDecoder? decoder = null,
+        Func<IReceiptsRecovery.IRecoveryContext>? recoveryContextFactory = null) : IReceiptFinder
     {
         private readonly TestMemDb _blocksDb = new();
 
@@ -679,17 +727,17 @@ public class LogFinderTests
             iterator = new ReceiptsIterator(
                 receiptsData,
                 _blocksDb,
-                recoveryContextFactory: null,
-                new ReceiptStorageDecoder());
+                recoveryContextFactory,
+                decoder ?? new ReceiptStorageDecoder());
             return true;
         }
     }
 
     private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
-        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery);
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance);
 
     private IndexedLogFinder CreateIndexedLogFinder(ILogIndexStorage logIndexStorage) =>
-        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, logIndexStorage, minBlocksToUseIndex: 1);
+        new(_blockTree, _receiptStorage, _receiptStorage, LimboLogs.Instance, _receiptsRecovery, MainnetSpecProvider.Instance, logIndexStorage, minBlocksToUseIndex: 1);
 
     private static ILogIndexStorage CreateLogIndexStorage(int? indexFrom, int? indexTo)
     {

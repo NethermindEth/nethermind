@@ -33,6 +33,10 @@ internal sealed class BlockFootprints(Block block)
     /// <summary>Refreshes one block may run.</summary>
     internal const int MaxRefreshesPerBlock = 128;
 
+    // Writes times effects past which block processing wakes the refresh worker rather than compare: comparing would
+    // cost more than the wake.
+    private const int MaxComparisons = 256;
+
     private readonly Hash256? _blockHash = block.Hash;
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
 
@@ -50,7 +54,7 @@ internal sealed class BlockFootprints(Block block)
     private int _visit;
 
     // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
-    private readonly ConcurrentQueue<(int Position, List<(StorageCell Cell, UInt256 Value)>? Writes)> _reported = new();
+    private readonly ConcurrentQueue<(int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes)> _reported = new();
     private readonly SemaphoreSlim _changed = new(0);
     private volatile bool _warmPassEnded;
     private volatile bool _waitsForBlockProcessing = true;
@@ -60,11 +64,11 @@ internal sealed class BlockFootprints(Block block)
     /// (EIP-7928) are built while transactions execute, which a replay does not.
     /// </remarks>
     public static bool AppliesTo(Block block, IReleaseSpec spec) =>
-        block.Transactions.Length > 0
-        && spec.IsEip658Enabled
-        && !spec.IsEip8037Enabled
-        && !spec.BlockLevelAccessListsEnabled
-        && block.BlockAccessList is null;
+        block.Transactions.Length > 0 && AppliesTo(spec) && block.BlockAccessList is null;
+
+    /// <inheritdoc cref="AppliesTo(Block, IReleaseSpec)"/>
+    public static bool AppliesTo(IReleaseSpec spec) =>
+        spec.IsEip658Enabled && !spec.IsEip8037Enabled && !spec.BlockLevelAccessListsEnabled;
 
     /// <remarks>
     /// A warm run skips the pre-execution checks; the nonce is checked when it is recorded and the rest when it is
@@ -204,26 +208,62 @@ internal sealed class BlockFootprints(Block block)
     /// </summary>
     public void WaitForWork(CancellationToken token) => _changed.Wait(token);
 
+    /// <summary>For tests: the wakes the refresh worker has not taken.</summary>
+    internal int PendingWakes => _changed.CurrentCount;
+
     /// <summary>
     /// Queues the storage writes block processing committed when it executed the transaction at <paramref name="position"/>;
-    /// null when it wrote none.
+    /// empty when it wrote none.
     /// </summary>
-    public void QueueExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    /// <remarks>
+    /// Writes its footprint predicted invalidate nothing, so they wait for the refresh worker's next wake: waking a
+    /// blocked worker costs block processing microseconds.
+    /// </remarks>
+    public void QueueExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         _reported.Enqueue((position, writes));
-        _changed.Release();
+        if (!WerePredicted(position, writes)) _changed.Release();
+    }
+
+    [SkipLocalsInit]
+    private bool WerePredicted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
+    {
+        TransactionFootprint?[] footprints = _footprints;
+        TransactionFootprint? footprint = (uint)position < (uint)footprints.Length ? Volatile.Read(ref footprints[position]) : null;
+        int count = writes.Length;
+        if ((footprint?.StorageWrites ?? 0) != count) return false;
+        if (count == 0) return true;
+        ReadOnlySpan<StateEffect> effects = footprint!.Effects;
+        if (count * effects.Length > MaxComparisons) return false;
+        // A footprint writes each slot once, and a commit reports each slot once.
+        foreach ((StorageCell cell, UInt256 value) in writes.Span)
+        {
+            if (!Writes(effects, in cell, in value)) return false;
+        }
+
+        return true;
+    }
+
+    private static bool Writes(ReadOnlySpan<StateEffect> effects, in StorageCell cell, in UInt256 value)
+    {
+        foreach (ref readonly StateEffect effect in effects)
+        {
+            if (effect.Kind == EffectKind.SetStorage && effect.Value == value && effect.Cell.Equals(in cell)) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Puts the writes block processing reported in place of what their footprints predicted, in the order it executed them.</summary>
     public void ApplyExecuted()
     {
-        while (_reported.TryDequeue(out (int Position, List<(StorageCell Cell, UInt256 Value)>? Writes) executed))
+        while (_reported.TryDequeue(out (int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes) executed))
         {
             ApplyExecuted(executed.Position, executed.Writes);
         }
     }
 
-    private void ApplyExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    private void ApplyExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         if ((uint)position >= (uint)_footprints.Length) return;
         bool invalidated;
@@ -248,7 +288,7 @@ internal sealed class BlockFootprints(Block block)
             // that read one of them at another value than its seed changed it itself first (a creation clears the
             // storage), and running it again reads the same.
             TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
-            invalidated = Replace(position, new Indexed(footprint, null));
+            invalidated = Replace(position, new Indexed(footprint, default));
 
             ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
             bool outdated = false;
@@ -378,13 +418,13 @@ internal sealed class BlockFootprints(Block block)
     private readonly record struct Entry(int Position, int Index);
 
     // What is indexed at a position: the footprint stored there, or the writes block processing reported for it.
-    private readonly struct Indexed(TransactionFootprint? footprint, List<(StorageCell Cell, UInt256 Value)>? executed)
+    private readonly struct Indexed(TransactionFootprint? footprint, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> executed)
     {
         public TransactionFootprint? Footprint => footprint;
 
         public WrittenSlots Writes => new(footprint, executed);
 
-        public UInt256 WrittenValue(int index) => footprint is not null ? footprint.Effects[index].Value : executed![index].Value;
+        public UInt256 WrittenValue(int index) => footprint is not null ? footprint.Effects[index].Value : executed.Span[index].Value;
     }
 
     private struct Slot
@@ -471,7 +511,7 @@ internal sealed class BlockFootprints(Block block)
     }
 
     // The slots a footprint's storage effects or reported writes write, with where each write is in them.
-    private struct WrittenSlots(TransactionFootprint? footprint, List<(StorageCell Cell, UInt256 Value)>? executed)
+    private struct WrittenSlots(TransactionFootprint? footprint, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> executed)
     {
         private int _index = -1;
 
@@ -488,15 +528,15 @@ internal sealed class BlockFootprints(Block block)
                 {
                     ref readonly StateEffect effect = ref effects[_index];
                     if (effect.Kind != EffectKind.SetStorage) continue;
-                    Current = (new StorageCell(effect.Address, in effect.Index), _index);
+                    Current = (effect.Cell, _index);
                     return true;
                 }
 
                 return false;
             }
 
-            if (executed is null || ++_index >= executed.Count) return false;
-            Current = (executed[_index].Cell, _index);
+            if (++_index >= executed.Length) return false;
+            Current = (executed.Span[_index].Cell, _index);
             return true;
         }
     }

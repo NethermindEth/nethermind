@@ -294,18 +294,25 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_txIndex_rejects_end_of_nonempty_block([Values] bool streaming)
+    public async Task Debug_traceCall_txIndex_rejects_end_of_nonempty_block([Values] bool streaming, [Values] bool conflictingStorage)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         Block block = await AddTraceCallPrefixTransfers(chain, 3);
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, block.Hash!.ToString(),
-            new { txIndex = $"0x{block.Transactions.Length:x}" });
+            new
+            {
+                txIndex = $"0x{block.Transactions.Length:x}",
+                stateOverrides = conflictingStorage
+                    ? new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } }
+                    : null
+            });
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"transaction index {block.Transactions.Length} out of range for block {block.Hash}"), response);
             Assert.That(json["result"], Is.Null, response);
         }
     }
@@ -588,6 +595,45 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // The first three opcode logs are small and each later one carries the 64 KiB of memory MSTORE8 grows,
+    // so this cap ends the buffered trace at the fourth without depending on the exact size estimate.
+    private static readonly long BufferedTraceCap = 64.KiB;
+
+    [TestCase(false, 0L, 4)]
+    [TestCase(false, long.MaxValue, 4)]
+    [TestCase(false, 224L, 1)]
+    [TestCase(false, -1L, 0)]
+    [TestCase(true, 0L, 6)]
+    public async Task Debug_traceCall_buffered_opcode_logs_are_capped_by_config(bool streamMode, long limit, int expectedCount)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x602a61ffff5360006000f3" }
+        };
+        object call = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        config.MaxBufferedTraceLogSize = 0;
+        string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, enableMemory = true, stateOverrides });
+        config.MaxBufferedTraceLogSize = BufferedTraceCap;
+        string cappedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, enableMemory = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        JToken expected = JToken.Parse(unlimitedResponse)["result"]!;
+        JArray entries = (JArray)expected["structLogs"]!;
+        Assert.That(entries, Has.Count.EqualTo(6), unlimitedResponse);
+        while (entries.Count > expectedCount)
+            entries.RemoveAt(entries.Count - 1);
+
+        JToken actual = JToken.Parse(cappedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, cappedResponse);
+            Assert.That(JToken.DeepEquals(actual["result"], expected), Is.True, cappedResponse);
+        }
+    }
+
     [TestCase("null", null)]
     [TestCase("1", 1)]
     [TestCase("-9223372036854775808", 0)]
@@ -796,6 +842,47 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCall_selects_block_and_state_before_conflicting_storage(
+        [Values("pending", "missing", "unavailable", "unavailable-parent")] string selection, [Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        if (selection == "unavailable") chain.BlockTree.Head!.Header.StateRoot = TestItem.KeccakA;
+        if (selection == "unavailable-parent")
+        {
+            Block parent = chain.BlockTree.Head!;
+            await chain.AddBlock();
+            parent.Header.StateRoot = TestItem.KeccakA;
+        }
+        string selector = selection switch
+        {
+            "pending" => "pending",
+            "missing" => TestItem.KeccakA.ToString(),
+            _ => "latest"
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, selector,
+            new
+            {
+                txIndex = selection == "unavailable-parent" ? "0x0" : null,
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { state = new { }, stateDiff = new { } } }
+            });
+        (int code, string message) = selection switch
+        {
+            "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
+            "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
+            _ => (ErrorCodes.ResourceUnavailable, "No state available")
+        };
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(code), response);
+            Assert.That((string?)json["error"]?["message"], Does.StartWith(message), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceCall_accepts_single_storage_override([Values] bool streaming, [Values("state", "stateDiff")] string field)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -852,6 +939,35 @@ public partial class DebugRpcModuleTests
             byte[] returnValueBytes = Bytes.FromHexString((string)result["returnValue"]!);
             Assert.That(returnValueBytes.ToHexString(), Is.EqualTo(expectedValue));
         }
+    }
+
+    // EIP-8151: ecRecover reads the recovered account, so the prestate holds it wherever movePrecompileToAddress put
+    // ecRecover, and not for a call to 0x01 that runs another precompile.
+    [TestCase(
+        """{"0x0000000000000000000000000000000000000001":{"movePrecompileToAddress":"0xc200000000000000000000000000000000000000", "code": "0x"}}""",
+        "0xc200000000000000000000000000000000000000", true,
+        TestName = "Debug_traceCall_prestate_follows_a_moved_ecrecover(ecRecover moved away from 0x01)")]
+    [TestCase(
+        """{"0x0000000000000000000000000000000000000002":{"movePrecompileToAddress":"0x0000000000000000000000000000000000000001"}}""",
+        "0x0000000000000000000000000000000000000001", false,
+        TestName = "Debug_traceCall_prestate_follows_a_moved_ecrecover(SHA-256 moved onto 0x01)")]
+    public async Task Debug_traceCall_prestate_follows_a_moved_ecrecover(string stateOverrideJson, string to, bool includesRecovered)
+    {
+        const string recovered = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099";
+        using Context ctx = await Context.Create(new TestSpecProvider(new OverridableReleaseSpec(Osaka.Instance) { IsEip8151Enabled = true }));
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            new
+            {
+                from = "0x7f554713be84160fdf0178cc8df86f5aabd33397",
+                to,
+                input = "0xB6E16D27AC5AB427A7F68900AC5559CE272DC6C37C82B3E052246C82244C50E4000000000000000000000000000000000000000000000000000000000000001C7B8B1991EB44757BC688016D27940DF8FB971D7C87F77A6BC4E938E3202C44037E9267B0AEAA82FA765361918F2D8ABD9CDD86E64AA6F2B81D3C4E0B69A7B055"
+            },
+            null,
+            new { tracer = "prestateTracer", stateOverrides = JsonSerializer.Deserialize<object>(stateOverrideJson) });
+
+        JObject prestate = (JObject)JToken.Parse(response)["result"]!;
+        Assert.That(prestate.ContainsKey(recovered), Is.EqualTo(includesRecovered), response);
     }
 
     // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN

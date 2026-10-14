@@ -13,7 +13,7 @@ namespace Nethermind.Evm.ZkEvm.Test;
 
 /// <summary>
 /// ADDMOD, MULMOD, DIV and MOD in the zkEVM build, against a <see cref="BigInteger"/> oracle. On the host
-/// <see cref="ZiskArith256Flag"/> is off, so these pin the software path every guest but ZisK runs; the
+/// <see cref="ZiskFlag"/> is off, so these pin the software path every guest but ZisK runs; the
 /// ZisK routines themselves run only in the guest, whose stateless-tests blocks check them.
 /// </summary>
 public class GuestArith256Tests
