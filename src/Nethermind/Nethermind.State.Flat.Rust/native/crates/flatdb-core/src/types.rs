@@ -237,14 +237,37 @@ impl TreePath {
         self.encode_packed::<3>(buffer);
     }
 
+    /// `TreePath.EncodeWith4Byte`: the first four path bytes with the length in the low nibble of the last one.
+    pub fn encode_with_4_byte(&self, buffer: &mut [u8]) {
+        self.encode_packed::<4>(buffer);
+    }
+
     /// `TreePath.EncodeWith8Byte`: the first eight path bytes with the length in the low nibble of the last one.
     pub fn encode_with_8_byte(&self, buffer: &mut [u8]) {
         self.encode_packed::<8>(buffer);
     }
 
+    /// `TreePath.DecodeWith4Byte`: the inverse of [`Self::encode_with_4_byte`], with the length nibble cleared.
+    pub fn decode_with_4_byte(buffer: &[u8]) -> Self {
+        Self::decode_packed::<4>(buffer)
+    }
+
+    /// `TreePath.DecodeWith8Byte`: the inverse of [`Self::encode_with_8_byte`], with the length nibble cleared.
+    pub fn decode_with_8_byte(buffer: &[u8]) -> Self {
+        Self::decode_packed::<8>(buffer)
+    }
+
     fn encode_packed<const N: usize>(&self, buffer: &mut [u8]) {
         buffer[..N].copy_from_slice(&self.path[..N]);
         buffer[N - 1] = (buffer[N - 1] & 0xF0) | (self.length & 0x0F);
+    }
+
+    fn decode_packed<const N: usize>(buffer: &[u8]) -> Self {
+        let mut path = [0u8; 32];
+        path[..N].copy_from_slice(&buffer[..N]);
+        let length = path[N - 1] & 0x0F;
+        path[N - 1] &= 0xF0;
+        Self::new(path, length)
     }
 }
 
@@ -386,6 +409,32 @@ mod tests {
         let dirty = TreePath::new([0xEE; 32], 6);
         dirty.encode_with_8_byte(&mut buffer);
         assert_eq!(buffer, [0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xEE, 0xE6]);
+    }
+
+    #[rstest]
+    #[case("1234567", &[0x12, 0x34, 0x56, 0x77])]
+    #[case("", &[0x00, 0x00, 0x00, 0x00])]
+    fn four_byte_form_packs_the_length_and_decodes_with_the_nibble_cleared(
+        #[case] path: &str,
+        #[case] expected: &[u8],
+    ) {
+        let mut buffer = [0u8; 4];
+        TreePath::from_hex(path).encode_with_4_byte(&mut buffer);
+        assert_eq!(buffer, expected);
+        assert_eq!(TreePath::decode_with_4_byte(&buffer), TreePath::from_hex(path));
+
+        let mut wide = [0u8; 8];
+        TreePath::from_hex("123456789abcdef").encode_with_8_byte(&mut wide);
+        assert_eq!(
+            TreePath::decode_with_8_byte(&wide),
+            TreePath::from_hex("123456789abcdef")
+        );
+        TreePath::new([0xEE; 32], 3).encode_with_4_byte(&mut buffer);
+        assert_eq!(buffer, [0xEE, 0xEE, 0xEE, 0xE3]);
+        assert_eq!(
+            TreePath::decode_with_4_byte(&buffer).path[..4],
+            [0xEE, 0xEE, 0xEE, 0xE0]
+        );
     }
 
     #[test]

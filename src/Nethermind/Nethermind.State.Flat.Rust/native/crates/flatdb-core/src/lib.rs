@@ -4,7 +4,8 @@
 //! [`schedule`] and [`bundle`] are the in-memory snapshots above it and the reads through both, [`scope_bundle`] the
 //! content a scope writes on top of them; [`persistence_manager`] and [`manager`] drive them, calling the C# side
 //! through [`host`] and reporting through [`stats`], [`events`] and [`log_ring`]. [`seam`] counts what crosses the C
-//! ABI, for its cost to be told apart from the work behind it.
+//! ABI, for its cost to be told apart from the work behind it. [`persisted`] is the long-finality tier of snapshots
+//! persisted as sorted tables.
 //!
 //! Everything here is plain Rust; the C ABI lives in the `flatdb-ffi` crate. Unsafe code is confined to the store
 //! backends that call foreign code ([`kv::rocks`], which drives the RocksDB instance the C# side opened through its C
@@ -23,6 +24,7 @@ pub mod keccak_cache;
 pub mod kv;
 pub mod log_ring;
 pub mod manager;
+pub mod persisted;
 pub mod persistence;
 pub mod persistence_manager;
 pub mod repository;

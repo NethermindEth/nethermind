@@ -58,6 +58,14 @@ impl BloomFilter {
         })
     }
 
+    /// Port of `AlwaysTrue`: one line with every bit set, so [`Self::might_contain`] never filters a key out. Its
+    /// count starts at 0, as the C# sentinel's.
+    pub fn always_true() -> Self {
+        let mut filter = Self::new(1, 1.0).expect("one line of one bit per key is a valid filter");
+        filter.lines.fill(Line([u64::MAX; 8]));
+        filter
+    }
+
     /// The bytes of filter data, a multiple of 64.
     pub fn data_bytes(&self) -> usize {
         self.lines.len() * LINE_BYTES
@@ -168,6 +176,14 @@ mod tests {
         ));
         assert!(matches!(BloomFilter::new(1, f64::NAN), Err(BloomError::BitsPerKey(_))));
         assert!(matches!(BloomFilter::new(1, 0.0), Err(BloomError::BitsPerKey(_))));
+    }
+
+    #[test]
+    fn always_true_contains_every_key_in_one_line_and_counts_from_zero() {
+        let filter = BloomFilter::always_true();
+
+        assert_eq!((filter.data_bytes(), filter.count()), (64, 0));
+        assert!((0..10_000u64).all(|key| filter.might_contain(key.wrapping_mul(0x9E37_79B9_7F4A_7C15))));
     }
 
     #[rstest]

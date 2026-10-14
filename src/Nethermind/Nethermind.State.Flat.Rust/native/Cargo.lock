@@ -385,6 +385,7 @@ dependencies = [
  "proptest",
  "rstest",
  "serde_json",
+ "sha2",
  "sha3",
  "tempfile",
  "thiserror",
@@ -946,6 +947,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "sha2"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "446ba717509524cb3f22f17ecc096f10f4822d76ab5c0b9822c5f9c284e825f4"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
 ]
 
 [[package]]

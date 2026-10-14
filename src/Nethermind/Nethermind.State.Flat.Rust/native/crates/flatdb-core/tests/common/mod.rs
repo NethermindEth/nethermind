@@ -5,6 +5,7 @@ pub mod any_kv;
 pub mod faulty;
 pub mod loopback;
 pub mod manager;
+pub mod persisted;
 #[cfg(feature = "rocksdb-it")]
 pub mod rocks;
 pub mod scope_model;

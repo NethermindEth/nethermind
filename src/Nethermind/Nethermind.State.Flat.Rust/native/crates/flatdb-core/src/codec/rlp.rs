@@ -190,6 +190,28 @@ pub fn read_sequence_length(data: &[u8], position: usize) -> RlpResult<(usize, u
     Ok((length, position + length_of_length))
 }
 
+/// The total length, prefix included, of the item at `position`. Port of `RlpHelpers.PeekNextRlpLength`: a long form
+/// must have a non-zero leading length byte and a length of at least 56, and its content must fit the data.
+pub fn peek_next_length(data: &[u8], position: usize) -> RlpResult<usize> {
+    let prefix = byte_at(data, position)?;
+    let length_of_length = match prefix {
+        ..SHORT_STRING_OFFSET => return Ok(1),
+        SHORT_STRING_OFFSET..=SHORT_STRING_MAX_PREFIX => return Ok(1 + usize::from(prefix - SHORT_STRING_OFFSET)),
+        0xB8..LIST_OFFSET => usize::from(prefix - SHORT_STRING_MAX_PREFIX),
+        LIST_OFFSET..=SHORT_LIST_MAX_PREFIX => return Ok(1 + usize::from(prefix - LIST_OFFSET)),
+        _ => usize::from(prefix - SHORT_LIST_MAX_PREFIX),
+    };
+    if byte_at(data, position + 1)? == 0 {
+        return Err(RlpError(format!("non-canonical length at {position}")));
+    }
+    let length = deserialize_length(data, position + 1, length_of_length)?;
+    if length < SMALL_PREFIX_BARRIER {
+        return Err(RlpError(format!("expected a length of at least 56, got {length}")));
+    }
+    slice_at(data, position + 1 + length_of_length, length)?;
+    Ok(1 + length_of_length + length)
+}
+
 /// Decodes an integer of up to eight bytes. Port of `RlpHelpers.DecodeULong`.
 pub fn decode_u64(data: &[u8], position: usize) -> RlpResult<(u64, usize)> {
     let start = position;
@@ -251,7 +273,9 @@ pub fn decode_hash(data: &[u8], position: usize) -> RlpResult<(Hash256, usize)> 
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_bytes, decode_u64, decode_u256, encode_bytes, length_of_bytes, read_sequence_length};
+    use super::{
+        decode_bytes, decode_u64, decode_u256, encode_bytes, length_of_bytes, peek_next_length, read_sequence_length,
+    };
     use crate::types::U256;
     use rstest::rstest;
 
@@ -318,5 +342,24 @@ mod tests {
     #[case("80", None)]
     fn sequence_headers(#[case] encoded: &str, #[case] expected: Option<(usize, usize)>) {
         assert_eq!(read_sequence_length(&hex(encoded), 0).ok(), expected);
+    }
+
+    #[rstest]
+    #[case("7f", Some(1))]
+    #[case("80", Some(1))]
+    #[case("820102", Some(3))]
+    #[case("b838", None)]
+    #[case(
+        "b8381111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+        Some(58)
+    )]
+    #[case("c0", Some(1))]
+    #[case("f7", Some(56))]
+    #[case("f90100", None)]
+    #[case("b837", None)]
+    #[case("f900ff", None)]
+    #[case("", None)]
+    fn next_length_peeks_every_prefix_form(#[case] encoded: &str, #[case] expected: Option<usize>) {
+        assert_eq!(peek_next_length(&hex(encoded), 0).ok(), expected);
     }
 }
