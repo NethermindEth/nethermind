@@ -18,8 +18,9 @@ namespace Nethermind.Consensus.Processing;
 /// The access list travels beside a block (engine API) rather than in its RLP, so a block reloaded from the
 /// block store has none: the replay from the persisted state after a restart, or a reorg back onto a stored
 /// branch. Without it such a block falls back to sequential execution without access-list read warming.
-/// A stored list is attached only when its wire hash matches the header's commitment, so it is exactly the list
-/// the block was validated with; otherwise the block keeps the sequential path.
+/// A stored list is attached only when its wire hash matches the header's commitment and it is within the EIP-7928
+/// item limit, which a list stored by sync was never checked against; otherwise the block keeps the sequential path,
+/// where the limit is checked on the list execution builds.
 /// A stored list is looked up only when parallel execution, read warming, or finalized catch-up needs it.
 /// </remarks>
 public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, IBlocksConfig blocksConfig, ILogManager logManager, ISyncConfig? syncConfig = null) : IBlockPreprocessorStep
@@ -49,7 +50,7 @@ public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, 
             return;
         }
 
-        if (stored?.WireHash == expectedHash)
+        if (stored?.WireHash == expectedHash && (ulong)stored.ItemCount <= block.Header.GasLimit / Eip7928Constants.ItemCost)
         {
             block.BlockAccessList = stored;
         }
