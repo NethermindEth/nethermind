@@ -1232,13 +1232,15 @@ public class BlockchainBridgeTests
     }
 
     // The request cap depletes by the receipt gas used, while the two block budgets each track one EIP-8037 dimension.
-    [TestCase(50_000ul, 30_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter depletes the request cap by the receipt gas used")]
-    [TestCase(80_000ul, 60_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
-    [TestCase(80_001ul, 60_001ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets exceeded by one")]
-    [TestCase(ulong.MaxValue - 1, 60_000ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets instead of wrapping")]
+    [TestCase(50_000ul, 30_000ul, 10_000ul, 190_000ul, 30_000ul, 30_000ul, TestName = "Simulate adapter depletes the request cap by the receipt gas used")]
+    [TestCase(80_000ul, 60_000ul, 10_000ul, 190_000ul, 0ul, 0ul, TestName = "Simulate adapter accepts exact block and state budgets")]
+    [TestCase(80_001ul, 60_001ul, 10_000ul, 190_000ul, 0ul, 0ul, TestName = "Simulate adapter saturates block budgets exceeded by one")]
+    [TestCase(ulong.MaxValue - 1, 60_000ul, ulong.MaxValue - 1, 0ul, 0ul, 0ul, TestName = "Simulate adapter saturates the request cap and block budgets instead of wrapping")]
     public void Simulate_adapter_uses_block_gas_used_for_budgets(
         ulong blockGasUsed,
         ulong blockStateGasUsed,
+        ulong spentGas,
+        ulong expectedTotalGasLeft,
         ulong expectedBlockGasLeft,
         ulong expectedBlockStateGasLeft)
     {
@@ -1263,9 +1265,9 @@ public class BlockchainBridgeTests
             .Returns(ci =>
             {
                 Transaction tx = ci.Arg<Transaction>();
-                tx.SpentGas = 10_000;
+                tx.SpentGas = spentGas;
                 tx.BlockGasUsed = blockGasUsed;
-                GasConsumed gasConsumed = new(10_000, blockGasUsed, blockGasUsed, blockStateGasUsed);
+                GasConsumed gasConsumed = new(spentGas, blockGasUsed, blockGasUsed, blockStateGasUsed);
                 ci.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, gasConsumed, [], []);
                 return TransactionResult.Ok;
             });
@@ -1279,7 +1281,7 @@ public class BlockchainBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(190_000ul));
+            Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(expectedTotalGasLeft));
             Assert.That(simulateRequestState.BlockGasLeft, Is.EqualTo(expectedBlockGasLeft));
             Assert.That(simulateRequestState.BlockStateGasLeft, Is.EqualTo(expectedBlockStateGasLeft));
         }
