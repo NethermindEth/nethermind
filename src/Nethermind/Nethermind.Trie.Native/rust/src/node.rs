@@ -461,9 +461,22 @@ pub fn decode_rlp(rlp: &[u8]) -> Result<Node, Error> {
         let mut children: Box<[ChildRef; 16]> = empty_children();
         let mut remaining = list.payload;
         for child in children.iter_mut() {
-            let (item, rest) = next_item(remaining)?;
-            *child = child_ref(&item)?;
-            remaining = rest;
+            // Children are nearly always empty or a hash, so those skip the general item parsing.
+            remaining = match remaining {
+                [EMPTY_STRING, rest @ ..] => rest,
+                [HASH_PREFIX, hash @ ..] if hash.len() >= 32 => {
+                    *child = ChildRef::Hash {
+                        hash: hash[..32].try_into().unwrap(),
+                        pointer: 0,
+                    };
+                    &hash[32..]
+                }
+                _ => {
+                    let (item, rest) = next_item(remaining)?;
+                    *child = child_ref(&item)?;
+                    rest
+                }
+            };
         }
         return Ok(Node::Branch { children });
     }
