@@ -5,8 +5,10 @@
 //! until `commit_tree` hashes and stores them.
 
 use std::cell::RefCell;
+use std::sync::OnceLock;
 
 use rayon::prelude::*;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::keccak::keccak_many;
 use crate::log::{LogPointer, LogSession, TrieNodeLog};
@@ -22,6 +24,12 @@ const PARALLEL_THRESHOLD: usize = 128;
 
 /// Same as `PatriciaTree.InPlaceSortThreshold`.
 const IN_PLACE_SORT_THRESHOLD: usize = 32;
+
+/// Most threads a bulk set runs on. More only add wake-up and work-stealing overhead: on 64 cores, 16 threads beat 64
+/// for every batch size measured.
+const MAX_THREADS: usize = 16;
+
+static POOL: OnceLock<ThreadPool> = OnceLock::new();
 
 const FULL_BRANCH: u16 = 0xffff;
 
@@ -258,26 +266,35 @@ impl<S: NodeStore> Context<'_, S> {
             let parent_path = *path;
             let existing: [ChildRef; 16] =
                 std::array::from_fn(|index| std::mem::take(&mut children[index]));
-            let updates: Vec<(ChildRef, bool)> = buckets
-                .into_par_iter()
-                .zip(existing)
-                .zip(remainders)
-                .enumerate()
-                .map(
-                    |(child_nibble, (((bucket, bucket_buffer), mut reference), remainder))| {
-                        let mut child_path = parent_path.append(&[child_nibble as u8]);
-                        // Every parallel task hashes its own subtree, so no level spans threads.
-                        let child_changed = self.update_child(
-                            &mut child_path,
-                            &mut reference,
-                            remainder,
-                            true,
-                            |path, node| self.update(bucket, bucket_buffer, path, node),
-                        )?;
-                        Ok((reference, child_changed))
-                    },
-                )
-                .collect::<Result<_, Error>>()?;
+            let pool = POOL.get_or_init(|| {
+                let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+                ThreadPoolBuilder::new()
+                    .num_threads(threads.min(MAX_THREADS))
+                    .build()
+                    .expect("bulk set thread pool")
+            });
+            let updates: Vec<(ChildRef, bool)> = pool.install(|| {
+                buckets
+                    .into_par_iter()
+                    .zip(existing)
+                    .zip(remainders)
+                    .enumerate()
+                    .map(
+                        |(child_nibble, (((bucket, bucket_buffer), mut reference), remainder))| {
+                            let mut child_path = parent_path.append(&[child_nibble as u8]);
+                            // Every parallel task hashes its own subtree, so no level spans threads.
+                            let child_changed = self.update_child(
+                                &mut child_path,
+                                &mut reference,
+                                remainder,
+                                true,
+                                |path, node| self.update(bucket, bucket_buffer, path, node),
+                            )?;
+                            Ok((reference, child_changed))
+                        },
+                    )
+                    .collect::<Result<_, Error>>()
+            })?;
             for (child_nibble, (reference, child_changed)) in updates.into_iter().enumerate() {
                 apply(child_changed, &reference);
                 children[child_nibble] = reference;
