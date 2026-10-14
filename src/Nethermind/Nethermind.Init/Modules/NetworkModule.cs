@@ -43,7 +43,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
     {
         base.Load(builder);
         INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
-        // EIP-8437: lean/1 is advertised over RLPx only when that binding is supported.
         if ((networkConfig.LeanBindings & LeanBinding.Rlpx) != 0) builder.AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>();
         builder.AddModule(new LeanEthp2pModule(networkConfig));
         builder
@@ -83,6 +82,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IProtocolsManager, ProtocolsManager>()
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
+            .AddSingleton<Subprotocols.Lean.LeanEthTransactions>()
             .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
             .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
@@ -94,8 +94,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<Subprotocols.Lean.ChunkMessage, Subprotocols.Lean.ChunkMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.CompleteMessage, Subprotocols.Lean.CompleteMessageSerializer>()
             .AddMessageSerializer<Subprotocols.Lean.CancelMessage, Subprotocols.Lean.CancelMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.GetTransactionsMessage, Subprotocols.Lean.GetTransactionsMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.TransactionsMessage, Subprotocols.Lean.TransactionsMessageSerializer>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()

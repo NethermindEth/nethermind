@@ -10,70 +10,52 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
-/// <summary>Canonical body encodings of the three EIP-8437 object kinds, checked before kind validation.</summary>
+/// <summary>Canonical body encodings of the two EIP-8437 object kinds, checked before kind validation.</summary>
 public static class LeanBodies
 {
-    /// <summary>One kind-1 transaction entry: a full envelope (with its range in the body) or a hash reference.</summary>
-    public readonly record struct WrapperEntry(ValueHash256 Hash, bool IsFull, int EnvelopeOffset, int EnvelopeLength);
-
-    /// <summary>Parses <c>RLP([transactions, mode, [deps, proof_content]])</c> without decoding transactions.</summary>
-    /// <exception cref="RlpException">The body is not a canonical kind-1 encoding, or a dependency's scheme is not enabled.</exception>
-    public static List<WrapperEntry> ParseWrapper(ReadOnlySpan<byte> body)
+    /// <summary>Checks the hash-only EIP-8288 wrapper encoding before envelope recovery.</summary>
+    public static List<ValueHash256> ParseWrapper(ReadOnlySpan<byte> body)
     {
+        if (body.Length > Eip8288Constants.MaxWrapperBytes) throw new RlpException("Wrapper exceeds MAX_WRAPPER_BYTES");
         LeanRlpReader outer = new(body);
         LeanRlpReader wrapper = outer.ReadList();
         outer.End();
         LeanRlpReader transactions = wrapper.ReadList();
         int count = transactions.CountRemaining(Eip8288Constants.MaxTxsPerWrapper);
         if (count == 0) throw new RlpException("Wrapper carries no transactions");
-        List<WrapperEntry> entries = new(count);
-        ValueHash256 previous = default;
+        List<ValueHash256> hashes = new(count);
         for (int i = 0; i < count; i++)
         {
-            LeanRlpReader entry = transactions.ReadList();
-            ulong tag = entry.ReadUInt64();
-            ReadOnlySpan<byte> value = entry.ReadBytes();
-            entry.End();
-            WrapperEntry parsed = tag switch
-            {
-                0 when value.Length > 0 => new(ValueKeccak.Compute(value), true, OffsetOf(body, value), value.Length),
-                1 when value.Length == ValueHash256.MemorySize => new(new ValueHash256(value), false, 0, 0),
-                _ => throw new RlpException("Invalid wrapper transaction entry")
-            };
-            if (i > 0 && previous.Bytes.SequenceCompareTo(parsed.Hash.Bytes) >= 0)
-                throw new RlpException("Wrapper transactions are not in strictly ascending hash order");
-            previous = parsed.Hash;
-            entries.Add(parsed);
+            ValueHash256 hash = transactions.ReadHash();
+            if (i > 0 && hashes[i - 1].CompareTo(hash) >= 0) throw new RlpException("Wrapper hashes are not strictly ascending");
+            hashes.Add(hash);
         }
         transactions.End();
         ulong mode = wrapper.ReadUInt64();
         LeanRlpReader content = wrapper.ReadList();
         wrapper.End();
-        LeanRlpReader deps = content.ReadList();
-        while (deps.HasMore)
+        LeanRlpReader dependencies = content.ReadList();
+        int dependencyCount = dependencies.CountRemaining(Eip8288Constants.MaxProofDependencies);
+        if (dependencyCount == 0) throw new RlpException("Wrapper dependencies are empty");
+        ReadOnlySpan<byte> previous = default;
+        for (int i = 0; i < dependencyCount; i++)
         {
-            ReadOnlySpan<byte> dependency = deps.ReadBytes();
-            if (dependency.Length != Eip8288Constants.DependencyTripleLength) throw new RlpException("Dependency is not 96 bytes");
-            // Only schemes the local profile enables: its AGGREGATED_VK fixes EIP-8288's enabled_schemes, and no other profile is fetched.
-            if (!dependency[..31].IsZero() || !Eip8288Dependencies.IsAcceptedScheme(dependency[31]))
-                throw new RlpException("Dependency scheme is not enabled by the profile");
+            ReadOnlySpan<byte> dependency = dependencies.ReadBytes();
+            if (dependency.Length != Eip8288Constants.DependencyTripleLength || !dependency[..31].IsZero()
+                || !Eip8288Dependencies.IsAcceptedScheme(dependency[31])) throw new RlpException("Invalid dependency");
+            if (i > 0 && previous.SequenceCompareTo(dependency) >= 0) throw new RlpException("Dependencies are not canonical");
+            previous = dependency;
         }
-        switch (mode)
+        if (mode == 0)
         {
-            case 0:
-                {
-                    LeanRlpReader proofs = content.ReadList();
-                    while (proofs.HasMore) proofs.ReadBytes();
-                    break;
-                }
-            case 1:
-                CheckAggregateProof(content.ReadBytes());
-                break;
-            default:
-                throw new RlpException("Unknown wrapper mode");
+            LeanRlpReader proofs = content.ReadList();
+            if (proofs.CountRemaining(Eip8288Constants.MaxProofDependencies) != dependencyCount) throw new RlpException("Witness count mismatch");
+            while (proofs.HasMore) proofs.ReadBytes();
         }
+        else if (mode == 1) CheckAggregateProof(content.ReadBytes());
+        else throw new RlpException("Unknown wrapper mode");
         content.End();
-        return entries;
+        return hashes;
     }
 
     /// <summary>Parses the kind-2 body <c>RLP([stark_proof])</c>.</summary>
@@ -90,23 +72,6 @@ public static class LeanBodies
 
     public static byte[] EncodeBlockProof(ReadOnlySpan<byte> starkProof) => LeanRlp.EncodeList(LeanRlp.EncodeBytes(starkProof));
 
-    /// <summary>Checks the kind-3 body <c>RLP([transactions, [stark_proof, deps_hash]])</c>.</summary>
-    public static void CheckInclusionList(ReadOnlySpan<byte> body)
-    {
-        LeanRlpReader outer = new(body);
-        LeanRlpReader package = outer.ReadList();
-        outer.End();
-        LeanRlpReader transactions = package.ReadList();
-        int count = transactions.CountRemaining(LeanProtocol.MaxTxsPerPackage);
-        for (int i = 0; i < count; i++)
-            if (transactions.ReadBytes().Length == 0) throw new RlpException("Empty inclusion-list envelope");
-        LeanRlpReader proof = package.ReadList();
-        package.End();
-        CheckAggregateProof(proof.ReadBytes());
-        proof.ReadHash();
-        proof.End();
-    }
-
     /// <summary>Applies the canonical encoding check of <paramref name="kind"/>.</summary>
     public static void Check(byte kind, ReadOnlySpan<byte> body)
     {
@@ -114,7 +79,6 @@ public static class LeanBodies
         {
             case LeanProtocol.KindWrapper: ParseWrapper(body); break;
             case LeanProtocol.KindBlockProof: ParseBlockProof(body); break;
-            case LeanProtocol.KindInclusionList: CheckInclusionList(body); break;
             default: throw new RlpException($"Unknown object kind {kind}");
         }
     }
@@ -126,8 +90,4 @@ public static class LeanBodies
         if (proof.Length > Eip8288Constants.MaxAggregateProofBytes) throw new RlpException("Aggregate proof exceeds MAX_AGGREGATE_PROOF_BYTES");
     }
 
-    private static int OffsetOf(ReadOnlySpan<byte> body, ReadOnlySpan<byte> value) =>
-        (int)(System.Runtime.CompilerServices.Unsafe.ByteOffset(
-            ref System.Runtime.InteropServices.MemoryMarshal.GetReference(body),
-            ref System.Runtime.InteropServices.MemoryMarshal.GetReference(value)));
 }

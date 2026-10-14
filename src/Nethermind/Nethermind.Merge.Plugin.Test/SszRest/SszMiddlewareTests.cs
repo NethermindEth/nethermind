@@ -1554,7 +1554,11 @@ public class SszMiddlewareTests
     {
         Block block = MakeMinimalBlock();
         if (inclusionProof) block.InclusionLists = [new CommitteeInclusionList(0, [], new([1], Keccak.Zero))];
-        else block.Header.RecursiveStark = new([1], Keccak.Zero);
+        else
+        {
+            block.StarkProof = [1];
+            block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Zero);
+        }
         GetPayloadV6Result result = new(block, UInt256.Zero, new BlobsBundleV2(block), [], false);
         _engineModule.engine_getPayloadV6(Arg.Any<byte[]>()).Returns(ResultWrapper<GetPayloadV6Result?>.Success(result));
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708", fork: "amsterdam");

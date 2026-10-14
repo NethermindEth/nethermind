@@ -132,10 +132,10 @@ public static class BlockErrorMessages
         "InvalidRequestsOrder: Requests are not in the correct order in block.";
 
     public const string RecursiveStarkNotEnabled =
-        "RecursiveStarkNotEnabled: Block header cannot have a recursive STARK before EIP-8288.";
+        "RecursiveStarkNotEnabled: Block cannot have a recursive STARK commitment or proof before EIP-8288.";
 
     public const string MissingRecursiveStark =
-        "MissingRecursiveStark: EIP-8288 recursive STARK header entry is missing.";
+        "MissingRecursiveStark: EIP-8288 recursive STARK commitment or body proof is missing.";
 
     public static string InvalidBlockDepsHash(Hash256? expected, Hash256? actual) =>
         $"InvalidBlockDepsHash: block deps hash mismatch: expected {expected}, got {actual}";

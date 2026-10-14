@@ -5,12 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core;
 
-/// <summary>
-/// EIP-8288 block-header entry <c>recursive_stark = [stark_proof, block_deps_hash]</c>: the recursive
-/// STARK proving the validity of every dependency declared by the block's transactions, together with
-/// the commitment to those dependencies.
-/// https://eips.ethereum.org/EIPS/eip-8288
-/// </summary>
+/// <summary>A recursive proof and its dependency digest, used by inclusion lists and proof retrieval.</summary>
 public sealed class RecursiveStark(byte[] starkProof, Hash256 blockDepsHash)
 {
     /// <summary>The serialized recursive STARK proof (opaque; produced by Lean Ethereum tooling).</summary>

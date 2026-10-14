@@ -23,8 +23,7 @@ public enum LeanBroadcastAuthorization
 /// <remarks>
 /// EIP-8437 requires these parameters to be fixed by the network before activation and never taken from peers: the
 /// <see cref="Id"/>, canonical signature and authorization encodings, the signature relation and domain, consensus-context
-/// authentication, the slot clock and producer-duty rules (proposer or selected builder for kind 2, the inclusion-list
-/// committee position for kind 3). A node without a registered profile uses retrieval only.
+/// authentication, the slot clock and producer-duty rules (proposer or selected builder for kind 2). A node without a registered profile uses retrieval only.
 /// </remarks>
 public interface ILeanBroadcastProfile
 {
@@ -41,6 +40,6 @@ public interface ILeanBroadcastProfile
     LeanBroadcastAuthorization Authorize(LeanBroadcastManifest manifest, in ValueHash256 manifestId, ReadOnlySpan<byte> signature,
         ReadOnlySpan<byte> authorization);
 
-    /// <summary>Whether a reconstructed body matches the block or ordered inclusion list of the manifest's consensus context.</summary>
+    /// <summary>Whether a reconstructed body matches the block of the manifest's consensus context.</summary>
     bool MatchesContext(LeanBroadcastManifest manifest, ReadOnlySpan<byte> body);
 }

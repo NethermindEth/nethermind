@@ -67,10 +67,10 @@ namespace Nethermind.Serialization.Rlp
             if (position != headerCheck)
             {
                 int recursiveStarkCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
-                byte[] starkProof = decoderContext.DecodeByteArray(RlpLimit.For<RecursiveStark>(Eip8288Constants.MaxAggregateProofBytes, nameof(RecursiveStark.StarkProof)));
+                Hash256 starkProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 proof hash.");
                 Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
                 decoderContext.Check(recursiveStarkCheck);
-                blockHeader.RecursiveStark = new RecursiveStark(starkProof, blockDepsHash);
+                blockHeader.RecursiveStark = new RecursiveStarkCommitment(starkProofHash, blockDepsHash);
                 position = decoderContext.Position;
             }
 
@@ -166,9 +166,9 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
             if (requiredItems[8])
             {
-                RecursiveStark recursiveStark = header.RecursiveStark!;
-                writer.StartSequence(Rlp.LengthOf(recursiveStark.StarkProof) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
-                writer.Encode(recursiveStark.StarkProof);
+                RecursiveStarkCommitment recursiveStark = header.RecursiveStark!;
+                writer.StartSequence(Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+                writer.Encode(recursiveStark.StarkProofHash);
                 writer.Encode(recursiveStark.BlockDepsHash);
             }
         }
@@ -228,8 +228,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
             if (requiredItems[8])
             {
-                RecursiveStark recursiveStark = item.RecursiveStark!;
-                contentLength += Rlp.LengthOfSequence(Rlp.LengthOf(recursiveStark.StarkProof) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
+                RecursiveStarkCommitment recursiveStark = item.RecursiveStark!;
+                contentLength += Rlp.LengthOfSequence(Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash));
             }
 
             return contentLength;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
@@ -13,9 +12,9 @@ public static class LeanProtocol
 {
     public const string Code = "lean";
     public const byte Version = 1;
-    public const int MessageCount = 10;
+    public const int MessageCount = 8;
     public const int ChunkBytes = 64 * 1024;
-    public const ulong MaxObjectBytes = 64 * 1024 * 1024;
+    public const ulong MaxObjectBytes = 9 * 1024 * 1024;
     public const int MaxMessageBytes = 128 * 1024;
     public const int MaxRlpDepth = 8;
     public const int MaxProfiles = 16;
@@ -23,15 +22,8 @@ public static class LeanProtocol
     public const int MaxLookups = 16;
     public const int MaxChunksPerRequest = 32;
     public const int MaxRequestsPerPeer = 4;
-    /// <summary>Transaction envelopes in a kind-3 body (<c>MAX_TXS_PER_PACKAGE</c>).</summary>
-    /// <remarks>Kind 1 uses EIP-8288's wrapper limits, such as <see cref="Eip8288Constants.MaxTxsPerWrapper"/>, unchanged.</remarks>
-    public const int MaxTxsPerPackage = 4096;
-    public const int MaxTxsPerRequest = 16;
-    public const int MaxTxResponseBytes = 64 * 1024;
     public const int MaxMetadataResponseBytes = 64 * 1024;
-    public const int MaxHeaderSkeletonBytes = 16 * 1024;
-    public const int MaxHeaderFields = 64;
-    public const int MaxDescriptorBytes = 512;
+    public const int MaxDescriptorBytes = 256;
     public const int MaxChunkCount = (int)(MaxObjectBytes / ChunkBytes);
     public const int MaxCreditBytes = 2 * 1024 * 1024;
     public static readonly TimeSpan MaxRequestIdle = TimeSpan.FromSeconds(30);
@@ -42,9 +34,6 @@ public static class LeanProtocol
 
     public const byte KindWrapper = 1;
     public const byte KindBlockProof = 2;
-    public const byte KindInclusionList = 3;
-    public const byte LookupPrimary = 0;
-    public const byte LookupTransaction = 1;
 }
 
 /// <summary>Relative <c>lean/1</c> message IDs.</summary>
@@ -58,11 +47,9 @@ public static class LeanMessageCode
     public const int Chunk = 0x05;
     public const int Complete = 0x06;
     public const int Cancel = 0x07;
-    public const int GetTransactions = 0x08;
-    public const int Transactions = 0x09;
 }
 
-/// <summary>Result statuses of Objects and Transactions.</summary>
+/// <summary>Result statuses of Objects.</summary>
 public enum LeanResultStatus : byte
 {
     Ok = 0,
@@ -88,7 +75,7 @@ public enum LeanCompleteStatus : byte
 public static class LeanLimits
 {
     /// <summary>Advertised receive ceiling: room for a maximum wrapper and a maximum block proof.</summary>
-    public const ulong MaxObjectBytes = 16 * 1024 * 1024;
+    public const ulong MaxObjectBytes = LeanProtocol.MaxObjectBytes;
     public const int MaxAssemblies = 32;
     public const int MaxAssembliesPerPeer = 8;
 
@@ -97,15 +84,15 @@ public static class LeanLimits
 
     /// <summary>How long a pending announcement stays eligible for retrieval.</summary>
     public static readonly TimeSpan DeferredLifetime = LeanProtocol.MaxAssemblyIdle;
-    public const long MaxIncompleteBytes = 64 * 1024 * 1024;
-    public const long MaxPeerBytes = 24 * 1024 * 1024;
-    public const long MaxCompletionBytes = 48 * 1024 * 1024;
+    public const long MaxIncompleteBytes = 72 * 1024 * 1024;
+    public const long MaxPeerBytes = 18 * 1024 * 1024;
+    public const long MaxCompletionBytes = MaxIncompleteBytes;
     public const int MaxPendingValidations = 8;
     public const long MaxStoreBytes = 128 * 1024 * 1024;
     public const int MaxStoreObjects = 256;
     public const int MaxTombstones = 4096;
     public const int MaxKnownPerPeer = 4096;
-    public const int MaxSourcesPerAssembly = 8;
+    public const int MaxSourcesPerAssembly = 3;
     public const int MaxAvailabilityHints = 1024;
     public const int MaxStalledRequests = 3;
     public const int ChunkBookkeepingBytes = 64;

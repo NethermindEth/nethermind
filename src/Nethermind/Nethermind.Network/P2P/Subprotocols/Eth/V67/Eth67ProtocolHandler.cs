@@ -27,9 +27,10 @@ public class Eth67ProtocolHandler(
     IGossipPolicy gossipPolicy,
     IForkInfo forkInfo,
     ILogManager logManager,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
     : Eth66ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, leanTransactions), IStaticProtocolInfo
 {
     public override string Name => "eth67";
 

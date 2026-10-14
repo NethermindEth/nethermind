@@ -10,9 +10,8 @@ namespace Nethermind.Core.Crypto;
 /// <summary>Bounded, thread-safe storage of verified dependency witnesses for block production.</summary>
 public sealed class LeanProofStore
 {
-    /// <summary>Local wrapper size limit, below <see cref="Eip8288Constants.MaxWrapperBytes"/>.</summary>
-    /// <remarks>Leaves room for Snappy's worst-case expansion within the 16 MiB inbound frame cap of whole-object RPC paths.</remarks>
-    public const int MaxWrapperBytes = 10 * 1024 * 1024;
+    /// <summary>Maximum retained wrapper size, bounded by the protocol ceiling.</summary>
+    public const int MaxWrapperBytes = Eip8288Constants.MaxWrapperBytes;
     public const int MaxWrapperTransactions = Eip8288Constants.MaxTxsPerWrapper;
     /// <summary>Full witness bytes a sender may retain through pending transactions.</summary>
     public const long MaxSenderPinnedBytes = 12 * 1024 * 1024;

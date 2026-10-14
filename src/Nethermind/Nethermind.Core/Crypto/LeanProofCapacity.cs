@@ -8,22 +8,27 @@ namespace Nethermind.Core.Crypto;
 /// <summary>Public claim-count accounting for one mixed recursive proof.</summary>
 public static class LeanProofCapacity
 {
-    /// <summary>Distinct dependency and leanSTARK dependency bounds.</summary>
-    public sealed record Limits(int Dependencies, int LeanStark);
+    /// <summary>Distinct dependency, local leanSTARK count and optional weighted dependency bounds.</summary>
+    public sealed record Limits(int Dependencies, int LeanStark, int DependencyUnits = int.MaxValue);
 
     /// <summary>The prototype native proof envelope: what this node can prove, not what consensus allows.</summary>
     public static readonly Limits Proof = new(Eip8288Constants.MaxProofDependencies, Eip8288Constants.MaxGenericStarkProofs);
 
     /// <summary>EIP-8288 block capacity, the only capacity that excuses omitting an inclusion-list transaction.</summary>
-    public static readonly Limits Block = new(Eip8288Constants.MaxDepsPerBlock, Eip8288Constants.MaxLeanStarkDepsPerBlock);
+    public static readonly Limits Block = new(Eip8288Constants.MaxDepsPerBlock, int.MaxValue, Eip8288Constants.MaxDependencyUnitsPerBlock);
 
     /// <summary>EIP-8288 <c>dependencies_fit_block</c> over a deduplicated dependency set.</summary>
     public static bool FitsBlock(IReadOnlyCollection<FrameDependency> distinct)
     {
         if (distinct.Count > Block.Dependencies) return false;
-        int leanStark = 0;
+        int units = 0;
         foreach (FrameDependency dependency in distinct)
-            if (dependency.Scheme == Eip8288Constants.LeanStarkScheme && ++leanStark > Block.LeanStark) return false;
+        {
+            if (!Eip8288Dependencies.IsAcceptedScheme(dependency.Scheme)) return false;
+            units += dependency.Scheme == Eip8288Constants.LeanStarkScheme
+                ? Eip8288Constants.LeanStarkDependencyWeight : Eip8288Constants.LeanSphincsDependencyWeight;
+            if (units > Block.DependencyUnits) return false;
+        }
         return true;
     }
 
@@ -88,6 +93,9 @@ public static class LeanProofCapacity
     {
         if (count > limits.Dependencies) return "Dependency proof count limit exceeded";
         if (generic > limits.LeanStark) return "Generic STARK proof count limit exceeded";
+        long units = (long)(count - generic) * Eip8288Constants.LeanSphincsDependencyWeight
+            + (long)generic * Eip8288Constants.LeanStarkDependencyWeight;
+        if (units > limits.DependencyUnits) return "Dependency proof unit limit exceeded";
         return null;
     }
 }

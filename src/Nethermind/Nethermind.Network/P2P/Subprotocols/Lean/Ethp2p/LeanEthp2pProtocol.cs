@@ -55,19 +55,18 @@ public static class LeanEthp2pProtocol
     /// <summary>Inbound unidirectional streams per connection: both control streams, one per live response, and broadcast.</summary>
     public const int MaxInboundStreams = 2 + LeanProtocol.MaxRequestsPerPeer + MaxBroadcastStreams;
 
-    /// <summary>Per-stream receive window: EIP-8437's recommended 4 MiB, which holds a full GetChunks response, so one round
-    /// trip does not limit a response's throughput; QUIC requires a power of two.</summary>
-    public const int StreamReceiveWindow = 4 * 1024 * 1024;
+    /// <summary>Per-stream QUIC receive credit, in bytes; reads replenish it as bounded application buffers drain.</summary>
+    public const int StreamReceiveWindow = 2 * 1024 * 1024;
 
-    /// <summary>Connection receive window, above EIP-8437's recommended 32 MiB: room for the full windows of both control
-    /// streams and every live response stream plus a maximal frame on every broadcast stream, so the control streams are
-    /// never starved by the others; QUIC requires a power of two.</summary>
-    /// <remarks>Bytes are buffered only while the application lags its reads; this bounds them, it is not an allocation.</remarks>
-    public const int ConnectionReceiveWindow = 64 * 1024 * 1024;
+    /// <summary>Connection QUIC receive credit, reserved from the authenticated node's shared transport budget.</summary>
+    public const int ConnectionReceiveWindow = 512 * 1024;
 
     /// <summary>Encodes <c>U8(message_id) || U32(payload_length) || payload</c>.</summary>
     public static byte[] Frame(int messageId, ReadOnlySpan<byte> payload, bool responsePrefix = false, ulong requestId = 0)
     {
+        if (messageId is < LeanMessageCode.Status or > LeanMessageCode.Cancel) throw new ArgumentOutOfRangeException(nameof(messageId));
+        if (payload.IsEmpty || payload.Length > MaxPayload(messageId)) throw new ArgumentOutOfRangeException(nameof(payload));
+        if (responsePrefix && requestId == 0) throw new ArgumentOutOfRangeException(nameof(requestId));
         int offset = responsePrefix ? ResponsePrefixBytes : 0;
         byte[] frame = new byte[offset + FrameHeaderBytes + payload.Length];
         if (responsePrefix) WriteResponsePrefix(frame, requestId);
@@ -77,18 +76,17 @@ public static class LeanEthp2pProtocol
         return frame;
     }
 
-    /// <summary>Writes <c>0x01 || U64(request_id)</c>.</summary>
+    /// <summary>Writes <c>0x11 || U64(request_id)</c>.</summary>
     public static void WriteResponsePrefix(Span<byte> destination, ulong requestId)
     {
         destination[0] = ResponseStream;
         BinaryPrimitives.WriteUInt64BigEndian(destination[1..], requestId);
     }
 
-    /// <summary>The payload ceiling of a message: the tighter Objects and Transactions limits, else <c>MAX_MESSAGE_BYTES</c>.</summary>
+    /// <summary>The payload ceiling of a message: the tighter Objects limit, else <c>MAX_MESSAGE_BYTES</c>.</summary>
     public static int MaxPayload(int messageId) => messageId switch
     {
         LeanMessageCode.Objects => LeanProtocol.MaxMetadataResponseBytes,
-        LeanMessageCode.Transactions => LeanProtocol.MaxTxResponseBytes,
         _ => LeanProtocol.MaxMessageBytes
     };
 
@@ -103,8 +101,6 @@ public static class LeanEthp2pProtocol
         ChunkMessage m => new ChunkMessageSerializer().Encode(m),
         CompleteMessage m => new CompleteMessageSerializer().Encode(m),
         CancelMessage m => new CancelMessageSerializer().Encode(m),
-        GetTransactionsMessage m => new GetTransactionsMessageSerializer().Encode(m),
-        TransactionsMessage m => new TransactionsMessageSerializer().Encode(m),
         _ => throw new ArgumentException($"{message.GetType().Name} is not a lean/1 message", nameof(message))
     };
 
@@ -114,7 +110,6 @@ public static class LeanEthp2pProtocol
         ObjectsMessage m => m.RequestId,
         ChunkMessage m => m.RequestId,
         CompleteMessage m => m.RequestId,
-        TransactionsMessage m => m.RequestId,
         _ => throw new ArgumentException($"{message.GetType().Name} is not a response", nameof(message))
     };
 }

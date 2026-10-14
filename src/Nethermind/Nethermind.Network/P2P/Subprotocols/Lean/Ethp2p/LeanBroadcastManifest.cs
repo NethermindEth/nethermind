@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Lean.Ethp2p;
 /// <remarks>
 /// <code>
 /// manifest = [broadcast_profile_id, fork_digest, slot, duty_index, producer_index,
-///             consensus_context_root, descriptor, auxiliary, coding]
+///             consensus_context_root, descriptor, coding]
 /// coding = [16, 16, shard_bytes, body_sha256, shard_hashes]
 /// </code>
 /// Decoding checks the encoding and coding geometry, before any coder is initialized; it does not authorize the producer.
@@ -28,7 +28,7 @@ public sealed class LeanBroadcastManifest
     public const string ChannelPrefix = "lean/1/rs/";
 
     private LeanBroadcastManifest(byte[] encoded, ValueHash256 broadcastProfileId, byte[] forkDigest, ulong slot, ulong dutyIndex,
-        ulong producerIndex, ValueHash256 consensusContextRoot, LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, int shardBytes,
+        ulong producerIndex, ValueHash256 consensusContextRoot, LeanDescriptor descriptor, int shardBytes,
         ValueHash256 bodySha256, ValueHash256[] shardHashes)
     {
         Encoded = encoded;
@@ -39,7 +39,6 @@ public sealed class LeanBroadcastManifest
         ProducerIndex = producerIndex;
         ConsensusContextRoot = consensusContextRoot;
         Descriptor = descriptor;
-        Skeleton = skeleton;
         ShardBytes = shardBytes;
         BodySha256 = bodySha256;
         ShardHashes = shardHashes;
@@ -55,17 +54,19 @@ public sealed class LeanBroadcastManifest
     public ValueHash256 ConsensusContextRoot { get; }
     public LeanDescriptor Descriptor { get; }
 
-    /// <summary>The kind-2 header skeleton carried as <c>auxiliary</c>; null for kind 3.</summary>
-    public LeanHeaderSkeleton? Skeleton { get; }
     public int ShardBytes { get; }
     public ValueHash256 BodySha256 { get; }
     public ValueHash256[] ShardHashes { get; }
 
     /// <summary>Builds the manifest of a fully validated body, encoding it to commit every shard.</summary>
     public static LeanBroadcastManifest Create(in ValueHash256 broadcastProfileId, ReadOnlySpan<byte> forkDigest, ulong slot, ulong dutyIndex,
-        ulong producerIndex, in ValueHash256 consensusContextRoot, LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, ReadOnlySpan<byte> body,
+        ulong producerIndex, in ValueHash256 consensusContextRoot, LeanDescriptor descriptor, ReadOnlySpan<byte> body,
         out byte[][] shards)
     {
+        if (descriptor.Kind != LeanProtocol.KindBlockProof || dutyIndex != 0 || forkDigest.Length != ForkDigestBytes)
+            throw new ArgumentException("Invalid block-proof manifest context");
+        if ((ulong)body.Length != descriptor.ByteLength || ValueKeccak.Compute(body) != descriptor.ContentHash)
+            throw new ArgumentException("Body differs from its descriptor");
         shards = LeanReedSolomon.Encode(body);
         byte[][] shardHashes = new byte[LeanReedSolomon.TotalShards][];
         for (int i = 0; i < shardHashes.Length; i++) shardHashes[i] = LeanRlp.EncodeBytes(SHA256.HashData(shards[i]));
@@ -73,7 +74,7 @@ public sealed class LeanBroadcastManifest
             LeanRlp.EncodeUInt((ulong)shards[0].Length), LeanRlp.EncodeBytes(SHA256.HashData(body)), LeanRlp.EncodeList(shardHashes));
         byte[] encoded = LeanRlp.EncodeList(LeanRlp.EncodeBytes(broadcastProfileId.Bytes), LeanRlp.EncodeBytes(forkDigest), LeanRlp.EncodeUInt(slot),
             LeanRlp.EncodeUInt(dutyIndex), LeanRlp.EncodeUInt(producerIndex), LeanRlp.EncodeBytes(consensusContextRoot.Bytes), descriptor.Encoded,
-            skeleton?.Encoded ?? LeanRlp.EncodeBytes([]), coding);
+            coding);
         return Decode(encoded);
     }
 
@@ -97,25 +98,11 @@ public sealed class LeanBroadcastManifest
         ulong producerIndex = fields.ReadUInt64();
         ValueHash256 contextRoot = fields.ReadHash();
         LeanDescriptor descriptor = LeanDescriptor.Decode(fields.ReadItem());
-        ReadOnlySpan<byte> auxiliary = fields.ReadItem();
         LeanRlpReader coding = fields.ReadList();
         fields.End();
 
-        LeanHeaderSkeleton? skeleton;
-        switch (descriptor.Kind)
-        {
-            case LeanProtocol.KindBlockProof:
-                skeleton = LeanHeaderSkeleton.Decode(auxiliary);
-                break;
-            case LeanProtocol.KindInclusionList:
-                LeanRlpReader empty = new(auxiliary);
-                empty.ReadEmptyBytes();
-                empty.End();
-                skeleton = null;
-                break;
-            default:
-                throw new RlpException("Only kinds 2 and 3 are broadcast");
-        }
+        if (descriptor.Kind != LeanProtocol.KindBlockProof) throw new RlpException("Only kind 2 is broadcast");
+        if (dutyIndex != 0) throw new RlpException("Block-proof duty index must be zero");
         if (descriptor.ByteLength > LeanReedSolomon.MaxBodyBytes) throw new RlpException("Broadcast body exceeds 2**20 bytes");
         if (coding.ReadUInt64() != LeanReedSolomon.DataShards || coding.ReadUInt64() != LeanReedSolomon.DataShards)
             throw new RlpException("Broadcast coding is not 16 data and 16 parity shards");
@@ -129,7 +116,7 @@ public sealed class LeanBroadcastManifest
         hashList.End();
         coding.End();
         return new LeanBroadcastManifest(encoded.ToArray(), broadcastProfileId, forkDigest.ToArray(), slot, dutyIndex, producerIndex, contextRoot,
-            descriptor, skeleton, (int)shardBytes, bodySha256, shardHashes);
+            descriptor, (int)shardBytes, bodySha256, shardHashes);
     }
 
     /// <summary><c>H("lean/1/broadcast\0" || RLP([chain_id, genesis_hash, manifest]))</c>.</summary>

@@ -40,9 +40,10 @@ public class Eth69ProtocolHandler(
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
     IChainHeadSpecProvider specProvider,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, leanTransactions), ISyncPeer, IStaticProtocolInfo
 {
     public override string Name => "eth69";
 

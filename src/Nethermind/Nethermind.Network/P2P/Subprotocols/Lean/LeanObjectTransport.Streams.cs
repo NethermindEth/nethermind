@@ -16,8 +16,7 @@ internal enum LeanResponseTarget
     Duplicate,
 
     GetObjects,
-    GetChunks,
-    GetTransactions
+    GetChunks
 }
 
 public sealed partial class LeanObjectTransport
@@ -35,7 +34,7 @@ public sealed partial class LeanObjectTransport
             {
                 LeanObjectsRequest => LeanResponseTarget.GetObjects,
                 LeanChunksRequest => LeanResponseTarget.GetChunks,
-                _ => LeanResponseTarget.GetTransactions
+                _ => LeanResponseTarget.Invalid
             };
         }
     }
@@ -47,8 +46,8 @@ public sealed partial class LeanObjectTransport
 
     /// <summary>Retires a request whose response stream was reset or finished before its terminal response.</summary>
     /// <remarks>
-    /// EIP-8437: this is incomplete delivery, never Served, and not misconduct; chunks already verified stay retained and
-    /// the indices in flight go to other sources after a short throttle, as for Busy.
+    /// EIP-8437: this is incomplete delivery, never Served, and not misconduct; retained chunks remain available and
+    /// unused credit is released; same-source recovery can resume after a short throttle.
     /// </remarks>
     internal void OnResponseAborted(LeanPeer peer, ulong requestId)
     {

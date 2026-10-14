@@ -42,7 +42,7 @@ public partial class SszExecutionPayloadV1(ExecutionPayload payload) : ISszExecu
 
     protected static Block RequireStandardBlock(Block block)
     {
-        if (block.Header.RecursiveStark is not null || block.InclusionLists is not null)
+        if (block.Header.RecursiveStark is not null || block.StarkProof is not null || block.InclusionLists is not null)
             throw new NotSupportedException("EIP-8288 proof payloads require the JSON Engine API; the SSZ schema has no proof fields.");
         return block;
     }

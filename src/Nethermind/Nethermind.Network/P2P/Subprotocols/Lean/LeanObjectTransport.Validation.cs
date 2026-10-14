@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.ProofAggregation;
@@ -23,7 +22,7 @@ public sealed partial class LeanObjectTransport
     /// requires refusing it locally without treating it as invalid, so it is neither penalized nor tombstoned.</remarks>
     private enum Verdict { Valid, Invalid, LocalFailure, Refused }
 
-    /// <summary>Moves a fully received assembly into the bounded validation queue once its completion copy can be reserved.</summary>
+    /// <summary>Hands the owned reassembly buffer to the bounded validation queue without a completion copy.</summary>
     /// <remarks>Without room the assembly stays charged and is retried on the timer until it expires.</remarks>
     private void TryComplete(LeanAssembly assembly, Outbox outbox)
     {
@@ -34,27 +33,14 @@ public sealed partial class LeanObjectTransport
             Drop(assembly);
             return;
         }
+        if (assembly.Validate && _pendingValidations >= LeanLimits.MaxPendingValidations) return;
         long length = (long)assembly.Descriptor.ByteLength;
-        if ((assembly.Validate && _pendingValidations >= LeanLimits.MaxPendingValidations) || length > LeanLimits.MaxCompletionBytes - _completionBytes) return;
+        _incompleteBytes -= length;
         _completionBytes += length;
-        byte[] body = new byte[length];
-        int offset = 0;
-        for (int index = 0; index < assembly.Chunks.Length; index++)
-        {
-            byte[] chunk = assembly.Chunks[index]!;
-            chunk.CopyTo(body, offset);
-            offset += chunk.Length;
-            if (assembly.ChargedTo[index] is { } contributor && !assembly.Contributors.Contains(contributor)) assembly.Contributors.Add(contributor);
-        }
-        Enqueue(assembly, body, outbox);
-    }
-
-    /// <summary>Hands a complete body, whose copy is already reserved, to processing and stops retrieving its chunks.</summary>
-    private void Enqueue(LeanAssembly assembly, byte[] body, Outbox outbox)
-    {
-        ReleaseChunks(assembly);
-        assembly.Body = body;
+        assembly.CompletionSource = assembly.CurrentSource;
+        if (assembly.CurrentSource is { } source) assembly.Contributors.Add(source);
         assembly.Queued = true;
+        ReleaseChunks(assembly);
         assembly.Processing = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
         CancelRequestsFor(assembly, outbox);
         if (!assembly.Validate)
@@ -124,8 +110,17 @@ public sealed partial class LeanObjectTransport
                 processing = assembly.Processing;
                 assembly.Processing = null;
                 if (_assemblies.TryGetValue(assembly.Descriptor.ObjectId, out LeanAssembly? current) && current == assembly)
-                    _assemblies.Remove(assembly.Descriptor.ObjectId);
-                foreach (TaskCompletionSource<byte[]?> waiter in assembly.Waiters) waiter.TrySetResult(null);
+                {
+                    if (!assembly.RetrySource) _assemblies.Remove(assembly.Descriptor.ObjectId);
+                    else
+                    {
+                        assembly.Queued = false;
+                        assembly.Started = false;
+                        assembly.Received = 0;
+                        assembly.RetrySource = false;
+                    }
+                }
+                foreach (TaskCompletionSource<LeanFetchedBody?> waiter in assembly.Waiters) waiter.TrySetResult(null);
                 assembly.Waiters.Clear();
                 Schedule(outbox, _clock.GetTimestamp());
             }
@@ -134,11 +129,16 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Releases a completed body's reservation, once.</summary>
+    /// <summary>Releases a completed body's reservation after processing and all fetched-body leases finish.</summary>
     private void ReleaseCompletion(LeanAssembly assembly)
     {
-        if (assembly.Body is null) return;
-        _completionBytes -= (long)assembly.Descriptor.ByteLength;
+        assembly.ReleaseRequested = true;
+        if (assembly.Body is null || assembly.BodyLeases != 0) return;
+        long released = (long)assembly.Descriptor.ByteLength + assembly.RecoveryBytes;
+        _completionBytes -= released;
+        if (assembly.CompletionSource is { } source) { source.ChargedBytes -= released; PruneNode(source.Node); }
+        assembly.RecoveryBytes = 0;
+        assembly.CompletionSource = null;
         assembly.Body = null;
         if (!assembly.Started && assembly.Validate)
         {
@@ -154,15 +154,26 @@ public sealed partial class LeanObjectTransport
         cancellation.ThrowIfCancellationRequested();
         LeanDescriptor descriptor = assembly.Descriptor;
         byte[] body = assembly.Body!;
-        List<LeanBodies.WrapperEntry>? entries = null;
+        List<ValueHash256>? entries = null;
         string? integrityError = CheckIntegrity(descriptor, body, ref entries);
         if (integrityError is not null)
         {
-            Reject(assembly, integrityError);
+            Outbox outbox = new(_clock);
+            lock (_gate)
+            {
+                if (assembly.CurrentSource is { } source)
+                {
+                    assembly.Sources.Remove(source);
+                    assembly.CurrentSource = null;
+                    assembly.RetrySource = assembly.SourceAttempts < LeanLimits.MaxSourcesPerAssembly && assembly.Sources.Count != 0;
+                    Violation(source, integrityError, outbox);
+                }
+            }
+            outbox.Flush();
             return;
         }
         LeanMetrics.Record(descriptor.Kind, LeanEvent.Reassembled);
-        TaskCompletionSource<byte[]?>[] waiters;
+        TaskCompletionSource<LeanFetchedBody?>[] waiters;
         bool validate;
         lock (_gate)
         {
@@ -171,14 +182,20 @@ public sealed partial class LeanObjectTransport
             assembly.Waiters.Clear();
             validate = assembly.Validate;
         }
-        foreach (TaskCompletionSource<byte[]?> waiter in waiters) waiter.TrySetResult(body);
+        foreach (TaskCompletionSource<LeanFetchedBody?> waiter in waiters)
+        {
+            lock (_gate)
+            {
+                assembly.BodyLeases++;
+                LeanFetchedBody lease = new(body, () => ReleaseFetchedBody(assembly));
+                if (!waiter.TrySetResult(lease)) lease.Dispose();
+            }
+        }
         if (!validate) return;
 
         (Verdict verdict, string? error) = descriptor.Kind switch
         {
             LeanProtocol.KindWrapper => await ValidateWrapperAsync(assembly, body, entries!, cancellation).ConfigureAwait(false),
-            LeanProtocol.KindInclusionList => await AcceptWithRetryAsync(
-                token => _wrappers.AcceptInclusionListDetailedAsync(body, token), cancellation).ConfigureAwait(false),
             _ => (Verdict.LocalFailure, "kind is fetched only on demand")
         };
         switch (verdict)
@@ -186,9 +203,6 @@ public sealed partial class LeanObjectTransport
             case Verdict.Valid:
                 Interlocked.Increment(ref _stats.Validated);
                 LeanMetrics.Record(descriptor.Kind, LeanEvent.Validated);
-                if (assembly.BroadcastStarted is { } broadcastStarted)
-                    LeanMetrics.Transferred(descriptor.Kind, broadcast: true, Stopwatch.GetElapsedTime(broadcastStarted));
-                else LeanMetrics.Transferred(descriptor.Kind, broadcast: false, _clock.GetElapsedTime(assembly.Created));
                 if (_logger.IsDebug) _logger.Debug($"lean/1 validated {descriptor} from {assembly.Contributors.Count} peer(s)");
                 break;
             case Verdict.Invalid:
@@ -211,22 +225,11 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Checks length, <c>content_hash</c>, the canonical <c>chunk_root</c> and canonical body encoding.</summary>
-    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<LeanBodies.WrapperEntry>? entries)
-        => CheckCommitments(descriptor, body) ?? CheckEncoding(descriptor, body, ref entries);
-
-    /// <summary>Checks that a body is the one the descriptor commits to: its length, <c>content_hash</c> and canonical <c>chunk_root</c>.</summary>
-    private static string? CheckCommitments(LeanDescriptor descriptor, byte[] body)
+    /// <summary>Checks length, <c>content_hash</c>, the canonical body encoding.</summary>
+    private static string? CheckIntegrity(LeanDescriptor descriptor, byte[] body, ref List<ValueHash256>? entries)
     {
         if ((ulong)body.Length != descriptor.ByteLength) return "reconstructed length differs from the descriptor";
         if (ValueKeccak.Compute(body) != descriptor.ContentHash) return "content hash mismatch";
-        if (new LeanChunkTree(descriptor.Seed, body).ChunkRoot != descriptor.ChunkRoot) return "noncanonical chunk root";
-        return null;
-    }
-
-    /// <summary>Checks the canonical body encoding of the descriptor's kind, including EIP-8288's aggregate proof bound.</summary>
-    private static string? CheckEncoding(LeanDescriptor descriptor, byte[] body, ref List<LeanBodies.WrapperEntry>? entries)
-    {
         try
         {
             if (descriptor.Kind == LeanProtocol.KindWrapper) entries = LeanBodies.ParseWrapper(body);
@@ -247,7 +250,7 @@ public sealed partial class LeanObjectTransport
         {
             _tombstones.Add(assembly.Descriptor.ObjectId);
             Interlocked.Increment(ref _stats.Invalid);
-            HashSet<LeanPeer> suppliers = [.. assembly.Contributors, .. assembly.Sources];
+            HashSet<LeanPeer> suppliers = assembly.CurrentSource is { } source ? [source] : [];
             foreach (LeanPeer peer in suppliers) Violation(peer, $"supplied invalid {assembly.Descriptor}: {reason}", outbox);
         }
         outbox.Flush();
@@ -255,12 +258,12 @@ public sealed partial class LeanObjectTransport
         if (_logger.IsInfo) _logger.Info($"lean/1 rejected {assembly.Descriptor}: {reason}");
     }
 
-    private async Task<(Verdict, string?)> ValidateWrapperAsync(LeanAssembly assembly, byte[] body, List<LeanBodies.WrapperEntry> entries,
+    private async Task<(Verdict, string?)> ValidateWrapperAsync(LeanAssembly assembly, byte[] body, List<ValueHash256> entries,
         CancellationToken cancellation)
     {
         List<ValueHash256>? missing = null;
-        foreach (LeanBodies.WrapperEntry entry in entries)
-            if (!entry.IsFull && !_txPool.TryGetPendingTransaction(entry.Hash, out _)) (missing ??= []).Add(entry.Hash);
+        foreach (ValueHash256 hash in entries)
+            if (!_txPool.TryGetPendingTransaction(hash, out _)) (missing ??= []).Add(hash);
         Dictionary<ValueHash256, Transaction>? recovered = null;
         if (missing is not null)
         {
@@ -300,131 +303,93 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Resolves hash entries through GetTransactions and, for envelopes too large for it, a transaction-hash lookup.</summary>
     private async Task<Dictionary<ValueHash256, Transaction>> RecoverTransactionsAsync(LeanAssembly assembly, List<ValueHash256> missing,
         CancellationToken cancellation)
     {
         Dictionary<ValueHash256, Transaction> recovered = [];
-        LeanPeer[] sources;
-        lock (_gate)
-        {
-            HashSet<LeanPeer> candidates = [.. assembly.Contributors, .. assembly.Sources];
-            candidates.RemoveWhere(static peer => peer.Closed);
-            sources = [.. candidates];
-        }
-        if (sources.Length == 0) return recovered;
-        // The assembly's own deadlines cancel recovery too; this is a further local bound.
+        if (assembly.CurrentSource is not { Closed: false } source) return recovered;
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         timeout.CancelAfter(LeanLimits.TransactionRecovery);
-        missing.Sort(static (a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
-        List<ValueHash256> tooLarge = [];
-        for (int start = 0; start < missing.Count && !timeout.IsCancellationRequested; start += LeanProtocol.MaxTxsPerRequest)
+        const int batchSize = 16;
+        for (int start = 0; start < missing.Count && !timeout.IsCancellationRequested; start += batchSize)
         {
-            ValueHash256[] batch = missing.GetRange(start, Math.Min(LeanProtocol.MaxTxsPerRequest, missing.Count - start)).ToArray();
-            foreach (LeanPeer source in sources)
+            ValueHash256[] batch = missing.GetRange(start, Math.Min(batchSize, missing.Count - start)).ToArray();
+            Transaction[] transactions = await source.Link.RecoverTransactionsAsync(batch,
+                bytes => ReserveRecovery(assembly, source, bytes), timeout.Token).ConfigureAwait(false);
+            foreach (Transaction transaction in transactions)
             {
-                (LeanResultStatus Status, byte[] Envelope)[]? results = await RequestTransactionsAsync(source, batch, timeout.Token).ConfigureAwait(false);
-                if (results is null) continue;
-                bool resolvedNew = false;
-                for (int i = 0; i < batch.Length; i++)
+                ValueHash256 hash = (transaction.Hash ?? transaction.CalculateHash()).ValueHash256;
+                if (Array.IndexOf(batch, hash) < 0)
                 {
-                    if (results[i].Status == LeanResultStatus.Ok && !recovered.ContainsKey(batch[i]) && Decode(results[i].Envelope, batch[i]) is { } transaction)
-                    {
-                        recovered[batch[i]] = transaction;
-                        resolvedNew = true;
-                    }
-                    else if (results[i].Status == LeanResultStatus.TooLarge && !tooLarge.Contains(batch[i])) tooLarge.Add(batch[i]);
+                    Outbox outbox = new(_clock);
+                    lock (_gate) Violation(source, "ETH recovery returned an unrequested envelope", outbox);
+                    outbox.Flush();
+                    return recovered;
                 }
-                if (resolvedNew) Touch(assembly);
-                if (Array.TrueForAll(batch, recovered.ContainsKey)) break;
+                if (recovered.TryAdd(hash, transaction))
+                    lock (_gate) if (!assembly.Dropped) assembly.Updated = _clock.GetTimestamp();
             }
         }
-        for (int i = 0; i < tooLarge.Count && i < MaxTransactionRecoveries && !timeout.IsCancellationRequested; i++)
-            if (!recovered.ContainsKey(tooLarge[i]) && await RecoverByLookupAsync(sources, tooLarge[i], assembly, timeout.Token).ConfigureAwait(false) is { } transaction)
-            {
-                recovered[tooLarge[i]] = transaction;
-                Touch(assembly);
-            }
         return recovered;
     }
 
-    /// <summary>Records retrieval progress of an assembly awaiting recovery: a newly resolved missing transaction.</summary>
-    private void Touch(LeanAssembly assembly)
+    private bool ReserveRecovery(LeanAssembly assembly, LeanPeer source, int bytes)
     {
-        lock (_gate) if (!assembly.Dropped) assembly.Updated = _clock.GetTimestamp();
-    }
-
-    /// <summary>Extracts a full entry from a peer's kind-1 object that contains it; the object is neither validated nor relayed.</summary>
-    /// <remarks>Only full entries are taken, so recoveries are never chained.</remarks>
-    private async Task<Transaction?> RecoverByLookupAsync(LeanPeer[] sources, ValueHash256 hash, LeanAssembly waiting, CancellationToken cancellationToken)
-    {
-        foreach (LeanPeer source in sources)
+        lock (_gate)
         {
-            LeanObjectResult[]? results = await RequestObjectsAsync(source,
-                [new LeanSelector(LeanProtocol.KindWrapper, LocalProfile, LeanProtocol.LookupTransaction, hash)], cancellationToken).ConfigureAwait(false);
-            if (results?[0] is not { Status: LeanResultStatus.Ok, Descriptor: { } descriptor }) continue;
-            byte[]? body = await FetchBodyAsync(descriptor, null, source, cancellationToken, waiting).ConfigureAwait(false);
-            if (body is null) continue;
-            foreach (LeanBodies.WrapperEntry entry in LeanBodies.ParseWrapper(body))
-                if (entry.IsFull && entry.Hash == hash)
-                    return Decode(body.AsSpan(entry.EnvelopeOffset, entry.EnvelopeLength).ToArray(), hash);
-        }
-        return null;
-    }
-
-    private static Transaction? Decode(byte[] envelope, in ValueHash256 hash)
-    {
-        try
-        {
-            Transaction transaction = TxDecoder.Instance.DecodeCompleteNotNull(envelope, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
-            return (transaction.Hash ?? transaction.CalculateHash()).ValueHash256 == hash ? transaction : null;
-        }
-        catch (RlpException)
-        {
-            return null;
+            if (bytes < 0 || assembly.Dropped || assembly.CompletionSource != source
+                || bytes > LeanLimits.MaxIncompleteBytes - BufferedBytes || bytes > LeanLimits.MaxPeerBytes - source.ChargedBytes) return false;
+            _completionBytes += bytes;
+            source.ChargedBytes += bytes;
+            assembly.RecoveryBytes += bytes;
+            return true;
         }
     }
 
     /// <summary>Retrieves an object's integrity-checked body from <paramref name="source"/>, merging with any existing assembly.</summary>
     /// <param name="descriptor">The checked descriptor of the object.</param>
-    /// <param name="skeleton">The checked header skeleton of a kind-2 object.</param>
     /// <param name="source">The peer that offered the object.</param>
     /// <param name="cancellationToken">Stops waiting; an assembly nobody else waits for is then dropped.</param>
-    /// <param name="dependent">A wrapper recovering a transaction from this object, whose idle timer its new chunks advance.</param>
-    internal async Task<byte[]?> FetchBodyAsync(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, LeanPeer source, CancellationToken cancellationToken,
-        LeanAssembly? dependent = null)
+    internal async Task<LeanFetchedBody?> FetchBodyAsync(LeanDescriptor descriptor, LeanPeer source, CancellationToken cancellationToken)
     {
-        TaskCompletionSource<byte[]?> waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<LeanFetchedBody?> waiter = new(TaskCreationOptions.RunContinuationsAsynchronously);
         LeanAssembly? assembly;
         Outbox outbox = new(_clock);
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
-            if (_store.TryGet(descriptor.ObjectId, out LeanObjectStore.Entry entry)) return entry.Body;
+            if (_store.TryGet(descriptor.ObjectId, out LeanObjectStore.Entry entry)) return new LeanFetchedBody(entry.Body);
             if (_tombstones.Contains(descriptor.ObjectId, now)) return null;
             if (!_assemblies.TryGetValue(descriptor.ObjectId, out assembly))
-                assembly = TryCreateAssembly(descriptor, skeleton, source.Closed ? null : source, now);
+                assembly = TryCreateAssembly(descriptor, source.Closed ? null : source, now);
             if (assembly is null || assembly.Dropped) return null;
             if (!source.Closed) assembly.AddSource(source);
-            if (dependent is not null && !assembly.Dependents.Contains(dependent)) assembly.Dependents.Add(dependent);
             assembly.Waiters.Add(waiter);
             Schedule(outbox, now);
         }
         outbox.Flush();
         await using CancellationTokenRegistration registration = cancellationToken.Register(static state =>
-            ((TaskCompletionSource<byte[]?>)state!).TrySetResult(null), waiter);
-        byte[]? body = await waiter.Task.ConfigureAwait(false);
-        if (body is null) ReleaseWaiter(assembly, waiter, dependent);
+            ((TaskCompletionSource<LeanFetchedBody?>)state!).TrySetResult(null), waiter);
+        LeanFetchedBody? body = await waiter.Task.ConfigureAwait(false);
+        if (body is null) ReleaseWaiter(assembly, waiter);
         return body;
     }
 
-    private void ReleaseWaiter(LeanAssembly assembly, TaskCompletionSource<byte[]?> waiter, LeanAssembly? dependent)
+    private void ReleaseFetchedBody(LeanAssembly assembly)
+    {
+        lock (_gate)
+        {
+            assembly.BodyLeases--;
+            if (assembly.ReleaseRequested) ReleaseCompletion(assembly);
+        }
+    }
+
+    private void ReleaseWaiter(LeanAssembly assembly, TaskCompletionSource<LeanFetchedBody?> waiter)
     {
         Outbox outbox = new(_clock);
         lock (_gate)
         {
             assembly.Waiters.Remove(waiter);
-            if (dependent is not null) assembly.Dependents.Remove(dependent);
             if (assembly.Waiters.Count == 0 && !assembly.Validate && !assembly.Queued && !assembly.Dropped
                 && _assemblies.Remove(assembly.Descriptor.ObjectId))
             {

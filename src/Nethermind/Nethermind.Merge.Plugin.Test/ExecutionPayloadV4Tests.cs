@@ -153,7 +153,7 @@ public class ExecutionPayloadV4Tests
 
         Block block = payload.TryGetBlock().Data!;
         Assert.That(block.Header.RecursiveStark, Is.Not.Null);
-        Assert.That(block.Header.RecursiveStark!.StarkProof, Is.EqualTo(proof));
+        Assert.That(block.StarkProof, Is.EqualTo(proof));
         Assert.That(block.Header.RecursiveStark.BlockDepsHash, Is.EqualTo(depsHash));
 
         // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
@@ -240,7 +240,8 @@ public class ExecutionPayloadV4Tests
         block.Header.BlobGasUsed = 0;
         block.Header.ExcessBlobGas = 0;
         block.Header.SlotNumber = 0;
-        block.Header.RecursiveStark = new RecursiveStark(proof, depsHash);
+        block.StarkProof = proof;
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), depsHash);
         block.Header.Hash = block.Header.CalculateHash();
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
 

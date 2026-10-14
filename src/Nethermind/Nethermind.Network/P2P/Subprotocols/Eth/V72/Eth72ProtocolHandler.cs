@@ -67,8 +67,9 @@ public class Eth72ProtocolHandler(
     IChainHeadSpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
-    ITxGossipPolicy? transactionsGossipPolicy = null)
-    : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
+    ITxGossipPolicy? transactionsGossipPolicy = null,
+        Subprotocols.Lean.LeanEthTransactions? leanTransactions = null)
+    : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, leanTransactions), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
     private const int MinSamplerFullProviderAnnouncements = 2;
@@ -175,6 +176,7 @@ public class Eth72ProtocolHandler(
                 HandleInBackground<GetPooledTransactionsMessage66, PooledTransactionsMessage66>(message, Handle);
                 return true;
             case Eth66MessageCode.PooledTransactions:
+                if (TryHandleLeanPooledTransactions(message, size)) return true;
                 if (CanReceiveTransactions)
                 {
                     if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
@@ -569,7 +571,7 @@ public class Eth72ProtocolHandler(
     {
         if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
         {
-            return false;
+            return base.TryGetPooledTransactionToServe(hash, out tx);
         }
 
         // A type-6 is announced at its full network size and never joins the type-3 cell protocol, so the

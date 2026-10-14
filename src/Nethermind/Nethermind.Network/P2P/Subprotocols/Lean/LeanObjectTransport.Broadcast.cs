@@ -6,16 +6,19 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>Whether an authenticated broadcast manifest may start or join a session.</summary>
 internal enum LeanBroadcastAdmission
 {
-    /// <summary>Coded state is charged and, for kind 3, the shared assembly exists.</summary>
+    /// <summary>Coded state is charged and the shared assembly exists.</summary>
     Started,
 
     /// <summary>The object is already held and validated, so its shards can be served from the body.</summary>
@@ -41,7 +44,7 @@ public sealed partial class LeanObjectTransport
     /// <summary>Retrieval waits at most this many round trips after a manifest is accepted, however often shards arrive.</summary>
     private const int MaxBroadcastDeferrals = 3;
 
-    private readonly Dictionary<ValueHash256, (LeanDescriptor Descriptor, byte[] Proof)> _broadcastSidecars = [];
+    private readonly Dictionary<ValueHash256, BroadcastProofCandidate> _broadcastSidecars = [];
     private readonly Queue<ValueHash256> _broadcastSidecarOrder = [];
 
     /// <summary>When each object's manifest was accepted and when its broadcast last made progress, keyed by
@@ -57,35 +60,42 @@ public sealed partial class LeanObjectTransport
     /// <summary>The chain ID and genesis hash that scope manifest IDs and channels, or null while the genesis is unknown.</summary>
     internal (UInt256 ChainId, ValueHash256 Genesis)? BroadcastScope => CreateStatus() is { } status ? (status.ChainId, status.GenesisHash) : null;
 
-    /// <summary>The existing descriptor, skeleton and applicable-fork checks a manifest must pass before it is accepted.</summary>
-    internal string? CheckBroadcastDescriptor(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton)
+    /// <summary>The existing descriptor, known-header and applicable-fork checks a manifest must pass before it is accepted.</summary>
+    internal string? CheckBroadcastDescriptor(LeanDescriptor descriptor)
     {
         if (descriptor.ProfileId != LocalProfile) return "profile is not common";
         if ((LocalKinds & (1 << (descriptor.Kind - 1))) == 0) return "kind is not supported";
         if (descriptor.ByteLength > LeanLimits.MaxObjectBytes) return "object exceeds max_object_bytes";
-        if (descriptor.Kind == LeanProtocol.KindBlockProof
-            && (skeleton is null || !skeleton.TryValidate(descriptor, _headerDecoder, _specProvider, out string? error))) return "invalid header skeleton";
+        if (descriptor.Kind != LeanProtocol.KindBlockProof) return "only block proofs are broadcast";
+        if (_blockTree.FindHeader(new Hash256(descriptor.BlockHash), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+            is not { } header) return "block header is unknown";
+        if (!_specProvider.GetSpec(header).IsEip8288Enabled) return "profile is not active for the block";
+        if (header.RecursiveStark is null) return "block has no proof commitment";
         return null;
     }
 
-    /// <summary>Charges a broadcast's coded state and, for kind 3, starts the object's shared assembly if none exists.</summary>
+    /// <summary>Charges a broadcast's coded state and starts the object's shared assembly if none exists.</summary>
     /// <remarks>EIP-8437: all bindings and manifests contribute to one assembly per object ID with one absolute deadline;
     /// requested retrieval can recover the object within it if the broadcast fails.</remarks>
-    internal LeanBroadcastAdmission AdmitBroadcast(LeanDescriptor descriptor, long codedBytes)
+    internal LeanBroadcastAdmission AdmitBroadcast(LeanDescriptor descriptor, long codedBytes, LeanPeer? source = null)
     {
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
             if (_disposed || !IsEnabled || _tombstones.Contains(descriptor.ObjectId, now)) return LeanBroadcastAdmission.Rejected;
-            if (_store.Contains(descriptor.ObjectId)) return LeanBroadcastAdmission.Held;
-            if (codedBytes > LeanLimits.MaxIncompleteBytes - _incompleteBytes) return LeanBroadcastAdmission.Busy;
-            if (descriptor.Kind == LeanProtocol.KindInclusionList && !_assemblies.ContainsKey(descriptor.ObjectId))
+            bool held = _store.Contains(descriptor.ObjectId);
+            if (codedBytes > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+                || (source is not null && codedBytes > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return LeanBroadcastAdmission.Busy;
+            if (!held && !_assemblies.ContainsKey(descriptor.ObjectId))
             {
-                if (TryCreateAssembly(descriptor, null, null, now) is not { } assembly) return LeanBroadcastAdmission.Busy;
-                assembly.Validate = true;
+                if (TryCreateAssembly(descriptor, source, now) is not { } assembly) return LeanBroadcastAdmission.Busy;
+                assembly.Validate = false;
             }
+            if (codedBytes > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+                || (source is not null && codedBytes > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return LeanBroadcastAdmission.Busy;
             _incompleteBytes += codedBytes;
-            return LeanBroadcastAdmission.Started;
+            if (source is not null) source.ChargedBytes += codedBytes;
+            return held ? LeanBroadcastAdmission.Held : LeanBroadcastAdmission.Started;
         }
     }
 
@@ -179,9 +189,23 @@ public sealed partial class LeanObjectTransport
         _timer.Change(delay, LeanLimits.Tick);
     }
 
-    internal void ReleaseBroadcast(long codedBytes)
+    internal DateTimeOffset BroadcastDeadline(in ValueHash256 objectId)
     {
-        lock (_gate) _incompleteBytes -= codedBytes;
+        lock (_gate)
+        {
+            TimeSpan remaining = _assemblies.TryGetValue(objectId, out LeanAssembly? assembly)
+                ? LeanProtocol.MaxAssemblyAge - _clock.GetElapsedTime(assembly.Created) : LeanProtocol.MaxAssemblyAge;
+            return _clock.GetUtcNow() + remaining;
+        }
+    }
+
+    internal void ReleaseBroadcast(long codedBytes, LeanPeer? source = null)
+    {
+        lock (_gate)
+        {
+            _incompleteBytes -= codedBytes;
+            if (source is not null) { source.ChargedBytes -= codedBytes; PruneNode(source.Node); }
+        }
     }
 
     /// <summary>The body of a held, fully validated object, so a node that already has it can serve its shards.</summary>
@@ -190,105 +214,122 @@ public sealed partial class LeanObjectTransport
         lock (_gate) return _store.TryGet(objectId, out LeanObjectStore.Entry entry) ? entry.Body : null;
     }
 
-    /// <summary>Applies the canonical object checks to a body reconstructed from broadcast shards, then validates it.</summary>
-    /// <param name="started">The <see cref="Stopwatch"/> timestamp at which the broadcast session was accepted.</param>
-    /// <returns>Null when the body enters validation or is refused locally; otherwise the producer fault. A body that is not
-    /// the one the descriptor commits to, or does not rebuild its block's header, fails only the manifest; a committed body
-    /// that fails kind validation is invalid exactly as if retrieved.</returns>
-    /// <remarks>
-    /// A kind-3 package completes its shared assembly and goes through the same validation queue as retrieved objects, so an
-    /// invalid package, including a noncanonical encoding, is rejected as such. A kind-2 proof that rebuilds the header
-    /// committed by the block hash is kept for block import, which still checks it against the block's dependencies. The
-    /// first such proof for a block is kept.
-    /// </remarks>
-    internal string? AcceptBroadcastBody(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, byte[] body, long started)
+    /// <summary>Checks a reconstructed block-proof body's canonical commitments against its known ordinary header.</summary>
+    /// <remarks>Dependency and native verification still run when the importing block obtains this proof.</remarks>
+    internal string? AcceptBroadcastBody(LeanDescriptor descriptor, byte[] body, long started, LeanPeer? source = null)
     {
-        if (CheckCommitments(descriptor, body) is { } commitmentError) return commitmentError;
-        if (descriptor.Kind == LeanProtocol.KindBlockProof)
+        if ((ulong)body.Length != descriptor.ByteLength) return "reconstructed length differs from the descriptor";
+        if (ValueKeccak.Compute(body) != descriptor.ContentHash) return "content hash mismatch";
+        try { LeanBodies.Check(descriptor.Kind, body); }
+        catch (RlpException exception)
         {
-            List<LeanBodies.WrapperEntry>? entries = null;
-            if (CheckEncoding(descriptor, body, ref entries) is { } encodingError)
-            {
-                RejectBroadcastObject(descriptor, encodingError);
-                return encodingError;
-            }
-            byte[] proof = LeanBodies.ParseBlockProof(body).ToArray();
-            if (ValueKeccak.Compute(skeleton!.Reconstruct(proof, descriptor.BlockDepsHash)) != descriptor.BlockHash)
-                return "proof does not rebuild the header of its block hash";
-            lock (_gate)
-            {
-                // The first valid sidecar for a block is kept; a later one cannot replace it.
-                if (_broadcastSidecars.ContainsKey(descriptor.BlockHash)) return null;
-                if (_broadcastSidecarOrder.Count >= MaxBroadcastSidecars && _broadcastSidecarOrder.TryDequeue(out ValueHash256 oldest))
-                    _broadcastSidecars.Remove(oldest);
-                _broadcastSidecarOrder.Enqueue(descriptor.BlockHash);
-                _broadcastSidecars.Add(descriptor.BlockHash, (descriptor, proof));
-                TaskCompletionSource signal = _hintSignal;
-                _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                signal.TrySetResult();
-            }
-            LeanMetrics.Transferred(LeanProtocol.KindBlockProof, broadcast: true, Stopwatch.GetElapsedTime(started));
-            return null;
+            string error = $"noncanonical body: {exception.Message}";
+            RejectBroadcastObject(descriptor, error);
+            return error;
         }
-        return QueueBroadcastPackage(descriptor, body, started);
+        if (CheckBroadcastDescriptor(descriptor) is not null) return null;
+        ReadOnlySpan<byte> proof = LeanBodies.ParseBlockProof(body);
+        BlockHeader? header = _blockTree.FindHeader(new Hash256(descriptor.BlockHash),
+            BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (header?.RecursiveStark?.StarkProofHash.ValueHash256 != ValueKeccak.Compute(proof))
+        {
+            const string error = "proof differs from the block header commitment";
+            RejectBroadcastObject(descriptor, error);
+            return error;
+        }
+        Outbox outbox = new(_clock);
+        lock (_gate)
+        {
+            if (_disposed) return null;
+            if (_broadcastSidecars.ContainsKey(descriptor.BlockHash)) return null;
+            if (proof.Length > LeanLimits.MaxIncompleteBytes - _incompleteBytes - _completionBytes
+                || (source is not null && proof.Length > LeanLimits.MaxPeerBytes - source.ChargedBytes)) return null;
+            if (_broadcastSidecarOrder.Count >= MaxBroadcastSidecars && _broadcastSidecarOrder.TryDequeue(out ValueHash256 oldest))
+                ReleaseBroadcastSidecar(oldest);
+            _broadcastSidecarOrder.Enqueue(descriptor.BlockHash);
+            long created = _assemblies.TryGetValue(descriptor.ObjectId, out LeanAssembly? assembly) ? assembly.Created : _clock.GetTimestamp();
+            _incompleteBytes += proof.Length;
+            if (source is not null) source.ChargedBytes += proof.Length;
+            _broadcastSidecars.Add(descriptor.BlockHash, new BroadcastProofCandidate(this, descriptor, proof.ToArray(), source, created));
+            TaskCompletionSource signal = _hintSignal;
+            _hintSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            signal.TrySetResult();
+            if (assembly is not null && !assembly.Queued)
+            {
+                CancelRequestsFor(assembly, outbox);
+                _assemblies.Remove(descriptor.ObjectId);
+                Drop(assembly);
+            }
+        }
+        outbox.Flush();
+        LeanMetrics.Transferred(LeanProtocol.KindBlockProof, broadcast: true, Stopwatch.GetElapsedTime(started));
+        return null;
     }
 
     /// <summary>Tombstones a committed broadcast object that is invalid, as retrieval would; the signer is at fault, so no relay
     /// that forwarded its checked shards is penalized.</summary>
     private void RejectBroadcastObject(LeanDescriptor descriptor, string reason)
     {
+        Outbox outbox = new(_clock);
         lock (_gate)
         {
             _tombstones.Add(descriptor.ObjectId);
             Interlocked.Increment(ref _stats.Invalid);
+            if (_assemblies.TryGetValue(descriptor.ObjectId, out LeanAssembly? assembly) && !assembly.Queued)
+            {
+                CancelRequestsFor(assembly, outbox);
+                _assemblies.Remove(descriptor.ObjectId);
+                Drop(assembly);
+            }
         }
+        outbox.Flush();
         LeanMetrics.Record(descriptor.Kind, LeanEvent.Invalid);
         if (_logger.IsInfo) _logger.Info($"lean/1 rejected broadcast {descriptor}: {reason}");
     }
 
-    /// <summary>Completes the package's shared assembly with the reconstructed body, so it is validated once, in the bounded queue.</summary>
-    /// <remarks>Requested retrieval of the same object stops; a body retrieval already completed is validated instead.</remarks>
-    private string? QueueBroadcastPackage(LeanDescriptor descriptor, byte[] body, long started)
-    {
-        Outbox outbox = new(_clock);
-        lock (_gate)
-        {
-            if (_disposed || _store.Contains(descriptor.ObjectId)) return null;
-            long now = _clock.GetTimestamp();
-            if (!_assemblies.TryGetValue(descriptor.ObjectId, out LeanAssembly? assembly))
-            {
-                if (_tombstones.Contains(descriptor.ObjectId, now)) return null;
-                assembly = TryCreateAssembly(descriptor, null, null, now);
-                if (assembly is null) return LocalRefusal("no room for its assembly");
-                assembly.Validate = true;
-            }
-            if (assembly.Queued || assembly.Dropped) return null;
-            long length = (long)descriptor.ByteLength;
-            if (_pendingValidations >= LeanLimits.MaxPendingValidations || length > LeanLimits.MaxCompletionBytes - _completionBytes)
-                return LocalRefusal("validation queue full");
-            _completionBytes += length;
-            assembly.Validate = true;
-            assembly.BroadcastStarted = started;
-            Enqueue(assembly, body, outbox);
-        }
-        outbox.Flush();
-        return null;
-    }
-
-    private string? LocalRefusal(string reason)
-    {
-        // Not a producer fault: the assembly, if any, stays available to requested retrieval.
-        if (_logger.IsDebug) _logger.Debug($"lean/1 broadcast body not queued: {reason}");
-        return null;
-    }
-
     internal bool HasBroadcastSidecar(in ValueHash256 blockHash) { lock (_gate) return _broadcastSidecars.ContainsKey(blockHash); }
 
-    /// <summary>A broadcast sidecar matching the importing block's number, transactions root and dependency hash.</summary>
-    private RecursiveStark? BroadcastSidecar(in ValueHash256 blockHash, Block block, in ValueHash256 depsHash) =>
-        _broadcastSidecars.TryGetValue(blockHash, out (LeanDescriptor Descriptor, byte[] Proof) sidecar)
-        && sidecar.Descriptor.BlockNumber == block.Number && sidecar.Descriptor.TransactionsRoot == block.Header.TxRoot!.ValueHash256
-        && sidecar.Descriptor.BlockDepsHash == depsHash
-            ? new RecursiveStark(sidecar.Proof, new Hash256(depsHash))
-            : null;
+    /// <summary>Takes a candidate whose byte lease stays charged until full block-proof authentication finishes.</summary>
+    private BroadcastProofCandidate? TakeBroadcastSidecar(in ValueHash256 blockHash)
+    {
+        lock (_gate) return _broadcastSidecars.Remove(blockHash, out BroadcastProofCandidate? candidate) ? candidate : null;
+    }
+
+    private void ReleaseBroadcastSidecar(in ValueHash256 blockHash)
+    {
+        if (_broadcastSidecars.Remove(blockHash, out BroadcastProofCandidate? candidate)) candidate.Dispose();
+    }
+
+    internal void ExpireBroadcastSidecars()
+    {
+        lock (_gate)
+        {
+            long now = _clock.GetTimestamp();
+            List<ValueHash256>? expired = null;
+            foreach ((ValueHash256 hash, BroadcastProofCandidate sidecar) in _broadcastSidecars)
+                if (_disposed || _clock.GetElapsedTime(sidecar.Created, now) >= LeanProtocol.MaxAssemblyAge) (expired ??= []).Add(hash);
+            if (expired is not null) foreach (ValueHash256 hash in expired) ReleaseBroadcastSidecar(hash);
+        }
+    }
+
+    private void DisposeBroadcastSidecars()
+    {
+        foreach (BroadcastProofCandidate sidecar in _broadcastSidecars.Values) sidecar.Dispose();
+        _broadcastSidecars.Clear();
+        _broadcastSidecarOrder.Clear();
+    }
+
+    private sealed class BroadcastProofCandidate(LeanObjectTransport owner, LeanDescriptor descriptor, byte[] proof, LeanPeer? source, long created) : IDisposable
+    {
+        private int _disposed;
+        public LeanDescriptor Descriptor { get; } = descriptor;
+        public byte[] Proof { get; } = proof;
+        public long Created { get; } = created;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            owner.ReleaseBroadcast(Proof.Length, source);
+        }
+    }
 }

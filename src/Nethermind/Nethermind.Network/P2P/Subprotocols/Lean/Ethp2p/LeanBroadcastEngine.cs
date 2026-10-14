@@ -19,6 +19,9 @@ internal interface ILeanBroadcastPeer
 {
     string Description { get; }
 
+    /// <summary>The authenticated retrieval peer whose node-wide byte budget also covers broadcast.</summary>
+    LeanPeer? RetrievalPeer { get; }
+
     /// <summary>The peer's advertised receive ceiling, which a sender must respect.</summary>
     ulong MaxObjectBytes { get; }
 
@@ -66,7 +69,7 @@ internal enum LeanBroadcastVerdict
     Invalid
 }
 
-/// <summary>EIP-8437 authenticated broadcast of kind-2 and kind-3 objects over the ethp2p broadcast framework.</summary>
+/// <summary>EIP-8437 authenticated broadcast of kind-2 objects over the ethp2p broadcast framework.</summary>
 /// <remarks>
 /// <para>
 /// A session is keyed by its manifest ID. Before a session is created or forwarded, its channel, manifest ID, bounds,
@@ -84,9 +87,9 @@ internal enum LeanBroadcastVerdict
 /// </remarks>
 internal sealed class LeanBroadcastEngine : IDisposable
 {
-    /// <summary><c>MAX_BROADCAST_SESSIONS</c>: the duties of the three slots a node accepts at once, 17 per slot (one block proof
-    /// and 16 EIP-7805 inclusion-list committee positions), with margin.</summary>
-    internal const int MaxSessions = 64;
+    /// <summary>Live block-proof broadcast sessions per node.</summary>
+    internal const int MaxSessions = 4;
+    internal const int MaxAuthorizationChecksPerSlot = 128;
 
     /// <summary>Live CHUNK streams toward one connection across all sessions: EIP-8437's cap of 16.</summary>
     /// <remarks>Each stream carries one shard of at most 64 KiB, so up to 1 MiB is in flight per round trip, which covers the
@@ -108,10 +111,14 @@ internal sealed class LeanBroadcastEngine : IDisposable
     private readonly Dictionary<(byte Kind, ulong Slot, ulong Duty), ValueHash256> _duties = [];
     private readonly HashSet<ILeanBroadcastPeer> _peers = [];
     private readonly Dictionary<ILeanBroadcastPeer, int> _inFlight = [];
+    private readonly Dictionary<ulong, int> _producerFaults = [];
+    private readonly Queue<ulong> _producerFaultOrder = [];
     private readonly ITimer _timer;
     private readonly ulong _seed = (ulong)Random.Shared.NextInt64();
     private string[]? _channels;
     private long _shardsAccepted;
+    private ulong _authorizationSlot;
+    private int _authorizationChecks;
     private bool _disposed;
 
     public LeanBroadcastEngine(LeanObjectTransport transport, ILeanBroadcastProfile profile, ILogManager logManager, TimeProvider? timeProvider = null)
@@ -128,15 +135,14 @@ internal sealed class LeanBroadcastEngine : IDisposable
     /// <summary>Checked shards taken into sessions, for diagnostics.</summary>
     internal long ShardsAccepted => Interlocked.Read(ref _shardsAccepted);
 
-    /// <summary>The channels this node subscribes to: kinds 2 and 3 under the local proof profile and the broadcast profile.</summary>
+    /// <summary>The channels this node subscribes to: kind 2 under the local proof profile and the broadcast profile.</summary>
     public IReadOnlyList<string> Channels
     {
         get
         {
             if (_channels is not null || _transport.BroadcastScope is not { } scope) return _channels ?? [];
-            string[] channels = new string[2];
+            string[] channels = new string[1];
             channels[0] = LeanBroadcastManifest.Channel(scope.ChainId, scope.Genesis, _profile.Id, LeanProtocol.KindBlockProof, LeanObjectTransport.LocalProfile);
-            channels[1] = LeanBroadcastManifest.Channel(scope.ChainId, scope.Genesis, _profile.Id, LeanProtocol.KindInclusionList, LeanObjectTransport.LocalProfile);
             return _channels = channels;
         }
     }
@@ -179,6 +185,14 @@ internal sealed class LeanBroadcastEngine : IDisposable
     /// <summary>Handles a peer's SESS Open, creating or joining the session only once every check has passed.</summary>
     public LeanBroadcastVerdict OnSessionOpen(ILeanBroadcastPeer peer, LeanSessOpen open, out string? reason)
     {
+        lock (_gate)
+        {
+            if (_disposed || peer.IsClosed || !_peers.Contains(peer))
+            {
+                reason = "peer is not participating";
+                return LeanBroadcastVerdict.Refused;
+            }
+        }
         if (!IsLocalChannel(open.Channel))
         {
             reason = "channel is not subscribed";
@@ -240,7 +254,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
 
         verdict = Admit(manifest, manifestId, signature, authorization, out reason);
         if (verdict != LeanBroadcastVerdict.Accepted) return verdict;
-        Session? created = Create(manifest, manifestId, open.Channel, open.Preamble, origin: false, out reason);
+        Session? created = Create(manifest, manifestId, open.Channel, open.Preamble, origin: false, peer.RetrievalPeer, out reason);
         if (created is null) return LeanBroadcastVerdict.Refused;
         lock (_gate)
         {
@@ -262,15 +276,34 @@ internal sealed class LeanBroadcastEngine : IDisposable
             return LeanBroadcastVerdict.Refused;
         }
         ulong current = _profile.CurrentSlot;
-        if (manifest.Slot + 1 < current || manifest.Slot > current + 1)
+        if (manifest.Slot > ulong.MaxValue - 2)
+        {
+            reason = "slot expiry is outside the clock range";
+            return LeanBroadcastVerdict.Refused;
+        }
+        if ((manifest.Slot < current && current - manifest.Slot > 1) || (manifest.Slot > current && manifest.Slot - current > 1))
         {
             reason = $"slot {manifest.Slot} is not within one slot of {current}";
             return LeanBroadcastVerdict.Refused;
         }
-        if (_transport.CheckBroadcastDescriptor(manifest.Descriptor, manifest.Skeleton) is { } descriptorError)
+        if (_transport.CheckBroadcastDescriptor(manifest.Descriptor) is { } descriptorError)
         {
             reason = descriptorError;
             return LeanBroadcastVerdict.Refused;
+        }
+        lock (_gate)
+        {
+            if (_authorizationSlot != current)
+            {
+                _authorizationSlot = current;
+                _authorizationChecks = 0;
+            }
+            if (_authorizationChecks == MaxAuthorizationChecksPerSlot)
+            {
+                reason = "authorization work limit";
+                return LeanBroadcastVerdict.Refused;
+            }
+            _authorizationChecks++;
         }
         switch (_profile.Authorize(manifest, manifestId, signature, authorization))
         {
@@ -286,10 +319,10 @@ internal sealed class LeanBroadcastEngine : IDisposable
     }
 
     /// <summary>Consumes the duty's allowance and creates the session.</summary>
-    private Session? Create(LeanBroadcastManifest manifest, in ValueHash256 manifestId, string channel, byte[] preamble, bool origin, out string? reason)
+    private Session? Create(LeanBroadcastManifest manifest, in ValueHash256 manifestId, string channel, byte[] preamble, bool origin, LeanPeer? source, out string? reason)
     {
         (byte, ulong, ulong) duty = (manifest.Descriptor.Kind, manifest.Slot, manifest.DutyIndex);
-        long codedBytes = 2L * LeanReedSolomon.DataShards * manifest.ShardBytes;
+        long codedBytes = 6L * LeanReedSolomon.DataShards * manifest.ShardBytes + 4L * LeanBroadcastManifest.MaxPreambleBytes;
         lock (_gate)
         {
             if (_disposed)
@@ -312,7 +345,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
                 reason = "session limit";
                 return null;
             }
-            LeanBroadcastAdmission admission = _transport.AdmitBroadcast(manifest.Descriptor, codedBytes);
+            LeanBroadcastAdmission admission = _transport.AdmitBroadcast(manifest.Descriptor, codedBytes, source);
             if (admission is LeanBroadcastAdmission.Rejected or LeanBroadcastAdmission.Busy)
             {
                 reason = $"transport {admission}";
@@ -321,19 +354,24 @@ internal sealed class LeanBroadcastEngine : IDisposable
             // The allowance stays consumed after failure or eviction, until the duty is no longer eligible.
             _duties[duty] = manifestId;
             DateTimeOffset expiry = _profile.SlotStart(manifest.Slot + 2);
-            DateTimeOffset assemblyDeadline = _clock.GetUtcNow() + LeanProtocol.MaxAssemblyAge;
+            DateTimeOffset assemblyDeadline = _transport.BroadcastDeadline(manifest.Descriptor.ObjectId);
             Session session = new(manifest, manifestId, LeanBroadcastManifest.MessageId(manifestId), channel, preamble,
                 expiry < assemblyDeadline ? expiry : assemblyDeadline, origin,
-                admission == LeanBroadcastAdmission.Started ? codedBytes : 0);
+                codedBytes, source);
             if (admission == LeanBroadcastAdmission.Held && _transport.HeldBody(manifest.Descriptor.ObjectId) is { } body)
             {
                 byte[][] shards = Encode(body);
-                if (Commits(manifest, body, shards)) session.Load(shards, reconstructed: true);
+                if (Commits(manifest, body, shards))
+                {
+                    session.Load(shards, reconstructed: true);
+                    RetainCodewordCharge(session);
+                }
                 else
                 {
                     // The held object is valid, so the manifest misstates it: the signer's fault. None of its shards is forwarded,
                     // since receivers would penalize this relay for any that miss the manifest's hashes.
                     if (_logger.IsInfo) _logger.Info($"lean/1 broadcast {session.MessageId[..16]} failed: manifest does not commit the held object");
+                    ScoreProducerFault(session.Manifest.ProducerIndex);
                     Fail(session);
                 }
             }
@@ -350,22 +388,19 @@ internal sealed class LeanBroadcastEngine : IDisposable
     /// <remarks>EIP-8437: originators fully validate an object before broadcasting it, so only stored objects qualify.</remarks>
     public bool Originate(LeanBroadcastManifest manifest, byte[] signature, byte[] authorization)
     {
-        if (_transport.BroadcastScope is not { } scope || _transport.HeldBody(manifest.Descriptor.ObjectId) is not { } body) return false;
+        if (_transport.BroadcastScope is not { } scope || _transport.HeldBody(manifest.Descriptor.ObjectId) is null) return false;
         ValueHash256 manifestId = manifest.Id(scope.ChainId, scope.Genesis);
-        byte[][] shards = Encode(body);
-        if (!Commits(manifest, body, shards)) return false;
         if (Admit(manifest, manifestId, signature, authorization, out string? reason) != LeanBroadcastVerdict.Accepted)
         {
             if (_logger.IsDebug) _logger.Debug($"lean/1 broadcast not originated: {reason}");
             return false;
         }
         Session? session = Create(manifest, manifestId, manifest.Channel(scope.ChainId, scope.Genesis), manifest.Preamble(signature, authorization),
-            origin: true, out reason);
-        if (session is null) return false;
+            origin: true, null, out reason);
+        if (session is null || session.Failed) return false;
         Outgoing outgoing = new();
         lock (_gate)
         {
-            session.Load(shards, reconstructed: true);
             EnrollSubscribers(session);
             Dispatch(session, outgoing);
         }
@@ -481,14 +516,17 @@ internal sealed class LeanBroadcastEngine : IDisposable
     {
         byte[][]? codeword = null;
         string? error;
+        bool signerFault = false;
         try
         {
             long decoding = Stopwatch.GetTimestamp();
             byte[]? body = session.Manifest.Reconstruct(indices, shards, out codeword, out error);
             LeanMetrics.Coding(Stopwatch.GetElapsedTime(decoding));
+            signerFault = error is not null;
             if (body is not null && !_profile.MatchesContext(session.Manifest, body)) error = "object does not match its consensus context";
             if (body is not null && error is null)
-                error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, session.Manifest.Skeleton, body, session.Started);
+                error = _transport.AcceptBroadcastBody(session.Manifest.Descriptor, body, session.Started, session.Source);
+            signerFault |= error is not null;
         }
         catch (Exception exception)
         {
@@ -503,15 +541,13 @@ internal sealed class LeanBroadcastEngine : IDisposable
             {
                 // The checked shards are the signer's responsibility: no relay is penalized, and retrieval stays possible.
                 if (_logger.IsInfo) _logger.Info($"lean/1 broadcast {session.MessageId[..16]} failed: {error}");
+                if (signerFault) ScoreProducerFault(session.Manifest.ProducerIndex);
                 Fail(session);
             }
             else
             {
-                // The object is complete: its codeword, kept to forward shards until the session ends, is bounded by
-                // MaxSessions rather than charged to the transport's incomplete-assembly budget.
-                if (session.CodedBytes > 0) _transport.ReleaseBroadcast(session.CodedBytes);
-                session.CodedBytes = 0;
                 session.Load(codeword!, reconstructed: true);
+                RetainCodewordCharge(session);
                 foreach (Participant participant in session.Participants.Values)
                     if (participant.Out is not null) outgoing.Complete(participant.Out);
                 Dispatch(session, outgoing);
@@ -520,13 +556,34 @@ internal sealed class LeanBroadcastEngine : IDisposable
         outgoing.Run(this);
     }
 
+    private void RetainCodewordCharge(Session session)
+    {
+        long retained = 2L * LeanReedSolomon.DataShards * session.Manifest.ShardBytes + 4L * LeanBroadcastManifest.MaxPreambleBytes;
+        if (session.CodedBytes <= retained) return;
+        _transport.ReleaseBroadcast(session.CodedBytes - retained, session.Source);
+        session.CodedBytes = retained;
+    }
+
+    internal int ProducerFaults(ulong producerIndex) { lock (_gate) return _producerFaults.GetValueOrDefault(producerIndex); }
+
+    private void ScoreProducerFault(ulong producerIndex)
+    {
+        if (!_producerFaults.ContainsKey(producerIndex))
+        {
+            if (_producerFaultOrder.Count == 64 && _producerFaultOrder.TryDequeue(out ulong oldest)) _producerFaults.Remove(oldest);
+            _producerFaultOrder.Enqueue(producerIndex);
+        }
+        int faults = _producerFaults.GetValueOrDefault(producerIndex);
+        _producerFaults[producerIndex] = faults == int.MaxValue ? faults : faults + 1;
+    }
+
     private void Fail(Session session)
     {
         session.Failed = true;
         // Retrieval need not wait for a session that will deliver no more shards.
         _transport.OnBroadcastEnded(session.Manifest.Descriptor);
         session.Release();
-        if (session.CodedBytes > 0) _transport.ReleaseBroadcast(session.CodedBytes);
+        if (session.CodedBytes > 0) _transport.ReleaseBroadcast(session.CodedBytes, session.Source);
         session.CodedBytes = 0;
     }
 
@@ -638,9 +695,10 @@ internal sealed class LeanBroadcastEngine : IDisposable
                 }
             ulong current = _profile.CurrentSlot;
             List<(byte, ulong, ulong)>? stale = null;
-            foreach ((byte, ulong Slot, ulong) duty in _duties.Keys) if (duty.Slot + 2 < current) (stale ??= []).Add(duty);
+            foreach ((byte, ulong Slot, ulong) duty in _duties.Keys) if (duty.Slot < current && current - duty.Slot > 2) (stale ??= []).Add(duty);
             if (stale is not null) foreach ((byte, ulong, ulong) duty in stale) _duties.Remove(duty);
         }
+        _transport.ExpireBroadcastSidecars();
         if (closed is not null) foreach (ILeanBroadcastSession stream in closed) stream.Close();
     }
 
@@ -693,7 +751,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
     }
 
     private sealed class Session(LeanBroadcastManifest manifest, ValueHash256 manifestId, string messageId, string channel, byte[] preamble,
-        DateTimeOffset expiry, bool origin, long codedBytes)
+        DateTimeOffset expiry, bool origin, long codedBytes, LeanPeer? source)
     {
         private byte[]?[] _shards = new byte[LeanReedSolomon.TotalShards][];
 
@@ -708,6 +766,7 @@ internal sealed class LeanBroadcastEngine : IDisposable
         /// <summary>The <see cref="Stopwatch"/> timestamp at which the session was accepted.</summary>
         public long Started { get; } = Stopwatch.GetTimestamp();
         public long CodedBytes { get; set; } = codedBytes;
+        public LeanPeer? Source { get; } = source;
         public Dictionary<ILeanBroadcastPeer, Participant> Participants { get; } = [];
         public int[] Sent { get; } = new int[LeanReedSolomon.TotalShards];
         public uint Have { get; private set; }

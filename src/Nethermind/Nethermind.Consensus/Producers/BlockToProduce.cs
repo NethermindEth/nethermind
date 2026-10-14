@@ -58,6 +58,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockToProduce replacement = new(newHeader, Transactions, Uncles, Withdrawals)
             {
+                StarkProof = StarkProof,
                 InclusionListTransactions = InclusionListTransactions,
                 InclusionLists = InclusionLists,
                 InclusionListProofInput = InclusionListProofInput,

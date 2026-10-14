@@ -38,7 +38,7 @@ public sealed partial class LeanObjectTransport
                     existing.AddSource(peer);
                     continue;
                 }
-                if (peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
+                if (peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && TryCreateAssembly(descriptor, peer, now) is { } assembly)
                     assembly.Validate = true;
                 // Senders suppress repeated announcements, so a wanted object refused by the limits waits for capacity to free.
                 else Defer(peer, descriptor, now);
@@ -100,7 +100,7 @@ public sealed partial class LeanObjectTransport
             }
             // Creation is only tried while both assembly limits leave room; joining and lapsing need no capacity.
             if (!created && peer.Assemblies < LeanLimits.MaxAssembliesPerPeer && _assemblies.Count < LeanLimits.MaxAssemblies
-                && TryCreateAssembly(descriptor, null, peer, now) is { } assembly)
+                && TryCreateAssembly(descriptor, peer, now) is { } assembly)
             {
                 assembly.Validate = true;
                 created = true;
@@ -113,13 +113,13 @@ public sealed partial class LeanObjectTransport
         return created;
     }
 
-    private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanHeaderSkeleton? skeleton, LeanPeer? origin, long now)
+    private LeanAssembly? TryCreateAssembly(LeanDescriptor descriptor, LeanPeer? origin, long now)
     {
         // A declared length never triggers an allocation of that length: only per-chunk bookkeeping is charged here.
         long metadata = descriptor.ChunkCount * 24L + 1024;
-        if (_assemblies.Count >= LeanLimits.MaxAssemblies || metadata > LeanLimits.MaxIncompleteBytes - _incompleteBytes
+        if (_assemblies.Count >= LeanLimits.MaxAssemblies || metadata > LeanLimits.MaxIncompleteBytes - BufferedBytes
             || (origin is not null && metadata > LeanLimits.MaxPeerBytes - origin.ChargedBytes)) return null;
-        LeanAssembly assembly = new(descriptor, skeleton, now, metadata) { Origin = origin };
+        LeanAssembly assembly = new(descriptor, now, metadata) { Origin = origin };
         _incompleteBytes += metadata;
         if (origin is not null)
         {
@@ -138,16 +138,16 @@ public sealed partial class LeanObjectTransport
     {
         if (_disposed) return;
         StartDeferred(now);
-        // Block import waits on sidecars, so they are scheduled before gossip objects.
+        // An import waiting for a proof takes priority over gossip retrieval.
         foreach (bool waited in (ReadOnlySpan<bool>)[true, false])
         {
             foreach (LeanAssembly assembly in _assemblies.Values)
             {
                 if ((assembly.Waiters.Count > 0) != waited || assembly.Dropped || assembly.Queued || assembly.IsComplete
                     || assembly.Sources.Count == 0) continue;
-                if (!waited && _incompleteBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) return;
-                // Shards of an accepted manifest are still arriving: requesting its chunks would transfer the object twice.
-                if (BroadcastDeferral(BroadcastKey(assembly.Descriptor), now) is var deferral && deferral > TimeSpan.Zero)
+                if (!waited && BufferedBytes > LeanLimits.MaxIncompleteBytes - LeanProtocol.MaxCreditBytes) return;
+                TimeSpan deferral = BroadcastDeferral(BroadcastKey(assembly.Descriptor), now);
+                if (deferral > TimeSpan.Zero)
                 {
                     WakeAfter(deferral, now);
                     continue;
@@ -157,67 +157,63 @@ public sealed partial class LeanObjectTransport
         }
     }
 
-    /// <summary>Issues chunk requests for an assembly's missing indices that are not already in flight.</summary>
-    /// <remarks>
-    /// Sources are visited round-robin, one request of at most <see cref="LeanProtocol.MaxChunksPerRequest"/> missing indices
-    /// per source per round, until every missing index is in flight or no source has a free request slot.
-    /// </remarks>
     private void ScheduleAssembly(LeanAssembly assembly, Outbox outbox, long now)
     {
-        int next = 0;
-        int sources = assembly.Sources.Count;
-        bool issued = true;
-        while (issued)
+        if (assembly.CurrentSource is { } failed && (failed.Closed || !assembly.Sources.Contains(failed)))
+            RestartSource(assembly, failed, outbox);
+        if (assembly.CurrentSource is null)
         {
-            issued = false;
-            int first = assembly.NextSource++;
-            for (int s = 0; s < sources; s++)
+            if (assembly.SourceAttempts >= LeanLimits.MaxSourcesPerAssembly) return;
+            foreach (LeanPeer candidate in assembly.Sources)
             {
-                LeanPeer source = assembly.Sources[(first + s) % sources];
-                if (!source.CanRequest(now) || source.ChargedBytes > LeanLimits.MaxPeerBytes - LeanProtocol.MaxCreditBytes
-                    || !source.Status.SupportsKind(assembly.Descriptor.Kind)) continue;
-                List<int> indices = [];
-                for (; next < assembly.Chunks.Length && indices.Count < LeanProtocol.MaxChunksPerRequest; next++)
-                    if (assembly.Chunks[next] is null && assembly.InFlight[next] is null) indices.Add(next);
-                if (indices.Count == 0) return;
-                LeanChunksRequest request = new(++source.LastIssued, now, assembly, [.. indices]);
-                foreach (int index in request.Indices) assembly.InFlight[index] = source;
-                Issue(source, request);
-                outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices), request);
-                issued = true;
+                if (!candidate.CanRequest(now) || !candidate.Status.SupportsKind(assembly.Descriptor.Kind)
+                    || candidate.ChargedBytes > LeanLimits.MaxPeerBytes - LeanProtocol.MaxCreditBytes) continue;
+                assembly.CurrentSource = candidate;
+                assembly.SourceAttempts++;
+                break;
             }
         }
+        if (assembly.CurrentSource is not { } source) return;
+        while (source.CanRequest(now) && source.ChargedBytes <= LeanLimits.MaxPeerBytes - LeanProtocol.MaxCreditBytes)
+        {
+            List<int> indices = [];
+            for (int index = 0; index < assembly.Chunks.Length && indices.Count < LeanProtocol.MaxChunksPerRequest; index++)
+                if (!assembly.Chunks[index] && assembly.InFlight[index] is null) indices.Add(index);
+            if (indices.Count == 0 || source.LastIssued == ulong.MaxValue) return;
+            LeanChunksRequest request = new(++source.LastIssued, now, assembly, [.. indices]);
+            foreach (int index in request.Indices) assembly.InFlight[index] = source;
+            Issue(source, request);
+            outbox.Send(source, new GetChunksMessage(request.Id, assembly.Descriptor.ObjectId, request.Indices), request);
+        }
+    }
+
+    private void RestartSource(LeanAssembly assembly, LeanPeer source, Outbox outbox)
+    {
+        CancelRequestsFor(assembly, outbox);
+        ReleaseChunks(assembly, releaseMetadata: false);
+        Array.Clear(assembly.InFlight);
+        assembly.Received = 0;
+        assembly.Sources.Remove(source);
+        assembly.CurrentSource = null;
     }
 
     internal void OnChunk(LeanPeer peer, in LeanChunkView chunk)
     {
         Outbox outbox = new(_clock);
-        LeanChunksRequest? request = null;
-        int position = -1;
         lock (_gate)
         {
             if (peer.Closed) return;
             if (FindLive<LeanChunksRequest>(peer, chunk.RequestId, outbox) is { } live)
             {
                 LeanDescriptor descriptor = live.Assembly.Descriptor;
-                // Chunks arrive in request order, so each must be the next expected index; skipped or repeated ones are violations.
-                position = live.Next;
+                int position = live.Next;
                 if (chunk.ObjectId != descriptor.ObjectId || position >= live.Indices.Length || live.Indices[position] != chunk.Index)
-                    Violation(peer, $"chunk {chunk.Index} of {chunk.ObjectId.ToShortString()} is not the next requested index", outbox);
-                else if (chunk.Data.Length != descriptor.ChunkLength(chunk.Index) || chunk.Branch.Length != descriptor.Depth)
-                    Violation(peer, $"chunk {chunk.Index} geometry does not match {descriptor}", outbox);
+                    Violation(peer, "Chunk is not the next requested index", outbox);
+                else if (chunk.Data.Length != descriptor.ChunkLength(chunk.Index))
+                    Violation(peer, "Chunk geometry differs from the descriptor", outbox);
                 else if (live.Cancelled) Answer(live, position);
-                else request = live;
-            }
-        }
-        if (request is not null)
-        {
-            // Branch hashing runs outside the lock; the request is re-checked before anything is retained.
-            bool valid = request.Assembly.Verifier.Verify(chunk.Index, chunk.Data, chunk.Branch);
-            lock (_gate)
-            {
-                if (!peer.Closed && peer.Live.TryGetValue(chunk.RequestId, out LeanOutgoingRequest? current) && current == request)
-                    AcceptChunk(peer, request, position, chunk, valid, outbox);
+                else if (live.Assembly.CurrentSource != peer) Violation(peer, "Chunk is not from the current source", outbox);
+                else AcceptChunk(peer, live, position, chunk, outbox);
             }
         }
         outbox.Flush();
@@ -230,14 +226,9 @@ public sealed partial class LeanObjectTransport
         request.Answered[position] = true;
     }
 
-    private void AcceptChunk(LeanPeer peer, LeanChunksRequest request, int position, in LeanChunkView chunk, bool valid, Outbox outbox)
+    private void AcceptChunk(LeanPeer peer, LeanChunksRequest request, int position, in LeanChunkView chunk, Outbox outbox)
     {
         LeanAssembly assembly = request.Assembly;
-        if (!valid)
-        {
-            Violation(peer, $"bad branch for chunk {chunk.Index} of {assembly.Descriptor}", outbox);
-            return;
-        }
         Answer(request, position);
         if (request.Cancelled) return;
         int index = chunk.Index;
@@ -251,27 +242,26 @@ public sealed partial class LeanObjectTransport
         request.Progressed = true;
         peer.Stalls = 0;
         if (assembly.Dropped || assembly.Queued) return;
-        if (assembly.Chunks[index] is { } existing)
+        int offset = index * LeanProtocol.ChunkBytes;
+        if (assembly.Chunks[index])
         {
-            // An identical duplicate is neither allocated again nor counted as assembly progress.
-            if (!existing.AsSpan().SequenceEqual(chunk.Data)) Violation(peer, $"conflicting chunk {index} of {assembly.Descriptor}", outbox);
+            if (!assembly.Body!.AsSpan(offset, chunk.Data.Length).SequenceEqual(chunk.Data))
+                Violation(peer, $"Conflicting chunk {index} of {assembly.Descriptor}", outbox);
             return;
         }
-        long charge = assembly.ChargeOf(index);
-        if (charge > LeanLimits.MaxIncompleteBytes - _incompleteBytes || charge > LeanLimits.MaxPeerBytes - peer.ChargedBytes)
+        if (assembly.Body is null)
         {
-            // Discarded under local pressure: answered for Complete's purposes, and requestable again.
-            return;
+            long bytes = (long)assembly.Descriptor.ByteLength;
+            if (bytes > LeanLimits.MaxIncompleteBytes - BufferedBytes || bytes > LeanLimits.MaxPeerBytes - peer.ChargedBytes) return;
+            // Announcements allocate only metadata; the first credited chunk reserves one owned reassembly buffer.
+            _incompleteBytes += bytes;
+            peer.ChargedBytes += bytes;
+            assembly.Body = new byte[bytes];
         }
-        _incompleteBytes += charge;
-        peer.ChargedBytes += charge;
-        assembly.Chunks[index] = chunk.Data.ToArray();
-        assembly.ChargedTo[index] = peer;
+        chunk.Data.CopyTo(assembly.Body.AsSpan(offset));
+        assembly.Chunks[index] = true;
         assembly.Received++;
         assembly.Updated = now;
-        // A new chunk of a direct recovery object also advances the wrappers waiting on it.
-        foreach (LeanAssembly dependent in assembly.Dependents)
-            if (!dependent.Dropped) dependent.Updated = now;
         LeanMetrics.ChunkReceived();
         if (assembly.IsComplete) TryComplete(assembly, outbox);
     }
@@ -287,7 +277,7 @@ public sealed partial class LeanObjectTransport
             {
                 LeanAssembly assembly = request.Assembly;
                 if (message.ObjectId != assembly.Descriptor.ObjectId) Violation(peer, "Complete names another object", outbox);
-                else if (message.Status == LeanCompleteStatus.Served && Array.IndexOf(request.Answered, false) >= 0)
+                else if (!request.Cancelled && message.Status == LeanCompleteStatus.Served && Array.IndexOf(request.Answered, false) >= 0)
                     Violation(peer, "Served with chunks missing", outbox);
                 else if (request.Cancelled)
                 {
@@ -303,7 +293,7 @@ public sealed partial class LeanObjectTransport
                     switch (message.Status)
                     {
                         case LeanCompleteStatus.Unavailable or LeanCompleteStatus.Unsupported or LeanCompleteStatus.TooLarge:
-                            assembly.Sources.Remove(peer);
+                            RestartSource(assembly, peer, outbox);
                             break;
                         case LeanCompleteStatus.Busy:
                             peer.ThrottledUntil = now + (long)(LeanLimits.BusyRetry.TotalSeconds * _clock.TimestampFrequency);
@@ -348,37 +338,9 @@ public sealed partial class LeanObjectTransport
             if (results[i] is not { Status: LeanResultStatus.Ok, Descriptor: { } descriptor } result) continue;
             if (!selectors[i].Matches(descriptor)) return "descriptor does not match its selector";
             if (descriptor.ByteLength > LeanLimits.MaxObjectBytes) return "descriptor exceeds the advertised max_object_bytes";
-            if (descriptor.Kind != LeanProtocol.KindBlockProof) continue;
-            if (result.Skeleton is null) return "missing header skeleton";
-            if (!result.Skeleton.TryValidate(descriptor, _headerDecoder, _specProvider, out string? skeletonError))
-                return $"invalid header skeleton: {skeletonError}";
+
         }
         return null;
-    }
-
-    internal void OnTransactions(LeanPeer peer, TransactionsMessage message)
-    {
-        Outbox outbox = new(_clock);
-        lock (_gate)
-        {
-            if (peer.Closed) return;
-            LeanTransactionsRequest? request = FindLive<LeanTransactionsRequest>(peer, message.RequestId, outbox);
-            if (request is not null)
-            {
-                string? error = message.Results.Length != request.Hashes.Length ? "Transactions results do not match hashes" : null;
-                // After cancellation the envelopes are discarded without hashing.
-                for (int i = 0; error is null && !request.Cancelled && i < message.Results.Length; i++)
-                    if (message.Results[i].Status == LeanResultStatus.Ok && ValueKeccak.Compute(message.Results[i].Envelope) != request.Hashes[i])
-                        error = "transaction envelope does not match its hash";
-                if (error is not null) Violation(peer, error, outbox);
-                else
-                {
-                    peer.Live.Remove(request.Id);
-                    request.Completion.TrySetResult(message.Results);
-                }
-            }
-        }
-        outbox.Flush();
     }
 
     internal async Task<LeanObjectResult[]?> RequestObjectsAsync(LeanPeer peer, LeanSelector[] selectors, CancellationToken cancellationToken)
@@ -388,27 +350,10 @@ public sealed partial class LeanObjectTransport
         lock (_gate)
         {
             long now = _clock.GetTimestamp();
-            if (_disposed || !peer.CanRequest(now)) return null;
+            if (_disposed || !peer.CanRequest(now) || peer.LastIssued == ulong.MaxValue) return null;
             request = new(++peer.LastIssued, now, selectors);
             Issue(peer, request);
             outbox.Send(peer, new GetObjectsMessage(request.Id, selectors));
-        }
-        outbox.Flush();
-        return await AwaitResponse(peer, request, request.Completion.Task, cancellationToken);
-    }
-
-    internal async Task<(LeanResultStatus Status, byte[] Envelope)[]?> RequestTransactionsAsync(LeanPeer peer, ValueHash256[] hashes,
-        CancellationToken cancellationToken)
-    {
-        LeanTransactionsRequest request;
-        Outbox outbox = new(_clock);
-        lock (_gate)
-        {
-            long now = _clock.GetTimestamp();
-            if (_disposed || !peer.CanRequest(now)) return null;
-            request = new(++peer.LastIssued, now, hashes);
-            Issue(peer, request);
-            outbox.Send(peer, new GetTransactionsMessage(request.Id, hashes));
         }
         outbox.Flush();
         return await AwaitResponse(peer, request, request.Completion.Task, cancellationToken);
@@ -458,8 +403,8 @@ public sealed partial class LeanObjectTransport
             now = _clock.GetTimestamp();
             ExpireRequests(now, outbox);
             _nextTick = now + (long)(LeanLimits.Tick.TotalSeconds * _clock.TimestampFrequency);
-            ExpireAssemblies(now, outbox);
             UpdateRoundTrip();
+            ExpireAssemblies(now, outbox);
             // TryComplete can remove an assembly that nobody waits for, so iterate a snapshot.
             foreach (LeanAssembly assembly in (LeanAssembly[])[.. _assemblies.Values])
                 if (assembly.IsComplete && !assembly.Queued && !assembly.Dropped) TryComplete(assembly, outbox);
@@ -553,30 +498,28 @@ public sealed partial class LeanObjectTransport
         if (assembly.Dropped) return;
         assembly.Dropped = true;
         ReleaseChunks(assembly);
-        foreach (TaskCompletionSource<byte[]?> waiter in assembly.Waiters) waiter.TrySetResult(null);
+        foreach (TaskCompletionSource<LeanFetchedBody?> waiter in assembly.Waiters) waiter.TrySetResult(null);
         assembly.Waiters.Clear();
     }
 
-    private void ReleaseChunks(LeanAssembly assembly)
+    private void ReleaseChunks(LeanAssembly assembly, bool releaseMetadata = true)
     {
-        for (int index = 0; index < assembly.Chunks.Length; index++)
+        if (!assembly.Queued && assembly.Body is not null)
         {
-            if (assembly.ChargedTo[index] is { } peer)
-            {
-                long charge = assembly.ChargeOf(index);
-                peer.ChargedBytes -= charge;
-                _incompleteBytes -= charge;
-                assembly.ChargedTo[index] = null;
-            }
-            assembly.Chunks[index] = null;
+            long bytes = (long)assembly.Descriptor.ByteLength;
+            _incompleteBytes -= bytes;
+            if (assembly.CurrentSource is { } source) { source.ChargedBytes -= bytes; PruneNode(source.Node); }
+            assembly.Body = null;
         }
-        if (assembly.MetadataReleased) return;
+        Array.Clear(assembly.Chunks);
+        if (!releaseMetadata || assembly.MetadataReleased) return;
         assembly.MetadataReleased = true;
         _incompleteBytes -= assembly.MetadataBytes;
         if (assembly.Origin is { } origin)
         {
             origin.ChargedBytes -= assembly.MetadataBytes;
             origin.Assemblies--;
+            PruneNode(origin.Node);
         }
     }
 

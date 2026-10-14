@@ -116,6 +116,14 @@ public class CliqueBlockProducerTests
                     stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
                 }
 
+                if (finalSpec.BuilderRequestsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+                    stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, testnetSpecProvider.GenesisSpec);
+                    stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+                    stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, testnetSpecProvider.GenesisSpec);
+                }
+
                 stateProvider.Commit(testnetSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
@@ -293,9 +301,12 @@ public class CliqueBlockProducerTests
 
         public On ProcessBadGenesis(PrivateKey nodeKey)
         {
-            Wait(10); // wait a moment so the timestamp changes
             if (_logger.IsInfo) _logger.Info($"SUGGESTING BAD GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(GetGenesis());
+            Block genesis = GetGenesis();
+            genesis.Header.ExtraData[0] ^= 1;
+            genesis.Header.StateRoot = _genesis.StateRoot;
+            genesis.Header.Hash = genesis.Header.CalculateHash();
+            _blockTrees[nodeKey].SuggestBlock(genesis);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }
