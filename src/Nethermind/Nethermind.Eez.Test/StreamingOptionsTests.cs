@@ -179,6 +179,7 @@ public class StreamingOptionsTests
     public void Runtime_InvalidCertificateFiles_RejectsBeforeListening(string mutation)
     {
         using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
         string serverPath = Path.Combine(directory.Path, "server.pfx");
         string passwordPath = Path.Combine(directory.Path, "password");
         string pinPath = Path.Combine(directory.Path, "composer.cer");
