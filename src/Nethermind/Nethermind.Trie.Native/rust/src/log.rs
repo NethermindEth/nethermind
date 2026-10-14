@@ -11,8 +11,12 @@ use std::sync::Mutex;
 
 use rustc_hash::FxHasher;
 
+use crate::bulk_set::{matched_length, EMPTY_TREE_HASH};
 use crate::metrics;
-use crate::node::{record_length, record_length_of, write_record, Node, RECORD_HEADER_LENGTH};
+use crate::node::{
+    nibble, record_length, record_length_of, write_record, ChildRef, LoggedNode, Node, NodeKind,
+    RECORD_HEADER_LENGTH,
+};
 
 /// Where a node record is in a [`TrieNodeLog`]: its generation in the high 24 bits and its offset in that generation in
 /// the low 40 bits. Zero is no record.
@@ -145,6 +149,51 @@ impl TrieNodeLog {
         let floor = state.oldest_live;
         state.pins[slot(floor)] += 1;
         LogSession { log: self, floor }
+    }
+
+    /// The depth and hash of the first node on the path to `key` in the trie of `address`, the state trie when `None`,
+    /// with root hash `root`, that bulk sets cannot read from the log, or `None` when they read every node on it here.
+    pub fn first_missing(
+        &self,
+        address: Option<&[u8; 32]>,
+        root: &[u8; 32],
+        key: &[u8; 32],
+    ) -> Option<(usize, [u8; 32])> {
+        if *root == EMPTY_TREE_HASH {
+            return None;
+        }
+        let session = self.pin();
+        let mut pointer = session.find_root(address, root);
+        let mut hash = *root;
+        let mut depth = 0;
+        while session.is_valid(pointer) {
+            let node = LoggedNode::new(session.record(pointer));
+            let child = match node.kind() {
+                NodeKind::Leaf => return None,
+                NodeKind::Extension => {
+                    let extension = node.key();
+                    if matched_length(extension, key, depth) < extension.len() {
+                        return None;
+                    }
+                    depth += extension.len();
+                    node.child(0)
+                }
+                NodeKind::Branch => {
+                    depth += 1;
+                    node.child(nibble(key, depth - 1))
+                }
+            };
+            let ChildRef::Hash {
+                hash: child_hash,
+                pointer: child_pointer,
+            } = child
+            else {
+                return None;
+            };
+            hash = child_hash;
+            pointer = child_pointer;
+        }
+        Some((depth, hash))
     }
 
     fn generation(&self, id: u64) -> &Generation {
@@ -551,5 +600,62 @@ mod tests {
         assert!(active_length(&temporary) > MIN_GENERATION_BYTES);
         session.set_root(None, &[0x44; 32], first);
         assert_eq!(session.root(None, &[0x44; 32]), 0);
+    }
+
+    #[test]
+    fn first_missing_walks_logged_nodes_to_the_first_unlogged_one() {
+        let log = TrieNodeLog::new(0);
+        let session = log.pin();
+        let leaf_pointer = session.append(&leaf(vec![0xaa; 40]));
+        let extension_pointer = session.append(&Node::Extension {
+            key: Nibbles::from_slice(&[4, 5]),
+            child: ChildRef::Hash {
+                hash: [0x11; 32],
+                pointer: leaf_pointer,
+            },
+        });
+        let mut children = empty_children();
+        children[1] = ChildRef::Hash {
+            hash: [0x22; 32],
+            pointer: extension_pointer,
+        };
+        children[2] = ChildRef::Hash {
+            hash: [0x33; 32],
+            pointer: 0,
+        };
+        let root = [0x44; 32];
+        let address = [0x55; 32];
+        session.set_root(
+            Some(&address),
+            &root,
+            session.append(&Node::Branch { children }),
+        );
+        drop(session);
+
+        let key = |first: u8, second: u8| {
+            let mut key = [0; 32];
+            key[0] = first;
+            key[1] = second;
+            key
+        };
+        let first_missing = |address: Option<&[u8; 32]>, root: &[u8; 32], key: [u8; 32]| {
+            log.first_missing(address, root, &key)
+        };
+        assert_eq!(first_missing(Some(&address), &root, key(0x14, 0x50)), None);
+        assert_eq!(first_missing(Some(&address), &root, key(0x16, 0x00)), None);
+        assert_eq!(first_missing(Some(&address), &root, key(0x30, 0x00)), None);
+        assert_eq!(
+            first_missing(Some(&address), &root, key(0x20, 0x00)),
+            Some((1, [0x33; 32]))
+        );
+        assert_eq!(
+            first_missing(Some(&address), &[0x66; 32], key(0x14, 0x50)),
+            Some((0, [0x66; 32]))
+        );
+        assert_eq!(first_missing(None, &root, key(0x14, 0x50)), Some((0, root)));
+        assert_eq!(
+            first_missing(Some(&address), &EMPTY_TREE_HASH, key(0x14, 0x50)),
+            None
+        );
     }
 }

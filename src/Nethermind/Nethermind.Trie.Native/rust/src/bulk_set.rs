@@ -1153,7 +1153,7 @@ fn split_buckets<'a>(
     buckets
 }
 
-fn matched_length(nibbles: &[u8], key: &[u8; 32], from: usize) -> usize {
+pub(crate) fn matched_length(nibbles: &[u8], key: &[u8; 32], from: usize) -> usize {
     nibbles
         .iter()
         .enumerate()
