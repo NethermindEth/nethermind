@@ -11,12 +11,17 @@ namespace Nethermind.Synchronization.Blocks
     internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
     {
         public static IPeerAllocationStrategy AllocationStrategy { get; } = new BySpeedStrategy(TransferSpeedType.Bodies, true);
-        private static IPeerAllocationStrategy BlockAccessListsAllocationStrategy { get; } = new BlockAccessListsPeerAllocationStrategy(AllocationStrategy);
+
+        // Ranked by the speed of the data requested: a peer fast with bodies but slow or stingy with
+        // access lists or receipts would otherwise keep winning the requests that hold back processing.
+        private static IPeerAllocationStrategy BlockAccessListsAllocationStrategy { get; } =
+            new BlockAccessListsPeerAllocationStrategy(new BySpeedStrategy(TransferSpeedType.BlockAccessLists, true));
+        private static IPeerAllocationStrategy ReceiptsAllocationStrategy { get; } = new BySpeedStrategy(TransferSpeedType.Receipts, true);
 
         public IPeerAllocationStrategy Create(BlocksRequest? request) =>
-            request?.BlockAccessListsRequests.Count > 0
-                ? BlockAccessListsAllocationStrategy
-                : AllocationStrategy;
+            request?.BlockAccessListsRequests.Count > 0 ? BlockAccessListsAllocationStrategy
+            : request?.ReceiptsRequests.Count > 0 ? ReceiptsAllocationStrategy
+            : AllocationStrategy;
 
         private sealed class BlockAccessListsPeerAllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
         {
