@@ -71,6 +71,8 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         nint[] lengths = new nint[bucketCount];
         // Unchecked: the mask keeps a bucket below bucketCount and every array is count long, while the
         // bounds checks would load each array's 32-bit length, a narrow access, per node.
+        Debug.Assert(heads.Length == bucketMask + 1 && lengths.Length == bucketMask + 1 && next.Length == count && keys.Length == count,
+            "The unchecked bucketing loop relies on these sizes");
         ref NodeKey firstKey = ref MemoryMarshal.GetArrayDataReference(keys);
         ref nint firstHead = ref MemoryMarshal.GetArrayDataReference(heads);
         ref nint firstNext = ref MemoryMarshal.GetArrayDataReference(next);
