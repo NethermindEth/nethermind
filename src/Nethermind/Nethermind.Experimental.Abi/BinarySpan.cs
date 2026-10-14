@@ -92,7 +92,7 @@ public ref struct BinarySpanWriter
         Write(bytes);
 
         int padding = Math.PadTo32(bytes.Length) - bytes.Length;
-        _position += padding;
+        Take(padding).Clear();
     }
 
     public int Advance(int bytes)
@@ -119,6 +119,8 @@ public ref struct BinarySpanWriter
     public void WriteOffset<TCtx>(int offset, in TCtx ctx, BinarySpanWriterAction<TCtx> inner)
     {
         Span<byte> offsetLocation = _span[offset..(offset + 32)];
+        // Constant length (rather than `..^sizeof(int)`) lets the JIT unroll the clear.
+        offsetLocation[..(32 - sizeof(int))].Clear();
         BinaryPrimitives.WriteInt32BigEndian(offsetLocation[^sizeof(int)..], _position);
 
         inner(ctx, ref this);
