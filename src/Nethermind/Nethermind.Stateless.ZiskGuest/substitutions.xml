@@ -6,34 +6,11 @@
   ../Nethermind.Stateless.Guest/substitutions.xml.
 -->
 <linker>
-  <assembly fullname="System.Private.CoreLib">
-    <!-- The crash-info blob is for a debugger reading a dump; the guest has neither, and a fail-fast exits
-         the same way without it. -->
-    <type fullname="System.RuntimeExceptionHelpers">
-      <method signature="System.Void SerializeCrashInfo(System.Runtime.RhFailFastReason,System.String,System.Exception)" body="stub" />
-    </type>
-  </assembly>
   <assembly fullname="Nethermind.Core">
     <!-- The shared build leaves the flag off and this guest turns it on, switching on what only ZisK
          offers (see ZiskFlag); ILC folds every check it gates. -->
     <type fullname="Nethermind.Core.ZiskFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
-    </type>
-    <!-- Formatting a block, header, transaction or signature pulls in DateTime, time zone and number
-         formatting. The guest reaches these only from log sites behind a NullLogManager and from failure
-         messages it never publishes; a throw exits through ZkvmThrow with the same failure output. Stubs
-         cannot return a string, so they throw instead. -->
-    <type fullname="Nethermind.Core.Block">
-      <method signature="System.String ToString(Nethermind.Core.Block/Format)" body="remove" />
-    </type>
-    <type fullname="Nethermind.Core.BlockHeader">
-      <method signature="System.String ToString(System.String)" body="remove" />
-    </type>
-    <type fullname="Nethermind.Core.Transaction">
-      <method signature="System.String ToString(System.String)" body="remove" />
-    </type>
-    <type fullname="Nethermind.Core.Crypto.Signature">
-      <method signature="System.String ToString()" body="remove" />
     </type>
   </assembly>
   <assembly fullname="Nethermind.Serialization.Ssz">
