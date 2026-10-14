@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,6 +12,43 @@ namespace Nethermind.LightClient.Test;
 
 public class HostTests
 {
+    [Test]
+    [NonParallelizable]
+    public async Task Ctrl_C_cancels_checkpoint_fetch_before_the_rpc_host_starts()
+    {
+        string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
+            "NethermindLightClientShutdownTests", Guid.NewGuid().ToString("N"));
+        using TcpListener provider = new(IPAddress.Loopback, 0);
+        provider.Start();
+        int port = ((IPEndPoint)provider.LocalEndpoint).Port;
+        string assembly = typeof(LightClientHost).Assembly.Location;
+        string application = Path.GetDirectoryName(assembly)!;
+        ProcessStartInfo start = new("dotnet") { UseShellExecute = OperatingSystem.IsWindows() };
+        if (OperatingSystem.IsWindows()) start.WindowStyle = ProcessWindowStyle.Hidden;
+        foreach (string argument in new[]
+        {
+            "exec", "--runtimeconfig", Path.Combine(application, "Nethermind.LightClient.runtimeconfig.json"),
+            "--depsfile", Path.Combine(application, "Nethermind.LightClient.deps.json"), assembly,
+            "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", "http://127.0.0.1:0", "--data-dir", directory,
+        }) start.ArgumentList.Add(argument);
+        using Process client = Process.Start(start)!;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        try
+        {
+            using TcpClient connection = await provider.AcceptTcpClientAsync(timeout.Token);
+            using CancellationTokenSource shutdownDeadline = new(TimeSpan.FromSeconds(5));
+            await SendInterruptAsync(client.Id, shutdownDeadline.Token);
+            await client.WaitForExitAsync(shutdownDeadline.Token);
+            Assert.That(client.ExitCode, Is.Zero, "Ctrl+C during checkpoint selection must unwind normally.");
+        }
+        finally
+        {
+            if (!client.HasExited) client.Kill(entireProcessTree: true);
+            await client.WaitForExitAsync();
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [TestCase(null, null, 200)]
     [TestCase("local", null, 200)]
     [TestCase("https://wallet.example", null, 403)]
@@ -79,5 +119,56 @@ public class HostTests
         builder.Logging.ClearProviders();
         builder.WebHost.UseUrls(url);
         return builder.Build();
+    }
+
+    private static async Task SendInterruptAsync(int clientId, CancellationToken cancellationToken)
+    {
+        ProcessStartInfo start = new(OperatingSystem.IsWindows() ? "powershell.exe" : "kill")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        if (OperatingSystem.IsWindows())
+        {
+            start.ArgumentList.Add("-NoProfile");
+            start.ArgumentList.Add("-Command");
+            start.ArgumentList.Add($$"""
+                $ErrorActionPreference = 'Stop'
+                Add-Type -Name ConsoleSignal -Namespace LightClientTests -MemberDefinition @'
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool FreeConsole();
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool SetConsoleCtrlHandler(System.IntPtr handler, bool add);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint GetConsoleProcessList(uint[] ids, uint length);
+                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
+                '@
+                [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null
+                if (![LightClientTests.ConsoleSignal]::AttachConsole({{clientId}})) { throw 'Cannot attach to the test child console.' }
+                try {
+                    $ids = New-Object uint32[] 8
+                    $count = [LightClientTests.ConsoleSignal]::GetConsoleProcessList($ids, 8)
+                    $senderId = [Diagnostics.Process]::GetCurrentProcess().Id
+                    if ($count -ne 2 -or $ids -notcontains {{clientId}} -or $ids -notcontains $senderId) { throw 'The child console is not isolated.' }
+                    if (![LightClientTests.ConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)) { throw 'Cannot protect the signal sender.' }
+                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) { throw 'Cannot send Ctrl+C.' }
+                    Start-Sleep -Milliseconds 100
+                } finally { [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null }
+                """);
+        }
+        else
+        {
+            start.ArgumentList.Add("-INT");
+            start.ArgumentList.Add(clientId.ToString());
+        }
+        using Process sender = Process.Start(start)!;
+        try
+        {
+            await sender.WaitForExitAsync(cancellationToken);
+            Assert.That(sender.ExitCode, Is.Zero, "The interrupt must reach only the owned child process.");
+        }
+        finally
+        {
+            if (!sender.HasExited) sender.Kill(entireProcessTree: true);
+            await sender.WaitForExitAsync();
+        }
     }
 }

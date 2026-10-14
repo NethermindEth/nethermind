@@ -34,6 +34,10 @@ The `Nethermind.LightClient` debug profile selects mainnet and supplies the
 checkpoint URL above automatically. Edit its command-line arguments to select
 another trusted provider or root.
 
+Press **Ctrl+C** in the terminal to cancel checkpoint/bootstrap startup or stop
+the running client. Shutdown waits for RPC and sync workers, closes P2P
+connections and storage, then flushes logging.
+
 The example mainnet URL is operated by Sigma Prime, not the EF. The client
 fetches its finalized checkpoint through the standard
 [`finality_checkpoints` Beacon API](https://github.com/ethereum/beacon-APIs/blob/master/apis/beacon/states/finality_checkpoints.yaml)

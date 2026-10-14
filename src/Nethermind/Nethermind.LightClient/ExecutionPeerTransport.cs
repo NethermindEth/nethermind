@@ -123,9 +123,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _services = builder.Build();
     }
 
-    internal async Task StartAsync()
+    internal async Task StartAsync(CancellationToken cancellationToken)
     {
-        _services.Resolve<INetworkConfig>();
+        cancellationToken.ThrowIfCancellationRequested();
+        await _services.Resolve<IIPResolver>().Resolve(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         IBlockTree blockTree = _services.Resolve<IBlockTree>();
         ChainSpec chainSpec = _services.Resolve<ChainSpec>();
         Block genesis = chainSpec.Genesis!;
@@ -134,9 +136,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         _services.Resolve<IProtocolsManager>();
         _host = _services.Resolve<IRlpxHost>();
         await _host.Init();
+        cancellationToken.ThrowIfCancellationRequested();
         _services.Resolve<ISyncPeerPool>().Start();
         _discovery = _services.Resolve<IDiscoveryApp>();
         await _discovery.StartAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         _feederTask = _services.Resolve<NodeSourceToDiscV4Feeder>().Run();
         _peerPool = _services.Resolve<IPeerPool>();
         _peerPool.Start();

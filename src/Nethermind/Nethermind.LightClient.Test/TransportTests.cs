@@ -34,6 +34,34 @@ namespace Nethermind.LightClient.Test;
 public class TransportTests
 {
     [Test]
+    public async Task Execution_startup_cancels_before_network_binding([Values] bool alreadyCanceled)
+    {
+        await using ExecutionPeerTransport transport = new("mainnet", Nethermind.Logging.LimboLogs.Instance,
+            new VerifiedHead(0, 0, KnownHashes.MainnetGenesis, Hash256.Zero), 0);
+        IPResolver resolver = (IPResolver)Services(transport).Resolve<IIPResolver>();
+        TaskCompletionSource<IIPResolver.NethermindIp> resolution = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(IPResolver).GetField("_resolveTask", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(resolver, resolution.Task);
+        using CancellationTokenSource stop = new();
+        if (alreadyCanceled) stop.Cancel();
+        Task start = transport.StartAsync(stop.Token);
+        try
+        {
+            if (!alreadyCanceled) Assert.That(start.IsCompleted, Is.False);
+            stop.Cancel();
+            Assert.That(async () => await start.WaitAsync(TimeSpan.FromSeconds(5)), Throws.InstanceOf<OperationCanceledException>());
+            Assert.That(resolution.Task.IsCompleted, Is.False, "Cancellation must not wait for external IP resolution.");
+        }
+        finally
+        {
+            resolution.TrySetException(new IOException("Test IP resolution stopped."));
+            _ = resolution.Task.Exception;
+            try { await start; }
+            catch (OperationCanceledException) { }
+            catch (IOException) { }
+        }
+    }
+
+    [Test]
     public async Task Production_discovery_storage_restarts_and_revalidates_signed_enrs([Values] bool tamper)
     {
         string directory = PeerTestDirectory();
