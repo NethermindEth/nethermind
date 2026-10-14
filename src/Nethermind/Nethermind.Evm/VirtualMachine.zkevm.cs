@@ -37,13 +37,17 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
     /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
-    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
-        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec)
+    {
+        nint handler = (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD];
+        return handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OffFlag>)
+            || handler == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad<OnFlag>);
+    }
 
     public object? ReturnData;
 
     /// <summary>
-    /// <see cref="InitializeFrameCore{Eip158}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
     /// </summary>
     /// <remarks>
     /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
@@ -51,14 +55,14 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
     /// Not selected under EIP-7928, whose access-list tracking observes the credit.
     /// </remarks>
-    private static void InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
     {
         ExecutionEnvironment env = state.Env;
         ExecutionType executionType = state.ExecutionType;
         if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
-            return;
+            return true;
 
-        InitializeFrameCore<OnFlag>(vm, state);
+        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
     }
 
     /// <summary>
@@ -161,4 +165,9 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         child.Dispose();
         return push;
     }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SelectInitializeFrameCore(spec);
 }

@@ -159,7 +159,7 @@ public sealed class FrameTxPrefixSimulator(
                 return FrameTxSimulationResult.Reject(result.TransactionExecuted ? "validation prefix set no payer" : result.ErrorDescription);
             }
 
-            return FrameTxSimulationResult.Accept(tracer.Payer);
+            return FrameTxSimulationResult.Accept(tracer.Payer, tracer.CodeDependencies);
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested && tracer is { Violated: true })
         {

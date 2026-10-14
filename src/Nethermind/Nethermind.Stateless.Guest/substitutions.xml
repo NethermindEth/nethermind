@@ -2,8 +2,9 @@
   SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
   SPDX-License-Identifier: LGPL-3.0-only
 
-  Substitutions specific to this guest. The universal float-elimination set ships
-  inside bflat and is applied automatically for -\-libc openvm.
+  Substitutions every guest applies; a guest's own substitutions.xml adds to these.
+  The universal float-elimination set ships inside bflat and is applied automatically
+  for each guest's -\-libc.
 -->
 <linker>
   <assembly fullname="System.Private.CoreLib">
