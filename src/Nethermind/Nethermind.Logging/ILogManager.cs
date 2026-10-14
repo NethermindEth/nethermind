@@ -13,14 +13,3 @@ public partial interface ILogManager
 
     static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
 }
-
-public static class LogManagerExtensions
-{
-    public static ILogger GetClassLogger(this ILogManager logManager, Type type)
-#if ZK_EVM
-        // zkEVM logging is a no-op, so the name is irrelevant and reading it costs a reflection metadata lookup.
-        => logManager.GetLogger(string.Empty);
-#else
-        => logManager.GetLogger(ILogManager.GetLoggerName(type));
-#endif
-}
