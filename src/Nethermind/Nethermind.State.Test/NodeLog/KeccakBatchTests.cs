@@ -12,7 +12,7 @@ namespace Nethermind.Store.Test.NodeLog;
 public class KeccakBatchTests
 {
     [Test]
-    public void Hashes_match_scalar([Values(1, 2, 3, 4, 7, 8, 9, 17)] int count)
+    public void Hashes_match_scalar([Values(1, 2, 3, 4, 7, 8, 9, 17, 49)] int count)
     {
         // One length either side of each rate-block boundary, up to the largest node RLP, covers every padded class.
         int[] lengths = [1, 135, 136, 271, 272, 532];

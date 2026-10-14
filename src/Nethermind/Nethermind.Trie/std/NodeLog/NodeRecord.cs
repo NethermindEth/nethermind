@@ -162,7 +162,7 @@ internal static class NodeRecord
     }
 
     /// <remarks>An embedded branch or extension would need two keys sharing 224 bits, which keccak keys never do.</remarks>
-    private static bool IsInlineLeaf(ReadOnlySpan<byte> rlp) =>
+    internal static bool IsInlineLeaf(ReadOnlySpan<byte> rlp) =>
         NodeRlp.NextItem(rlp, out NodeRlp.Item node, out _)
         && NodeRlp.NextItem(node.Payload, out NodeRlp.Item key, out ReadOnlySpan<byte> rest)
         && NodeRlp.NextItem(rest, out NodeRlp.Item value, out rest)
