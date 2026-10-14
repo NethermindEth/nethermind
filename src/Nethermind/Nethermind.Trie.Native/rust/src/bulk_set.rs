@@ -74,6 +74,8 @@ pub fn bulk_set<S: NodeStore>(
     let context = Context {
         store,
         pending,
+        // Nodes written during this bulk set are never read back, so with none before it the lookups always miss.
+        read_pending: pending.count() > 0,
         log: &session,
         values,
     };
@@ -102,6 +104,7 @@ pub fn bulk_set<S: NodeStore>(
 struct Context<'a, S> {
     store: &'a S,
     pending: &'a PendingNodes,
+    read_pending: bool,
     log: &'a LogSession<'a>,
     values: &'a [u8],
 }
@@ -156,9 +159,11 @@ struct PendingNode {
 struct CommitScratch {
     nodes: Vec<PendingNode>,
     order: Vec<u32>,
-    /// (index, RLP start, RLP end) of every node in the level referenced by hash.
+    /// (index, RLP start, RLP end) of every node referenced by hash, level by level.
     hashed: Vec<(u32, usize, usize)>,
     hashes: Vec<[u8; 32]>,
+    /// Log pointers of the nodes of the current level referenced by hash.
+    pointers: Vec<LogPointer>,
 }
 
 type Bucket<'a> = (&'a mut [Entry], &'a mut [Entry]);
@@ -693,12 +698,15 @@ impl<S: NodeStore> Context<'_, S> {
                 }))
             }
             ChildRef::Hash { hash, .. } => {
-                let pending = BUFFER.with_borrow_mut(|buffer| {
-                    self.pending
-                        .copy_to(path, hash, buffer)
-                        .then(|| decode_rlp(buffer))
-                        .transpose()
-                })?;
+                let pending = match self.read_pending {
+                    true => BUFFER.with_borrow_mut(|buffer| {
+                        self.pending
+                            .copy_to(path, hash, buffer)
+                            .then(|| decode_rlp(buffer))
+                            .transpose()
+                    })?,
+                    false => None,
+                };
                 let node = match pending {
                     Some(node) => node,
                     None => self.store.fetch(path, hash)?.ok_or(Error::MissingNode)?,
@@ -740,6 +748,7 @@ impl<S: NodeStore> Context<'_, S> {
                 order,
                 hashed,
                 hashes,
+                pointers,
             } = scratch;
             collect_pending(Box::new(node), path, 0, 0, nodes);
 
@@ -773,13 +782,14 @@ impl<S: NodeStore> Context<'_, S> {
                     }
                 };
             BUFFER.with_borrow_mut(|buffer| {
+                buffer.clear();
+                hashed.clear();
                 let mut start = 0;
                 for &end in level_ends.iter().rev() {
                     if end == start {
                         continue;
                     }
-                    buffer.clear();
-                    hashed.clear();
+                    let level_start = hashed.len();
                     for &index in &order[start..end] {
                         let rlp_start = buffer.len();
                         encode(&nodes[index as usize].node, buffer);
@@ -795,31 +805,41 @@ impl<S: NodeStore> Context<'_, S> {
                         }
                     }
 
+                    let level = &hashed[level_start..];
                     hashes.resize(hashed.len(), [0; 32]);
                     keccak_many(
                         |position| {
-                            let (_, rlp_start, rlp_end) = hashed[position];
+                            let (_, rlp_start, rlp_end) = level[position];
                             &buffer[rlp_start..rlp_end]
                         },
-                        hashes,
+                        &mut hashes[level_start..],
                     );
-                    self.pending.write(hashed.iter().zip(hashes.iter()).map(
-                        |(&(index, rlp_start, rlp_end), hash)| {
-                            (
-                                &nodes[index as usize].path,
-                                hash,
-                                &buffer[rlp_start..rlp_end],
-                            )
-                        },
-                    ));
-                    for (&(index, _, _), &hash) in hashed.iter().zip(hashes.iter()) {
-                        // Appended, not read: deeper levels already pointed this node's children at their records,
-                        // and its parent, appended with the next level, gets this record's pointer.
-                        let pointer = self.log.append(&nodes[index as usize].node);
+                    // Appended, not read: deeper levels already pointed these nodes' children at their records, and
+                    // their parents, appended with the next level, get these records' pointers.
+                    pointers.clear();
+                    self.log.append_all(
+                        level
+                            .iter()
+                            .map(|&(index, _, _)| &*nodes[index as usize].node),
+                        pointers,
+                    );
+                    for ((&(index, _, _), &hash), &pointer) in level
+                        .iter()
+                        .zip(&hashes[level_start..])
+                        .zip(pointers.iter())
+                    {
                         link_to_parent(nodes, index, ChildRef::Hash { hash, pointer });
                     }
                     start = end;
                 }
+                self.pending.write(hashed.len(), |position| {
+                    let (index, rlp_start, rlp_end) = hashed[position];
+                    (
+                        &nodes[index as usize].path,
+                        &hashes[position],
+                        &buffer[rlp_start..rlp_end],
+                    )
+                });
             });
 
             nodes.clear();

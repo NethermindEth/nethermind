@@ -252,8 +252,38 @@ impl LogSession<'_> {
     }
 
     /// Appends the record of `node`, whose children must all be resolved, and returns its pointer.
+    #[cfg(test)]
     pub fn append(&self, node: &Node) -> LogPointer {
         self.append_bytes(record_length(node), |out| write_record(node, out))
+    }
+
+    /// Appends the records of `nodes`, whose children must all be resolved, in one reservation, and pushes their
+    /// pointers to `pointers`.
+    pub fn append_all<'n>(
+        &self,
+        nodes: impl Iterator<Item = &'n Node> + Clone,
+        pointers: &mut Vec<LogPointer>,
+    ) {
+        let first = pointers.len();
+        let total = nodes
+            .clone()
+            .map(|node| record_length(node).next_multiple_of(RECORD_ALIGNMENT))
+            .sum();
+        if total == 0 {
+            return;
+        }
+        let base = self.append_bytes(total, |out| {
+            let mut offset = 0;
+            for node in nodes {
+                let length = record_length(node);
+                write_record(node, &mut out[offset..offset + length]);
+                pointers.push(offset as LogPointer);
+                offset += length.next_multiple_of(RECORD_ALIGNMENT);
+            }
+        });
+        for pointer in &mut pointers[first..] {
+            *pointer += base;
+        }
     }
 
     /// Appends `length` bytes that `write` fills and returns their pointer.
