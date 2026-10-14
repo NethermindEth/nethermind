@@ -54,8 +54,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     private const int MaxRetainedReturnDataLength = 1 << 30;
 
     /// <inheritdoc/>
-    /// <remarks>Code above the EIP-170 limit fails the deposit, so the output can share the nested-output scratch.</remarks>
-    private partial bool IsUndeployableCreateOutput(int length) => Spec.LimitCodeSize && length > Spec.MaxCodeSize;
+    /// <remarks>A reverted output, or code above the EIP-170 limit, is never deposited, so it can share the nested-output scratch.</remarks>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => isRevert || (Spec.LimitCodeSize && length > Spec.MaxCodeSize);
 
     /// <summary>
     /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.

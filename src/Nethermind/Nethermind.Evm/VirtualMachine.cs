@@ -228,7 +228,7 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData)
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
     {
         // Only nested outputs are consumed before this buffer can be reused by a later child call, and a create's
         // output may become the deployed code.
@@ -236,13 +236,13 @@ public partial class VirtualMachine<TGasPolicy>(
             && !returnData.IsEmpty
             && returnData.Length <= MaxRetainedReturnDataLength
             && !_currentState.IsTopLevel
-            && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length));
+            && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert));
 
         ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
     }
 
-    /// <summary>Whether a create frame's output of <paramref name="length"/> bytes is never deployed, so nothing reads it once the frame returns.</summary>
-    private partial bool IsUndeployableCreateOutput(int length);
+    /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert);
 
     public PoppedAddressCache AddressCache { get; } = new();
     public IBlockhashProvider BlockHashProvider => _blockHashProvider;

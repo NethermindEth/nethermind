@@ -52,7 +52,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
     /// <inheritdoc/>
     /// <remarks>Every create output gets its own array.</remarks>
-    private partial bool IsUndeployableCreateOutput(int length) => false;
+    private partial bool IsUndeployableCreateOutput(int length, bool isRevert) => false;
 
     public object? ReturnData { get; set; }
 
