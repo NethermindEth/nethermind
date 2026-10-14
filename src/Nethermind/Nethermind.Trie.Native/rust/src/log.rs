@@ -265,19 +265,21 @@ impl LogSession<'_> {
         pointers: &mut Vec<LogPointer>,
     ) {
         let first = pointers.len();
-        let total = nodes
-            .clone()
-            .map(|node| record_length(node).next_multiple_of(RECORD_ALIGNMENT))
+        // Each record's length, until it becomes its pointer.
+        pointers.extend(nodes.clone().map(|node| record_length(node) as LogPointer));
+        let total = pointers[first..]
+            .iter()
+            .map(|&length| (length as usize).next_multiple_of(RECORD_ALIGNMENT))
             .sum();
         if total == 0 {
             return;
         }
         let base = self.append_bytes(total, |out| {
             let mut offset = 0;
-            for node in nodes {
-                let length = record_length(node);
+            for (node, pointer) in nodes.zip(&mut pointers[first..]) {
+                let length = *pointer as usize;
                 write_record(node, &mut out[offset..offset + length]);
-                pointers.push(offset as LogPointer);
+                *pointer = offset as LogPointer;
                 offset += length.next_multiple_of(RECORD_ALIGNMENT);
             }
         });
