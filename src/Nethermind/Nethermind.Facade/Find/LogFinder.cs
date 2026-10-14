@@ -212,20 +212,19 @@ namespace Nethermind.Facade.Find
                 // EIP-8116: logIndex counts within the receipt.
                 bool logIndexPerReceipt = _eip8116.IsEnabled(blockNumber, blockTimestamp);
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, logIndexPerReceipt, cancellationToken)
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken)
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken);
             }
 
             return Array.Empty<FilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
             try
             {
                 long logIndexInBlock = 0;
-                Hash256? blockHash = null;
                 while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -243,7 +242,7 @@ namespace Nethermind.Facade.Find
                             if (filter.Accepts(ref log))
                             {
                                 // On CL workload, recovery happens about 70% of the time.
-                                iterator.RecoverLogFieldsIfNeeded(ref receipt);
+                                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
 
                                 logList ??= [];
                                 Hash256[] topics = log.Topics;
@@ -255,11 +254,11 @@ namespace Nethermind.Facade.Find
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
-                                    receipt.BlockNumber,
+                                    blockNumber,
                                     blockTimestamp,
-                                    blockHash ??= receipt.BlockHash.ToCommitment(),
+                                    blockHash,
                                     receipt.Index,
-                                    txHash ??= receipt.TxHash.ToCommitment(),
+                                    txHash ??= recoveredTransactionHash ?? receipt.TxHash.ToCommitment(),
                                     log.Address.ToAddress(),
                                     data,
                                     topics));
