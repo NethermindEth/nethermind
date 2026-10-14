@@ -34,8 +34,8 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(ecdsa.RecoverAddress(tx), Is.EqualTo(key.Address));
         }
 
-        [TestCase((ulong.MaxValue - 36) / 2, true)]
-        [TestCase((ulong.MaxValue - 36) / 2 + 2, false)]
+        [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, true)]
+        [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId + 2, false)]
         [TestCase(1ul << 63, false)]
         public void Eip155_legacy_signature_round_trips_or_fails_on_large_chain_ids(ulong chainId, bool representable)
         {
@@ -57,8 +57,8 @@ namespace Nethermind.Core.Test.Crypto
             }
         }
 
-        [TestCase((ulong.MaxValue - 36) / 2, true, ulong.MaxValue - 1)]
-        [TestCase((ulong.MaxValue - 36) / 2, false, ulong.MaxValue - 2)]
+        [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, true, ulong.MaxValue - 1)]
+        [TestCase(EthereumEcdsaExtensions.MaxEip155ChainId, false, ulong.MaxValue - 2)]
         [TestCase((ulong.MaxValue - 35) / 2, false, ulong.MaxValue)]
         public void CalculateV_at_the_largest_chain_ids(ulong chainId, bool addParity, ulong expected) =>
             Assert.That(EthereumEcdsaExtensions.CalculateV(chainId, addParity), Is.EqualTo(expected));

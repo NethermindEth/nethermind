@@ -99,7 +99,7 @@ public class TxValidatorTests
     }
 
     // 2 * chainId + 36 must fit in a ulong v; above that the EIP-155 values cannot be represented at all.
-    private const ulong MaxRepresentableChainId = (ulong.MaxValue - 36) / 2;
+    private const ulong MaxRepresentableChainId = EthereumEcdsaExtensions.MaxEip155ChainId;
 
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(MaxRepresentableChainId, 2 * MaxRepresentableChainId + 35, ExpectedResult = true)]

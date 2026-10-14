@@ -246,6 +246,9 @@ public static class EthereumEcdsaExtensions
     private static void WriteRaw<TWriter>(ref TWriter writer, scoped ReadOnlySpan<byte> bytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(bytes);
 
+    /// <summary>The largest chain id for which both EIP-155 <c>v</c> values fit a ulong.</summary>
+    public const ulong MaxEip155ChainId = (ulong.MaxValue - 36) / 2;
+
     /// <summary>EIP-155 <c>v</c> for <paramref name="chainId"/>; throws <see cref="OverflowException"/> where no such <c>v</c> fits a ulong.</summary>
     public static ulong CalculateV(ulong chainId, bool addParity = true) => checked(chainId * 2 + 35ul + (addParity ? 1u : 0u));
 
