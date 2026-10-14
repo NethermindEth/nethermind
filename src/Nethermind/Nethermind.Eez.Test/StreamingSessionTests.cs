@@ -70,6 +70,10 @@ public class StreamingSessionTests
         duplicate = Block(11, AnchorHash);
         duplicate.Hash = Hash(99);
         AssertCode(() => session.AdmitBlock(session.Binding, 7, duplicate), StatusCode.FailedPrecondition);
+        duplicate = Block(11, AnchorHash);
+        duplicate.ParentHash = Hash(99);
+        AssertCode(() => session.AdmitBlock(session.Binding, 9, duplicate), StatusCode.InvalidArgument);
+        Assert.That(session.Ready(session.Binding, 10).Ready.ValidatedThrough, Is.EqualTo(11), "contradictory duplicate metadata cannot replace validated data");
         using (SessionOperation retry = session.AdmitBlock(session.Binding, 8, Block(11, AnchorHash)))
             session.CommitBlock(retry, Executed(retry));
         Add(session, 12, Hash(11));

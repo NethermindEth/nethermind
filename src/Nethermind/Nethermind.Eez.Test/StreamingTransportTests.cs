@@ -237,10 +237,17 @@ public class StreamingTransportTests
         _input.Add(() =>
         {
             queued.SetResult();
-            ClientFrame frame = Bound(3, new StreamBlock { Data = new BlockWitness
+            ClientFrame frame = Bound(3, new StreamBlock
             {
-                Number = 12, Hash = Hash(12), ParentHash = Hash(11), Rlp = Hash(12), Witness = new ExecutionWitness(),
-            } });
+                Data = new BlockWitness
+                {
+                    Number = 12,
+                    Hash = Hash(12),
+                    ParentHash = Hash(11),
+                    Rlp = Hash(12),
+                    Witness = new ExecutionWitness(),
+                }
+            });
             return frame;
         });
         _input.Add(() => Bound(4, new Finalize { FromBlock = 11, ToBlock = 12, TerminalHash = Hash(12), Settlement = new SettlementInput { AbiCalldata = Hash(90) } }));
