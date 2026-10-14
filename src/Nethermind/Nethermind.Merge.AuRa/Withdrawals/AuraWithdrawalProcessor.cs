@@ -10,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -57,8 +56,8 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         {
             _contract.ExecuteWithdrawals(block.Header, _failedWithdrawalsMaxCount, amounts, addresses);
         }
-        // Other AbiExceptions (e.g. a wrapped state read failure) are node-local faults and must not invalidate the block.
-        catch (Exception ex) when (ex is ArgumentNullException || ex is EvmException || ex is ContractCallFailedException)
+        // Any other exception (e.g. a wrapped state read failure) is a node-local fault and must not invalidate the block.
+        catch (ContractCallFailedException ex)
         {
             throw new InvalidBlockException(block, "failed to execute withdrawals contract", ex);
         }

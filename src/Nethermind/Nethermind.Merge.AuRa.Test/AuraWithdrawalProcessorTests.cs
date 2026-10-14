@@ -73,14 +73,11 @@ public class AuraWithdrawalProcessorTests
     }
 
     [Test]
-    public void Should_not_report_other_abi_exception_as_invalid_block([Values] bool hasInnerException)
+    public void Should_not_report_other_exception_as_invalid_block([ValueSource(nameof(NodeLocalFaults))] Exception exception)
     {
         IWithdrawalContract contract = Substitute.For<IWithdrawalContract>();
         AuraWithdrawalProcessor withdrawalProcessor = new(contract, LimboLogs.Instance);
         Block block = BuildBlockWithWithdrawal();
-        AbiException exception = hasInnerException
-            ? new AbiException("System call to executeSystemWithdrawals returned an exception", new InvalidOperationException("state read failed"))
-            : new AbiException("Cannot encode withdrawal arguments");
         contract.When(c => c.ExecuteWithdrawals(block.Header, Arg.Any<UInt256>(), Arg.Any<IList<ulong>>(), Arg.Any<IList<Address>>()))
             .Throw(exception);
 
@@ -154,6 +151,13 @@ public class AuraWithdrawalProcessorTests
             Arg.Any<UInt256>(),
             Arg.Any<IList<ulong>>(),
             Arg.Any<IList<Address>>());
+    }
+
+    private static IEnumerable<Exception> NodeLocalFaults()
+    {
+        yield return new AbiException("System call to executeSystemWithdrawals returned an exception", new InvalidOperationException("state read failed"));
+        yield return new AbiException("Cannot encode withdrawal arguments");
+        yield return new ArgumentNullException("blockHeader");
     }
 
     private static Block BuildBlockWithWithdrawal() => Build.A.Block
