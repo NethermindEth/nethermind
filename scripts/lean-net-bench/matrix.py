@@ -11,11 +11,11 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def scenarios(proof_bytes):
+def scenarios(proof_bytes, proof_sizes):
     for binding in ("rlpx", "ethp2p"):
         for transactions in (1, 16, 64):
             for rate in (1, 8, 32, 64):
-                yield f"load-{binding}-tx{transactions}-r{rate}", dict(binding=binding, proof_bytes=proof_bytes,
+                yield f"load-{binding}-tx{transactions}-r{rate}", dict(binding=binding, proof_bytes=proof_sizes.get(str(transactions), proof_bytes),
                     transactions_per_object=transactions, objects=6 * rate, burst=rate, interval_ms=1000)
         for size in (65536, 1048576, 8388608):
             yield f"size-{binding}-{size}", dict(binding=binding, proof_bytes=size, objects=6,
@@ -36,9 +36,11 @@ def main():
     parser.add_argument("--out", default="runs")
     parser.add_argument("--repetitions", type=int, default=2)
     parser.add_argument("--proof-bytes", type=int, default=300000)
+    parser.add_argument("--proof-sizes", help="JSON mapping of transaction counts to measured native proof sizes")
     parser.add_argument("--match", default="")
     parser.add_argument("--plan", action="store_true")
     args = parser.parse_args()
+    proof_sizes = json.loads(open(args.proof_sizes).read()) if args.proof_sizes else {}
     done = set()
     if os.path.exists(args.results):
         with open(args.results) as stream:
@@ -48,7 +50,7 @@ def main():
                     done.add(row["label"])
     failures = 0
     for repetition in range(1, args.repetitions + 1):
-        for name, scenario in scenarios(args.proof_bytes):
+        for name, scenario in scenarios(args.proof_bytes, proof_sizes):
             label = f"{name}-rep{repetition}"
             if args.match not in label or label in done:
                 continue
