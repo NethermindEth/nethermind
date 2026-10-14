@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.IO.Abstractions;
 using System.Security;
 using Autofac.Features.AttributeFilters;
@@ -77,12 +76,7 @@ namespace Nethermind.Wallet
                     PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
                     string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
-                    FileStreamOptions options = new() { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
-                    if (!OperatingSystem.IsWindows())
-                    {
-                        options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite; // 0600
-                    }
-                    using (FileSystemStream stream = _fileSystem.FileStream.New(newFile, options))
+                    using (FileSystemStream stream = _fileSystem.FileStream.New(newFile, OwnerOnlyFile.CreateWriteOptions()))
                     {
                         stream.Write(nodeKey.KeyBytes);
                     }

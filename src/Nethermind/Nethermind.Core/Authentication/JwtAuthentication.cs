@@ -97,12 +97,7 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
             try
             {
                 Directory.CreateDirectory(fileInfo.DirectoryName!);
-                FileStreamOptions options = new() { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None };
-                if (!OperatingSystem.IsWindows())
-                {
-                    options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite; // 0600, as geth creates it
-                }
-                using StreamWriter writer = new(new FileStream(filePath, options));
+                using StreamWriter writer = new(new FileStream(filePath, OwnerOnlyFile.CreateWriteOptions()));
                 writer.Write(secret.ToHexString());
             }
             catch (SystemException ex)
