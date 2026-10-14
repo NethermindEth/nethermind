@@ -13,7 +13,6 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -672,8 +671,10 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(diff.post[TestItem.AddressC].Balance, Is.EqualTo((UInt256?)(VictimBalance - endowment)), "CREATE must succeed");
             Assert.That(diff.pre.ContainsKey(created), Is.False);
-            Assert.That(diff.post[created].Balance, Is.EqualTo((UInt256?)(UInt256)endowment));
+            Assert.That(diff.post.TryGetValue(created, out NativePrestateTracerAccount? post), Is.True);
+            Assert.That(post?.Balance, Is.EqualTo((UInt256?)(UInt256)endowment));
         }
     }
 
@@ -689,11 +690,12 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressC, VictimBalance);
         TestState.InsertCode(TestItem.AddressC, victimCode, Spec);
 
-        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 50_000);
+        // EIP-8037 state gas makes an Amsterdam CREATE cost far more than 50k.
+        Prepare code = Prepare.EvmCode.Call(TestItem.AddressC, 500_000);
         if (revert) code = code.Revert(0, 0);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(DiffMode), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
-        Execute(tracer, code.Done, fork);
+        Execute(tracer, code.Done, fork, gasLimit: 1_000_000);
         return (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value;
     }
 

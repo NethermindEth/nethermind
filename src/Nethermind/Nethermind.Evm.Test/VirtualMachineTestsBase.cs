@@ -175,9 +175,9 @@ public abstract class VirtualMachineTestsBase
         return tracer;
     }
 
-    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null, ulong gasLimit = 100000UL) where T : ITxTracer
     {
-        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000UL, code);
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gasLimit, code);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return tracer;
     }
