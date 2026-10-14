@@ -79,7 +79,6 @@ public class PbtRebuilderTests
     private static async Task<ValueHash256> Rebuild(
         List<RebuildEntry> leaves,
         int chunkSize,
-        StateId targetState,
         PbtRocksDbPersistence target,
         ILogManager logManager,
         int windowSize)
@@ -96,7 +95,7 @@ public class PbtRebuilderTests
         }
         channel.Writer.Complete();
 
-        return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
+        return await rebuilder.Rebuild(channel.Reader, windowSize, CancellationToken.None);
     }
 
     [TestCase(1, 3)]
@@ -114,10 +113,7 @@ public class PbtRebuilderTests
         TestLogger log = new();
         ILogManager logManager = new OneLoggerLogManager(new ILogger(log));
 
-        // the header root the source claims is unrelated to the tree root the fold produces, so the
-        // two must be recorded separately rather than one standing in for the other
-        StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Rebuild(leaves, chunkSize, targetState, target, logManager, windowSize);
+        ValueHash256 root = await Rebuild(leaves, chunkSize, target, logManager, windowSize);
 
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
@@ -140,8 +136,6 @@ public class PbtRebuilderTests
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and windowed rebuild must have the same root");
             PbtStoreTestExtensions.AssertSameGroups(db, reader, incrementalStore, "incremental replay and windowed rebuild must have the exact same group keys and payloads");
-            Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
-            Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
             Assert.That(log.LogList, Has.Some.Contains("PBT rebuild complete").And.Some.Contains($"{leaves.Count} received leaves"));
         }
     }
@@ -151,25 +145,21 @@ public class PbtRebuilderTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
-        StateId targetState = new(3, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await Rebuild([], 1, targetState, target, LimboLogs.Instance, 0);
+        ValueHash256 root = await Rebuild([], 1, target, LimboLogs.Instance, 0);
 
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(targetState));
     }
 
     [Test]
-    public async Task Rebuild_commits_leaf_windows_but_publishes_only_on_completion([Values(1, 3)] int windowSize, [Values] SourceEnd end)
+    public async Task Rebuild_commits_leaf_windows_without_publishing([Values(1, 3)] int windowSize, [Values] SourceEnd end)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(1);
         DrainedChunkReader source = new(channel.Reader);
-        StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
         using CancellationTokenSource cancellation = new();
         Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, Config.FoldConcurrency, LimboLogs.Instance)
-            .Rebuild(source, targetState, cancellation.Token, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
+            .Rebuild(source, windowSize, cancellation.Token);
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;
         ValueHash256 rebuiltRoot = default;
@@ -223,16 +213,14 @@ public class PbtRebuilderTests
             {
                 Assert.That(failure, Is.Null);
                 Assert.That(rebuiltRoot, Is.EqualTo(expectedRoot));
-                Assert.That(completedReader.CurrentState, Is.EqualTo(targetState));
-                Assert.That(target.IsValid, Is.True);
             }
             else
             {
                 Assert.That(failure, end == SourceEnd.Cancel ? Is.InstanceOf<OperationCanceledException>() : Is.TypeOf<InvalidDataException>());
-                Assert.That(completedReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
-                Assert.That(target.IsValid, Is.False);
-                PbtStoreTestExtensions.AssertSameGroups(db, completedReader, expectedStore);
             }
+            Assert.That(completedReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(target.IsValid, Is.False);
+            PbtStoreTestExtensions.AssertSameGroups(db, completedReader, expectedStore);
         }
     }
 

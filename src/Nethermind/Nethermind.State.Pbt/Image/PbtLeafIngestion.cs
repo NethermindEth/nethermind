@@ -58,8 +58,15 @@ public sealed class PbtLeafIngestion(PbtRocksDbPersistence target, PbtRebuilder 
         }, CancellationToken.None);
         try
         {
-            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, linked.Token, config.ImportWindowSize, expectedRoot, staging);
+            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, config.ImportWindowSize, linked.Token);
+            linked.Token.ThrowIfCancellationRequested();
+            target.Flush();
+            if (expectedRoot is { } expected && root != expected)
+                throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
             (ulong accounts, ulong slots) = await staging;
+            linked.Token.ThrowIfCancellationRequested();
+            using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root);
+            batch.Commit();
             return (root, accounts, slots);
         }
         finally

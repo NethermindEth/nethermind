@@ -136,7 +136,7 @@ public class PbtRootBuildBenchmark
             channel.Writer.Complete();
         });
         ValueHash256 root = new PbtRebuilder(target, config, Environment.ProcessorCount, LimboLogs.Instance)
-            .Rebuild(channel.Reader, new StateId(1, default), CancellationToken.None, WindowSize, expectedRoot: null, publishAfter: Task.CompletedTask)
+            .Rebuild(channel.Reader, WindowSize, CancellationToken.None)
             .GetAwaiter().GetResult();
         producing.GetAwaiter().GetResult();
         return root;
