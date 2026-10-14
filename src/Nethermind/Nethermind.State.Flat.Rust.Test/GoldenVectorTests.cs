@@ -29,7 +29,7 @@ public class GoldenVectorTests
         Path.Combine(GoldenDirectory(), GoldenVectorGenerator.FileName(layout, rlpSlots, carryForward));
 
     /// <summary>Finds the checked-in directory by walking up from the test binaries, which build under src/Nethermind/artifacts.</summary>
-    private static string GoldenDirectory()
+    internal static string GoldenDirectory()
     {
         string relative = Path.Combine("Nethermind.State.Flat.Rust", "native", "crates", "flatdb-core", "tests", "golden");
         for (DirectoryInfo? directory = new(TestContext.CurrentContext.TestDirectory); directory is not null; directory = directory.Parent)

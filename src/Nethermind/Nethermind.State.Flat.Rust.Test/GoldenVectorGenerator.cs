@@ -588,26 +588,26 @@ internal static class GoldenVectorGenerator
         private static JsonObject Slot(bool found, in UInt256 value) => new() { ["found"] = found, ["value"] = Hex32(value) };
     }
 
-    private static string Hex(ReadOnlySpan<byte> bytes) => bytes.ToHexString(true);
+    internal static string Hex(ReadOnlySpan<byte> bytes) => bytes.ToHexString(true);
 
-    private static string? HexOrNull(byte[]? bytes) => bytes is null ? null : Hex(bytes);
+    internal static string? HexOrNull(byte[]? bytes) => bytes is null ? null : Hex(bytes);
 
-    private static string Hex32(in UInt256 value) => Hex(value.ToBigEndian());
+    internal static string Hex32(in UInt256 value) => Hex(value.ToBigEndian());
 
     /// <summary>A nonce or balance: its big-endian bytes without leading zeros, zero being <c>0x00</c>.</summary>
     private static string Quantity(in UInt256 value) => Hex(value.ToBigEndian().WithoutLeadingZeros());
 
-    private static JsonArray Pair(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) => [Hex(key), Hex(value)];
+    internal static JsonArray Pair(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) => [Hex(key), Hex(value)];
 
-    private static JsonObject Json(in StateId stateId)
+    internal static JsonObject Json(in StateId stateId)
     {
         ValueHash256 root = stateId.StateRoot;
         return new JsonObject { ["block"] = stateId.BlockNumber, ["root"] = Hex(root.Bytes) };
     }
 
-    private static JsonObject Json(in TreePath path) => new() { ["path"] = Hex(path.Path.Bytes), ["length"] = path.Length };
+    internal static JsonObject Json(in TreePath path) => new() { ["path"] = Hex(path.Path.Bytes), ["length"] = path.Length };
 
-    private static JsonObject? Json(Account? account) => account is null
+    internal static JsonObject? Json(Account? account) => account is null
         ? null
         : new JsonObject
         {

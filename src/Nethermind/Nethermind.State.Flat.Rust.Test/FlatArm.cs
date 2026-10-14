@@ -102,7 +102,7 @@ internal abstract class FlatArm
 
         public override void DropStateNotReachableFrom(in StateId head) => manager.DropStateNotReachableFrom(head);
 
-        private sealed class ReadOnlyView(ReadOnlySnapshotBundle bundle) : IBundleView
+        internal sealed class ReadOnlyView(ReadOnlySnapshotBundle bundle) : IBundleView
         {
             public Account? GetAccount(Address address) => bundle.GetAccount(address);
 
