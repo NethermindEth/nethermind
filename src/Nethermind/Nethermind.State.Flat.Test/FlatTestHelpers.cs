@@ -46,10 +46,9 @@ public static class FlatTestHelpers
     /// <summary>Makes a snapshot owning a retain on <paramref name="log"/> taken before <paramref name="populate"/> writes its nodes.</summary>
     public static Snapshot MakeSnapshot(IResourcePool pool, TrieNodeLog log, Action<SnapshotContent> populate)
     {
-        TrieNodeLogRetain retain = log.RetainActive();
-        SnapshotContent content = pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        populate(content);
-        return new Snapshot(StateId.PreGenesis, StateId.PreGenesis, content, pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+        Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing, log);
+        populate(snapshot.Content);
+        return snapshot;
     }
 
     /// <summary>Records the node <paramref name="rlpHex"/> in <paramref name="log"/> and sets its pointer as the state node at <paramref name="path"/>.</summary>

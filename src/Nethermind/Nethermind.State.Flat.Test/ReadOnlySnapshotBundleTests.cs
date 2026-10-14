@@ -1081,10 +1081,9 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private Snapshot MakeSnapshot(ulong block, Action<SnapshotContent>? populate = null)
     {
-        TrieNodeLogRetain retain = _log.RetainActive();
-        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        populate?.Invoke(content);
-        return new Snapshot(CreateStateId(block), CreateStateId(block + 1), content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+        Snapshot snapshot = _pool.CreateSnapshot(CreateStateId(block), CreateStateId(block + 1), ResourcePool.Usage.MainBlockProcessing, _log);
+        populate?.Invoke(snapshot.Content);
+        return snapshot;
     }
 
     private Snapshot MakeSnapshot(int block, Action<SnapshotContent>? populate = null) => MakeSnapshot((ulong)block, populate);

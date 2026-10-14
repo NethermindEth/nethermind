@@ -144,6 +144,7 @@ public class Snapshot : RefCountingDisposable
         }
     }
 
+    /// <summary>The log pointer of the state node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot is alive.</summary>
     public bool TryGetStateNode(HashedKey<TreePath> key, out ulong pointer)
         => _isSorted ? _sorted!.TryGetStateNode(key, out pointer) : _mutable!.StateNodes.TryGetValue(key, out pointer);
 
@@ -153,6 +154,7 @@ public class Snapshot : RefCountingDisposable
         return node is not null;
     }
 
+    /// <summary>The log pointer of the storage node at <paramref name="key"/>, readable through <see cref="GetNodeRecord"/> or <see cref="GetRlp"/> while the snapshot is alive.</summary>
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, out ulong pointer)
         => _isSorted ? _sorted!.TryGetStorageNode(key, out pointer) : _mutable!.StorageNodes.TryGetValue(key, out pointer);
 

@@ -64,10 +64,9 @@ public class LongFinalityIntegrationTests
 
     private Snapshot CreateSnapshot(StateId from, StateId to, Action<SnapshotContent> configure)
     {
-        TrieNodeLogRetain retain = _log.RetainActive();
-        SnapshotContent content = new();
-        configure(content);
-        return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = retain };
+        Snapshot snapshot = _pool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing, _log);
+        configure(snapshot.Content);
+        return snapshot;
     }
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>

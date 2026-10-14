@@ -82,9 +82,10 @@ public class FlatDbManagerPersistedTests
         TreePath path = new(Keccak.Compute("path"), 4);
         byte[] nodeRlp = FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80);
         TrieNodeLog log = FlatTestHelpers.NewTestLog();
+        TrieNodeLogRetain logRetain = log.RetainActive();
         SnapshotContent content = new();
         content.SetStateNodeRlp(log, path, nodeRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = log.RetainActive() };
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
 
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         SnapshotRepository repo = tier.Repository;

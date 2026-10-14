@@ -58,6 +58,7 @@ public class PersistedSnapshotTests
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("scoped-snapshot"));
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         for (int i = 0; i < 256; i++)
         {
@@ -66,7 +67,7 @@ public class PersistedSnapshotTests
             content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
             content.SetStorageNodeRlp(_log, TestItem.KeccakA, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         }
-        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        using Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(budget);
 
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
@@ -213,10 +214,11 @@ public class PersistedSnapshotTests
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("1"));
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         populateContent(content, _log);
 
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -282,6 +284,7 @@ public class PersistedSnapshotTests
 
         byte[] slotVal = new byte[32]; slotVal[31] = 0x11;
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).WithNonce(3).TestObject;
         content.Accounts[TestItem.AddressC] = null;                          // deleted marker
@@ -303,7 +306,7 @@ public class PersistedSnapshotTests
         content.SetStorageNodeRlp(_log, storageAddr, snMid, FlatTestHelpers.LeafRlp(0xC1, 0x82));
         content.SetStorageNodeRlp(_log, storageAddr, snLong, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
 
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -479,6 +482,7 @@ public class PersistedSnapshotTests
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("absent"));
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         TreePath onlyTop = new(Keccak.Compute("only-top"), 3);
         content.SetStateNodeRlp(_log, onlyTop, FlatTestHelpers.LeafRlp(0xC1, 0x80));
@@ -486,7 +490,7 @@ public class PersistedSnapshotTests
         TreePath onlyFallback = new(Keccak.Compute("only-fallback"), 18);
         content.SetStorageNodeRlp(_log, storageAddr, onlyFallback, FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82));
 
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -515,6 +519,7 @@ public class PersistedSnapshotTests
         StateId to = new(1, Keccak.Compute("miss"));
 
         byte[] slotVal = new byte[32]; slotVal[31] = 0x07;
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(5).TestObject;
         content.Accounts[TestItem.AddressC] = Build.An.Account.WithBalance(9).TestObject; // 2nd address → real address BTree
@@ -526,7 +531,7 @@ public class PersistedSnapshotTests
         TreePath storagePath = new(Keccak.Compute("stp"), 4);
         content.SetStorageNodeRlp(_log, storageHashObj, storagePath, FlatTestHelpers.LeafRlp(0xC1, 0x81));
 
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         using PersistedSnapshot persisted = CreatePersistedSnapshot(from, to, data);
 
@@ -591,6 +596,7 @@ public class PersistedSnapshotTests
         byte[] v1 = new byte[32]; v1[31] = 0x11;
         byte[] v2 = new byte[32]; v2[31] = 0x22;
 
+        TrieNodeLogRetain olderLogRetain = _log.RetainActive();
         SnapshotContent older = new();
         older.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
         older.Accounts[TestItem.AddressD] = Build.An.Account.WithBalance(40).TestObject;
@@ -608,7 +614,7 @@ public class PersistedSnapshotTests
         newer.Storages[(TestItem.AddressA, (UInt256)2)] = new UInt256(v2, isBigEndian: true);
 
         byte[] olderData = PersistedSnapshotBuilderTestExtensions.Build(
-            new Snapshot(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }, _blobs);
+            new Snapshot(s0, s1, older, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = olderLogRetain }, _blobs);
         byte[] newerData = PersistedSnapshotBuilderTestExtensions.Build(
             new Snapshot(s1, s2, newer, _resourcePool, ResourcePool.Usage.MainBlockProcessing), _blobs);
 
@@ -733,13 +739,15 @@ public class PersistedSnapshotTests
         byte[] rlp1 = FlatTestHelpers.LeafRlp(0xC0);
         byte[] rlp2 = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
+        TrieNodeLogRetain logRetain1 = _log.RetainActive();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_log, path, rlp1);
-        Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snap1 = new(s0, s1, content1, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain1 };
 
+        TrieNodeLogRetain logRetain2 = _log.RetainActive();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_log, path, rlp2);
-        Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snap2 = new(s1, s2, content2, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain2 };
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _blobs);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _blobs);
@@ -889,6 +897,7 @@ public class PersistedSnapshotTests
         TreePath storagePath = new(Keccak.Compute("warmup-spath"), 6);
         byte[] storageNodeRlp = FlatTestHelpers.LeafRlp(0xC3, 0x80, 0x81, 0x82);
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.Accounts[addr] = expectedAccount;
         content.SelfDestructedStorageAddresses[addr] = true;
@@ -900,7 +909,7 @@ public class PersistedSnapshotTests
             content.Storages[(addr, (UInt256)i + 1)] = new UInt256(val, isBigEndian: true);
         }
 
-        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snapshot = new(from, to, content, _resourcePool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         // The flat sorted table materialises a full record per slot, so a large slot count exceeds
         // the shared 64 KiB fixture arena — use a roomier local arena for this case.

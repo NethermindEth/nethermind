@@ -16,7 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.Trie.NodeLog;
+using Nethermind.State.Flat.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -178,7 +178,7 @@ public class HistoricalTraceReExecutionTests
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
-        new TrieNodeLog(0, 64 * 1024),
+        FlatTestHelpers.NewTestLog(),
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

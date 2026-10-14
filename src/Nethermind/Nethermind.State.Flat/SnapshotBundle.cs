@@ -458,6 +458,8 @@ public sealed class SnapshotBundle : IDisposable
         // Note: Hot path
         _trieChanged = true;
         _changedStateNodes[path] = _trieNodeLog!.AppendRecordFromRlp(null, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan());
+        // Its RLP is now readable by path, so the trie node cache may unresolve it from cached parents.
+        newNode.IsPersisted = true;
         _transientResource.UpdateStateNode(path, newNode);
     }
 
@@ -493,6 +495,8 @@ public sealed class SnapshotBundle : IDisposable
         // Note: Hot path
         _trieChanged = true;
         nodes.Set(path, _trieNodeLog!.AppendRecordFromRlp(addr, path, newNode.Keccak!.ValueHash256, newNode.FullRlp.AsSpan()));
+        // Its RLP is now readable by path, so the trie node cache may unresolve it from cached parents.
+        newNode.IsPersisted = true;
         _transientResource.UpdateStorageNode(addr, path, newNode);
     }
 
@@ -627,6 +631,7 @@ public sealed class SnapshotBundle : IDisposable
     /// <summary>Releases a lease taken with <see cref="TryLeaseReadOnlyBundle"/>.</summary>
     internal void ReleaseReadOnlyBundleLease() => _readOnlySnapshotBundle.Dispose();
 
+    /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
     /// <param name="logRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, TrieNodeLogRetain? logRetain, bool returnSnapshot = true)
     {

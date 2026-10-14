@@ -167,13 +167,15 @@ public class PersistedSnapshotRepositoryTests
         byte[] rlp1 = FlatTestHelpers.LeafRlp(0xC0);
         byte[] rlp2 = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
+        TrieNodeLogRetain logRetain1 = _log.RetainActive();
         SnapshotContent content1 = new();
         content1.SetStateNodeRlp(_log, path, rlp1);
-        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain1 };
 
+        TrieNodeLogRetain logRetain2 = _log.RetainActive();
         SnapshotContent content2 = new();
         content2.SetStateNodeRlp(_log, path, rlp2);
-        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain2 };
 
         tier.ConvertToPersistedBase(snap1).Dispose();
         tier.ConvertToPersistedBase(snap2).Dispose();
@@ -231,13 +233,14 @@ public class PersistedSnapshotRepositoryTests
         TreePath storagePath = new(Keccak.Compute("storage_path"), 6);
         byte[] storageRlp = FlatTestHelpers.LeafRlp(0xC1, 0x80);
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.Accounts[acctAddr] = Build.An.Account.WithBalance(500).TestObject;
         content.Storages[(storageAddr, slotIndex)] = slotValue;
         content.SelfDestructedStorageAddresses[selfDestructAddr] = false;
         content.SetStateNodeRlp(_log, statePath, stateRlp);
         content.SetStorageNodeRlp(_log, storageTrieAddr, storagePath, storageRlp);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() };
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain };
 
         tier.ConvertToPersistedBase(snap).Dispose();
 
@@ -320,13 +323,14 @@ public class PersistedSnapshotRepositoryTests
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
         if (withTrieNode)
             content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
 
         using PersistedSnapshot persisted = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() });
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain });
 
         if (withTrieNode)
         {
@@ -353,12 +357,13 @@ public class PersistedSnapshotRepositoryTests
         using (FlatTestContainer tier1 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb))
         {
             SnapshotRepository repo1 = tier1.Repository;
+            TrieNodeLogRetain logRetain = _log.RetainActive();
             SnapshotContent content = new();
             content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(1000).TestObject;
             if (withTrieNode)
                 content.SetStateNodeRlp(_log, new TreePath(Keccak.Compute("p"), 4), FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
             tier1.ConvertToPersistedBase(
-                new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() }).Dispose();
+                new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain }).Dispose();
         }
 
         using FlatTestContainer tier2 = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir, catalogDb: catalogDb);
@@ -620,11 +625,12 @@ public class PersistedSnapshotRepositoryTests
         StateId s1 = new(1, Keccak.Compute("blob1"));
         using FlatTestContainer tier = new(arenaFileSizeBytes: 64 * 1024, baseDbPath: _testDir);
 
+        TrieNodeLogRetain logRetain = _log.RetainActive();
         SnapshotContent content = new();
         Nethermind.Trie.TreePath path = new(Keccak.Compute("bp"), 4);
         content.SetStateNodeRlp(_log, path, FlatTestHelpers.LeafRlp(0xC2, 0x80, 0x80));
         using PersistedSnapshot p = tier.ConvertToPersistedBase(
-            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = _log.RetainActive() });
+            new Snapshot(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing) { LogRetain = logRetain });
 
         Assert.DoesNotThrow(() => p.AdviseWillNeedBlobRange());
         Assert.DoesNotThrow(() => p.AdviseDontNeedBlobRange());
