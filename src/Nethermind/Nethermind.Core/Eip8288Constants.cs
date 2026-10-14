@@ -24,8 +24,13 @@ public static class Eip8288Constants
     /// <summary>Consensus bound on a block's distinct dependencies (<c>MAX_DEPS_PER_BLOCK</c>).</summary>
     public const int MaxDepsPerBlock = 4096;
 
-    /// <summary>Consensus bound on a block's distinct leanSTARK dependencies (<c>MAX_LEANSTARK_DEPS_PER_BLOCK</c>).</summary>
-    public const int MaxLeanStarkDepsPerBlock = 16;
+    /// <summary>Shared block dependency budget, measured over the distinct union.</summary>
+    public const int MaxDependencyUnitsPerBlock = 4096;
+    public const int LeanSphincsDependencyWeight = 1;
+    public const int LeanStarkDependencyWeight = 16;
+
+    /// <summary>Maximum pure leanSTARK set implied by the shared unit budget; mixed sets consume the same budget.</summary>
+    public const int MaxLeanStarkDepsPerBlock = MaxDependencyUnitsPerBlock / LeanStarkDependencyWeight;
 
     /// <summary>Maximum distinct dependencies covered by the prototype native proof envelope.</summary>
     /// <remarks>Below <see cref="MaxDepsPerBlock"/> and <see cref="MaxDepsPerAggregate"/>: a local proving and verification bound, not a
@@ -94,10 +99,10 @@ public static class Eip8288Constants
 
     /// <summary>Serialized wrapper ceiling, in either mode, in the EIP-8288 wrapper encoding (<c>MAX_WRAPPER_BYTES</c>).</summary>
     /// <remarks>A policy ceiling: clients may refuse smaller wrappers under local limits.</remarks>
-    public const int MaxWrapperBytes = 64 * 1024 * 1024;
+    public const int MaxWrapperBytes = 9 * 1024 * 1024;
 
     /// <summary>Fiat-Shamir key of the recursive guest pinned by tools/lean-ffi.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("c77fc9fe635aa8ba3c34028af0134e155391f8f76ad76f2e598b6823e0e7f7d1");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("00f24bbdf44a31139c975223b77510cd93a905664da3c4a52b5eba4e9b07de9e");
 }
