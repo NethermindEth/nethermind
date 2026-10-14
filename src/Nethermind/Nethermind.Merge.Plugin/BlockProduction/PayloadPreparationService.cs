@@ -445,7 +445,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             }
             finally
             {
-                // Stop any on-going improvements as they won't be used
+                // Also stops the context when retrieval throws or is cancelled
                 blockContext.DisposeAndCancelOngoingImprovements();
                 RetainRetrievedContext(payloadId, blockContext);
             }

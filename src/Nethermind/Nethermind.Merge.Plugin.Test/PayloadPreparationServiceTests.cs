@@ -72,6 +72,25 @@ public class PayloadPreparationServiceTests
 
     [Test]
     [CancelAfter(30000)]
+    public async Task GetPayload_stops_the_context_before_reading_the_payload_it_hands_out()
+    {
+        Block handedOut = Build.A.Block.WithNumber(1).TestObject;
+        using TestPayloadPreparationService service = CreateService(Substitute.For<IBlockImprovementContextFactory>());
+        string payloadId = Attributes.GetPayloadId(ParentHeader);
+        service.Store(payloadId, new BuildLandingAfterSecondReadContext(handedOut, Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject));
+
+        Block? first = (await service.GetPayload(payloadId))!.CurrentBestBlock;
+        Block? second = (await service.GetPayload(payloadId))!.CurrentBestBlock;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(handedOut));
+            Assert.That(second, Is.SameAs(handedOut));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30000)]
     public void GetPayload_disposes_the_replacement_published_after_it_cancelled()
     {
         RecordingBlockImprovementContextFactory factory = new();
@@ -282,6 +301,32 @@ public class PayloadPreparationServiceTests
             base.ImproveBlock(payloadId, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts);
             AfterImprove?.Invoke(improvement);
         }
+    }
+
+    /// <summary>
+    /// A context whose build lands, unless disposed, right after <see cref="Best"/> is read for the second time:
+    /// the read getPayload hands out when the build has completed.
+    /// </summary>
+    private sealed class BuildLandingAfterSecondReadContext(Block current, Block late) : IBlockImprovementContext
+    {
+        private BlockProductionSnapshot _best = new(current, UInt256.Zero);
+        private int _reads;
+
+        public BlockProductionSnapshot Best
+        {
+            get
+            {
+                BlockProductionSnapshot best = _best;
+                if (++_reads == 2 && !Disposed) _best = new(late, UInt256.Zero);
+                return best;
+            }
+        }
+
+        public Task<Block?> ImprovementTask { get; } = Task.FromResult<Block?>(current);
+        public bool Disposed { get; private set; }
+        public DateTimeOffset StartDateTime { get; } = DateTimeOffset.UtcNow;
+        public void CancelOngoingImprovements() { }
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class RecordingBlockImprovementContextFactory : IBlockImprovementContextFactory
