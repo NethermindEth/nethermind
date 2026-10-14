@@ -33,8 +33,17 @@ internal class LogBulkSetTests
             .. existing.Skip(2500).Take(2500).Select(item => (item.key, (byte[])null)),
             .. PatriciaTreeBulkSetterTests.GenRandomOfLength(5000, seed: 2),
         ];
+        // Nine keys under each first nibble, then one sharing all but the last nibble with the first, so deleting enough of them
+        // collapses a full root branch, updated in parallel, onto a leaf or an extension under nibble 0.
+        List<(Hash256 key, byte[] value)> fullRoot =
+        [
+            .. Enumerable.Range(0, 144).Select(i => (Key((byte)((i / 9) << 4 | i % 9), 0), ExistingValue)),
+            (Key(0, 1), ExistingValue),
+        ];
         IEnumerable<TestCaseData> cases = PatriciaTreeBulkSetterTests.BulkSetTestGen()
-            .Append(new TestCaseData(existing, changes).SetName("10k inserts then 2.5k updates, 2.5k deletes and 5k inserts"));
+            .Append(new TestCaseData(existing, changes).SetName("10k inserts then 2.5k updates, 2.5k deletes and 5k inserts"))
+            .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..])).SetName("Full root then deletes of all but one leaf"))
+            .Append(new TestCaseData(fullRoot, Deletes(fullRoot[1..^1])).SetName("Full root then deletes of all but an extension"));
         foreach (TestCaseData testCase in cases)
         {
             foreach (bool smallGenerations in new[] { false, true })
@@ -49,6 +58,16 @@ internal class LogBulkSetTests
                 }
             }
         }
+
+        static Hash256 Key(byte first, byte last)
+        {
+            byte[] key = new byte[Hash256.Size];
+            key[0] = first;
+            key[^1] = last;
+            return new Hash256(key);
+        }
+
+        static List<(Hash256 key, byte[] value)> Deletes(List<(Hash256 key, byte[] value)> items) => [.. items.Select(item => (item.key, (byte[])null))];
     }
 
     [TestCaseSource(nameof(PatriciaTreeCases))]

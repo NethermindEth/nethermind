@@ -122,8 +122,22 @@ internal static partial class LogBulkSet
 
         public int ChangedMask;
 
-        /// <summary>The nodes each task wrote, recorded after the join.</summary>
+        /// <summary>The children in <see cref="ChangedMask"/> committed as a leaf or an extension referenced by hash, whose record a collapse of this level re-encodes one nibble shorter at <see cref="Path"/>.</summary>
+        public int MovableMask;
+
+        /// <summary>The nodes each task wrote, added to the written list once this level's node is known.</summary>
         public BranchArray<WrittenNodes?> Written;
+
+        /// <summary>Adds the nodes the tasks wrote to <paramref name="written"/>, less the top record of a child this level <paramref name="collapsed"/> onto.</summary>
+        /// <remarks>The top record is the last a task wrote, as a subtree is committed deepest first. Only the one child left in a collapsed level wrote any.</remarks>
+        public void AddWritten(WrittenNodes written, bool collapsed)
+        {
+            for (int nibble = 0; nibble < BranchChildCount; nibble++)
+            {
+                ReadOnlySpan<(TreePath Path, ulong Pointer)> nodes = Written[nibble]!.AsSpan();
+                written.AddRange(collapsed && (MovableMask & (1 << nibble)) != 0 ? nodes[..^1] : nodes);
+            }
+        }
 
         public void Dispose()
         {
@@ -227,15 +241,17 @@ internal static partial class LogBulkSet
             // A remainder no entry changed stays below the new branch, with the key the branch shortened.
             if (remainderKept) _arena.Children[childrenStart + remainderNibble] = ChildRef.ForPending(IntoNode(remainder));
 
-            return Updated.To((hasRemove || isNew) && nonEmptyCount < 2
+            int pendingIndex = (hasRemove || isNew) && nonEmptyCount < 2
                 ? MaybeCombine(childrenStart, ref path)
-                : _arena.AddBranch(childrenStart));
+                : _arena.AddBranch(childrenStart);
+            parallelChildren?.AddWritten(_written, collapsed: pendingIndex < 0 || _arena.Nodes[pendingIndex].Kind != PendingKind.Branch);
+            return Updated.To(pendingIndex);
         }
 
         private bool IsParallel(int count, int mask) =>
             _canParallelize && mask == FullMask && count >= PatriciaTree.MinEntriesToParallelizeThreshold && !RuntimeInformation.IsSingleProcessor;
 
-        /// <summary>Updates the sixteen children of <paramref name="node"/> at <paramref name="path"/> in parallel into <paramref name="level"/>, as the serial loop of <see cref="Update"/> would, and records the nodes written.</summary>
+        /// <summary>Updates the sixteen children of <paramref name="node"/> at <paramref name="path"/> in parallel into <paramref name="level"/>, as the serial loop of <see cref="Update"/> would.</summary>
         /// <remarks>An unchanged remainder is left to the caller, which keeps it pending below the new branch.</remarks>
         private void UpdateInParallel(ParallelChildren level, Span<BulkSetEntry> entries, bool flipped, in TreePath path, ReadOnlySpan<int> indexes,
             in Source node, int childrenStart, int remainderNibble, in Source remainder)
@@ -258,8 +274,6 @@ internal static partial class LogBulkSet
                     state.Context.UpdateChild(state.Level, nibble);
                     return state;
                 });
-
-            foreach (WrittenNodes? written in level.Written) _written.AddRange(written!.AsSpan());
         }
 
         /// <summary>Updates child <paramref name="nibble"/> of <paramref name="level"/> in an arena of its own, committing it when it changed.</summary>
@@ -279,6 +293,7 @@ internal static partial class LogBulkSet
                 if (!updated.Changed) return;
 
                 level.Children[nibble] = updated.PendingIndex < 0 ? default : context.Commit(updated.PendingIndex, path, isRoot: false);
+                if (level.Children[nibble].Kind == ChildRefKind.Hash && arena.Nodes[updated.PendingIndex].Kind != PendingKind.Branch) Interlocked.Or(ref level.MovableMask, 1 << nibble);
                 Interlocked.Or(ref level.ChangedMask, 1 << nibble);
             }
             finally
