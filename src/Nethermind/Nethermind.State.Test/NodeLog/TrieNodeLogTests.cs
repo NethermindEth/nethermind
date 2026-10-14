@@ -157,7 +157,7 @@ internal class TrieNodeLogTests
 
     private static ulong Append(TrieNodeLog log, byte[] rlp) => log.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
 
-    private static byte[] Leaf(int seed, int valueLength)
+    internal static byte[] Leaf(int seed, int valueLength)
     {
         byte[] value = new byte[valueLength];
         BinaryPrimitives.WriteInt32LittleEndian(value, seed);
