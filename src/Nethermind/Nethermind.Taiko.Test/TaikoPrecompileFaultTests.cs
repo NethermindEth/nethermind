@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -23,7 +24,7 @@ using NUnit.Framework;
 namespace Nethermind.Taiko.Test;
 
 /// <summary>
-/// Running out of memory in a context-aware precompile is a node fault, so it must escape the Taiko VM's
+/// A KZG setup fault or running out of memory in a context-aware precompile is a node fault, so it must escape the Taiko VM's
 /// precompile dispatch that turns every other exception into a failed call.
 /// </summary>
 public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
@@ -40,15 +41,16 @@ public class TaikoPrecompileFaultTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Out_of_memory_escapes_the_context_aware_precompile_call([ValueSource(nameof(OutOfMemoryFaults))] Exception fault)
+    public void Node_fault_escapes_the_context_aware_precompile_call([ValueSource(nameof(NodeFaults))] Exception fault)
     {
         UseContextAwarePrecompile(new ThrowingPrecompile(fault));
 
         Assert.That(ExecuteCall, Throws.TypeOf(fault.GetType()));
     }
 
-    private static IEnumerable<Exception> OutOfMemoryFaults()
+    private static IEnumerable<Exception> NodeFaults()
     {
+        yield return new KzgSetupUnavailableException("KZG trusted setup failed to load");
         yield return new OutOfMemoryException();
         yield return new TypeInitializationException("Precompile", new OutOfMemoryException());
     }
