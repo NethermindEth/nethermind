@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Experimental.Abi;
@@ -20,7 +19,7 @@ public static class AbiCodec
         w.Write(signature.MethodId());
         signature.Abi.Write(ref w, arg);
 
-        Debug.Assert(w.Written == buffer.Length, "Abi encoding did not write the expected number of bytes");
+        if (w.Written != buffer.Length) throw new AbiException();
 
         return buffer;
     }
