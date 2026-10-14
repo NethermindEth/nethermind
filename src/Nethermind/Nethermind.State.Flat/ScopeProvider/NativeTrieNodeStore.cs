@@ -32,11 +32,17 @@ internal sealed class NativeTrieNodeStore(SnapshotBundle bundle, Hash256? addres
     public Hash256 BulkSet(Hash256 root, ReadOnlySpan<PatriciaTree.BulkSetEntry> entries) =>
         NativePatriciaBulkSet.BulkSet(this, _pending ??= NativePendingNodes.Rent(entries.Length), log, addressHash, root.ValueHash256, entries);
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Skips the bundle's changes and its in-memory snapshots: each pins, through <see cref="Snapshot.LogPin"/> or the
+    /// scope's pin of the block in progress, the log generation its first node was written to, so the native bulk set
+    /// reads all of their nodes from the log, and only fetches persisted ones.
+    /// </remarks>
     public bool Fetch(in TreePath path, in ValueHash256 hash, NativeNodeReceiver receiver)
     {
         bool found = addressHash is null
-            ? bundle.TryFindStateNode(path, hash, out TrieNode? node)
-            : bundle.TryFindStorageNode(addressHash, path, hash, out node);
+            ? bundle.TryGetWarmedStateNode(path, hash, out TrieNode? node)
+            : bundle.TryGetWarmedStorageNode(addressHash, path, hash, out node);
         if (found)
         {
             if (node!.Keccak != hash)

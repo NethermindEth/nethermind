@@ -11,6 +11,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
 
@@ -168,7 +170,7 @@ public class SnapshotCompactor(
         }
 
         // The oldest retain covers every merged snapshot, whose retains may be released before the compacted snapshot.
-        return new Snapshot(from, to, content, _resourcePool, usage) { LogRetain = OldestLogRetain(snapshots)?.Copy() };
+        return new Snapshot(from, to, content, _resourcePool, usage) { LogRetain = OldestLogRetain(snapshots)?.Copy(), LogPin = OldestLogPin(snapshots)?.Copy() };
     }
 
     private static void MergeRoots(SortedSnapshotContent content, SnapshotPooledList snapshots)
@@ -197,6 +199,16 @@ public class SnapshotCompactor(
             foreach ((Hash256 address, ulong root) in source.StorageRoots)
                 content.StorageRoots[address] = root;
         }
+    }
+
+    private static NativeTrieNodeLogPin? OldestLogPin(SnapshotPooledList snapshots)
+    {
+        NativeTrieNodeLogPin? oldest = null;
+        foreach (Snapshot snapshot in snapshots)
+        {
+            if (snapshot.LogPin is { } pin && (oldest is null || pin.Generation < oldest.Generation)) oldest = pin;
+        }
+        return oldest;
     }
 
     private static TrieNodeLogRetain? OldestLogRetain(SnapshotPooledList snapshots)

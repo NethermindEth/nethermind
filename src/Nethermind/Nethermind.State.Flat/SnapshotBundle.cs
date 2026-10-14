@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 
 namespace Nethermind.State.Flat;
 
@@ -613,7 +614,7 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <summary>Turns the changes written since the previous snapshot into a new snapshot and starts collecting the next one.</summary>
     /// <param name="logRetain">The retain covering the trie nodes written since the previous snapshot; the snapshot takes ownership.</param>
-    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, TrieNodeLogRetain? logRetain, bool returnSnapshot = true)
+    public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, TrieNodeLogRetain? logRetain, bool returnSnapshot = true, NativeTrieNodeLogPin? logPin = null)
     {
         // When assembling the snapshot, we straight up pass the _currentPooledContent into the new snapshot
         // This is because copying the values have a measurable impact on overall performance.
@@ -624,7 +625,8 @@ public sealed class SnapshotBundle : IDisposable
             resourcePool: _resourcePool,
             usage: _usage)
         {
-            LogRetain = logRetain
+            LogRetain = logRetain,
+            LogPin = logPin
         };
 
         snapshot.AcquireLease(); // For this SnapshotBundle.

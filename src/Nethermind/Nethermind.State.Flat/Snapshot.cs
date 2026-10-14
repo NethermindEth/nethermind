@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeLog;
+using Nethermind.Trie.Native;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Flat;
@@ -87,6 +88,15 @@ public class Snapshot : RefCountingDisposable
     /// <summary>The retain on the trie node log generation that was active when this snapshot's first block started writing; released with the snapshot.</summary>
     /// <remarks>Protects this generation and later writes. Traversals lease the log to protect any inherited older records they encounter.</remarks>
     internal TrieNodeLogRetain? LogRetain { get; init; }
+    /// <summary>
+    /// With the native bulk set, the pin on the trie node log generation this snapshot's first block started writing
+    /// to, released with the snapshot.
+    /// </summary>
+    /// <remarks>
+    /// While held, native bulk sets read every trie node of this snapshot from the log, so they never look nodes up in
+    /// the in-memory snapshots, see <c>NativeTrieNodeStore</c>.
+    /// </remarks>
+    internal NativeTrieNodeLogPin? LogPin { get; init; }
 
     public StateId From => _from;
     public StateId To => _to;
@@ -208,6 +218,7 @@ public class Snapshot : RefCountingDisposable
         if (_isSorted) _resourcePool.ReturnSortedSnapshotContent(_usage, _sorted!);
         else _resourcePool.ReturnSnapshotContent(_usage, _mutable!);
         LogRetain?.Dispose();
+        LogPin?.Dispose();
     }
 
     public bool TryAcquire() => TryAcquireLease();
