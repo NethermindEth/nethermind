@@ -35,6 +35,8 @@ internal static class AttesterCommandLine
     public static readonly Option<string?> IdleTimeout = Flag("--stream-idle-timeout-secs", "EEZ_PROOF_SIGNER_STREAM_IDLE_TIMEOUT_SECS", "Seconds to wait for each streamed message", "120");
     public static readonly Option<string?> RequestTimeout = Flag("--request-timeout-secs", "EEZ_PROOF_SIGNER_REQUEST_TIMEOUT_SECS", "Seconds one request may take", "600");
 
+    public static readonly Option<string?> StreamingConfig = Flag("--streaming-config", "EEZ_STREAMING_CONFIG", "Trusted configuration for the optional mutual-TLS prove.v2 endpoint");
+
     /// <exception cref="FormatException">A setting is missing or invalid.</exception>
     public static AttesterOptions Parse(ParseResult result)
     {
@@ -69,13 +71,14 @@ internal static class AttesterCommandLine
             NonZero(result, GasLimit),
             new WindowLimits(checked((int)NonZero(result, MaxBlocks)), checked((long)NonZero(result, MaxBytes)), checked((long)NonZero(result, MaxWitnessItems))),
             TimeSpan.FromSeconds(NonZero(result, IdleTimeout)),
-            TimeSpan.FromSeconds(NonZero(result, RequestTimeout)));
+            TimeSpan.FromSeconds(NonZero(result, RequestTimeout)),
+            result.GetValue(StreamingConfig));
     }
 
     public static void AddTo(Command command)
     {
         foreach (Option option in (Option[])[ListenAddress, ChainConfig, RollupId, VerificationKey, AttesterAddress, SystemAddress, ProofSystem, KeyStoreDirectory,
-                     PasswordFile, BlockTime, GasLimit, MaxBlocks, MaxBytes, MaxWitnessItems, IdleTimeout, RequestTimeout])
+                     PasswordFile, BlockTime, GasLimit, MaxBlocks, MaxBytes, MaxWitnessItems, IdleTimeout, RequestTimeout, StreamingConfig])
         {
             command.Options.Add(option);
         }

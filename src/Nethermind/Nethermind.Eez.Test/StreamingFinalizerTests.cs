@@ -310,7 +310,7 @@ public class StreamingFinalizerTests(string fixture, int from, int to)
         return frame;
     }
 
-    private sealed class EvidenceHandler(EezSettlementContext context, BlockHeader parent, bool l2) : HttpMessageHandler
+    internal sealed class EvidenceHandler(EezSettlementContext context, BlockHeader parent, bool l2) : HttpMessageHandler
     {
         internal string Mutation { get; set; } = "";
         internal Hash256? ExpectedParentHash { get; set; }

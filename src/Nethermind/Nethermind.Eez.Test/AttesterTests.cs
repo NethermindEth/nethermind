@@ -247,6 +247,17 @@ public class AttesterTests
             Is.EqualTo((IPEndPoint.Parse("0.0.0.0:50061"), 1UL, 2UL, 30_000_000UL, WindowLimits.Default)));
     }
 
+    [TestCase(null, TestName = "Parse_StreamingConfigAbsent_DefaultsToNull")]
+    [TestCase("streaming.json", TestName = "Parse_StreamingConfigExplicit_ReadsPath")]
+    public void Parse_StreamingConfig_ReadsExplicitPathOrDefaultsToNull(string? path)
+    {
+        System.CommandLine.RootCommand root = [];
+        AttesterCommandLine.AddTo(root);
+        string[] args = path is null ? ValidArgs() : [.. ValidArgs(), "--streaming-config=" + path];
+        AttesterOptions options = AttesterCommandLine.Parse(root.Parse(args));
+        Assert.That(options.StreamingConfigPath, Is.EqualTo(path), "v2 activation must reach production startup from the CLI");
+    }
+
     private static string[] ValidArgs() =>
     [
         "--listen-addr=0.0.0.0:50061", "--chain-config=genesis.json", "--rollup-id=1", $"--vkey=0x{new string('0', 24)}70997970c51812dc3a010c7d01b50e0d17dc79c8",

@@ -29,12 +29,13 @@ internal sealed class StreamingIdentity
 
     internal string Authenticate(bool authenticatedTls, X509Certificate2? certificate, DateTimeOffset now)
     {
-        if (!authenticatedTls || certificate is null || now.UtcDateTime < certificate.NotBefore.ToUniversalTime() || now.UtcDateTime > certificate.NotAfter.ToUniversalTime())
-            throw Error();
-        string owner = certificate.GetCertHashString(HashAlgorithmName.SHA256);
-        if (!_certificates.Contains(owner)) throw Error();
-        return owner;
+        if (!authenticatedTls || !IsTrusted(certificate, now)) throw Error();
+        return certificate!.GetCertHashString(HashAlgorithmName.SHA256);
     }
+
+    internal bool IsTrusted(X509Certificate2? certificate, DateTimeOffset now) =>
+        certificate is not null && now.UtcDateTime >= certificate.NotBefore.ToUniversalTime() && now.UtcDateTime <= certificate.NotAfter.ToUniversalTime() &&
+        _certificates.Contains(certificate.GetCertHashString(HashAlgorithmName.SHA256));
 
     private static RpcException Error() => new(new Status(StatusCode.Unauthenticated, "authenticated composer certificate required"));
 }

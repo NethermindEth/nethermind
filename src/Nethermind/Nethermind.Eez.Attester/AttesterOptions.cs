@@ -24,4 +24,5 @@ public sealed record AttesterOptions(
     ulong GasLimit,
     WindowLimits Limits,
     TimeSpan StreamIdleTimeout,
-    TimeSpan RequestTimeout);
+    TimeSpan RequestTimeout,
+    string? StreamingConfigPath = null);

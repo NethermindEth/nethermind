@@ -7,6 +7,8 @@ using System.IO;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -52,7 +54,7 @@ public static class Program
     }
 
     /// <summary>The Prove service on <paramref name="builder"/>'s server, draining the active request on shutdown.</summary>
-    internal static WebApplication Build(WebApplicationBuilder builder, AttesterOptions options, AttestationPipeline pipeline)
+    internal static WebApplication Build(WebApplicationBuilder builder, AttesterOptions options, AttestationPipeline pipeline, StreamingRuntime? streaming = null)
     {
         builder.Services.Configure<HostOptions>(host => host.ShutdownTimeout = options.RequestTimeout + TimeSpan.FromMinutes(1));
         builder.Services.AddGrpc(grpc =>
@@ -64,11 +66,35 @@ public static class Program
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<BackendAdmission>();
         builder.Services.AddSingleton<ProverService>();
+        if (streaming is not null)
+        {
+            streaming.ConfigureListeners(builder.WebHost, options);
+            builder.Services.AddGrpc().AddServiceOptions<StreamingProverService>(grpc =>
+                grpc.MaxReceiveMessageSize = streaming.Options.TransportLimits.MaxMessageBytes);
+            builder.Services.AddSingleton(streaming.Identity);
+            builder.Services.AddSingleton(streaming.Registry);
+            builder.Services.AddSingleton(services => streaming.CreateTransport(services.GetRequiredService<BackendAdmission>(),
+                services.GetRequiredService<ILogger<StreamingTransport>>()));
+            builder.Services.AddSingleton<StreamingProverService>();
+        }
 
         WebApplication app = builder.Build();
+        if (streaming is not null)
+        {
+            app.Use(async (context, next) =>
+            {
+                if (context.Features.Get<ITlsConnectionFeature>() is not null && context.Request.Path.StartsWithSegments("/prove.v1.Prover"))
+                {
+                    context.Response.StatusCode = StatusCodes.Status404NotFound;
+                    return;
+                }
+                await next(context);
+            });
+            app.MapGrpcService<StreamingProverService>();
+        }
         app.MapGrpcService<ProverService>();
         ProverService prover = app.Services.GetRequiredService<ProverService>();
-        app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
+        if (streaming is null) app.Lifetime.ApplicationStopping.Register(() => prover.WaitUntilIdle().GetAwaiter().GetResult());
         return app;
     }
 
@@ -81,8 +107,11 @@ public static class Program
         EezSettlementContext context = new(options.RollupId, specProvider.ChainId, options.ProofSystem, options.VerificationKey, options.BlockTimeSeconds, options.GasLimit);
 
         WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
-        builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(options.ListenAddress, listen => listen.Protocols = HttpProtocols.Http2));
-        WebApplication app = Build(builder, options, new AttestationPipeline(specProvider, context, new EezAttestationSigner(key), logManager));
+        EezAttestationSigner signer = new(key);
+        AttestationPipeline pipeline = new(specProvider, context, signer, logManager);
+        using StreamingRuntime? streaming = options.StreamingConfigPath is null ? null : StreamingRuntime.Load(options, specProvider, pipeline, signer, logManager);
+        if (streaming is null) builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(options.ListenAddress, listen => listen.Protocols = HttpProtocols.Http2));
+        WebApplication app = Build(builder, options, pipeline, streaming);
 
         ILogger<ProverService> logger = app.Services.GetRequiredService<ILogger<ProverService>>();
         if (!options.ListenAddress.Address.Equals(System.Net.IPAddress.Loopback))
@@ -93,6 +122,18 @@ public static class Program
         logger.LogInformation(
             "serving Prove on {Address}: rollup {RollupId}, L2 chain {ChainId}, attester {Attester}, proof system {ProofSystem}, block time {BlockTime} s, limits {Limits}",
             options.ListenAddress, options.RollupId, specProvider.ChainId, key.Address, options.ProofSystem, options.BlockTimeSeconds, options.Limits);
-        await app.RunAsync();
+        BackendAdmission admission = app.Services.GetRequiredService<BackendAdmission>();
+        try { await app.StartAsync(); await app.WaitForShutdownAsync(); }
+        finally { await StopAndDrain(app, admission); }
+    }
+
+    internal static async Task StopAndDrain(WebApplication app, BackendAdmission admission)
+    {
+        try
+        {
+            try { await app.StopAsync(); }
+            finally { await app.DisposeAsync(); }
+        }
+        finally { await admission.WaitUntilIdle(); }
     }
 }
