@@ -1,13 +1,19 @@
 //! Fault injection, for tests driving the library from outside (the `test-api` feature): a store's [`Faults`] arm a
-//! RocksDB error or a panic at one point of the store, its persistence or its manager, which the next pass through that
-//! point takes. Nothing is armed unless `fdb_test_inject_fault` arms it, so an unarmed point only costs a load.
+//! RocksDB error, an I/O error, a panic or a crash at one point of the store, its persistence, its manager or its
+//! persisted-snapshot tier, which the next pass through that point takes. Nothing is armed unless
+//! `fdb_test_inject_fault` arms it, so an unarmed point only costs a load.
 
+use std::io;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use flatdb_core::compactor::Compactor;
 use flatdb_core::kv::{Column, GetInto, KvError, KvRawBatch, KvResult, KvStore, WriteFlags};
-use flatdb_core::types::StateId;
+use flatdb_core::persisted::TierFaults;
+use flatdb_core::persisted::storage::catalog::CatalogKv;
+use flatdb_core::snapshot::Snapshot;
+use flatdb_core::snapshot::content::SnapshotContentBuilder;
+use flatdb_core::types::{Account, StateId, U256};
 
 /// Where a fault strikes; the C# mirror is `NativeFaults.Fault` of the tests.
 #[repr(u32)]
@@ -25,10 +31,29 @@ pub enum Fault {
     PanicInPersist,
     /// The next compaction of the store's manager panics with the message.
     PanicInCompaction,
+    /// The next conversion into the persisted-snapshot tier panics with the message before it builds its table.
+    PanicInConvert,
+    /// The next persisted compaction panics with the message before it merges.
+    PanicInPersistedCompaction,
+    /// The next manager created over the store panics with the message once it opened the snapshots of its tier.
+    PanicInPersistedLoad,
+    /// The next read a bundle or scope serves from the persisted-snapshot tier panics with the message.
+    PanicInTierRead,
+    /// The next conversion fails with an I/O error carrying the message once its table is written, so its writers
+    /// cancel and their ranges are reused.
+    ArenaWriteError,
+    /// The next write of a catalog row fails with a RocksDB error carrying the message, which is fatal when it says
+    /// `Corruption:` or `IO error`.
+    CatalogPutError,
+    /// The next conversion stops once its files are durable, before its catalog row is written, as a crash there would:
+    /// the files keep their bytes and nothing is registered.
+    SkipCatalogAdd,
+    /// The next converted snapshot is validated against its source with one account more, which its table lacks.
+    CorruptConvertedContent,
 }
 
 impl Fault {
-    pub const COUNT: usize = Fault::PanicInCompaction as usize + 1;
+    pub const COUNT: usize = Fault::CorruptConvertedContent as usize + 1;
 
     const ALL: [Fault; Self::COUNT] = [
         Fault::KvWrite,
@@ -36,6 +61,14 @@ impl Fault {
         Fault::PanicInExport,
         Fault::PanicInPersist,
         Fault::PanicInCompaction,
+        Fault::PanicInConvert,
+        Fault::PanicInPersistedCompaction,
+        Fault::PanicInPersistedLoad,
+        Fault::PanicInTierRead,
+        Fault::ArenaWriteError,
+        Fault::CatalogPutError,
+        Fault::SkipCatalogAdd,
+        Fault::CorruptConvertedContent,
     ];
 
     pub fn from_u32(value: u32) -> Option<Self> {
@@ -188,6 +221,63 @@ impl Compactor for FaultyCompactor {
     }
 }
 
+/// A catalog whose row writes take the [`Fault::CatalogPutError`] fault.
+pub struct FaultyCatalogKv {
+    pub catalog: Box<dyn CatalogKv>,
+    pub faults: Arc<Faults>,
+}
+
+impl CatalogKv for FaultyCatalogKv {
+    fn put(&self, key: &[u8], value: &[u8]) -> KvResult<()> {
+        self.faults.fail_if_armed(Fault::CatalogPutError)?;
+        self.catalog.put(key, value)
+    }
+
+    fn key_exists(&self, key: &[u8]) -> KvResult<bool> {
+        self.catalog.key_exists(key)
+    }
+
+    fn remove(&self, key: &[u8]) -> KvResult<()> {
+        self.catalog.remove(key)
+    }
+}
+
+/// The address of the account [`Fault::CorruptConvertedContent`] adds to the validated source.
+pub const CORRUPTING_ACCOUNT: [u8; 20] = [0xDE; 20];
+
+/// The faults of the persisted-snapshot tier of a store.
+pub struct FaultyTier(pub Arc<Faults>);
+
+impl TierFaults for FaultyTier {
+    fn before_conversion(&self) {
+        self.0.panic_if_armed(Fault::PanicInConvert);
+    }
+
+    fn conversion_write_error(&self) -> Option<io::Error> {
+        self.0.take(Fault::ArenaWriteError).map(io::Error::other)
+    }
+
+    fn stop_before_catalog_add(&self) -> bool {
+        self.0.take(Fault::SkipCatalogAdd).is_some()
+    }
+
+    fn validation_source(&self, source: &Snapshot) -> Option<Snapshot> {
+        self.0.take(Fault::CorruptConvertedContent)?;
+        let mut builder = SnapshotContentBuilder::new();
+        crate::snapshot_stream::append(&mut builder, &crate::snapshot_stream::dump(source)).expect("a dump reads back");
+        builder.set_account(CORRUPTING_ACCOUNT, Some(Account::new(1, U256::from_u64(1))));
+        Some(Snapshot::new(source.from(), source.to(), builder.build()))
+    }
+
+    fn before_merge(&self) {
+        self.0.panic_if_armed(Fault::PanicInPersistedCompaction);
+    }
+
+    fn after_load_open(&self) {
+        self.0.panic_if_armed(Fault::PanicInPersistedLoad);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Fault, Faults};
@@ -204,10 +294,10 @@ mod tests {
         assert_eq!(faults.take(Fault::PanicInExport).as_deref(), Some("boom"));
         assert_eq!(
             (
-                Fault::from_u32(Fault::PanicInCompaction as u32),
+                Fault::from_u32(Fault::CorruptConvertedContent as u32),
                 Fault::from_u32(Fault::COUNT as u32)
             ),
-            (Some(Fault::PanicInCompaction), None)
+            (Some(Fault::CorruptConvertedContent), None)
         );
     }
 }

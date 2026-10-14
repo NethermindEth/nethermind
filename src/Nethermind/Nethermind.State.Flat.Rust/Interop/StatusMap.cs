@@ -33,7 +33,9 @@ internal static unsafe class StatusMap
     {
         FdbStatus.InvalidArgument => new ArgumentException(message),
         FdbStatus.NotSupported => new NotSupportedException(message),
-        FdbStatus.InvalidOperation or FdbStatus.WrongBaseState or FdbStatus.GatherTimeout => new InvalidOperationException(message),
+        FdbStatus.InvalidOperation or FdbStatus.WrongBaseState or FdbStatus.GatherTimeout or FdbStatus.ValidationFailed => new InvalidOperationException(message),
+        FdbStatus.Corrupt => new InvalidDataException(message),
+        FdbStatus.Io => new IOException(message),
         FdbStatus.Rlp => new RlpException(message),
         FdbStatus.InvalidConfiguration => new InvalidConfigurationException(message, -1),
         FdbStatus.Cancelled => new OperationCanceledException(message),

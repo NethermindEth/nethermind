@@ -72,6 +72,7 @@ pub enum Export {
     ScopePutStorageNodes,
     ScopeCommit,
     SnapshotRelease,
+    PersistedTierGauges,
     /// Every other export run through the guard: metadata, the seam counters themselves and the test exports.
     Other,
 }
@@ -145,6 +146,7 @@ impl Export {
         "scope_put_storage_nodes",
         "scope_commit",
         "snapshot_release",
+        "persisted_tier_gauges",
         "other",
     ];
 

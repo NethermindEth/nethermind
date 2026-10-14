@@ -32,7 +32,7 @@ use crate::persisted::codec::{CatalogEntry, SnapshotLocation};
 use crate::persisted::lock_rank::{self, LockRank, Ranked};
 use crate::persisted::sys::{PunchHoleOutcome, os_page_size};
 use crate::persisted::{TierError, TierResult};
-use crate::stats::TierCounters;
+use crate::stats::SharedTierCounters;
 
 const ARENA_FILE_PREFIX: &str = "arena_";
 const SMALL_ARENA_FILE_PREFIX: &str = "small_arena_";
@@ -70,7 +70,7 @@ pub(super) struct ArenaShared {
     pool: Mutex<ArenaPool>,
     tracker: PageResidencyTracker,
     advisor: Option<Advisor>,
-    pub(super) counters: Arc<TierCounters>,
+    pub(super) counters: SharedTierCounters,
 }
 
 struct ArenaPool {
@@ -105,7 +105,7 @@ struct Advisor {
 
 impl ArenaManager {
     /// A manager of the arena files in `base_path`, created if missing; call [`ArenaManager::initialize`] before use.
-    pub fn new(base_path: &Path, config: ArenaConfig, counters: Arc<TierCounters>) -> io::Result<Self> {
+    pub fn new(base_path: &Path, config: ArenaConfig, counters: SharedTierCounters) -> io::Result<Self> {
         std::fs::create_dir_all(base_path)?;
         let tracker = PageResidencyTracker::from_byte_budget(config.page_cache_bytes);
         counters

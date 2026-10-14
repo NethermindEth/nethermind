@@ -9,11 +9,13 @@ use flatdb_core::kv::KvError;
 use flatdb_core::kv::managed::ManagedKvVTable;
 use flatdb_core::kv::rocks_api::RocksApi;
 use flatdb_core::manager::ManagerError;
+use flatdb_core::persisted::{TierError, TierErrorKind};
 use flatdb_core::persistence::PersistenceError;
 use flatdb_core::persistence_manager::PersistError;
 use flatdb_core::scope_bundle::ScopeFlags;
+use flatdb_core::snapshot::SnapshotTier;
 use flatdb_core::snapshot::mutable::{NodeRecord, Usage};
-use flatdb_core::stats::{FlatCounters, Observation};
+use flatdb_core::stats::{FlatCounters, Observation, TierGaugeRow};
 use flatdb_core::types::{Account, EMPTY_TREE_HASH, Hash256, KECCAK_OF_EMPTY_STRING, StateId, TreePath, U256};
 
 /// Status code returned by every fallible export.
@@ -44,6 +46,12 @@ pub enum FdbStatus {
     ManagedCallback = 17,
     /// The first in-memory node at the path of a checked load has another hash (`NodeHashMismatchException`).
     HashMismatch = 18,
+    /// Bytes of the persisted-snapshot tier no writer produced (`InvalidDataException`).
+    Corrupt = 19,
+    /// A file of the persisted-snapshot tier could not be read or written (`IOException`).
+    Io = 20,
+    /// A converted snapshot does not read back as its source (`InvalidOperationException`); C# exits.
+    ValidationFailed = 21,
 }
 
 /// A failed export: the status it returns and the message `fdb_last_error` reports.
@@ -87,13 +95,25 @@ impl From<PersistenceError> for FfiError {
             PersistenceError::InvalidOperation(_) => FdbStatus::InvalidOperation,
             PersistenceError::WrongBaseState { .. } => FdbStatus::WrongBaseState,
             PersistenceError::ValueTooLarge { .. } => FdbStatus::InvalidArgument,
-            PersistenceError::Tier { .. } => FdbStatus::InvalidOperation,
+            PersistenceError::Tier { kind, .. } => match kind {
+                TierErrorKind::Io => FdbStatus::Io,
+                TierErrorKind::Corrupt => FdbStatus::Corrupt,
+                TierErrorKind::InvalidOperation => FdbStatus::InvalidOperation,
+                TierErrorKind::InvalidArgument => FdbStatus::InvalidArgument,
+                TierErrorKind::Validation => FdbStatus::ValidationFailed,
+            },
             PersistenceError::Catalog(error) => return error.into(),
         };
         Self {
             status,
             message: error.to_string(),
         }
+    }
+}
+
+impl From<TierError> for FfiError {
+    fn from(error: TierError) -> Self {
+        PersistenceError::from(error).into()
     }
 }
 
@@ -324,7 +344,103 @@ pub struct FdbMgrCfg {
     /// `Db.Metrics.DetailedMetricsEnabled`, which decides whether the readers of the manager count carry-forward hits
     /// and misses.
     pub detailed_metrics: u8,
+    /// The persisted-snapshot tier; null with `EnableLongFinality` off, when the manager has no tier.
+    pub tier: *const FdbTierCfg,
 }
+
+/// The persisted-snapshot tier of a manager: where it keeps its files, its catalog database and the `IFlatDbConfig`
+/// members it reads.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FdbTierCfg {
+    /// UTF-8 `{BaseDbPath}/persistedSnapshot/arena`.
+    pub arena_dir: *const u8,
+    pub arena_dir_len: usize,
+    /// UTF-8 `{BaseDbPath}/persistedSnapshot/blob`.
+    pub blob_dir: *const u8,
+    pub blob_dir_len: usize,
+    pub catalog: FdbCatalogDesc,
+    /// The rows of the catalog database as C# read them at startup: each a little-endian `u32` key length, the key, a
+    /// little-endian `u32` value length and the value.
+    pub catalog_rows: *const u8,
+    pub catalog_rows_len: usize,
+    /// `LongFinalityMaxReorgDepth`.
+    pub long_finality_max_reorg_depth: u64,
+    /// `MaxInMemoryBaseSnapshotCount`.
+    pub max_in_memory_base_snapshot_count: u64,
+    /// `ArenaFileSizeBytes`.
+    pub arena_file_size_bytes: i64,
+    /// `PersistedSnapshotDedicatedArenaThresholdBytes`.
+    pub dedicated_arena_threshold_bytes: i64,
+    /// `PersistedSnapshotArenaPageCacheBytes`.
+    pub arena_page_cache_bytes: i64,
+    /// `PersistedSnapshotBloomBitsPerKey`.
+    pub bloom_bits_per_key: f64,
+    /// `Environment.ProcessorCount`.
+    pub processor_count: u32,
+    /// `PersistedSnapshotPunchHoleOnReclaim`.
+    pub punch_hole_on_reclaim: u8,
+    /// `ValidatePersistedSnapshot`.
+    pub validate_persisted_snapshot: u8,
+    pub pad: [u8; 2],
+}
+
+/// Which backend an [`FdbCatalogDesc`] describes.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FdbCatalogKind {
+    /// The RocksDB instance of the catalog's C# `DbOnTheRocks`.
+    Rocks = 0,
+    /// Callbacks into a C# catalog `IDb` that is not RocksDB.
+    Managed = 1,
+}
+
+/// The catalog database of the persisted-snapshot tier. Only the fields of the selected kind are read.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct FdbCatalogDesc {
+    /// An [`FdbCatalogKind`].
+    pub kind: u8,
+    /// The catalog's `DbOnTheRocks.VerifyChecksum`.
+    pub verify_checksums: u8,
+    /// The catalog's `IRocksDbConfig.WriteAheadLogSync`.
+    pub wal_sync: u8,
+    pub pad: [u8; 5],
+    pub rocks_api: *const RocksApi,
+    /// `rocksdb_t*`.
+    pub rocks_db: *mut c_void,
+    /// The `rocksdb_column_family_handle_t*` of the default column family.
+    pub default_column_family: *mut c_void,
+    pub managed: *const ManagedCatalogVTable,
+}
+
+/// The callbacks of a managed catalog: `IDb.PutSpan`, `KeyExists` and `Remove` on the C# catalog. Each returns 0 on
+/// success; `key_exists` stores 1 in its last argument when the key exists, else 0.
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct ManagedCatalogVTable {
+    /// Passed back as the first argument of every callback.
+    pub ctx: *mut c_void,
+    pub put: Option<
+        unsafe extern "C" fn(
+            ctx: *mut c_void,
+            key: *const u8,
+            key_len: usize,
+            value: *const u8,
+            value_len: usize,
+        ) -> i32,
+    >,
+    pub key_exists:
+        Option<unsafe extern "C" fn(ctx: *mut c_void, key: *const u8, key_len: usize, exists: *mut u8) -> i32>,
+    pub remove: Option<unsafe extern "C" fn(ctx: *mut c_void, key: *const u8, key_len: usize) -> i32>,
+}
+
+/// [`fdb_take_fatal_error`](crate::manager_exports::fdb_take_fatal_error)'s source: the flat database failed.
+pub const FATAL_SOURCE_FLAT_DB: u8 = 0;
+/// The catalog database of the persisted-snapshot tier failed.
+pub const FATAL_SOURCE_CATALOG: u8 = 1;
+/// A converted snapshot failed validation.
+pub const FATAL_SOURCE_VALIDATION: u8 = 2;
 
 /// The host callbacks of a manager, `FdbHost`: [`HostCallbacks`] with every entry checked for null.
 #[repr(C)]
@@ -383,6 +499,39 @@ pub struct FdbPersistedEvent {
     pub nodes: *const FfiPersistedNode,
     pub node_count: usize,
     pub owner: *mut c_void,
+    /// An [`flatdb_core::events::EventKind`]: 0 for a persist to the database, 1 for a conversion into the tier.
+    pub kind: u8,
+    pub pad: [u8; 7],
+}
+
+/// The gauges of one `{tier, size}` label of the persisted-snapshot tier, `fdb_persisted_tier_gauges`' record.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FfiTierGaugeRow {
+    /// The blocks a snapshot of the label spans.
+    pub size: u64,
+    /// `Metrics.PersistedSnapshotCount`.
+    pub count: i64,
+    /// `Metrics.PersistedSnapshotMemory`.
+    pub memory: i64,
+    /// `Metrics.ActivePersistedSnapshotCount`.
+    pub active: i64,
+    /// The `PersistedSnapshotTier`: 2 base, 3 small compacted, 4 CompactSize-wide, 5 large compacted.
+    pub tier: u8,
+    pub pad: [u8; 7],
+}
+
+impl From<(SnapshotTier, i64, TierGaugeRow)> for FfiTierGaugeRow {
+    fn from((tier, size, row): (SnapshotTier, i64, TierGaugeRow)) -> Self {
+        Self {
+            size: size as u64,
+            count: row.count,
+            memory: row.memory,
+            active: row.active,
+            tier: tier as u8,
+            pad: [0; 7],
+        }
+    }
 }
 
 /// What a read-only bundle or a scope was opened over, cached by its C# handle so that no call is needed to learn it.
@@ -391,11 +540,11 @@ pub struct FdbPersistedEvent {
 pub struct FfiRobInfo {
     /// The persisted state the bundle reads below its snapshots.
     pub reader_state: FfiStateId,
-    /// The in-memory snapshots of the bundle, which number its self-destruct indexes from 0.
+    /// The snapshots of the bundle, persisted then in memory, which number its self-destruct indexes from 0.
     pub snapshot_count: u32,
     /// The snapshots a scope was seeded with, numbered after the bundle's; 0 for a read-only bundle.
     pub own_count: u32,
-    /// The persisted snapshots of the bundle; 0 until the persisted-snapshot tier exists.
+    /// The persisted snapshots of the bundle, which hold the first self-destruct indexes.
     pub persisted_count: u32,
     /// Whether filtered slot reads can build the bundle's negative slot filter.
     pub may_filter_slots: u8,
@@ -469,7 +618,7 @@ impl FfiNodeRecord {
 }
 
 /// Size of every `repr(C)` type, in the order `fdb_struct_sizes` reports them.
-pub const STRUCT_SIZES: [u32; 17] = [
+pub const STRUCT_SIZES: [u32; 21] = [
     size_of::<FdbStoreCfg>() as u32,
     size_of::<FdbKvDesc>() as u32,
     size_of::<RocksApi>() as u32,
@@ -487,11 +636,15 @@ pub const STRUCT_SIZES: [u32; 17] = [
     size_of::<FfiRobInfo>() as u32,
     size_of::<FfiScopeFlags>() as u32,
     size_of::<FfiNodeRecord>() as u32,
+    size_of::<FdbTierCfg>() as u32,
+    size_of::<FdbCatalogDesc>() as u32,
+    size_of::<ManagedCatalogVTable>() as u32,
+    size_of::<FfiTierGaugeRow>() as u32,
 ];
 
 /// Offset of every field of the `repr(C)` types with several fields, in declaration order, as `fdb_struct_offsets`
 /// reports them. With [`STRUCT_SIZES`] it pins the layouts the C# mirrors must match.
-pub const FIELD_OFFSETS: [u32; 107] = [
+pub const FIELD_OFFSETS: [u32; 161] = [
     offset_of!(FdbStoreCfg, abi_version) as u32,
     offset_of!(FdbStoreCfg, layout) as u32,
     offset_of!(FdbStoreCfg, write_buffer_floor) as u32,
@@ -549,6 +702,7 @@ pub const FIELD_OFFSETS: [u32; 107] = [
     offset_of!(FdbMgrCfg, inline_compaction) as u32,
     offset_of!(FdbMgrCfg, persisted_node_events) as u32,
     offset_of!(FdbMgrCfg, detailed_metrics) as u32,
+    offset_of!(FdbMgrCfg, tier) as u32,
     offset_of!(FdbHost, ctx) as u32,
     offset_of!(FdbHost, finalized_block_number) as u32,
     offset_of!(FdbHost, finalized_state_root) as u32,
@@ -569,6 +723,22 @@ pub const FIELD_OFFSETS: [u32; 107] = [
     offset_of!(FlatCounters, content.created) as u32,
     offset_of!(FlatCounters, content.sorted_active) as u32,
     offset_of!(FlatCounters, content.sorted_created) as u32,
+    offset_of!(FlatCounters, tier.bloom_memory) as u32,
+    offset_of!(FlatCounters, tier.bloom_count) as u32,
+    offset_of!(FlatCounters, tier.arena_file_count) as u32,
+    offset_of!(FlatCounters, tier.arena_allocated_bytes) as u32,
+    offset_of!(FlatCounters, tier.blob_file_count) as u32,
+    offset_of!(FlatCounters, tier.blob_allocated_bytes) as u32,
+    offset_of!(FlatCounters, tier.arena_reservation_count) as u32,
+    offset_of!(FlatCounters, tier.arena_reservation_bytes) as u32,
+    offset_of!(FlatCounters, tier.page_tracker_resident_bytes) as u32,
+    offset_of!(FlatCounters, tier.page_tracker_metadata_bytes) as u32,
+    offset_of!(FlatCounters, tier.compactions) as u32,
+    offset_of!(FlatCounters, tier.prunes) as u32,
+    offset_of!(FlatCounters, tier.page_tracker_evictions_dispatched) as u32,
+    offset_of!(FlatCounters, tier.page_tracker_evictions_inline_fallback) as u32,
+    offset_of!(FlatCounters, tier.page_tracker_pages_refreshed) as u32,
+    offset_of!(FlatCounters, tier.catalog_puts) as u32,
     offset_of!(Observation, metric) as u32,
     offset_of!(Observation, label) as u32,
     offset_of!(Observation, value) as u32,
@@ -582,6 +752,8 @@ pub const FIELD_OFFSETS: [u32; 107] = [
     offset_of!(FdbPersistedEvent, nodes) as u32,
     offset_of!(FdbPersistedEvent, node_count) as u32,
     offset_of!(FdbPersistedEvent, owner) as u32,
+    offset_of!(FdbPersistedEvent, kind) as u32,
+    offset_of!(FdbPersistedEvent, pad) as u32,
     offset_of!(FfiRobInfo, reader_state) as u32,
     offset_of!(FfiRobInfo, snapshot_count) as u32,
     offset_of!(FfiRobInfo, own_count) as u32,
@@ -599,7 +771,72 @@ pub const FIELD_OFFSETS: [u32; 107] = [
     offset_of!(FfiNodeRecord, rlp_len) as u32,
     offset_of!(FfiNodeRecord, rlp_offset) as u32,
     offset_of!(FfiNodeRecord, hash) as u32,
+    offset_of!(FdbTierCfg, arena_dir) as u32,
+    offset_of!(FdbTierCfg, arena_dir_len) as u32,
+    offset_of!(FdbTierCfg, blob_dir) as u32,
+    offset_of!(FdbTierCfg, blob_dir_len) as u32,
+    offset_of!(FdbTierCfg, catalog) as u32,
+    offset_of!(FdbTierCfg, catalog_rows) as u32,
+    offset_of!(FdbTierCfg, catalog_rows_len) as u32,
+    offset_of!(FdbTierCfg, long_finality_max_reorg_depth) as u32,
+    offset_of!(FdbTierCfg, max_in_memory_base_snapshot_count) as u32,
+    offset_of!(FdbTierCfg, arena_file_size_bytes) as u32,
+    offset_of!(FdbTierCfg, dedicated_arena_threshold_bytes) as u32,
+    offset_of!(FdbTierCfg, arena_page_cache_bytes) as u32,
+    offset_of!(FdbTierCfg, bloom_bits_per_key) as u32,
+    offset_of!(FdbTierCfg, processor_count) as u32,
+    offset_of!(FdbTierCfg, punch_hole_on_reclaim) as u32,
+    offset_of!(FdbTierCfg, validate_persisted_snapshot) as u32,
+    offset_of!(FdbTierCfg, pad) as u32,
+    offset_of!(FdbCatalogDesc, kind) as u32,
+    offset_of!(FdbCatalogDesc, verify_checksums) as u32,
+    offset_of!(FdbCatalogDesc, wal_sync) as u32,
+    offset_of!(FdbCatalogDesc, pad) as u32,
+    offset_of!(FdbCatalogDesc, rocks_api) as u32,
+    offset_of!(FdbCatalogDesc, rocks_db) as u32,
+    offset_of!(FdbCatalogDesc, default_column_family) as u32,
+    offset_of!(FdbCatalogDesc, managed) as u32,
+    offset_of!(ManagedCatalogVTable, ctx) as u32,
+    offset_of!(ManagedCatalogVTable, put) as u32,
+    offset_of!(ManagedCatalogVTable, key_exists) as u32,
+    offset_of!(ManagedCatalogVTable, remove) as u32,
+    offset_of!(FfiTierGaugeRow, size) as u32,
+    offset_of!(FfiTierGaugeRow, count) as u32,
+    offset_of!(FfiTierGaugeRow, memory) as u32,
+    offset_of!(FfiTierGaugeRow, active) as u32,
+    offset_of!(FfiTierGaugeRow, tier) as u32,
+    offset_of!(FfiTierGaugeRow, pad) as u32,
 ];
 
 const _: () =
     assert!(size_of::<FfiRobInfo>() == 56 && size_of::<FfiScopeFlags>() == 4 && size_of::<FfiNodeRecord>() == 80);
+const _: () = assert!(
+    size_of::<FdbTierCfg>() == 144
+        && size_of::<FdbCatalogDesc>() == 40
+        && size_of::<ManagedCatalogVTable>() == 32
+        && size_of::<FfiTierGaugeRow>() == 40
+        && size_of::<FdbPersistedEvent>() == 112
+);
+
+#[cfg(test)]
+mod tests {
+    use flatdb_core::kv::KvError;
+    use flatdb_core::persisted::TierError;
+    use rstest::rstest;
+
+    use super::{FdbStatus, FfiError};
+
+    /// A failure of the persisted-snapshot tier keeps the status of the C# exception it stands for, and its message.
+    #[rstest]
+    #[case::io(TierError::Io(std::io::Error::other("disk full")), FdbStatus::Io)]
+    #[case::corrupt(TierError::Corrupt("bad block".to_owned()), FdbStatus::Corrupt)]
+    #[case::invalid_operation(TierError::InvalidOperation("bad tier".to_owned()), FdbStatus::InvalidOperation)]
+    #[case::invalid_argument(TierError::InvalidArgument("bad key".to_owned()), FdbStatus::InvalidArgument)]
+    #[case::validation(TierError::Validation("mismatch".to_owned()), FdbStatus::ValidationFailed)]
+    #[case::catalog(TierError::Catalog(KvError::rocks("IO error: catalog".to_owned())), FdbStatus::RocksDb)]
+    fn tier_errors_keep_the_status_of_their_csharp_exception(#[case] error: TierError, #[case] expected: FdbStatus) {
+        let message = error.to_string();
+        let mapped = FfiError::from(error);
+        assert_eq!((mapped.status, mapped.message), (expected, message));
+    }
+}

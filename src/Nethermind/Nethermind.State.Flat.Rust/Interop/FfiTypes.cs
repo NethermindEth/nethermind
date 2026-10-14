@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Rust.Interop;
 internal static class FfiAbi
 {
     /// <summary>The ABI version this adapter speaks; must equal <c>fdb_abi_version()</c>.</summary>
-    public const uint Version = 6;
+    public const uint Version = 7;
 }
 
 /// <summary>Status code of a native call.</summary>
@@ -40,6 +40,9 @@ internal enum FdbStatus
     InvalidConfiguration = 16,
     ManagedCallback = 17,
     HashMismatch = 18,
+    Corrupt = 19,
+    Io = 20,
+    ValidationFailed = 21,
 }
 
 /// <summary>Index of each type in the sizes <c>fdb_struct_sizes</c> reports.</summary>
@@ -62,6 +65,10 @@ internal enum FfiStruct
     RobInfo,
     ScopeFlags,
     NodeRecord,
+    TierCfg,
+    CatalogDesc,
+    ManagedCatalogVTable,
+    TierGaugeRow,
 }
 
 internal enum FdbKvKind : uint
@@ -208,6 +215,7 @@ internal enum SeamCounter
     ScopePutStorageNodes,
     ScopeCommit,
     SnapshotRelease,
+    PersistedTierGauges,
     Other,
 }
 
@@ -333,7 +341,7 @@ internal struct ManagedKvVTable
 /// <c>SnapshotCompactor</c> and <c>CompactionSchedule</c> read, with the compaction offset C# resolved.
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
-internal struct FdbMgrCfg
+internal unsafe struct FdbMgrCfg
 {
     public uint AbiVersion;
     public uint MaxInFlightCompactJob;
@@ -351,6 +359,84 @@ internal struct FdbMgrCfg
     /// <summary>Whether every persist queues its trie nodes for the <c>IsPersisted</c> replay.</summary>
     public byte PersistedNodeEvents;
     public byte DetailedMetrics;
+    /// <summary>The persisted-snapshot tier; null with <see cref="Nethermind.Db.IFlatDbConfig.EnableLongFinality"/> off.</summary>
+    public FdbTierCfg* Tier;
+}
+
+/// <summary>
+/// The persisted-snapshot tier of a native manager: where it keeps its files, its catalog database and the
+/// <see cref="Nethermind.Db.IFlatDbConfig"/> members it reads.
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FdbTierCfg
+{
+    /// <summary>UTF-8 <c>{BaseDbPath}/persistedSnapshot/arena</c>.</summary>
+    public byte* ArenaDir;
+    public nuint ArenaDirLength;
+    /// <summary>UTF-8 <c>{BaseDbPath}/persistedSnapshot/blob</c>.</summary>
+    public byte* BlobDir;
+    public nuint BlobDirLength;
+    public FdbCatalogDesc Catalog;
+    /// <summary>The catalog rows read at startup, each a little-endian <c>uint</c> key length, the key, a little-endian <c>uint</c> value length and the value.</summary>
+    public byte* CatalogRows;
+    public nuint CatalogRowsLength;
+    public ulong LongFinalityMaxReorgDepth;
+    public ulong MaxInMemoryBaseSnapshotCount;
+    public long ArenaFileSizeBytes;
+    public long DedicatedArenaThresholdBytes;
+    public long ArenaPageCacheBytes;
+    public double BloomBitsPerKey;
+    /// <summary><see cref="Environment.ProcessorCount"/>.</summary>
+    public uint ProcessorCount;
+    public byte PunchHoleOnReclaim;
+    public byte ValidatePersistedSnapshot;
+    public fixed byte Pad[2];
+}
+
+internal enum FdbCatalogKind : byte
+{
+    Rocks = 0,
+    Managed = 1,
+}
+
+/// <summary>The catalog database of the persisted-snapshot tier; only the fields of <see cref="Kind"/> are read.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FdbCatalogDesc
+{
+    public FdbCatalogKind Kind;
+    /// <summary>The catalog's <c>DbOnTheRocks.VerifyChecksum</c>.</summary>
+    public byte VerifyChecksums;
+    /// <summary>The catalog's <c>IRocksDbConfig.WriteAheadLogSync</c>.</summary>
+    public byte WalSync;
+    public fixed byte Pad[5];
+    /// <summary>The <see cref="RocksApiTable"/>.</summary>
+    public nint RocksApi;
+    /// <summary><c>rocksdb_t*</c>.</summary>
+    public nint RocksDb;
+    /// <summary>The <c>rocksdb_column_family_handle_t*</c> of the default column family.</summary>
+    public nint DefaultColumnFamily;
+    public ManagedCatalogVTable* Managed;
+}
+
+/// <summary>Callbacks of a managed catalog: <c>PutSpan</c>, <c>KeyExists</c> and <c>Remove</c> on a catalog <see cref="Nethermind.Db.IDb"/> that is not RocksDB.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct ManagedCatalogVTable
+{
+    public nint Ctx;
+    public nint Put;
+    public nint KeyExists;
+    public nint Remove;
+}
+
+/// <summary>Where the fatal error <c>fdb_take_fatal_error</c> hands out came from.</summary>
+internal enum FatalErrorSource : byte
+{
+    /// <summary>A RocksDB error of the flat database.</summary>
+    FlatDb = 0,
+    /// <summary>A RocksDB error of the catalog database of the persisted-snapshot tier.</summary>
+    Catalog = 1,
+    /// <summary>A converted snapshot that does not read back as its source.</summary>
+    Validation = 2,
 }
 
 /// <summary>The host callbacks of a native manager; see <see cref="RustHostCallbacks"/>.</summary>
@@ -393,6 +479,24 @@ internal unsafe struct FdbCounters
     /// <summary>Live compacted contents, by usage from <c>Compact2</c>, counted as <c>ActivePooledResource</c> of <c>SortedSnapshotContent</c>.</summary>
     public fixed long SortedContentActive[SortedContentUsages];
     public fixed long SortedContentCreated[SortedContentUsages];
+    /// <summary>The persisted-snapshot tier's counters, zero while it is off.</summary>
+    public long PersistedSnapshotBloomMemory;
+    public long PersistedSnapshotBloomCount;
+    public long ArenaFileCount;
+    public long ArenaAllocatedBytes;
+    public long BlobFileCount;
+    public long BlobAllocatedBytes;
+    public long ArenaReservationCount;
+    public long ArenaReservationBytes;
+    public long PageTrackerResidentBytes;
+    public long PageTrackerMetadataBytes;
+    public long PersistedSnapshotCompactions;
+    public long PersistedSnapshotPrunes;
+    public long PageTrackerEvictionsDispatched;
+    public long PageTrackerEvictionsInlineFallback;
+    public long PageTrackerPagesRefreshed;
+    /// <summary>Writes to the catalog database, which <c>DbOnTheRocks</c> counts in its <c>TotalWrites</c>.</summary>
+    public long CatalogPuts;
 }
 
 /// <summary>A histogram observation of a native manager.</summary>
@@ -425,7 +529,7 @@ internal unsafe struct FfiPersistedNode
     public readonly ValueHash256 NodeHash => new(MemoryMarshal.CreateReadOnlySpan(in Hash[0], ValueHash256.MemorySize));
 }
 
-/// <summary>The trie nodes of one native persist; <see cref="Owner"/> keeps <see cref="Nodes"/> alive until released.</summary>
+/// <summary>The trie nodes of one native persist or conversion; <see cref="Owner"/> keeps <see cref="Nodes"/> alive until released.</summary>
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct FdbPersistedEvent
 {
@@ -434,6 +538,34 @@ internal unsafe struct FdbPersistedEvent
     public FfiPersistedNode* Nodes;
     public nuint NodeCount;
     public nint Owner;
+    public PersistedEventKind Kind;
+    public fixed byte Pad[7];
+}
+
+/// <summary>What a native persisted event reports.</summary>
+internal enum PersistedEventKind : byte
+{
+    /// <summary>A persist to the database, whose nodes are marked persisted.</summary>
+    Persisted = 0,
+    /// <summary>A conversion of a base into the persisted-snapshot tier, whose nodes it wrote.</summary>
+    Converted = 1,
+}
+
+/// <summary>The gauges of one <c>{tier, size}</c> label of the persisted-snapshot tier.</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct FfiTierGaugeRow
+{
+    /// <summary>The blocks a snapshot of the label spans.</summary>
+    public ulong Size;
+    /// <summary><see cref="Nethermind.State.Flat.Metrics.PersistedSnapshotCount"/>.</summary>
+    public long Count;
+    /// <summary><see cref="Nethermind.State.Flat.Metrics.PersistedSnapshotMemory"/>.</summary>
+    public long Memory;
+    /// <summary><see cref="Nethermind.State.Flat.Metrics.ActivePersistedSnapshotCount"/>.</summary>
+    public long Active;
+    /// <summary>The <c>PersistedSnapshotTier</c>, numbered as <c>SnapshotTier</c>.</summary>
+    public byte Tier;
+    public fixed byte Pad[7];
 }
 
 /// <summary>What a native read-only bundle or scope was opened over, cached by its handle so that no call is needed to learn it.</summary>
@@ -442,11 +574,11 @@ internal struct FfiRobInfo
 {
     /// <summary>The persisted state the bundle reads below its snapshots.</summary>
     public FfiStateId ReaderState;
-    /// <summary>The in-memory snapshots of the bundle, which number its self-destruct indexes from 0.</summary>
+    /// <summary>The snapshots of the bundle, persisted then in memory, which number its self-destruct indexes from 0.</summary>
     public uint SnapshotCount;
     /// <summary>The snapshots a scope was seeded with, numbered after the bundle's; 0 for a read-only bundle.</summary>
     public uint OwnCount;
-    /// <summary>The persisted snapshots of the bundle; 0 until the persisted-snapshot tier exists.</summary>
+    /// <summary>The persisted snapshots of the bundle, which hold the first self-destruct indexes.</summary>
     public uint PersistedCount;
     public byte MayFilterSlots;
     /// <summary>Whether a snapshot of the bundle, or of a scope's seed, clears a storage.</summary>
@@ -509,4 +641,6 @@ internal enum ReadSource : byte
     Persistence = 4,
     /// <summary>Nothing: a self-destruct cut the slot off.</summary>
     SelfDestructed = 5,
+    /// <summary>A snapshot of the bundle's persisted-snapshot tier.</summary>
+    Persisted = 6,
 }

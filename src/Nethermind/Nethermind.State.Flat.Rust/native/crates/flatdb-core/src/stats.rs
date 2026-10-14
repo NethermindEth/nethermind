@@ -6,6 +6,8 @@
 //! manager shares one [`FlatStats`]. Times are observed in nanoseconds, which are `Stopwatch` ticks on Linux.
 
 use std::collections::HashMap;
+use std::fmt;
+use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -45,6 +47,8 @@ pub struct FlatCounters {
     pub observations_dropped: AtomicI64,
     /// The pooled-resource gauges of the native contents.
     pub content: ContentCounters,
+    /// The gauges and counters of the persisted-snapshot tier, zero while it is off.
+    pub tier: TierCounters,
 }
 
 /// The number of `ResourcePool.Usage` values a block's content is written under: `MainBlockProcessing`,
@@ -98,11 +102,53 @@ pub struct TierCounters {
     pub catalog_puts: AtomicI64,
 }
 
+/// The [`TierCounters`] of a [`FlatStats`], which keeps them alive: the tier's components move the counters C# reads in
+/// place through `fdb_stats`.
+#[derive(Clone)]
+pub struct SharedTierCounters(Arc<FlatStats>);
+
+impl SharedTierCounters {
+    pub fn new(stats: Arc<FlatStats>) -> Self {
+        Self(stats)
+    }
+}
+
+/// Counters of stats of their own, which nothing else reads.
+impl Default for SharedTierCounters {
+    fn default() -> Self {
+        Self(Arc::default())
+    }
+}
+
+impl Deref for SharedTierCounters {
+    type Target = TierCounters;
+
+    fn deref(&self) -> &TierCounters {
+        &self.0.counters.tier
+    }
+}
+
+impl fmt::Debug for SharedTierCounters {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        TierCounters::fmt(self, formatter)
+    }
+}
+
 /// The metrics of the persisted-snapshot tier: its counters and its gauges labelled by tier and size.
 #[derive(Debug, Default)]
 pub struct TierStats {
-    pub counters: Arc<TierCounters>,
+    pub counters: SharedTierCounters,
     pub gauges: TierGauges,
+}
+
+impl TierStats {
+    /// Tier metrics whose counters are those of `stats`.
+    pub fn new(stats: Arc<FlatStats>) -> Self {
+        Self {
+            counters: SharedTierCounters::new(stats),
+            gauges: TierGauges::default(),
+        }
+    }
 }
 
 /// The gauges of one `{tier, size}` label, `size` being the blocks a snapshot spans.
@@ -134,6 +180,19 @@ impl TierGauges {
     /// The row of a label, zero when it was never moved.
     pub fn row(&self, tier: SnapshotTier, size: i64) -> TierGaugeRow {
         self.rows.lock().get(&(tier, size)).copied().unwrap_or_default()
+    }
+
+    /// Every label with a non-zero gauge, ordered by tier, then size.
+    pub fn non_zero_rows(&self) -> Vec<(SnapshotTier, i64, TierGaugeRow)> {
+        let mut rows: Vec<_> = self
+            .rows
+            .lock()
+            .iter()
+            .filter(|(_, row)| **row != TierGaugeRow::default())
+            .map(|(&(tier, size), &row)| (tier, size, row))
+            .collect();
+        rows.sort_unstable_by_key(|&(tier, size, _)| (tier as u8, size));
+        rows
     }
 }
 

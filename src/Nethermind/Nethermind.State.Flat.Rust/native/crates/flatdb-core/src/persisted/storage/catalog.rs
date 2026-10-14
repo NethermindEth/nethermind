@@ -16,7 +16,7 @@ use crate::kv::rocks::RocksKv;
 use crate::kv::{Column, KvRawBatch, KvResult, KvStore, WriteFlags};
 use crate::persisted::TierResult;
 use crate::persisted::codec::{self, CatalogEntry};
-use crate::stats::TierCounters;
+use crate::stats::SharedTierCounters;
 use crate::types::StateId;
 
 /// The operations of `IDb` the catalog uses.
@@ -63,11 +63,11 @@ impl SnapshotCatalog {
 /// `PutSpan` counts in `DbOnTheRocks`'s `TotalWrites`.
 pub struct RocksCatalogKv<K: KvStore = RocksKv> {
     kv: K,
-    counters: Arc<TierCounters>,
+    counters: SharedTierCounters,
 }
 
 impl<K: KvStore> RocksCatalogKv<K> {
-    pub fn new(kv: K, counters: Arc<TierCounters>) -> Self {
+    pub fn new(kv: K, counters: SharedTierCounters) -> Self {
         Self { kv, counters }
     }
 

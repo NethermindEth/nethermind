@@ -9,11 +9,10 @@ use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::unix::fs::FileExt;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use crate::persisted::sys;
-use crate::stats::TierCounters;
+use crate::stats::SharedTierCounters;
 
 pub struct BlobFile {
     id: u16,
@@ -26,7 +25,7 @@ pub struct BlobFile {
     pub(super) frontier: AtomicI64,
     /// `ReportedFrontier`: the frontier last added to `BlobAllocatedBytes`.
     pub(super) reported_frontier: AtomicI64,
-    counters: Arc<TierCounters>,
+    counters: SharedTierCounters,
 }
 
 impl BlobFile {
@@ -37,7 +36,7 @@ impl BlobFile {
         path: &Path,
         max_size: i64,
         frontier: i64,
-        counters: Arc<TierCounters>,
+        counters: SharedTierCounters,
     ) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)

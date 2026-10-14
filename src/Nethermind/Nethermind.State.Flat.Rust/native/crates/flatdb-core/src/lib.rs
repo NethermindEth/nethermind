@@ -37,4 +37,4 @@ pub mod types;
 
 /// Version of the C ABI shared with the C# adapter (`Nethermind.State.Flat.Rust`), including the
 /// [`kv::rocks_api::RocksApi`] table layout. Bump it on any change to a `repr(C)` type or an export signature.
-pub const ABI_VERSION: u32 = 6;
+pub const ABI_VERSION: u32 = 7;

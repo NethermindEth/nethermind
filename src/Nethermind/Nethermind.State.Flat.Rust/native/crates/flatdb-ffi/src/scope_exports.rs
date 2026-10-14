@@ -49,6 +49,7 @@ impl FdbRob {
         let info = FfiRobInfo {
             reader_state: bundle.reader_state().into(),
             snapshot_count: bundle.snapshot_count() as u32,
+            persisted_count: bundle.persisted().snapshots().len() as u32,
             may_filter_slots: bundle.may_filter_slots().into(),
             has_self_destructs: bundle.has_self_destructs().into(),
             ..FfiRobInfo::default()
@@ -151,7 +152,7 @@ pub unsafe extern "C" fn fdb_rob_get_account(
                 out(source)?,
             )
         };
-        let read = rob.poison.guard(|| Ok(rob.bundle.get_account(address)?))?;
+        let read = rob.poison.guard_read(|| Ok(rob.bundle.get_account(address)?))?;
         write_account(read, account, found, source);
         Ok(())
     })
@@ -203,7 +204,7 @@ pub unsafe extern "C" fn fdb_rob_get_slot(
                 out(source)?,
             )
         };
-        let (read, from) = rob.poison.guard(|| {
+        let (read, from) = rob.poison.guard_read(|| {
             Ok(if filtered != 0 {
                 rob.bundle.get_slot_filtered(address, &slot, sd_idx)?
             } else {
@@ -251,7 +252,7 @@ pub unsafe extern "C" fn fdb_rob_load_state_rlp(
         let flags = ReadFlags::from_bits(read_flags);
         let (read, from) = rob
             .poison
-            .guard(|| Ok(rob.bundle.load_state_rlp_unchecked(&path, flags, copy_into(buffer))?))?;
+            .guard_read(|| Ok(rob.bundle.load_state_rlp_unchecked(&path, flags, copy_into(buffer))?))?;
         *source = from as u8;
         report_len(read.unwrap_or(GetInto::NotFound), capacity, len)
     })
@@ -288,7 +289,7 @@ pub unsafe extern "C" fn fdb_rob_load_storage_rlp(
             )
         };
         let flags = ReadFlags::from_bits(read_flags);
-        let (read, from) = rob.poison.guard(|| {
+        let (read, from) = rob.poison.guard_read(|| {
             Ok(rob
                 .bundle
                 .load_storage_rlp_unchecked(address_hash, &path, flags, copy_into(buffer))?)
@@ -406,7 +407,7 @@ pub unsafe extern "C" fn fdb_scope_get_account(
         let read = scope
             .base
             .poison
-            .guard(|| Ok(scope.scope.get_account(address, promote != 0)?))?;
+            .guard_read(|| Ok(scope.scope.get_account(address, promote != 0)?))?;
         write_account(read, account, found, source);
         Ok(())
     })
@@ -502,7 +503,7 @@ pub unsafe extern "C" fn fdb_scope_get_slot(
         let (read, from) = scope
             .base
             .poison
-            .guard(|| Ok(scope.scope.get_slot(address, &slot, sd_idx)?))?;
+            .guard_read(|| Ok(scope.scope.get_slot(address, &slot, sd_idx)?))?;
         *source = from as u8;
         // SAFETY: as above.
         unsafe { write_found_u256(read, value, found) }
@@ -593,7 +594,7 @@ pub unsafe extern "C" fn fdb_scope_load_state_rlp(
         let (read, from) = scope
             .base
             .poison
-            .guard(|| Ok(scope.scope.load_state_rlp(&path, hash, flags, copy_into(buffer))?))?;
+            .guard_read(|| Ok(scope.scope.load_state_rlp(&path, hash, flags, copy_into(buffer))?))?;
         *source = from as u8;
         report_len(read.unwrap_or(GetInto::NotFound), capacity, len)
     })
@@ -630,7 +631,7 @@ pub unsafe extern "C" fn fdb_scope_load_storage_rlp(
             )
         };
         let flags = ReadFlags::from_bits(read_flags);
-        let (read, from) = scope.base.poison.guard(|| {
+        let (read, from) = scope.base.poison.guard_read(|| {
             Ok(scope
                 .scope
                 .load_storage_rlp(address_hash, &path, hash, flags, copy_into(buffer))?)

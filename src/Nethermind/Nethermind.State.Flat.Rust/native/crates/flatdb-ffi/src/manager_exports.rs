@@ -5,10 +5,16 @@ use std::ffi::c_void;
 use std::ptr;
 use std::sync::Arc;
 
+use flatdb_core::persisted::TierErrorKind;
+use flatdb_core::persistence::PersistenceError;
+use flatdb_core::persistence_manager::PersistError;
 use flatdb_core::stats::{FlatCounters, Observation};
 use flatdb_core::types::StateId;
 
-use crate::abi::{FdbHost, FdbMgrCfg, FdbPersistedEvent, FfiError, FfiPersistedNode, FfiStateId};
+use crate::abi::{
+    FATAL_SOURCE_CATALOG, FATAL_SOURCE_FLAT_DB, FATAL_SOURCE_VALIDATION, FdbHost, FdbMgrCfg, FdbPersistedEvent,
+    FdbStatus, FfiError, FfiPersistedNode, FfiStateId, FfiTierGaugeRow,
+};
 use crate::calls::Export;
 use crate::guard::ffi_guard;
 use crate::manager::FdbManager;
@@ -16,11 +22,16 @@ use crate::store::FdbStore;
 use crate::{out, store_ref};
 
 /// Starts a snapshot manager over the persistence stack of `store`, calling `host` for finality and the deferred
-/// block-data flush. The manager holds a handle on the store, which therefore outlives it.
+/// block-data flush. The manager holds a handle on the store, which therefore outlives it. With a tier in `cfg`, the
+/// persisted-snapshot tier is opened first; a tier that cannot be opened fails the call with the status of the C#
+/// exception (`Io`, `Corrupt`, `InvalidOperation`, `InvalidArgument`) and leaves its files as they were.
 ///
 /// # Safety
 /// `store` must be a live store and `cfg`, `host` and `mgr` valid. The host callbacks run on the manager's persistence
 /// thread or the thread flushing it until [`fdb_destroy`] returns; they must not unwind or call into the library.
+/// `cfg.tier` must be null or valid: its directories and catalog rows valid for their lengths during the call, and its
+/// catalog database open, or its managed callbacks callable from any thread with their context, until
+/// [`fdb_destroy`] returns.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn fdb_mgr_create(
     store: *const FdbStore,
@@ -34,7 +45,8 @@ pub unsafe extern "C" fn fdb_mgr_create(
         let (Some(cfg), Some(host)) = (cfg, host) else {
             return Err(FfiError::invalid_argument("null argument"));
         };
-        let created = store.poison.guard(|| FdbManager::create(store, cfg, host))?;
+        // SAFETY: as the caller vouches.
+        let created = store.poison.guard(|| unsafe { FdbManager::create(store, cfg, host) })?;
         *mgr = Box::into_raw(Box::new(created));
         Ok(())
     })
@@ -126,8 +138,9 @@ pub unsafe extern "C" fn fdb_drain_observations(
     })
 }
 
-/// Takes the oldest queued persist into `event`; its `owner` is null when none is queued, otherwise it keeps the node
-/// array alive until [`fdb_persisted_event_release`].
+/// Takes the oldest queued persist or conversion into `event`; its `owner` is null when none is queued, otherwise it
+/// keeps the node array alive until [`fdb_persisted_event_release`]. Its `kind` tells a persist to the database (0),
+/// whose nodes C# marks persisted, from a conversion into the persisted-snapshot tier (1).
 ///
 /// # Safety
 /// `mgr` must be a live manager and `event` valid for writes.
@@ -143,6 +156,8 @@ pub unsafe extern "C" fn fdb_take_persisted_event(mgr: *const FdbManager, event:
                 nodes: ptr::null(),
                 node_count: 0,
                 owner: ptr::null_mut(),
+                kind: 0,
+                pad: [0; 7],
             },
             Some(taken) => {
                 let nodes: Box<Vec<FfiPersistedNode>> = Box::new(taken.nodes);
@@ -152,6 +167,8 @@ pub unsafe extern "C" fn fdb_take_persisted_event(mgr: *const FdbManager, event:
                     nodes: nodes.as_ptr(),
                     node_count: nodes.len(),
                     owner: Box::into_raw(nodes).cast::<c_void>(),
+                    kind: taken.kind as u8,
+                    pad: [0; 7],
                 }
             }
         };
@@ -294,20 +311,77 @@ pub unsafe extern "C" fn fdb_drop_unreachable(mgr: *const FdbManager, head: *con
     })
 }
 
-/// Fails, once, with the fatal RocksDB error a persist hit, after which the manager writes nothing more; C# then shuts
-/// the node down as `DbOnTheRocks.HandleFatalDbError` does. Ok while there is none, and once it was reported.
+/// Fails, once, with the fatal error a persist or a persisted compaction hit, after which the manager writes nothing
+/// more, and stores where it came from in `source`: [`FATAL_SOURCE_FLAT_DB`] or [`FATAL_SOURCE_CATALOG`] for a RocksDB
+/// error of that database, on which C# shuts the node down as its `DbOnTheRocks.HandleFatalDbError` does, or
+/// [`FATAL_SOURCE_VALIDATION`] for a converted snapshot failing validation, on which C# exits. Ok while there is none,
+/// and once it was reported.
 ///
 /// # Safety
-/// `mgr` must be a live manager.
+/// `mgr` must be a live manager and `source` valid for writes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdb_take_fatal_error(mgr: *const FdbManager) -> i32 {
+pub unsafe extern "C" fn fdb_take_fatal_error(mgr: *const FdbManager, source: *mut u8) -> i32 {
     ffi_guard(Export::TakeFatalError, || {
-        // SAFETY: the caller passes a live manager.
-        let fatal_error = unsafe { mgr_ref(mgr)? }
-            .manager
-            .persistence_manager()
-            .take_fatal_error();
-        fatal_error.map_or(Ok(()), |error| Err(error.into()))
+        // SAFETY: the caller passes a live manager and a valid out-pointer.
+        let (mgr, source) = unsafe { (mgr_ref(mgr)?, out(source)?) };
+        let Some(error) = mgr.manager.persistence_manager().take_fatal_error() else {
+            return Ok(());
+        };
+        *source = match &error {
+            PersistError::Persistence(PersistenceError::Catalog(_)) => FATAL_SOURCE_CATALOG,
+            PersistError::Persistence(PersistenceError::Tier {
+                kind: TierErrorKind::Validation,
+                ..
+            }) => FATAL_SOURCE_VALIDATION,
+            _ => FATAL_SOURCE_FLAT_DB,
+        };
+        Err(error.into())
+    })
+}
+
+/// Copies the `{tier, size}` gauges of the persisted-snapshot tier with a non-zero value into `rows`, ordered by tier
+/// then size, and stores how many in `count`; more rows than `capacity` yield [`crate::abi::FdbStatus::BufferTooSmall`]
+/// with the number needed in `count`. None without the tier.
+///
+/// # Safety
+/// `mgr` must be a live manager, `rows` valid for writes of `capacity` rows and `count` valid for writes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fdb_persisted_tier_gauges(
+    mgr: *const FdbManager,
+    rows: *mut FfiTierGaugeRow,
+    capacity: usize,
+    count: *mut usize,
+) -> i32 {
+    ffi_guard(Export::PersistedTierGauges, || {
+        // SAFETY: the caller passes a live manager and valid out-pointers.
+        let (mgr, count) = unsafe { (mgr_ref(mgr)?, out(count)?) };
+        if rows.is_null() && capacity != 0 {
+            return Err(FfiError::invalid_argument("null pointer with a non-zero capacity"));
+        }
+        let gauges: Vec<FfiTierGaugeRow> = mgr
+            .tier_stats
+            .as_ref()
+            .map(|stats| {
+                stats
+                    .gauges
+                    .non_zero_rows()
+                    .into_iter()
+                    .map(FfiTierGaugeRow::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        *count = gauges.len();
+        if gauges.len() > capacity {
+            return Err(FfiError {
+                status: FdbStatus::BufferTooSmall,
+                message: format!("{} gauge rows, room for {capacity}", gauges.len()),
+            });
+        }
+        if !gauges.is_empty() {
+            // SAFETY: the caller guarantees room for `capacity` rows, and there are no more than that.
+            unsafe { ptr::copy_nonoverlapping(gauges.as_ptr(), rows, gauges.len()) };
+        }
+        Ok(())
     })
 }
 
@@ -430,6 +504,7 @@ pub(crate) mod tests {
         inline_compaction: 1,
         persisted_node_events: 1,
         detailed_metrics: 0,
+        tier: ptr::null(),
     };
 
     pub(crate) const A: [u8; 20] = [0xAA; 20];
@@ -550,7 +625,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn snapshot_of(from: StateId, to: StateId, records: &[u8]) -> *mut FdbSnapshot {
+    pub(crate) fn snapshot_of(from: StateId, to: StateId, records: &[u8]) -> *mut FdbSnapshot {
         let mut snapshot = ptr::null_mut();
         // SAFETY: every pointer is valid.
         let status = unsafe {
@@ -676,6 +751,8 @@ pub(crate) mod tests {
                 nodes: ptr::null(),
                 node_count: 0,
                 owner: ptr::null_mut(),
+                kind: 0,
+                pad: [0; 7],
             };
             // SAFETY: the manager is live and the record valid; the owner is released once.
             unsafe {
@@ -683,6 +760,7 @@ pub(crate) mod tests {
                 if event.owner.is_null() {
                     return taken;
                 }
+                assert_eq!(event.kind, 0, "without a tier, every event is a persist");
                 let nodes = slice::from_raw_parts(event.nodes, event.node_count)
                     .iter()
                     .map(|node| (node.is_storage, TreePath::new(node.path, node.path_length), node.hash))
@@ -722,7 +800,7 @@ pub(crate) mod tests {
         }
     }
 
-    fn counters(mgr: *mut FdbManager) -> &'static FlatCounters {
+    pub(crate) fn counters(mgr: *mut FdbManager) -> &'static FlatCounters {
         // SAFETY: the tests read the counters only while the manager is live.
         unsafe { &*fdb_stats(mgr) }
     }
@@ -988,7 +1066,7 @@ pub(crate) mod tests {
                 FdbStatus::Poisoned as i32
             );
             assert_eq!(
-                fdb_take_fatal_error(mgr),
+                fdb_take_fatal_error(mgr, &mut 0),
                 FdbStatus::Ok as i32,
                 "a panic is no RocksDB error"
             );
@@ -1101,7 +1179,10 @@ pub(crate) mod tests {
         // SAFETY: the manager is live and the out-pointer valid.
         let persists = [(); 2].map(|_| unsafe { (fdb_flush_to_persistence(mgr, &mut persisted), last_error()) });
         // SAFETY: as above.
-        let reported = [(); 2].map(|_| unsafe { fdb_take_fatal_error(mgr) });
+        let reported = [(); 2].map(|_| {
+            let mut source = u8::MAX;
+            (unsafe { fdb_take_fatal_error(mgr, &mut source) }, source)
+        });
         // SAFETY: the store is live.
         let written = unsafe { &*store }
             .persistence
@@ -1124,7 +1205,13 @@ pub(crate) mod tests {
             [(); 2].map(|_| (FdbStatus::RocksDb as i32, "IO error: injected write".to_owned())),
             "the second persist fails with the first error, as nothing more may be written"
         );
-        assert_eq!(reported, [FdbStatus::RocksDb as i32, FdbStatus::Ok as i32]);
+        assert_eq!(
+            reported,
+            [
+                (FdbStatus::RocksDb as i32, FATAL_SOURCE_FLAT_DB),
+                (FdbStatus::Ok as i32, u8::MAX)
+            ]
+        );
         assert_eq!((persisted_state(mgr), written), (block(5), block(5)));
         // SAFETY: the handles are released once.
         unsafe {

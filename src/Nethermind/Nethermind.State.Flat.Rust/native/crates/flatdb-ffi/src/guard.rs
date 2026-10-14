@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Instant;
 
+use flatdb_core::bundle::ReadSource;
 use flatdb_core::log_ring::{self, LogSink};
 use flatdb_core::seam;
 
@@ -88,6 +89,22 @@ impl Poison {
                 self.set();
                 panic::resume_unwind(payload)
             })
+        })
+    }
+
+    /// [`Poison::guard`] for a read reporting where it was served from. A read the persisted-snapshot tier served takes
+    /// the [`Fault::PanicInTierRead`] fault of a test build.
+    pub fn guard_read<T>(
+        &self,
+        body: impl FnOnce() -> Result<(T, ReadSource), FfiError>,
+    ) -> Result<(T, ReadSource), FfiError> {
+        self.guard(|| {
+            let read = body()?;
+            #[cfg(any(test, feature = "test-api"))]
+            if read.1 == ReadSource::Persisted {
+                self.faults.panic_if_armed(Fault::PanicInTierRead);
+            }
+            Ok(read)
         })
     }
 

@@ -302,9 +302,10 @@ internal sealed class NativeFlatManager : IDisposable
         }
     }
 
-    private void ReportFatalError()
+    private unsafe void ReportFatalError()
     {
-        if (NativeMethods.fdb_take_fatal_error(_handle) == FdbStatus.Ok) return;
+        FatalErrorSource source;
+        if (NativeMethods.fdb_take_fatal_error(_handle, &source) == FdbStatus.Ok) return;
 
         string message = StatusMap.LastError();
         if (_logger.IsError) _logger.Error($"Persisting the flat DB failed fatally: {message}");

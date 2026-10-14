@@ -15,18 +15,18 @@ use super::keys::{self, ADDRESS_HASH_PREFIX_LENGTH};
 use super::scanner::Scanner;
 use super::{TierError, TierResult};
 use crate::bloom::BloomFilter;
-use crate::stats::TierCounters;
+use crate::stats::SharedTierCounters;
 use crate::types::TreePath;
 
 /// `RefCountedBloomFilter`: a snapshot's bloom, shared through its `Arc` when a large compaction lends it to the
 /// snapshots it contains. It counts in `PersistedSnapshotBloomMemory` and `PersistedSnapshotBloomCount` while it lives.
 pub struct PersistedBloom {
     filter: BloomFilter,
-    counters: Arc<TierCounters>,
+    counters: SharedTierCounters,
 }
 
 impl PersistedBloom {
-    pub fn new(filter: BloomFilter, counters: Arc<TierCounters>) -> Arc<Self> {
+    pub fn new(filter: BloomFilter, counters: SharedTierCounters) -> Arc<Self> {
         counters
             .bloom_memory
             .fetch_add(filter.data_bytes() as i64, Ordering::Relaxed);
@@ -35,7 +35,7 @@ impl PersistedBloom {
     }
 
     /// `AlwaysTrue`: the placeholder of a snapshot whose bloom is built later, or of a tier without blooms.
-    pub fn always_true(counters: Arc<TierCounters>) -> Arc<Self> {
+    pub fn always_true(counters: SharedTierCounters) -> Arc<Self> {
         Self::new(BloomFilter::always_true(), counters)
     }
 

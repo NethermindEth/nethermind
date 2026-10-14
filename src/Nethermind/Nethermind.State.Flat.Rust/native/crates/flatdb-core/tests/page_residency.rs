@@ -8,13 +8,12 @@
 mod common;
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use common::arena::{config, write};
 use flatdb_core::persisted::storage::arena_manager::ArenaManager;
 use flatdb_core::persisted::storage::page_tracker::{PageResidencyTracker, TouchOutcome};
 use flatdb_core::persisted::sys::os_page_size;
-use flatdb_core::stats::TierCounters;
+use flatdb_core::stats::SharedTierCounters;
 use rstest::rstest;
 
 /// The ways of a set: a tracker of this capacity has one set, so every key lands in it and the clock is determined.
@@ -181,7 +180,7 @@ fn resident_bytes_follow_inserts_evictions_and_forgets() {
 fn tracking_manager(directory: &tempfile::TempDir, tracked_pages: i64) -> ArenaManager {
     let mut config = config(64 * 1024);
     config.page_cache_bytes = tracked_pages * os_page_size() as i64;
-    let manager = ArenaManager::new(directory.path(), config, Arc::new(TierCounters::default())).unwrap();
+    let manager = ArenaManager::new(directory.path(), config, SharedTierCounters::default()).unwrap();
     manager.initialize(&[]).unwrap();
     manager
 }

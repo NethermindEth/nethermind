@@ -14,7 +14,7 @@ use flatdb_core::persisted::TierError;
 use flatdb_core::persisted::codec::{self, CatalogEntry, SnapshotLocation};
 use flatdb_core::persisted::storage::catalog::{CatalogKv, ManagedCatalogKv, MemCatalogKv, SnapshotCatalog};
 use flatdb_core::snapshot::SnapshotTier;
-use flatdb_core::stats::TierCounters;
+use flatdb_core::stats::SharedTierCounters;
 use flatdb_core::types::StateId;
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -226,13 +226,12 @@ fn csharp_rows_parse_and_rewrite_byte_for_byte() {
 
 #[cfg(feature = "rocksdb-it")]
 mod rocks {
-    use std::sync::Arc;
     use std::sync::atomic::Ordering;
 
     use flatdb_core::kv::{Column, KvStore};
     use flatdb_core::persisted::storage::catalog::{RocksCatalogKv, SnapshotCatalog};
     use flatdb_core::snapshot::SnapshotTier;
-    use flatdb_core::stats::TierCounters;
+    use flatdb_core::stats::SharedTierCounters;
 
     use super::common::column_entries;
     use super::common::rocks::TestDb;
@@ -241,7 +240,7 @@ mod rocks {
     #[test]
     fn rocks_catalog_writes_the_default_column_family_and_counts_puts() {
         let Some(db) = TestDb::open_catalog() else { return };
-        let counters = Arc::new(TierCounters::default());
+        let counters = SharedTierCounters::default();
         let rows_kv = db.catalog_kv();
         rows_round_trip_by_to_and_depth(Box::new(RocksCatalogKv::new(db.catalog_kv(), counters.clone())), || {
             column_entries(&rows_kv, Column::Metadata)
@@ -279,7 +278,7 @@ mod rocks {
         let Some(db) = TestDb::open_catalog() else { return };
         let rows_kv = db.catalog_kv();
         csharp_rows_round_trip(
-            Box::new(RocksCatalogKv::new(db.catalog_kv(), Arc::new(TierCounters::default()))),
+            Box::new(RocksCatalogKv::new(db.catalog_kv(), SharedTierCounters::default())),
             || column_entries(&rows_kv, Column::Metadata),
         );
     }
@@ -287,7 +286,7 @@ mod rocks {
 
 #[test]
 fn rocks_catalog_counts_puts_over_any_store() {
-    let counters = Arc::new(TierCounters::default());
+    let counters = SharedTierCounters::default();
     let kv = flatdb_core::kv::mem::MemKv::new();
     let catalog = SnapshotCatalog::new(Box::new(flatdb_core::persisted::storage::catalog::RocksCatalogKv::new(
         kv.clone(),

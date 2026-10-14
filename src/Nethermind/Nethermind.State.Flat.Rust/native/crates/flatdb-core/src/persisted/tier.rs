@@ -10,7 +10,7 @@ use super::loader::PersistedSnapshotLoader;
 use super::storage::arena_manager::{ArenaConfig, ArenaManager};
 use super::storage::blob_manager::BlobManager;
 use super::storage::catalog::{CatalogKv, SnapshotCatalog};
-use super::{PersistedTierConfig, TierResult};
+use super::{PersistedTierConfig, TierFaults, TierResult};
 use crate::manager::PanicHook;
 use crate::persistence_manager::{FatalErrorSlot, PersistError};
 use crate::repository::{SnapshotRepository, StateHeaderProvider};
@@ -29,6 +29,14 @@ pub struct TierSettings {
     pub schedule: CompactionSchedule,
 }
 
+/// What the tier calls back with and the faults it takes.
+pub struct TierHooks {
+    /// The name of every persisted compaction that panics, once logged.
+    pub on_job_panic: PanicHook,
+    /// The faults a test build injects; none in production.
+    pub faults: Option<Arc<dyn TierFaults>>,
+}
+
 /// The parts of the tier the persistence manager and the manager act on; the repository indexes its snapshots.
 pub struct PersistedTier {
     pub arena: Arc<ArenaManager>,
@@ -40,8 +48,7 @@ pub struct PersistedTier {
 
 impl PersistedTier {
     /// Builds the tier of `settings` writing its catalog through `catalog`, with a repository over its buckets and
-    /// `stats`, and loads it from `catalog_rows`, the rows C# read from the catalog database. A persisted compaction
-    /// that panics is handed to `on_job_panic`.
+    /// `stats`, and loads it from `catalog_rows`, the rows C# read from the catalog database, calling back with `hooks`.
     ///
     /// A failed load leaves the files of the snapshots it opened on disk.
     pub fn open(
@@ -51,7 +58,7 @@ impl PersistedTier {
         finalized_state_provider: Arc<dyn StateHeaderProvider>,
         stats: Arc<FlatStats>,
         tier_stats: Arc<TierStats>,
-        on_job_panic: PanicHook,
+        hooks: TierHooks,
     ) -> TierResult<(Arc<SnapshotRepository>, Self)> {
         let arena = Arc::new(ArenaManager::new(
             &settings.arena_directory,
@@ -77,6 +84,7 @@ impl PersistedTier {
             catalog.clone(),
             tier_stats.clone(),
             settings.tier,
+            hooks.faults.clone(),
         ));
         loader.load(catalog_rows)?;
 
@@ -94,7 +102,8 @@ impl PersistedTier {
             },
             CompactorHooks {
                 on_fatal_error: Box::new(move |error| recorded.record(&PersistError::from(error))),
-                on_job_panic,
+                on_job_panic: hooks.on_job_panic,
+                faults: hooks.faults,
             },
         ));
         Ok((

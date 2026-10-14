@@ -20,7 +20,7 @@ use super::pool_set::PoolSet;
 use crate::persisted::lock_rank::{self, LockRank, Ranked};
 use crate::persisted::reader::BlobSource;
 use crate::persisted::{TierError, TierResult};
-use crate::stats::TierCounters;
+use crate::stats::SharedTierCounters;
 
 const BLOB_FILE_PREFIX: &str = "blob_";
 const BLOB_FILE_EXTENSION: &str = ".bin";
@@ -29,7 +29,7 @@ const MAX_FILE_COUNT: usize = u16::MAX as usize + 1;
 pub struct BlobManager {
     base_path: PathBuf,
     max_file_size: i64,
-    counters: Arc<TierCounters>,
+    counters: SharedTierCounters,
     /// Lookups share the lock; every change of a slot or of the pool takes it exclusively.
     table: RwLock<BlobTable>,
 }
@@ -46,7 +46,7 @@ struct BlobTable {
 impl BlobManager {
     /// A manager of the blob files in `base_path`, created if missing; call [`BlobManager::initialize`] before any
     /// snapshot is opened.
-    pub fn new(base_path: &Path, max_file_size: i64, counters: Arc<TierCounters>) -> std::io::Result<Arc<Self>> {
+    pub fn new(base_path: &Path, max_file_size: i64, counters: SharedTierCounters) -> std::io::Result<Arc<Self>> {
         std::fs::create_dir_all(base_path)?;
         Ok(Arc::new(Self {
             base_path: base_path.to_owned(),

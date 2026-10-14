@@ -212,7 +212,10 @@ internal static unsafe partial class NativeMethods
     public static partial FdbStatus fdb_drop_unreachable(ManagerHandle manager, FfiStateId* head);
 
     [LibraryImport(LibraryName)]
-    public static partial FdbStatus fdb_take_fatal_error(ManagerHandle manager);
+    public static partial FdbStatus fdb_take_fatal_error(ManagerHandle manager, FatalErrorSource* source);
+
+    [LibraryImport(LibraryName)]
+    public static partial FdbStatus fdb_persisted_tier_gauges(ManagerHandle manager, FfiTierGaugeRow* rows, nuint capacity, nuint* count);
 
     [LibraryImport(LibraryName)]
     public static partial FdbStatus fdb_clear_bundle_cache(ManagerHandle manager);

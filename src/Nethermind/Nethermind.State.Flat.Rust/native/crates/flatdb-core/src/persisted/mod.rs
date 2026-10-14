@@ -41,6 +41,7 @@ pub mod validate;
 use thiserror::Error;
 
 use crate::kv::KvError;
+use crate::snapshot::Snapshot;
 
 /// A failure of the persisted tier, named after the C# exception it stands for.
 #[derive(Debug, Error)]
@@ -88,4 +89,23 @@ pub struct PersistedTierConfig {
     pub validate_persisted_snapshot: bool,
     /// `Environment.ProcessorCount`.
     pub processor_count: usize,
+}
+
+/// Failures a test build of the library injects into the tier, the `test-api` faults of the FFI crate. The tier of a
+/// production build has none, so each point costs a check of an empty `Option`.
+pub trait TierFaults: Send + Sync {
+    /// Runs before a conversion builds its table, and may panic.
+    fn before_conversion(&self);
+    /// The I/O error a conversion fails with once its table is written, before its writers complete, so they cancel.
+    fn conversion_write_error(&self) -> Option<std::io::Error>;
+    /// Whether a conversion stops once its files are durable, before its catalog row is written, as a crash there
+    /// would: the reservation keeps its bytes and nothing is registered.
+    fn stop_before_catalog_add(&self) -> bool;
+    /// What a converted snapshot is validated against instead of its source.
+    fn validation_source(&self, source: &Snapshot) -> Option<Snapshot>;
+    /// Runs before a persisted compaction merges its sources, and may panic.
+    fn before_merge(&self);
+    /// Runs at startup once the snapshots of the catalog are opened, before the unreferenced blob files are swept, and
+    /// may panic.
+    fn after_load_open(&self);
 }

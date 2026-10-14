@@ -34,7 +34,7 @@ use flatdb_core::kv::ReadFlags;
 use flatdb_core::kv::{KvError, KvResult};
 use flatdb_core::manager::{AddSnapshotOutcome, FlatDbManager, ManagerConfig, ManagerError};
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
-use flatdb_core::persisted::tier::PersistedTier;
+use flatdb_core::persisted::tier::{PersistedTier, TierHooks};
 use flatdb_core::persistence::PersistenceError;
 use flatdb_core::persistence::{Persistence, PersistenceReader, ReaderFlags};
 use flatdb_core::persistence_manager::{LongFinalityConfig, PersistError, PersistenceManagerConfig};
@@ -1376,7 +1376,10 @@ fn shutdown_leaves_the_tier_for_the_next_session_but_what_was_pruned() {
         Arc::new(FakeHost::default()),
         Arc::new(flatdb_core::stats::FlatStats::default()),
         Arc::default(),
-        Box::new(|job| panic!("{job} panicked")),
+        TierHooks {
+            on_job_panic: Box::new(|job| panic!("{job} panicked")),
+            faults: None,
+        },
     )
     .unwrap();
     assert_eq!(

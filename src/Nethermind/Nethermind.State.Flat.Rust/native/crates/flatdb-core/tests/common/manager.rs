@@ -16,7 +16,7 @@ use flatdb_core::persisted::PersistedTierConfig;
 use flatdb_core::persisted::compactor::{EnqueueError, PersistedCompactor};
 use flatdb_core::persisted::snapshot::PersistedSnapshot;
 use flatdb_core::persisted::storage::catalog::{CatalogKv, MemCatalogKv};
-use flatdb_core::persisted::tier::{PersistedTier, TierSettings};
+use flatdb_core::persisted::tier::{PersistedTier, TierHooks, TierSettings};
 use flatdb_core::persistence::layouts::KvPersistence;
 use flatdb_core::persistence::{
     Persistence, PersistenceError, PersistenceReader, PersistenceResult, PersistenceWriteBatch, ReaderFlags,
@@ -702,7 +702,10 @@ impl Fixture {
             host,
             stats,
             tier_stats.clone(),
-            Box::new(|job| panic!("{job} panicked")),
+            TierHooks {
+                on_job_panic: Box::new(|job| panic!("{job} panicked")),
+                faults: None,
+            },
         )
         .unwrap();
         let recorder = options

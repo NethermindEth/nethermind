@@ -329,6 +329,7 @@ impl StorageTier {
             catalog.clone(),
             stats.clone(),
             config,
+            None,
         );
         loader.load(&pack_rows(catalog_rows))?;
         Ok(Self {
@@ -377,6 +378,7 @@ impl StorageTier {
             CompactorHooks {
                 on_fatal_error: Box::new(|_| {}),
                 on_job_panic: Box::new(move |job| panicked.lock().unwrap().push(job.to_owned())),
+                faults: None,
             },
         )
     }

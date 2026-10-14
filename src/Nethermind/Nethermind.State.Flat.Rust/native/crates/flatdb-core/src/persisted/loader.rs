@@ -22,7 +22,7 @@ use super::sorted::table::FORMAT_VERSION;
 use super::storage::arena_manager::ArenaManager;
 use super::storage::blob_manager::BlobManager;
 use super::storage::catalog::SnapshotCatalog;
-use super::{PersistedTierConfig, TierError, TierResult, builder, parallel, validate};
+use super::{PersistedTierConfig, TierError, TierFaults, TierResult, builder, parallel, validate};
 use crate::bloom::BloomFilter;
 use crate::events::PersistedNode;
 use crate::repository::SnapshotRepository;
@@ -40,6 +40,7 @@ pub struct PersistedSnapshotLoader {
     catalog: Arc<SnapshotCatalog>,
     stats: Arc<TierStats>,
     config: PersistedTierConfig,
+    faults: Option<Arc<dyn TierFaults>>,
     marked_for_shutdown: AtomicBool,
 }
 
@@ -51,6 +52,7 @@ impl PersistedSnapshotLoader {
         catalog: Arc<SnapshotCatalog>,
         stats: Arc<TierStats>,
         config: PersistedTierConfig,
+        faults: Option<Arc<dyn TierFaults>>,
     ) -> Self {
         Self {
             repository,
@@ -59,6 +61,7 @@ impl PersistedSnapshotLoader {
             catalog,
             stats,
             config,
+            faults,
             marked_for_shutdown: AtomicBool::new(false),
         }
     }
@@ -80,6 +83,9 @@ impl PersistedSnapshotLoader {
         entries.retain(|entry| !missing_arenas.contains(&entry.location.arena_id));
 
         self.load_snapshots(&entries)?;
+        if let Some(faults) = &self.faults {
+            faults.after_load_open();
+        }
         self.blobs.sweep_unreferenced();
         self.reconstruct_bloom(&entries)
     }
@@ -183,10 +189,16 @@ impl PersistedSnapshotLoader {
             BloomFilter::always_true()
         };
 
+        if let Some(faults) = &self.faults {
+            faults.before_conversion();
+        }
         let estimated_size = builder::estimate_size(snapshot);
         let mut blob_writer = self.blobs.create_writer(estimated_size)?;
         let mut arena_writer = self.arena.create_writer(estimated_size, true)?;
         let output = builder::build(snapshot, &mut arena_writer, blob_writer.writer()?, &mut bloom)?;
+        if let Some(error) = self.faults.as_ref().and_then(|faults| faults.conversion_write_error()) {
+            return Err(error.into());
+        }
         self.repository.stats().observe(
             Histogram::PersistedSnapshotSize,
             HistogramLabel::None,
@@ -198,6 +210,18 @@ impl PersistedSnapshotLoader {
         // The catalog must never name bytes that are not durable.
         reservation.fsync()?;
         blob_writer.fsync()?;
+        if self
+            .faults
+            .as_ref()
+            .is_some_and(|faults| faults.stop_before_catalog_add())
+        {
+            reservation.persist_on_shutdown();
+            return Err(TierError::InvalidOperation(format!(
+                "Conversion of {}->{} stopped before its catalog row",
+                snapshot.from().block_number,
+                snapshot.to().block_number
+            )));
+        }
         log::debug!(
             "Persisted snapshot {}->{} to disk (arena {}, {} bytes)",
             snapshot.from().block_number,
@@ -229,7 +253,11 @@ impl PersistedSnapshotLoader {
         self.repository.add_persisted_snapshot(persisted.clone());
 
         if self.config.validate_persisted_snapshot {
-            validate::validate_persisted_snapshot(snapshot, &persisted, Path::new(""))?;
+            let substitute = self
+                .faults
+                .as_ref()
+                .and_then(|faults| faults.validation_source(snapshot));
+            validate::validate_persisted_snapshot(substitute.as_ref().unwrap_or(snapshot), &persisted, Path::new(""))?;
         }
         Ok(output.written_nodes)
     }

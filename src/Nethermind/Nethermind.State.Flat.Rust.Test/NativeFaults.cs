@@ -32,6 +32,30 @@ internal static unsafe partial class NativeFaults
 
         /// <summary>The next compaction of the store's manager panics.</summary>
         PanicInCompaction,
+
+        /// <summary>The next conversion into the persisted-snapshot tier panics before it builds its table.</summary>
+        PanicInConvert,
+
+        /// <summary>The next persisted compaction panics before it merges.</summary>
+        PanicInPersistedCompaction,
+
+        /// <summary>The next manager created over the store panics once it opened the snapshots of its tier.</summary>
+        PanicInPersistedLoad,
+
+        /// <summary>The next read a bundle or scope serves from the persisted-snapshot tier panics.</summary>
+        PanicInTierRead,
+
+        /// <summary>The next conversion fails with an I/O error carrying the message once its table is written, cancelling its writes.</summary>
+        ArenaWriteError,
+
+        /// <summary>The next write of a catalog row fails with a RocksDB error carrying the message.</summary>
+        CatalogPutError,
+
+        /// <summary>The next conversion stops once its files are durable, before its catalog row is written, as a crash there would.</summary>
+        SkipCatalogAdd,
+
+        /// <summary>The next converted snapshot is validated against its source with one account more, which its table lacks.</summary>
+        CorruptConvertedContent,
     }
 
     private static readonly Lazy<bool> _isAvailable = new(static () =>

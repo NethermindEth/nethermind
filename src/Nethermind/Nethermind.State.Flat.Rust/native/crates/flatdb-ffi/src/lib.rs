@@ -14,6 +14,8 @@ pub mod guard;
 pub mod manager;
 pub mod manager_exports;
 pub mod op_stream;
+#[cfg(test)]
+mod persisted_tier_tests;
 pub mod persistence;
 pub mod scope_exports;
 #[cfg(any(test, feature = "test-api"))]
@@ -1653,8 +1655,8 @@ mod tests {
         // SAFETY: the buffer holds 32 values.
         let count = unsafe { fdb_struct_sizes(sizes.as_mut_ptr(), sizes.len() as u32) };
         assert_eq!(&sizes[..count as usize], &STRUCT_SIZES);
-        let mut offsets = [0u32; 128];
-        // SAFETY: the buffer holds 128 values.
+        let mut offsets = [0u32; 256];
+        // SAFETY: the buffer holds 256 values.
         let count = unsafe { fdb_struct_offsets(offsets.as_mut_ptr(), offsets.len() as u32) };
         assert_eq!(&offsets[..count as usize], &FIELD_OFFSETS);
 

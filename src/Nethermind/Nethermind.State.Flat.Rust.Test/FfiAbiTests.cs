@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -38,6 +39,10 @@ public class FfiAbiTests
             [FfiStruct.RobInfo] = sizeof(FfiRobInfo),
             [FfiStruct.ScopeFlags] = sizeof(FfiScopeFlags),
             [FfiStruct.NodeRecord] = sizeof(FfiNodeRecord),
+            [FfiStruct.TierCfg] = sizeof(FdbTierCfg),
+            [FfiStruct.CatalogDesc] = sizeof(FdbCatalogDesc),
+            [FfiStruct.ManagedCatalogVTable] = sizeof(ManagedCatalogVTable),
+            [FfiStruct.TierGaugeRow] = sizeof(FfiTierGaugeRow),
         };
         uint[] expectedOffsets =
         [
@@ -45,12 +50,13 @@ public class FfiAbiTests
             .. FieldOffsets<FdbStats>(), .. FieldOffsets<FfiStateId>(), .. FieldOffsets<FfiAccount>(),
             .. FieldOffsets<FdbMgrCfg>(), .. FieldOffsets<FdbHost>(), .. FieldOffsets<FdbCounters>(), .. FieldOffsets<FdbObservation>(),
             .. FieldOffsets<FfiPersistedNode>(), .. FieldOffsets<FdbPersistedEvent>(), .. FieldOffsets<FfiRobInfo>(),
-            .. FieldOffsets<FfiScopeFlags>(), .. FieldOffsets<FfiNodeRecord>(),
+            .. FieldOffsets<FfiScopeFlags>(), .. FieldOffsets<FfiNodeRecord>(), .. FieldOffsets<FdbTierCfg>(),
+            .. FieldOffsets<FdbCatalogDesc>(), .. FieldOffsets<ManagedCatalogVTable>(), .. FieldOffsets<FfiTierGaugeRow>(),
         ];
         uint* sizes = stackalloc uint[32];
         uint count = NativeMethods.fdb_struct_sizes(sizes, 32);
-        uint* offsets = stackalloc uint[128];
-        uint offsetCount = NativeMethods.fdb_struct_offsets(offsets, 128);
+        uint* offsets = stackalloc uint[256];
+        uint offsetCount = NativeMethods.fdb_struct_offsets(offsets, 256);
 
         using (Assert.EnterMultipleScope())
         {
@@ -70,6 +76,9 @@ public class FfiAbiTests
     [TestCase((int)FdbStatus.Cancelled, typeof(OperationCanceledException))]
     [TestCase((int)FdbStatus.ShutDown, typeof(ObjectDisposedException))]
     [TestCase((int)FdbStatus.HashMismatch, typeof(NodeHashMismatchException))]
+    [TestCase((int)FdbStatus.Corrupt, typeof(InvalidDataException))]
+    [TestCase((int)FdbStatus.Io, typeof(IOException))]
+    [TestCase((int)FdbStatus.ValidationFailed, typeof(InvalidOperationException))]
     public void Statuses_throw_the_exceptions_of_the_csharp_backend(int status, Type expected) =>
         Assert.That(StatusMap.ToException((FdbStatus)status, "failed"), Is.TypeOf(expected));
 

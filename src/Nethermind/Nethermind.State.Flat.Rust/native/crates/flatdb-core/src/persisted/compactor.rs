@@ -40,7 +40,7 @@ use super::sorted::table;
 use super::storage::arena_manager::ArenaManager;
 use super::storage::blob_manager::BlobManager;
 use super::storage::catalog::SnapshotCatalog;
-use super::{PersistedTierConfig, TierError, TierResult, merger, parallel};
+use super::{PersistedTierConfig, TierError, TierFaults, TierResult, merger, parallel};
 use crate::bloom::BloomFilter;
 use crate::log_ring::{self, SinkId};
 use crate::manager::{PanicHook, Signal, panic_message};
@@ -69,6 +69,8 @@ pub struct CompactorHooks {
     pub on_fatal_error: Box<dyn Fn(TierError) + Send + Sync>,
     /// The name of every compaction that panics, once logged.
     pub on_job_panic: PanicHook,
+    /// The faults a test build injects; none in production.
+    pub faults: Option<Arc<dyn TierFaults>>,
 }
 
 /// Why [`PersistedSnapshotCompactor::enqueue`] did not queue a batch.
@@ -496,6 +498,9 @@ impl Shared {
         let mut writer = self
             .arena
             .create_writer(estimated_size, tier == SnapshotTier::PersistedSmallCompacted)?;
+        if let Some(faults) = &self.hooks.faults {
+            faults.before_merge();
+        }
         let started = Instant::now();
         merger::merge(&readers, &mut writer, &mut bloom)?;
         // A window may fall short of its size, so the label is the merged span rounded up to a power of two.

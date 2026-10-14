@@ -26,12 +26,12 @@ use flatdb_core::persisted::storage::blob_writer::BlobArenaWriter;
 use flatdb_core::persisted::storage::page_tracker::TouchOutcome;
 use flatdb_core::persisted::sys::{os_page_size, round_up_to_os_page};
 use flatdb_core::snapshot::SnapshotTier;
-use flatdb_core::stats::TierCounters;
+use flatdb_core::stats::SharedTierCounters;
 use flatdb_core::types::StateId;
 use rstest::rstest;
 
-fn manager(directory: &Path, config: ArenaConfig) -> (ArenaManager, Arc<TierCounters>) {
-    let counters = Arc::new(TierCounters::default());
+fn manager(directory: &Path, config: ArenaConfig) -> (ArenaManager, SharedTierCounters) {
+    let counters = SharedTierCounters::default();
     let manager = ArenaManager::new(directory, config, counters.clone()).unwrap();
     manager.initialize(&[]).unwrap();
     (manager, counters)
@@ -218,7 +218,7 @@ fn a_small_file_kept_on_shutdown_reloads_from_its_catalog_entry() {
         location
     };
 
-    let counters = Arc::new(TierCounters::default());
+    let counters = SharedTierCounters::default();
     let second = ArenaManager::new(directory.path(), config(64 * 1024), counters).unwrap();
     assert!(second.initialize(&[entry(location)]).unwrap().is_empty());
     assert_eq!(read_all(&second.open(&location).unwrap()), [9, 8, 7, 6, 5]);
@@ -256,7 +256,7 @@ fn arena_gauges_count_frontiers_not_mapped_sizes() {
 #[test]
 fn blob_gauges_count_frontiers_and_leave_the_arena_ones() {
     let directory = tempfile::tempdir().unwrap();
-    let counters = Arc::new(TierCounters::default());
+    let counters = SharedTierCounters::default();
     let blobs = BlobManager::new(directory.path(), 64 * 1024, counters.clone()).unwrap();
     let mut writer = blobs.create_writer(1024).unwrap();
     assert_eq!(counters.blob_file_count.load(Ordering::Relaxed), 1);
@@ -294,7 +294,7 @@ fn initialize_reports_missing_arenas_and_never_reuses_their_ids() {
     let missing = BTreeSet::from([orphan.arena_id, i32::MAX]);
 
     let replacement = {
-        let reopened = ArenaManager::new(directory.path(), config(64 * 1024), Arc::default()).unwrap();
+        let reopened = ArenaManager::new(directory.path(), config(64 * 1024), SharedTierCounters::default()).unwrap();
         assert_eq!(reopened.initialize(&entries).unwrap(), missing);
         reopened.open(&live).unwrap().persist_on_shutdown();
         write_kept(&reopened)
@@ -302,7 +302,7 @@ fn initialize_reports_missing_arenas_and_never_reuses_their_ids() {
     assert!(replacement.arena_id > orphan.arena_id);
 
     entries.push(entry(replacement));
-    let restarted = ArenaManager::new(directory.path(), config(64 * 1024), Arc::default()).unwrap();
+    let restarted = ArenaManager::new(directory.path(), config(64 * 1024), SharedTierCounters::default()).unwrap();
     assert_eq!(restarted.initialize(&entries).unwrap(), missing);
     assert_eq!(read_all(&restarted.open(&replacement).unwrap()), [0; 4096]);
 }
@@ -497,7 +497,7 @@ fn a_reader_keeps_reading_while_its_neighbours_are_reclaimed() {
 #[test]
 fn blob_writers_append_page_aligned_runs_that_read_back() {
     let directory = tempfile::tempdir().unwrap();
-    let blobs = BlobManager::new(directory.path(), 1 << 20, Arc::default()).unwrap();
+    let blobs = BlobManager::new(directory.path(), 1 << 20, SharedTierCounters::default()).unwrap();
     blobs.initialize().unwrap();
 
     let mut writer = blobs.create_writer(10_000).unwrap();
@@ -552,7 +552,7 @@ fn blob_writers_append_page_aligned_runs_that_read_back() {
 #[test]
 fn blob_files_are_picked_in_pool_order_reloaded_and_swept() {
     let directory = tempfile::tempdir().unwrap();
-    let blobs = BlobManager::new(directory.path(), 64 * 1024, Arc::default()).unwrap();
+    let blobs = BlobManager::new(directory.path(), 64 * 1024, SharedTierCounters::default()).unwrap();
     let complete = |mut writer: BlobArenaWriter| {
         writer.writer().unwrap().write_rlp(&[0xC0; 100]).unwrap();
         writer.complete().unwrap();
@@ -584,7 +584,7 @@ fn blob_files_are_picked_in_pool_order_reloaded_and_swept() {
         ["blob_0000.bin", "blob_0007.bin", "blob_7.bin"]
     );
 
-    let reopened = BlobManager::new(directory.path(), 64 * 1024, Arc::default()).unwrap();
+    let reopened = BlobManager::new(directory.path(), 64 * 1024, SharedTierCounters::default()).unwrap();
     reopened.initialize().unwrap();
     let leased = reopened.try_lease_file(0).unwrap();
     assert_eq!(leased.frontier(), 100);
@@ -612,7 +612,7 @@ fn blob_files_are_picked_in_pool_order_reloaded_and_swept() {
 #[rstest]
 fn the_last_lease_released_resets_an_orphaned_blob_file(#[values(false, true)] preserved: bool) {
     let directory = tempfile::tempdir().unwrap();
-    let counters = Arc::new(TierCounters::default());
+    let counters = SharedTierCounters::default();
     let blobs = BlobManager::new(directory.path(), 8 << 20, counters.clone()).unwrap();
     let mut writer = blobs.create_writer(64 * 4096).unwrap();
     for seed in 0..64 {
