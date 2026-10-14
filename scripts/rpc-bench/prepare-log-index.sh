@@ -92,4 +92,22 @@ PY
   (( SECONDS < deadline )) || die "persisted index coverage was not confirmed after restart"
   sleep 5
 done
+# A node that adds transaction hashes to stored receipts must finish before measurement, so that the measured
+# arm reads only rewritten values. A node without the migration never logs it and goes on after the grace period.
+receipt_hashes_log() {
+  { cat "$out/backfill-clean.log"; docker logs --since "$restart_time" "$container" 2>&1 | strip_ansi_stream; } > "$out/receipt-hashes.log"
+}
+strip_ansi_stream() { sed -E 's/\x1b\[[0-9;]*m//g'; }
+grace=$((SECONDS + 180))
+deadline=$((SECONDS + 3600))
+while true; do
+  receipt_hashes_log
+  grep -qF 'Transaction hashes added to stored receipts' "$out/receipt-hashes.log" && break
+  if ! grep -qF 'Adding transaction hashes to stored receipts' "$out/receipt-hashes.log"; then
+    (( SECONDS < grace )) || break
+  fi
+  (( SECONDS < deadline )) || die "transaction hashes were not added to stored receipts in time"
+  sleep 5
+done
+grep -iF 'transaction hashes' "$out/receipt-hashes.log" | tail -n 3 >&2 || true
 cat "$out/coverage.json"
