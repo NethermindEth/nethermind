@@ -565,9 +565,10 @@ public class GuestDispatchDifferentialTests
                 case < 80:
                     {
                         // A selector dispatch, sometimes matching a selector pushed just before it.
-                        byte high = (byte)random.Next(4), low = (byte)random.Next(256);
-                        if (random.Next(2) == 0) code.AddRange([(byte)Instruction.PUSH4, 0, 0, high, low]);
-                        code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.PUSH4, 0, 0, high, low, (byte)Instruction.EQ]);
+                        // The top byte's sign bit is set at times, so a selector read that sign-extends fails to match.
+                        byte top = (byte)(random.Next(2) << 7), high = (byte)random.Next(4), low = (byte)random.Next(256);
+                        if (random.Next(2) == 0) code.AddRange([(byte)Instruction.PUSH4, top, 0, high, low]);
+                        code.AddRange([(byte)Instruction.DUP1, (byte)Instruction.PUSH4, top, 0, high, low, (byte)Instruction.EQ]);
                         destinationImmediates.Add(code.Count + 1);
                         code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
                         break;
