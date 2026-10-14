@@ -70,13 +70,13 @@ public static class NetworkHelper
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
             if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse or SocketError.AccessDenied })
-                return ports != null ? new PortInUseException(exception, ports) : new PortInUseException(exception, urls!);
+                return ports is not null ? new PortInUseException(exception, ports) : new PortInUseException(exception, urls!);
 
             isSocketError |= current is SocketException;
         }
 
         if (isSocketError)
-            return ports != null ? new ListenerBindException(exception, ports) : new ListenerBindException(exception, urls!);
+            return ports is not null ? new ListenerBindException(exception, ports) : new ListenerBindException(exception, urls!);
 
         ExceptionDispatchInfo.Throw(exception);
         throw exception; // Make compiler happy, should never execute
