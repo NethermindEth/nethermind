@@ -70,7 +70,7 @@ public sealed class ReceiptTxHashesMigration(
     {
         try
         {
-            await syncModeSelector.WaitUntilMode(static mode => mode.NotSyncing(), cancellationToken);
+            _ = syncModeSelector.Current;
             await Migrate(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
