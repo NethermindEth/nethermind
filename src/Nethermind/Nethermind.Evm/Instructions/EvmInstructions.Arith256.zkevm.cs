@@ -14,7 +14,8 @@ public static unsafe partial class EvmInstructions
 {
     // Each routine keeps the software UInt256 path unless the ZisK guest switched ZiskFlag on, so
     // every other guest and every zkEVM test on the host runs it; only MULMOD on SP1 and OpenVM differs.
-    // The operands are pinned rather than copied: DIV and MOD read them in place from stack slots, and a pinned local is free on NativeAOT.
+    // The operands are pinned rather than copied: DIV and MOD read them in place from stack slots, and a
+    // pinned local is free on NativeAOT.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void AddMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
