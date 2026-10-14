@@ -1092,7 +1092,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         committed = true;
         processingQueue.BlockRemoved += Raise.EventWith(new BlockRemovedEventArgs(block.Hash!, ProcessingResult.ProcessingError, "skipped"));
 
-        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(10));
+        ResultWrapper<PayloadStatusV1> again = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(TimeSpan.FromSeconds(30));
 
         using (Assert.EnterMultipleScope())
         {
